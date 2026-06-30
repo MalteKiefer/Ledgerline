@@ -71,6 +71,35 @@
         </div>
     </section>
 
+    <section class="mt-8">
+        <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">Projects</h2>
+            <a href="{{ route('customers.projects.create', $customer) }}"
+                class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                Add project
+            </a>
+        </div>
+
+        <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            @if ($customer->projects->isEmpty())
+                <p class="px-4 py-6 text-center text-sm text-gray-500">No projects yet.</p>
+            @else
+                <ul class="divide-y divide-gray-100 text-sm">
+                    @foreach ($customer->projects as $project)
+                        <li class="flex items-center justify-between px-4 py-3">
+                            <span>
+                                <a href="{{ route('projects.show', $project) }}"
+                                    class="font-medium text-gray-900 hover:underline">{{ $project->name }}</a>
+                                <span class="text-gray-500">— {{ $project->status->label() }}</span>
+                            </span>
+                            <span class="text-gray-500">{{ $project->reference }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
+        </div>
+    </section>
+
     <div class="mt-6">
         <a href="{{ route('customers.index') }}" class="text-sm text-gray-600 hover:text-gray-900">&larr; Back to customers</a>
     </div>

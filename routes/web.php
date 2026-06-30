@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ProjectController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -26,4 +27,5 @@ Route::middleware('auth')->group(function (): void {
 
     Route::resource('customers', CustomerController::class);
     Route::resource('customers.contacts', ContactController::class)->shallow();
+    Route::resource('customers.projects', ProjectController::class)->shallow();
 });

@@ -63,8 +63,11 @@ class CustomerController extends Controller
     {
         $this->authorize('view', $customer);
 
-        // Eager load contacts to render the related list without N+1 queries.
-        $customer->load(['contacts' => fn ($query) => $query->orderBy('name')]);
+        // Eager load related records to render the lists without N+1 queries.
+        $customer->load([
+            'contacts' => fn ($query) => $query->orderBy('name'),
+            'projects' => fn ($query) => $query->orderBy('name'),
+        ]);
 
         return view('customers.show', ['customer' => $customer]);
     }
