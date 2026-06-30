@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Models\Branch;
 use App\Models\Customer;
 use App\Support\Countries;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<Customer>
+ * @extends Factory<Branch>
  */
-class CustomerFactory extends Factory
+class BranchFactory extends Factory
 {
     /**
      * Define the model's default state.
@@ -21,16 +22,15 @@ class CustomerFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->company(),
-            'email' => fake()->companyEmail(),
-            'phone' => fake()->phoneNumber(),
-            'website' => fake()->optional()->url(),
-            'vat_id' => fake()->optional()->bothify('??#########'),
+            'customer_id' => Customer::factory(),
+            'name' => fake()->city().' Office',
             'street' => fake()->streetAddress(),
             'postal_code' => fake()->postcode(),
             'city' => fake()->city(),
             'country' => fake()->randomElement(Countries::codes()),
-            'notes' => fake()->optional()->sentence(),
+            'phone' => fake()->phoneNumber(),
+            'email' => fake()->companyEmail(),
+            'manager_contact_id' => null,
         ];
     }
 }

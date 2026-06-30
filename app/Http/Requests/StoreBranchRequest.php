@@ -4,22 +4,20 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Models\Customer;
 use App\Support\Countries;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Validates input for creating a customer.
+ * Validates input for creating a branch office.
  *
- * Authorization is enforced by CustomerPolicy via authorizeResource() in the
- * controller, so this request only needs to validate the payload.
+ * The country must be a valid ISO code and the optional manager must be one of
+ * the owning customer's contacts. Authorization is handled by BranchPolicy.
  */
-class StoreCustomerRequest extends FormRequest
+class StoreBranchRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
@@ -32,17 +30,22 @@ class StoreCustomerRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var Customer $customer */
+        $customer = $this->route('customer');
+
         return [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'website' => ['nullable', 'url', 'max:255'],
-            'vat_id' => ['nullable', 'string', 'max:50'],
             'street' => ['nullable', 'string', 'max:255'],
             'postal_code' => ['nullable', 'string', 'max:20'],
             'city' => ['nullable', 'string', 'max:255'],
             'country' => ['nullable', Rule::in(Countries::codes())],
-            'notes' => ['nullable', 'string', 'max:5000'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'manager_contact_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('contacts', 'id')->where('customer_id', $customer->id),
+            ],
         ];
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
@@ -33,6 +34,7 @@ Route::middleware('auth')->group(function (): void {
     Route::resource('customers', CustomerController::class);
     Route::resource('customers.contacts', ContactController::class)->shallow();
     Route::resource('customers.projects', ProjectController::class)->shallow();
+    Route::resource('customers.branches', BranchController::class)->shallow();
 
     // Customer-independent overview of all projects.
     Route::get('/projects', ProjectOverviewController::class)->name('projects.overview');

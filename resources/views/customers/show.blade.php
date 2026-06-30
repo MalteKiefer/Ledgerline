@@ -20,20 +20,55 @@
 
     <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-            @foreach ([
-                'Email' => $customer->email,
-                'Phone' => $customer->phone,
-                'VAT ID' => $customer->vat_id,
-                'Street' => $customer->street,
-                'Postal code' => $customer->postal_code,
-                'City' => $customer->city,
-                'Country' => $customer->country,
-            ] as $label => $value)
-                <div>
-                    <dt class="text-sm font-medium text-gray-500">{{ $label }}</dt>
-                    <dd class="mt-1 text-sm text-gray-900">{{ $value ?: '—' }}</dd>
-                </div>
-            @endforeach
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Email</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @if ($customer->email)
+                        <a href="mailto:{{ $customer->email }}" class="text-gray-900 hover:underline">{{ $customer->email }}</a>
+                    @else — @endif
+                </dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Phone</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @if ($customer->phone)
+                        <a href="tel:{{ $customer->phone }}" class="text-gray-900 hover:underline">{{ $customer->phone }}</a>
+                    @else — @endif
+                </dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Website</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @if ($customer->website)
+                        <a href="{{ $customer->website }}" target="_blank" rel="noopener noreferrer"
+                            class="text-gray-900 hover:underline">{{ $customer->website }}</a>
+                    @else — @endif
+                </dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">VAT ID</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ $customer->vat_id ?: '—' }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Street</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ $customer->street ?: '—' }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Postal code</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ $customer->postal_code ?: '—' }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">City</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ $customer->city ?: '—' }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Country</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @if ($name = \App\Support\Countries::name($customer->country))
+                        {{ \App\Support\Countries::flag($customer->country) }} {{ $name }}
+                    @else — @endif
+                </dd>
+            </div>
 
             <div class="sm:col-span-2">
                 <dt class="text-sm font-medium text-gray-500">Notes</dt>
@@ -56,6 +91,12 @@
                     class="border-b-2 px-1 py-3 text-sm font-medium"
                     :class="tab === 'projects' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
                     Projects ({{ $customer->projects->count() }})
+                </button>
+                <button type="button" role="tab" id="tab-branches" aria-controls="panel-branches"
+                    :aria-selected="(tab === 'branches').toString()" @click="tab = 'branches'"
+                    class="border-b-2 px-1 py-3 text-sm font-medium"
+                    :class="tab === 'branches' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    Branches ({{ $customer->branches->count() }})
                 </button>
             </nav>
         </div>
@@ -122,6 +163,43 @@
                                     <span class="text-gray-500">— {{ $project->status->label() }}</span>
                                 </span>
                                 <span class="text-gray-500">{{ $project->reference }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </div>
+        </section>
+
+        {{-- Branches panel --}}
+        <section id="panel-branches" role="tabpanel" aria-labelledby="tab-branches" x-show="tab === 'branches'" x-cloak class="mt-4">
+            <div class="flex items-center justify-end">
+                <a href="{{ route('customers.branches.create', $customer) }}"
+                    class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    Add branch
+                </a>
+            </div>
+            <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                @if ($customer->branches->isEmpty())
+                    <p class="px-4 py-6 text-center text-sm text-gray-500">No branches yet.</p>
+                @else
+                    <ul class="divide-y divide-gray-100 text-sm">
+                        @foreach ($customer->branches as $branch)
+                            <li class="px-4 py-3">
+                                <div class="flex items-center justify-between">
+                                    <a href="{{ route('branches.show', $branch) }}"
+                                        class="font-medium text-gray-900 hover:underline">{{ $branch->name }}</a>
+                                    <span class="text-gray-500">
+                                        @if ($flag = \App\Support\Countries::flag((string) $branch->country)){{ $flag }} @endif{{ $branch->city }}
+                                    </span>
+                                </div>
+                                @if ($branch->manager)
+                                    <div class="mt-1 text-gray-600">
+                                        Manager:
+                                        <a href="{{ route('contacts.show', $branch->manager) }}" class="hover:underline">
+                                            {{ $branch->manager->name }}
+                                        </a>
+                                    </div>
+                                @endif
                             </li>
                         @endforeach
                     </ul>

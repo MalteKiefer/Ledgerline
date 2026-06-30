@@ -84,14 +84,43 @@ class PocketIdController extends Controller
             return;
         }
 
+        // SSRF guard: only ever fetch from the configured Pocket-ID host over
+        // http(s). This prevents the (semi-trusted) "picture" claim from
+        // pointing the server at internal/loopback addresses or other hosts.
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        $host = parse_url($url, PHP_URL_HOST);
+        $allowedHost = parse_url((string) config('services.pocketid.base_url'), PHP_URL_HOST);
+
+        if (! in_array($scheme, ['http', 'https'], true)
+            || $host === null
+            || $allowedHost === null
+            || strcasecmp($host, $allowedHost) !== 0) {
+            return;
+        }
+
         try {
-            $response = Http::timeout(5)->get($url);
+            // Do not follow redirects (a redirect could escape the allowed host).
+            $response = Http::withOptions(['allow_redirects' => false])
+                ->timeout(5)
+                ->get($url);
 
             if (! $response->successful()) {
                 return;
             }
 
             $type = (string) $response->header('Content-Type');
+
+            if (! str_starts_with($type, 'image/')) {
+                return;
+            }
+
+            $body = (string) $response->body();
+
+            // Reject anything implausibly large for an avatar (5 MiB cap).
+            if ($body === '' || strlen($body) > 5 * 1024 * 1024) {
+                return;
+            }
+
             $extension = match (true) {
                 str_contains($type, 'png') => 'png',
                 str_contains($type, 'webp') => 'webp',
@@ -100,7 +129,7 @@ class PocketIdController extends Controller
             };
 
             $path = "avatars/{$user->id}.{$extension}";
-            Storage::disk('local')->put($path, $response->body());
+            Storage::disk('local')->put($path, $body);
 
             $user->update(['avatar' => $path]);
         } catch (Throwable) {
