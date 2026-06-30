@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'email',
     'phone',
+    'website',
     'vat_id',
     'street',
     'postal_code',
@@ -52,5 +53,15 @@ class Customer extends Model
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
+    }
+
+    /**
+     * The branch offices (Niederlassungen) belonging to this customer.
+     *
+     * @return HasMany<Branch, $this>
+     */
+    public function branches(): HasMany
+    {
+        return $this->hasMany(Branch::class);
     }
 }

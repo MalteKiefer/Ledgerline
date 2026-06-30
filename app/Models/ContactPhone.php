@@ -27,7 +27,7 @@ class ContactPhone extends Model
      *
      * @var list<string>
      */
-    public const SUGGESTED_LABELS = ['Work', 'Mobile', 'Home', 'Fax', 'Other'];
+    public const SUGGESTED_LABELS = ['Mobile', 'Work', 'Private', 'Home', 'Phone', 'Fax', 'Other'];
 
     /**
      * The contact this phone number belongs to.

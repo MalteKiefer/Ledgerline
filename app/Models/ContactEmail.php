@@ -27,7 +27,7 @@ class ContactEmail extends Model
      *
      * @var list<string>
      */
-    public const SUGGESTED_LABELS = ['Work', 'Personal', 'Billing', 'Support', 'Other'];
+    public const SUGGESTED_LABELS = ['Work', 'Private', 'Home', 'Billing', 'Support', 'Other'];
 
     /**
      * The contact this email address belongs to.

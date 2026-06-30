@@ -67,6 +67,7 @@ class CustomerController extends Controller
         $customer->load([
             'contacts' => fn ($query) => $query->with(['emails', 'phones'])->orderBy('name'),
             'projects' => fn ($query) => $query->orderBy('name'),
+            'branches' => fn ($query) => $query->with('manager')->orderBy('name'),
         ]);
 
         return view('customers.show', ['customer' => $customer]);

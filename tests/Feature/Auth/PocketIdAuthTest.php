@@ -62,6 +62,7 @@ class PocketIdAuthTest extends TestCase
 
     public function test_callback_provisions_and_authenticates_a_new_user(): void
     {
+        config(['services.pocketid.base_url' => 'https://id.example.com']);
         Storage::fake('local');
         Http::fake([
             '*' => Http::response('fake-image-bytes', 200, ['Content-Type' => 'image/png']),
@@ -93,6 +94,7 @@ class PocketIdAuthTest extends TestCase
 
     public function test_callback_succeeds_when_avatar_download_fails(): void
     {
+        config(['services.pocketid.base_url' => 'https://id.example.com']);
         Storage::fake('local');
         Http::fake(['*' => Http::response('nope', 500)]);
 
