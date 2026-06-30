@@ -40,8 +40,10 @@
                 <dd class="mt-1 break-all font-mono text-sm text-gray-900">{{ $user->oidc_sub ?: '—' }}</dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Avatar URL</dt>
-                <dd class="mt-1 break-all text-sm text-gray-900">{{ $user->avatar ?: '—' }}</dd>
+                <dt class="text-sm font-medium text-gray-500">Avatar</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ $user->avatar ? 'Provided by Pocket-ID, stored locally' : 'None' }}
+                </dd>
             </div>
             <div>
                 <dt class="text-sm font-medium text-gray-500">Account created</dt>
