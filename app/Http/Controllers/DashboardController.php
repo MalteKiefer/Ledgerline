@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
+use App\Models\Project;
 use Illuminate\Contracts\View\View;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * The post-login landing page.
  *
- * Shows a few plain summary counts. The customer and project tables are
- * introduced in later milestones, so the counts are read defensively and
- * default to zero until those tables exist.
+ * Shows a few plain summary counts for the current user's team(s). The counts
+ * use the Eloquent models so the team global scope applies — a user never sees
+ * counts for data outside their teams.
  */
 class DashboardController extends Controller
 {
@@ -24,17 +24,9 @@ class DashboardController extends Controller
     {
         return view('dashboard', [
             'stats' => [
-                'customers' => $this->countOf('customers'),
-                'projects' => $this->countOf('projects'),
+                'customers' => Customer::count(),
+                'projects' => Project::count(),
             ],
         ]);
-    }
-
-    /**
-     * Count the rows of a table, returning zero if it does not yet exist.
-     */
-    private function countOf(string $table): int
-    {
-        return Schema::hasTable($table) ? DB::table($table)->count() : 0;
     }
 }

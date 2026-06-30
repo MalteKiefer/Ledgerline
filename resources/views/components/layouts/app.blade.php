@@ -26,7 +26,27 @@
                 </div>
 
                 @auth
+                    @php
+                        $currentUser = auth()->user();
+                        $userTeams = $currentUser->teams;
+                        $currentTeamId = $currentUser->currentTeamId();
+                    @endphp
                     <div class="flex items-center gap-4">
+                        @if ($userTeams->count() > 1)
+                            <form method="POST" action="{{ route('active-team.update') }}">
+                                @csrf
+                                <label for="active-team" class="sr-only">Active team</label>
+                                <select id="active-team" name="team_id" onchange="this.form.submit()"
+                                    class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                    @foreach ($userTeams as $team)
+                                        <option value="{{ $team->id }}" @selected($team->id === $currentTeamId)>{{ $team->name }}</option>
+                                    @endforeach
+                                </select>
+                            </form>
+                        @elseif ($userTeams->count() === 1)
+                            <span class="hidden text-sm text-gray-500 sm:inline">{{ $userTeams->first()->name }}</span>
+                        @endif
+
                         <x-spotlight-search />
                         <a href="{{ route('profile') }}"
                             class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">

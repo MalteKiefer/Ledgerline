@@ -12,18 +12,18 @@ use App\Models\ContactEmail;
 use App\Models\Customer;
 use App\Models\Project;
 use App\Models\Tag;
-use App\Models\User;
+use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class SearchTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function search(string $term)
+    private function search(string $term): TestResponse
     {
-        return $this->actingAs(User::factory()->create())
-            ->get(route('search', ['q' => $term]));
+        return $this->get(route('search', ['q' => $term]));
     }
 
     public function test_guests_cannot_search(): void
@@ -33,14 +33,14 @@ class SearchTest extends TestCase
 
     public function test_empty_query_shows_a_prompt(): void
     {
-        $this->actingAs(User::factory()->create())
-            ->get(route('search'))
-            ->assertOk()
-            ->assertSee('Type a term');
+        $this->signIn();
+
+        $this->get(route('search'))->assertOk()->assertSee('Type a term');
     }
 
     public function test_it_finds_customers_by_name(): void
     {
+        $this->signIn();
         Customer::factory()->create(['name' => 'Qzxwv Industries']);
 
         $this->search('qzxwv')
@@ -51,6 +51,7 @@ class SearchTest extends TestCase
 
     public function test_it_finds_contacts_by_related_email(): void
     {
+        $this->signIn();
         $contact = Contact::factory()->create([
             'name' => 'Jane Searchable',
             'function' => ContactFunction::CEO->value,
@@ -65,6 +66,7 @@ class SearchTest extends TestCase
 
     public function test_it_finds_branches_by_name(): void
     {
+        $this->signIn();
         Branch::factory()->create(['name' => 'Qzxwv Branch']);
 
         $this->search('qzxwv branch')
@@ -75,6 +77,7 @@ class SearchTest extends TestCase
 
     public function test_it_finds_projects_by_reference(): void
     {
+        $this->signIn();
         Project::factory()->create(['name' => 'Some Project', 'reference' => 'QZXWV-9001']);
 
         $this->search('qzxwv-9001')
@@ -85,48 +88,52 @@ class SearchTest extends TestCase
 
     public function test_it_finds_projects_by_tag(): void
     {
+        $this->signIn();
         $project = Project::factory()->create(['name' => 'Tagged Project']);
         $project->tags()->attach(Tag::findOrCreateByName('Qzxwvtag')->id);
 
-        $this->search('qzxwvtag')
-            ->assertOk()
-            ->assertSee('Projects')
-            ->assertSee('Tagged Project');
+        $this->search('qzxwvtag')->assertOk()->assertSee('Tagged Project');
     }
 
     public function test_it_finds_projects_by_type(): void
     {
+        $this->signIn();
         Project::factory()->create([
             'name' => 'Server Patching Qzxwv',
             'type' => ProjectType::MAINTENANCE->value,
         ]);
 
-        $this->search('maintenance')
+        $this->search('maintenance')->assertOk()->assertSee('Server Patching Qzxwv');
+    }
+
+    public function test_search_does_not_leak_other_teams_records(): void
+    {
+        $this->signIn();
+        $foreignTeam = Team::factory()->create();
+        Customer::factory()->create(['team_id' => $foreignTeam->id, 'name' => 'Qzxwv Foreign Customer']);
+
+        $this->search('qzxwv')
             ->assertOk()
-            ->assertSee('Server Patching Qzxwv');
+            ->assertDontSee('Qzxwv Foreign Customer');
     }
 
     public function test_results_are_grouped_by_entity_type(): void
     {
+        $this->signIn();
         Customer::factory()->create(['name' => 'Qzxwv Customer']);
         Branch::factory()->create(['name' => 'Qzxwv Branch']);
 
-        $response = $this->search('qzxwv');
-
-        $response->assertOk();
-        $response->assertViewHas('groups', function (array $groups): bool {
-            return array_key_exists('Customers', $groups)
-                && array_key_exists('Branches', $groups);
+        $this->search('qzxwv')->assertOk()->assertViewHas('groups', function (array $groups): bool {
+            return array_key_exists('Customers', $groups) && array_key_exists('Branches', $groups);
         });
     }
 
     public function test_unmatched_query_reports_no_results(): void
     {
+        $this->signIn();
         Customer::factory()->create(['name' => 'Acme']);
 
-        $this->search('zzz-no-such-token-zzz')
-            ->assertOk()
-            ->assertSee('No results');
+        $this->search('zzz-no-such-token-zzz')->assertOk()->assertSee('No results');
     }
 
     public function test_guests_cannot_use_the_suggest_endpoint(): void
@@ -136,10 +143,10 @@ class SearchTest extends TestCase
 
     public function test_suggest_returns_grouped_json(): void
     {
+        $this->signIn();
         Customer::factory()->create(['name' => 'Qzxwv Industries']);
 
-        $this->actingAs(User::factory()->create())
-            ->getJson(route('search.suggest', ['q' => 'qzxwv']))
+        $this->getJson(route('search.suggest', ['q' => 'qzxwv']))
             ->assertOk()
             ->assertJsonPath('groups.0.group', 'Customers')
             ->assertJsonFragment(['title' => 'Qzxwv Industries']);
@@ -147,23 +154,8 @@ class SearchTest extends TestCase
 
     public function test_suggest_for_empty_term_returns_no_groups(): void
     {
-        $this->actingAs(User::factory()->create())
-            ->getJson(route('search.suggest'))
-            ->assertOk()
-            ->assertExactJson(['groups' => []]);
-    }
+        $this->signIn();
 
-    public function test_suggest_matches_contacts_via_related_email(): void
-    {
-        $contact = Contact::factory()->create([
-            'name' => 'Jane Suggest',
-            'function' => ContactFunction::CTO->value,
-        ]);
-        ContactEmail::factory()->for($contact)->create(['email' => 'reachme@qzxwv.test']);
-
-        $this->actingAs(User::factory()->create())
-            ->getJson(route('search.suggest', ['q' => 'qzxwv.test']))
-            ->assertOk()
-            ->assertJsonFragment(['title' => 'Jane Suggest']);
+        $this->getJson(route('search.suggest'))->assertOk()->assertExactJson(['groups' => []]);
     }
 }

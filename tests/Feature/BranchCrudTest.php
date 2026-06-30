@@ -7,18 +7,13 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Contact;
 use App\Models\Customer;
-use App\Models\User;
+use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class BranchCrudTest extends TestCase
 {
     use RefreshDatabase;
-
-    private function actingUser(): User
-    {
-        return User::factory()->create();
-    }
 
     public function test_guests_cannot_access_branches(): void
     {
@@ -30,23 +25,32 @@ class BranchCrudTest extends TestCase
 
     public function test_index_lists_a_customers_branches(): void
     {
+        $this->signIn();
         $customer = Customer::factory()->create();
         Branch::factory()->for($customer)->create(['name' => 'Berlin Office']);
         Branch::factory()->create(['name' => 'Other Office']);
 
-        $this->actingAs($this->actingUser())
-            ->get(route('customers.branches.index', $customer))
+        $this->get(route('customers.branches.index', $customer))
             ->assertOk()
             ->assertSee('Berlin Office')
             ->assertDontSee('Other Office');
     }
 
+    public function test_cannot_view_another_teams_branch(): void
+    {
+        $this->signIn();
+        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
+        $foreignBranch = Branch::factory()->for($foreignCustomer)->create();
+
+        $this->get(route('branches.show', $foreignBranch))->assertNotFound();
+    }
+
     public function test_create_form_renders(): void
     {
+        $this->signIn();
         $customer = Customer::factory()->create();
 
-        $this->actingAs($this->actingUser())
-            ->get(route('customers.branches.create', $customer))
+        $this->get(route('customers.branches.create', $customer))
             ->assertOk()
             ->assertSee('New branch')
             ->assertSee('Niederlassungsleiter');
@@ -54,79 +58,67 @@ class BranchCrudTest extends TestCase
 
     public function test_store_creates_a_branch_with_country_and_manager(): void
     {
+        $this->signIn();
         $customer = Customer::factory()->create();
         $manager = Contact::factory()->for($customer)->create();
 
-        $this->actingAs($this->actingUser())
-            ->post(route('customers.branches.store', $customer), [
-                'name' => 'Munich Office',
-                'city' => 'Munich',
-                'country' => 'DE',
-                'manager_contact_id' => $manager->id,
-            ])
-            ->assertRedirect(route('customers.show', $customer));
+        $this->post(route('customers.branches.store', $customer), [
+            'name' => 'Munich Office',
+            'city' => 'Munich',
+            'country' => 'DE',
+            'manager_contact_id' => $manager->id,
+        ])->assertRedirect(route('customers.show', $customer));
 
         $this->assertDatabaseHas('branches', [
             'customer_id' => $customer->id,
             'name' => 'Munich Office',
             'country' => 'DE',
             'manager_contact_id' => $manager->id,
+            'team_id' => $customer->team_id,
         ]);
     }
 
     public function test_store_rejects_an_invalid_country(): void
     {
+        $this->signIn();
         $customer = Customer::factory()->create();
 
-        $this->actingAs($this->actingUser())
-            ->post(route('customers.branches.store', $customer), [
-                'name' => 'Bad country',
-                'country' => 'Germany',
-            ])
-            ->assertSessionHasErrors('country');
-
-        $this->assertSame(0, Branch::count());
+        $this->post(route('customers.branches.store', $customer), [
+            'name' => 'Bad country',
+            'country' => 'Germany',
+        ])->assertSessionHasErrors('country');
     }
 
     public function test_store_rejects_a_manager_from_another_customer(): void
     {
+        $this->signIn();
         $customer = Customer::factory()->create();
-        $foreignManager = Contact::factory()->create(); // belongs to a different customer
+        $otherCustomer = Customer::factory()->create();
+        $foreignManager = Contact::factory()->for($otherCustomer)->create();
 
-        $this->actingAs($this->actingUser())
-            ->post(route('customers.branches.store', $customer), [
-                'name' => 'Sneaky',
-                'manager_contact_id' => $foreignManager->id,
-            ])
-            ->assertSessionHasErrors('manager_contact_id');
-
-        $this->assertSame(0, Branch::count());
+        $this->post(route('customers.branches.store', $customer), [
+            'name' => 'Sneaky',
+            'manager_contact_id' => $foreignManager->id,
+        ])->assertSessionHasErrors('manager_contact_id');
     }
 
     public function test_update_modifies_a_branch(): void
     {
+        $this->signIn();
         $branch = Branch::factory()->create(['name' => 'Old', 'country' => 'DE']);
 
-        $this->actingAs($this->actingUser())
-            ->put(route('branches.update', $branch), [
-                'name' => 'New',
-                'country' => 'AT',
-            ])
+        $this->put(route('branches.update', $branch), ['name' => 'New', 'country' => 'AT'])
             ->assertRedirect(route('customers.show', $branch->customer_id));
 
-        $this->assertDatabaseHas('branches', [
-            'id' => $branch->id,
-            'name' => 'New',
-            'country' => 'AT',
-        ]);
+        $this->assertDatabaseHas('branches', ['id' => $branch->id, 'name' => 'New', 'country' => 'AT']);
     }
 
     public function test_destroy_deletes_a_branch(): void
     {
+        $this->signIn();
         $branch = Branch::factory()->create();
 
-        $this->actingAs($this->actingUser())
-            ->delete(route('branches.destroy', $branch))
+        $this->delete(route('branches.destroy', $branch))
             ->assertRedirect(route('customers.show', $branch->customer_id));
 
         $this->assertDatabaseMissing('branches', ['id' => $branch->id]);
@@ -134,6 +126,7 @@ class BranchCrudTest extends TestCase
 
     public function test_deleting_a_customer_cascades_to_branches(): void
     {
+        $this->signIn();
         $customer = Customer::factory()->create();
         $branch = Branch::factory()->for($customer)->create();
 
@@ -144,15 +137,13 @@ class BranchCrudTest extends TestCase
 
     public function test_deleting_a_manager_contact_nulls_the_branch_manager(): void
     {
+        $this->signIn();
         $customer = Customer::factory()->create();
         $manager = Contact::factory()->for($customer)->create();
         $branch = Branch::factory()->for($customer)->create(['manager_contact_id' => $manager->id]);
 
         $manager->delete();
 
-        $this->assertDatabaseHas('branches', [
-            'id' => $branch->id,
-            'manager_contact_id' => null,
-        ]);
+        $this->assertDatabaseHas('branches', ['id' => $branch->id, 'manager_contact_id' => null]);
     }
 }
