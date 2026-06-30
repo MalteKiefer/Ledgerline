@@ -25,9 +25,9 @@ class ProjectSearchProvider extends AbstractSearchProvider
         return Project::query()
             ->with('customer')
             ->where(function ($query) use ($like): void {
-                foreach (['name', 'reference'] as $column) {
-                    $query->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
-                }
+                $query->whereRaw('LOWER(name) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(reference) LIKE ?', [$like])
+                    ->orWhereHas('tags', fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]));
             })
             ->orderBy('name')
             ->limit($limit)
@@ -35,7 +35,7 @@ class ProjectSearchProvider extends AbstractSearchProvider
             ->map(fn (Project $project): SearchResult => new SearchResult(
                 group: $this->group(),
                 title: $project->name,
-                subtitle: $project->status->label().' · '.$project->customer->name,
+                subtitle: $project->type->label().' · '.$project->status->label().' · '.$project->customer->name,
                 url: route('projects.show', $project),
             ))
             ->all();

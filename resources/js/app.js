@@ -232,6 +232,79 @@ Alpine.data('spotlight', () => ({
     },
 }));
 
+/**
+ * Generic value/label type-ahead combobox (e.g. for picking a customer).
+ *
+ * @param {{value: string|number, label: string}[]} options
+ * @param {string} initial
+ */
+Alpine.data('selectCombobox', (options, initial = '') => ({
+    options,
+    open: false,
+    selected: initial,
+    query: (options.find((option) => String(option.value) === String(initial)) || {}).label || '',
+
+    get filtered() {
+        const query = this.query.toLowerCase().trim();
+
+        if (query === '') {
+            return this.options.slice(0, 50);
+        }
+
+        return this.options
+            .filter((option) => option.label.toLowerCase().includes(query))
+            .slice(0, 50);
+    },
+
+    choose(option) {
+        this.selected = option.value;
+        this.query = option.label;
+        this.open = false;
+    },
+
+    syncFromQuery() {
+        this.open = true;
+
+        const match = this.options.find(
+            (option) => option.label.toLowerCase() === this.query.toLowerCase().trim(),
+        );
+
+        this.selected = match ? match.value : '';
+    },
+}));
+
+/**
+ * Tag input: free-text chips with suggestions. Submits one hidden tags[] field
+ * per chip. Enter or comma adds the current text; duplicates are ignored.
+ *
+ * @param {string[]} initial
+ */
+Alpine.data('tagInput', (initial = []) => ({
+    tags: Array.isArray(initial) ? [...initial] : [],
+    query: '',
+
+    add() {
+        const value = this.query.trim().replace(/,$/, '').trim();
+
+        if (value !== '' && !this.tags.some((tag) => tag.toLowerCase() === value.toLowerCase())) {
+            this.tags.push(value);
+        }
+
+        this.query = '';
+    },
+
+    remove(index) {
+        this.tags.splice(index, 1);
+    },
+
+    onKey(event) {
+        if (event.key === 'Enter' || event.key === ',') {
+            event.preventDefault();
+            this.add();
+        }
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();

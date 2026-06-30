@@ -9,10 +9,11 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="h-full bg-gray-100 text-gray-900 antialiased">
-    <main class="flex min-h-full items-center justify-center px-4 py-12">
+    <main class="flex min-h-full flex-col items-center justify-center px-4 py-12">
         <div class="w-full max-w-sm">
             {{ $slot }}
         </div>
+        <p class="mt-6 text-center text-xs text-gray-400">Ledgerline v{{ config('app.version') }}</p>
     </main>
 </body>
 </html>

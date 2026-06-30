@@ -4,7 +4,7 @@
     </p>
     <div class="mt-1 flex items-center justify-between">
         <h1 class="text-2xl font-semibold text-gray-900">Projects</h1>
-        <a href="{{ route('customers.projects.create', $customer) }}"
+        <a href="{{ route('projects.create', ['customer' => $customer->id]) }}"
             class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
             Add project
         </a>
