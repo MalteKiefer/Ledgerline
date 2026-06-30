@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Enums\ContactFunction;
+use App\Enums\ProjectType;
 use App\Models\Branch;
 use App\Models\Contact;
 use App\Models\ContactEmail;
 use App\Models\Customer;
 use App\Models\Project;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -79,6 +81,29 @@ class SearchTest extends TestCase
             ->assertOk()
             ->assertSee('Projects')
             ->assertSee('Some Project');
+    }
+
+    public function test_it_finds_projects_by_tag(): void
+    {
+        $project = Project::factory()->create(['name' => 'Tagged Project']);
+        $project->tags()->attach(Tag::findOrCreateByName('Qzxwvtag')->id);
+
+        $this->search('qzxwvtag')
+            ->assertOk()
+            ->assertSee('Projects')
+            ->assertSee('Tagged Project');
+    }
+
+    public function test_it_finds_projects_by_type(): void
+    {
+        Project::factory()->create([
+            'name' => 'Server Patching Qzxwv',
+            'type' => ProjectType::MAINTENANCE->value,
+        ]);
+
+        $this->search('maintenance')
+            ->assertOk()
+            ->assertSee('Server Patching Qzxwv');
     }
 
     public function test_results_are_grouped_by_entity_type(): void

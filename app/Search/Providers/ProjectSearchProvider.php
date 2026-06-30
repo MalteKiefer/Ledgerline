@@ -27,6 +27,7 @@ class ProjectSearchProvider extends AbstractSearchProvider
             ->where(function ($query) use ($like): void {
                 $query->whereRaw('LOWER(name) LIKE ?', [$like])
                     ->orWhereRaw('LOWER(reference) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(type) LIKE ?', [$like])
                     ->orWhereHas('tags', fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]));
             })
             ->orderBy('name')
