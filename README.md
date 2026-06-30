@@ -105,6 +105,23 @@ All sign-in goes through Pocket-ID:
 Register an OIDC client in Pocket-ID with the redirect URI set to
 `<APP_URL>/auth/callback` and copy the client ID/secret into `.env`.
 
+## Teams & data isolation
+
+Data is owned by **teams**, which mirror **Pocket-ID groups**. The application
+requests the `groups` scope at login and, on each sign-in, maps every group to
+a team (key `group:<id>`) and syncs the user's memberships. A user with no
+groups gets a private personal team (`user:<id>`).
+
+Every owned record (customers and their contacts, branches and projects) carries
+a `team_id`. A global Eloquent scope restricts **all** queries — including
+route-model binding, dashboard counts and global search — to the current user's
+teams, so a user can never see or reach another team's data; an out-of-team
+record simply returns 404. Users in multiple teams pick an **active team** (in
+the header) which owns newly created records.
+
+To make this work, configure the Pocket-ID OIDC client to include group
+membership in the `groups` claim.
+
 ## Deployment to Laravel Cloud
 
 The application is built with Laravel conventions only and runs on
