@@ -32,8 +32,20 @@
                 <dd class="mt-1 text-sm text-gray-900">{{ $project->reference ?: '—' }}</dd>
             </div>
             <div>
+                <dt class="text-sm font-medium text-gray-500">Type</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ $project->type->label() }}</dd>
+            </div>
+            <div>
                 <dt class="text-sm font-medium text-gray-500">Status</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $project->status->label() }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Priority</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ $project->priority->label() }}</dd>
+            </div>
+            <div>
+                <dt class="text-sm font-medium text-gray-500">Estimated hours</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ $project->estimated_hours !== null ? rtrim(rtrim((string) $project->estimated_hours, '0'), '.') : '—' }}</dd>
             </div>
             <div>
                 <dt class="text-sm font-medium text-gray-500">Start date</dt>
@@ -46,6 +58,17 @@
             <div>
                 <dt class="text-sm font-medium text-gray-500">Budget</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $project->budget !== null ? number_format((float) $project->budget, 2) : '—' }}</dd>
+            </div>
+
+            <div class="sm:col-span-2">
+                <dt class="text-sm font-medium text-gray-500">Tags</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @forelse ($project->tags as $tag)
+                        <span class="mr-1 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs">{{ $tag->name }}</span>
+                    @empty
+                        —
+                    @endforelse
+                </dd>
             </div>
 
             <div class="sm:col-span-2">

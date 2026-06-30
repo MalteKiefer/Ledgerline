@@ -36,7 +36,16 @@ Route::middleware('auth')->group(function (): void {
 
     Route::resource('customers', CustomerController::class);
     Route::resource('customers.contacts', ContactController::class)->shallow();
-    Route::resource('customers.projects', ProjectController::class)->shallow();
+
+    // Projects: one unified create/store path (customer chosen in the form),
+    // a per-customer listing, and per-record actions. "create" is registered
+    // before the {project} routes so it is not captured as a project id.
+    Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');
+    Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+    Route::resource('customers.projects', ProjectController::class)
+        ->shallow()
+        ->only(['index', 'show', 'edit', 'update', 'destroy']);
+
     Route::resource('customers.branches', BranchController::class)->shallow();
 
     // Customer-independent overview of all projects.

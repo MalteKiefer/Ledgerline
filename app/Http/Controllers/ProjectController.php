@@ -4,20 +4,26 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\ProjectPriority;
 use App\Enums\ProjectStatus;
+use App\Enums\ProjectType;
 use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
 use App\Models\Customer;
 use App\Models\Project;
+use App\Models\Tag;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
- * CRUD for a customer's projects.
+ * CRUD for projects.
  *
- * Routes are shallow-nested under customers: the collection actions are scoped
- * to a customer, while per-record actions resolve the project directly. Every
- * action is gated by ProjectPolicy and validated by dedicated Form Requests.
+ * Listing is scoped per customer; creation and editing use one unified form.
+ * When creating from a customer the customer is fixed; from the global Projects
+ * overview a customer is chosen in the form. Every action is gated by
+ * ProjectPolicy and validated by dedicated Form Requests.
  */
 class ProjectController extends Controller
 {
@@ -29,6 +35,7 @@ class ProjectController extends Controller
         $this->authorize('viewAny', Project::class);
 
         $projects = $customer->projects()
+            ->with('tags')
             ->orderBy('name')
             ->paginate(15);
 
@@ -39,27 +46,40 @@ class ProjectController extends Controller
     }
 
     /**
-     * Show the form for creating a new project.
+     * Show the unified create form, optionally locked to a preset customer.
      */
-    public function create(Customer $customer): View
+    public function create(Request $request): View
     {
         $this->authorize('create', Project::class);
 
+        $customerId = $request->query('customer');
+        $lockedCustomer = $customerId ? Customer::find($customerId) : null;
+
         return view('projects.create', [
-            'customer' => $customer,
             'project' => new Project,
-            'statuses' => ProjectStatus::options(),
+            'lockedCustomer' => $lockedCustomer,
+            'customers' => $lockedCustomer ? collect() : Customer::orderBy('name')->get(['id', 'name']),
+            'existingTags' => [],
+            ...$this->formOptions(),
         ]);
     }
 
     /**
-     * Store a newly created project for the customer.
+     * Store a newly created project.
      */
-    public function store(StoreProjectRequest $request, Customer $customer): RedirectResponse
+    public function store(StoreProjectRequest $request): RedirectResponse
     {
         $this->authorize('create', Project::class);
 
-        $customer->projects()->create($request->validated());
+        $data = $request->validated();
+        $customer = Customer::findOrFail($data['customer_id']);
+        $tags = $data['tags'] ?? [];
+        unset($data['customer_id'], $data['tags']);
+
+        DB::transaction(function () use ($customer, $data, $tags): void {
+            $project = $customer->projects()->create($data);
+            $this->syncTags($project, $tags);
+        });
 
         return redirect()
             ->route('customers.show', $customer)
@@ -73,21 +93,26 @@ class ProjectController extends Controller
     {
         $this->authorize('view', $project);
 
-        $project->load('customer');
+        $project->load(['customer', 'tags']);
 
         return view('projects.show', ['project' => $project]);
     }
 
     /**
-     * Show the form for editing the specified project.
+     * Show the form for editing the specified project (customer fixed).
      */
     public function edit(Project $project): View
     {
         $this->authorize('update', $project);
 
+        $project->load(['customer', 'tags']);
+
         return view('projects.edit', [
             'project' => $project,
-            'statuses' => ProjectStatus::options(),
+            'lockedCustomer' => $project->customer,
+            'customers' => collect(),
+            'existingTags' => $project->tags->pluck('name')->all(),
+            ...$this->formOptions(),
         ]);
     }
 
@@ -98,7 +123,14 @@ class ProjectController extends Controller
     {
         $this->authorize('update', $project);
 
-        $project->update($request->validated());
+        $data = $request->validated();
+        $tags = $data['tags'] ?? [];
+        unset($data['tags']);
+
+        DB::transaction(function () use ($project, $data, $tags): void {
+            $project->update($data);
+            $this->syncTags($project, $tags);
+        });
 
         return redirect()
             ->route('customers.show', $project->customer_id)
@@ -118,5 +150,37 @@ class ProjectController extends Controller
         return redirect()
             ->route('customers.show', $customerId)
             ->with('status', 'Project deleted.');
+    }
+
+    /**
+     * Shared option lists for the project form.
+     *
+     * @return array<string, mixed>
+     */
+    private function formOptions(): array
+    {
+        return [
+            'statuses' => ProjectStatus::options(),
+            'types' => ProjectType::options(),
+            'priorities' => ProjectPriority::options(),
+            'tagSuggestions' => Tag::orderBy('name')->pluck('name')->all(),
+        ];
+    }
+
+    /**
+     * Resolve tag names to (deduplicated) tag rows and sync them.
+     *
+     * @param  list<string>  $names
+     */
+    private function syncTags(Project $project, array $names): void
+    {
+        $ids = collect($names)
+            ->map(fn (string $name): string => trim($name))
+            ->filter()
+            ->unique(fn (string $name): string => mb_strtolower($name))
+            ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
+            ->all();
+
+        $project->tags()->sync($ids);
     }
 }
