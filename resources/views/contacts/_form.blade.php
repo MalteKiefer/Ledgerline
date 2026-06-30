@@ -1,12 +1,31 @@
 {{--
     Shared contact-person form fields.
 
-    Expects $contact (an empty instance when creating) and $functions, the
-    ContactFunction options. The enclosing <form>, CSRF token and submit button
-    are provided by the including view.
+    Expects:
+      $contact         the model (empty when creating)
+      $functions       ContactFunction options for the combobox
+      $emailLabels     suggested email labels (datalist hints)
+      $phoneLabels     suggested phone labels (datalist hints)
+      $existingEmails  [{label, value}] for repopulation
+      $existingPhones  [{label, value}] for repopulation
+
+    The enclosing <form>, CSRF token and submit button come from the including
+    view.
 --}}
-<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-    <div class="sm:col-span-2">
+@php
+    $emailRows = collect(old('emails', $existingEmails))
+        ->map(fn ($row) => ['label' => $row['label'] ?? '', 'value' => $row['email'] ?? ($row['value'] ?? '')])
+        ->values()->all();
+    $phoneRows = collect(old('phones', $existingPhones))
+        ->map(fn ($row) => ['label' => $row['label'] ?? '', 'value' => $row['phone'] ?? ($row['value'] ?? '')])
+        ->values()->all();
+    $channelErrors = collect($errors->getMessages())
+        ->filter(fn ($messages, $key) => str_starts_with($key, 'emails.') || str_starts_with($key, 'phones.'))
+        ->flatten();
+@endphp
+
+<div class="space-y-6">
+    <div>
         <label for="name" class="block text-sm font-medium text-gray-700">
             Name<span class="text-red-600"> *</span>
         </label>
@@ -18,36 +37,12 @@
         @enderror
     </div>
 
-    <div>
-        <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
-        <input type="email" id="email" name="email" value="{{ old('email', $contact->email) }}"
-            @error('email') aria-invalid="true" aria-describedby="email-error" @enderror
-            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-        @error('email')
-            <p id="email-error" class="mt-1 text-sm text-red-600">{{ $message }}</p>
-        @enderror
-    </div>
-
-    <div>
-        <label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
-        <input type="text" id="phone" name="phone" value="{{ old('phone', $contact->phone) }}"
-            @error('phone') aria-invalid="true" aria-describedby="phone-error" @enderror
-            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-        @error('phone')
-            <p id="phone-error" class="mt-1 text-sm text-red-600">{{ $message }}</p>
-        @enderror
-    </div>
-
     {{-- Function: type-ahead combobox over the fixed ContactFunction enum. --}}
-    <div class="sm:col-span-2"
-        x-data="contactFunctionCombobox(@js($functions), @js(old('function', $contact->function?->value)))">
+    <div x-data="contactFunctionCombobox(@js($functions), @js(old('function', $contact->function?->value)))">
         <label for="function-input" class="block text-sm font-medium text-gray-700">
             Function<span class="text-red-600"> *</span>
         </label>
-
-        {{-- The actual submitted value is always an enum backing value. --}}
         <input type="hidden" name="function" :value="selected">
-
         <div class="relative mt-1">
             <input type="text" id="function-input" role="combobox" autocomplete="off"
                 aria-controls="function-listbox" :aria-expanded="open.toString()"
@@ -56,7 +51,6 @@
                 placeholder="Type to search a function…"
                 @error('function') aria-invalid="true" aria-describedby="function-error" @enderror
                 class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-
             <ul x-show="open" x-cloak @click.outside="open = false" id="function-listbox" role="listbox"
                 class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
                 <template x-for="option in filtered" :key="option.value">
@@ -71,9 +65,74 @@
                 </template>
             </ul>
         </div>
-
         @error('function')
             <p id="function-error" class="mt-1 text-sm text-red-600">{{ $message }}</p>
         @enderror
     </div>
+
+    {{-- Emails and phones: add as many labelled rows as needed. --}}
+    <div x-data="contactChannels(@js($emailRows), @js($phoneRows))" class="space-y-6">
+        @if ($channelErrors->isNotEmpty())
+            <ul class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                @foreach ($channelErrors as $message)
+                    <li>{{ $message }}</li>
+                @endforeach
+            </ul>
+        @endif
+
+        <fieldset>
+            <legend class="text-sm font-medium text-gray-700">Email addresses</legend>
+            <div class="mt-2 space-y-2">
+                <template x-for="(email, index) in emails" :key="index">
+                    <div class="flex items-start gap-2">
+                        <input type="text" list="email-label-suggestions" placeholder="Label"
+                            :name="`emails[${index}][label]`" x-model="email.label"
+                            class="w-32 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <input type="email" placeholder="name@example.com"
+                            :name="`emails[${index}][email]`" x-model="email.value"
+                            class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <button type="button" @click="removeEmail(index)"
+                            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                            Remove
+                        </button>
+                    </div>
+                </template>
+            </div>
+            <button type="button" @click="addEmail()"
+                class="mt-2 text-sm font-medium text-gray-700 hover:text-gray-900">+ Add email</button>
+        </fieldset>
+
+        <fieldset>
+            <legend class="text-sm font-medium text-gray-700">Phone numbers</legend>
+            <div class="mt-2 space-y-2">
+                <template x-for="(phone, index) in phones" :key="index">
+                    <div class="flex items-start gap-2">
+                        <input type="text" list="phone-label-suggestions" placeholder="Label"
+                            :name="`phones[${index}][label]`" x-model="phone.label"
+                            class="w-32 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <input type="text" placeholder="+49 …"
+                            :name="`phones[${index}][phone]`" x-model="phone.value"
+                            class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <button type="button" @click="removePhone(index)"
+                            class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                            Remove
+                        </button>
+                    </div>
+                </template>
+            </div>
+            <button type="button" @click="addPhone()"
+                class="mt-2 text-sm font-medium text-gray-700 hover:text-gray-900">+ Add phone</button>
+        </fieldset>
+    </div>
 </div>
+
+<datalist id="email-label-suggestions">
+    @foreach ($emailLabels as $label)
+        <option value="{{ $label }}"></option>
+    @endforeach
+</datalist>
+<datalist id="phone-label-suggestions">
+    @foreach ($phoneLabels as $label)
+        <option value="{{ $label }}"></option>
+    @endforeach
+</datalist>

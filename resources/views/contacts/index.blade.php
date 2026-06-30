@@ -19,7 +19,8 @@
                     <tr>
                         <th scope="col" class="px-4 py-3">Name</th>
                         <th scope="col" class="px-4 py-3">Function</th>
-                        <th scope="col" class="px-4 py-3">Email</th>
+                        <th scope="col" class="px-4 py-3">Emails</th>
+                        <th scope="col" class="px-4 py-3">Phones</th>
                         <th scope="col" class="px-4 py-3"><span class="sr-only">Actions</span></th>
                     </tr>
                 </thead>
@@ -32,7 +33,22 @@
                                 </a>
                             </td>
                             <td class="px-4 py-3 text-gray-600">{{ $contact->function->label() }}</td>
-                            <td class="px-4 py-3 text-gray-600">{{ $contact->email }}</td>
+                            <td class="px-4 py-3 text-gray-600">
+                                @forelse ($contact->emails as $email)
+                                    <a href="mailto:{{ $email->email }}"
+                                        class="block text-gray-700 hover:underline">{{ $email->email }}</a>
+                                @empty
+                                    <span class="text-gray-400">—</span>
+                                @endforelse
+                            </td>
+                            <td class="px-4 py-3 text-gray-600">
+                                @forelse ($contact->phones as $phone)
+                                    <a href="tel:{{ $phone->phone }}"
+                                        class="block text-gray-700 hover:underline">{{ $phone->phone }}</a>
+                                @empty
+                                    <span class="text-gray-400">—</span>
+                                @endforelse
+                            </td>
                             <td class="px-4 py-3 text-right">
                                 <a href="{{ route('contacts.edit', $contact) }}"
                                     class="text-gray-600 hover:text-gray-900">Edit</a>

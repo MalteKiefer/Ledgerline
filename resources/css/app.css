@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 
+/* Locally-bundled form-control base styles (no CDN). Gives inputs, selects and
+   textareas consistent padding, borders and focus rings. */
+@plugin '@tailwindcss/forms';
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 

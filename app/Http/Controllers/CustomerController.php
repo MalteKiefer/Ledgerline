@@ -65,7 +65,7 @@ class CustomerController extends Controller
 
         // Eager load related records to render the lists without N+1 queries.
         $customer->load([
-            'contacts' => fn ($query) => $query->orderBy('name'),
+            'contacts' => fn ($query) => $query->with(['emails', 'phones'])->orderBy('name'),
             'projects' => fn ($query) => $query->orderBy('name'),
         ]);
 
