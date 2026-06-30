@@ -131,4 +131,43 @@ class CustomerCrudTest extends TestCase
                 'projects' => 0,
             ]);
     }
+
+    public function test_store_accepts_website_and_iso_country(): void
+    {
+        $this->actingAs($this->actingUser())
+            ->post(route('customers.store'), [
+                'name' => 'Country Co',
+                'website' => 'https://country.test',
+                'country' => 'DE',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('customers', [
+            'name' => 'Country Co',
+            'website' => 'https://country.test',
+            'country' => 'DE',
+        ]);
+    }
+
+    public function test_store_rejects_an_invalid_country_code(): void
+    {
+        $this->actingAs($this->actingUser())
+            ->post(route('customers.store'), [
+                'name' => 'Bad Country',
+                'country' => 'Germany',
+            ])
+            ->assertSessionHasErrors('country');
+
+        $this->assertSame(0, Customer::count());
+    }
+
+    public function test_store_rejects_an_invalid_website(): void
+    {
+        $this->actingAs($this->actingUser())
+            ->post(route('customers.store'), [
+                'name' => 'Bad Website',
+                'website' => 'not a url',
+            ])
+            ->assertSessionHasErrors('website');
+    }
 }

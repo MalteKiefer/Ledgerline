@@ -82,6 +82,59 @@ Alpine.data('contactChannels', (initialEmails = [], initialPhones = []) => ({
     },
 }));
 
+/**
+ * Type-ahead combobox for selecting a country from the full ISO 3166 list.
+ * Options carry a flag emoji; the submitted value is always an alpha-2 code
+ * (or empty). The visible list is capped for rendering performance.
+ *
+ * @param {{value: string, label: string, flag: string}[]} options
+ * @param {string} initial  The pre-selected country code, if any.
+ */
+Alpine.data('countryCombobox', (options, initial = '') => ({
+    options,
+    open: false,
+    selected: initial,
+    query: (options.find((option) => option.value === initial) || {}).label || '',
+
+    get selectedFlag() {
+        const option = this.options.find((item) => item.value === this.selected);
+
+        return option ? option.flag : '';
+    },
+
+    get filtered() {
+        const query = this.query.toLowerCase().trim();
+
+        if (query === '') {
+            return this.options.slice(0, 80);
+        }
+
+        return this.options
+            .filter(
+                (option) =>
+                    option.label.toLowerCase().includes(query) ||
+                    option.value.toLowerCase() === query,
+            )
+            .slice(0, 80);
+    },
+
+    choose(option) {
+        this.selected = option.value;
+        this.query = option.label;
+        this.open = false;
+    },
+
+    syncFromQuery() {
+        this.open = true;
+
+        const match = this.options.find(
+            (option) => option.label.toLowerCase() === this.query.toLowerCase().trim(),
+        );
+
+        this.selected = match ? match.value : '';
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();
