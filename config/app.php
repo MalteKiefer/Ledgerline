@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | The released application version, shown in the footer. Bump this with each
+    | tagged release (it is the single source of truth for the displayed
+    | version). Can be overridden per environment via APP_VERSION.
+    |
+    */
+
+    'version' => env('APP_VERSION', '1.5.0'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

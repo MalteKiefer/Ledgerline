@@ -55,6 +55,10 @@
 
             {{ $slot }}
         </main>
+
+        <footer class="mx-auto max-w-5xl px-4 py-6 text-center text-xs text-gray-400">
+            Ledgerline v{{ config('app.version') }}
+        </footer>
     </div>
 </body>
 </html>
