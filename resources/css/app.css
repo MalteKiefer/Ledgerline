@@ -3,6 +3,11 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
+/* Hide Alpine-controlled elements until Alpine has initialised them. */
+[x-cloak] {
+    display: none !important;
+}
+
 /*
  | Use the operating system's native font stack only. No web fonts are
  | loaded from any external CDN (Google Fonts, bunny.net, etc.), keeping the
