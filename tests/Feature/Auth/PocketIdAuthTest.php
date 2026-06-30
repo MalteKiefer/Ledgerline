@@ -121,6 +121,39 @@ class PocketIdAuthTest extends TestCase
             ->assertHeader('Content-Type', 'image/png');
     }
 
+    public function test_callback_creates_teams_from_pocket_id_groups(): void
+    {
+        Storage::fake('local');
+        Http::fake();
+
+        $this->fakeSocialiteUser(
+            id: 'sub-groups',
+            raw: ['groups' => ['Engineering', 'Ops']],
+        );
+
+        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
+
+        $user = User::firstWhere('oidc_sub', 'sub-groups');
+        $this->assertEqualsCanonicalizing(
+            ['group:engineering', 'group:ops'],
+            $user->teams()->pluck('key')->all(),
+        );
+    }
+
+    public function test_callback_creates_a_personal_team_without_groups(): void
+    {
+        Storage::fake('local');
+        Http::fake();
+
+        $this->fakeSocialiteUser(id: 'sub-solo', raw: []);
+
+        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
+
+        $user = User::firstWhere('oidc_sub', 'sub-solo');
+        $this->assertSame(1, $user->teams()->count());
+        $this->assertSame('user:'.$user->id, $user->teams()->first()->key);
+    }
+
     public function test_avatar_route_returns_404_without_an_avatar(): void
     {
         $user = User::factory()->create(['avatar' => null]);

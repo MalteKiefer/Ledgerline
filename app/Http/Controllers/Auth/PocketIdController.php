@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
@@ -32,7 +34,10 @@ class PocketIdController extends Controller
      */
     public function redirect(): RedirectResponse
     {
-        return Socialite::driver('pocketid')->redirect();
+        // Request the groups scope so we can map Pocket-ID groups to teams.
+        return Socialite::driver('pocketid')
+            ->scopes(['openid', 'profile', 'email', 'groups'])
+            ->redirect();
     }
 
     /**
@@ -58,6 +63,7 @@ class PocketIdController extends Controller
         );
 
         $this->syncAvatar($user, $oidcUser);
+        $this->syncTeams($user, $oidcUser);
 
         Auth::login($user, remember: true);
 
@@ -65,6 +71,64 @@ class PocketIdController extends Controller
         $request->session()->regenerate();
 
         return redirect()->intended(route('dashboard'));
+    }
+
+    /**
+     * Synchronise the user's team memberships from their Pocket-ID groups.
+     *
+     * Each group becomes a team (key "group:<id>"). A user with no groups is
+     * placed in a personal team (key "user:<id>") so they are always isolated
+     * and never see another team's data.
+     */
+    private function syncTeams(User $user, SocialiteUser $oidcUser): void
+    {
+        $groups = $oidcUser->getRaw()['groups'] ?? [];
+        $teamIds = [];
+
+        if (is_array($groups)) {
+            foreach ($groups as $group) {
+                [$key, $name] = $this->normaliseGroup($group);
+
+                if ($key !== null) {
+                    $teamIds[] = Team::firstOrCreate(['key' => $key], ['name' => $name])->id;
+                }
+            }
+        }
+
+        if ($teamIds === []) {
+            $teamIds[] = Team::firstOrCreate(
+                ['key' => 'user:'.$user->id],
+                ['name' => $user->name ?: 'Personal'],
+            )->id;
+        }
+
+        $user->teams()->sync($teamIds);
+        $user->forgetCachedTeamIds();
+    }
+
+    /**
+     * Resolve a Pocket-ID group claim entry to a [key, name] pair.
+     *
+     * Accepts either a plain group name (string) or an object with id/name.
+     *
+     * @return array{0: string|null, 1: string}
+     */
+    private function normaliseGroup(mixed $group): array
+    {
+        if (is_string($group) && trim($group) !== '') {
+            return ['group:'.Str::slug($group), $group];
+        }
+
+        if (is_array($group)) {
+            $id = $group['id'] ?? $group['name'] ?? null;
+            $name = $group['name'] ?? $group['id'] ?? null;
+
+            if ($id !== null) {
+                return ['group:'.$id, (string) ($name ?? $id)];
+            }
+        }
+
+        return [null, ''];
     }
 
     /**

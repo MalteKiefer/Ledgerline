@@ -6,7 +6,7 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\Project;
-use App\Models\User;
+use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,19 +19,21 @@ class ProjectOverviewTest extends TestCase
         $this->get(route('projects.overview'))->assertRedirect(route('login'));
     }
 
-    public function test_overview_lists_projects_across_customers(): void
+    public function test_overview_lists_own_team_projects_across_customers(): void
     {
+        $this->signIn();
         $acme = Customer::factory()->create(['name' => 'Acme Industries']);
         $globex = Customer::factory()->create(['name' => 'Globex Corporation']);
         Project::factory()->for($acme)->create(['name' => 'Acme Portal']);
         Project::factory()->for($globex)->create(['name' => 'Globex Migration']);
 
-        $this->actingAs(User::factory()->create())
-            ->get(route('projects.overview'))
+        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
+        Project::factory()->for($foreignCustomer)->create(['name' => 'Foreign Project']);
+
+        $this->get(route('projects.overview'))
             ->assertOk()
             ->assertSee('Acme Portal')
             ->assertSee('Globex Migration')
-            ->assertSee('Acme Industries')
-            ->assertSee('Globex Corporation');
+            ->assertDontSee('Foreign Project');
     }
 }

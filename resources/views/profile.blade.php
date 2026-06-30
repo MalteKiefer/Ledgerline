@@ -49,6 +49,16 @@
                 <dt class="text-sm font-medium text-gray-500">Account created</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $user->created_at?->format('Y-m-d H:i') ?: '—' }}</dd>
             </div>
+            <div class="sm:col-span-2">
+                <dt class="text-sm font-medium text-gray-500">Teams</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @forelse ($user->teams as $team)
+                        <span class="mr-1 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs">{{ $team->name }}</span>
+                    @empty
+                        —
+                    @endforelse
+                </dd>
+            </div>
         </dl>
     </div>
 </x-layouts.app>
