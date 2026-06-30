@@ -28,7 +28,8 @@ Route::middleware('guest')->group(function (): void {
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
-    Route::get('/search', SearchController::class)->name('search');
+    Route::get('/search', [SearchController::class, 'index'])->name('search');
+    Route::get('/search/suggest', [SearchController::class, 'suggest'])->name('search.suggest');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
