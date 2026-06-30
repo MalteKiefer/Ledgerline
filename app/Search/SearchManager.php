@@ -23,9 +23,11 @@ class SearchManager
     /**
      * Search every provider and return non-empty groups in provider order.
      *
+     * @param  int|null  $limit  Override the per-group limit (e.g. fewer rows
+     *                           for live suggestions); null uses the default.
      * @return array<string, list<SearchResult>>
      */
-    public function search(string $term): array
+    public function search(string $term, ?int $limit = null): array
     {
         $term = trim($term);
 
@@ -33,10 +35,11 @@ class SearchManager
             return [];
         }
 
+        $perGroup = $limit ?? $this->limitPerGroup;
         $groups = [];
 
         foreach ($this->providers as $provider) {
-            $results = $provider->search($term, $this->limitPerGroup);
+            $results = $provider->search($term, $perGroup);
 
             if ($results !== []) {
                 $groups[$provider->group()] = $results;

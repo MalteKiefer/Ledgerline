@@ -103,4 +103,42 @@ class SearchTest extends TestCase
             ->assertOk()
             ->assertSee('No results');
     }
+
+    public function test_guests_cannot_use_the_suggest_endpoint(): void
+    {
+        $this->get(route('search.suggest', ['q' => 'x']))->assertRedirect(route('login'));
+    }
+
+    public function test_suggest_returns_grouped_json(): void
+    {
+        Customer::factory()->create(['name' => 'Qzxwv Industries']);
+
+        $this->actingAs(User::factory()->create())
+            ->getJson(route('search.suggest', ['q' => 'qzxwv']))
+            ->assertOk()
+            ->assertJsonPath('groups.0.group', 'Customers')
+            ->assertJsonFragment(['title' => 'Qzxwv Industries']);
+    }
+
+    public function test_suggest_for_empty_term_returns_no_groups(): void
+    {
+        $this->actingAs(User::factory()->create())
+            ->getJson(route('search.suggest'))
+            ->assertOk()
+            ->assertExactJson(['groups' => []]);
+    }
+
+    public function test_suggest_matches_contacts_via_related_email(): void
+    {
+        $contact = Contact::factory()->create([
+            'name' => 'Jane Suggest',
+            'function' => ContactFunction::CTO->value,
+        ]);
+        ContactEmail::factory()->for($contact)->create(['email' => 'reachme@qzxwv.test']);
+
+        $this->actingAs(User::factory()->create())
+            ->getJson(route('search.suggest', ['q' => 'qzxwv.test']))
+            ->assertOk()
+            ->assertJsonFragment(['title' => 'Jane Suggest']);
+    }
 }

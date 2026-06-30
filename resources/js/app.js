@@ -135,6 +135,103 @@ Alpine.data('countryCombobox', (options, initial = '') => ({
     },
 }));
 
+/**
+ * Spotlight-style global search palette. Opens a centred modal, searches live
+ * as the user types (debounced), and supports keyboard navigation. Results come
+ * from the JSON suggest endpoint; the URLs are app routes.
+ */
+Alpine.data('spotlight', () => ({
+    open: false,
+    query: '',
+    groups: [],
+    flat: [],
+    activeIndex: -1,
+    loading: false,
+    controller: null,
+
+    openPalette() {
+        this.open = true;
+        this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
+    },
+
+    close() {
+        this.open = false;
+        this.query = '';
+        this.groups = [];
+        this.flat = [];
+        this.activeIndex = -1;
+    },
+
+    async runSearch() {
+        const term = this.query.trim();
+
+        if (term === '') {
+            this.groups = [];
+            this.flat = [];
+            this.activeIndex = -1;
+
+            return;
+        }
+
+        this.loading = true;
+
+        try {
+            if (this.controller) {
+                this.controller.abort();
+            }
+
+            this.controller = new AbortController();
+
+            const response = await fetch(
+                '/search/suggest?q=' + encodeURIComponent(term),
+                { headers: { Accept: 'application/json' }, signal: this.controller.signal },
+            );
+
+            if (!response.ok) {
+                this.groups = [];
+                this.flat = [];
+
+                return;
+            }
+
+            const data = await response.json();
+            this.groups = data.groups || [];
+            this.flat = this.groups.flatMap((group) => group.results);
+            this.activeIndex = this.flat.length ? 0 : -1;
+        } catch (error) {
+            // Aborted or network error: leave the previous results in place.
+        } finally {
+            this.loading = false;
+        }
+    },
+
+    move(delta) {
+        if (!this.flat.length) {
+            return;
+        }
+
+        this.activeIndex = (this.activeIndex + delta + this.flat.length) % this.flat.length;
+    },
+
+    isActive(item) {
+        return this.activeIndex >= 0 && this.flat[this.activeIndex] && this.flat[this.activeIndex].url === item.url;
+    },
+
+    go() {
+        const item = this.flat[this.activeIndex];
+
+        if (item) {
+            window.location.href = item.url;
+        } else if (this.query.trim() !== '') {
+            this.seeAll();
+        }
+    },
+
+    seeAll() {
+        window.location.href = '/search?q=' + encodeURIComponent(this.query.trim());
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();

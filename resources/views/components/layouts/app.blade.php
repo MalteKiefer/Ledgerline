@@ -26,15 +26,8 @@
                 </div>
 
                 @auth
-                    <form method="GET" action="{{ route('search') }}" role="search"
-                        class="mx-4 hidden max-w-xs flex-1 sm:block">
-                        <label for="global-search" class="sr-only">Search</label>
-                        <input type="search" id="global-search" name="q" value="{{ request('q') }}"
-                            placeholder="Search customers, contacts, branches…"
-                            class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    </form>
-
                     <div class="flex items-center gap-4">
+                        <x-spotlight-search />
                         <a href="{{ route('profile') }}"
                             class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
                             <x-user-avatar :user="auth()->user()" size="h-8 w-8" />
