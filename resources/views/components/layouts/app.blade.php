@@ -1,0 +1,39 @@
+@props(['title' => 'Ledgerline'])
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{{ $title }} — Ledgerline</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+<body class="h-full bg-gray-100 text-gray-900 antialiased">
+    <div class="min-h-full">
+        <header class="border-b border-gray-200 bg-white">
+            <nav class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+                <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900">
+                    Ledgerline
+                </a>
+
+                @auth
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm text-gray-600">{{ auth()->user()->name }}</span>
+                        <form method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button type="submit"
+                                class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                                Log out
+                            </button>
+                        </form>
+                    </div>
+                @endauth
+            </nav>
+        </header>
+
+        <main class="mx-auto max-w-5xl px-4 py-8">
+            {{ $slot }}
+        </main>
+    </div>
+</body>
+</html>
