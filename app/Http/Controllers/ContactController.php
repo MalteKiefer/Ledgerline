@@ -8,17 +8,20 @@ use App\Enums\ContactFunction;
 use App\Http\Requests\StoreContactRequest;
 use App\Http\Requests\UpdateContactRequest;
 use App\Models\Contact;
+use App\Models\ContactEmail;
+use App\Models\ContactPhone;
 use App\Models\Customer;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 
 /**
  * CRUD for a customer's contact persons.
  *
- * Routes are shallow-nested under customers: the collection actions (index,
- * create, store) are scoped to a customer, while the per-record actions
- * (show, edit, update, destroy) resolve the contact directly. Every action is
- * gated by ContactPolicy and validated by dedicated Form Requests.
+ * Routes are shallow-nested under customers. A contact may carry any number of
+ * labelled email addresses and phone numbers, persisted in related tables and
+ * synced atomically. Every action is gated by ContactPolicy and validated by
+ * dedicated Form Requests.
  */
 class ContactController extends Controller
 {
@@ -30,6 +33,7 @@ class ContactController extends Controller
         $this->authorize('viewAny', Contact::class);
 
         $contacts = $customer->contacts()
+            ->with(['emails', 'phones'])
             ->orderBy('name')
             ->paginate(15);
 
@@ -50,6 +54,10 @@ class ContactController extends Controller
             'customer' => $customer,
             'contact' => new Contact,
             'functions' => ContactFunction::options(),
+            'emailLabels' => ContactEmail::SUGGESTED_LABELS,
+            'phoneLabels' => ContactPhone::SUGGESTED_LABELS,
+            'existingEmails' => [],
+            'existingPhones' => [],
         ]);
     }
 
@@ -60,7 +68,16 @@ class ContactController extends Controller
     {
         $this->authorize('create', Contact::class);
 
-        $customer->contacts()->create($request->validated());
+        $data = $request->validated();
+
+        DB::transaction(function () use ($customer, $data): void {
+            $contact = $customer->contacts()->create([
+                'name' => $data['name'],
+                'function' => $data['function'],
+            ]);
+
+            $this->syncChannels($contact, $data);
+        });
 
         return redirect()
             ->route('customers.show', $customer)
@@ -74,7 +91,7 @@ class ContactController extends Controller
     {
         $this->authorize('view', $contact);
 
-        $contact->load('customer');
+        $contact->load(['customer', 'emails', 'phones']);
 
         return view('contacts.show', ['contact' => $contact]);
     }
@@ -86,9 +103,19 @@ class ContactController extends Controller
     {
         $this->authorize('update', $contact);
 
+        $contact->load(['emails', 'phones']);
+
         return view('contacts.edit', [
             'contact' => $contact,
             'functions' => ContactFunction::options(),
+            'emailLabels' => ContactEmail::SUGGESTED_LABELS,
+            'phoneLabels' => ContactPhone::SUGGESTED_LABELS,
+            'existingEmails' => $contact->emails
+                ->map(fn (ContactEmail $email): array => ['label' => $email->label, 'value' => $email->email])
+                ->all(),
+            'existingPhones' => $contact->phones
+                ->map(fn (ContactPhone $phone): array => ['label' => $phone->label, 'value' => $phone->phone])
+                ->all(),
         ]);
     }
 
@@ -99,7 +126,20 @@ class ContactController extends Controller
     {
         $this->authorize('update', $contact);
 
-        $contact->update($request->validated());
+        $data = $request->validated();
+
+        DB::transaction(function () use ($contact, $data): void {
+            $contact->update([
+                'name' => $data['name'],
+                'function' => $data['function'],
+            ]);
+
+            // Replace the channel sets wholesale; the form submits the full list.
+            $contact->emails()->delete();
+            $contact->phones()->delete();
+
+            $this->syncChannels($contact, $data);
+        });
 
         return redirect()
             ->route('customers.show', $contact->customer_id)
@@ -119,5 +159,21 @@ class ContactController extends Controller
         return redirect()
             ->route('customers.show', $customerId)
             ->with('status', 'Contact deleted.');
+    }
+
+    /**
+     * Persist the contact's labelled emails and phones from validated data.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function syncChannels(Contact $contact, array $data): void
+    {
+        foreach ($data['emails'] ?? [] as $row) {
+            $contact->emails()->create(['label' => $row['label'], 'email' => $row['email']]);
+        }
+
+        foreach ($data['phones'] ?? [] as $row) {
+            $contact->phones()->create(['label' => $row['label'], 'phone' => $row['phone']]);
+        }
     }
 }
