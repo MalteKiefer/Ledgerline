@@ -9,6 +9,9 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
 
@@ -51,9 +54,10 @@ class PocketIdController extends Controller
             [
                 'name' => $oidcUser->getName() ?? $oidcUser->getNickname() ?? 'Unknown',
                 'email' => $oidcUser->getEmail(),
-                'avatar' => $oidcUser->getAvatar() ?: ($oidcUser->getRaw()['picture'] ?? null),
             ],
         );
+
+        $this->syncAvatar($user, $oidcUser);
 
         Auth::login($user, remember: true);
 
@@ -61,6 +65,47 @@ class PocketIdController extends Controller
         $request->session()->regenerate();
 
         return redirect()->intended(route('dashboard'));
+    }
+
+    /**
+     * Download the user's Pocket-ID avatar and store it on the local disk.
+     *
+     * The image is hotlink-blocked cross-origin and would otherwise be an
+     * external runtime request, so we fetch it once at login and serve it from
+     * our own domain. The avatar is non-essential: any failure is swallowed so
+     * it can never block sign-in. The stored value is a relative path on the
+     * private "local" disk, served through the authenticated avatar route.
+     */
+    private function syncAvatar(User $user, SocialiteUser $oidcUser): void
+    {
+        $url = $oidcUser->getAvatar() ?: ($oidcUser->getRaw()['picture'] ?? null);
+
+        if (! is_string($url) || $url === '') {
+            return;
+        }
+
+        try {
+            $response = Http::timeout(5)->get($url);
+
+            if (! $response->successful()) {
+                return;
+            }
+
+            $type = (string) $response->header('Content-Type');
+            $extension = match (true) {
+                str_contains($type, 'png') => 'png',
+                str_contains($type, 'webp') => 'webp',
+                str_contains($type, 'gif') => 'gif',
+                default => 'jpg',
+            };
+
+            $path = "avatars/{$user->id}.{$extension}";
+            Storage::disk('local')->put($path, $response->body());
+
+            $user->update(['avatar' => $path]);
+        } catch (Throwable) {
+            // Avatar is optional; never fail login because of it.
+        }
     }
 
     /**

@@ -35,13 +35,12 @@ class ProfileTest extends TestCase
 
     public function test_profile_renders_the_avatar_when_present(): void
     {
-        $user = User::factory()->create([
-            'avatar' => 'https://id.example.com/avatars/grace.png',
-        ]);
+        $user = User::factory()->create(['avatar' => 'avatars/1.png']);
 
         $this->actingAs($user)
             ->get(route('profile'))
             ->assertOk()
-            ->assertSee('https://id.example.com/avatars/grace.png');
+            ->assertSee(route('profile.avatar'))
+            ->assertSee('stored locally');
     }
 }
