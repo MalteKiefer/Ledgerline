@@ -49,6 +49,39 @@ Alpine.data('contactFunctionCombobox', (options, initial = '') => ({
     },
 }));
 
+/**
+ * Repeater for a contact's labelled email addresses and phone numbers. Each
+ * channel has a free label (suggested via a datalist) and a value. Rows can be
+ * added and removed freely; empty rows are stripped server-side.
+ *
+ * @param {{label: string, value: string}[]} initialEmails
+ * @param {{label: string, value: string}[]} initialPhones
+ */
+Alpine.data('contactChannels', (initialEmails = [], initialPhones = []) => ({
+    emails: initialEmails.length
+        ? initialEmails.map((row) => ({ ...row }))
+        : [{ label: 'Work', value: '' }],
+    phones: initialPhones.length
+        ? initialPhones.map((row) => ({ ...row }))
+        : [{ label: 'Work', value: '' }],
+
+    addEmail() {
+        this.emails.push({ label: '', value: '' });
+    },
+
+    removeEmail(index) {
+        this.emails.splice(index, 1);
+    },
+
+    addPhone() {
+        this.phones.push({ label: '', value: '' });
+    },
+
+    removePhone(index) {
+        this.phones.splice(index, 1);
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();

@@ -42,63 +42,93 @@
         </dl>
     </div>
 
-    <section class="mt-8">
-        <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Contacts</h2>
-            <a href="{{ route('customers.contacts.create', $customer) }}"
-                class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                Add contact
-            </a>
+    <div class="mt-8" x-data="{ tab: 'contacts' }">
+        <div class="border-b border-gray-200">
+            <nav class="-mb-px flex gap-6" role="tablist" aria-label="Customer relations">
+                <button type="button" role="tab" id="tab-contacts" aria-controls="panel-contacts"
+                    :aria-selected="(tab === 'contacts').toString()" @click="tab = 'contacts'"
+                    class="border-b-2 px-1 py-3 text-sm font-medium"
+                    :class="tab === 'contacts' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    Contacts ({{ $customer->contacts->count() }})
+                </button>
+                <button type="button" role="tab" id="tab-projects" aria-controls="panel-projects"
+                    :aria-selected="(tab === 'projects').toString()" @click="tab = 'projects'"
+                    class="border-b-2 px-1 py-3 text-sm font-medium"
+                    :class="tab === 'projects' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    Projects ({{ $customer->projects->count() }})
+                </button>
+            </nav>
         </div>
 
-        <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            @if ($customer->contacts->isEmpty())
-                <p class="px-4 py-6 text-center text-sm text-gray-500">No contacts yet.</p>
-            @else
-                <ul class="divide-y divide-gray-100 text-sm">
-                    @foreach ($customer->contacts as $contact)
-                        <li class="flex items-center justify-between px-4 py-3">
-                            <span>
-                                <a href="{{ route('contacts.show', $contact) }}"
-                                    class="font-medium text-gray-900 hover:underline">{{ $contact->name }}</a>
-                                <span class="text-gray-500">— {{ $contact->function->label() }}</span>
-                            </span>
-                            <span class="text-gray-500">{{ $contact->email }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </div>
-    </section>
+        {{-- Contacts panel --}}
+        <section id="panel-contacts" role="tabpanel" aria-labelledby="tab-contacts" x-show="tab === 'contacts'" class="mt-4">
+            <div class="flex items-center justify-end">
+                <a href="{{ route('customers.contacts.create', $customer) }}"
+                    class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    Add contact
+                </a>
+            </div>
+            <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                @if ($customer->contacts->isEmpty())
+                    <p class="px-4 py-6 text-center text-sm text-gray-500">No contacts yet.</p>
+                @else
+                    <ul class="divide-y divide-gray-100 text-sm">
+                        @foreach ($customer->contacts as $contact)
+                            <li class="px-4 py-3">
+                                <div class="flex items-center justify-between">
+                                    <a href="{{ route('contacts.show', $contact) }}"
+                                        class="font-medium text-gray-900 hover:underline">{{ $contact->name }}</a>
+                                    <span class="text-gray-500">{{ $contact->function->label() }}</span>
+                                </div>
+                                @if ($contact->emails->isNotEmpty() || $contact->phones->isNotEmpty())
+                                    <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-gray-600">
+                                        @foreach ($contact->emails as $email)
+                                            <a href="mailto:{{ $email->email }}" class="hover:underline">
+                                                {{ $email->label }}: {{ $email->email }}
+                                            </a>
+                                        @endforeach
+                                        @foreach ($contact->phones as $phone)
+                                            <a href="tel:{{ $phone->phone }}" class="hover:underline">
+                                                {{ $phone->label }}: {{ $phone->phone }}
+                                            </a>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </div>
+        </section>
 
-    <section class="mt-8">
-        <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Projects</h2>
-            <a href="{{ route('customers.projects.create', $customer) }}"
-                class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                Add project
-            </a>
-        </div>
-
-        <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            @if ($customer->projects->isEmpty())
-                <p class="px-4 py-6 text-center text-sm text-gray-500">No projects yet.</p>
-            @else
-                <ul class="divide-y divide-gray-100 text-sm">
-                    @foreach ($customer->projects as $project)
-                        <li class="flex items-center justify-between px-4 py-3">
-                            <span>
-                                <a href="{{ route('projects.show', $project) }}"
-                                    class="font-medium text-gray-900 hover:underline">{{ $project->name }}</a>
-                                <span class="text-gray-500">— {{ $project->status->label() }}</span>
-                            </span>
-                            <span class="text-gray-500">{{ $project->reference }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </div>
-    </section>
+        {{-- Projects panel --}}
+        <section id="panel-projects" role="tabpanel" aria-labelledby="tab-projects" x-show="tab === 'projects'" x-cloak class="mt-4">
+            <div class="flex items-center justify-end">
+                <a href="{{ route('customers.projects.create', $customer) }}"
+                    class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    Add project
+                </a>
+            </div>
+            <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                @if ($customer->projects->isEmpty())
+                    <p class="px-4 py-6 text-center text-sm text-gray-500">No projects yet.</p>
+                @else
+                    <ul class="divide-y divide-gray-100 text-sm">
+                        @foreach ($customer->projects as $project)
+                            <li class="flex items-center justify-between px-4 py-3">
+                                <span>
+                                    <a href="{{ route('projects.show', $project) }}"
+                                        class="font-medium text-gray-900 hover:underline">{{ $project->name }}</a>
+                                    <span class="text-gray-500">— {{ $project->status->label() }}</span>
+                                </span>
+                                <span class="text-gray-500">{{ $project->reference }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </div>
+        </section>
+    </div>
 
     <div class="mt-6">
         <a href="{{ route('customers.index') }}" class="text-sm text-gray-600 hover:text-gray-900">&larr; Back to customers</a>

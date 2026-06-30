@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Enums\ContactFunction;
 use App\Models\Contact;
-use App\Models\Customer;
+use App\Models\ContactPhone;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<Contact>
+ * @extends Factory<ContactPhone>
  */
-class ContactFactory extends Factory
+class ContactPhoneFactory extends Factory
 {
     /**
      * Define the model's default state.
@@ -22,9 +21,9 @@ class ContactFactory extends Factory
     public function definition(): array
     {
         return [
-            'customer_id' => Customer::factory(),
-            'name' => fake()->name(),
-            'function' => fake()->randomElement(ContactFunction::cases()),
+            'contact_id' => Contact::factory(),
+            'label' => fake()->randomElement(ContactPhone::SUGGESTED_LABELS),
+            'phone' => fake()->phoneNumber(),
         ];
     }
 }

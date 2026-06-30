@@ -26,18 +26,38 @@
     </div>
 
     <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+        <dl class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
             <div>
                 <dt class="text-sm font-medium text-gray-500">Function</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $contact->function->label() }}</dd>
             </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">Email</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ $contact->email ?: '—' }}</dd>
+
+            <div class="sm:col-span-2">
+                <dt class="text-sm font-medium text-gray-500">Email addresses</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @forelse ($contact->emails as $email)
+                        <div class="flex items-baseline gap-2">
+                            <span class="w-24 shrink-0 text-gray-500">{{ $email->label }}</span>
+                            <a href="mailto:{{ $email->email }}" class="text-gray-900 hover:underline">{{ $email->email }}</a>
+                        </div>
+                    @empty
+                        —
+                    @endforelse
+                </dd>
             </div>
-            <div>
-                <dt class="text-sm font-medium text-gray-500">Phone</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ $contact->phone ?: '—' }}</dd>
+
+            <div class="sm:col-span-2">
+                <dt class="text-sm font-medium text-gray-500">Phone numbers</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    @forelse ($contact->phones as $phone)
+                        <div class="flex items-baseline gap-2">
+                            <span class="w-24 shrink-0 text-gray-500">{{ $phone->label }}</span>
+                            <a href="tel:{{ $phone->phone }}" class="text-gray-900 hover:underline">{{ $phone->phone }}</a>
+                        </div>
+                    @empty
+                        —
+                    @endforelse
+                </dd>
             </div>
         </dl>
     </div>
