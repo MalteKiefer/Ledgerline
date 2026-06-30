@@ -12,9 +12,17 @@
     <div class="min-h-full">
         <header class="border-b border-gray-200 bg-white">
             <nav class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
-                <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900">
-                    Ledgerline
-                </a>
+                <div class="flex items-center gap-6">
+                    <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900">
+                        Ledgerline
+                    </a>
+                    @auth
+                        <div class="flex items-center gap-4 text-sm">
+                            <a href="{{ route('dashboard') }}" class="text-gray-600 hover:text-gray-900">Dashboard</a>
+                            <a href="{{ route('customers.index') }}" class="text-gray-600 hover:text-gray-900">Customers</a>
+                        </div>
+                    @endauth
+                </div>
 
                 @auth
                     <div class="flex items-center gap-4">
@@ -32,6 +40,13 @@
         </header>
 
         <main class="mx-auto max-w-5xl px-4 py-8">
+            @if (session('status'))
+                <div class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+                    role="status">
+                    {{ session('status') }}
+                </div>
+            @endif
+
             {{ $slot }}
         </main>
     </div>
