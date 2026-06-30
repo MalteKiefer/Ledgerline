@@ -43,4 +43,14 @@ class Customer extends Model
     {
         return $this->hasMany(Contact::class);
     }
+
+    /**
+     * The projects belonging to this customer.
+     *
+     * @return HasMany<Project, $this>
+     */
+    public function projects(): HasMany
+    {
+        return $this->hasMany(Project::class);
+    }
 }
