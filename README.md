@@ -105,6 +105,101 @@ All sign-in goes through Pocket-ID:
 Register an OIDC client in Pocket-ID with the redirect URI set to
 `<APP_URL>/auth/callback` and copy the client ID/secret into `.env`.
 
+## Deployment to Laravel Cloud
+
+The application is built with Laravel conventions only and runs on
+[Laravel Cloud](https://cloud.laravel.com) without code changes. The checklist
+below covers what must be configured there; nothing in this list requires
+editing application code.
+
+### 1. Provision managed services
+
+- **PostgreSQL** — create a Postgres database in the Laravel Cloud project.
+  Cloud injects the connection details; map them to `DB_*` (see below).
+- **Key–Value store (Valkey)** — create a Laravel Cloud KV store. It is
+  Valkey-based and speaks the Redis protocol, so it backs the cache, session
+  and queue stores exactly as the local Valkey does.
+
+### 2. Environment variables
+
+Set these in the Laravel Cloud environment settings (not committed to the repo):
+
+```dotenv
+APP_NAME=Ledgerline
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=            # generate once: `php artisan key:generate --show`
+APP_URL=https://your-app.laravel.cloud
+
+# PostgreSQL — use the values from the provisioned Cloud database.
+DB_CONNECTION=pgsql
+DB_HOST=...
+DB_PORT=5432
+DB_DATABASE=...
+DB_USERNAME=...
+DB_PASSWORD=...
+
+# Valkey (Cloud KV) — drives cache, sessions and queues.
+REDIS_CLIENT=phpredis     # phpredis is available on Cloud; predis also works
+REDIS_HOST=...
+REDIS_PORT=6379
+REDIS_PASSWORD=...
+CACHE_STORE=redis
+SESSION_DRIVER=redis
+QUEUE_CONNECTION=redis
+
+# Pocket-ID OIDC client (must use HTTPS in production).
+POCKETID_BASE_URL=https://id.your-domain.com
+POCKETID_CLIENT_ID=...
+POCKETID_CLIENT_SECRET=...
+POCKETID_REDIRECT_URI=https://your-app.laravel.cloud/auth/callback
+POCKETID_USE_PKCE=true
+```
+
+Notes:
+
+- `APP_DEBUG` must be `false` in production so stack traces are never exposed.
+- On Cloud the `phpredis` C extension is present, so `REDIS_CLIENT=phpredis` is
+  the faster default; `predis` (used locally) remains a valid fallback.
+- Cloud terminates TLS at its proxy. Laravel 11+ trusts the Cloud proxy
+  out of the box, so HTTPS URLs and secure cookies are generated correctly.
+
+### 3. Build & deploy commands
+
+Laravel Cloud auto-detects the build, but ensure the pipeline runs:
+
+```bash
+composer install --no-dev --optimize-autoloader
+npm ci
+npm run build
+```
+
+And add a deploy/release step that runs the migrations:
+
+```bash
+php artisan migrate --force
+```
+
+Optionally cache configuration and routes for performance:
+
+```bash
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+### 4. Pocket-ID configuration
+
+In the Pocket-ID admin UI, register (or update) the OIDC client so its redirect
+URI exactly matches `https://your-app.laravel.cloud/auth/callback`. Mismatched
+redirect URIs are rejected by the provider.
+
+### 5. Background work
+
+There is currently no queued work or scheduled task, so no worker or scheduler
+needs to be enabled. When queues are introduced later, add a Laravel Cloud
+worker pointed at the Valkey-backed `redis` queue connection.
+
 ## Security notes
 
 - **No local passwords.** Identity is owned by Pocket-ID; the `password` column
