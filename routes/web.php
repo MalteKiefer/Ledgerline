@@ -28,6 +28,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\TagController as SettingsTagController;
+use App\Http\Controllers\Settings\UnitController as SettingsUnitController;
 use App\Http\Controllers\TimeEntryController;
 use Illuminate\Support\Facades\Route;
 
@@ -59,6 +60,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/tags', [SettingsTagController::class, 'store'])->name('settings.tags.store');
     Route::put('/settings/tags/{tag}', [SettingsTagController::class, 'update'])->name('settings.tags.update');
     Route::delete('/settings/tags/{tag}', [SettingsTagController::class, 'destroy'])->name('settings.tags.destroy');
+    Route::get('/settings/units', [SettingsUnitController::class, 'index'])->name('settings.units.index');
+    Route::post('/settings/units', [SettingsUnitController::class, 'store'])->name('settings.units.store');
+    Route::put('/settings/units/{unit}', [SettingsUnitController::class, 'update'])->name('settings.units.update');
+    Route::delete('/settings/units/{unit}', [SettingsUnitController::class, 'destroy'])->name('settings.units.destroy');
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
     Route::resource('customers', CustomerController::class);

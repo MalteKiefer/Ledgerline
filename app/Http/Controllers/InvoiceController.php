@@ -14,6 +14,7 @@ use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\TimeEntry;
+use App\Models\Unit;
 use App\Services\Invoicing\InvoiceCalculator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
@@ -255,6 +256,7 @@ class InvoiceController extends Controller
         return [
             'invoice' => $invoice,
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name']),
+            'units' => Unit::query()->orderBy('code')->get(),
             'languages' => config('finance.languages'),
             'currencies' => config('finance.currencies'),
             'taxModes' => TaxMode::options(),

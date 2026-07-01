@@ -13,6 +13,7 @@ use App\Http\Requests\StoreImportedInvoiceRequest;
 use App\Models\Customer;
 use App\Models\File;
 use App\Models\Invoice;
+use App\Models\Unit;
 use App\Services\Invoicing\InvoiceCalculator;
 use App\Services\Invoicing\InvoiceNumberSequencer;
 use App\Services\Invoicing\PdfInvoiceParser;
@@ -72,6 +73,7 @@ class ImportController extends Controller
             'file' => $file,
             'parsed' => $parsed,
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name']),
+            'units' => Unit::query()->orderBy('code')->get(),
             'matchedCustomerId' => $this->matchCustomer($parsed['customer']['name']),
             'statuses' => InvoiceStatus::options(),
             'taxModes' => TaxMode::options(),
