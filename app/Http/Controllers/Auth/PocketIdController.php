@@ -90,7 +90,9 @@ class PocketIdController extends Controller
                 [$key, $name] = $this->normaliseGroup($group);
 
                 if ($key !== null) {
-                    $teamIds[] = Team::firstOrCreate(['key' => $key], ['name' => $name])->id;
+                    // updateOrCreate so the humanised display name is refreshed
+                    // if the group slug's presentation changes.
+                    $teamIds[] = Team::updateOrCreate(['key' => $key], ['name' => $name])->id;
                 }
             }
         }
@@ -104,19 +106,29 @@ class PocketIdController extends Controller
 
         $user->teams()->sync($teamIds);
         $user->forgetCachedTeamIds();
+
+        // With a single team there is nothing to choose, so activate it now.
+        // Otherwise leave the active team unset so the login picker overlay
+        // prompts the user to choose their default.
+        if (count($teamIds) === 1) {
+            session(['active_team_id' => $teamIds[0]]);
+        }
     }
 
     /**
      * Resolve a Pocket-ID group claim entry to a [key, name] pair.
      *
-     * Accepts either a plain group name (string) or an object with id/name.
+     * The Pocket-ID "groups" claim carries the group slug (e.g.
+     * "kiefer_networks"); the human display name is not included, so we derive
+     * a readable name from the slug ("Kiefer Networks"). Objects with an
+     * explicit name are also supported.
      *
      * @return array{0: string|null, 1: string}
      */
     private function normaliseGroup(mixed $group): array
     {
         if (is_string($group) && trim($group) !== '') {
-            return ['group:'.Str::slug($group), $group];
+            return ['group:'.Str::slug($group), $this->humaniseGroupName($group)];
         }
 
         if (is_array($group)) {
@@ -124,11 +136,20 @@ class PocketIdController extends Controller
             $name = $group['name'] ?? $group['id'] ?? null;
 
             if ($id !== null) {
-                return ['group:'.$id, (string) ($name ?? $id)];
+                return ['group:'.Str::slug((string) $id), $this->humaniseGroupName((string) ($name ?? $id))];
             }
         }
 
         return [null, ''];
+    }
+
+    /**
+     * Turn a group slug into a readable display name ("kiefer_networks" ->
+     * "Kiefer Networks").
+     */
+    private function humaniseGroupName(string $value): string
+    {
+        return Str::of($value)->replace(['_', '-'], ' ')->squish()->title()->toString();
     }
 
     /**
