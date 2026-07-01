@@ -37,6 +37,7 @@ class GalleryController extends Controller
             'photos' => $photos,
             'grouped' => $this->groupByDay($photos),
             'favoritesOnly' => $request->boolean('favorites'),
+            'searchQuery' => trim((string) $request->input('q')),
             'mapZoom' => (int) (CompanyProfile::current()->gallery_map_zoom ?? 13),
         ]);
     }
@@ -93,9 +94,44 @@ class GalleryController extends Controller
     {
         return Photo::query()
             ->when($request->boolean('favorites'), fn ($q) => $q->whereNotNull('favorited_at'))
+            ->when($request->filled('q'), fn ($q) => $this->search($q, trim((string) $request->input('q'))))
             ->orderByDesc('taken_at')->orderByDesc('id')
             ->paginate(100)
             ->withQueryString();
+    }
+
+    /**
+     * Search photos across all metadata: filename, place (address / city /
+     * country), camera, capture date and time, the full metadata dump, and
+     * "lat,lng" coordinates.
+     *
+     * @param  Builder<Photo>  $query
+     */
+    private function search(Builder $query, string $q): void
+    {
+        $pg = $query->getConnection()->getDriverName() === 'pgsql';
+        $like = '%'.mb_strtolower($q).'%';
+
+        // Text columns (and the JSON dump / timestamp cast to text), matched
+        // case-insensitively across both PostgreSQL and SQLite.
+        $columns = [
+            'name', 'original_name', 'place', 'camera',
+            $pg ? 'metadata::text' : 'metadata',
+            $pg ? 'taken_at::text' : 'taken_at',
+        ];
+
+        $query->where(function ($w) use ($columns, $like, $q): void {
+            foreach ($columns as $column) {
+                $w->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
+            }
+
+            // "lat,lng" → photos near those coordinates.
+            if (preg_match('/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/', $q, $m)) {
+                $w->orWhere(fn ($c) => $c
+                    ->whereBetween('latitude', [(float) $m[1] - 0.05, (float) $m[1] + 0.05])
+                    ->whereBetween('longitude', [(float) $m[2] - 0.05, (float) $m[2] + 0.05]));
+            }
+        });
     }
 
     /**
