@@ -437,6 +437,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     index: 0,
     editing: false,
     motionPlaying: false,
+    showDetails: false,
     miniMap: null,
     mapZoom,
 
@@ -561,6 +562,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         this.current = d ? { ...d } : {};
         this.editing = false;
         this.motionPlaying = false;
+        this.showDetails = false;
         this.$nextTick(() => this.renderMiniMap());
     },
 
