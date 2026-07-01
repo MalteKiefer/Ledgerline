@@ -59,6 +59,8 @@ return [
     'ffmpeg_path_hint' => 'Path to the ffmpeg binary used for video thumbnails. Leave empty to use GALLERY_FFMPEG_PATH or the system PATH.',
     'ffmpeg_resolved' => 'Currently using',
     'filename_template' => 'Filename template',
+    'geocode_grid_km' => 'Location grid (km)',
+    'geocode_grid_km_hint' => 'Photos within this distance share one place lookup. Larger saves requests but makes the address coarser. 0 = look up every coordinate.',
     'general_heading' => 'General (uploads)',
     'general_hint' => 'Settings that apply to every upload.',
     'filename_template_hint' => 'Applied to display names on import. Placeholders: {{y}} {{yy}} {{MM}} {{dd}} {{HH}} {{mm}} {{ss}} {{filename}} {{ext}}. The original extension is always kept. Leave empty to keep original names.',
