@@ -148,6 +148,7 @@ class FileController extends Controller
      */
     public function extract(Request $request, File $file): RedirectResponse
     {
+        $this->authorize('view', $file);
         $this->authorize('create', File::class);
 
         $disk = Storage::disk(config('files.disk'));
@@ -155,8 +156,11 @@ class FileController extends Controller
 
         $ext = match (true) {
             str_ends_with($name, '.zip') => 'zip',
-            str_ends_with($name, '.tar.gz'), str_ends_with($name, '.tgz'), str_ends_with($name, '.tar') => 'tar',
+            str_ends_with($name, '.tar.gz'), str_ends_with($name, '.tgz'),
+            str_ends_with($name, '.tar.bz2'), str_ends_with($name, '.tbz'), str_ends_with($name, '.tbz2'),
+            str_ends_with($name, '.tar') => 'tar',
             str_ends_with($name, '.gz') => 'gz',
+            str_ends_with($name, '.bz2') => 'bz2',
             default => null,
         };
 
@@ -164,8 +168,13 @@ class FileController extends Controller
             return back()->with('error', __('flash.extract_unsupported'));
         }
 
-        // Work on a local copy with a suitable extension for the extractor.
-        $suffix = str_ends_with($name, '.tar.gz') ? '.tar.gz' : '.'.pathinfo($name, PATHINFO_EXTENSION);
+        // Work on a local copy, keeping a suitable (possibly double) extension so
+        // the extractor detects the compression.
+        $suffix = match (true) {
+            str_ends_with($name, '.tar.gz') => '.tar.gz',
+            str_ends_with($name, '.tar.bz2') => '.tar.bz2',
+            default => '.'.pathinfo($name, PATHINFO_EXTENSION),
+        };
         $archive = tempnam(sys_get_temp_dir(), 'arc').$suffix;
         file_put_contents($archive, $disk->readStream($file->disk_path));
         $work = $archive.'-out';
@@ -175,12 +184,13 @@ class FileController extends Controller
             $this->unpack($ext, $archive, $work, pathinfo($file->name, PATHINFO_FILENAME));
 
             $base = Folder::firstOrCreate([
-                'name' => mb_substr(preg_replace('/\.(zip|tar|tgz|gz)$/i', '', $file->name), 0, 255),
+                'name' => mb_substr(preg_replace('/\.(tar\.gz|tar\.bz2|zip|tar|tgz|tbz2?|gz|bz2)$/i', '', $file->name), 0, 255),
                 'parent_id' => $file->folder_id,
             ])->id;
 
             $cache = [];
             $count = 0;
+            $root = realpath($work);
             $iterator = new \RecursiveIteratorIterator(
                 new \RecursiveDirectoryIterator($work, \FilesystemIterator::SKIP_DOTS),
                 \RecursiveIteratorIterator::LEAVES_ONLY,
@@ -188,6 +198,15 @@ class FileController extends Controller
 
             foreach ($iterator as $entry) {
                 if (! $entry->isFile()) {
+                    continue;
+                }
+                // Skip symlinks and anything resolving outside the work dir
+                // (defence in depth against zip-slip / link traversal).
+                if ($entry->isLink() || is_link($entry->getPathname())) {
+                    continue;
+                }
+                $real = realpath($entry->getPathname());
+                if ($real === false || ! str_starts_with($real, $root.DIRECTORY_SEPARATOR)) {
                     continue;
                 }
                 $rel = ltrim(str_replace($work, '', $entry->getPathname()), '/');
@@ -216,6 +235,12 @@ class FileController extends Controller
             if ($zip->open($archive) !== true) {
                 throw new \RuntimeException('Cannot open zip');
             }
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                if (! $this->safeArchivePath((string) $zip->getNameIndex($i))) {
+                    $zip->close();
+                    throw new \RuntimeException('Unsafe archive entry');
+                }
+            }
             $zip->extractTo($work);
             $zip->close();
 
@@ -223,17 +248,54 @@ class FileController extends Controller
         }
 
         if ($kind === 'tar') {
-            (new \PharData($archive))->extractTo($work, null, true);
+            $phar = new \PharData($archive);
+            $prefix = 'phar://'.$archive.'/';
+            foreach (new \RecursiveIteratorIterator($phar) as $entry) {
+                $inner = str_replace($prefix, '', str_replace('\\', '/', $entry->getPathname()));
+                if (! $this->safeArchivePath($inner)) {
+                    throw new \RuntimeException('Unsafe archive entry');
+                }
+            }
+            $phar->extractTo($work, null, true);
 
             return;
         }
 
-        // A single gzip-compressed file → one output file.
-        $data = gzdecode((string) file_get_contents($archive));
-        if ($data === false) {
-            throw new \RuntimeException('Cannot decode gzip');
+        // A single gzip- or bzip2-compressed file → one output file.
+        $raw = (string) file_get_contents($archive);
+        $data = $kind === 'bz2'
+            ? (function_exists('bzdecode') ? bzdecode($raw) : throw new \RuntimeException('bz2 unavailable'))
+            : gzdecode($raw);
+
+        if (! is_string($data)) {
+            throw new \RuntimeException('Cannot decode archive');
         }
+
         file_put_contents($work.'/'.$baseName, $data);
+    }
+
+    /**
+     * Reject archive entry names that are absolute, contain a null byte, or use
+     * ".." traversal — the vectors behind zip-slip.
+     */
+    private function safeArchivePath(string $name): bool
+    {
+        if ($name === '' || str_contains($name, "\0")) {
+            return false;
+        }
+
+        $name = str_replace('\\', '/', $name);
+        if (str_starts_with($name, '/') || preg_match('#^[A-Za-z]:#', $name)) {
+            return false;
+        }
+
+        foreach (explode('/', $name) as $segment) {
+            if ($segment === '..') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function removeDir(string $dir): void
