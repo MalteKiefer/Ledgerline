@@ -81,5 +81,7 @@
             Ledgerline v{{ config('app.version') }}
         </footer>
     </div>
+
+    <x-team-picker />
 </body>
 </html>
