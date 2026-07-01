@@ -29,6 +29,22 @@ class UpdateFileRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:5000'],
             'note' => ['nullable', 'string', 'max:5000'],
             'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
+            'tags' => ['array'],
+            'tags.*' => ['string', 'max:50'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (is_array($this->input('tags'))) {
+            $this->merge([
+                'tags' => collect($this->input('tags'))
+                    ->map(fn ($t): string => is_string($t) ? trim($t) : '')
+                    ->filter()
+                    ->unique(fn (string $t): string => mb_strtolower($t))
+                    ->values()
+                    ->all(),
+            ]);
+        }
     }
 }

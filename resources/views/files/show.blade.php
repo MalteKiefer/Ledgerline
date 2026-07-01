@@ -101,10 +101,6 @@
                         <dd class="mt-1 text-sm text-gray-900">{{ $formatBytes($file->size) }}</dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">{{ __('files.encrypted') }}</dt>
-                        <dd class="mt-1 text-sm text-gray-900">{{ $file->is_encrypted ? __('files.yes') : __('files.no') }}</dd>
-                    </div>
-                    <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.uploaded_by') }}</dt>
                         <dd class="mt-1 text-sm text-gray-900">{{ $file->uploader?->name ?? '—' }}</dd>
                     </div>
@@ -199,6 +195,10 @@
                                 <option value="{{ $f->id }}" @selected((int) old('folder_id', $file->folder_id) === $f->id)>{{ $f->name }}</option>
                             @endforeach
                         </select>
+                    </div>
+                    <div>
+                        <x-tag-input name="tags" :value="old('tags', $file->tags->pluck('name')->all())" :suggestions="$tagSuggestions" :label="__('files.tags')" />
+                        @error('tags')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                     <button type="submit"
                         class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
