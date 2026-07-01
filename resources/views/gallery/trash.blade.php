@@ -17,11 +17,14 @@
                     <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.restore_selected') }}</button>
                 </form>
                 {{-- Delete selected --}}
-                <form method="POST" action="{{ route('gallery.force-destroy') }}" x-show="selected.length" onsubmit="return confirm('{{ __('gallery.delete_selected_confirm') }}');">
-                    @csrf @method('DELETE')
-                    <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
-                    <button type="submit" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('gallery.delete_selected') }}</button>
-                </form>
+                <span x-show="selected.length" class="inline">
+                    <x-confirm-action :action="route('gallery.force-destroy')" method="DELETE"
+                        :trigger="__('gallery.delete_selected')"
+                        trigger-class="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                        :message="__('gallery.delete_selected_confirm')">
+                        <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
+                    </x-confirm-action>
+                </span>
 
                 {{-- Restore all --}}
                 <form method="POST" action="{{ route('gallery.restore') }}">
@@ -29,10 +32,12 @@
                     <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.restore_all') }}</button>
                 </form>
                 {{-- Empty trash --}}
-                <form method="POST" action="{{ route('gallery.force-destroy') }}" onsubmit="return confirm('{{ __('gallery.empty_trash_confirm') }}');">
-                    @csrf @method('DELETE') <input type="hidden" name="all" value="1">
-                    <button type="submit" class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">{{ __('gallery.empty_trash') }}</button>
-                </form>
+                <x-confirm-action :action="route('gallery.force-destroy')" method="DELETE"
+                    :trigger="__('gallery.empty_trash')"
+                    trigger-class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                    :message="__('gallery.empty_trash_confirm')">
+                    <input type="hidden" name="all" value="1">
+                </x-confirm-action>
             </div>
         @endif
     </div>
