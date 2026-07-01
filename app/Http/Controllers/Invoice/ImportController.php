@@ -143,11 +143,15 @@ class ImportController extends Controller
                 ]);
             }
 
-            // Attach the original PDF to the invoice.
-            File::query()->whereKey($data['file_id'])->update([
-                'attachable_type' => Invoice::class,
-                'attachable_id' => $invoice->id,
-            ]);
+            // Attach the original PDF to the invoice. Only a not-yet-attached
+            // file may be linked, so an existing file cannot be re-parented.
+            File::query()
+                ->whereKey($data['file_id'])
+                ->whereNull('attachable_id')
+                ->update([
+                    'attachable_type' => Invoice::class,
+                    'attachable_id' => $invoice->id,
+                ]);
 
             // Advance the internal counter to continue this series.
             $sequencer->syncFromImported($invoice->number, $invoice->year);
