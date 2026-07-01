@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\IncomeEntry;
 use App\Models\Invoice;
@@ -31,6 +32,19 @@ class FinanceReportTest extends TestCase
         $this->get(route('finance.report'))
             ->assertOk()
             ->assertViewHas('summary', fn (array $s): bool => $s['income'] === 12000 && $s['expenses'] === 4000 && $s['profit'] === 8000);
+    }
+
+    public function test_report_aggregates_per_customer_and_by_category(): void
+    {
+        $this->signIn();
+        $customer = Customer::factory()->create(['name' => 'Acme']);
+        Invoice::factory()->create(['status' => 'SENT', 'finalized_at' => now(), 'customer_id' => $customer->id, 'net_cents' => 10000, 'issue_date' => now()]);
+        Expense::factory()->create(['customer_id' => $customer->id, 'amount_cents' => 2380, 'tax_cents' => 380, 'date' => now()]);
+
+        $this->get(route('finance.report'))
+            ->assertOk()
+            ->assertViewHas('perCustomer', fn (array $rows): bool => $rows[0]['name'] === 'Acme' && $rows[0]['profit'] === 8000)
+            ->assertViewHas('byCategory', fn (array $rows): bool => count($rows) === 1);
     }
 
     public function test_report_respects_the_date_range(): void
