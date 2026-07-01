@@ -417,7 +417,9 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
     dragging: false,
     queue: [],
     selected: [],
-    busy: false,
+    active: 0,
+    maxConcurrent: 3,
+    summary: null,
 
     // Infinite scroll.
     page: 1,
@@ -563,27 +565,45 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
     },
 
     enqueue(fileList) {
+        this.summary = null;
         for (const file of fileList) {
-            if (file.type.startsWith('image/')) {
-                this.queue.push({ name: file.name, progress: 0, done: false, error: false, duplicate: false, file });
+            const isVideo = file.type.startsWith('video/');
+            if (! isVideo && ! file.type.startsWith('image/')) {
+                continue;
             }
+            this.queue.push({
+                name: file.name,
+                file,
+                isVideo,
+                preview: isVideo ? null : URL.createObjectURL(file),
+                progress: 0,
+                state: 'pending', // pending | uploading | done | duplicate | skipped | error
+                reason: '',
+            });
         }
-        if (!this.busy) {
-            this.processNext();
+        this.pump();
+    },
+
+    // Keep up to maxConcurrent uploads in flight; report a summary when the
+    // whole batch settles.
+    pump() {
+        while (this.active < this.maxConcurrent) {
+            const item = this.queue.find((entry) => entry.state === 'pending');
+            if (! item) {
+                break;
+            }
+            this.upload(item);
+        }
+
+        if (this.active === 0 && ! this.queue.some((entry) => entry.state === 'pending')) {
+            this.onComplete();
         }
     },
 
-    processNext() {
-        const item = this.queue.find((entry) => !entry.done && !entry.error);
-        if (!item) {
-            this.busy = false;
-            if (this.queue.length) {
-                window.location.reload();
-            }
-            return;
-        }
+    upload(item) {
+        item.state = 'uploading';
+        this.active++;
 
-        this.busy = true;
         const data = new FormData();
         data.append('photo', item.file);
         data.append('_token', token);
@@ -596,23 +616,44 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
                 item.progress = Math.round((e.loaded / e.total) * 100);
             }
         };
+        const settle = () => { this.active--; this.pump(); };
         xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) {
                 item.progress = 100;
-                item.done = true;
-                try {
-                    if (JSON.parse(xhr.responseText).duplicate) item.duplicate = true;
-                } catch (e) { /* not JSON; treat as a normal upload */ }
+                let body = {};
+                try { body = JSON.parse(xhr.responseText); } catch (e) { /* plain response */ }
+                item.state = body.skipped ? 'skipped' : (body.duplicate ? 'duplicate' : 'done');
+                item.reason = body.reason || '';
             } else {
-                item.error = true;
+                item.state = 'error';
             }
-            this.processNext();
+            settle();
         };
-        xhr.onerror = () => {
-            item.error = true;
-            this.processNext();
-        };
+        xhr.onerror = () => { item.state = 'error'; settle(); };
         xhr.send(data);
+    },
+
+    onComplete() {
+        const created = this.queue.filter((e) => e.state === 'done').length;
+        const skipped = this.queue.filter((e) => e.state === 'skipped').map((e) => e.name);
+        const errored = this.queue.filter((e) => e.state === 'error').map((e) => e.name);
+
+        // Nothing to review: reveal the new items straight away.
+        if (created > 0 && skipped.length === 0 && errored.length === 0) {
+            window.location.reload();
+            return;
+        }
+
+        this.summary = { created, skipped, errored };
+    },
+
+    dismissUploads() {
+        this.queue.forEach((e) => e.preview && URL.revokeObjectURL(e.preview));
+        this.queue = [];
+        this.summary = null;
+        if (this.$refs.timeline) {
+            window.location.reload();
+        }
     },
 
     toggleAll(event) {

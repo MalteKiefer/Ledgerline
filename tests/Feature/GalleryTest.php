@@ -174,6 +174,20 @@ class GalleryTest extends TestCase
         $this->get(route('gallery.motion', $without))->assertNotFound();
     }
 
+    public function test_upload_skips_heic_files(): void
+    {
+        Storage::fake('files');
+        Queue::fake();
+        $this->signIn();
+
+        $this->post(route('gallery.store'), [
+            'photo' => UploadedFile::fake()->create('live.heic', 500, 'image/heic'),
+        ])->assertOk()->assertJson(['skipped' => true, 'reason' => 'heic']);
+
+        $this->assertSame(0, Photo::count());
+        Queue::assertNotPushed(ProcessPhoto::class);
+    }
+
     public function test_upload_rejects_non_images(): void
     {
         Storage::fake('files');
