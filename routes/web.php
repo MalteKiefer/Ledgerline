@@ -16,6 +16,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectOverviewController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\TagController as SettingsTagController;
 use App\Http\Controllers\Settings\TeamController as SettingsTeamController;
@@ -44,6 +45,9 @@ Route::middleware('auth')->group(function (): void {
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
+    Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
+    Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
+    Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
     Route::get('/settings/tags', [SettingsTagController::class, 'index'])->name('settings.tags.index');
     Route::post('/settings/tags', [SettingsTagController::class, 'store'])->name('settings.tags.store');
     Route::put('/settings/tags/{tag}', [SettingsTagController::class, 'update'])->name('settings.tags.update');
