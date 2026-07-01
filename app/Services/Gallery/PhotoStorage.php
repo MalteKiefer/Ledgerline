@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Gallery;
 
 use App\Models\Photo;
+use App\Services\Files\ReverseGeocoder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -16,14 +17,18 @@ use Intervention\Image\Interfaces\ImageInterface;
 
 /**
  * Stores photo originals and, on the queue, generates their renditions and reads
- * their EXIF metadata (capture date, GPS, camera). Originals live under a
- * date-structured object-storage prefix, independent of the files module.
+ * their EXIF metadata (capture date, GPS, camera, plus a full dump). Originals
+ * live under a date-structured object-storage prefix, independent of the files
+ * module. Rendition generation and metadata reading are separate steps so they
+ * can be re-run independently.
  */
 class PhotoStorage
 {
     private const THUMB_WIDTH = 400;
 
     private const MEDIUM_WIDTH = 1600;
+
+    public function __construct(private readonly ReverseGeocoder $geocoder) {}
 
     /**
      * Persist just the original quickly (upload path). Renditions and EXIF are
@@ -49,10 +54,19 @@ class PhotoStorage
     }
 
     /**
-     * Generate the thumbnail and medium renditions and fill EXIF-derived
-     * metadata on a stored photo. Runs on the queue.
+     * Generate renditions and read metadata in one pass (upload path).
      */
     public function process(Photo $photo): void
+    {
+        $this->renditions($photo);
+        $this->readMetadata($photo);
+    }
+
+    /**
+     * Generate the thumbnail and medium renditions from the untouched original,
+     * applying the photo's stored rotation/flip. Marks the photo ready.
+     */
+    public function renditions(Photo $photo): void
     {
         $disk = Storage::disk(config('files.disk'));
 
@@ -74,24 +88,50 @@ class PhotoStorage
             $disk->put($thumbPath, (string) $image->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75)));
             $disk->put($mediumPath, (string) $this->transform($manager->decodePath($tmp), $photo)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82)));
 
-            $attributes = [
+            $photo->forceFill([
                 'thumb_path' => $thumbPath,
                 'medium_path' => $mediumPath,
                 'width' => $width,
                 'height' => $height,
                 'status' => 'ready',
                 'processed_at' => Carbon::now(),
-            ];
+            ])->save();
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    /**
+     * Read the photo's EXIF metadata: always store the full dump, and (unless
+     * the user has hand-edited them) the capture date, GPS, camera and the
+     * reverse-geocoded place name.
+     */
+    public function readMetadata(Photo $photo): void
+    {
+        $disk = Storage::disk(config('files.disk'));
+
+        $tmp = tempnam(sys_get_temp_dir(), 'photo');
+        file_put_contents($tmp, $disk->get($photo->disk_path));
+
+        try {
+            $meta = $this->exif($tmp, $photo->mime_type);
+            $attributes = ['metadata' => $meta['raw']];
 
             // Only pull date/location/camera from EXIF when the user has not
-            // edited them by hand (meta_locked).
+            // edited them by hand (meta_locked). The place name always tracks
+            // whatever coordinates the photo currently has.
             if (! $photo->meta_locked) {
-                $meta = $this->exif($tmp, $photo->mime_type);
                 $attributes['taken_at'] = $meta['taken_at'] ?? $photo->taken_at;
                 $attributes['latitude'] = $meta['lat'];
                 $attributes['longitude'] = $meta['lon'];
                 $attributes['camera'] = $meta['camera'];
             }
+
+            $lat = $attributes['latitude'] ?? $photo->latitude;
+            $lon = $attributes['longitude'] ?? $photo->longitude;
+            $attributes['place'] = ($lat !== null && $lon !== null)
+                ? $this->geocoder->lookup((float) $lat, (float) $lon)
+                : null;
 
             $photo->forceFill($attributes)->save();
         } finally {
@@ -119,11 +159,11 @@ class PhotoStorage
     }
 
     /**
-     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string}
+     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, raw: ?array<string, mixed>}
      */
     private function exif(string $path, string $mime): array
     {
-        $out = ['taken_at' => null, 'lat' => null, 'lon' => null, 'camera' => null];
+        $out = ['taken_at' => null, 'lat' => null, 'lon' => null, 'camera' => null, 'raw' => null];
 
         if (! function_exists('exif_read_data') || ! in_array($mime, ['image/jpeg', 'image/tiff'], true)) {
             return $out;
@@ -133,6 +173,8 @@ class PhotoStorage
         if ($data === false || $data === null) {
             return $out;
         }
+
+        $out['raw'] = $this->cleanMeta($data);
 
         $raw = $data['EXIF']['DateTimeOriginal'] ?? ($data['IFD0']['DateTime'] ?? null);
         if (is_string($raw)) {
@@ -151,6 +193,38 @@ class PhotoStorage
         $out['camera'] = $camera !== '' ? $camera : null;
 
         return $out;
+    }
+
+    /**
+     * Make an exif_read_data() result safe to store as JSON: drop the raw
+     * thumbnail bytes and any binary (non-UTF-8) values that would corrupt the
+     * column, keeping the human-readable tags.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function cleanMeta(array $data): array
+    {
+        unset($data['THUMBNAIL']);
+
+        $clean = static function (array $input, callable $self): array {
+            $result = [];
+            foreach ($input as $key => $value) {
+                if (is_array($value)) {
+                    $result[$key] = $self($value, $self);
+                } elseif (is_string($value)) {
+                    if (mb_check_encoding($value, 'UTF-8')) {
+                        $result[$key] = $value;
+                    }
+                } elseif (is_scalar($value)) {
+                    $result[$key] = $value;
+                }
+            }
+
+            return $result;
+        };
+
+        return $clean($data, $clean);
     }
 
     /**
