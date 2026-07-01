@@ -248,6 +248,18 @@ class GalleryTest extends TestCase
             ->assertSee(__('pages.dashboard.gallery_videos'));
     }
 
+    public function test_trash_page_uses_a_modal_not_native_confirm(): void
+    {
+        $this->signIn();
+        $photo = Photo::factory()->create();
+        $photo->delete();
+
+        $this->get(route('gallery.trash'))
+            ->assertOk()
+            ->assertSee(__('gallery.empty_trash'))
+            ->assertDontSee('confirm(', false);
+    }
+
     public function test_upload_rejects_non_images(): void
     {
         Storage::fake('files');
