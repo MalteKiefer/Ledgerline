@@ -147,12 +147,31 @@ class GalleryController extends Controller
     {
         $maxMb = (int) (CompanyProfile::current()->gallery_max_upload_mb ?? 200);
 
+        // Validate presence and size first, so an unsupported-but-valid file
+        // (e.g. HEIC) can be reported as skipped rather than a hard error.
         $request->validate([
-            'photo' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,gif,mp4,mov', 'max:'.($maxMb * 1024)],
+            'photo' => ['required', 'file', 'max:'.($maxMb * 1024)],
         ]);
 
         $upload = $request->file('photo');
-        $mime = $upload->getMimeType() ?: 'image/jpeg';
+        $mime = $upload->getMimeType() ?: 'application/octet-stream';
+        $extension = strtolower($upload->getClientOriginalExtension());
+
+        // HEIC/HEIF cannot be decoded yet; skip it explicitly so the uploader
+        // can list it instead of failing.
+        if (in_array($extension, ['heic', 'heif'], true) || str_contains($mime, 'heic') || str_contains($mime, 'heif')) {
+            return response()->json([
+                'skipped' => true,
+                'reason' => 'heic',
+                'name' => $upload->getClientOriginalName(),
+            ], 200);
+        }
+
+        // Reject anything outside the supported image/video types.
+        $request->validate([
+            'photo' => ['mimes:jpg,jpeg,png,webp,gif,mp4,mov'],
+        ]);
+
         $mediaType = str_starts_with($mime, 'video/') ? 'video' : 'image';
 
         // Skip duplicates before writing any bytes: an upload counts as a

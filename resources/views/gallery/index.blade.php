@@ -19,26 +19,54 @@
             <a href="{{ route('gallery.trash') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trash') }}</a>
             <label class="cursor-pointer rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
                 {{ __('gallery.upload') }}
-                <input type="file" accept="image/*" multiple class="hidden" @change="pick($event)">
+                <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
             </label>
         </div>
     </div>
 
-    {{-- Upload progress --}}
-    <div x-show="queue.length" x-cloak class="mt-4 space-y-2 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <template x-for="(item, i) in queue" :key="i">
-            <div>
-                <div class="flex justify-between text-xs text-gray-600">
-                    <span class="truncate" x-text="item.name"></span>
-                    <span x-show="item.error" class="text-red-600">✕</span>
-                    <span x-show="item.duplicate" class="text-amber-600">{{ __('gallery.duplicate') }}</span>
-                    <span x-show="! item.error && ! item.duplicate" x-text="item.progress + '%'"></span>
+    {{-- Upload tray (Google/Immich style): per-file thumbnail, progress and state --}}
+    <div x-show="queue.length" x-cloak class="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="flex items-center justify-between border-b border-gray-100 px-4 py-2">
+            <span class="text-sm font-medium text-gray-700">
+                <template x-if="! summary"><span>{{ __('gallery.uploading') }} (<span x-text="queue.filter(i => ['done','duplicate','skipped','error'].includes(i.state)).length"></span>/<span x-text="queue.length"></span>)</span></template>
+                <template x-if="summary">
+                    <span>{{ __('gallery.upload_done') }} —
+                        <span x-text="summary.created"></span> {{ __('gallery.uploaded_count') }}<span x-show="summary.skipped.length">, <span x-text="summary.skipped.length"></span> {{ __('gallery.skipped_count') }}</span><span x-show="summary.errored.length">, <span x-text="summary.errored.length"></span> {{ __('gallery.failed_count') }}</span>
+                    </span>
+                </template>
+            </span>
+            <button type="button" x-show="summary" @click="dismissUploads()" class="text-sm font-medium text-gray-600 hover:text-gray-900">{{ __('gallery.upload_dismiss') }}</button>
+        </div>
+        <div class="max-h-64 space-y-2 overflow-y-auto p-4">
+            <template x-for="(item, i) in queue" :key="i">
+                <div class="flex items-center gap-3">
+                    <div class="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100">
+                        <template x-if="item.preview"><img :src="item.preview" class="h-full w-full object-cover"></template>
+                        <template x-if="! item.preview"><span class="flex h-full w-full items-center justify-center text-gray-400">🎬</span></template>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex justify-between gap-2 text-xs">
+                            <span class="truncate text-gray-700" x-text="item.name"></span>
+                            <span class="shrink-0" :class="{'text-green-600': item.state==='done', 'text-amber-600': item.state==='duplicate'||item.state==='skipped', 'text-red-600': item.state==='error', 'text-gray-500': item.state==='uploading'||item.state==='pending'}"
+                                x-text="{
+                                    pending: '…', uploading: item.progress + '%', done: '✓',
+                                    duplicate: '{{ __('gallery.duplicate') }}',
+                                    skipped: item.reason === 'heic' ? '{{ __('gallery.skipped_heic') }}' : '{{ __('gallery.skipped_generic') }}',
+                                    error: '✕',
+                                }[item.state]"></span>
+                        </div>
+                        <div class="mt-1 h-1.5 w-full rounded bg-gray-100">
+                            <div class="h-1.5 rounded transition-all"
+                                :class="{'bg-green-500': item.state==='done', 'bg-amber-500': item.state==='duplicate'||item.state==='skipped', 'bg-red-500': item.state==='error', 'bg-gray-800': item.state==='uploading'||item.state==='pending'}"
+                                :style="`width: ${item.state==='pending' ? 0 : (item.state==='uploading' ? item.progress : 100)}%`"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="mt-1 h-1.5 w-full rounded bg-gray-100">
-                    <div class="h-1.5 rounded" :class="item.error ? 'bg-red-500' : (item.done ? 'bg-green-500' : 'bg-gray-800')" :style="`width: ${item.progress}%`"></div>
-                </div>
-            </div>
-        </template>
+            </template>
+        </div>
+        <div x-show="summary && summary.skipped.length" x-cloak class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+            {{ __('gallery.skipped_list') }}: <span x-text="summary.skipped.join(', ')"></span>
+        </div>
     </div>
 
     {{-- Bulk bar --}}
@@ -125,23 +153,47 @@
                         <button type="button" @click="viewerOpen = false" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('gallery.close') }}">✕</button>
                     </div>
                 </div>
-                <dl class="mt-4 space-y-3 text-sm">
-                    <div><dt class="text-gray-500">{{ __('gallery.meta_date') }}</dt><dd class="text-gray-900" x-text="`${current.date} · ${current.time}`"></dd></div>
-                    <div x-show="current.camera"><dt class="text-gray-500">{{ __('gallery.meta_camera') }}</dt><dd class="text-gray-900" x-text="current.camera"></dd></div>
-                    <div x-show="current.dims"><dt class="text-gray-500">{{ __('gallery.meta_dimensions') }}</dt><dd class="text-gray-900" x-text="current.dims"></dd></div>
-                    <div x-show="current.durationText"><dt class="text-gray-500">{{ __('gallery.meta_duration') }}</dt><dd class="text-gray-900" x-text="current.durationText"></dd></div>
-                    <div x-show="current.tech"><dt class="text-gray-500">{{ __('gallery.meta_tech') }}</dt><dd class="text-gray-900" x-text="current.tech"></dd></div>
-                    <div><dt class="text-gray-500">{{ __('gallery.meta_size') }}</dt><dd class="text-gray-900" x-text="current.size"></dd></div>
-                    <div x-show="current.lat && current.lng">
-                        <dt class="text-gray-500">{{ __('gallery.meta_location') }}</dt>
-                        <dd class="text-gray-900">
-                            <span x-show="current.place" x-text="current.place" class="block"></span>
-                            <span x-text="`${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}`" class="text-gray-500"></span>
-                            <a :href="`https://www.openstreetmap.org/?mlat=${current.lat}&mlon=${current.lng}#map=14/${current.lat}/${current.lng}`" target="_blank" rel="noopener" class="ml-1 text-gray-500 underline">{{ __('gallery.map') }} ↗</a>
-                            <div x-ref="miniMap" x-show="current.lat && current.lng" class="mt-2 h-40 w-full overflow-hidden rounded-md border border-gray-200"></div>
-                        </dd>
-                    </div>
-                </dl>
+                @php
+                    $cardRow = 'flex justify-between gap-3 py-1 text-sm';
+                    $cardLabel = 'shrink-0 text-gray-500';
+                    $cardValue = 'text-right text-gray-900';
+                @endphp
+
+                {{-- Capture details --}}
+                <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('gallery.card_capture') }}</h3>
+                    <dl class="mt-2 divide-y divide-gray-100">
+                        <div class="{{ $cardRow }}"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_date') }}</dt><dd class="{{ $cardValue }}" x-text="`${current.date} · ${current.time}`"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.camera"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_camera') }}</dt><dd class="{{ $cardValue }}" x-text="current.camera"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.focal"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_focal') }}</dt><dd class="{{ $cardValue }}" x-text="current.focal"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.aperture"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_aperture') }}</dt><dd class="{{ $cardValue }}" x-text="current.aperture"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.shutter"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_shutter') }}</dt><dd class="{{ $cardValue }}" x-text="current.shutter"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.iso"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_iso') }}</dt><dd class="{{ $cardValue }}" x-text="current.iso"></dd></div>
+                    </dl>
+                </div>
+
+                {{-- Technical details --}}
+                <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('gallery.card_technical') }}</h3>
+                    <dl class="mt-2 divide-y divide-gray-100">
+                        <div class="{{ $cardRow }}" x-show="current.dims"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_dimensions') }}</dt><dd class="{{ $cardValue }}" x-text="current.dims"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.durationText"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_duration') }}</dt><dd class="{{ $cardValue }}" x-text="current.durationText"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.fps"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_fps') }}</dt><dd class="{{ $cardValue }}" x-text="current.fps"></dd></div>
+                        <div class="{{ $cardRow }}" x-show="current.codec"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_codec') }}</dt><dd class="{{ $cardValue }}" x-text="current.codec"></dd></div>
+                        <div class="{{ $cardRow }}"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_size') }}</dt><dd class="{{ $cardValue }}" x-text="current.size"></dd></div>
+                    </dl>
+                </div>
+
+                {{-- Location --}}
+                <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4" x-show="current.lat && current.lng">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('gallery.meta_location') }}</h3>
+                    <p class="mt-2 text-sm text-gray-900">
+                        <span x-show="current.place" x-text="current.place" class="block"></span>
+                        <span x-text="current.lat && current.lng ? `${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}` : ''" class="text-gray-500"></span>
+                        <a :href="`https://www.openstreetmap.org/?mlat=${current.lat}&mlon=${current.lng}#map=14/${current.lat}/${current.lng}`" target="_blank" rel="noopener" class="ml-1 text-gray-500 underline">{{ __('gallery.map') }} ↗</a>
+                    </p>
+                    <div x-ref="miniMap" class="mt-2 h-40 w-full overflow-hidden rounded-md border border-gray-200"></div>
+                </div>
                 {{-- Editing tools, hidden until the edit button is pressed. --}}
                 <div x-show="editing" x-cloak>
                 {{-- Transform (rotate / flip) — images only; regenerates renditions from the original --}}

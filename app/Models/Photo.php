@@ -100,89 +100,106 @@ class Photo extends Model
             : sprintf('%d:%02d', intdiv($s, 60), $s % 60);
     }
 
-    /**
-     * A short technical summary from the stored metadata dump: frame rate and
-     * codec for videos, focal length / aperture / shutter / ISO for images.
-     */
-    public function techLine(): ?string
+    /** Video frame rate, e.g. "60 fps". */
+    public function fps(): ?string
     {
-        $meta = $this->metadata;
-        if (! is_array($meta)) {
+        $stream = $this->videoStream();
+        if ($stream === null || ! isset($stream['r_frame_rate']) || ! str_contains((string) $stream['r_frame_rate'], '/')) {
             return null;
         }
 
-        return $this->isVideo() ? $this->videoTech($meta) : $this->imageTech($meta);
+        [$n, $d] = array_map('intval', explode('/', (string) $stream['r_frame_rate']));
+
+        return $d > 0 ? round($n / $d).' fps' : null;
     }
 
-    /**
-     * @param  array<string, mixed>  $meta
-     */
-    private function videoTech(array $meta): ?string
+    /** Video codec label, e.g. "HEVC". */
+    public function codec(): ?string
     {
-        $video = null;
-        foreach ($meta['streams'] ?? [] as $stream) {
-            if (($stream['codec_type'] ?? null) === 'video') {
-                $video = $stream;
-                break;
-            }
-        }
+        $stream = $this->videoStream();
 
-        if ($video === null) {
-            return null;
-        }
-
-        $parts = [];
-        if (isset($video['r_frame_rate']) && str_contains((string) $video['r_frame_rate'], '/')) {
-            [$n, $d] = array_map('intval', explode('/', (string) $video['r_frame_rate']));
-            if ($d > 0) {
-                $parts[] = round($n / $d).' fps';
-            }
-        }
-        if (isset($video['codec_name'])) {
-            $parts[] = strtoupper((string) $video['codec_name']);
-        }
-
-        return $parts !== [] ? implode(' · ', $parts) : null;
+        return isset($stream['codec_name']) ? strtoupper((string) $stream['codec_name']) : null;
     }
 
-    /**
-     * @param  array<string, mixed>  $meta
-     */
-    private function imageTech(array $meta): ?string
+    /** Focal length, e.g. "24 mm" (35mm-equivalent when available). */
+    public function focalLength(): ?string
     {
-        $exif = $meta['EXIF'] ?? [];
-        $rational = static function (mixed $v): ?float {
-            if (is_string($v) && str_contains($v, '/')) {
-                [$n, $d] = array_map('floatval', explode('/', $v, 2));
-
-                return $d != 0.0 ? $n / $d : null;
-            }
-
-            return is_numeric($v) ? (float) $v : null;
-        };
-
-        $parts = [];
-
+        $exif = $this->exifSection();
         $focal = $exif['FocalLengthIn35mmFilm'] ?? null;
-        $focal = is_numeric($focal) ? (int) $focal : (int) round($rational($exif['FocalLength'] ?? '') ?? 0);
-        if ($focal > 0) {
-            $parts[] = $focal.'mm';
+        $focal = is_numeric($focal) ? (int) $focal : (int) round($this->rational($exif['FocalLength'] ?? '') ?? 0);
+
+        return $focal > 0 ? $focal.' mm' : null;
+    }
+
+    /** Aperture, e.g. "f/1.7". */
+    public function aperture(): ?string
+    {
+        $f = $this->rational($this->exifSection()['FNumber'] ?? '');
+
+        return $f !== null && $f > 0 ? 'f/'.rtrim(rtrim(number_format($f, 1), '0'), '.') : null;
+    }
+
+    /** Shutter speed, e.g. "1/459 s". */
+    public function shutter(): ?string
+    {
+        $e = $this->rational($this->exifSection()['ExposureTime'] ?? '');
+        if ($e === null || $e <= 0) {
+            return null;
         }
 
-        if (($f = $rational($exif['FNumber'] ?? '')) !== null && $f > 0) {
-            $parts[] = 'f/'.rtrim(rtrim(number_format($f, 1), '0'), '.');
+        return $e < 1 ? '1/'.(int) round(1 / $e).' s' : rtrim(rtrim(number_format($e, 1), '0'), '.').' s';
+    }
+
+    /** ISO sensitivity, e.g. "ISO 25". */
+    public function iso(): ?string
+    {
+        $iso = $this->exifSection()['ISOSpeedRatings'] ?? null;
+
+        return is_numeric($iso) && (int) $iso > 0 ? 'ISO '.(int) $iso : null;
+    }
+
+    /**
+     * The first video stream from the stored metadata dump, if any.
+     *
+     * @return ?array<string, mixed>
+     */
+    private function videoStream(): ?array
+    {
+        if (! is_array($this->metadata)) {
+            return null;
         }
 
-        if (($e = $rational($exif['ExposureTime'] ?? '')) !== null && $e > 0) {
-            $parts[] = $e < 1 ? '1/'.(int) round(1 / $e).'s' : $e.'s';
+        foreach ($this->metadata['streams'] ?? [] as $stream) {
+            if (($stream['codec_type'] ?? null) === 'video') {
+                return $stream;
+            }
         }
 
-        $iso = $exif['ISOSpeedRatings'] ?? null;
-        if (is_numeric($iso) && (int) $iso > 0) {
-            $parts[] = 'ISO '.(int) $iso;
+        return null;
+    }
+
+    /**
+     * The EXIF section from the stored metadata dump.
+     *
+     * @return array<string, mixed>
+     */
+    private function exifSection(): array
+    {
+        return is_array($this->metadata) ? ($this->metadata['EXIF'] ?? []) : [];
+    }
+
+    /**
+     * Parse an EXIF rational ("168/100") or plain number into a float.
+     */
+    private function rational(mixed $value): ?float
+    {
+        if (is_string($value) && str_contains($value, '/')) {
+            [$n, $d] = array_map('floatval', explode('/', $value, 2));
+
+            return $d != 0.0 ? $n / $d : null;
         }
 
-        return $parts !== [] ? implode(' · ', $parts) : null;
+        return is_numeric($value) ? (float) $value : null;
     }
 
     public function hasLocation(): bool

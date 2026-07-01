@@ -44,7 +44,12 @@
                             data-video="{{ $photo->isVideo() ? route('gallery.video', $photo) : '' }}"
                             data-motion="{{ $photo->hasMotion() ? route('gallery.motion', $photo) : '' }}"
                             data-duration-text="{{ $photo->durationForHumans() }}"
-                            data-tech="{{ $photo->techLine() }}"
+                            data-fps="{{ $photo->fps() }}"
+                            data-codec="{{ $photo->codec() }}"
+                            data-focal="{{ $photo->focalLength() }}"
+                            data-aperture="{{ $photo->aperture() }}"
+                            data-shutter="{{ $photo->shutter() }}"
+                            data-iso="{{ $photo->iso() }}"
                             @click="openViewer($el)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
