@@ -41,6 +41,9 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_trip_radius_km',
     'gallery_filename_template',
     'gallery_map_zoom',
+    'gallery_max_upload_mb',
+    'gallery_ffmpeg_path',
+    'gallery_video_frame',
     'invoice_number_prefix',
     'invoice_number_next',
     'invoice_number_pad',
@@ -63,6 +66,8 @@ class CompanyProfile extends Model
             'gallery_trip_gap_days' => 'integer',
             'gallery_trip_radius_km' => 'integer',
             'gallery_map_zoom' => 'integer',
+            'gallery_max_upload_mb' => 'integer',
+            'gallery_video_frame' => 'integer',
         ];
     }
 

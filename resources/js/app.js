@@ -443,8 +443,13 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
         window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
 
         // Tear the mini-map down when the viewer closes so it re-initialises
-        // cleanly for the next photo.
-        this.$watch('viewerOpen', (open) => { if (! open) this.destroyMiniMap(); });
+        // cleanly for the next photo, and stop any playing video.
+        this.$watch('viewerOpen', (open) => {
+            if (! open) {
+                this.destroyMiniMap();
+                document.querySelectorAll('video').forEach((v) => v.pause());
+            }
+        });
 
         // Live-update the mini-map as the coordinates are edited.
         this.$watch('current.lat', () => { if (this.viewerOpen) this.renderMiniMap(); });
