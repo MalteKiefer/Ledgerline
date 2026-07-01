@@ -133,49 +133,73 @@
     @endif
 
     {{-- Files --}}
-    <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-        @if ($files->isEmpty())
-            <p class="px-4 py-8 text-center text-sm text-gray-500">{{ $searching ? __('files.empty_no_match') : __('files.empty_folder') }}</p>
-        @else
-            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                    <tr>
-                        <th class="px-4 py-3"><x-sortable-header column="name" :label="__('files.col_name')" :sort="$sort" :dir="$dir" /></th>
-                        <th class="px-4 py-3"><x-sortable-header column="type" :label="__('files.col_type')" :sort="$sort" :dir="$dir" /></th>
-                        <th class="px-4 py-3 text-right"><x-sortable-header column="size" :label="__('files.col_size')" :sort="$sort" :dir="$dir" /></th>
-                        <th class="px-4 py-3">{{ __('files.col_location') }}</th>
-                        <th class="px-4 py-3">{{ __('files.col_tags') }}</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100">
-                    @foreach ($files as $file)
-                        <tr>
-                            <td class="px-4 py-3 font-medium text-gray-900">
-                                <a href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
-                            </td>
-                            <td class="px-4 py-3 text-gray-600">{{ $file->type->label() }}</td>
-                            <td class="px-4 py-3 text-right text-gray-600">{{ number_format($file->size / 1024, 0) }} KB</td>
-                            <td class="px-4 py-3 text-gray-600">
-                                @if ($file->attachable instanceof \App\Models\Customer)
-                                    {{ __('files.location_customer', ['name' => $file->attachable->name]) }}
-                                @elseif ($file->attachable instanceof \App\Models\Project)
-                                    {{ __('files.location_project', ['name' => $file->attachable->name]) }}
-                                @else
-                                    {{ __('files.location_general') }}
-                                @endif
-                            </td>
-                            <td class="px-4 py-3">
-                                @foreach ($file->tags as $tag)
-                                    <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" class="mr-1" />
-                                @endforeach
-                            </td>
-                        </tr>
+    <div x-data="{ selected: [], allIds: {{ $files->pluck('id')->toJson() }}, toggleAll(e) { this.selected = e.target.checked ? [...this.allIds] : [] } }">
+        {{-- Bulk action bar --}}
+        <div x-show="selected.length" x-cloak class="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+            <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
+            <form method="POST" class="flex flex-wrap items-center gap-2">
+                @csrf
+                <template x-for="id in selected" :key="id"><input type="hidden" name="file_ids[]" :value="id"></template>
+                <select name="folder_id" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <option value="">{{ __('files.root_folder') }}</option>
+                    @foreach ($allFolders as $f)
+                        <option value="{{ $f->id }}">{{ $f->name }}</option>
                     @endforeach
-                </tbody>
-            </table>
-        @endif
-    </div>
+                </select>
+                <button type="submit" formaction="{{ route('files.bulk.move') }}"
+                    class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move') }}</button>
+                <button type="submit" formaction="{{ route('files.bulk.delete') }}"
+                    onclick="return confirm('{{ __('files.bulk_delete_confirm') }}');"
+                    class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
+            </form>
+        </div>
 
-    <div class="mt-4">{{ $files->links() }}</div>
+        <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            @if ($files->isEmpty())
+                <p class="px-4 py-8 text-center text-sm text-gray-500">{{ $searching ? __('files.empty_no_match') : __('files.empty_folder') }}</p>
+            @else
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        <tr>
+                            <th class="px-4 py-3"><input type="checkbox" @change="toggleAll($event)" aria-label="{{ __('files.select_all') }}" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></th>
+                            <th class="px-4 py-3"><x-sortable-header column="name" :label="__('files.col_name')" :sort="$sort" :dir="$dir" /></th>
+                            <th class="px-4 py-3"><x-sortable-header column="type" :label="__('files.col_type')" :sort="$sort" :dir="$dir" /></th>
+                            <th class="px-4 py-3 text-right"><x-sortable-header column="size" :label="__('files.col_size')" :sort="$sort" :dir="$dir" /></th>
+                            <th class="px-4 py-3">{{ __('files.col_location') }}</th>
+                            <th class="px-4 py-3">{{ __('files.col_tags') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        @foreach ($files as $file)
+                            <tr :class="selected.includes({{ $file->id }}) ? 'bg-gray-50' : ''">
+                                <td class="px-4 py-3"><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
+                                <td class="px-4 py-3 font-medium text-gray-900">
+                                    <a href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
+                                </td>
+                                <td class="px-4 py-3 text-gray-600">{{ $file->type->label() }}</td>
+                                <td class="px-4 py-3 text-right text-gray-600">{{ number_format($file->size / 1024, 0) }} KB</td>
+                                <td class="px-4 py-3 text-gray-600">
+                                    @if ($file->attachable instanceof \App\Models\Customer)
+                                        {{ __('files.location_customer', ['name' => $file->attachable->name]) }}
+                                    @elseif ($file->attachable instanceof \App\Models\Project)
+                                        {{ __('files.location_project', ['name' => $file->attachable->name]) }}
+                                    @else
+                                        {{ __('files.location_general') }}
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3">
+                                    @foreach ($file->tags as $tag)
+                                        <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" class="mr-1" />
+                                    @endforeach
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endif
+        </div>
+
+        <div class="mt-4">{{ $files->links() }}</div>
+    </div>
   </div>
 </x-layouts.app>

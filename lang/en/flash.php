@@ -20,6 +20,8 @@ return [
     'file_deleted' => 'File deleted.',
     'file_updated' => 'File updated.',
     'file_uploaded' => 'File uploaded.',
+    'files_deleted' => ':count file(s) deleted.',
+    'files_moved' => ':count file(s) moved.',
     'finalise_needs_line' => 'Add at least one line before finalising.',
     'folder_created' => 'Folder created.',
     'folder_deleted' => 'Folder deleted; its contents moved up one level.',
