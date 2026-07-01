@@ -93,7 +93,19 @@
                     <video :src="current.video" :poster="current.medium" controls preload="none" playsinline class="max-h-[92vh] max-w-full rounded bg-black shadow-2xl"></video>
                 </template>
                 <template x-if="current.mediaType !== 'video'">
-                    <img :src="current.medium" :alt="current.name" class="max-h-[92vh] max-w-full rounded shadow-2xl">
+                    <div class="relative">
+                        {{-- Motion clip loads only when the badge is pressed; muted loop. --}}
+                        <template x-if="current.motion && motionPlaying">
+                            <video :src="current.motion" autoplay muted loop playsinline class="max-h-[92vh] max-w-full rounded shadow-2xl"></video>
+                        </template>
+                        <template x-if="! (current.motion && motionPlaying)">
+                            <img :src="current.medium" :alt="current.name" class="max-h-[92vh] max-w-full rounded shadow-2xl">
+                        </template>
+                        <button type="button" x-show="current.motion" @click="motionPlaying = ! motionPlaying"
+                            class="absolute bottom-3 left-3 rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white hover:bg-black/80">
+                            <span x-text="motionPlaying ? '■' : '▶'"></span> {{ __('gallery.motion') }}
+                        </button>
+                    </div>
                 </template>
                 <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 text-4xl text-white/70 hover:text-white" aria-label="›">›</button>
             </div>

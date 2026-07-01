@@ -31,6 +31,8 @@ return [
     'meta_location' => 'Location',
     'meta_name' => 'File name',
     'meta_size' => 'Size',
+    'motion' => 'MOTION',
+    'play_motion' => 'Play motion',
     'photos_count' => ':count photos',
     'processing' => 'Processing…',
     'restore' => 'Restore',

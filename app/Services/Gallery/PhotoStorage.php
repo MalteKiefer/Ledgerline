@@ -7,6 +7,7 @@ namespace App\Services\Gallery;
 use App\Models\CompanyProfile;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -33,6 +34,7 @@ class PhotoStorage
         private readonly ReverseGeocoder $geocoder,
         private readonly FilenameTemplate $filenameTemplate,
         private readonly VideoProcessor $video,
+        private readonly MotionPhotoExtractor $motion,
     ) {}
 
     /**
@@ -186,10 +188,29 @@ class PhotoStorage
                 ? $this->geocoder->lookup((float) $lat, (float) $lon)
                 : null;
 
+            $attributes['motion_path'] = $this->extractMotion($photo, $tmp, $disk);
+
             $photo->forceFill($attributes)->save();
         } finally {
             @unlink($tmp);
         }
+    }
+
+    /**
+     * Extract a motion photo's embedded clip to its own object and return the
+     * path, or null when the image carries no motion clip.
+     */
+    private function extractMotion(Photo $photo, string $localPath, Filesystem $disk): ?string
+    {
+        $clip = $this->motion->extract($localPath);
+        if ($clip === null) {
+            return null;
+        }
+
+        $path = dirname($photo->disk_path)."/motion/{$photo->uuid}.mp4";
+        $disk->put($path, $clip);
+
+        return $path;
     }
 
     /**

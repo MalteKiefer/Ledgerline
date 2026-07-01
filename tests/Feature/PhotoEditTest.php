@@ -81,6 +81,25 @@ class PhotoEditTest extends TestCase
         $this->assertSame('ready', $photo->status);
     }
 
+    public function test_reading_metadata_extracts_an_embedded_motion_clip(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $mp4 = "\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom";
+        $bytes = "\xFF\xD8 jpeg body \xFF\xD9".$mp4;
+
+        $photo = Photo::factory()->create(['media_type' => 'image', 'mime_type' => 'image/jpeg']);
+        Storage::disk('files')->put($photo->disk_path, $bytes);
+
+        app(PhotoStorage::class)->readMetadata($photo->fresh());
+
+        $photo->refresh();
+        $this->assertNotNull($photo->motion_path);
+        $this->assertTrue($photo->hasMotion());
+        Storage::disk('files')->assertExists($photo->motion_path);
+    }
+
     public function test_reading_metadata_reverse_geocodes_the_place(): void
     {
         Storage::fake('files');
