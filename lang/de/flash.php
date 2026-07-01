@@ -19,6 +19,7 @@ return [
     'expense_updated' => 'Ausgabe aktualisiert.',
     'file_deleted' => 'Datei gelöscht.',
     'file_renamed' => 'Datei umbenannt.',
+    'file_saved' => 'Datei gespeichert.',
     'file_updated' => 'Datei aktualisiert.',
     'file_uploaded' => 'Datei hochgeladen.',
     'files_deleted' => ':count Datei(en) gelöscht.',
