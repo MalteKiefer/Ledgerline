@@ -20,6 +20,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'uuid',
     'name',
     'status',
+    'media_type',
+    'duration',
     'disk_path',
     'thumb_path',
     'medium_path',
@@ -57,6 +59,7 @@ class Photo extends Model
             'size' => 'integer',
             'width' => 'integer',
             'height' => 'integer',
+            'duration' => 'integer',
             'latitude' => 'float',
             'longitude' => 'float',
             'metadata' => 'array',
@@ -69,6 +72,11 @@ class Photo extends Model
     public function isReady(): bool
     {
         return $this->status === 'ready';
+    }
+
+    public function isVideo(): bool
+    {
+        return $this->media_type === 'video';
     }
 
     public function hasLocation(): bool

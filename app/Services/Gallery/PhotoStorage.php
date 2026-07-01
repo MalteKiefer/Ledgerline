@@ -32,6 +32,7 @@ class PhotoStorage
     public function __construct(
         private readonly ReverseGeocoder $geocoder,
         private readonly FilenameTemplate $filenameTemplate,
+        private readonly VideoProcessor $video,
     ) {}
 
     /**
@@ -83,8 +84,9 @@ class PhotoStorage
     }
 
     /**
-     * Generate the thumbnail and medium renditions from the untouched original,
-     * applying the photo's stored rotation/flip. Marks the photo ready.
+     * Generate the thumbnail and medium renditions from the untouched original.
+     * Images apply the stored rotation/flip; videos use an extracted poster
+     * frame. Marks the photo ready.
      */
     public function renditions(Photo $photo): void
     {
@@ -95,9 +97,10 @@ class PhotoStorage
         file_put_contents($tmp, $disk->get($photo->disk_path));
 
         try {
-            $manager = new ImageManager(new Driver);
+            $source = $photo->isVideo() ? $this->posterFrame($photo, $tmp) : $tmp;
 
-            $image = $this->transform($manager->decodePath($tmp), $photo);
+            $manager = new ImageManager(new Driver);
+            $image = $this->transform($manager->decodePath($source), $photo);
             $width = $image->width();
             $height = $image->height();
 
@@ -106,19 +109,43 @@ class PhotoStorage
             $mediumPath = "{$dir}/medium/{$photo->uuid}.jpg";
 
             $disk->put($thumbPath, (string) $image->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75)));
-            $disk->put($mediumPath, (string) $this->transform($manager->decodePath($tmp), $photo)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82)));
+            $disk->put($mediumPath, (string) $this->transform($manager->decodePath($source), $photo)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82)));
 
-            $photo->forceFill([
+            $attributes = [
                 'thumb_path' => $thumbPath,
                 'medium_path' => $mediumPath,
-                'width' => $width,
-                'height' => $height,
                 'status' => 'ready',
                 'processed_at' => Carbon::now(),
-            ])->save();
+            ];
+
+            // For videos the native pixel size comes from ffprobe, not the
+            // (possibly downscaled) poster frame.
+            if (! $photo->isVideo()) {
+                $attributes['width'] = $width;
+                $attributes['height'] = $height;
+            }
+
+            $photo->forceFill($attributes)->save();
+
+            if ($source !== $tmp) {
+                @unlink($source);
+            }
         } finally {
             @unlink($tmp);
         }
+    }
+
+    /**
+     * Extract a poster frame from a local video into a temporary JPEG and return
+     * its path.
+     */
+    private function posterFrame(Photo $photo, string $videoTmp): string
+    {
+        $second = (int) (CompanyProfile::current()->gallery_video_frame ?? 1);
+        $poster = tempnam(sys_get_temp_dir(), 'poster').'.jpg';
+        $this->video->poster($videoTmp, $second, $poster);
+
+        return $poster;
     }
 
     /**
@@ -134,6 +161,12 @@ class PhotoStorage
         file_put_contents($tmp, $disk->get($photo->disk_path));
 
         try {
+            if ($photo->isVideo()) {
+                $this->readVideoMetadata($photo, $tmp);
+
+                return;
+            }
+
             $meta = $this->exif($tmp, $photo->mime_type);
             $attributes = ['metadata' => $meta['raw']];
 
@@ -157,6 +190,39 @@ class PhotoStorage
         } finally {
             @unlink($tmp);
         }
+    }
+
+    /**
+     * Read a video's metadata via ffprobe: native dimensions, duration, a full
+     * dump, and the capture date from the container's creation time (unless the
+     * user has locked it).
+     */
+    private function readVideoMetadata(Photo $photo, string $localPath): void
+    {
+        $probe = $this->video->probe($localPath);
+
+        $attributes = [
+            'metadata' => $probe['raw'],
+            'duration' => $probe['duration'],
+        ];
+
+        if ($probe['width'] !== null && $probe['height'] !== null) {
+            $attributes['width'] = $probe['width'];
+            $attributes['height'] = $probe['height'];
+        }
+
+        if (! $photo->meta_locked) {
+            $created = $probe['raw']['format']['tags']['creation_time'] ?? null;
+            if (is_string($created)) {
+                try {
+                    $attributes['taken_at'] = Carbon::parse($created);
+                } catch (\Throwable) {
+                    // Leave the existing capture date in place.
+                }
+            }
+        }
+
+        $photo->forceFill($attributes)->save();
     }
 
     /**

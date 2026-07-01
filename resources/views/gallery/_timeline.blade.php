@@ -12,6 +12,9 @@
         while ($v >= 1024 && $i < count($units) - 1) { $v /= 1024; $i++; }
         return number_format($v, $i ? 1 : 0).' '.$units[$i];
     };
+    $fmtDuration = static function (int $seconds): string {
+        return sprintf('%d:%02d', intdiv($seconds, 60), $seconds % 60);
+    };
 @endphp
 
 @foreach ($grouped as $day => $dayPhotos)
@@ -36,10 +39,21 @@
                             data-lng="{{ $photo->longitude }}"
                             data-place="{{ $photo->place }}"
                             data-favorite="{{ $photo->isFavorite() ? '1' : '0' }}"
+                            data-media-type="{{ $photo->media_type }}"
+                            data-mime="{{ $photo->mime_type }}"
+                            data-video="{{ $photo->isVideo() ? route('gallery.video', $photo) : '' }}"
                             @click="openViewer($el)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
                                 class="h-full w-full object-cover transition group-hover:opacity-90">
+                            @if ($photo->isVideo())
+                                <span class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white">▶</span>
+                                </span>
+                                @if ($photo->duration)
+                                    <span class="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-medium text-white">{{ $fmtDuration($photo->duration) }}</span>
+                                @endif
+                            @endif
                         </button>
                         <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
                             class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
