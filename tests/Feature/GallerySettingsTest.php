@@ -42,6 +42,7 @@ class GallerySettingsTest extends TestCase
             'gallery_max_upload_mb' => 500,
             'gallery_video_frame' => 3,
             'gallery_ffmpeg_path' => '/var/www/bin/ffmpeg/ffmpeg',
+            'gallery_geocode_grid_km' => 2.5,
         ])->assertRedirect(route('settings.gallery.edit'));
 
         $company = CompanyProfile::current();

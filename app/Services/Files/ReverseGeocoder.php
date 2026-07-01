@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Files;
 
+use App\Models\CompanyProfile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -30,6 +31,8 @@ class ReverseGeocoder
      */
     public function lookupDetailed(float $lat, float $lon): array
     {
+        // Snap to a grid so nearby coordinates share one lookup/result.
+        [$lat, $lon] = $this->snapToGrid($lat, $lon);
         $key = 'geocode:'.round($lat, 5).','.round($lon, 5);
 
         return Cache::remember($key, now()->addDays(30), function () use ($lat, $lon): array {
@@ -58,6 +61,31 @@ class ReverseGeocoder
                 return ['display' => null, 'address' => []];
             }
         });
+    }
+
+    /**
+     * Snap coordinates to the configured grid (in km) so photos taken close
+     * together resolve to the same cached place instead of each hitting OSM.
+     *
+     * @return array{0: float, 1: float}
+     */
+    private function snapToGrid(float $lat, float $lon): array
+    {
+        try {
+            $km = (float) (CompanyProfile::current()->gallery_geocode_grid_km
+                ?? config('gallery.geocode_grid_km', 0.5));
+        } catch (Throwable) {
+            $km = (float) config('gallery.geocode_grid_km', 0.5);
+        }
+
+        if ($km <= 0) {
+            return [$lat, $lon];
+        }
+
+        // ~111 km per degree of latitude; good enough for a caching grid.
+        $step = $km / 111.0;
+
+        return [round($lat / $step) * $step, round($lon / $step) * $step];
     }
 
     /**
