@@ -2,6 +2,65 @@
     <h1 class="text-2xl font-semibold text-gray-900">Files</h1>
     <p class="mt-1 text-sm text-gray-600">All files across your team's customers and projects.</p>
 
+    {{-- Upload and assign a file to any customer or project. --}}
+    @if (! empty($targets))
+        <form method="POST" action="{{ route('files.store') }}" enctype="multipart/form-data"
+            class="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            @csrf
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div x-data="selectCombobox(@js($targets), @js(old('attachable', '')))">
+                    <label for="attachable" class="block text-sm font-medium text-gray-700">
+                        Assign to<span class="text-red-600"> *</span>
+                    </label>
+                    <input type="hidden" name="attachable" :value="selected">
+                    <div class="relative mt-1">
+                        <input type="text" id="attachable" role="combobox" autocomplete="off"
+                            :aria-expanded="open.toString()" x-model="query" @focus="open = true"
+                            @input="syncFromQuery()" @keydown.escape="open = false" @click="open = true"
+                            placeholder="Choose a customer or project…"
+                            @error('attachable') aria-invalid="true" @enderror
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <ul x-show="open" x-cloak @click.outside="open = false" role="listbox"
+                            class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                            <template x-for="option in filtered" :key="option.value">
+                                <li role="option" @click="choose(option)"
+                                    class="cursor-pointer px-3 py-2 hover:bg-gray-100"
+                                    :class="{ 'bg-gray-100 font-medium': String(selected) === String(option.value) }"
+                                    x-text="option.label"></li>
+                            </template>
+                            <template x-if="filtered.length === 0">
+                                <li class="px-3 py-2 text-gray-500">No match.</li>
+                            </template>
+                        </ul>
+                    </div>
+                    @error('attachable')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">File</label>
+                    <div class="mt-1">
+                        <x-file-dropzone id="overview-file" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <x-tag-input name="tags" :suggestions="$tagSuggestions" />
+            </div>
+
+            <div class="mt-3">
+                <button type="submit"
+                    class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                    Upload
+                </button>
+            </div>
+        </form>
+    @else
+        <p class="mt-4 rounded-md border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500">
+            Create a customer or project first to upload files.
+        </p>
+    @endif
+
     <div class="mt-4 flex flex-wrap gap-2 text-sm">
         <a href="{{ route('files.index') }}"
             @class([

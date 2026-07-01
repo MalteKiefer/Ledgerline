@@ -58,6 +58,7 @@ Route::middleware('auth')->group(function (): void {
     // Files: attached to a customer or project; a team-wide overview; download
     // and delete by id.
     Route::get('/files', FileOverviewController::class)->name('files.index');
+    Route::post('/files', [FileController::class, 'store'])->name('files.store');
     Route::post('/customers/{customer}/files', [FileController::class, 'storeForCustomer'])->name('customers.files.store');
     Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
