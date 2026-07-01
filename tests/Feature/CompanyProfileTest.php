@@ -26,6 +26,8 @@ class CompanyProfileTest extends TestCase
             'default_language' => 'de',
             'default_currency' => 'EUR',
             'default_tax_rate' => 19,
+            'tax_display' => 'line',
+            'paper_size' => 'A4',
             'invoice_number_prefix' => 'RE',
             'invoice_number_next' => 100,
             'payment_terms_days' => 14,

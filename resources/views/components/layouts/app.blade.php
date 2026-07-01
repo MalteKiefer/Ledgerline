@@ -14,15 +14,15 @@
             <nav class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
                 @php
                     $navItems = [
-                        ['label' => 'Dashboard', 'url' => route('dashboard'), 'active' => request()->routeIs('dashboard'),
+                        ['label' => __('messages.nav.dashboard'), 'url' => route('dashboard'), 'active' => request()->routeIs('dashboard'),
                             'icon' => 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
-                        ['label' => 'Customers', 'url' => route('customers.index'), 'active' => request()->routeIs('customers.*'),
+                        ['label' => __('messages.nav.customers'), 'url' => route('customers.index'), 'active' => request()->routeIs('customers.*'),
                             'icon' => 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z'],
-                        ['label' => 'Projects', 'url' => route('projects.overview'), 'active' => request()->routeIs('projects.*'),
+                        ['label' => __('messages.nav.projects'), 'url' => route('projects.overview'), 'active' => request()->routeIs('projects.*'),
                             'icon' => 'M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z'],
-                        ['label' => 'Files', 'url' => route('files.index'), 'active' => request()->routeIs('files.*'),
+                        ['label' => __('messages.nav.files'), 'url' => route('files.index'), 'active' => request()->routeIs('files.*'),
                             'icon' => 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
-                        ['label' => 'Finance', 'url' => route('finance.expenses.index'), 'active' => request()->routeIs('finance.*'),
+                        ['label' => __('messages.nav.finance'), 'url' => route('finance.expenses.index'), 'active' => request()->routeIs('finance.*'),
                             'icon' => 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2m-6-4h8m0 0l-3-3m3 3l-3 3'],
                     ];
                 @endphp
@@ -76,8 +76,8 @@
                             </button>
                             <div x-show="open" x-cloak @click.outside="open = false"
                                 class="absolute right-0 z-40 mt-2 w-48 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg">
-                                <a href="{{ route('profile') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
-                                <a href="{{ route('settings') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Settings</a>
+                                <a href="{{ route('profile') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __("messages.menu.profile") }}</a>
+                                <a href="{{ route('settings') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __("messages.menu.settings") }}</a>
                                 <div class="flex gap-1 border-t border-gray-100 px-4 py-2">
                                     @foreach (config('finance.languages') as $code => $label)
                                         <form method="POST" action="{{ route('locale.update') }}">
@@ -95,7 +95,7 @@
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf
                                     <button type="submit" class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
-                                        Log out
+                                        {{ __('messages.menu.logout') }}
                                     </button>
                                 </form>
                             </div>

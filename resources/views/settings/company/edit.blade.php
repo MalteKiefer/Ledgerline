@@ -149,6 +149,21 @@
                     <input type="number" min="0" max="365" id="payment_terms_days" name="payment_terms_days" value="{{ old('payment_terms_days', $company->payment_terms_days) }}" class="{{ $input }}">
                 </div>
                 <div>
+                    <label for="tax_display" class="block text-sm font-medium text-gray-700">Tax display</label>
+                    <select id="tax_display" name="tax_display" class="{{ $input }}">
+                        <option value="line" @selected(old('tax_display', $company->tax_display ?? 'line') === 'line')>Per line</option>
+                        <option value="invoice" @selected(old('tax_display', $company->tax_display ?? 'line') === 'invoice')>Per invoice</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="paper_size" class="block text-sm font-medium text-gray-700">Paper size</label>
+                    <select id="paper_size" name="paper_size" class="{{ $input }}">
+                        @foreach (config('finance.paper_sizes') as $size)
+                            <option value="{{ $size }}" @selected(old('paper_size', $company->paper_size ?? 'A4') === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
                     <label for="invoice_number_prefix" class="block text-sm font-medium text-gray-700">Invoice number prefix</label>
                     <input type="text" id="invoice_number_prefix" name="invoice_number_prefix" value="{{ old('invoice_number_prefix', $company->invoice_number_prefix) }}" class="{{ $input }}">
                 </div>

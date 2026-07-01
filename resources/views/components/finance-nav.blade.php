@@ -1,10 +1,10 @@
 @php
     $tabs = [
-        ['label' => 'Expenses', 'route' => 'finance.expenses.index', 'pattern' => 'finance.expenses.*'],
-        ['label' => 'Time', 'route' => 'finance.time-entries.index', 'pattern' => 'finance.time-entries.*'],
-        ['label' => 'Income', 'route' => 'finance.income-entries.index', 'pattern' => 'finance.income-entries.*'],
-        ['label' => 'Invoices', 'route' => 'finance.invoices.index', 'pattern' => 'finance.invoices.*'],
-        ['label' => 'Report', 'route' => 'finance.report', 'pattern' => 'finance.report'],
+        ['label' => __('messages.finance.expenses'), 'route' => 'finance.expenses.index', 'pattern' => 'finance.expenses.*'],
+        ['label' => __('messages.finance.time'), 'route' => 'finance.time-entries.index', 'pattern' => 'finance.time-entries.*'],
+        ['label' => __('messages.finance.income'), 'route' => 'finance.income-entries.index', 'pattern' => 'finance.income-entries.*'],
+        ['label' => __('messages.finance.invoices'), 'route' => 'finance.invoices.index', 'pattern' => 'finance.invoices.*'],
+        ['label' => __('messages.finance.report'), 'route' => 'finance.report', 'pattern' => 'finance.report'],
     ];
 @endphp
 
