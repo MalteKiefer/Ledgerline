@@ -98,6 +98,8 @@ class PhotoEditTest extends TestCase
                     'com.apple.quicktime.location.ISO6709' => '+37.7858-122.4064+010.000/',
                     'com.apple.quicktime.make' => 'Apple',
                     'com.apple.quicktime.model' => 'iPhone 15',
+                    'com.apple.quicktime.creationdate' => '2026-06-06T10:08:38+0200',
+                    'creation_time' => '2026-06-06T08:08:38.000000Z',
                 ]]]];
             }
         });
@@ -112,6 +114,9 @@ class PhotoEditTest extends TestCase
         $this->assertSame(-122.4064, $photo->longitude);
         $this->assertSame('Apple iPhone 15', $photo->camera);
         $this->assertSame('San Francisco, CA', $photo->place);
+        // The local-timezone creationdate (wall-clock 10:08) wins over the UTC
+        // creation_time (08:08), so the capture time reads as it was shot.
+        $this->assertSame('2026-06-06 10:08:38', $photo->taken_at->format('Y-m-d H:i:s'));
     }
 
     public function test_reading_metadata_extracts_an_embedded_motion_clip(): void

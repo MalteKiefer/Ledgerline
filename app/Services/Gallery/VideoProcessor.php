@@ -50,8 +50,17 @@ class VideoProcessor
 
         foreach ($data['streams'] ?? [] as $stream) {
             if (($stream['codec_type'] ?? null) === 'video') {
-                $out['width'] = isset($stream['width']) ? (int) $stream['width'] : null;
-                $out['height'] = isset($stream['height']) ? (int) $stream['height'] : null;
+                $width = isset($stream['width']) ? (int) $stream['width'] : null;
+                $height = isset($stream['height']) ? (int) $stream['height'] : null;
+
+                // A rotated (portrait) video encodes landscape dimensions; swap
+                // them so the stored size matches how it is displayed.
+                if ($width !== null && $height !== null && $this->isSideways($stream)) {
+                    [$width, $height] = [$height, $width];
+                }
+
+                $out['width'] = $width;
+                $out['height'] = $height;
                 break;
             }
         }
@@ -61,6 +70,26 @@ class VideoProcessor
         }
 
         return $out;
+    }
+
+    /**
+     * Whether a video stream is rotated a quarter turn (portrait), from either
+     * the display-matrix side data or the legacy rotate tag.
+     *
+     * @param  array<string, mixed>  $stream
+     */
+    private function isSideways(array $stream): bool
+    {
+        $rotation = $stream['tags']['rotate'] ?? null;
+
+        foreach ($stream['side_data_list'] ?? [] as $side) {
+            if (isset($side['rotation'])) {
+                $rotation = $side['rotation'];
+                break;
+            }
+        }
+
+        return $rotation !== null && abs((int) $rotation) % 180 === 90;
     }
 
     /**

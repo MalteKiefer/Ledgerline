@@ -43,6 +43,8 @@
                             data-mime="{{ $photo->mime_type }}"
                             data-video="{{ $photo->isVideo() ? route('gallery.video', $photo) : '' }}"
                             data-motion="{{ $photo->hasMotion() ? route('gallery.motion', $photo) : '' }}"
+                            data-duration-text="{{ $photo->durationForHumans() }}"
+                            data-tech="{{ $photo->techLine() }}"
                             @click="openViewer($el)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
