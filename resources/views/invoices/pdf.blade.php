@@ -78,7 +78,7 @@
                 <tr>
                     <td>{{ $line->position }}</td>
                     <td>{{ $line->description }}</td>
-                    <td class="right">{{ rtrim(rtrim(number_format((float) $line->quantity, 2), '0'), '.') }} {{ $line->unit }}</td>
+                    <td class="right">{{ rtrim(rtrim(number_format((float) $line->quantity, 2), "0"), ".") }} {{ $line->unitLabel($invoice->language) }}</td>
                     <td class="right">{{ $line->unitPrice()->format() }}</td>
                     <td class="right">{{ $invoice->tax_mode->chargesTax() ? $line->tax_rate.'%' : '—' }}</td>
                     <td class="right">{{ $line->lineNet()->format() }}</td>

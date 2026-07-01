@@ -56,6 +56,14 @@ class InvoiceLine extends Model
     }
 
     /**
+     * The localised unit label (falls back to the stored code).
+     */
+    public function unitLabel(?string $locale = null): string
+    {
+        return Unit::labelFor($this->unit, $locale);
+    }
+
+    /**
      * @return BelongsTo<Invoice, $this>
      */
     public function invoice(): BelongsTo

@@ -87,7 +87,7 @@
                         @forelse ($invoice->lines as $line)
                             <tr>
                                 <td class="px-4 py-3 text-gray-900">{{ $line->description }}</td>
-                                <td class="px-4 py-3 text-right text-gray-600">{{ rtrim(rtrim(number_format((float) $line->quantity, 2), '0'), '.') }} {{ $line->unit }}</td>
+                                <td class="px-4 py-3 text-right text-gray-600">{{ rtrim(rtrim(number_format((float) $line->quantity, 2), "0"), ".") }} {{ $line->unitLabel() }}</td>
                                 <td class="px-4 py-3 text-right text-gray-600">{{ $line->unitPrice()->format() }}</td>
                                 <td class="px-4 py-3 text-right text-gray-600">{{ $invoice->tax_mode->chargesTax() ? $line->tax_rate.'%' : '—' }}</td>
                                 <td class="px-4 py-3 text-right text-gray-900">{{ $line->lineNet()->format() }}</td>

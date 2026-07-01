@@ -8,6 +8,7 @@ use App\Enums\InvoiceType;
 use App\Enums\TaxMode;
 use App\Models\CompanyProfile;
 use App\Models\Invoice;
+use App\Models\Unit;
 use horstoeko\zugferd\ZugferdDocumentBuilder;
 use horstoeko\zugferd\ZugferdProfiles;
 
@@ -69,7 +70,7 @@ class ZugferdInvoiceBuilder
             $doc->addNewPosition((string) $position)
                 ->setDocumentPositionProductDetails($line->description !== '' ? $line->description : 'Item')
                 ->setDocumentPositionNetPrice($line->unit_price_cents / 100)
-                ->setDocumentPositionQuantity((float) $line->quantity, $this->unitCode($line->unit))
+                ->setDocumentPositionQuantity((float) $line->quantity, Unit::zugferdCodeFor($line->unit))
                 ->addDocumentPositionTax($category, 'VAT', $rate)
                 ->setDocumentPositionLineSummation($line->line_net_cents / 100);
         }
@@ -128,14 +129,5 @@ class ZugferdInvoiceBuilder
             $tax = (int) round($basis * $rate / 100);
             $doc->addDocumentTax('S', 'VAT', $basis / 100, $tax / 100, (float) $rate);
         }
-    }
-
-    private function unitCode(?string $unit): string
-    {
-        return match (mb_strtolower((string) $unit)) {
-            'h', 'std', 'stunde', 'stunden', 'hour', 'hours' => 'HUR',
-            'day', 'days', 'tag', 'tage' => 'DAY',
-            default => 'C62',
-        };
     }
 }
