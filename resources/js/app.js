@@ -1,4 +1,9 @@
 import Alpine from 'alpinejs';
+import L from 'leaflet';
+import 'leaflet.markercluster';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 
 /**
  * Type-ahead combobox for selecting a contact's function from the fixed
@@ -477,6 +482,49 @@ Alpine.data('gallery', (url, token) => ({
 
     allIds() {
         return [...document.querySelectorAll('[data-photo-id]')].map((el) => Number(el.dataset.photoId));
+    },
+}));
+
+/**
+ * Photo map: loads geotagged photos and plots them on an OpenStreetMap map with
+ * marker clustering (counts, scroll/pinch zoom). Each marker is the photo's
+ * thumbnail; clicking opens it. Clusters expand on click / zoom.
+ *
+ * @param {string} pointsUrl  Endpoint returning { points: [...] }.
+ */
+Alpine.data('photoMap', (pointsUrl) => ({
+    lightbox: null,
+
+    init() {
+        const map = L.map(this.$refs.map, { scrollWheelZoom: true }).setView([20, 0], 2);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap',
+        }).addTo(map);
+
+        const clusters = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 });
+
+        fetch(pointsUrl, { headers: { Accept: 'application/json' } })
+            .then((r) => r.json())
+            .then(({ points }) => {
+                if (! points.length) {
+                    return;
+                }
+                for (const p of points) {
+                    const icon = L.divIcon({
+                        className: '',
+                        html: `<img src="${p.thumb}" class="h-12 w-12 rounded-md object-cover shadow ring-2 ring-white">`,
+                        iconSize: [48, 48],
+                        iconAnchor: [24, 24],
+                    });
+                    const marker = L.marker([p.lat, p.lng], { icon });
+                    marker.on('click', () => { this.lightbox = { src: p.medium, download: p.original }; });
+                    clusters.addLayer(marker);
+                }
+                map.addLayer(clusters);
+                map.fitBounds(clusters.getBounds().pad(0.2));
+            });
     },
 }));
 
