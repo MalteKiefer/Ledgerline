@@ -1,5 +1,9 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
+import { EditorView, basicSetup } from 'codemirror';
+import { EditorState, Compartment } from '@codemirror/state';
+import { LanguageDescription } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
@@ -926,6 +930,51 @@ Alpine.data('photoMap', (pointsUrl, mapZoom = 13) => ({
                 map.addLayer(clusters);
                 map.fitBounds(clusters.getBounds().pad(0.2), { maxZoom: this.mapZoom });
             });
+    },
+}));
+
+/**
+ * Code editor (CodeMirror 6): line numbers, in-file search (Ctrl/Cmd+F),
+ * syntax highlighting with detection by filename and a manual language picker.
+ * The document is synced into a hidden input on submit.
+ */
+Alpine.data('codeEditor', (initial = '', filename = '') => ({
+    view: null,
+    langComp: new Compartment(),
+    language: '',
+    languageOptions: languages.map((l) => l.name).sort((a, b) => a.localeCompare(b)),
+
+    init() {
+        this.view = new EditorView({
+            parent: this.$refs.editor,
+            state: EditorState.create({
+                doc: initial,
+                extensions: [
+                    basicSetup,
+                    this.langComp.of([]),
+                    EditorView.theme({ '&': { height: '60vh' }, '.cm-scroller': { overflow: 'auto' } }),
+                ],
+            }),
+        });
+
+        const detected = filename ? LanguageDescription.matchFilename(languages, filename) : null;
+        if (detected) {
+            this.applyLanguage(detected);
+        }
+    },
+
+    onLanguageChange() {
+        const desc = languages.find((l) => l.name === this.language);
+        desc ? this.applyLanguage(desc) : this.view.dispatch({ effects: this.langComp.reconfigure([]) });
+    },
+
+    applyLanguage(desc) {
+        this.language = desc.name;
+        desc.load().then((support) => this.view.dispatch({ effects: this.langComp.reconfigure(support) }));
+    },
+
+    sync() {
+        this.$refs.content.value = this.view.state.doc.toString();
     },
 }));
 
