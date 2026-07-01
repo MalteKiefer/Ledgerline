@@ -3,6 +3,11 @@
     <p class="mt-1 text-sm text-gray-600">Manage your team's configuration.</p>
 
     <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <a href="{{ route('settings.company.edit') }}"
+            class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+            <h2 class="text-base font-semibold text-gray-900">Company profile</h2>
+            <p class="mt-1 text-sm text-gray-600">Your company details used as the sender on invoices.</p>
+        </a>
         <a href="{{ route('settings.tags.index') }}"
             class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
             <h2 class="text-base font-semibold text-gray-900">Tags</h2>
