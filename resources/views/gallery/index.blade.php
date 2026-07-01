@@ -31,7 +31,8 @@
                 <div class="flex justify-between text-xs text-gray-600">
                     <span class="truncate" x-text="item.name"></span>
                     <span x-show="item.error" class="text-red-600">✕</span>
-                    <span x-show="! item.error" x-text="item.progress + '%'"></span>
+                    <span x-show="item.duplicate" class="text-amber-600">{{ __('gallery.duplicate') }}</span>
+                    <span x-show="! item.error && ! item.duplicate" x-text="item.progress + '%'"></span>
                 </div>
                 <div class="mt-1 h-1.5 w-full rounded bg-gray-100">
                     <div class="h-1.5 rounded" :class="item.error ? 'bg-red-500' : (item.done ? 'bg-green-500' : 'bg-gray-800')" :style="`width: ${item.progress}%`"></div>

@@ -148,6 +148,23 @@ class GalleryController extends Controller
         ]);
 
         $upload = $request->file('photo');
+
+        // Skip duplicates before writing any bytes: an upload counts as a
+        // duplicate when its name, size and checksum all match a live photo.
+        $name = $upload->getClientOriginalName();
+        $size = (int) $upload->getSize();
+        $checksum = hash_file('sha256', $upload->getRealPath()) ?: null;
+
+        $duplicate = Photo::query()
+            ->where('name', $name)
+            ->where('size', $size)
+            ->when($checksum !== null, fn ($q) => $q->where('checksum', $checksum))
+            ->first();
+
+        if ($duplicate !== null) {
+            return response()->json(['duplicate' => true, 'id' => $duplicate->id, 'name' => $duplicate->name], 200);
+        }
+
         $original = $storage->storeOriginal($upload);
 
         // Save immediately with placeholder renditions; the queue fills the rest.
