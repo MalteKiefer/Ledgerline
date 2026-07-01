@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\CompanyProfileRequest;
 use App\Models\CompanyProfile;
+use App\Models\Invoice;
 use App\Support\Countries;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -25,6 +26,7 @@ class CompanyController extends Controller
             'countries' => Countries::options(),
             'languages' => config('finance.languages'),
             'currencies' => config('finance.currencies'),
+            'numberingLocked' => $this->numberingLocked(),
         ]);
     }
 
@@ -38,9 +40,24 @@ class CompanyController extends Controller
 
         unset($data['logo']);
 
+        // Once numbered invoices exist the series is fixed; never let the prefix,
+        // padding or start number change.
+        if ($this->numberingLocked()) {
+            unset($data['invoice_number_prefix'], $data['invoice_number_next'], $data['invoice_number_pad']);
+        }
+
         CompanyProfile::current()->update($data);
 
         return redirect()->route('settings.company.edit')->with('status', __('flash.company_saved'));
+    }
+
+    /**
+     * Whether an invoice with an assigned number already exists, fixing the
+     * number series.
+     */
+    private function numberingLocked(): bool
+    {
+        return Invoice::query()->whereNotNull('number')->exists();
     }
 
     /**

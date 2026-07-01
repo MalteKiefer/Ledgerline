@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\CompanyProfile;
+use App\Models\Invoice;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -90,6 +91,22 @@ class CompanyProfileTest extends TestCase
         Storage::disk('local')->assertExists($company->logo_path);
 
         $this->get(route('settings.company.logo'))->assertOk();
+    }
+
+    public function test_number_series_is_locked_once_a_numbered_invoice_exists(): void
+    {
+        $this->signIn();
+        CompanyProfile::current()->update(['invoice_number_prefix' => 'RE', 'invoice_number_next' => 100]);
+        Invoice::factory()->create(['number' => 'RE-2026-0100', 'finalized_at' => now()]);
+
+        $this->put(route('settings.company.update'), $this->payload([
+            'invoice_number_prefix' => 'XX',
+            'invoice_number_next' => 999,
+        ]))->assertRedirect();
+
+        $company = CompanyProfile::current();
+        $this->assertSame('RE', $company->invoice_number_prefix);
+        $this->assertSame(100, $company->invoice_number_next);
     }
 
     public function test_logo_route_404s_without_a_logo(): void
