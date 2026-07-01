@@ -566,6 +566,9 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
 
     enqueue(fileList) {
         this.summary = null;
+        // Only image types the browser can actually render get a live preview;
+        // HEIC and friends fall back to an icon instead of a broken image.
+        const previewable = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'];
         for (const file of fileList) {
             const isVideo = file.type.startsWith('video/');
             if (! isVideo && ! file.type.startsWith('image/')) {
@@ -575,7 +578,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
                 name: file.name,
                 file,
                 isVideo,
-                preview: isVideo ? null : URL.createObjectURL(file),
+                preview: previewable.includes(file.type) ? URL.createObjectURL(file) : null,
                 progress: 0,
                 state: 'pending', // pending | uploading | done | duplicate | skipped | error
                 reason: '',
