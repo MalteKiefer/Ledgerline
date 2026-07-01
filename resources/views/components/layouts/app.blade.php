@@ -21,6 +21,7 @@
                             <a href="{{ route('dashboard') }}" class="text-gray-600 hover:text-gray-900">Dashboard</a>
                             <a href="{{ route('customers.index') }}" class="text-gray-600 hover:text-gray-900">Customers</a>
                             <a href="{{ route('projects.overview') }}" class="text-gray-600 hover:text-gray-900">Projects</a>
+                            <a href="{{ route('files.index') }}" class="text-gray-600 hover:text-gray-900">Files</a>
                         </div>
                     @endauth
                 </div>
