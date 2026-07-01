@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Search\Providers\BranchSearchProvider;
 use App\Search\Providers\ContactSearchProvider;
 use App\Search\Providers\CustomerSearchProvider;
+use App\Search\Providers\FileSearchProvider;
 use App\Search\Providers\ProjectSearchProvider;
 
 return [
@@ -26,6 +27,7 @@ return [
         ContactSearchProvider::class,
         BranchSearchProvider::class,
         ProjectSearchProvider::class,
+        FileSearchProvider::class,
     ],
 
     /*

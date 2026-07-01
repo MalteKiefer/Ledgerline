@@ -1,0 +1,48 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Search\Providers;
+
+use App\Models\File;
+use App\Search\AbstractSearchProvider;
+use App\Search\SearchResult;
+
+/**
+ * Global-search source for files.
+ *
+ * Matches file name, detected type and tags always; also the extracted text of
+ * unencrypted files (encrypted files store no extracted_text, so their content
+ * is never searched). Team isolation is applied by the File global scope.
+ */
+class FileSearchProvider extends AbstractSearchProvider
+{
+    public function group(): string
+    {
+        return 'Files';
+    }
+
+    public function search(string $term, int $limit): array
+    {
+        $like = $this->wildcard($term);
+
+        return File::query()
+            ->with('attachable')
+            ->where(function ($query) use ($like): void {
+                $query->whereRaw('LOWER(name) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(type) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(extracted_text) LIKE ?', [$like])
+                    ->orWhereHas('tags', fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]));
+            })
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(fn (File $file): SearchResult => new SearchResult(
+                group: $this->group(),
+                title: $file->name,
+                subtitle: $file->type->label().($file->attachable ? ' · '.$file->attachable->name : ''),
+                url: route('files.download', $file),
+            ))
+            ->all();
+    }
+}

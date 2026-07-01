@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreCustomerRequest;
 use App\Http\Requests\UpdateCustomerRequest;
 use App\Models\Customer;
+use App\Models\Tag;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 
@@ -68,9 +69,13 @@ class CustomerController extends Controller
             'contacts' => fn ($query) => $query->with(['emails', 'phones'])->orderBy('name'),
             'projects' => fn ($query) => $query->orderBy('name'),
             'branches' => fn ($query) => $query->with('manager')->orderBy('name'),
+            'files' => fn ($query) => $query->with('tags')->latest(),
         ]);
 
-        return view('customers.show', ['customer' => $customer]);
+        return view('customers.show', [
+            'customer' => $customer,
+            'tagSuggestions' => Tag::orderBy('name')->pluck('name')->all(),
+        ]);
     }
 
     /**

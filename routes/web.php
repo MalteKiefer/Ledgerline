@@ -9,6 +9,8 @@ use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FileController;
+use App\Http\Controllers\FileOverviewController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectOverviewController;
@@ -52,4 +54,12 @@ Route::middleware('auth')->group(function (): void {
 
     // Customer-independent overview of all projects.
     Route::get('/projects', ProjectOverviewController::class)->name('projects.overview');
+
+    // Files: attached to a customer or project; a team-wide overview; download
+    // and delete by id.
+    Route::get('/files', FileOverviewController::class)->name('files.index');
+    Route::post('/customers/{customer}/files', [FileController::class, 'storeForCustomer'])->name('customers.files.store');
+    Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
+    Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
+    Route::delete('/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');
 });

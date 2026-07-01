@@ -122,6 +122,33 @@ the header) which owns newly created records.
 To make this work, configure the Pocket-ID OIDC client to include group
 membership in the `groups` claim.
 
+## File storage
+
+Files can be attached to customers and projects and are listed team-wide under
+**Files** in the menu. They are stored on a private, S3-compatible object store
+(the `files` disk): **MinIO** locally, **Cloudflare R2 / S3** in production.
+
+- Uploads stream through the app, which detects the file type from its content
+  and, for unencrypted text-extractable files, captures searchable text.
+- Downloads always stream through the app behind team authorization; the bucket
+  is never public and no object ACLs are set (R2 rejects ACLs).
+- Files are tagged and included in global search (by name, type, tags, and
+  extracted content when unencrypted).
+
+Local development uses `FILES_S3_*` (see `.env.example`) pointed at MinIO:
+
+```bash
+# Start MinIO and create the bucket (root creds match FILES_S3_KEY/SECRET):
+MINIO_ROOT_USER=ledgerline MINIO_ROOT_PASSWORD=ledgerline-secret \
+  minio server ~/ledgerline-minio-data --address 127.0.0.1:9000 &
+mc alias set local http://127.0.0.1:9000 ledgerline ledgerline-secret
+mc mb --ignore-existing local/ledgerline-files
+```
+
+In production the `files` disk falls back to the standard `AWS_*` variables, so
+a Laravel Cloud R2 bucket works by setting only `AWS_*` (with
+`AWS_DEFAULT_REGION=auto`) — leave `FILES_S3_*` unset.
+
 ## Deployment to Laravel Cloud
 
 The application is built with Laravel conventions only and runs on
@@ -171,6 +198,16 @@ POCKETID_CLIENT_ID=...
 POCKETID_CLIENT_SECRET=...
 POCKETID_REDIRECT_URI=https://your-app.laravel.cloud/auth/callback
 POCKETID_USE_PKCE=true
+
+# File storage bucket (Laravel Cloud provides these for a Cloudflare R2 bucket).
+# The "files" disk falls back to these AWS_* variables, so no FILES_S3_* are
+# needed in the cloud — just leave them unset.
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=auto                 # R2 uses "auto"
+AWS_BUCKET=...
+AWS_ENDPOINT=https://<account>.eu.r2.cloudflarestorage.com
+AWS_USE_PATH_STYLE_ENDPOINT=false
 ```
 
 Notes:

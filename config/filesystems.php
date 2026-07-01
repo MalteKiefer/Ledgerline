@@ -60,6 +60,25 @@ return [
             'report' => false,
         ],
 
+        // Private, S3-compatible object storage for uploaded files. MinIO in
+        // local development; Cloudflare R2 / S3 in production. The FILES_S3_*
+        // variables take precedence, falling back to the standard AWS_* set so
+        // a Laravel Cloud R2 bucket (which provides AWS_*) works unchanged.
+        //
+        // No object ACL/visibility is set: R2 rejects S3 ACLs, and files are
+        // never publicly listable — every download streams through the app
+        // behind team authorization, so the bucket stays private.
+        'files' => [
+            'driver' => 's3',
+            'key' => env('FILES_S3_KEY', env('AWS_ACCESS_KEY_ID')),
+            'secret' => env('FILES_S3_SECRET', env('AWS_SECRET_ACCESS_KEY')),
+            'region' => env('FILES_S3_REGION', env('AWS_DEFAULT_REGION', 'auto')),
+            'bucket' => env('FILES_S3_BUCKET', env('AWS_BUCKET')),
+            'endpoint' => env('FILES_S3_ENDPOINT', env('AWS_ENDPOINT')),
+            'use_path_style_endpoint' => env('FILES_S3_USE_PATH_STYLE', env('AWS_USE_PATH_STYLE_ENDPOINT', true)),
+            'throw' => true,
+        ],
+
     ],
 
     /*
