@@ -1,10 +1,11 @@
 <x-layouts.app :title="__('messages.nav.files')">
   <div x-data="filesExplorer({{ $files->pluck('id')->toJson() }}, {
         uploadUrl: '{{ route('files.store.general') }}',
+        conflictsUrl: '{{ route('files.conflicts') }}',
         token: '{{ csrf_token() }}',
         folderId: {{ $folder?->id ?? 'null' }},
-        customerId: {{ request('customer') ?: 'null' }},
-        projectId: {{ request('project') ?: 'null' }},
+        customerId: {{ (int) request('customer') ?: 'null' }},
+        projectId: {{ (int) request('project') ?: 'null' }},
      })" x-init="initDropzone()">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -22,8 +23,22 @@
     <label class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-800 text-3xl text-white shadow-lg hover:bg-gray-700 sm:hidden" aria-label="{{ __('files.upload') }}">
         +
         <input type="file" multiple class="hidden"
-            @change="uploadFiles([...$event.target.files].map(f => ({ file: f, path: f.name })))">
+            @change="startUpload([...$event.target.files].map(f => ({ file: f, path: f.name })))">
     </label>
+
+    {{-- Same-name conflict dialog: overwrite / rename / skip --}}
+    <div x-show="conflictOpen" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="conflictOpen = false">
+        <div class="absolute inset-0 bg-gray-900/40" @click="conflictOpen = false"></div>
+        <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900">{{ __('files.conflict_title') }}</h3>
+            <p class="mt-2 text-sm text-gray-600"><span x-text="conflictCount"></span> {{ __('files.conflict_message') }}</p>
+            <div class="mt-5 flex flex-col gap-2">
+                <button type="button" @click="resolveConflict('overwrite')" class="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.conflict_overwrite') }}</button>
+                <button type="button" @click="resolveConflict('rename')" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.conflict_rename') }}</button>
+                <button type="button" @click="resolveConflict('skip')" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.conflict_skip') }}</button>
+            </div>
+        </div>
+    </div>
 
     {{-- Header --}}
     <div class="flex flex-wrap items-start justify-between gap-3">

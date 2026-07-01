@@ -55,6 +55,43 @@ class GeneralFileTest extends TestCase
         $this->assertSame($trip->id, File::firstWhere('name', 'b.txt')->folder_id);
     }
 
+    public function test_same_name_uploads_respect_the_conflict_strategy(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $folder = Folder::create(['name' => 'Docs']);
+        $route = route('files.store.general');
+        $upload = fn () => ['files' => [UploadedFile::fake()->create('a.txt', 5)], 'folder_id' => $folder->id];
+
+        $this->post($route, $upload());
+        $this->assertSame(1, File::where('folder_id', $folder->id)->count());
+
+        // Overwrite keeps a single file with the original name.
+        $this->post($route, $upload() + ['on_conflict' => 'overwrite']);
+        $this->assertSame(1, File::where('folder_id', $folder->id)->where('name', 'a.txt')->count());
+
+        // Rename keeps both.
+        $this->post($route, $upload() + ['on_conflict' => 'rename']);
+        $this->assertSame(1, File::where('folder_id', $folder->id)->where('name', 'a_2.txt')->count());
+        $this->assertSame(2, File::where('folder_id', $folder->id)->count());
+
+        // Skip adds nothing.
+        $this->post($route, $upload() + ['on_conflict' => 'skip']);
+        $this->assertSame(2, File::where('folder_id', $folder->id)->count());
+    }
+
+    public function test_conflicts_endpoint_reports_existing_paths(): void
+    {
+        $this->signIn();
+        $folder = Folder::create(['name' => 'Docs']);
+        File::factory()->create(['name' => 'a.txt', 'folder_id' => $folder->id, 'attachable_type' => null, 'attachable_id' => null]);
+
+        $this->postJson(route('files.conflicts'), [
+            'paths' => ['a.txt', 'b.txt'],
+            'folder_id' => $folder->id,
+        ])->assertOk()->assertJson(['conflicts' => ['a.txt']]);
+    }
+
     public function test_a_file_can_be_moved_into_a_folder(): void
     {
         $this->signIn();
