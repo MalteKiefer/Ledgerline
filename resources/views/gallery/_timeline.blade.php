@@ -34,6 +34,7 @@
                             data-size="{{ $fmtBytes($photo->size) }}"
                             data-lat="{{ $photo->latitude }}"
                             data-lng="{{ $photo->longitude }}"
+                            data-favorite="{{ $photo->isFavorite() ? '1' : '0' }}"
                             @click="openViewer($el)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
@@ -42,6 +43,15 @@
                         <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
                             class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
                             :class="selected.includes({{ $photo->id }}) ? '!opacity-100' : ''">
+                        <form method="POST" action="{{ route('gallery.favorite', $photo) }}" class="absolute right-1.5 top-1.5">
+                            @csrf
+                            <button type="submit" title="{{ __('gallery.favorite') }}"
+                                @class([
+                                    'text-lg drop-shadow',
+                                    'text-red-500' => $photo->isFavorite(),
+                                    'text-white/80 opacity-0 hover:text-white group-hover:opacity-100' => ! $photo->isFavorite(),
+                                ])>{{ $photo->isFavorite() ? '♥' : '♡' }}</button>
+                        </form>
                     @else
                         <div class="flex h-full w-full animate-pulse items-center justify-center bg-gray-200 text-xs text-gray-400">{{ __('gallery.processing') }}</div>
                     @endif
