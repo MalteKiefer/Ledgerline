@@ -66,7 +66,8 @@
                                 <span class="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-medium text-white">{{ __('gallery.motion') }}</span>
                             @endif
                         </button>
-                        <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
+                        <input type="checkbox" value="{{ $photo->id }}" data-select
+                            @click="toggleSelect($event, {{ $photo->id }})" :checked="selected.includes({{ $photo->id }})"
                             class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
                             :class="selected.includes({{ $photo->id }}) ? '!opacity-100' : ''">
                         <form method="POST" action="{{ route('gallery.favorite', $photo) }}" class="absolute right-1.5 top-1.5">
@@ -80,11 +81,13 @@
                         </form>
                     @elseif ($photo->status === 'failed')
                         <div class="flex h-full w-full items-center justify-center bg-red-50 text-center text-xs text-red-500">{{ __('gallery.failed') }}</div>
-                        <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
+                        <input type="checkbox" value="{{ $photo->id }}" data-select
+                            @click="toggleSelect($event, {{ $photo->id }})" :checked="selected.includes({{ $photo->id }})"
                             class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                     @else
                         <div class="flex h-full w-full animate-pulse items-center justify-center bg-gray-200 text-xs text-gray-400">{{ __('gallery.processing') }}</div>
-                        <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
+                        <input type="checkbox" value="{{ $photo->id }}" data-select
+                            @click="toggleSelect($event, {{ $photo->id }})" :checked="selected.includes({{ $photo->id }})"
                             class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
                             :class="selected.includes({{ $photo->id }}) ? '!opacity-100' : ''">
                     @endif

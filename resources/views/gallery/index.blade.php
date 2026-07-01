@@ -1,7 +1,8 @@
 <x-layouts.app :title="__('gallery.title')">
   <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed') }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }}, '{{ route('gallery.months') }}')"
        x-init="initGallery()"
-       @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()">
+       @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()"
+       @keydown.window="onKeydown($event)">
 
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
