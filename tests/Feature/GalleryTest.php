@@ -174,6 +174,29 @@ class GalleryTest extends TestCase
         $this->get(route('gallery.motion', $without))->assertNotFound();
     }
 
+    public function test_upload_skips_a_duplicate_even_when_it_was_renamed(): void
+    {
+        Storage::fake('files');
+        Queue::fake();
+        $this->signIn();
+
+        $file = UploadedFile::fake()->image('holiday.jpg', 200, 200);
+        $checksum = hash_file('sha256', $file->getRealPath());
+
+        // Same bytes already stored under a template-renamed display name.
+        Photo::factory()->create([
+            'name' => '2024-01-01.jpg',
+            'size' => $file->getSize(),
+            'checksum' => $checksum,
+        ]);
+
+        $this->post(route('gallery.store'), ['photo' => $file])
+            ->assertOk()
+            ->assertJson(['duplicate' => true]);
+
+        $this->assertSame(1, Photo::count());
+    }
+
     public function test_upload_skips_heic_files(): void
     {
         Storage::fake('files');

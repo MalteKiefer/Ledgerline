@@ -195,16 +195,21 @@ class GalleryController extends Controller
 
         $mediaType = str_starts_with($mime, 'video/') ? 'video' : 'image';
 
-        // Skip duplicates before writing any bytes: an upload counts as a
-        // duplicate when its name, size and checksum all match a live photo.
+        // Skip duplicates before writing any bytes. Match on identical bytes
+        // (checksum + size) rather than the name, so re-uploading a file that
+        // was renamed by the filename template is still caught. Fall back to
+        // name + size only when a checksum could not be computed.
         $name = $upload->getClientOriginalName();
         $size = (int) $upload->getSize();
         $checksum = hash_file('sha256', $upload->getRealPath()) ?: null;
 
         $duplicate = Photo::query()
-            ->where('name', $name)
             ->where('size', $size)
-            ->when($checksum !== null, fn ($q) => $q->where('checksum', $checksum))
+            ->when(
+                $checksum !== null,
+                fn ($q) => $q->where('checksum', $checksum),
+                fn ($q) => $q->where('name', $name),
+            )
             ->first();
 
         if ($duplicate !== null) {
