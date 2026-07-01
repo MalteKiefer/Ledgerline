@@ -1,5 +1,9 @@
 <x-layouts.app :title="__('gallery.title')">
-  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}')">
+  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}')"
+    @if ($photos->getCollection()->contains(fn ($p) => ! $p->isReady()))
+        x-init="setTimeout(() => window.location.reload(), 5000)"
+    @endif>
+
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900">{{ __('gallery.heading') }}</h1>
@@ -67,12 +71,16 @@
                 <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
                     @foreach ($dayPhotos as $photo)
                         <div data-photo-id="{{ $photo->id }}" class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100">
-                            <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
-                                @click="lightbox = { src: '{{ route('gallery.image', ['photo' => $photo, 'size' => 'medium']) }}', download: '{{ route('gallery.image', ['photo' => $photo, 'size' => 'original']) }}', name: @js($photo->name) }"
-                                class="h-full w-full cursor-pointer object-cover transition group-hover:opacity-90">
-                            <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
-                                class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
-                                :class="selected.includes({{ $photo->id }}) ? '!opacity-100' : ''">
+                            @if ($photo->isReady())
+                                <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
+                                    @click="lightbox = { src: '{{ route('gallery.image', ['photo' => $photo, 'size' => 'medium']) }}', download: '{{ route('gallery.image', ['photo' => $photo, 'size' => 'original']) }}', name: @js($photo->name) }"
+                                    class="h-full w-full cursor-pointer object-cover transition group-hover:opacity-90">
+                                <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
+                                    class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
+                                    :class="selected.includes({{ $photo->id }}) ? '!opacity-100' : ''">
+                            @else
+                                <div class="flex h-full w-full animate-pulse items-center justify-center bg-gray-200 text-xs text-gray-400">{{ __('gallery.processing') }}</div>
+                            @endif
                         </div>
                     @endforeach
                 </div>

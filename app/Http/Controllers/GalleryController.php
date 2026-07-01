@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProcessPhoto;
 use App\Models\Photo;
 use App\Services\Gallery\PhotoStorage;
 use Illuminate\Contracts\View\View;
@@ -44,18 +45,27 @@ class GalleryController extends Controller
         ]);
 
         $upload = $request->file('photo');
-        $data = $storage->store($upload);
+        $original = $storage->storeOriginal($upload);
 
-        $photo = new Photo($data);
-        $photo->name = $upload->getClientOriginalName();
+        // Save immediately with placeholder renditions; the queue fills the rest.
+        $photo = new Photo([
+            'uuid' => $original['uuid'],
+            'name' => $upload->getClientOriginalName(),
+            'status' => 'processing',
+            'disk_path' => $original['disk_path'],
+            'thumb_path' => $original['disk_path'],
+            'medium_path' => $original['disk_path'],
+            'mime_type' => $upload->getMimeType() ?: 'image/jpeg',
+            'size' => $original['size'],
+            'checksum' => $original['checksum'],
+            'taken_at' => now(),
+        ]);
         $photo->uploaded_by = $request->user()->id;
         $photo->save();
 
-        return response()->json([
-            'id' => $photo->id,
-            'name' => $photo->name,
-            'thumb' => route('gallery.image', ['photo' => $photo, 'size' => 'thumb']),
-        ], 201);
+        ProcessPhoto::dispatch($photo->id);
+
+        return response()->json(['id' => $photo->id, 'name' => $photo->name], 201);
     }
 
     /**
