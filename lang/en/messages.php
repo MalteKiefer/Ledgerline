@@ -9,6 +9,7 @@ return [
         'projects' => 'Projects',
         'files' => 'Files',
         'finance' => 'Finance',
+        'gallery' => 'Gallery',
     ],
     'menu' => [
         'profile' => 'Profile',
