@@ -70,6 +70,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/gallery/regenerate', [SettingsGalleryController::class, 'regenerate'])->name('settings.gallery.regenerate');
     Route::post('/settings/gallery/rename', [SettingsGalleryController::class, 'rename'])->name('settings.gallery.rename');
     Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
+    Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
     Route::get('/settings/units', [SettingsUnitController::class, 'index'])->name('settings.units.index');
     Route::post('/settings/units', [SettingsUnitController::class, 'store'])->name('settings.units.store');
     Route::put('/settings/units/{unit}', [SettingsUnitController::class, 'update'])->name('settings.units.update');
