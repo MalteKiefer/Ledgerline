@@ -64,7 +64,7 @@ return [
     'max_upload_mb_hint' => 'Server-Upload-Limits (PHP/Proxy) können zusätzlich greifen.',
     'map_zoom_hint' => 'Zoom (1–19) für die Kartenelemente, z. B. die Detail-Minikarte.',
     'maintenance_heading' => 'Wartung',
-    'maintenance_hint' => ':count Foto(s). Jeden Hintergrund-Job einzeln ausführen oder alle auf einmal.',
+    'maintenance_hint' => ':count Element(e) (Fotos und Videos). Jeden Hintergrund-Job einzeln ausführen oder alle auf einmal.',
     'photos_heading' => 'Fotos',
     'queue_connection' => 'Verbindung',
     'queue_failed' => 'Fehlgeschlagene Jobs',

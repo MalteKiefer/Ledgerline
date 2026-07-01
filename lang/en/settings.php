@@ -64,7 +64,7 @@ return [
     'max_upload_mb_hint' => 'Server upload limits (PHP/proxy) may also apply.',
     'map_zoom_hint' => 'Zoom (1–19) for the map elements, e.g. the detail mini-map.',
     'maintenance_heading' => 'Maintenance',
-    'maintenance_hint' => ':count photo(s). Run each background job on its own, or all at once.',
+    'maintenance_hint' => ':count item(s) (photos and videos). Run each background job on its own, or all at once.',
     'photos_heading' => 'Photos',
     'queue_connection' => 'Connection',
     'queue_failed' => 'Failed jobs',
