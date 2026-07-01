@@ -485,7 +485,8 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         const next = this.page + 1;
 
         try {
-            const r = await fetch(`${feedUrl}?page=${next}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const sep = feedUrl.includes('?') ? '&' : '?';
+            const r = await fetch(`${feedUrl}${sep}page=${next}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             const html = await r.text();
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const target = this.$refs.timeline;

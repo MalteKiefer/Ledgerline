@@ -271,6 +271,33 @@ class GalleryTest extends TestCase
         }
     }
 
+    public function test_search_matches_across_all_metadata(): void
+    {
+        $this->signIn();
+        $match = Photo::factory()->create([
+            'status' => 'ready', 'name' => 'trip.jpg', 'place' => 'Las Vegas, USA',
+            'camera' => 'Apple iPhone 15', 'taken_at' => '2012-10-06 12:00:00',
+            'metadata' => ['EXIF' => ['LensModel' => 'Zeiss 24mm']],
+            'latitude' => 50.02, 'longitude' => 11.85,
+        ]);
+        Photo::factory()->create([
+            'status' => 'ready', 'name' => 'other.png', 'place' => 'Berlin',
+            'camera' => 'Canon', 'taken_at' => '2020-01-01 00:00:00',
+            'metadata' => ['EXIF' => ['LensModel' => 'Sigma']],
+            'latitude' => 10.0, 'longitude' => 10.0,
+        ]);
+
+        $ids = fn (string $q): array => $this->get(route('gallery.index', ['q' => $q]))
+            ->viewData('photos')->pluck('id')->all();
+
+        $this->assertSame([$match->id], $ids('vegas'));        // place / country
+        $this->assertSame([$match->id], $ids('iphone'));       // camera / device
+        $this->assertSame([$match->id], $ids('trip'));         // filename
+        $this->assertSame([$match->id], $ids('2012-10'));      // date
+        $this->assertSame([$match->id], $ids('zeiss'));        // full metadata dump
+        $this->assertSame([$match->id], $ids('50.02,11.85'));  // coordinates
+    }
+
     public function test_trash_page_uses_a_modal_not_native_confirm(): void
     {
         $this->signIn();

@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('gallery.title')">
-  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed') }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }}, '{{ route('gallery.months') }}')"
+  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed', array_filter(['q' => $searchQuery ?: null, 'favorites' => $favoritesOnly ? 1 : null])) }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }}, '{{ route('gallery.months') }}')"
        x-init="initGallery()"
        @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()"
        @keydown.window="onKeydown($event)">
@@ -9,7 +9,15 @@
             <h1 class="text-2xl font-semibold text-gray-900">{{ __('gallery.heading') }}</h1>
             <p class="mt-1 text-sm text-gray-600">{{ __('gallery.subtitle') }}</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+            <form method="GET" action="{{ route('gallery.index') }}" class="flex items-center gap-1">
+                <input type="search" name="q" value="{{ $searchQuery }}" placeholder="{{ __('gallery.search_placeholder') }}"
+                    class="w-56 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                <button type="submit" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.search') }}</button>
+                @if ($searchQuery !== '')
+                    <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900" title="{{ __('gallery.search_clear') }}">✕</a>
+                @endif
+            </form>
             @if ($favoritesOnly)
                 <a href="{{ route('gallery.index') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.all_photos') }}</a>
             @else
@@ -122,7 +130,7 @@
     <div x-ref="timeline" class="mt-6 space-y-8">
         @include('gallery._timeline', ['grouped' => $grouped])
         @if ($grouped->isEmpty())
-            <p class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">{{ __('gallery.empty') }}</p>
+            <p class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">{{ $searchQuery !== '' ? __('gallery.search_empty', ['q' => $searchQuery]) : __('gallery.empty') }}</p>
         @endif
     </div>
 
