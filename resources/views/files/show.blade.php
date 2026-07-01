@@ -27,6 +27,8 @@
     <div class="mt-1 flex flex-wrap items-start justify-between gap-3">
         <h1 class="text-2xl font-semibold text-gray-900">{{ $file->displayTitle }}</h1>
         <div class="flex items-center gap-3">
+            <a href="{{ route('files.edit', $file) }}"
+                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.edit') }}</a>
             <a href="{{ route('files.download', $file) }}"
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</a>
             @php $linkedInvoice = $file->attachable instanceof \App\Models\Invoice ? $file->attachable : null; @endphp
