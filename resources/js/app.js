@@ -635,16 +635,17 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
 
     onComplete() {
         const created = this.queue.filter((e) => e.state === 'done').length;
+        const duplicates = this.queue.filter((e) => e.state === 'duplicate').map((e) => e.name);
         const skipped = this.queue.filter((e) => e.state === 'skipped').map((e) => e.name);
         const errored = this.queue.filter((e) => e.state === 'error').map((e) => e.name);
 
         // Nothing to review: reveal the new items straight away.
-        if (created > 0 && skipped.length === 0 && errored.length === 0) {
+        if (created > 0 && duplicates.length === 0 && skipped.length === 0 && errored.length === 0) {
             window.location.reload();
             return;
         }
 
-        this.summary = { created, skipped, errored };
+        this.summary = { created, duplicates, skipped, errored };
     },
 
     dismissUploads() {

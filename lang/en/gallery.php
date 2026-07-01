@@ -15,6 +15,8 @@ return [
     'download' => 'Download original',
     'drop_hint' => 'Drop photos here or click to select',
     'duplicate' => 'Duplicate — skipped',
+    'duplicate_count' => 'duplicates',
+    'duplicate_list' => 'Duplicates',
     'edit' => 'Edit',
     'empty' => 'No photos yet.',
     'empty_trash' => 'Empty trash',

@@ -31,7 +31,7 @@
                 <template x-if="! summary"><span>{{ __('gallery.uploading') }} (<span x-text="queue.filter(i => ['done','duplicate','skipped','error'].includes(i.state)).length"></span>/<span x-text="queue.length"></span>)</span></template>
                 <template x-if="summary">
                     <span>{{ __('gallery.upload_done') }} —
-                        <span x-text="summary.created"></span> {{ __('gallery.uploaded_count') }}<span x-show="summary.skipped.length">, <span x-text="summary.skipped.length"></span> {{ __('gallery.skipped_count') }}</span><span x-show="summary.errored.length">, <span x-text="summary.errored.length"></span> {{ __('gallery.failed_count') }}</span>
+                        <span x-text="summary.created"></span> {{ __('gallery.uploaded_count') }}<span x-show="summary.duplicates.length">, <span x-text="summary.duplicates.length"></span> {{ __('gallery.duplicate_count') }}</span><span x-show="summary.skipped.length">, <span x-text="summary.skipped.length"></span> {{ __('gallery.skipped_count') }}</span><span x-show="summary.errored.length">, <span x-text="summary.errored.length"></span> {{ __('gallery.failed_count') }}</span>
                     </span>
                 </template>
             </span>
@@ -64,8 +64,11 @@
                 </div>
             </template>
         </div>
+        <div x-show="summary && summary.duplicates.length" x-cloak class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+            {{ __('gallery.duplicate_list') }}: <span x-text="summary && summary.duplicates.join(', ')"></span>
+        </div>
         <div x-show="summary && summary.skipped.length" x-cloak class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
-            {{ __('gallery.skipped_list') }}: <span x-text="summary.skipped.join(', ')"></span>
+            {{ __('gallery.skipped_list') }}: <span x-text="summary && summary.skipped.join(', ')"></span>
         </div>
     </div>
 
