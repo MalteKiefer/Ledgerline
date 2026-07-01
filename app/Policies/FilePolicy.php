@@ -22,7 +22,7 @@ class FilePolicy
 
     public function view(User $user, File $file): bool
     {
-        return true;
+        return $user->belongsToTeam($file->team_id);
     }
 
     public function create(User $user): bool
@@ -32,6 +32,6 @@ class FilePolicy
 
     public function delete(User $user, File $file): bool
     {
-        return true;
+        return $user->belongsToTeam($file->team_id);
     }
 }
