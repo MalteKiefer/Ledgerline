@@ -14,6 +14,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -149,6 +150,52 @@ class GalleryController extends Controller
         ProcessPhoto::dispatch($photo->id);
 
         return response()->json(['id' => $photo->id, 'name' => $photo->name], 201);
+    }
+
+    /**
+     * Edit a photo's date, time and location (stored in the DB; the original
+     * file is not touched). Marks the metadata as user-locked so a re-scan will
+     * not overwrite it from EXIF.
+     */
+    public function editMeta(Request $request, Photo $photo): RedirectResponse
+    {
+        $validated = $request->validate([
+            'date' => ['required', 'date'],
+            'time' => ['required', 'date_format:H:i'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
+        $photo->forceFill([
+            'taken_at' => Carbon::parse($validated['date'].' '.$validated['time']),
+            'latitude' => $validated['latitude'] ?? null,
+            'longitude' => $validated['longitude'] ?? null,
+            'meta_locked' => true,
+        ])->save();
+
+        return back()->with('status', __('flash.photo_updated'));
+    }
+
+    /**
+     * Apply a non-destructive transform (rotate/flip) and re-generate the
+     * renditions from the untouched original.
+     */
+    public function transform(Request $request, Photo $photo): RedirectResponse
+    {
+        $action = $request->validate([
+            'action' => ['required', 'in:rotate_left,rotate_right,flip'],
+        ])['action'];
+
+        match ($action) {
+            'rotate_left' => $photo->rotation = ((int) $photo->rotation + 270) % 360,
+            'rotate_right' => $photo->rotation = ((int) $photo->rotation + 90) % 360,
+            'flip' => $photo->flipped = ! $photo->flipped,
+        };
+        $photo->save();
+
+        ProcessPhoto::dispatch($photo->id);
+
+        return back()->with('status', __('flash.photo_updated'));
     }
 
     /**

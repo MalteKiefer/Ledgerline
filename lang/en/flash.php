@@ -46,6 +46,7 @@ return [
     'payment_recorded' => 'Payment recorded.',
     'photo_deleted' => 'Photo permanently deleted.',
     'photo_restored' => 'Photo restored.',
+    'photo_updated' => 'Photo updated.',
     'photos_rescan_queued' => 'Queued :count photo(s) for re-scanning.',
     'photos_trashed' => ':count photo(s) moved to trash.',
     'project_created' => 'Project created.',

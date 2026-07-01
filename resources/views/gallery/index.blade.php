@@ -102,7 +102,40 @@
                         </dd>
                     </div>
                 </dl>
-                <a :href="current.original" class="mt-6 block rounded-md bg-gray-800 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.download') }}</a>
+                {{-- Transform (rotate / flip) — regenerates renditions from the original --}}
+                <div class="mt-6 flex gap-2">
+                    <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
+                        @csrf
+                        <input type="hidden" name="action" value="rotate_left">
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_left') }}">⤺</button>
+                    </form>
+                    <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
+                        @csrf
+                        <input type="hidden" name="action" value="rotate_right">
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_right') }}">⤻</button>
+                    </form>
+                    <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
+                        @csrf
+                        <input type="hidden" name="action" value="flip">
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.flip') }}">⇋</button>
+                    </form>
+                </div>
+
+                {{-- Edit date / time / location --}}
+                <form method="POST" :action="`/gallery/${current.id}/meta`" class="mt-4 space-y-2 border-t border-gray-100 pt-4">
+                    @csrf @method('PUT')
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="date" name="date" :value="current.dateiso" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="time" name="time" :value="current.time" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" step="any" name="latitude" :value="current.lat" placeholder="lat" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="number" step="any" name="longitude" :value="current.lng" placeholder="lng" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </div>
+                    <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.save_meta') }}</button>
+                </form>
+
+                <a :href="current.original" class="mt-4 block rounded-md bg-gray-800 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.download') }}</a>
             </aside>
         </div>
     </template>
