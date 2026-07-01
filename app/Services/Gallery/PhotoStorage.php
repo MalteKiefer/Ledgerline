@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Gallery;
 
+use App\Models\CompanyProfile;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
 use Illuminate\Http\UploadedFile;
@@ -28,7 +29,10 @@ class PhotoStorage
 
     private const MEDIUM_WIDTH = 1600;
 
-    public function __construct(private readonly ReverseGeocoder $geocoder) {}
+    public function __construct(
+        private readonly ReverseGeocoder $geocoder,
+        private readonly FilenameTemplate $filenameTemplate,
+    ) {}
 
     /**
      * Persist just the original quickly (upload path). Renditions and EXIF are
@@ -54,12 +58,28 @@ class PhotoStorage
     }
 
     /**
-     * Generate renditions and read metadata in one pass (upload path).
+     * Generate renditions, read metadata and apply the filename template in one
+     * pass (upload path).
      */
     public function process(Photo $photo): void
     {
         $this->renditions($photo);
         $this->readMetadata($photo);
+        $this->applyNameTemplate($photo);
+    }
+
+    /**
+     * Rename the photo's display name from the configured filename template. The
+     * stored bytes and disk paths are untouched; only the name column changes.
+     */
+    public function applyNameTemplate(Photo $photo): void
+    {
+        $template = CompanyProfile::current()->gallery_filename_template;
+        $name = $this->filenameTemplate->render($photo, $template);
+
+        if ($name !== null && $name !== $photo->name) {
+            $photo->forceFill(['name' => $name])->save();
+        }
     }
 
     /**

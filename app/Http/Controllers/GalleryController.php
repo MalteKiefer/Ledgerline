@@ -34,6 +34,7 @@ class GalleryController extends Controller
             'photos' => $photos,
             'grouped' => $this->groupByDay($photos),
             'favoritesOnly' => $request->boolean('favorites'),
+            'mapZoom' => (int) (CompanyProfile::current()->gallery_map_zoom ?? 13),
         ]);
     }
 
@@ -84,7 +85,9 @@ class GalleryController extends Controller
      */
     public function map(): View
     {
-        return view('gallery.map');
+        return view('gallery.map', [
+            'mapZoom' => (int) (CompanyProfile::current()->gallery_map_zoom ?? 13),
+        ]);
     }
 
     /**
@@ -176,6 +179,7 @@ class GalleryController extends Controller
     public function editMeta(Request $request, Photo $photo): RedirectResponse
     {
         $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
             'date' => ['required', 'date'],
             'time' => ['required', 'date_format:H:i'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
@@ -183,6 +187,7 @@ class GalleryController extends Controller
         ]);
 
         $photo->forceFill([
+            'name' => $validated['name'],
             'taken_at' => Carbon::parse($validated['date'].' '.$validated['time']),
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,

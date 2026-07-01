@@ -28,6 +28,7 @@ return [
     'meta_date' => 'Date',
     'meta_dimensions' => 'Dimensions',
     'meta_location' => 'Location',
+    'meta_name' => 'File name',
     'meta_size' => 'Size',
     'photos_count' => ':count photos',
     'processing' => 'Processing…',

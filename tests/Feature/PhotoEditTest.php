@@ -18,12 +18,13 @@ class PhotoEditTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_editing_date_and_location_locks_the_metadata(): void
+    public function test_editing_name_date_and_location_locks_the_metadata(): void
     {
         $this->signIn();
         $photo = Photo::factory()->create(['meta_locked' => false]);
 
         $this->put(route('gallery.meta', $photo), [
+            'name' => 'Vegas trip.jpg',
             'date' => '2026-05-01',
             'time' => '14:30',
             'latitude' => 36.1699,
@@ -31,6 +32,7 @@ class PhotoEditTest extends TestCase
         ])->assertRedirect();
 
         $photo->refresh();
+        $this->assertSame('Vegas trip.jpg', $photo->name);
         $this->assertSame('2026-05-01 14:30', $photo->taken_at->format('Y-m-d H:i'));
         $this->assertSame(36.1699, $photo->latitude);
         $this->assertTrue($photo->meta_locked);
