@@ -54,7 +54,25 @@ class FileController extends Controller
     }
 
     /**
-     * Stream a file back to the browser (inline for images/PDF).
+     * MIME types that are safe to render inline on our own origin.
+     *
+     * Deliberately excludes SVG, HTML and XML, which can execute script and
+     * would otherwise be a stored-XSS vector when served inline same-origin.
+     */
+    private const INLINE_SAFE_MIMES = [
+        'image/png',
+        'image/jpeg',
+        'image/gif',
+        'image/webp',
+        'application/pdf',
+    ];
+
+    /**
+     * Stream a file back to the browser.
+     *
+     * Only a strict allowlist of MIME types is rendered inline; everything else
+     * (including SVG/HTML/XML) is forced to download. nosniff prevents content
+     * sniffing and a locked-down CSP neutralises any active content.
      */
     public function download(File $file): StreamedResponse
     {
@@ -64,9 +82,13 @@ class FileController extends Controller
 
         abort_unless($disk->exists($file->disk_path), 404);
 
-        $disposition = in_array($file->type, [FileType::IMAGE, FileType::PDF], true) ? 'inline' : 'attachment';
+        $disposition = in_array($file->mime_type, self::INLINE_SAFE_MIMES, true) ? 'inline' : 'attachment';
 
-        return $disk->response($file->disk_path, $file->name, ['Content-Type' => $file->mime_type], $disposition);
+        return $disk->response($file->disk_path, $file->name, [
+            'Content-Type' => $file->mime_type,
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+        ], $disposition);
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\File;
 use App\Models\Project;
 use App\Models\Team;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -115,6 +116,43 @@ class FileCrudTest extends TestCase
         Storage::disk('files')->assertMissing('files/doc.pdf');
     }
 
+    public function test_svg_is_forced_to_download_with_hardening_headers(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $customer = Customer::factory()->create();
+        $file = File::factory()->forCustomer($customer)->create([
+            'disk_path' => 'files/x.svg',
+            'mime_type' => 'image/svg+xml',
+            'type' => FileType::IMAGE,
+        ]);
+        Storage::disk('files')->put('files/x.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+        $response = $this->get(route('files.download', $file))
+            ->assertOk()
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+
+        $this->assertStringContainsString('attachment', (string) $response->headers->get('Content-Disposition'));
+    }
+
+    public function test_png_is_served_inline(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $customer = Customer::factory()->create();
+        $file = File::factory()->forCustomer($customer)->create([
+            'disk_path' => 'files/x.png',
+            'mime_type' => 'image/png',
+            'type' => FileType::IMAGE,
+        ]);
+        Storage::disk('files')->put('files/x.png', 'bytes');
+
+        $response = $this->get(route('files.download', $file))->assertOk();
+
+        $this->assertStringContainsString('inline', (string) $response->headers->get('Content-Disposition'));
+    }
+
     public function test_cannot_download_another_teams_file(): void
     {
         Storage::fake('files');
@@ -150,6 +188,16 @@ class FileCrudTest extends TestCase
             ->assertOk()
             ->assertSee('Mine.pdf')
             ->assertDontSee('Theirs.pdf');
+    }
+
+    public function test_policy_denies_users_outside_the_team(): void
+    {
+        $customer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
+        $file = File::factory()->forCustomer($customer)->create();
+        $outsider = User::factory()->create();
+
+        $this->assertFalse($outsider->can('view', $file));
+        $this->assertFalse($outsider->can('delete', $file));
     }
 
     public function test_search_finds_files_by_name_and_content(): void
