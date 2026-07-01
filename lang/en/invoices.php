@@ -120,6 +120,7 @@ return [
             'subtitle' => 'Upload an existing invoice PDF. Its data is read for you to review before saving.',
             'invoice_pdf' => 'Invoice PDF',
             'read_review' => 'Read &amp; review',
+            'multiple_hint' => 'Select one or more PDFs — you review each before saving.',
         ],
         'review' => [
             'title' => 'Review imported invoice',
@@ -154,6 +155,9 @@ return [
             'net_preview' => 'Net preview:',
             'import_invoice' => 'Import invoice',
             'cancel' => 'Cancel',
+            'progress' => 'Invoice :position of :total',
+            'skip' => 'Skip',
+            'skip_confirm' => 'Skip this invoice? Its uploaded file is discarded.',
         ],
     ],
 ];

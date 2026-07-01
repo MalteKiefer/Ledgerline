@@ -20,6 +20,7 @@ use App\Services\Invoicing\PdfInvoiceParser;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Smalot\PdfParser\Parser as PdfTextParser;
@@ -37,24 +38,70 @@ class ImportController extends Controller
     }
 
     /**
-     * Store the uploaded PDF, extract and parse it, and show the review form.
+     * Store one or more uploaded PDFs as a pending queue, then start the review.
      */
-    public function parse(Request $request, PdfInvoiceParser $parser): View
+    public function parse(Request $request): RedirectResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:pdf', 'max:20480'],
+            'files' => ['required', 'array', 'max:50'],
+            'files.*' => ['file', 'mimes:pdf', 'max:20480'],
         ]);
 
-        $upload = $request->file('file');
-
-        $text = '';
-        try {
-            $text = (new PdfTextParser)->parseFile($upload->getRealPath())->getText();
-        } catch (\Throwable) {
-            // Unreadable PDF: fall through with empty text so the user fills it in.
+        $ids = [];
+        foreach ($request->file('files') as $upload) {
+            $ids[] = $this->storePendingFile($upload, $request->user()->id)->id;
         }
 
+        $request->session()->put(['import_queue' => $ids, 'import_total' => count($ids)]);
+
+        return redirect()->route('finance.invoices.import.next');
+    }
+
+    /**
+     * Review the next pending invoice in the queue (the slideshow step).
+     */
+    public function next(Request $request, PdfInvoiceParser $parser): View|RedirectResponse
+    {
+        $queue = array_values(array_filter(
+            $request->session()->get('import_queue', []),
+            fn ($id): bool => File::query()->whereKey($id)->whereNull('attachable_id')->exists(),
+        ));
+        $request->session()->put('import_queue', $queue);
+
+        if ($queue === []) {
+            $request->session()->forget(['import_queue', 'import_total']);
+
+            return redirect()->route('finance.invoices.index')->with('status', __('flash.import_batch_done'));
+        }
+
+        $total = (int) $request->session()->get('import_total', count($queue));
+
+        return $this->reviewView(File::findOrFail($queue[0]), $parser, $total - count($queue) + 1, $total);
+    }
+
+    /**
+     * Skip the current pending invoice, discarding its uploaded file.
+     */
+    public function skip(Request $request): RedirectResponse
+    {
+        $queue = $request->session()->get('import_queue', []);
+
+        if ($queue !== []) {
+            $file = File::find(array_shift($queue));
+            if ($file !== null) {
+                Storage::disk(config('files.disk'))->delete($file->disk_path);
+                $file->delete();
+            }
+            $request->session()->put('import_queue', $queue);
+        }
+
+        return redirect()->route('finance.invoices.import.next');
+    }
+
+    private function storePendingFile(UploadedFile $upload, int $userId): File
+    {
         $path = Storage::disk(config('files.disk'))->putFile('files', $upload);
+
         $file = new File([
             'name' => $upload->getClientOriginalName(),
             'disk_path' => $path,
@@ -64,14 +111,21 @@ class ImportController extends Controller
             'checksum' => hash_file('sha256', $upload->getRealPath()) ?: null,
             'is_encrypted' => false,
         ]);
-        $file->uploaded_by = $request->user()->id;
+        $file->uploaded_by = $userId;
         $file->save();
 
-        $parsed = $parser->parse($text, $upload->getClientOriginalName());
+        return $file;
+    }
+
+    private function reviewView(File $file, PdfInvoiceParser $parser, ?int $position, ?int $total): View
+    {
+        $parsed = $parser->parse($this->extractText($file), $file->name);
 
         return view('invoices.import.review', [
             'file' => $file,
             'parsed' => $parsed,
+            'position' => $position,
+            'total' => $total,
             'customers' => Customer::query()->orderBy('name')->get(['id', 'name']),
             'units' => Unit::query()->orderBy('code')->get(),
             'matchedCustomerId' => $this->matchCustomer($parsed['customer']['name']),
@@ -79,6 +133,15 @@ class ImportController extends Controller
             'taxModes' => TaxMode::options(),
             'currencies' => config('finance.currencies'),
         ]);
+    }
+
+    private function extractText(File $file): string
+    {
+        try {
+            return (new PdfTextParser)->parseContent(Storage::disk(config('files.disk'))->get($file->disk_path))->getText();
+        } catch (\Throwable) {
+            return '';
+        }
     }
 
     public function store(StoreImportedInvoiceRequest $request, InvoiceCalculator $calculator, InvoiceNumberSequencer $sequencer): RedirectResponse
@@ -161,6 +224,16 @@ class ImportController extends Controller
 
             return $invoice;
         });
+
+        // If this file was part of a batch, continue the slideshow with the next.
+        $queue = $request->session()->get('import_queue', []);
+        if (in_array((int) $data['file_id'], array_map('intval', $queue), true)) {
+            $request->session()->put('import_queue', array_values(array_diff($queue, [$data['file_id']])));
+
+            return redirect()
+                ->route('finance.invoices.import.next')
+                ->with('status', __('flash.invoice_imported', ['number' => $invoice->number]));
+        }
 
         return redirect()
             ->route('finance.invoices.show', $invoice)

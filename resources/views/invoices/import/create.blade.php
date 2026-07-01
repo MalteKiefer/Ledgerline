@@ -7,10 +7,12 @@
     <form method="POST" action="{{ route('finance.invoices.import.parse') }}" enctype="multipart/form-data"
         class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         @csrf
-        <label for="file" class="block text-sm font-medium text-gray-700">{{ __('invoices.import.create.invoice_pdf') }}</label>
-        <input type="file" id="file" name="file" accept="application/pdf" required
+        <label for="files" class="block text-sm font-medium text-gray-700">{{ __('invoices.import.create.invoice_pdf') }}</label>
+        <input type="file" id="files" name="files[]" accept="application/pdf" multiple required
             class="mt-2 text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-700">
-        @error('file')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        <p class="mt-1 text-xs text-gray-400">{{ __('invoices.import.create.multiple_hint') }}</p>
+        @error('files')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        @error('files.*')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
         <div class="mt-4">
             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{!! __('invoices.import.create.read_review') !!}</button>
         </div>

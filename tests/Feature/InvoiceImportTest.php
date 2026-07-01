@@ -39,16 +39,56 @@ class InvoiceImportTest extends TestCase
         ], $overrides);
     }
 
-    public function test_parse_endpoint_stores_the_pdf_and_shows_review(): void
+    public function test_upload_queues_files_and_the_review_slideshow_starts(): void
     {
         Storage::fake('files');
         $this->signIn();
 
         $this->post(route('finance.invoices.import.parse'), [
-            'file' => UploadedFile::fake()->create('old-invoice.pdf', 30, 'application/pdf'),
-        ])->assertOk()->assertViewIs('invoices.import.review');
+            'files' => [
+                UploadedFile::fake()->create('one.pdf', 30, 'application/pdf'),
+                UploadedFile::fake()->create('two.pdf', 30, 'application/pdf'),
+            ],
+        ])->assertRedirect(route('finance.invoices.import.next'));
 
-        $this->assertDatabaseHas('files', ['name' => 'old-invoice.pdf']);
+        $this->assertDatabaseHas('files', ['name' => 'one.pdf']);
+        $this->assertDatabaseHas('files', ['name' => 'two.pdf']);
+        $this->assertCount(2, session('import_queue'));
+
+        $this->get(route('finance.invoices.import.next'))
+            ->assertOk()
+            ->assertViewIs('invoices.import.review')
+            ->assertViewHas('total', 2);
+    }
+
+    public function test_skipping_discards_the_pending_file_and_advances(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $this->post(route('finance.invoices.import.parse'), [
+            'files' => [UploadedFile::fake()->create('skip-me.pdf', 30, 'application/pdf')],
+        ]);
+
+        $this->post(route('finance.invoices.import.skip'))
+            ->assertRedirect(route('finance.invoices.import.next'));
+
+        $this->assertDatabaseMissing('files', ['name' => 'skip-me.pdf']);
+        $this->assertEmpty(session('import_queue', []));
+    }
+
+    public function test_deleting_an_imported_invoices_file_deletes_the_invoice(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $file = File::factory()->create();
+        $this->post(route('finance.invoices.import.store'), $this->payload($file->id));
+        $invoice = Invoice::firstWhere('number', '2026-004');
+
+        $this->delete(route('files.destroy', $file->fresh()))
+            ->assertRedirect(route('finance.invoices.index'));
+
+        $this->assertDatabaseMissing('invoices', ['id' => $invoice->id]);
+        $this->assertDatabaseMissing('files', ['id' => $file->id]);
     }
 
     public function test_store_creates_a_finalized_historical_invoice_and_attaches_the_pdf(): void

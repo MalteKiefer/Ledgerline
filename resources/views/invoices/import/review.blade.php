@@ -13,7 +13,19 @@
 
     <x-finance-nav />
     <p class="text-sm text-gray-500"><a href="{{ route('finance.invoices.import.create') }}" class="hover:underline">{{ __('invoices.import.review.breadcrumb') }}</a></p>
-    <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ __('invoices.import.review.heading') }}</h1>
+    <div class="mt-1 flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-semibold text-gray-900">{{ __('invoices.import.review.heading') }}</h1>
+        @if (($total ?? 0) > 0)
+            <div class="flex items-center gap-3">
+                <span class="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700">{{ __('invoices.import.review.progress', ['position' => $position, 'total' => $total]) }}</span>
+                <form method="POST" action="{{ route('finance.invoices.import.skip') }}"
+                    onsubmit="return confirm('{{ __('invoices.import.review.skip_confirm') }}');">
+                    @csrf
+                    <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.import.review.skip') }}</button>
+                </form>
+            </div>
+        @endif
+    </div>
     <p class="mt-1 text-sm text-gray-600">
         {{ __('invoices.import.review.read_from') }} <strong>{{ $file->name }}</strong>.
         <a href="{{ route('files.download', $file) }}" target="_blank" rel="noopener" class="text-gray-900 underline">{{ __('invoices.import.review.open_pdf') }}</a>.
