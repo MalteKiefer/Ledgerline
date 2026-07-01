@@ -156,6 +156,34 @@
         </template>
     </div>
 
+    {{-- Live batch progress for the most recently started maintenance run. --}}
+    @if (session('batch_id'))
+        <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+             x-data="{ status: null,
+                async refresh() {
+                    try {
+                        const r = await fetch('{{ route('settings.gallery.batch-status', ['id' => session('batch_id')]) }}', { headers: { Accept: 'application/json' } });
+                        if (r.ok) this.status = await r.json();
+                    } catch (e) { /* keep last */ }
+                } }"
+             x-init="refresh(); const t = setInterval(async () => { await refresh(); if (! status || ! status.found || status.finished) clearInterval(t); }, 2000);">
+            <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.batch_heading') }}</h2>
+            <template x-if="status && status.found">
+                <div class="mt-2">
+                    <div class="flex justify-between text-sm text-gray-600">
+                        <span><span x-text="status.processed"></span> / <span x-text="status.total"></span></span>
+                        <span x-show="status.failed > 0" class="text-red-600"><span x-text="status.failed"></span> {{ __('gallery.failed_count') }}</span>
+                        <span x-show="status.finished" class="text-green-600">{{ __('settings.batch_done') }}</span>
+                    </div>
+                    <div class="mt-1 h-2 w-full rounded bg-gray-100">
+                        <div class="h-2 rounded bg-gray-800 transition-all" :style="`width: ${status.progress}%`"></div>
+                    </div>
+                </div>
+            </template>
+            <p x-show="status && ! status.found" x-cloak class="mt-2 text-sm text-gray-500">{{ __('settings.batch_gone') }}</p>
+        </div>
+    @endif
+
     {{-- Live queue status. Pending and failed job counts are read from the queue
          backend; worker count and a completion estimate are not tracked without
          Horizon, so they are not shown. --}}

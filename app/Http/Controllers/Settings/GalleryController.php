@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Bus;
 
 /**
  * Gallery settings: trip-grouping thresholds and independent maintenance jobs
@@ -60,13 +61,13 @@ class GalleryController extends Controller
      */
     public function rescan(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets(
+        return $this->dispatchBatch(
             $request,
-            fn (int $id) => ReadPhotoMetadata::dispatch($id),
+            'gallery-metadata',
+            fn (int $id): array => [new ReadPhotoMetadata($id)],
             fn (Builder $q) => $q->whereNull('metadata'),
+            'flash.photos_rescan_queued',
         );
-
-        return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_rescan_queued', ['count' => $count]));
     }
 
     /**
@@ -74,13 +75,13 @@ class GalleryController extends Controller
      */
     public function regenerate(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets(
+        return $this->dispatchBatch(
             $request,
-            fn (int $id) => GeneratePhotoRenditions::dispatch($id),
+            'gallery-thumbnails',
+            fn (int $id): array => [new GeneratePhotoRenditions($id)],
             fn (Builder $q) => $q->where('status', '!=', 'ready'),
+            'flash.photos_regenerate_queued',
         );
-
-        return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_regenerate_queued', ['count' => $count]));
     }
 
     /**
@@ -88,13 +89,13 @@ class GalleryController extends Controller
      */
     public function rename(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets(
+        return $this->dispatchBatch(
             $request,
-            fn (int $id) => RenamePhotos::dispatch($id),
+            'gallery-rename',
+            fn (int $id): array => [new RenamePhotos($id)],
             fn (Builder $q) => $q->whereNull('processed_at'),
+            'flash.photos_rename_queued',
         );
-
-        return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_rename_queued', ['count' => $count]));
     }
 
     /**
@@ -102,25 +103,45 @@ class GalleryController extends Controller
      */
     public function runAll(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets(
+        return $this->dispatchBatch(
             $request,
-            function (int $id): void {
-                GeneratePhotoRenditions::dispatch($id);
-                ReadPhotoMetadata::dispatch($id);
-                RenamePhotos::dispatch($id);
-            },
+            'gallery-all',
+            fn (int $id): array => [new GeneratePhotoRenditions($id), new ReadPhotoMetadata($id), new RenamePhotos($id)],
             fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('status', '!=', 'ready')->orWhereNull('metadata')),
+            'flash.photos_all_jobs_queued',
         );
-
-        return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_all_jobs_queued', ['count' => $count]));
     }
 
     /**
-     * Dispatch a job for the target photos. Scope is one of: the whole library
-     * (all), the newest N (recent + limit), or only items still missing this
-     * job's output (missing), applied by the given constraint.
+     * Live progress for a running maintenance batch.
      */
-    private function dispatchToTargets(Request $request, callable $dispatch, Closure $missing): int
+    public function batchStatus(Request $request): JsonResponse
+    {
+        $batch = $request->filled('id') ? Bus::findBatch((string) $request->query('id')) : null;
+
+        if ($batch === null) {
+            return response()->json(['found' => false]);
+        }
+
+        return response()->json([
+            'found' => true,
+            'total' => $batch->totalJobs,
+            'pending' => $batch->pendingJobs,
+            'processed' => $batch->processedJobs(),
+            'failed' => $batch->failedJobs,
+            'progress' => $batch->progress(),
+            'finished' => $batch->finished(),
+        ]);
+    }
+
+    /**
+     * Batch a maintenance job across the target photos. Scope is one of: the
+     * whole library (all), the newest N (recent + limit), or only items still
+     * missing this job's output (missing).
+     *
+     * @param  callable(int): array<object>  $jobsFor
+     */
+    private function dispatchBatch(Request $request, string $name, callable $jobsFor, Closure $missing, string $flashKey): RedirectResponse
     {
         $validated = $request->validate([
             'scope' => ['nullable', 'in:all,recent,missing'],
@@ -138,12 +159,17 @@ class GalleryController extends Controller
             $query->limit($limit);
         }
 
-        $count = 0;
-        foreach ($query->get() as $photo) {
-            $dispatch($photo->id);
-            $count++;
+        $ids = $query->pluck('id');
+        $jobs = $ids->flatMap($jobsFor)->all();
+
+        $redirect = redirect()->route('settings.gallery.edit')
+            ->with('status', __($flashKey, ['count' => $ids->count()]));
+
+        if ($jobs !== []) {
+            $batch = Bus::batch($jobs)->name($name)->allowFailures()->dispatch();
+            $redirect->with('batch_id', $batch->id);
         }
 
-        return $count;
+        return $redirect;
     }
 }
