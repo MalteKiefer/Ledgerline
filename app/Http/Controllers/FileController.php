@@ -21,8 +21,11 @@ use App\Services\Files\ReverseGeocoder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -212,16 +215,25 @@ class FileController extends Controller
     {
         $this->authorize('delete', $file);
 
-        // A file that is the source document of an invoice takes the invoice
-        // record with it (the source and the data belong together).
+        // A file that is the source document of a deletable invoice (draft or
+        // imported) takes the invoice record with it. A finalised, non-imported
+        // invoice is never removed this way (same rule as the invoice controller).
         $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
+        $deletableInvoice = $invoice !== null && ($invoice->isDraft() || $invoice->isImported());
 
-        Storage::disk(config('files.disk'))->delete($file->disk_path);
-        $file->delete();
+        $path = $file->disk_path;
 
-        if ($invoice !== null) {
-            $invoice->delete();
+        DB::transaction(function () use ($file, $deletableInvoice, $invoice): void {
+            $file->delete();
 
+            if ($deletableInvoice) {
+                $invoice->delete();
+            }
+        });
+
+        Storage::disk(config('files.disk'))->delete($path);
+
+        if ($deletableInvoice) {
             return redirect()
                 ->route('finance.invoices.index')
                 ->with('status', __('flash.invoice_and_file_deleted'));
@@ -230,6 +242,59 @@ class FileController extends Controller
         return redirect()
             ->back()
             ->with('status', __('flash.file_deleted'));
+    }
+
+    /**
+     * Move several files into a folder (or to the root).
+     */
+    public function bulkMove(Request $request): RedirectResponse
+    {
+        $this->authorize('create', File::class);
+
+        $validated = $request->validate([
+            'file_ids' => ['required', 'array'],
+            'file_ids.*' => ['integer'],
+            'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
+        ]);
+
+        $count = File::query()->whereIn('id', $validated['file_ids'])->update(['folder_id' => $validated['folder_id'] ?? null]);
+
+        return back()->with('status', __('flash.files_moved', ['count' => $count]));
+    }
+
+    /**
+     * Delete several files at once (with any deletable linked invoices).
+     */
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        $this->authorize('create', File::class);
+
+        $validated = $request->validate([
+            'file_ids' => ['required', 'array'],
+            'file_ids.*' => ['integer'],
+        ]);
+
+        $files = File::query()->with('attachable')->whereIn('id', $validated['file_ids'])->get();
+        $paths = [];
+
+        DB::transaction(function () use ($files, &$paths): void {
+            foreach ($files as $file) {
+                $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
+                $paths[] = $file->disk_path;
+                $file->delete();
+
+                if ($invoice !== null && ($invoice->isDraft() || $invoice->isImported())) {
+                    $invoice->delete();
+                }
+            }
+        });
+
+        $disk = Storage::disk(config('files.disk'));
+        foreach ($paths as $path) {
+            $disk->delete($path);
+        }
+
+        return back()->with('status', __('flash.files_deleted', ['count' => $files->count()]));
     }
 
     /**
