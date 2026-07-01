@@ -139,9 +139,14 @@
                             {{ __('settings.job_scope_recent') }}
                             <input type="number" min="1" max="100000" x-model.number="count" @focus="scope = 'recent'" class="w-24 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         </label>
+                        <label class="flex items-center gap-2">
+                            <input type="radio" value="missing" x-model="scope" class="text-gray-800 focus:ring-gray-500">
+                            {{ __('settings.job_scope_missing') }}
+                        </label>
                     </div>
                     <form method="POST" :action="action" class="mt-5 flex justify-end gap-3">
                         @csrf
+                        <input type="hidden" name="scope" :value="scope">
                         <input type="hidden" name="limit" :value="scope === 'recent' ? count : ''">
                         <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                         <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.job_scope_run') }}</button>

@@ -13,7 +13,9 @@ use App\Models\CompanyProfile;
 use App\Models\Photo;
 use App\Services\Gallery\VideoProcessor;
 use App\Services\QueueStatus;
+use Closure;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -58,7 +60,11 @@ class GalleryController extends Controller
      */
     public function rescan(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets($request, fn (int $id) => ReadPhotoMetadata::dispatch($id));
+        $count = $this->dispatchToTargets(
+            $request,
+            fn (int $id) => ReadPhotoMetadata::dispatch($id),
+            fn (Builder $q) => $q->whereNull('metadata'),
+        );
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_rescan_queued', ['count' => $count]));
     }
@@ -68,7 +74,11 @@ class GalleryController extends Controller
      */
     public function regenerate(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets($request, fn (int $id) => GeneratePhotoRenditions::dispatch($id));
+        $count = $this->dispatchToTargets(
+            $request,
+            fn (int $id) => GeneratePhotoRenditions::dispatch($id),
+            fn (Builder $q) => $q->where('status', '!=', 'ready'),
+        );
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_regenerate_queued', ['count' => $count]));
     }
@@ -78,7 +88,11 @@ class GalleryController extends Controller
      */
     public function rename(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets($request, fn (int $id) => RenamePhotos::dispatch($id));
+        $count = $this->dispatchToTargets(
+            $request,
+            fn (int $id) => RenamePhotos::dispatch($id),
+            fn (Builder $q) => $q->whereNull('processed_at'),
+        );
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_rename_queued', ['count' => $count]));
     }
@@ -88,28 +102,40 @@ class GalleryController extends Controller
      */
     public function runAll(Request $request): RedirectResponse
     {
-        $count = $this->dispatchToTargets($request, function (int $id): void {
-            GeneratePhotoRenditions::dispatch($id);
-            ReadPhotoMetadata::dispatch($id);
-            RenamePhotos::dispatch($id);
-        });
+        $count = $this->dispatchToTargets(
+            $request,
+            function (int $id): void {
+                GeneratePhotoRenditions::dispatch($id);
+                ReadPhotoMetadata::dispatch($id);
+                RenamePhotos::dispatch($id);
+            },
+            fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('status', '!=', 'ready')->orWhereNull('metadata')),
+        );
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_all_jobs_queued', ['count' => $count]));
     }
 
     /**
-     * Dispatch a job for the target photos: the newest N when a limit is given,
-     * otherwise the whole library.
+     * Dispatch a job for the target photos. Scope is one of: the whole library
+     * (all), the newest N (recent + limit), or only items still missing this
+     * job's output (missing), applied by the given constraint.
      */
-    private function dispatchToTargets(Request $request, callable $dispatch): int
+    private function dispatchToTargets(Request $request, callable $dispatch, Closure $missing): int
     {
-        $limit = $request->validate([
+        $validated = $request->validate([
+            'scope' => ['nullable', 'in:all,recent,missing'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100000'],
-        ])['limit'] ?? null;
+        ]);
+
+        $limit = $validated['limit'] ?? null;
+        // Default to "recent" when only a limit is posted (backwards compatible).
+        $scope = $validated['scope'] ?? ($limit !== null ? 'recent' : 'all');
 
         $query = Photo::query()->select('id')->orderByDesc('id');
-        if ($limit !== null) {
-            $query->limit((int) $limit);
+        if ($scope === 'missing') {
+            $missing($query);
+        } elseif ($scope === 'recent' && $limit !== null) {
+            $query->limit($limit);
         }
 
         $count = 0;

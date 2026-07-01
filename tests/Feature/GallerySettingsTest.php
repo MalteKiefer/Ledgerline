@@ -107,6 +107,18 @@ class GallerySettingsTest extends TestCase
         Queue::assertPushed(ReadPhotoMetadata::class, 2);
     }
 
+    public function test_a_job_can_target_only_missing_items(): void
+    {
+        Queue::fake();
+        $this->signIn();
+        Photo::factory()->count(2)->create(['metadata' => ['x' => 1]]);
+        Photo::factory()->count(3)->create(['metadata' => null]);
+
+        $this->post(route('settings.gallery.rescan'), ['scope' => 'missing'])->assertRedirect();
+
+        Queue::assertPushed(ReadPhotoMetadata::class, 3);
+    }
+
     public function test_run_all_queues_every_job_per_photo(): void
     {
         Queue::fake();
