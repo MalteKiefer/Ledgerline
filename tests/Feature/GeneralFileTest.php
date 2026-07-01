@@ -23,7 +23,7 @@ class GeneralFileTest extends TestCase
         $folder = Folder::create(['name' => 'Company']);
 
         $this->post(route('files.store.general'), [
-            'file' => UploadedFile::fake()->create('letterhead.pdf', 12, 'application/pdf'),
+            'files' => [UploadedFile::fake()->create('letterhead.pdf', 12, 'application/pdf')],
             'folder_id' => $folder->id,
         ])->assertRedirect(route('files.index', ['folder' => $folder->id]));
 

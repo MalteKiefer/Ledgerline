@@ -76,10 +76,10 @@ class TableSortFilterTest extends TestCase
             ->assertOk()
             ->assertSee('Contract.pdf')
             ->assertDontSee('Untagged.pdf')
-            ->assertSee('Tag: Contract');
+            ->assertSee('#Contract');
     }
 
-    public function test_file_tags_link_to_the_filtered_overview(): void
+    public function test_file_tags_link_to_the_filtered_overview_from_the_detail_page(): void
     {
         Storage::fake('files');
         $this->signIn();
@@ -87,7 +87,7 @@ class TableSortFilterTest extends TestCase
         $file = File::factory()->forCustomer($customer)->create();
         $file->tags()->attach(Tag::findOrCreateByName('Invoice')->id);
 
-        $this->get(route('files.index'))
+        $this->get(route('files.show', $file))
             ->assertOk()
             ->assertSee(route('files.index', ['tag' => 'invoice']), false);
     }
