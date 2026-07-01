@@ -20,7 +20,8 @@ class InvoiceNumberGenerator
     public function assign(Invoice $invoice): void
     {
         $company = CompanyProfile::current();
-        $prefix = $company->invoice_number_prefix ?: 'RE';
+        $prefix = (string) $company->invoice_number_prefix;
+        $pad = max(1, (int) $company->invoice_number_pad);
         $year = (int) $invoice->issue_date->format('Y');
 
         $next = DB::transaction(function () use ($prefix, $year, $company): int {
@@ -53,6 +54,6 @@ class InvoiceNumberGenerator
 
         $invoice->year = $year;
         $invoice->sequence = $next;
-        $invoice->number = sprintf('%s-%d-%04d', $prefix, $year, $next);
+        $invoice->number = ($prefix !== '' ? $prefix.'-' : '').$year.'-'.str_pad((string) $next, $pad, '0', STR_PAD_LEFT);
     }
 }

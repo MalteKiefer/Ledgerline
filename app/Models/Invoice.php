@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use RuntimeException;
 
 /**
@@ -142,5 +143,15 @@ class Invoice extends Model
     public function creditNotes(): HasMany
     {
         return $this->hasMany(Invoice::class, 'parent_invoice_id');
+    }
+
+    /**
+     * Attached files, e.g. the original PDF of an imported invoice.
+     *
+     * @return MorphMany<File, $this>
+     */
+    public function files(): MorphMany
+    {
+        return $this->morphMany(File::class, 'attachable');
     }
 }
