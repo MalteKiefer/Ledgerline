@@ -141,6 +141,31 @@ class PhotoEditTest extends TestCase
         $this->assertSame('2024-03-04.jpg', $photo->fresh()->name);
     }
 
+    public function test_template_appends_a_counter_for_a_different_image_same_second(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        CompanyProfile::current()->update(['gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}']);
+
+        // A different image already occupies the templated name.
+        Photo::factory()->create(['name' => '2024-03-04.jpg', 'checksum' => 'other-checksum']);
+
+        $image = UploadedFile::fake()->image('b.jpg', 100, 100);
+        $photo = Photo::factory()->create([
+            'name' => 'b.jpg',
+            'original_name' => 'b.jpg',
+            'media_type' => 'image',
+            'mime_type' => 'image/jpeg',
+            'checksum' => 'mine',
+            'taken_at' => '2024-03-04 10:00:00',
+        ]);
+        Storage::disk('files')->put($photo->disk_path, $image->getContent());
+
+        app(PhotoStorage::class)->process($photo->fresh());
+
+        $this->assertSame('2024-03-04_2.jpg', $photo->fresh()->name);
+    }
+
     public function test_reading_metadata_extracts_an_embedded_motion_clip(): void
     {
         Storage::fake('files');

@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'uuid',
     'name',
+    'original_name',
     'status',
     'media_type',
     'duration',
