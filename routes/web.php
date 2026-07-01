@@ -94,6 +94,8 @@ Route::middleware('auth')->group(function (): void {
         Route::resource('income-entries', IncomeEntryController::class)->except('show');
         Route::get('invoices/import', [InvoiceImportController::class, 'create'])->name('invoices.import.create');
         Route::post('invoices/import/parse', [InvoiceImportController::class, 'parse'])->name('invoices.import.parse');
+        Route::get('invoices/import/next', [InvoiceImportController::class, 'next'])->name('invoices.import.next');
+        Route::post('invoices/import/skip', [InvoiceImportController::class, 'skip'])->name('invoices.import.skip');
         Route::post('invoices/import', [InvoiceImportController::class, 'store'])->name('invoices.import.store');
         Route::resource('invoices', InvoiceController::class);
         Route::get('invoices/{invoice}/pdf', InvoicePdfController::class)->name('invoices.pdf');

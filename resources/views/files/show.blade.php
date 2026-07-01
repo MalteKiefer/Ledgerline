@@ -29,13 +29,35 @@
         <div class="flex items-center gap-3">
             <a href="{{ route('files.download', $file) }}"
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</a>
-            <form method="POST" action="{{ route('files.destroy', $file) }}"
-                onsubmit="return confirm('{{ __('files.delete_file_confirm') }}');">
-                @csrf
-                @method('DELETE')
-                <button type="submit"
-                    class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
-            </form>
+            @php $linkedInvoice = $file->attachable instanceof \App\Models\Invoice ? $file->attachable : null; @endphp
+            @if ($linkedInvoice)
+                <div x-data="{ open: false }" class="inline">
+                    <button type="button" @click="open = true"
+                        class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
+                    <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                        <div class="absolute inset-0 bg-gray-900/40" @click="open = false"></div>
+                        <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                            <h3 class="text-base font-semibold text-gray-900">{{ __('files.delete_invoice_title') }}</h3>
+                            <p class="mt-2 text-sm text-gray-600">{{ __('files.delete_invoice_warning', ['number' => $linkedInvoice->number ?? ('#'.$linkedInvoice->id)]) }}</p>
+                            <div class="mt-5 flex justify-end gap-3">
+                                <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.cancel') }}</button>
+                                <form method="POST" action="{{ route('files.destroy', $file) }}">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('files.delete_invoice_confirm') }}</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @else
+                <form method="POST" action="{{ route('files.destroy', $file) }}"
+                    onsubmit="return confirm('{{ __('files.delete_file_confirm') }}');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit"
+                        class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
+                </form>
+            @endif
         </div>
     </div>
 
