@@ -15,6 +15,8 @@ return [
     'download' => 'Original herunterladen',
     'drop_hint' => 'Fotos hierher ziehen oder klicken zum Auswählen',
     'duplicate' => 'Duplikat – übersprungen',
+    'duplicate_count' => 'Duplikate',
+    'duplicate_list' => 'Duplikate',
     'edit' => 'Bearbeiten',
     'empty' => 'Noch keine Fotos.',
     'empty_trash' => 'Papierkorb leeren',
