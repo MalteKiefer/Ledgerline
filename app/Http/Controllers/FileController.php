@@ -7,11 +7,13 @@ namespace App\Http\Controllers;
 use App\Enums\FileType;
 use App\Http\Requests\StoreFileRequest;
 use App\Http\Requests\StoreTeamFileRequest;
+use App\Http\Requests\UpdateFileRequest;
 use App\Models\Customer;
 use App\Models\File;
 use App\Models\Project;
 use App\Models\Tag;
 use App\Models\User;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\UploadedFile;
@@ -91,6 +93,32 @@ class FileController extends Controller
         'image/webp',
         'application/pdf',
     ];
+
+    /**
+     * Show a file's detail page.
+     */
+    public function show(File $file): View
+    {
+        $this->authorize('view', $file);
+
+        $file->load(['attachable', 'tags', 'uploader']);
+
+        return view('files.show', ['file' => $file]);
+    }
+
+    /**
+     * Update a file's editable metadata (title, description, note).
+     */
+    public function update(UpdateFileRequest $request, File $file): RedirectResponse
+    {
+        $this->authorize('update', $file);
+
+        $file->update($request->validated());
+
+        return redirect()
+            ->route('files.show', $file)
+            ->with('status', 'File updated.');
+    }
 
     /**
      * Stream a file back to the browser.

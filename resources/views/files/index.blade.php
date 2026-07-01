@@ -1,10 +1,22 @@
 <x-layouts.app title="Files">
-    <h1 class="text-2xl font-semibold text-gray-900">Files</h1>
-    <p class="mt-1 text-sm text-gray-600">All files across your team's customers and projects.</p>
+  <div x-data="{ uploadOpen: false }">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-900">Files</h1>
+            <p class="mt-1 text-sm text-gray-600">All files across your team's customers and projects.</p>
+        </div>
+        @if (! empty($targets))
+            <button type="button" @click="uploadOpen = ! uploadOpen"
+                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
+                <span x-show="! uploadOpen">Upload file</span>
+                <span x-show="uploadOpen" x-cloak>Close</span>
+            </button>
+        @endif
+    </div>
 
     {{-- Upload and assign a file to any customer or project. --}}
     @if (! empty($targets))
-        <form method="POST" action="{{ route('files.store') }}" enctype="multipart/form-data"
+        <form x-show="uploadOpen" x-cloak method="POST" action="{{ route('files.store') }}" enctype="multipart/form-data"
             class="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             @csrf
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -107,7 +119,7 @@
                         @php $attached = $file->attachable; @endphp
                         <tr>
                             <td class="px-4 py-3 font-medium text-gray-900">
-                                <a href="{{ route('files.download', $file) }}" class="hover:underline">{{ $file->name }}</a>
+                                <a href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
                             </td>
                             <td class="px-4 py-3 text-gray-600">
                                 @if ($attached instanceof \App\Models\Customer)
@@ -137,4 +149,5 @@
     <div class="mt-4">
         {{ $files->links() }}
     </div>
+  </div>
 </x-layouts.app>

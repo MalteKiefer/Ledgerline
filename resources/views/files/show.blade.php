@@ -1,0 +1,139 @@
+<x-layouts.app :title="$file->displayTitle">
+    @php
+        $formatBytes = static function (int $bytes): string {
+            $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            $i = 0;
+            $value = (float) $bytes;
+            while ($value >= 1024 && $i < count($units) - 1) {
+                $value /= 1024;
+                $i++;
+            }
+            return number_format($value, $i > 0 ? 1 : 0).' '.$units[$i];
+        };
+        $attached = $file->attachable;
+    @endphp
+
+    <p class="text-sm text-gray-500">
+        <a href="{{ route('files.index') }}" class="hover:underline">Files</a>
+        @if ($attached instanceof \App\Models\Customer)
+            <span aria-hidden="true">/</span>
+            <a href="{{ route('customers.show', $attached) }}" class="hover:underline">{{ $attached->name }}</a>
+        @elseif ($attached instanceof \App\Models\Project)
+            <span aria-hidden="true">/</span>
+            <a href="{{ route('projects.show', $attached) }}" class="hover:underline">{{ $attached->name }}</a>
+        @endif
+    </p>
+
+    <div class="mt-1 flex flex-wrap items-start justify-between gap-3">
+        <h1 class="text-2xl font-semibold text-gray-900">{{ $file->displayTitle }}</h1>
+        <div class="flex items-center gap-3">
+            <a href="{{ route('files.download', $file) }}"
+                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Download</a>
+            <form method="POST" action="{{ route('files.destroy', $file) }}"
+                onsubmit="return confirm('Delete this file? This cannot be undone.');">
+                @csrf
+                @method('DELETE')
+                <button type="submit"
+                    class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Delete</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {{-- Preview + metadata --}}
+        <div class="space-y-6 lg:col-span-2">
+            <div class="overflow-hidden rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                @if ($file->isImage())
+                    <img src="{{ route('files.download', $file) }}" alt="{{ $file->displayTitle }}"
+                        class="mx-auto max-h-[520px] rounded object-contain">
+                @elseif ($file->mime_type === 'application/pdf')
+                    <iframe src="{{ route('files.download', $file) }}" title="{{ $file->displayTitle }}"
+                        class="h-[600px] w-full rounded border-0"></iframe>
+                @else
+                    <p class="py-10 text-center text-sm text-gray-500">
+                        No inline preview for this file type.
+                        <a href="{{ route('files.download', $file) }}" class="text-gray-900 underline">Download</a> to view.
+                    </p>
+                @endif
+            </div>
+
+            <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Original name</dt>
+                        <dd class="mt-1 break-all text-sm text-gray-900">{{ $file->name }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Type</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ $file->type->label() }} · {{ $file->mime_type }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Size</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ $formatBytes($file->size) }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Encrypted</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ $file->is_encrypted ? 'Yes' : 'No' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Uploaded by</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ $file->uploader?->name ?? '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Uploaded</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ $file->created_at?->format('Y-m-d H:i') }}</dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="text-sm font-medium text-gray-500">Checksum (SHA-256)</dt>
+                        <dd class="mt-1 break-all font-mono text-xs text-gray-600">{{ $file->checksum ?: '—' }}</dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="text-sm font-medium text-gray-500">Tags</dt>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            @forelse ($file->tags as $tag)
+                                <a href="{{ route('files.index', ['tag' => $tag->slug]) }}"
+                                    class="mr-1 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs hover:bg-gray-200">{{ $tag->name }}</a>
+                            @empty
+                                —
+                            @endforelse
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        {{-- Editable metadata --}}
+        <div>
+            <form method="POST" action="{{ route('files.update', $file) }}"
+                class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                @csrf
+                @method('PUT')
+                <h2 class="text-sm font-semibold text-gray-900">Details</h2>
+
+                <div class="mt-4 space-y-4">
+                    <div>
+                        <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
+                        <input type="text" id="title" name="title" value="{{ old('title', $file->title) }}"
+                            placeholder="{{ $file->name }}"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        @error('title')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea id="description" name="description" rows="3"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">{{ old('description', $file->description) }}</textarea>
+                        @error('description')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label for="note" class="block text-sm font-medium text-gray-700">Note</label>
+                        <textarea id="note" name="note" rows="3"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">{{ old('note', $file->note) }}</textarea>
+                        @error('note')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    </div>
+                    <button type="submit"
+                        class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</x-layouts.app>

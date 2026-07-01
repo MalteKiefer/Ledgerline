@@ -24,7 +24,7 @@ class CustomerSearchProvider extends AbstractSearchProvider
 
         return Customer::query()
             ->where(function ($query) use ($like): void {
-                foreach (['name', 'email', 'city', 'vat_id'] as $column) {
+                foreach (['name', 'email', 'phone', 'city', 'postal_code', 'street', 'country', 'vat_id'] as $column) {
                     $query->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
                 }
             })

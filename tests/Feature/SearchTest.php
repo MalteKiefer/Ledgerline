@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\Contact;
 use App\Models\ContactEmail;
 use App\Models\Customer;
+use App\Models\File;
 use App\Models\Project;
 use App\Models\Tag;
 use App\Models\Team;
@@ -47,6 +48,32 @@ class SearchTest extends TestCase
             ->assertOk()
             ->assertSee('Customers')
             ->assertSee('Qzxwv Industries');
+    }
+
+    public function test_it_finds_customers_by_postal_code(): void
+    {
+        $this->signIn();
+        Customer::factory()->create(['name' => 'Lohmar GmbH', 'postal_code' => '53797']);
+
+        $this->search('53797')
+            ->assertOk()
+            ->assertSee('Customers')
+            ->assertSee('Lohmar GmbH');
+    }
+
+    public function test_it_finds_files_by_note(): void
+    {
+        $this->signIn();
+        $customer = Customer::factory()->create();
+        File::factory()->forCustomer($customer)->create([
+            'name' => 'Contract.pdf',
+            'note' => 'renewal due qzxwvnote',
+        ]);
+
+        $this->search('qzxwvnote')
+            ->assertOk()
+            ->assertSee('Files')
+            ->assertSee('Contract.pdf');
     }
 
     public function test_it_finds_contacts_by_related_email(): void
