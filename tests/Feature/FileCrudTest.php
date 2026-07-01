@@ -171,6 +171,7 @@ class FileCrudTest extends TestCase
         $response = $this->get(route('files.download', $file))
             ->assertOk()
             ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('X-Frame-Options', 'DENY')
             ->assertHeader('Content-Security-Policy', "default-src 'none'; sandbox");
 
         $this->assertStringContainsString('attachment', (string) $response->headers->get('Content-Disposition'));
@@ -188,7 +189,9 @@ class FileCrudTest extends TestCase
         ]);
         Storage::disk('files')->put('files/x.png', 'bytes');
 
-        $response = $this->get(route('files.download', $file))->assertOk();
+        $response = $this->get(route('files.download', $file))
+            ->assertOk()
+            ->assertHeader('X-Frame-Options', 'SAMEORIGIN');
 
         $this->assertStringContainsString('inline', (string) $response->headers->get('Content-Disposition'));
     }
