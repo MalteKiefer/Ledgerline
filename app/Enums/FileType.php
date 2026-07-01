@@ -24,14 +24,7 @@ enum FileType: string
      */
     public function label(): string
     {
-        return match ($this) {
-            self::IMAGE => 'Image',
-            self::PDF => 'PDF',
-            self::DOCUMENT => 'Document',
-            self::SPREADSHEET => 'Spreadsheet',
-            self::ARCHIVE => 'Archive',
-            self::OTHER => 'Other',
-        };
+        return __('enums.file_type.'.$this->name);
     }
 
     /**

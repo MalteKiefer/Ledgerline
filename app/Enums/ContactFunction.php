@@ -34,22 +34,7 @@ enum ContactFunction: string
      */
     public function label(): string
     {
-        return match ($this) {
-            self::CEO => 'Chief Executive Officer',
-            self::CTO => 'Chief Technology Officer',
-            self::CFO => 'Chief Financial Officer',
-            self::COO => 'Chief Operating Officer',
-            self::MANAGING_DIRECTOR => 'Managing Director',
-            self::TECHNICAL_CONTACT => 'Technical Contact',
-            self::FINANCE_CONTACT => 'Finance / Billing Contact',
-            self::PROCUREMENT_CONTACT => 'Procurement / Purchasing Contact',
-            self::PROJECT_MANAGER => 'Project Manager',
-            self::HELPDESK => 'Helpdesk / Support Contact',
-            self::SECURITY_CONTACT => 'IT Security Contact',
-            self::DATA_PROTECTION_OFFICER => 'Data Protection Officer',
-            self::SALES_CONTACT => 'Sales Contact',
-            self::OTHER => 'Other',
-        };
+        return __('enums.contact_function.'.$this->name);
     }
 
     /**

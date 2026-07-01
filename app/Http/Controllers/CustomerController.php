@@ -70,7 +70,7 @@ class CustomerController extends Controller
 
         return redirect()
             ->route('customers.show', $customer)
-            ->with('status', 'Customer created.');
+            ->with('status', __('flash.customer_created'));
     }
 
     /**
@@ -115,7 +115,7 @@ class CustomerController extends Controller
 
         return redirect()
             ->route('customers.show', $customer)
-            ->with('status', 'Customer updated.');
+            ->with('status', __('flash.customer_updated'));
     }
 
     /**
@@ -129,6 +129,6 @@ class CustomerController extends Controller
 
         return redirect()
             ->route('customers.index')
-            ->with('status', 'Customer deleted.');
+            ->with('status', __('flash.customer_deleted'));
     }
 }

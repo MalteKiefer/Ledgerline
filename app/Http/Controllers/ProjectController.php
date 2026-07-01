@@ -95,7 +95,7 @@ class ProjectController extends Controller
 
         return redirect()
             ->route('customers.show', $customer)
-            ->with('status', 'Project created.');
+            ->with('status', __('flash.project_created'));
     }
 
     /**
@@ -149,7 +149,7 @@ class ProjectController extends Controller
 
         return redirect()
             ->route('customers.show', $project->customer_id)
-            ->with('status', 'Project updated.');
+            ->with('status', __('flash.project_updated'));
     }
 
     /**
@@ -164,7 +164,7 @@ class ProjectController extends Controller
 
         return redirect()
             ->route('customers.show', $customerId)
-            ->with('status', 'Project deleted.');
+            ->with('status', __('flash.project_deleted'));
     }
 
     /**

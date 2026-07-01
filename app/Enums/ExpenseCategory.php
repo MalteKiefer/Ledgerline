@@ -22,17 +22,7 @@ enum ExpenseCategory: string
 
     public function label(): string
     {
-        return match ($this) {
-            self::HARDWARE => 'Hardware',
-            self::SOFTWARE => 'Software',
-            self::SUBSCRIPTION => 'Subscription',
-            self::HOSTING => 'Hosting',
-            self::TRAVEL => 'Travel',
-            self::OFFICE => 'Office',
-            self::MARKETING => 'Marketing',
-            self::FEES => 'Fees',
-            self::OTHER => 'Other',
-        };
+        return __('enums.expense_category.'.$this->name);
     }
 
     /**

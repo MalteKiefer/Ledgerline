@@ -17,13 +17,7 @@ enum InvoiceStatus: string
 
     public function label(): string
     {
-        return match ($this) {
-            self::DRAFT => 'Draft',
-            self::SENT => 'Sent',
-            self::PAID => 'Paid',
-            self::OVERDUE => 'Overdue',
-            self::CANCELLED => 'Cancelled',
-        };
+        return __('enums.invoice_status.'.$this->name);
     }
 
     /**

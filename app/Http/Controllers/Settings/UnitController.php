@@ -26,20 +26,20 @@ class UnitController extends Controller
     {
         Unit::create($request->validated());
 
-        return redirect()->route('settings.units.index')->with('status', 'Unit added.');
+        return redirect()->route('settings.units.index')->with('status', __('flash.unit_added'));
     }
 
     public function update(UnitRequest $request, Unit $unit): RedirectResponse
     {
         $unit->update($request->validated());
 
-        return redirect()->route('settings.units.index')->with('status', 'Unit updated.');
+        return redirect()->route('settings.units.index')->with('status', __('flash.unit_updated'));
     }
 
     public function destroy(Unit $unit): RedirectResponse
     {
         $unit->delete();
 
-        return redirect()->route('settings.units.index')->with('status', 'Unit deleted.');
+        return redirect()->route('settings.units.index')->with('status', __('flash.unit_deleted'));
     }
 }

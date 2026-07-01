@@ -40,7 +40,7 @@ class CompanyController extends Controller
 
         CompanyProfile::current()->update($data);
 
-        return redirect()->route('settings.company.edit')->with('status', 'Company profile saved.');
+        return redirect()->route('settings.company.edit')->with('status', __('flash.company_saved'));
     }
 
     /**

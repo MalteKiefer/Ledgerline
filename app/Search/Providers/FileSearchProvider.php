@@ -19,7 +19,7 @@ class FileSearchProvider extends AbstractSearchProvider
 {
     public function group(): string
     {
-        return 'Files';
+        return __('search.files');
     }
 
     public function search(string $term, int $limit): array

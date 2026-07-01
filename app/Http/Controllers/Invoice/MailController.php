@@ -29,7 +29,7 @@ class MailController extends Controller
         $to = $validated['email'] ?? $invoice->customer?->email;
 
         if (blank($to)) {
-            return back()->with('error', 'No recipient email address.');
+            return back()->with('error', __('flash.no_recipient'));
         }
 
         $invoice->load(['customer', 'lines']);
@@ -39,6 +39,6 @@ class MailController extends Controller
 
         return redirect()
             ->route('finance.invoices.show', $invoice)
-            ->with('status', "Invoice emailed to {$to}.");
+            ->with('status', __('flash.invoice_emailed', ['email' => $to]));
     }
 }

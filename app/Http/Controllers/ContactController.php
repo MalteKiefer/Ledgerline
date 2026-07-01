@@ -95,7 +95,7 @@ class ContactController extends Controller
 
         return redirect()
             ->route('customers.show', $customer)
-            ->with('status', 'Contact created.');
+            ->with('status', __('flash.contact_created'));
     }
 
     /**
@@ -157,7 +157,7 @@ class ContactController extends Controller
 
         return redirect()
             ->route('customers.show', $contact->customer_id)
-            ->with('status', 'Contact updated.');
+            ->with('status', __('flash.contact_updated'));
     }
 
     /**
@@ -172,7 +172,7 @@ class ContactController extends Controller
 
         return redirect()
             ->route('customers.show', $customerId)
-            ->with('status', 'Contact deleted.');
+            ->with('status', __('flash.contact_deleted'));
     }
 
     /**

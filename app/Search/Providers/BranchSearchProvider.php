@@ -16,7 +16,7 @@ class BranchSearchProvider extends AbstractSearchProvider
 {
     public function group(): string
     {
-        return 'Branches';
+        return __('search.branches');
     }
 
     public function search(string $term, int $limit): array

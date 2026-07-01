@@ -18,11 +18,7 @@ enum TaxMode: string
 
     public function label(): string
     {
-        return match ($this) {
-            self::STANDARD => 'Standard VAT',
-            self::REVERSE_CHARGE => 'Reverse charge (EU)',
-            self::SMALL_BUSINESS => 'Small business (§19 UStG)',
-        };
+        return __('enums.tax_mode.'.$this->name);
     }
 
     /**
