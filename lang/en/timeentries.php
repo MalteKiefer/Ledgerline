@@ -1,0 +1,55 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'index' => [
+        'title' => 'Time',
+        'heading' => 'Time',
+        'subtitle' => 'Billable hours for customers and projects.',
+        'new' => 'New time entry',
+        'billable_total' => 'Billable (:currency)',
+        'no_time' => 'No time yet.',
+        'search' => 'Search',
+        'search_placeholder' => 'Description…',
+        'filter' => 'Filter',
+        'clear' => 'Clear',
+        'empty' => 'No time entries.',
+        'col_date' => 'Date',
+        'col_description' => 'Description',
+        'col_linked' => 'Linked',
+        'col_hours' => 'Hours',
+        'col_rate' => 'Rate',
+        'col_amount' => 'Amount',
+        'non_billable' => 'Non-billable',
+        'edit' => 'Edit',
+    ],
+    'create' => [
+        'title' => 'New time entry',
+        'breadcrumb' => 'Time',
+        'heading' => 'New time entry',
+        'submit' => 'Create',
+        'cancel' => 'Cancel',
+    ],
+    'edit' => [
+        'title' => 'Edit time entry',
+        'breadcrumb' => 'Time',
+        'heading' => 'Edit time entry',
+        'submit' => 'Save',
+        'cancel' => 'Cancel',
+        'delete' => 'Delete time entry',
+        'confirm_delete' => 'Delete this time entry?',
+    ],
+    'form' => [
+        'date' => 'Date',
+        'billable' => 'Billable',
+        'description' => 'Description',
+        'hours' => 'Hours',
+        'rate' => 'Rate / h',
+        'rate_placeholder' => 'Default',
+        'rate_help' => 'Blank = project or customer default.',
+        'currency' => 'Currency',
+        'customer' => 'Customer',
+        'project' => 'Project',
+    ],
+];

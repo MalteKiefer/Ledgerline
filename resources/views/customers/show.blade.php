@@ -4,15 +4,15 @@
         <div class="flex items-center gap-3">
             <a href="{{ route('customers.edit', $customer) }}"
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                Edit
+                {{ __('customers.show.edit') }}
             </a>
             <form method="POST" action="{{ route('customers.destroy', $customer) }}"
-                onsubmit="return confirm('Delete this customer? This cannot be undone.');">
+                onsubmit="return confirm('{{ __('customers.show.delete_confirm') }}');">
                 @csrf
                 @method('DELETE')
                 <button type="submit"
                     class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                    Delete
+                    {{ __('customers.show.delete') }}
                 </button>
             </form>
         </div>
@@ -21,7 +21,7 @@
     <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
             <div>
-                <dt class="text-sm font-medium text-gray-500">Email</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.email') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
                     @if ($customer->email)
                         <a href="mailto:{{ $customer->email }}" class="text-gray-900 hover:underline">{{ $customer->email }}</a>
@@ -29,7 +29,7 @@
                 </dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Phone</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.phone') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
                     @if ($customer->phone)
                         <a href="tel:{{ $customer->phone }}" class="text-gray-900 hover:underline">{{ $customer->phone }}</a>
@@ -37,7 +37,7 @@
                 </dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Website</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.website') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
                     @if ($customer->website)
                         <a href="{{ $customer->website }}" target="_blank" rel="noopener noreferrer"
@@ -46,23 +46,23 @@
                 </dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">VAT ID</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.vat_id') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $customer->vat_id ?: '—' }}</dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Street</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.street') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $customer->street ?: '—' }}</dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Postal code</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.postal_code') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $customer->postal_code ?: '—' }}</dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">City</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.city') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $customer->city ?: '—' }}</dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Country</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.country') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
                     @if ($name = \App\Support\Countries::name($customer->country))
                         {{ \App\Support\Countries::flag($customer->country) }} {{ $name }}
@@ -71,7 +71,7 @@
             </div>
 
             <div class="sm:col-span-2">
-                <dt class="text-sm font-medium text-gray-500">Notes</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('customers.show.notes') }}</dt>
                 <dd class="mt-1 whitespace-pre-line text-sm text-gray-900">{{ $customer->notes ?: '—' }}</dd>
             </div>
         </dl>
@@ -79,30 +79,30 @@
 
     <div class="mt-8" x-data="{ tab: 'contacts' }">
         <div class="border-b border-gray-200">
-            <nav class="-mb-px flex gap-6" role="tablist" aria-label="Customer relations">
+            <nav class="-mb-px flex gap-6" role="tablist" aria-label="{{ __('customers.show.relations_label') }}">
                 <button type="button" role="tab" id="tab-contacts" aria-controls="panel-contacts"
                     :aria-selected="(tab === 'contacts').toString()" @click="tab = 'contacts'"
                     class="border-b-2 px-1 py-3 text-sm font-medium"
                     :class="tab === 'contacts' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Contacts ({{ $customer->contacts->count() }})
+                    {{ __('customers.show.tab_contacts') }} ({{ $customer->contacts->count() }})
                 </button>
                 <button type="button" role="tab" id="tab-projects" aria-controls="panel-projects"
                     :aria-selected="(tab === 'projects').toString()" @click="tab = 'projects'"
                     class="border-b-2 px-1 py-3 text-sm font-medium"
                     :class="tab === 'projects' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Projects ({{ $customer->projects->count() }})
+                    {{ __('customers.show.tab_projects') }} ({{ $customer->projects->count() }})
                 </button>
                 <button type="button" role="tab" id="tab-branches" aria-controls="panel-branches"
                     :aria-selected="(tab === 'branches').toString()" @click="tab = 'branches'"
                     class="border-b-2 px-1 py-3 text-sm font-medium"
                     :class="tab === 'branches' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Branches ({{ $customer->branches->count() }})
+                    {{ __('customers.show.tab_branches') }} ({{ $customer->branches->count() }})
                 </button>
                 <button type="button" role="tab" id="tab-files" aria-controls="panel-files"
                     :aria-selected="(tab === 'files').toString()" @click="tab = 'files'"
                     class="border-b-2 px-1 py-3 text-sm font-medium"
                     :class="tab === 'files' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
-                    Files ({{ $customer->files->count() }})
+                    {{ __('customers.show.tab_files') }} ({{ $customer->files->count() }})
                 </button>
             </nav>
         </div>
@@ -112,12 +112,12 @@
             <div class="flex items-center justify-end">
                 <a href="{{ route('customers.contacts.create', $customer) }}"
                     class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                    Add contact
+                    {{ __('customers.show.add_contact') }}
                 </a>
             </div>
             <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
                 @if ($customer->contacts->isEmpty())
-                    <p class="px-4 py-6 text-center text-sm text-gray-500">No contacts yet.</p>
+                    <p class="px-4 py-6 text-center text-sm text-gray-500">{{ __('customers.show.no_contacts') }}</p>
                 @else
                     <ul class="divide-y divide-gray-100 text-sm">
                         @foreach ($customer->contacts as $contact)
@@ -153,12 +153,12 @@
             <div class="flex items-center justify-end">
                 <a href="{{ route('projects.create', ['customer' => $customer->id]) }}"
                     class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                    Add project
+                    {{ __('customers.show.add_project') }}
                 </a>
             </div>
             <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
                 @if ($customer->projects->isEmpty())
-                    <p class="px-4 py-6 text-center text-sm text-gray-500">No projects yet.</p>
+                    <p class="px-4 py-6 text-center text-sm text-gray-500">{{ __('customers.show.no_projects') }}</p>
                 @else
                     <ul class="divide-y divide-gray-100 text-sm">
                         @foreach ($customer->projects as $project)
@@ -181,12 +181,12 @@
             <div class="flex items-center justify-end">
                 <a href="{{ route('customers.branches.create', $customer) }}"
                     class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                    Add branch
+                    {{ __('customers.show.add_branch') }}
                 </a>
             </div>
             <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
                 @if ($customer->branches->isEmpty())
-                    <p class="px-4 py-6 text-center text-sm text-gray-500">No branches yet.</p>
+                    <p class="px-4 py-6 text-center text-sm text-gray-500">{{ __('customers.show.no_branches') }}</p>
                 @else
                     <ul class="divide-y divide-gray-100 text-sm">
                         @foreach ($customer->branches as $branch)
@@ -200,7 +200,7 @@
                                 </div>
                                 @if ($branch->manager)
                                     <div class="mt-1 text-gray-600">
-                                        Manager:
+                                        {{ __('customers.show.manager') }}
                                         <a href="{{ route('contacts.show', $branch->manager) }}" class="hover:underline">
                                             {{ $branch->manager->name }}
                                         </a>
@@ -222,6 +222,6 @@
     </div>
 
     <div class="mt-6">
-        <a href="{{ route('customers.index') }}" class="text-sm text-gray-600 hover:text-gray-900">&larr; Back to customers</a>
+        <a href="{{ route('customers.index') }}" class="text-sm text-gray-600 hover:text-gray-900">{{ __('customers.show.back') }}</a>
     </div>
 </x-layouts.app>

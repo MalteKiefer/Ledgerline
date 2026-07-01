@@ -1,7 +1,7 @@
 @props([
     'name' => 'country',
     'value' => null,
-    'label' => 'Country',
+    'label' => null,
     'required' => false,
     'id' => null,
 ])
@@ -15,7 +15,7 @@
 {{-- Type-ahead country picker. Submits an ISO alpha-2 code; shows name + flag. --}}
 <div x-data="countryCombobox(@js($options), @js($initial))">
     <label for="{{ $fieldId }}" class="block text-sm font-medium text-gray-700">
-        {{ $label }}@if ($required)<span class="text-red-600"> *</span>@endif
+        {{ $label ?? __('pages.country.label') }}@if ($required)<span class="text-red-600"> *</span>@endif
     </label>
 
     <input type="hidden" name="{{ $name }}" :value="selected">
@@ -27,7 +27,7 @@
                 aria-controls="{{ $fieldId }}-listbox" :aria-expanded="open.toString()"
                 x-model="query" @focus="open = true" @input="syncFromQuery()"
                 @keydown.escape="open = false" @click="open = true"
-                placeholder="Type to search a country…"
+                placeholder="{{ __('pages.country.placeholder') }}"
                 @error($name) aria-invalid="true" aria-describedby="{{ $fieldId }}-error" @enderror
                 class="w-full border-0 bg-transparent py-2 p-0 focus:ring-0 sm:text-sm">
         </div>
@@ -44,7 +44,7 @@
                 </li>
             </template>
             <template x-if="filtered.length === 0">
-                <li class="px-3 py-2 text-gray-500">No matching country.</li>
+                <li class="px-3 py-2 text-gray-500">{{ __('pages.country.no_match') }}</li>
             </template>
         </ul>
     </div>

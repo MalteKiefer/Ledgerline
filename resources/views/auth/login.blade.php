@@ -1,8 +1,8 @@
-<x-layouts.guest title="Sign in">
+<x-layouts.guest :title="__('pages.login.title')">
     <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <h1 class="text-center text-xl font-semibold text-gray-900">Ledgerline</h1>
         <p class="mt-2 text-center text-sm text-gray-600">
-            Sign in with your Pocket-ID account to continue.
+            {{ __('pages.login.subtitle') }}
         </p>
 
         @error('pocketid')
@@ -14,7 +14,7 @@
 
         <a href="{{ route('auth.redirect') }}"
             class="mt-6 flex w-full items-center justify-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-            Continue with Pocket-ID
+            {{ __('pages.login.continue') }}
         </a>
     </div>
 </x-layouts.guest>

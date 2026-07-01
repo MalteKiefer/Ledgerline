@@ -23,7 +23,7 @@ class SetLocale
 
         $locale = $request->user()?->locale
             ?? $request->session()->get('locale')
-            ?? $request->getPreferredLanguage($supported)
+            ?? $this->fromBrowser($request, $supported)
             ?? config('app.locale');
 
         if (! in_array($locale, $supported, true)) {
@@ -33,5 +33,23 @@ class SetLocale
         app()->setLocale($locale);
 
         return $next($request);
+    }
+
+    /**
+     * The first browser-preferred language we actually support, or null.
+     *
+     * @param  list<string>  $supported
+     */
+    private function fromBrowser(Request $request, array $supported): ?string
+    {
+        foreach ($request->getLanguages() as $language) {
+            $short = mb_strtolower(mb_substr((string) $language, 0, 2));
+
+            if (in_array($short, $supported, true)) {
+                return $short;
+            }
+        }
+
+        return null;
     }
 }
