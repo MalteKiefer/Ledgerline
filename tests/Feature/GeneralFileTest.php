@@ -111,6 +111,31 @@ class GeneralFileTest extends TestCase
         $this->assertSame($docs->id, File::firstWhere('name', 'readme.txt')->folder_id);
     }
 
+    public function test_extraction_rejects_zip_slip_entries(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'z').'.zip';
+        $zip = new \ZipArchive;
+        $zip->open($zipPath, \ZipArchive::CREATE);
+        $zip->addFromString('../evil.txt', 'pwned');
+        $zip->close();
+        Storage::disk('files')->put('files/bad.zip', file_get_contents($zipPath));
+        @unlink($zipPath);
+
+        $file = File::factory()->create([
+            'name' => 'bad.zip', 'type' => FileType::ARCHIVE,
+            'disk_path' => 'files/bad.zip', 'attachable_type' => null, 'attachable_id' => null,
+        ]);
+
+        $this->post(route('files.extract', $file))->assertRedirect();
+
+        // Nothing extracted; no file/folder created from the malicious entry.
+        $this->assertSame(0, File::where('name', 'evil.txt')->count());
+        $this->assertNull(Folder::where('name', 'bad')->first());
+    }
+
     public function test_conflicts_endpoint_reports_existing_paths(): void
     {
         $this->signIn();
