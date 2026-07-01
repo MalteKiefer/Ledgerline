@@ -371,7 +371,7 @@ Alpine.data('invoiceLines', (initial = []) => ({
  *
  * @param {number[]} allIds  Ids of the files currently listed.
  */
-Alpine.data('filesExplorer', (allIds = []) => ({
+Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     allIds,
     selected: [],
     moveOpen: false,
@@ -379,6 +379,84 @@ Alpine.data('filesExplorer', (allIds = []) => ({
     target: '',
     deleteOpen: false,
     renaming: null,
+
+    // Drag-and-drop upload (whole-window dropzone, folders included).
+    dragging: false,
+    uploading: false,
+    progress: { done: 0, total: 0 },
+
+    initDropzone() {
+        let depth = 0;
+        window.addEventListener('dragenter', (e) => {
+            if (e.dataTransfer?.types?.includes('Files')) { depth++; this.dragging = true; }
+        });
+        window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (! depth) this.dragging = false; });
+        window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
+    },
+
+    async drop(event) {
+        this.dragging = false;
+        const items = event.dataTransfer.items;
+        let files = [];
+
+        // Prefer the entries API so dropped folders (and subfolders) are walked.
+        if (items && items.length && items[0].webkitGetAsEntry) {
+            const entries = [...items].map((i) => i.webkitGetAsEntry()).filter(Boolean);
+            for (const entry of entries) {
+                await this.walkEntry(entry, '', files);
+            }
+        } else {
+            files = [...event.dataTransfer.files].map((f) => ({ file: f, path: f.name }));
+        }
+
+        if (files.length) {
+            await this.uploadFiles(files);
+        }
+    },
+
+    walkEntry(entry, prefix, out) {
+        return new Promise((resolve) => {
+            if (entry.isFile) {
+                entry.file((f) => { out.push({ file: f, path: prefix + f.name }); resolve(); }, () => resolve());
+                return;
+            }
+            const reader = entry.createReader();
+            const readBatch = () => reader.readEntries(async (batch) => {
+                if (! batch.length) { resolve(); return; }
+                for (const child of batch) {
+                    await this.walkEntry(child, prefix + entry.name + '/', out);
+                }
+                readBatch(); // readEntries yields in chunks; keep going until empty
+            }, () => resolve());
+            readBatch();
+        });
+    },
+
+    async uploadFiles(files) {
+        this.uploading = true;
+        this.progress = { done: 0, total: files.length };
+
+        // Send in batches to stay within the per-request file limit.
+        const chunkSize = 25;
+        for (let i = 0; i < files.length; i += chunkSize) {
+            const chunk = files.slice(i, i + chunkSize);
+            const data = new FormData();
+            data.append('_token', config.token);
+            if (config.folderId) data.append('folder_id', config.folderId);
+            if (config.customerId) data.append('customer_id', config.customerId);
+            if (config.projectId) data.append('project_id', config.projectId);
+            chunk.forEach((item) => {
+                data.append('files[]', item.file);
+                data.append('paths[]', item.path);
+            });
+            try {
+                await fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data });
+            } catch (e) { /* continue with remaining batches */ }
+            this.progress.done = Math.min(files.length, i + chunk.length);
+        }
+
+        window.location.reload();
+    },
 
     toggleAll(event) {
         this.selected = event.target.checked ? [...this.allIds] : [];

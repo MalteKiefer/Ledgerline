@@ -35,32 +35,51 @@ class ReverseGeocoder
         [$lat, $lon] = $this->snapToGrid($lat, $lon);
         $key = 'geocode:'.round($lat, 5).','.round($lon, 5);
 
-        return Cache::remember($key, now()->addDays(30), function () use ($lat, $lon): array {
-            try {
-                $this->throttle();
+        // Reuse a previously resolved place. Failed lookups are NOT cached, so
+        // re-reading metadata retries them and fills in places that were empty.
+        $cached = Cache::get($key);
+        if (is_array($cached) && ($cached['display'] ?? null) !== null) {
+            return $cached;
+        }
 
-                $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
-                    ->timeout(5)
-                    ->get(self::HOST, [
-                        'lat' => $lat,
-                        'lon' => $lon,
-                        'format' => 'jsonv2',
-                        'zoom' => 18,
-                        'addressdetails' => 1,
-                    ]);
+        $result = $this->request($lat, $lon);
 
-                if (! $response->successful()) {
-                    return ['display' => null, 'address' => []];
-                }
+        if ($result['display'] !== null) {
+            Cache::put($key, $result, now()->addDays(30));
+        }
 
-                return [
-                    'display' => $response->json('display_name') ?: null,
-                    'address' => array_map('strval', $response->json('address') ?: []),
-                ];
-            } catch (Throwable) {
+        return $result;
+    }
+
+    /**
+     * @return array{display: ?string, address: array<string, string>}
+     */
+    private function request(float $lat, float $lon): array
+    {
+        try {
+            $this->throttle();
+
+            $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
+                ->timeout(5)
+                ->get(self::HOST, [
+                    'lat' => $lat,
+                    'lon' => $lon,
+                    'format' => 'jsonv2',
+                    'zoom' => 18,
+                    'addressdetails' => 1,
+                ]);
+
+            if (! $response->successful()) {
                 return ['display' => null, 'address' => []];
             }
-        });
+
+            return [
+                'display' => $response->json('display_name') ?: null,
+                'address' => array_map('strval', $response->json('address') ?: []),
+            ];
+        } catch (Throwable) {
+            return ['display' => null, 'address' => []];
+        }
     }
 
     /**

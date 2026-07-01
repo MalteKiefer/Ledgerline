@@ -33,6 +33,28 @@ class GeneralFileTest extends TestCase
         $this->assertSame($folder->id, $file->folder_id);
     }
 
+    public function test_a_dropped_folder_recreates_its_subfolders(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $this->post(route('files.store.general'), [
+            'files' => [
+                UploadedFile::fake()->create('a.txt', 5),
+                UploadedFile::fake()->create('b.txt', 5),
+            ],
+            'paths' => ['Trip/Day1/a.txt', 'Trip/b.txt'],
+        ])->assertRedirect();
+
+        $trip = Folder::where('name', 'Trip')->whereNull('parent_id')->first();
+        $this->assertNotNull($trip);
+        $day1 = Folder::where('name', 'Day1')->where('parent_id', $trip->id)->first();
+        $this->assertNotNull($day1);
+
+        $this->assertSame($day1->id, File::firstWhere('name', 'a.txt')->folder_id);
+        $this->assertSame($trip->id, File::firstWhere('name', 'b.txt')->folder_id);
+    }
+
     public function test_a_file_can_be_moved_into_a_folder(): void
     {
         $this->signIn();
