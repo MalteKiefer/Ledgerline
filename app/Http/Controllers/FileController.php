@@ -91,6 +91,8 @@ class FileController extends Controller
         $validated = $request->validate([
             'files' => ['required', 'array', 'max:50'],
             'files.*' => ['file', 'max:51200'],
+            'paths' => ['array'],
+            'paths.*' => ['nullable', 'string', 'max:1024'],
             'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
             'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')],
             'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')],
@@ -107,8 +109,14 @@ class FileController extends Controller
             default => null,
         };
 
-        foreach ($validated['files'] as $upload) {
-            $this->persist($upload, $validated['tags'] ?? [], $attachable, $request->user(), $folderId);
+        $paths = $validated['paths'] ?? [];
+        $folderCache = [];
+
+        foreach ($validated['files'] as $i => $upload) {
+            // A dropped folder passes a relative path like "Trip/Day1/img.jpg";
+            // recreate that folder chain under the current folder.
+            $target = $this->folderForPath($folderId, $paths[$i] ?? null, $folderCache);
+            $this->persist($upload, $validated['tags'] ?? [], $attachable, $request->user(), $target);
         }
 
         return redirect()
@@ -118,6 +126,44 @@ class FileController extends Controller
                 'project' => $validated['project_id'] ?? null,
             ]))
             ->with('status', __('flash.files_uploaded', ['count' => count($validated['files'])]));
+    }
+
+    /**
+     * Resolve (creating as needed) the folder for a dropped file's relative
+     * path, nesting subfolders under the current folder. Created folder ids are
+     * cached per request so a folder is only created once.
+     *
+     * @param  array<string, int>  $cache
+     */
+    private function folderForPath(?int $baseId, ?string $relativePath, array &$cache): ?int
+    {
+        if ($relativePath === null) {
+            return $baseId;
+        }
+
+        $dir = trim(str_replace('\\', '/', dirname($relativePath)), '/');
+        if ($dir === '' || $dir === '.') {
+            return $baseId;
+        }
+
+        $parent = $baseId;
+        $accumulated = (string) $baseId;
+
+        foreach (explode('/', $dir) as $segment) {
+            $segment = trim($segment);
+            if ($segment === '') {
+                continue;
+            }
+
+            $accumulated .= '/'.$segment;
+            $cache[$accumulated] ??= Folder::firstOrCreate([
+                'name' => mb_substr($segment, 0, 255),
+                'parent_id' => $parent,
+            ])->id;
+            $parent = $cache[$accumulated];
+        }
+
+        return $parent;
     }
 
     /**

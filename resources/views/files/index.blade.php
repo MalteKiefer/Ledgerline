@@ -1,5 +1,29 @@
 <x-layouts.app :title="__('messages.nav.files')">
-  <div x-data="filesExplorer({{ $files->pluck('id')->toJson() }})">
+  <div x-data="filesExplorer({{ $files->pluck('id')->toJson() }}, {
+        uploadUrl: '{{ route('files.store.general') }}',
+        token: '{{ csrf_token() }}',
+        folderId: {{ $folder?->id ?? 'null' }},
+        customerId: {{ request('customer') ?: 'null' }},
+        projectId: {{ request('project') ?: 'null' }},
+     })" x-init="initDropzone()">
+
+    {{-- Whole-window drop zone (folders with subfolders supported) --}}
+    <div x-show="dragging" x-cloak @drop.prevent="drop($event)" @dragover.prevent
+        class="fixed inset-0 z-[900] flex items-center justify-center bg-gray-900/50 p-8">
+        <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
+    </div>
+
+    {{-- Upload progress --}}
+    <div x-show="uploading" x-cloak class="fixed inset-x-0 top-0 z-[950] bg-gray-800 px-4 py-2 text-center text-sm text-white">
+        {{ __('files.uploading') }} <span x-text="progress.done"></span> / <span x-text="progress.total"></span>
+    </div>
+
+    {{-- Floating upload button on mobile --}}
+    <label class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-800 text-3xl text-white shadow-lg hover:bg-gray-700 sm:hidden" aria-label="{{ __('files.upload') }}">
+        +
+        <input type="file" multiple class="hidden"
+            @change="uploadFiles([...$event.target.files].map(f => ({ file: f, path: f.name })))">
+    </label>
 
     {{-- Header --}}
     <div class="flex flex-wrap items-start justify-between gap-3">
