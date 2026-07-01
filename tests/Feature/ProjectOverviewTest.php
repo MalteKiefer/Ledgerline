@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\Project;
-use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -27,13 +26,9 @@ class ProjectOverviewTest extends TestCase
         Project::factory()->for($acme)->create(['name' => 'Acme Portal']);
         Project::factory()->for($globex)->create(['name' => 'Globex Migration']);
 
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        Project::factory()->for($foreignCustomer)->create(['name' => 'Foreign Project']);
-
         $this->get(route('projects.overview'))
             ->assertOk()
             ->assertSee('Acme Portal')
-            ->assertSee('Globex Migration')
-            ->assertDontSee('Foreign Project');
+            ->assertSee('Globex Migration');
     }
 }

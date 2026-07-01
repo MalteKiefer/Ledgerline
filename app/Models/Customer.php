@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Models\Concerns\BelongsToTeam;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -36,7 +35,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class Customer extends Model
 {
     /** @use HasFactory<CustomerFactory> */
-    use BelongsToTeam, HasFactory;
+    use HasFactory;
 
     /**
      * The contact persons belonging to this customer.

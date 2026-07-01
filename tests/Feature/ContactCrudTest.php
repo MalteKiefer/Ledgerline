@@ -8,7 +8,6 @@ use App\Enums\ContactFunction;
 use App\Models\Contact;
 use App\Models\ContactEmail;
 use App\Models\Customer;
-use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -35,15 +34,6 @@ class ContactCrudTest extends TestCase
             ->assertOk()
             ->assertSee('Jane Doe')
             ->assertDontSee('Someone Else');
-    }
-
-    public function test_cannot_view_another_teams_contact(): void
-    {
-        $this->signIn();
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        $foreignContact = Contact::factory()->for($foreignCustomer)->create();
-
-        $this->get(route('contacts.show', $foreignContact))->assertNotFound();
     }
 
     public function test_create_form_renders_function_options(): void
@@ -77,7 +67,6 @@ class ContactCrudTest extends TestCase
         $contact = Contact::firstWhere('name', 'Alan Turing');
 
         $this->assertNotNull($contact);
-        $this->assertSame($customer->team_id, $contact->team_id);
         $this->assertSame(2, $contact->emails()->count());
         $this->assertSame(1, $contact->phones()->count());
     }

@@ -13,7 +13,6 @@ use App\Models\Customer;
 use App\Models\File;
 use App\Models\Project;
 use App\Models\Tag;
-use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -131,17 +130,6 @@ class SearchTest extends TestCase
         ]);
 
         $this->search('maintenance')->assertOk()->assertSee('Server Patching Qzxwv');
-    }
-
-    public function test_search_does_not_leak_other_teams_records(): void
-    {
-        $this->signIn();
-        $foreignTeam = Team::factory()->create();
-        Customer::factory()->create(['team_id' => $foreignTeam->id, 'name' => 'Qzxwv Foreign Customer']);
-
-        $this->search('qzxwv')
-            ->assertOk()
-            ->assertDontSee('Qzxwv Foreign Customer');
     }
 
     public function test_results_are_grouped_by_entity_type(): void

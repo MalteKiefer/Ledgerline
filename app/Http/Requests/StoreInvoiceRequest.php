@@ -25,10 +25,9 @@ class StoreInvoiceRequest extends FormRequest
      */
     public function rules(): array
     {
-        $teams = $this->user()->teamIds()->all();
 
         return [
-            'customer_id' => ['required', 'integer', Rule::exists('customers', 'id')->whereIn('team_id', $teams)],
+            'customer_id' => ['required', 'integer', Rule::exists('customers', 'id')],
             'issue_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:issue_date'],
             'language' => ['required', Rule::in(array_keys(config('finance.languages')))],

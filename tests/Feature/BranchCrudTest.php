@@ -7,7 +7,6 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Contact;
 use App\Models\Customer;
-use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -34,15 +33,6 @@ class BranchCrudTest extends TestCase
             ->assertOk()
             ->assertSee('Berlin Office')
             ->assertDontSee('Other Office');
-    }
-
-    public function test_cannot_view_another_teams_branch(): void
-    {
-        $this->signIn();
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        $foreignBranch = Branch::factory()->for($foreignCustomer)->create();
-
-        $this->get(route('branches.show', $foreignBranch))->assertNotFound();
     }
 
     public function test_create_form_renders(): void
@@ -74,7 +64,6 @@ class BranchCrudTest extends TestCase
             'name' => 'Munich Office',
             'country' => 'DE',
             'manager_contact_id' => $manager->id,
-            'team_id' => $customer->team_id,
         ]);
     }
 

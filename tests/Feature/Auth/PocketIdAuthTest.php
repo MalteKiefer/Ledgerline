@@ -121,59 +121,6 @@ class PocketIdAuthTest extends TestCase
             ->assertHeader('Content-Type', 'image/png');
     }
 
-    public function test_callback_creates_teams_from_pocket_id_groups(): void
-    {
-        Storage::fake('local');
-        Http::fake();
-
-        $this->fakeSocialiteUser(
-            id: 'sub-groups',
-            raw: ['groups' => ['Engineering', 'Ops']],
-        );
-
-        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
-
-        $user = User::firstWhere('oidc_sub', 'sub-groups');
-        $this->assertEqualsCanonicalizing(
-            ['group:engineering', 'group:ops'],
-            $user->teams()->pluck('key')->all(),
-        );
-
-        // With several teams no active team is chosen yet (the picker prompts).
-        $this->assertNull(session('active_team_id'));
-    }
-
-    public function test_group_slugs_become_humanised_team_names_with_one_group_auto_active(): void
-    {
-        Storage::fake('local');
-        Http::fake();
-
-        $this->fakeSocialiteUser(id: 'sub-kn', raw: ['groups' => ['kiefer_networks']]);
-
-        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
-
-        $team = User::firstWhere('oidc_sub', 'sub-kn')->teams()->first();
-        $this->assertSame('group:kiefer-networks', $team->key);
-        $this->assertSame('Kiefer Networks', $team->name);
-
-        // A single team is activated automatically.
-        $this->assertSame($team->id, session('active_team_id'));
-    }
-
-    public function test_callback_creates_a_personal_team_without_groups(): void
-    {
-        Storage::fake('local');
-        Http::fake();
-
-        $this->fakeSocialiteUser(id: 'sub-solo', raw: []);
-
-        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
-
-        $user = User::firstWhere('oidc_sub', 'sub-solo');
-        $this->assertSame(1, $user->teams()->count());
-        $this->assertSame('user:'.$user->id, $user->teams()->first()->key);
-    }
-
     public function test_avatar_route_returns_404_without_an_avatar(): void
     {
         $user = User::factory()->create(['avatar' => null]);

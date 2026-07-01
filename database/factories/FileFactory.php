@@ -33,26 +33,24 @@ class FileFactory extends Factory
     }
 
     /**
-     * Attach the file to a customer (and inherit its team).
+     * Attach the file to a customer.
      */
     public function forCustomer(Customer $customer): static
     {
         return $this->state([
             'attachable_type' => Customer::class,
             'attachable_id' => $customer->id,
-            'team_id' => $customer->team_id,
         ]);
     }
 
     /**
-     * Attach the file to a project (and inherit its team).
+     * Attach the file to a project.
      */
     public function forProject(Project $project): static
     {
         return $this->state([
             'attachable_type' => Project::class,
             'attachable_id' => $project->id,
-            'team_id' => $project->team_id,
         ]);
     }
 }
