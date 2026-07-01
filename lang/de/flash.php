@@ -48,6 +48,7 @@ return [
     'photo_restored' => 'Foto wiederhergestellt.',
     'photo_updated' => 'Foto aktualisiert.',
     'photos_deleted' => ':count Foto(s) endgültig gelöscht.',
+    'photos_location_set' => 'Standort für :count Foto(s) gesetzt.',
     'photos_all_jobs_queued' => 'Alle Jobs für :count Foto(s) eingereiht.',
     'photos_regenerate_queued' => ':count Foto(s) zur Thumbnail-Neuerzeugung eingereiht.',
     'photos_rename_queued' => ':count Foto(s) zum Umbenennen eingereiht.',

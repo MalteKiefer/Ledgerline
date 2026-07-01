@@ -54,7 +54,8 @@
                             @click="openViewer($el)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
-                                class="h-full w-full object-cover transition group-hover:opacity-90">
+                                onload="this.classList.remove('opacity-0')"
+                                class="h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-90">
                             @if ($photo->isVideo())
                                 <span class="pointer-events-none absolute inset-0 flex items-center justify-center">
                                     <span class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white">▶</span>
