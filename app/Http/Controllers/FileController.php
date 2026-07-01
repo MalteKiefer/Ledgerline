@@ -208,7 +208,7 @@ class FileController extends Controller
         $file->save();
 
         $tagIds = collect($tags)
-            ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
+            ->map(fn (string $name): int => Tag::findOrCreateByName($name, $file->team_id)->id)
             ->all();
         $file->tags()->sync($tagIds);
     }

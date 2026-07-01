@@ -103,8 +103,7 @@
                         <dt class="text-sm font-medium text-gray-500">Tags</dt>
                         <dd class="mt-1 text-sm text-gray-900">
                             @forelse ($file->tags as $tag)
-                                <a href="{{ route('files.index', ['tag' => $tag->slug]) }}"
-                                    class="mr-1 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs hover:bg-gray-200">{{ $tag->name }}</a>
+                                <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" class="mr-1" />
                             @empty
                                 —
                             @endforelse
