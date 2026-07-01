@@ -78,6 +78,17 @@
         @endforeach
     </div>
 
+    <div class="mt-4 flex flex-wrap items-center gap-3">
+        <x-table-search placeholder="Search files…" />
+        @if ($activeTagName)
+            <span class="inline-flex items-center gap-2 rounded-full bg-gray-800 px-3 py-1 text-sm text-white">
+                Tag: {{ $activeTagName }}
+                <a href="{{ route('files.index', array_diff_key(request()->query(), ['tag' => '', 'page' => ''])) }}"
+                    class="text-gray-300 hover:text-white" aria-label="Clear tag filter">&times;</a>
+            </span>
+        @endif
+    </div>
+
     <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         @if ($files->isEmpty())
             <p class="px-4 py-8 text-center text-sm text-gray-500">No files found.</p>
@@ -85,9 +96,9 @@
             <table class="min-w-full divide-y divide-gray-200 text-sm">
                 <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <tr>
-                        <th scope="col" class="px-4 py-3">File</th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="name" label="File" :sort="$sort" :dir="$dir" /></th>
                         <th scope="col" class="px-4 py-3">Attached to</th>
-                        <th scope="col" class="px-4 py-3">Type</th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="type" label="Type" :sort="$sort" :dir="$dir" /></th>
                         <th scope="col" class="px-4 py-3">Tags</th>
                     </tr>
                 </thead>
@@ -110,7 +121,8 @@
                             <td class="px-4 py-3 text-gray-600">{{ $file->type->label() }}</td>
                             <td class="px-4 py-3 text-gray-600">
                                 @forelse ($file->tags as $tag)
-                                    <span class="mr-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs">{{ $tag->name }}</span>
+                                    <a href="{{ route('files.index', ['tag' => $tag->slug]) }}"
+                                        class="mr-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs hover:bg-gray-200">{{ $tag->name }}</a>
                                 @empty
                                     <span class="text-gray-400">—</span>
                                 @endforelse
