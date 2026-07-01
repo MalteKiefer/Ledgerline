@@ -11,6 +11,7 @@ use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,18 @@ class GalleryController extends Controller
         return view('gallery.index', [
             'photos' => $photos,
             'grouped' => $this->groupByDay($photos),
+            'favoritesOnly' => $request->boolean('favorites'),
         ]);
+    }
+
+    /**
+     * Toggle a photo's favourite state.
+     */
+    public function favorite(Photo $photo): RedirectResponse
+    {
+        $photo->forceFill(['favorited_at' => $photo->isFavorite() ? null : now()])->save();
+
+        return back();
     }
 
     /**
@@ -52,7 +64,11 @@ class GalleryController extends Controller
 
     private function page(Request $request): LengthAwarePaginator
     {
-        return Photo::query()->orderByDesc('taken_at')->orderByDesc('id')->paginate(100);
+        return Photo::query()
+            ->when($request->boolean('favorites'), fn ($q) => $q->whereNotNull('favorited_at'))
+            ->orderByDesc('taken_at')->orderByDesc('id')
+            ->paginate(100)
+            ->withQueryString();
     }
 
     /**
@@ -243,22 +259,50 @@ class GalleryController extends Controller
         ]);
     }
 
-    public function restore(int $photo): RedirectResponse
+    /**
+     * Restore trashed photos: a selection (photo_ids) or all (all=1).
+     */
+    public function restore(Request $request): RedirectResponse
     {
-        Photo::onlyTrashed()->findOrFail($photo)->restore();
+        $count = $this->trashedQuery($request)->restore();
 
-        return back()->with('status', __('flash.photo_restored'));
+        return back()->with('status', __('flash.photos_restored', ['count' => $count]));
     }
 
     /**
-     * Permanently delete a trashed photo and all its object-storage renditions.
+     * Permanently delete trashed photos (selection or all), with their bytes.
      */
-    public function forceDestroy(int $photo): RedirectResponse
+    public function forceDestroy(Request $request): RedirectResponse
     {
-        $model = Photo::onlyTrashed()->findOrFail($photo);
-        Storage::disk(config('files.disk'))->delete($model->allPaths());
-        $model->forceDelete();
+        $disk = Storage::disk(config('files.disk'));
+        $count = 0;
 
-        return back()->with('status', __('flash.photo_deleted'));
+        $this->trashedQuery($request)->get()->each(function (Photo $photo) use ($disk, &$count): void {
+            $disk->delete($photo->allPaths());
+            $photo->forceDelete();
+            $count++;
+        });
+
+        return back()->with('status', __('flash.photos_deleted', ['count' => $count]));
+    }
+
+    /**
+     * Trashed photos targeted by a bulk action: either the given ids, or all.
+     *
+     * @return Builder<Photo>
+     */
+    private function trashedQuery(Request $request): Builder
+    {
+        $request->validate([
+            'all' => ['nullable', 'boolean'],
+            'photo_ids' => ['nullable', 'array'],
+            'photo_ids.*' => ['integer'],
+        ]);
+
+        $query = Photo::onlyTrashed();
+
+        return $request->boolean('all')
+            ? $query
+            : $query->whereIn('id', $request->input('photo_ids', []));
     }
 }

@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'rotation',
     'flipped',
     'meta_locked',
+    'favorited_at',
     'checksum',
     'taken_at',
     'processed_at',
@@ -50,6 +51,7 @@ class Photo extends Model
         return [
             'taken_at' => 'datetime',
             'processed_at' => 'datetime',
+            'favorited_at' => 'datetime',
             'size' => 'integer',
             'width' => 'integer',
             'height' => 'integer',
@@ -69,6 +71,11 @@ class Photo extends Model
     public function hasLocation(): bool
     {
         return $this->latitude !== null && $this->longitude !== null;
+    }
+
+    public function isFavorite(): bool
+    {
+        return $this->favorited_at !== null;
     }
 
     /**

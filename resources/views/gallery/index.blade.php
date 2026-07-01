@@ -9,6 +9,11 @@
             <p class="mt-1 text-sm text-gray-600">{{ __('gallery.subtitle') }}</p>
         </div>
         <div class="flex items-center gap-2">
+            @if ($favoritesOnly)
+                <a href="{{ route('gallery.index') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.all_photos') }}</a>
+            @else
+                <a href="{{ route('gallery.index', ['favorites' => 1]) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">♥ {{ __('gallery.favorites') }}</a>
+            @endif
             <a href="{{ route('gallery.trips') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trips') }}</a>
             <a href="{{ route('gallery.map') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.map') }}</a>
             <a href="{{ route('gallery.trash') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trash') }}</a>
@@ -86,9 +91,18 @@
                 <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 text-4xl text-white/70 hover:text-white" aria-label="›">›</button>
             </div>
             <aside class="hidden w-80 shrink-0 overflow-y-auto bg-white p-6 sm:block">
-                <div class="flex items-start justify-between">
+                <div class="flex items-start justify-between gap-2">
                     <h2 class="text-sm font-semibold text-gray-900 break-all" x-text="current.name"></h2>
-                    <button type="button" @click="viewerOpen = false" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('gallery.close') }}">✕</button>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <form method="POST" :action="`/gallery/${current.id}/favorite`">
+                            @csrf
+                            <button type="submit" :title="current.favorite === '1' ? '{{ __('gallery.unfavorite') }}' : '{{ __('gallery.favorite') }}'"
+                                :class="current.favorite === '1' ? 'text-red-500' : 'text-gray-400 hover:text-red-500'" class="text-xl">
+                                <span x-text="current.favorite === '1' ? '♥' : '♡'"></span>
+                            </button>
+                        </form>
+                        <button type="button" @click="viewerOpen = false" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('gallery.close') }}">✕</button>
+                    </div>
                 </div>
                 <dl class="mt-4 space-y-3 text-sm">
                     <div><dt class="text-gray-500">{{ __('gallery.meta_date') }}</dt><dd class="text-gray-900" x-text="`${current.date} · ${current.time}`"></dd></div>
