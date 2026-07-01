@@ -87,7 +87,7 @@ class GallerySettingsTest extends TestCase
 
         $this->getJson(route('settings.gallery.queue-status'))
             ->assertOk()
-            ->assertJsonStructure(['pending', 'failed', 'available']);
+            ->assertJsonStructure(['connection', 'driver', 'pending', 'failed']);
     }
 
     public function test_run_all_queues_every_job_per_photo(): void
