@@ -19,6 +19,7 @@ return [
     'expense_updated' => 'Expense updated.',
     'file_deleted' => 'File deleted.',
     'file_renamed' => 'File renamed.',
+    'file_saved' => 'File saved.',
     'file_updated' => 'File updated.',
     'file_uploaded' => 'File uploaded.',
     'files_deleted' => ':count file(s) deleted.',

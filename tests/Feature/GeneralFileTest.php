@@ -136,6 +136,41 @@ class GeneralFileTest extends TestCase
         $this->assertNull(Folder::where('name', 'bad')->first());
     }
 
+    public function test_a_text_file_can_be_edited_and_saved(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $file = File::factory()->create([
+            'disk_path' => 'files/note.txt', 'size' => 5, 'mime_type' => 'text/plain',
+            'type' => FileType::DOCUMENT, 'attachable_type' => null, 'attachable_id' => null,
+        ]);
+        Storage::disk('files')->put('files/note.txt', 'hello');
+
+        $this->get(route('files.edit', $file))->assertOk()->assertSee('hello');
+
+        $this->put(route('files.content', $file), ['content' => 'new text'])->assertRedirect();
+
+        $this->assertSame('new text', Storage::disk('files')->get('files/note.txt'));
+        $file->refresh();
+        $this->assertSame(8, $file->size);
+        $this->assertSame(hash('sha256', 'new text'), $file->checksum);
+    }
+
+    public function test_a_binary_file_is_not_text_editable(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $file = File::factory()->create([
+            'disk_path' => 'files/blob.bin', 'size' => 4, 'mime_type' => 'application/octet-stream',
+            'type' => FileType::OTHER, 'attachable_type' => null, 'attachable_id' => null,
+        ]);
+        Storage::disk('files')->put('files/blob.bin', "\x00\x01\xff\xfe");
+
+        $this->get(route('files.edit', $file))
+            ->assertOk()
+            ->assertSee(__('files.not_text_editable'));
+    }
+
     public function test_conflicts_endpoint_reports_existing_paths(): void
     {
         $this->signIn();
