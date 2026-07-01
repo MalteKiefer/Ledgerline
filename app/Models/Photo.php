@@ -70,6 +70,25 @@ class Photo extends Model
         ];
     }
 
+    /**
+     * Media counts for the whole (non-trashed) library.
+     *
+     * @return array{total: int, images: int, videos: int, motion: int}
+     */
+    public static function counts(): array
+    {
+        $videos = static::query()->where('media_type', 'video')->count();
+        $motion = static::query()->whereNotNull('motion_path')->count();
+        $total = static::query()->count();
+
+        return [
+            'total' => $total,
+            'images' => $total - $videos,
+            'videos' => $videos,
+            'motion' => $motion,
+        ];
+    }
+
     public function isReady(): bool
     {
         return $this->status === 'ready';

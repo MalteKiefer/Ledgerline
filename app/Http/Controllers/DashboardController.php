@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\File;
+use App\Models\Photo;
 use App\Models\Project;
 use Illuminate\Contracts\View\View;
 
@@ -30,6 +31,7 @@ class DashboardController extends Controller
                 'files' => File::count(),
                 'storage' => (int) File::sum('size'),
             ],
+            'gallery' => Photo::counts(),
             'recentFiles' => File::query()->with('attachable')->latest()->limit(5)->get(),
         ]);
     }
