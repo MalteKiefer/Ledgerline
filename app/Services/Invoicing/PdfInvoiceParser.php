@@ -151,7 +151,7 @@ class PdfInvoiceParser
     private function customer(string $text): array
     {
         $block = null;
-        if (preg_match('/RECHNUNG AN\s*(.+?)(?:RECHNUNGSDETAILS|LEISTUNG)/su', $text, $m) === 1) {
+        if (preg_match('/RECHNUNG AN\s*(.+?)(?:RECHNUNGSDETAILS|LEISTUNG|BESCHREIBUNG)/su', $text, $m) === 1) {
             $block = $m[1];
         } elseif (preg_match('/Neudrossenfeld\s*(.+?)Beschreibung/su', $text, $m) === 1) {
             $block = $m[1];
@@ -205,12 +205,23 @@ class PdfInvoiceParser
             return $lines;
         }
 
-        // Modern table: desc  qty  [€]price[€]  [€]amount[€]  (comma or dot, € prefix or suffix)
+        // Modern table: desc  qty  [€]price[€]  [€]amount[€]  (comma or dot, € prefix or suffix).
+        // Each row carries its own line amount, so keep only rows where
+        // quantity * unit price matches that amount — this drops footer/address
+        // noise that happens to contain numbers.
         if (preg_match('/BESCHREIBUNG.*?BETRAG(.+?)(?:Zwischensumme|RECHNUNGS(?:ÜBERSICHT|ÜBERSICH)|GESAMT)/isu', $text, $block) === 1) {
             preg_match_all('/([\p{L}\[][\s\S]*?)\s+(\d+(?:[.,]\d+)?)\s+€?\s*([\d.,]+)\s*€?\s+€?\s*([\d.,]+)/u', $block[1], $m, PREG_SET_ORDER);
             foreach ($m as $row) {
+                $quantity = $this->number($row[2]) ?? 1.0;
+                $price = $this->number($row[3]) ?? 0.0;
+                $amount = $this->number($row[4]) ?? 0.0;
+
+                if (abs($quantity * $price - $amount) > 0.02) {
+                    continue;
+                }
+
                 $description = $this->clean($row[1]);
-                $lines[] = ['description' => $description, 'quantity' => $this->number($row[2]) ?? 1.0, 'unit' => $this->detectUnit($description), 'unit_price' => $this->number($row[3]) ?? 0.0, 'tax_rate' => $rate];
+                $lines[] = ['description' => $description, 'quantity' => $quantity, 'unit' => $this->detectUnit($description), 'unit_price' => $price, 'tax_rate' => $rate];
             }
         }
 
@@ -253,7 +264,8 @@ class PdfInvoiceParser
 
         $sum = array_sum(array_map(fn (array $l): float => $l['quantity'] * $l['unit_price'], $lines));
 
-        return abs($sum - $net) <= 0.5;
+        // Allow per-line rounding to accumulate a little across many lines.
+        return abs($sum - $net) <= max(0.5, 0.02 * count($lines));
     }
 
     /**
