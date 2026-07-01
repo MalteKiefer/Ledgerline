@@ -138,6 +138,26 @@ class PocketIdAuthTest extends TestCase
             ['group:engineering', 'group:ops'],
             $user->teams()->pluck('key')->all(),
         );
+
+        // With several teams no active team is chosen yet (the picker prompts).
+        $this->assertNull(session('active_team_id'));
+    }
+
+    public function test_group_slugs_become_humanised_team_names_with_one_group_auto_active(): void
+    {
+        Storage::fake('local');
+        Http::fake();
+
+        $this->fakeSocialiteUser(id: 'sub-kn', raw: ['groups' => ['kiefer_networks']]);
+
+        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
+
+        $team = User::firstWhere('oidc_sub', 'sub-kn')->teams()->first();
+        $this->assertSame('group:kiefer-networks', $team->key);
+        $this->assertSame('Kiefer Networks', $team->name);
+
+        // A single team is activated automatically.
+        $this->assertSame($team->id, session('active_team_id'));
     }
 
     public function test_callback_creates_a_personal_team_without_groups(): void
