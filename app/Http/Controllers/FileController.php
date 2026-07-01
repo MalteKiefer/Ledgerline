@@ -222,6 +222,7 @@ class FileController extends Controller
         $deletableInvoice = $invoice !== null && ($invoice->isDraft() || $invoice->isImported());
 
         $path = $file->disk_path;
+        $folderId = $file->folder_id;
 
         DB::transaction(function () use ($file, $deletableInvoice, $invoice): void {
             $file->delete();
@@ -239,8 +240,9 @@ class FileController extends Controller
                 ->with('status', __('flash.invoice_and_file_deleted'));
         }
 
+        // Return to the folder the file lived in, not the now-gone detail page.
         return redirect()
-            ->back()
+            ->route('files.index', ['folder' => $folderId])
             ->with('status', __('flash.file_deleted'));
     }
 

@@ -50,13 +50,8 @@
                     </div>
                 </div>
             @else
-                <form method="POST" action="{{ route('files.destroy', $file) }}"
-                    onsubmit="return confirm('{{ __('files.delete_file_confirm') }}');">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit"
-                        class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
-                </form>
+                <x-confirm-action :action="route('files.destroy', $file)" method="DELETE"
+                    :trigger="__('files.delete')" :message="__('files.delete_file_confirm')" />
             @endif
         </div>
     </div>
