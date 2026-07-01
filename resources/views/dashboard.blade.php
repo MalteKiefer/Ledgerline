@@ -35,6 +35,21 @@
         </div>
     </div>
 
+    <div class="mt-4 grid grid-cols-3 gap-4">
+        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.gallery_images') }}</dt>
+            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $gallery['images'] }}</dd>
+        </a>
+        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.gallery_videos') }}</dt>
+            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $gallery['videos'] }}</dd>
+        </a>
+        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.gallery_motion') }}</dt>
+            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $gallery['motion'] }}</dd>
+        </a>
+    </div>
+
     <section class="mt-8">
         <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold text-gray-900">{{ __('pages.dashboard.recent_files') }}</h2>

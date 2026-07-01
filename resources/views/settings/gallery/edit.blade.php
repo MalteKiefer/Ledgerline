@@ -7,6 +7,26 @@
     </p>
     <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ __('settings.gallery_heading') }}</h1>
 
+    {{-- Library counts --}}
+    <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.count_total') }}</dt>
+            <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $counts['total'] }}</dd>
+        </div>
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.count_images') }}</dt>
+            <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $counts['images'] }}</dd>
+        </div>
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.count_videos') }}</dt>
+            <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $counts['videos'] }}</dd>
+        </div>
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.count_motion') }}</dt>
+            <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $counts['motion'] }}</dd>
+        </div>
+    </div>
+
     <form method="POST" action="{{ route('settings.gallery.update') }}" class="mt-6 space-y-6">
         @csrf
         @method('PUT')

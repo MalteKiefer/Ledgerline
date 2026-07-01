@@ -188,6 +188,28 @@ class GalleryTest extends TestCase
         Queue::assertNotPushed(ProcessPhoto::class);
     }
 
+    public function test_media_counts_break_down_by_type(): void
+    {
+        Photo::factory()->count(2)->create(['media_type' => 'image']);
+        Photo::factory()->create(['media_type' => 'video']);
+        Photo::factory()->create(['media_type' => 'image', 'motion_path' => 'photos/x/motion/y.mp4']);
+
+        $this->assertSame(
+            ['total' => 4, 'images' => 3, 'videos' => 1, 'motion' => 1],
+            Photo::counts(),
+        );
+    }
+
+    public function test_dashboard_shows_gallery_counts(): void
+    {
+        $this->signIn();
+        Photo::factory()->create(['media_type' => 'video']);
+
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee(__('pages.dashboard.gallery_videos'));
+    }
+
     public function test_upload_rejects_non_images(): void
     {
         Storage::fake('files');

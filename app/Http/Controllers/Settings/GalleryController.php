@@ -25,9 +25,12 @@ class GalleryController extends Controller
 {
     public function edit(QueueStatus $queue, VideoProcessor $video): View
     {
+        $counts = Photo::counts();
+
         return view('settings.gallery.edit', [
             'company' => CompanyProfile::current(),
-            'photoCount' => Photo::count(),
+            'photoCount' => $counts['total'],
+            'counts' => $counts,
             'queue' => $queue->snapshot(),
             'ffmpegResolved' => $video->binaryPath(),
             'ffmpegAvailable' => $video->available(),
