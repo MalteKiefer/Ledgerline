@@ -119,7 +119,7 @@
             </div>
 
             {{-- Browser: folders first, then files (all alphabetical) --}}
-            <div class="mt-4 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div class="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
                 @if ($files->isEmpty() && $subfolders->isEmpty())
                     <p class="px-4 py-10 text-center text-sm text-gray-500">{{ $filtering ? __('files.empty_no_match') : __('files.empty_explorer') }}</p>
                 @else
@@ -128,9 +128,9 @@
                             <tr>
                                 <th class="px-4 py-3"><input type="checkbox" @change="toggleAll($event)" aria-label="{{ __('files.select_all') }}" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></th>
                                 <th class="px-4 py-3"><x-sortable-header column="name" :label="__('files.col_name')" :sort="$sort" :dir="$dir" /></th>
-                                <th class="px-4 py-3"><x-sortable-header column="type" :label="__('files.col_type')" :sort="$sort" :dir="$dir" /></th>
-                                <th class="px-4 py-3 text-right"><x-sortable-header column="size" :label="__('files.col_size')" :sort="$sort" :dir="$dir" /></th>
-                                <th class="px-4 py-3">{{ __('files.col_location') }}</th>
+                                <th class="hidden px-4 py-3 sm:table-cell"><x-sortable-header column="type" :label="__('files.col_type')" :sort="$sort" :dir="$dir" /></th>
+                                <th class="hidden px-4 py-3 text-right sm:table-cell"><x-sortable-header column="size" :label="__('files.col_size')" :sort="$sort" :dir="$dir" /></th>
+                                <th class="hidden px-4 py-3 md:table-cell">{{ __('files.col_location') }}</th>
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
@@ -151,9 +151,9 @@
                                             <button type="button" @click="rename = false" class="text-sm text-gray-500">✕</button>
                                         </form>
                                     </td>
-                                    <td class="px-4 py-3 text-gray-600">{{ __('files.folder') }}</td>
-                                    <td class="px-4 py-3 text-right text-gray-400">{{ $sub->files_count }}</td>
-                                    <td class="px-4 py-3"></td>
+                                    <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ __('files.folder') }}</td>
+                                    <td class="hidden px-4 py-3 text-right text-gray-400 sm:table-cell">{{ $sub->files_count }}</td>
+                                    <td class="hidden px-4 py-3 md:table-cell"></td>
                                     <td class="px-4 py-3 text-right">
                                         <div class="relative inline-block text-left">
                                             <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
@@ -180,9 +180,9 @@
                                             <button type="button" @click="renaming = null" class="text-sm text-gray-500">✕</button>
                                         </form>
                                     </td>
-                                    <td class="px-4 py-3 text-gray-600">{{ $file->type->label() }}</td>
-                                    <td class="px-4 py-3 text-right text-gray-600">{{ number_format($file->size / 1024, 0) }} KB</td>
-                                    <td class="px-4 py-3 text-gray-600">
+                                    <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ $file->type->label() }}</td>
+                                    <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell">{{ number_format($file->size / 1024, 0) }} KB</td>
+                                    <td class="hidden px-4 py-3 text-gray-600 md:table-cell">
                                         @if ($file->attachable instanceof \App\Models\Customer)
                                             <a href="{{ route('files.index', ['customer' => $file->attachable->id]) }}" class="hover:underline">{{ __('files.location_customer', ['name' => $file->attachable->name]) }}</a>
                                         @elseif ($file->attachable instanceof \App\Models\Project)
