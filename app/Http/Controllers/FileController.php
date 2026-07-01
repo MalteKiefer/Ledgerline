@@ -188,6 +188,7 @@ class FileController extends Controller
         return view('files.show', [
             'file' => $file,
             'folders' => Folder::query()->orderBy('name')->get(),
+            'tagSuggestions' => Tag::orderBy('name')->pluck('name')->all(),
             'exif' => $exif,
             'location' => $location,
         ]);
@@ -200,7 +201,14 @@ class FileController extends Controller
     {
         $this->authorize('update', $file);
 
-        $file->update($request->validated());
+        $data = $request->validated();
+        $file->update($data);
+
+        // Sync tags from the free-text input.
+        $tagIds = collect($data['tags'] ?? [])
+            ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
+            ->all();
+        $file->tags()->sync($tagIds);
 
         return redirect()
             ->route('files.show', $file)

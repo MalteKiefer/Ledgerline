@@ -166,7 +166,7 @@
                                         @elseif ($file->attachable instanceof \App\Models\Project)
                                             <a href="{{ route('files.index', ['project' => $file->attachable->id]) }}" class="hover:underline">{{ __('files.location_project', ['name' => $file->attachable->name]) }}</a>
                                         @elseif ($file->attachable instanceof \App\Models\Invoice)
-                                            {{ $file->attachable->number }}
+                                            <a href="{{ route('finance.invoices.show', $file->attachable) }}" class="hover:underline">{{ __('files.location_invoice', ['number' => $file->attachable->number ?? ('#'.$file->attachable->id)]) }}</a>
                                         @else
                                             {{ __('files.location_general') }}
                                         @endif
