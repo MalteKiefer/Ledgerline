@@ -209,11 +209,37 @@ class PdfInvoiceParser
         if (preg_match('/BESCHREIBUNG.*?BETRAG(.+?)(?:Zwischensumme|RECHNUNGS(?:ÜBERSICHT|ÜBERSICH)|GESAMT)/isu', $text, $block) === 1) {
             preg_match_all('/([\p{L}\[][\s\S]*?)\s+(\d+(?:[.,]\d+)?)\s+€?\s*([\d.,]+)\s*€?\s+€?\s*([\d.,]+)/u', $block[1], $m, PREG_SET_ORDER);
             foreach ($m as $row) {
-                $lines[] = ['description' => $this->clean($row[1]), 'quantity' => $this->number($row[2]) ?? 1.0, 'unit' => null, 'unit_price' => $this->number($row[3]) ?? 0.0, 'tax_rate' => $rate];
+                $description = $this->clean($row[1]);
+                $lines[] = ['description' => $description, 'quantity' => $this->number($row[2]) ?? 1.0, 'unit' => $this->detectUnit($description), 'unit_price' => $this->number($row[3]) ?? 0.0, 'tax_rate' => $rate];
             }
         }
 
         return $lines;
+    }
+
+    /**
+     * Map a German (or English) unit word found in the text to a unit code that
+     * matches the seeded Settings > Units defaults.
+     */
+    private function detectUnit(string $text, ?string $default = null): ?string
+    {
+        $map = [
+            '/\b(?:stunden?|std\.?|hours?|hrs?)\b/iu' => 'h',
+            '/\b(?:werktage?|tage?n?)\b/iu' => 'day',
+            '/\b(?:st(?:ü|ue)ck|stk\.?|pcs|pieces?)\b/iu' => 'pcs',
+            '/pauschal/iu' => 'flat',
+            '/\b(?:kilometer|km)\b/iu' => 'km',
+            '/\b(?:monate?n?|months?)\b/iu' => 'month',
+            '/\b(?:lizenz(?:en)?|licen[cs]es?)\b/iu' => 'lic',
+        ];
+
+        foreach ($map as $pattern => $code) {
+            if (preg_match($pattern, $text) === 1) {
+                return $code;
+            }
+        }
+
+        return $default;
     }
 
     /**
