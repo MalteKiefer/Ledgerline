@@ -47,8 +47,20 @@
                     <img src="{{ route('files.download', $file) }}" alt="{{ $file->displayTitle }}"
                         class="mx-auto max-h-[520px] rounded object-contain">
                 @elseif ($file->mime_type === 'application/pdf')
-                    <iframe src="{{ route('files.download', $file) }}" title="{{ $file->displayTitle }}"
-                        class="h-[600px] w-full rounded border-0"></iframe>
+                    <div class="mb-3 flex justify-end">
+                        <a href="{{ route('files.download', $file) }}" target="_blank" rel="noopener"
+                            class="text-sm text-gray-600 hover:text-gray-900">Open in new tab ↗</a>
+                    </div>
+                    {{-- <object> renders the PDF inline; if framing is blocked (e.g. a
+                         proxy forcing X-Frame-Options), the fallback link is shown. --}}
+                    <object data="{{ route('files.download', $file) }}" type="application/pdf"
+                        class="h-[600px] w-full rounded">
+                        <p class="py-10 text-center text-sm text-gray-500">
+                            Inline preview is unavailable here.
+                            <a href="{{ route('files.download', $file) }}" target="_blank" rel="noopener"
+                                class="text-gray-900 underline">Open the PDF in a new tab</a>.
+                        </p>
+                    </object>
                 @else
                     <p class="py-10 text-center text-sm text-gray-500">
                         No inline preview for this file type.
