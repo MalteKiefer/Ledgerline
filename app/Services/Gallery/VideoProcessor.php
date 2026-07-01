@@ -99,21 +99,32 @@ class VideoProcessor
      */
     public function poster(string $localPath, int $second, string $destJpg): void
     {
-        $process = new Process([
-            $this->ffmpeg(),
-            '-y',
-            '-ss', (string) max(0, $second),
-            '-i', $localPath,
-            '-frames:v', '1',
-            '-q:v', '3',
-            $destJpg,
-        ]);
-        $process->setTimeout(120);
-        $process->run();
+        // Try the requested second, then fall back to the very first frame:
+        // short clips (e.g. ~1s Live Photo videos) have no frame at second 1.
+        foreach ([max(0, $second), 0] as $ss) {
+            $process = new Process([
+                $this->ffmpeg(),
+                '-y',
+                '-ss', (string) $ss,
+                '-i', $localPath,
+                '-frames:v', '1',
+                '-q:v', '3',
+                $destJpg,
+            ]);
+            $process->setTimeout(120);
+            $process->run();
 
-        if (! $process->isSuccessful() || ! is_file($destJpg)) {
-            throw new RuntimeException('ffmpeg could not extract a poster frame: '.$process->getErrorOutput());
+            if ($process->isSuccessful() && is_file($destJpg) && filesize($destJpg) > 0) {
+                return;
+            }
+
+            $error = $process->getErrorOutput();
+            if ($ss === 0) {
+                break;
+            }
         }
+
+        throw new RuntimeException('ffmpeg could not extract a poster frame: '.($error ?? ''));
     }
 
     /**

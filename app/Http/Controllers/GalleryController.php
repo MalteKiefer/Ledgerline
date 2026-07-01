@@ -65,6 +65,27 @@ class GalleryController extends Controller
         ]);
     }
 
+    /**
+     * The year/month buckets across the whole library, for the timeline
+     * scrubber. Ordered newest first with a per-month count.
+     */
+    public function months(Request $request): JsonResponse
+    {
+        $months = Photo::query()
+            ->when($request->boolean('favorites'), fn ($q) => $q->whereNotNull('favorited_at'))
+            ->orderByDesc('taken_at')
+            ->pluck('taken_at')
+            ->groupBy(fn (Carbon $d): string => $d->format('Y-m'))
+            ->map(fn (Collection $g, string $ym): array => [
+                'ym' => $ym,
+                'label' => Carbon::parse($ym.'-01')->isoFormat('MMM YYYY'),
+                'count' => $g->count(),
+            ])
+            ->values();
+
+        return response()->json(['months' => $months]);
+    }
+
     private function page(Request $request): LengthAwarePaginator
     {
         return Photo::query()

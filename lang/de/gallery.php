@@ -64,6 +64,7 @@ return [
     'trash_title' => 'Papierkorb',
     'trips' => 'Reisen',
     'trips_empty' => 'Noch keine Reisen — fügen Sie Fotos mit Standortdaten hinzu.',
+    'failed' => 'Verarbeitung fehlgeschlagen',
     'failed_count' => 'fehlgeschlagen',
     'skipped_count' => 'übersprungen',
     'skipped_generic' => 'Übersprungen',

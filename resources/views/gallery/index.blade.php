@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('gallery.title')">
-  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed') }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }})"
+  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed') }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }}, '{{ route('gallery.months') }}')"
        x-init="initGallery()"
        @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()">
 
@@ -106,6 +106,16 @@
     <div x-intersect="loadMore()" class="h-10"></div>
     <div x-show="loading" x-cloak class="py-4 text-center text-sm text-gray-400">…</div>
 
+    {{-- Year/month scrubber (jump to a month; loads pages as needed) --}}
+    <div x-show="months.length" x-cloak
+        class="fixed right-1 top-1/2 z-20 hidden max-h-[70vh] w-14 -translate-y-1/2 flex-col gap-px overflow-y-auto rounded-md bg-white/70 py-2 text-right backdrop-blur md:flex">
+        <template x-for="m in months" :key="m.ym">
+            <button type="button" @click="scrollToMonth(m.ym)"
+                class="px-2 py-0.5 text-[11px] leading-tight text-gray-500 hover:font-semibold hover:text-gray-900"
+                x-text="m.label"></button>
+        </template>
+    </div>
+
     {{-- Full-screen drop overlay (Google Photos style) --}}
     <div x-show="dragging" x-cloak @drop.prevent="drop($event)" @dragover.prevent
         class="fixed inset-0 z-[900] flex items-center justify-center bg-gray-900/50 p-8">
@@ -190,11 +200,19 @@
                 {{-- Location --}}
                 <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4" x-show="current.lat && current.lng">
                     <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('gallery.meta_location') }}</h3>
-                    <p class="mt-2 text-sm text-gray-900">
-                        <span x-show="current.place" x-text="current.place" class="block"></span>
-                        <span x-text="current.lat && current.lng ? `${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}` : ''" class="text-gray-500"></span>
-                        <a :href="`https://www.openstreetmap.org/?mlat=${current.lat}&mlon=${current.lng}#map=14/${current.lat}/${current.lng}`" target="_blank" rel="noopener" class="ml-1 text-gray-500 underline">{{ __('gallery.map') }} ↗</a>
-                    </p>
+                    <div class="mt-2 text-sm text-gray-900">
+                        <template x-if="current.placeLines">
+                            <div>
+                                <template x-for="(line, i) in current.placeLines.split('|')" :key="i">
+                                    <span class="block" :class="i === 0 ? 'font-medium' : 'text-gray-600'" x-text="line"></span>
+                                </template>
+                            </div>
+                        </template>
+                        <div class="mt-1 text-gray-500">
+                            <span x-text="current.lat && current.lng ? `${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}` : ''"></span>
+                            <a :href="`https://www.openstreetmap.org/?mlat=${current.lat}&mlon=${current.lng}#map=14/${current.lat}/${current.lng}`" target="_blank" rel="noopener" class="ml-1 underline">{{ __('gallery.map') }} ↗</a>
+                        </div>
+                    </div>
                     <div x-ref="miniMap" class="mt-2 h-40 w-full overflow-hidden rounded-md border border-gray-200"></div>
                 </div>
                 {{-- Editing tools, hidden until the edit button is pressed. --}}

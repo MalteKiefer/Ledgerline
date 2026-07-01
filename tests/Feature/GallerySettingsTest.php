@@ -96,6 +96,17 @@ class GallerySettingsTest extends TestCase
             ->assertJsonStructure(['connection', 'driver', 'pending', 'failed']);
     }
 
+    public function test_a_job_can_be_limited_to_the_newest_items(): void
+    {
+        Queue::fake();
+        $this->signIn();
+        Photo::factory()->count(5)->create();
+
+        $this->post(route('settings.gallery.rescan'), ['limit' => 2])->assertRedirect();
+
+        Queue::assertPushed(ReadPhotoMetadata::class, 2);
+    }
+
     public function test_run_all_queues_every_job_per_photo(): void
     {
         Queue::fake();

@@ -224,15 +224,33 @@ class PhotoStorage
             $attributes['camera'] = $meta['camera'];
         }
 
-        $lat = $attributes['latitude'] ?? $photo->latitude;
-        $lon = $attributes['longitude'] ?? $photo->longitude;
-        $attributes['place'] = ($lat !== null && $lon !== null)
-            ? $this->geocoder->lookup((float) $lat, (float) $lon)
-            : null;
-
+        $attributes = $this->applyPlace($attributes, $attributes['latitude'] ?? $photo->latitude, $attributes['longitude'] ?? $photo->longitude);
         $attributes['motion_path'] = $this->extractMotion($photo, $tmp, $disk);
 
         $photo->forceFill($attributes)->save();
+    }
+
+    /**
+     * Reverse-geocode the coordinates and set both the display name and the
+     * structured address parts.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function applyPlace(array $attributes, mixed $lat, mixed $lon): array
+    {
+        if ($lat === null || $lon === null) {
+            $attributes['place'] = null;
+            $attributes['place_details'] = null;
+
+            return $attributes;
+        }
+
+        $geo = $this->geocoder->lookupDetailed((float) $lat, (float) $lon);
+        $attributes['place'] = $geo['display'];
+        $attributes['place_details'] = $geo['address'] ?: null;
+
+        return $attributes;
     }
 
     /**
@@ -292,11 +310,7 @@ class PhotoStorage
 
         // Reverse-geocode whatever coordinates the video now has so it shows a
         // place and joins the map and trips like a photo.
-        $lat = $attributes['latitude'] ?? $photo->latitude;
-        $lon = $attributes['longitude'] ?? $photo->longitude;
-        $attributes['place'] = ($lat !== null && $lon !== null)
-            ? $this->geocoder->lookup((float) $lat, (float) $lon)
-            : null;
+        $attributes = $this->applyPlace($attributes, $attributes['latitude'] ?? $photo->latitude, $attributes['longitude'] ?? $photo->longitude);
 
         $photo->forceFill($attributes)->save();
     }
