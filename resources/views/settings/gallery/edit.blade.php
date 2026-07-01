@@ -90,12 +90,18 @@
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.queue_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-600">{{ __('settings.queue_hint') }}</p>
 
+        <p class="mt-2 text-xs text-gray-500">
+            {{ __('settings.queue_connection') }}:
+            <span class="font-mono text-gray-700" x-text="status.connection"></span>
+            <span class="text-gray-400">(<span x-text="status.driver"></span>)</span>
+        </p>
+
         <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div class="rounded-md border border-gray-200 p-4">
                 <div class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.queue_pending') }}</div>
                 <div class="mt-1 text-2xl font-semibold text-gray-900">
-                    <span x-show="status.available" x-text="status.pending"></span>
-                    <span x-show="! status.available" class="text-base font-normal text-gray-400">{{ __('settings.queue_unavailable') }}</span>
+                    <span x-show="status.pending !== null" x-text="status.pending"></span>
+                    <span x-show="status.pending === null" class="text-sm font-normal text-gray-400">{{ __('settings.queue_pending_unsupported') }}</span>
                 </div>
             </div>
             <div class="rounded-md border border-gray-200 p-4">
