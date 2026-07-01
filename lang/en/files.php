@@ -1,7 +1,8 @@
 <?php
 
+declare(strict_types=1);
+
 return [
-    // index
     'index_title' => 'Files',
     'breadcrumb_files' => 'Files',
     'heading_files' => 'Files',
@@ -36,8 +37,6 @@ return [
     'location_customer' => 'Customer: :name',
     'location_project' => 'Project: :name',
     'location_general' => 'General',
-
-    // show
     'download' => 'Download',
     'delete_file_confirm' => 'Delete this file? This cannot be undone.',
     'open_in_new_tab' => 'Open in new tab ↗',
@@ -60,11 +59,12 @@ return [
     'note' => 'Note',
     'folder' => 'Folder',
     'folder_none' => '— None —',
-
-    // file-panel component
     'add_file' => '+ Add file',
     'close' => 'Close',
     'add_a_file' => 'Add a file',
     'no_files_yet' => 'No files yet.',
     'view' => 'View',
+    'exif' => 'Image data (EXIF)',
+    'location' => 'Location',
+    'view_larger_map' => 'View larger map',
 ];

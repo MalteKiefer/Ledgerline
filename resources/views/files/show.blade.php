@@ -111,6 +111,38 @@
                     </div>
                 </dl>
             </div>
+
+            @if (! empty($exif) && ! empty($exif['fields']))
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-sm font-semibold text-gray-900">{{ __('files.exif') }}</h2>
+                    <dl class="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                        @foreach ($exif['fields'] as $label => $value)
+                            <div class="flex justify-between gap-4 text-sm">
+                                <dt class="text-gray-500">{{ $label }}</dt>
+                                <dd class="text-right text-gray-900">{{ $value }}</dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                </div>
+            @endif
+
+            @if (! empty($location))
+                <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                    <div class="border-b border-gray-100 px-6 py-3">
+                        <h2 class="text-sm font-semibold text-gray-900">{{ __('files.location') }}</h2>
+                        @if ($location['address'])
+                            <p class="mt-1 text-sm text-gray-600">{{ $location['address'] }}</p>
+                        @endif
+                        <p class="mt-1 text-xs text-gray-400">{{ number_format($location['lat'], 5) }}, {{ number_format($location['lon'], 5) }}</p>
+                    </div>
+                    <iframe title="{{ __('files.location') }}" loading="lazy" class="h-72 w-full border-0"
+                        src="https://www.openstreetmap.org/export/embed.html?bbox={{ $location['lon'] - 0.01 }}%2C{{ $location['lat'] - 0.01 }}%2C{{ $location['lon'] + 0.01 }}%2C{{ $location['lat'] + 0.01 }}&amp;layer=mapnik&amp;marker={{ $location['lat'] }}%2C{{ $location['lon'] }}"></iframe>
+                    <div class="px-6 py-2 text-right">
+                        <a href="https://www.openstreetmap.org/?mlat={{ $location['lat'] }}&amp;mlon={{ $location['lon'] }}#map=16/{{ $location['lat'] }}/{{ $location['lon'] }}"
+                            target="_blank" rel="noopener" class="text-xs text-gray-500 hover:text-gray-700">{{ __('files.view_larger_map') }} ↗</a>
+                    </div>
+                </div>
+            @endif
         </div>
 
         {{-- Editable metadata --}}

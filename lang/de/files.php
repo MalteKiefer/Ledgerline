@@ -1,7 +1,8 @@
 <?php
 
+declare(strict_types=1);
+
 return [
-    // index
     'index_title' => 'Dateien',
     'breadcrumb_files' => 'Dateien',
     'heading_files' => 'Dateien',
@@ -36,8 +37,6 @@ return [
     'location_customer' => 'Kunde: :name',
     'location_project' => 'Projekt: :name',
     'location_general' => 'Allgemein',
-
-    // show
     'download' => 'Herunterladen',
     'delete_file_confirm' => 'Diese Datei löschen? Dies kann nicht rückgängig gemacht werden.',
     'open_in_new_tab' => 'In neuem Tab öffnen ↗',
@@ -60,11 +59,12 @@ return [
     'note' => 'Notiz',
     'folder' => 'Ordner',
     'folder_none' => '— Keiner —',
-
-    // file-panel component
     'add_file' => '+ Datei hinzufügen',
     'close' => 'Schließen',
     'add_a_file' => 'Eine Datei hinzufügen',
     'no_files_yet' => 'Noch keine Dateien.',
     'view' => 'Ansehen',
+    'exif' => 'Bilddaten (EXIF)',
+    'location' => 'Standort',
+    'view_larger_map' => 'Größere Karte anzeigen',
 ];
