@@ -11,6 +11,7 @@ use App\Http\Requests\UpdateFileRequest;
 use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\File;
+use App\Models\Folder;
 use App\Models\Project;
 use App\Models\Tag;
 use App\Models\User;
@@ -60,8 +61,7 @@ class FileController extends Controller
     }
 
     /**
-     * Store an uploaded file for an expense (a global finance record). The
-     * file inherits the uploader's active team so it stays visible to them.
+     * Store an uploaded file for an expense (a global finance record).
      */
     public function storeForExpense(StoreFileRequest $request, Expense $expense): RedirectResponse
     {
@@ -75,8 +75,25 @@ class FileController extends Controller
     }
 
     /**
-     * Store a file uploaded from the team-wide overview, assigning it to the
-     * chosen customer or project (which must belong to the user's team).
+     * Store a general (company) file with no customer or project, optionally in
+     * a folder.
+     */
+    public function storeGeneral(StoreFileRequest $request): RedirectResponse
+    {
+        $this->authorize('create', File::class);
+
+        $folderId = Folder::query()->whereKey($request->input('folder_id'))->value('id');
+
+        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], null, $request->user(), $folderId);
+
+        return redirect()
+            ->route('files.index', ['folder' => $folderId])
+            ->with('status', 'File uploaded.');
+    }
+
+    /**
+     * Store a file uploaded from the files overview, assigning it to the chosen
+     * customer or project.
      */
     public function store(StoreTeamFileRequest $request): RedirectResponse
     {
@@ -84,7 +101,6 @@ class FileController extends Controller
 
         [$type, $id] = explode(':', $request->validated()['attachable'], 2);
 
-        // findOrFail is team-scoped, so a target outside the user's team 404s.
         $attachable = $type === 'customer'
             ? Customer::findOrFail($id)
             : Project::findOrFail($id);
@@ -117,9 +133,12 @@ class FileController extends Controller
     {
         $this->authorize('view', $file);
 
-        $file->load(['attachable', 'tags', 'uploader']);
+        $file->load(['attachable', 'tags', 'uploader', 'folder']);
 
-        return view('files.show', ['file' => $file]);
+        return view('files.show', [
+            'file' => $file,
+            'folders' => Folder::query()->orderBy('name')->get(),
+        ]);
     }
 
     /**
@@ -189,11 +208,12 @@ class FileController extends Controller
     }
 
     /**
-     * Persist an uploaded file against its owning record.
+     * Persist an uploaded file, optionally against an owning record and/or a
+     * folder. A general (company) file has no attachable.
      *
      * @param  list<string>  $tags
      */
-    private function persist(UploadedFile $upload, array $tags, Model $attachable, User $uploader): void
+    private function persist(UploadedFile $upload, array $tags, ?Model $attachable, User $uploader, ?int $folderId = null): void
     {
         $mime = $upload->getMimeType() ?: ($upload->getClientMimeType() ?: 'application/octet-stream');
         $type = FileType::fromMime($mime);
@@ -219,7 +239,12 @@ class FileController extends Controller
             'extracted_text' => $extracted,
         ]);
         $file->uploaded_by = $uploader->id;
-        $file->attachable()->associate($attachable);
+        $file->folder_id = $folderId;
+
+        if ($attachable !== null) {
+            $file->attachable()->associate($attachable);
+        }
+
         $file->save();
 
         $tagIds = collect($tags)

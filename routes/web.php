@@ -11,6 +11,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
+use App\Http\Controllers\FolderController;
 use App\Http\Controllers\IncomeEntryController;
 use App\Http\Controllers\Invoice\CreditNoteController;
 use App\Http\Controllers\Invoice\FinalizeController;
@@ -89,6 +90,12 @@ Route::middleware('auth')->group(function (): void {
     // and delete by id.
     Route::get('/files', FileOverviewController::class)->name('files.index');
     Route::post('/files', [FileController::class, 'store'])->name('files.store');
+    Route::post('/files/general', [FileController::class, 'storeGeneral'])->name('files.store.general');
+
+    // Virtual folders for organising files.
+    Route::post('/folders', [FolderController::class, 'store'])->name('folders.store');
+    Route::put('/folders/{folder}', [FolderController::class, 'update'])->name('folders.update');
+    Route::delete('/folders/{folder}', [FolderController::class, 'destroy'])->name('folders.destroy');
     Route::post('/customers/{customer}/files', [FileController::class, 'storeForCustomer'])->name('customers.files.store');
     Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');

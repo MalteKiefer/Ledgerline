@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
     'checksum',
     'is_encrypted',
     'extracted_text',
+    'folder_id',
 ])]
 class File extends Model
 {
@@ -85,6 +86,24 @@ class File extends Model
     public function attachable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Whether this is a general file (not tied to a customer or project).
+     */
+    public function isGeneral(): bool
+    {
+        return $this->attachable_type === null;
+    }
+
+    /**
+     * The folder this file lives in, if any.
+     *
+     * @return BelongsTo<Folder, $this>
+     */
+    public function folder(): BelongsTo
+    {
+        return $this->belongsTo(Folder::class);
     }
 
     /**

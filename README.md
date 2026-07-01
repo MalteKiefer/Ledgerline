@@ -114,9 +114,11 @@ no per-team data isolation. Authentication is handled entirely by Pocket-ID
 
 ## File storage
 
-Files can be attached to customers and projects and are listed under **Files**
-in the menu. They are stored on a private, S3-compatible object store (the
-`files` disk): **MinIO** locally, **Cloudflare R2 / S3** in production.
+Files can be attached to customers and projects, or uploaded as general company
+files (logos, letterhead, templates) with no owner. **Files** is a folder
+browser: nestable virtual folders organise files like a file browser, with
+breadcrumb navigation. They are stored on a private, S3-compatible object store
+(the `files` disk): **MinIO** locally, **Cloudflare R2 / S3** in production.
 
 - Uploads stream through the app, which detects the file type from its content
   and, for unencrypted text-extractable files, captures searchable text.
