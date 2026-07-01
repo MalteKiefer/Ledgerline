@@ -106,6 +106,25 @@ class GalleryTest extends TestCase
         Storage::disk('files')->assertMissing($b->thumb_path);
     }
 
+    public function test_map_points_returns_only_ready_geotagged_photos(): void
+    {
+        $this->signIn();
+        Photo::factory()->create(['status' => 'ready', 'latitude' => 36.1699, 'longitude' => -115.1398]);
+        Photo::factory()->create(['status' => 'ready', 'latitude' => null, 'longitude' => null]);
+        Photo::factory()->create(['status' => 'processing', 'latitude' => 1, 'longitude' => 2]);
+
+        $this->getJson(route('gallery.points'))
+            ->assertOk()
+            ->assertJsonCount(1, 'points')
+            ->assertJsonPath('points.0.lat', 36.1699);
+    }
+
+    public function test_map_page_renders(): void
+    {
+        $this->signIn();
+        $this->get(route('gallery.map'))->assertOk()->assertSee('photoMap(', false);
+    }
+
     public function test_image_route_streams_a_rendition(): void
     {
         Storage::fake('files');
