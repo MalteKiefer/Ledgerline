@@ -42,6 +42,12 @@
                     <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Create credit note</button>
                 </form>
             @endif
+            @if ($invoice->isImported())
+                <form method="POST" action="{{ route('finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('Delete this imported invoice and its source PDF?');">
+                    @csrf @method('DELETE')
+                    <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Delete</button>
+                </form>
+            @endif
         </div>
     </div>
 
@@ -79,7 +85,7 @@
                             <th class="px-4 py-3">Description</th>
                             <th class="px-4 py-3 text-right">Qty</th>
                             <th class="px-4 py-3 text-right">Net price</th>
-                            <th class="px-4 py-3 text-right">VAT</th>
+                            @if ($company->tax_display !== 'invoice')<th class="px-4 py-3 text-right">VAT</th>@endif
                             <th class="px-4 py-3 text-right">Net</th>
                         </tr>
                     </thead>
@@ -89,11 +95,11 @@
                                 <td class="px-4 py-3 text-gray-900">{{ $line->description }}</td>
                                 <td class="px-4 py-3 text-right text-gray-600">{{ rtrim(rtrim(number_format((float) $line->quantity, 2), "0"), ".") }} {{ $line->unitLabel() }}</td>
                                 <td class="px-4 py-3 text-right text-gray-600">{{ $line->unitPrice()->format() }}</td>
-                                <td class="px-4 py-3 text-right text-gray-600">{{ $invoice->tax_mode->chargesTax() ? $line->tax_rate.'%' : '—' }}</td>
+                                @if ($company->tax_display !== 'invoice')<td class="px-4 py-3 text-right text-gray-600">{{ $invoice->tax_mode->chargesTax() ? $line->tax_rate.'%' : '—' }}</td>@endif
                                 <td class="px-4 py-3 text-right text-gray-900">{{ $line->lineNet()->format() }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-4 py-6 text-center text-gray-500">No lines.</td></tr>
+                            <tr><td colspan="{{ $company->tax_display !== 'invoice' ? 5 : 4 }}" class="px-4 py-6 text-center text-gray-500">No lines.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

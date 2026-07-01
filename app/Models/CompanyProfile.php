@@ -35,6 +35,8 @@ use Illuminate\Database\Eloquent\Model;
     'default_language',
     'default_currency',
     'default_tax_rate',
+    'tax_display',
+    'paper_size',
     'invoice_number_prefix',
     'invoice_number_next',
     'invoice_number_pad',

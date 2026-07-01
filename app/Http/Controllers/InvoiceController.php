@@ -20,6 +20,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * CRUD for invoices (money in). Invoices are global (not team-scoped). Drafts
@@ -120,7 +121,13 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice): RedirectResponse
     {
-        abort_unless($invoice->isDraft(), 403, 'Only draft invoices can be deleted.');
+        abort_unless($invoice->isDraft() || $invoice->isImported(), 403, 'Only draft or imported invoices can be deleted.');
+
+        // Remove any attached source documents (e.g. an imported invoice's PDF).
+        foreach ($invoice->files as $file) {
+            Storage::disk(config('files.disk'))->delete($file->disk_path);
+            $file->delete();
+        }
 
         $invoice->delete();
 

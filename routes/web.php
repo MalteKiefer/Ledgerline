@@ -21,6 +21,7 @@ use App\Http\Controllers\Invoice\MailController as InvoiceMailController;
 use App\Http\Controllers\Invoice\PaymentController;
 use App\Http\Controllers\Invoice\PdfController as InvoicePdfController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectOverviewController;
@@ -48,6 +49,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::get('/search', [SearchController::class, 'index'])->name('search');
     Route::get('/search/suggest', [SearchController::class, 'suggest'])->name('search.suggest');
+    Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
 

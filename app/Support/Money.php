@@ -33,10 +33,13 @@ final readonly class Money
     }
 
     /**
-     * Formatted amount with the currency code (e.g. "1,234.56 EUR").
+     * Formatted amount with the currency code, using the current locale's
+     * separators (German "1.234,56 EUR", English "1,234.56 EUR").
      */
     public function format(): string
     {
-        return number_format($this->cents / 100, 2).' '.$this->currency;
+        [$decimal, $thousands] = app()->getLocale() === 'de' ? [',', '.'] : ['.', ','];
+
+        return number_format($this->cents / 100, 2, $decimal, $thousands).' '.$this->currency;
     }
 }

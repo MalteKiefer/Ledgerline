@@ -46,6 +46,8 @@ class CompanyProfileRequest extends FormRequest
             'default_language' => ['required', Rule::in(array_keys(config('finance.languages')))],
             'default_currency' => ['required', Rule::in(config('finance.currencies'))],
             'default_tax_rate' => ['required', 'integer', 'min:0', 'max:100'],
+            'tax_display' => ['required', Rule::in(['line', 'invoice'])],
+            'paper_size' => ['required', Rule::in(config('finance.paper_sizes'))],
             'invoice_number_prefix' => ['required', 'string', 'max:20'],
             'invoice_number_next' => ['required', 'integer', 'min:1'],
             'payment_terms_days' => ['required', 'integer', 'min:0', 'max:365'],

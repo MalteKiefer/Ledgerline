@@ -94,6 +94,19 @@ class InvoiceImportTest extends TestCase
         $this->assertSame('2026-005', $draft->fresh()->number);
     }
 
+    public function test_an_imported_invoice_can_be_deleted(): void
+    {
+        $this->signIn();
+        $file = File::factory()->create();
+        $this->post(route('finance.invoices.import.store'), $this->payload($file->id));
+        $invoice = Invoice::firstWhere('number', '2026-004');
+
+        $this->assertTrue($invoice->isImported());
+        $this->delete(route('finance.invoices.destroy', $invoice))
+            ->assertRedirect(route('finance.invoices.index'));
+        $this->assertDatabaseMissing('invoices', ['id' => $invoice->id]);
+    }
+
     public function test_import_number_must_be_unique(): void
     {
         $this->signIn();
