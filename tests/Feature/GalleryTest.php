@@ -60,6 +60,31 @@ class GalleryTest extends TestCase
         $this->assertNotNull($photo->processed_at);
     }
 
+    public function test_upload_skips_a_duplicate_file(): void
+    {
+        Storage::fake('files');
+        Queue::fake();
+        $this->signIn();
+
+        $file = UploadedFile::fake()->image('dup.jpg', 200, 200);
+        $checksum = hash_file('sha256', $file->getRealPath());
+
+        // A photo with the same name, size and checksum already exists.
+        Photo::factory()->create([
+            'name' => 'dup.jpg',
+            'size' => $file->getSize(),
+            'checksum' => $checksum,
+        ]);
+
+        $this->post(route('gallery.store'), ['photo' => $file])
+            ->assertOk()
+            ->assertJson(['duplicate' => true]);
+
+        // No second row was created and no bytes were written.
+        $this->assertSame(1, Photo::count());
+        Queue::assertNotPushed(ProcessPhoto::class);
+    }
+
     public function test_upload_rejects_non_images(): void
     {
         Storage::fake('files');

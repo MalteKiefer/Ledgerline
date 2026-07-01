@@ -14,6 +14,7 @@ return [
     'delete_selected_confirm' => 'Permanently delete the selected photos?',
     'download' => 'Download original',
     'drop_hint' => 'Drop photos here or click to select',
+    'duplicate' => 'Duplicate — skipped',
     'edit' => 'Edit',
     'empty' => 'No photos yet.',
     'empty_trash' => 'Empty trash',

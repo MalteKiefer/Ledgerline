@@ -558,7 +558,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
     enqueue(fileList) {
         for (const file of fileList) {
             if (file.type.startsWith('image/')) {
-                this.queue.push({ name: file.name, progress: 0, done: false, error: false, file });
+                this.queue.push({ name: file.name, progress: 0, done: false, error: false, duplicate: false, file });
             }
         }
         if (!this.busy) {
@@ -593,6 +593,9 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
             if (xhr.status >= 200 && xhr.status < 300) {
                 item.progress = 100;
                 item.done = true;
+                try {
+                    if (JSON.parse(xhr.responseText).duplicate) item.duplicate = true;
+                } catch (e) { /* not JSON; treat as a normal upload */ }
             } else {
                 item.error = true;
             }
