@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Gallery;
 
+use App\Models\Photo;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -13,9 +14,9 @@ use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
 
 /**
- * Stores an uploaded photo under a date-structured object-storage prefix
- * (photos/{Y}/{m}/…) with a thumbnail and a medium rendition, and reads its
- * capture date and dimensions. Kept independent of the files module.
+ * Stores photo originals and, on the queue, generates their renditions and reads
+ * their EXIF metadata (capture date, GPS, camera). Originals live under a
+ * date-structured object-storage prefix, independent of the files module.
  */
 class PhotoStorage
 {
@@ -24,67 +25,134 @@ class PhotoStorage
     private const MEDIUM_WIDTH = 1600;
 
     /**
-     * @return array{
-     *   uuid: string, disk_path: string, thumb_path: string, medium_path: string,
-     *   mime_type: string, size: int, width: ?int, height: ?int, checksum: ?string, taken_at: Carbon
-     * }
+     * Persist just the original quickly (upload path). Renditions and EXIF are
+     * filled later by process(). Returns the new photo's provisional data.
+     *
+     * @return array{uuid: string, disk_path: string, size: int, checksum: ?string}
      */
-    public function store(UploadedFile $upload): array
+    public function storeOriginal(UploadedFile $upload): array
     {
-        $disk = Storage::disk(config('files.disk'));
-        $manager = new ImageManager(new Driver);
-
         $uuid = (string) Str::uuid();
-        $takenAt = $this->takenAt($upload);
-        $dir = 'photos/'.$takenAt->format('Y/m');
+        $dir = 'photos/'.Carbon::now()->format('Y/m');
         $ext = strtolower($upload->getClientOriginalExtension() ?: 'jpg');
+        $path = "{$dir}/{$uuid}.{$ext}";
 
-        $originalPath = "{$dir}/{$uuid}.{$ext}";
-        $thumbPath = "{$dir}/thumb/{$uuid}.jpg";
-        $mediumPath = "{$dir}/medium/{$uuid}.jpg";
-
-        $image = $manager->decodePath($upload->getRealPath());
-        $width = $image->width();
-        $height = $image->height();
-
-        $disk->put($originalPath, file_get_contents($upload->getRealPath()));
-        $disk->put($thumbPath, (string) $image->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75)));
-
-        $medium = $manager->decodePath($upload->getRealPath());
-        $disk->put($mediumPath, (string) $medium->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82)));
+        Storage::disk(config('files.disk'))->put($path, file_get_contents($upload->getRealPath()));
 
         return [
             'uuid' => $uuid,
-            'disk_path' => $originalPath,
-            'thumb_path' => $thumbPath,
-            'medium_path' => $mediumPath,
-            'mime_type' => $upload->getMimeType() ?: 'image/jpeg',
+            'disk_path' => $path,
             'size' => (int) $upload->getSize(),
-            'width' => $width,
-            'height' => $height,
             'checksum' => hash_file('sha256', $upload->getRealPath()) ?: null,
-            'taken_at' => $takenAt,
         ];
     }
 
     /**
-     * Capture date from EXIF DateTimeOriginal, falling back to now.
+     * Generate the thumbnail and medium renditions and fill EXIF-derived
+     * metadata on a stored photo. Runs on the queue.
      */
-    private function takenAt(UploadedFile $upload): Carbon
+    public function process(Photo $photo): void
     {
-        if (function_exists('exif_read_data') && in_array($upload->getMimeType(), ['image/jpeg', 'image/tiff'], true)) {
-            $data = @exif_read_data($upload->getRealPath());
-            $raw = $data['DateTimeOriginal'] ?? ($data['DateTime'] ?? null);
+        $disk = Storage::disk(config('files.disk'));
 
-            if (is_string($raw)) {
-                $parsed = Carbon::createFromFormat('Y:m:d H:i:s', $raw);
+        // Work on a local copy of the original (the disk may be remote S3).
+        $tmp = tempnam(sys_get_temp_dir(), 'photo');
+        file_put_contents($tmp, $disk->get($photo->disk_path));
 
-                if ($parsed !== false) {
-                    return $parsed;
-                }
-            }
+        try {
+            $manager = new ImageManager(new Driver);
+
+            $image = $manager->decodePath($tmp);
+            $width = $image->width();
+            $height = $image->height();
+
+            $dir = dirname($photo->disk_path);
+            $thumbPath = "{$dir}/thumb/{$photo->uuid}.jpg";
+            $mediumPath = "{$dir}/medium/{$photo->uuid}.jpg";
+
+            $disk->put($thumbPath, (string) $image->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75)));
+            $disk->put($mediumPath, (string) $manager->decodePath($tmp)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82)));
+
+            $meta = $this->exif($tmp, $photo->mime_type);
+
+            $photo->forceFill([
+                'thumb_path' => $thumbPath,
+                'medium_path' => $mediumPath,
+                'width' => $width,
+                'height' => $height,
+                'taken_at' => $meta['taken_at'] ?? $photo->taken_at,
+                'latitude' => $meta['lat'],
+                'longitude' => $meta['lon'],
+                'camera' => $meta['camera'],
+                'status' => 'ready',
+                'processed_at' => Carbon::now(),
+            ])->save();
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    /**
+     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string}
+     */
+    private function exif(string $path, string $mime): array
+    {
+        $out = ['taken_at' => null, 'lat' => null, 'lon' => null, 'camera' => null];
+
+        if (! function_exists('exif_read_data') || ! in_array($mime, ['image/jpeg', 'image/tiff'], true)) {
+            return $out;
         }
 
-        return Carbon::now();
+        $data = @exif_read_data($path, null, true);
+        if ($data === false || $data === null) {
+            return $out;
+        }
+
+        $raw = $data['EXIF']['DateTimeOriginal'] ?? ($data['IFD0']['DateTime'] ?? null);
+        if (is_string($raw)) {
+            $parsed = Carbon::createFromFormat('Y:m:d H:i:s', $raw);
+            $out['taken_at'] = $parsed !== false ? $parsed : null;
+        }
+
+        $gps = $data['GPS'] ?? null;
+        if (is_array($gps) && isset($gps['GPSLatitude'], $gps['GPSLongitude'], $gps['GPSLatitudeRef'], $gps['GPSLongitudeRef'])) {
+            $out['lat'] = $this->gps($gps['GPSLatitude'], (string) $gps['GPSLatitudeRef']);
+            $out['lon'] = $this->gps($gps['GPSLongitude'], (string) $gps['GPSLongitudeRef']);
+        }
+
+        $ifd0 = $data['IFD0'] ?? [];
+        $camera = trim(($ifd0['Make'] ?? '').' '.($ifd0['Model'] ?? ''));
+        $out['camera'] = $camera !== '' ? $camera : null;
+
+        return $out;
+    }
+
+    /**
+     * @param  mixed  $coordinate
+     */
+    private function gps($coordinate, string $ref): ?float
+    {
+        if (! is_array($coordinate) || count($coordinate) < 3) {
+            return null;
+        }
+
+        $decimal = $this->frac($coordinate[0]) + $this->frac($coordinate[1]) / 60 + $this->frac($coordinate[2]) / 3600;
+
+        if (in_array(strtoupper($ref), ['S', 'W'], true)) {
+            $decimal *= -1;
+        }
+
+        return round($decimal, 7);
+    }
+
+    private function frac(mixed $value): float
+    {
+        if (is_string($value) && str_contains($value, '/')) {
+            [$n, $d] = array_pad(explode('/', $value, 2), 2, '1');
+
+            return ((float) $d) != 0.0 ? (float) $n / (float) $d : 0.0;
+        }
+
+        return (float) $value;
     }
 }

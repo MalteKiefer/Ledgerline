@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessPhoto;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -19,25 +21,43 @@ class GalleryTest extends TestCase
         $this->get(route('gallery.index'))->assertRedirect(route('login'));
     }
 
-    public function test_uploading_a_photo_stores_original_thumb_and_medium(): void
+    public function test_upload_stores_the_original_and_queues_processing(): void
+    {
+        Storage::fake('files');
+        Queue::fake();
+        $this->signIn();
+
+        $this->post(route('gallery.store'), [
+            'photo' => UploadedFile::fake()->image('trip.jpg', 1200, 800),
+        ])->assertCreated();
+
+        $photo = Photo::firstOrFail();
+        $this->assertSame('trip.jpg', $photo->name);
+        $this->assertSame('processing', $photo->status);
+        Storage::disk('files')->assertExists($photo->disk_path);
+        // Stored under a date-structured prefix, independent of the files module.
+        $this->assertStringStartsWith('photos/', $photo->disk_path);
+
+        Queue::assertPushed(ProcessPhoto::class);
+    }
+
+    public function test_processing_job_generates_renditions_and_marks_ready(): void
     {
         Storage::fake('files');
         $this->signIn();
 
-        $response = $this->post(route('gallery.store'), [
+        $this->post(route('gallery.store'), [
             'photo' => UploadedFile::fake()->image('trip.jpg', 1200, 800),
         ]);
-
-        $response->assertCreated();
         $photo = Photo::firstOrFail();
 
-        $this->assertSame('trip.jpg', $photo->name);
+        // The queued job runs synchronously in tests (sync driver).
+        $photo->refresh();
+        $this->assertSame('ready', $photo->status);
         $this->assertSame(1200, $photo->width);
-        Storage::disk('files')->assertExists($photo->disk_path);
         Storage::disk('files')->assertExists($photo->thumb_path);
         Storage::disk('files')->assertExists($photo->medium_path);
-        // Stored under a date-structured prefix, independent of the files module.
-        $this->assertStringStartsWith('photos/', $photo->disk_path);
+        $this->assertNotNull($photo->processed_at);
     }
 
     public function test_upload_rejects_non_images(): void
