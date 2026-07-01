@@ -22,7 +22,7 @@ class PruneOrphanedImportedInvoices extends Command
 {
     public function handle(): int
     {
-        $orphans = Invoice::query()
+        $orphans = Invoice::withTrashed()
             ->whereNotNull('imported_at')
             ->whereNotExists(function ($query): void {
                 $query->selectRaw('1')
@@ -60,7 +60,7 @@ class PruneOrphanedImportedInvoices extends Command
         // allowed (delete fires no updating events).
         $count = 0;
         foreach ($orphans as $invoice) {
-            $invoice->delete();
+            $invoice->forceDelete();
             $count++;
         }
 

@@ -119,19 +119,56 @@ class InvoiceController extends Controller
         return redirect()->route('finance.invoices.show', $invoice)->with('status', __('flash.invoice_updated'));
     }
 
+    /**
+     * Move any invoice (regardless of status) to the trash (soft delete). Its
+     * source document is kept so a restore is lossless.
+     */
     public function destroy(Invoice $invoice): RedirectResponse
     {
-        abort_unless($invoice->isDraft() || $invoice->isImported(), 403, 'Only draft or imported invoices can be deleted.');
+        $invoice->delete();
 
-        // Remove any attached source documents (e.g. an imported invoice's PDF).
-        foreach ($invoice->files as $file) {
+        return redirect()->route('finance.invoices.index')->with('status', __('flash.invoice_trashed'));
+    }
+
+    /**
+     * List trashed invoices (the recycle bin).
+     */
+    public function trash(): View
+    {
+        $invoices = Invoice::onlyTrashed()
+            ->with('customer')
+            ->orderByDesc('deleted_at')
+            ->paginate(20);
+
+        return view('invoices.trash', ['invoices' => $invoices]);
+    }
+
+    /**
+     * Restore a trashed invoice.
+     */
+    public function restore(int $invoice): RedirectResponse
+    {
+        $model = Invoice::onlyTrashed()->findOrFail($invoice);
+        $model->restore();
+
+        return redirect()->route('finance.invoices.show', $model)->with('status', __('flash.invoice_restored'));
+    }
+
+    /**
+     * Permanently delete a trashed invoice and its attached source documents.
+     */
+    public function forceDestroy(int $invoice): RedirectResponse
+    {
+        $model = Invoice::onlyTrashed()->with('files')->findOrFail($invoice);
+
+        foreach ($model->files as $file) {
             Storage::disk(config('files.disk'))->delete($file->disk_path);
             $file->delete();
         }
 
-        $invoice->delete();
+        $model->forceDelete();
 
-        return redirect()->route('finance.invoices.index')->with('status', __('flash.invoice_deleted'));
+        return redirect()->route('finance.invoices.trash')->with('status', __('flash.invoice_deleted'));
     }
 
     /**

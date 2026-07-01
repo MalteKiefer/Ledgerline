@@ -38,6 +38,8 @@ return [
     'invoice_emailed' => 'Invoice emailed to :email.',
     'invoice_finalised' => 'Invoice finalised as :number.',
     'invoice_imported' => 'Imported invoice :number.',
+    'invoice_restored' => 'Invoice restored.',
+    'invoice_trashed' => 'Invoice moved to trash.',
     'invoice_updated' => 'Invoice updated.',
     'no_recipient' => 'No recipient email address.',
     'payment_recorded' => 'Payment recorded.',

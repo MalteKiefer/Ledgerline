@@ -26,6 +26,7 @@ return [
         'col_outstanding' => 'Outstanding',
         'draft' => 'Draft #:id',
         'credit' => 'Credit',
+        'trash' => 'Trash',
     ],
     'create' => [
         'title' => 'New invoice',
@@ -88,6 +89,8 @@ return [
         'source_document' => 'Source document',
         'credit_notes' => 'Credit notes',
         'draft_hash' => 'Draft #:id',
+        'trash' => 'Move to trash',
+        'trash_confirm' => 'Move this invoice to the trash? You can restore it later.',
     ],
     'form' => [
         'customer' => 'Customer',
@@ -159,5 +162,16 @@ return [
             'skip' => 'Skip',
             'skip_confirm' => 'Skip this invoice? Its uploaded file is discarded.',
         ],
+    ],
+    'trash' => [
+        'title' => 'Trash',
+        'heading' => 'Trashed invoices',
+        'empty' => 'Trash is empty.',
+        'deleted_at' => 'Deleted',
+        'restore' => 'Restore',
+        'delete_forever' => 'Delete permanently',
+        'delete_forever_confirm' => 'Permanently delete this invoice and its source document? This cannot be undone.',
+        'back' => 'Back to invoices',
+        'open' => 'Trash',
     ],
 ];
