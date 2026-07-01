@@ -37,6 +37,7 @@ use Illuminate\Database\Eloquent\Model;
     'default_tax_rate',
     'invoice_number_prefix',
     'invoice_number_next',
+    'invoice_number_pad',
     'payment_terms_days',
     'invoice_footer_text',
 ])]
@@ -51,6 +52,7 @@ class CompanyProfile extends Model
             'small_business' => 'boolean',
             'default_tax_rate' => 'integer',
             'invoice_number_next' => 'integer',
+            'invoice_number_pad' => 'integer',
             'payment_terms_days' => 'integer',
         ];
     }

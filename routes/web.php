@@ -15,6 +15,7 @@ use App\Http\Controllers\FolderController;
 use App\Http\Controllers\IncomeEntryController;
 use App\Http\Controllers\Invoice\CreditNoteController;
 use App\Http\Controllers\Invoice\FinalizeController;
+use App\Http\Controllers\Invoice\ImportController as InvoiceImportController;
 use App\Http\Controllers\Invoice\MailController as InvoiceMailController;
 use App\Http\Controllers\Invoice\PaymentController;
 use App\Http\Controllers\Invoice\PdfController as InvoicePdfController;
@@ -82,6 +83,9 @@ Route::middleware('auth')->group(function (): void {
         Route::post('expenses/{expense}/files', [FileController::class, 'storeForExpense'])->name('expenses.files.store');
         Route::resource('time-entries', TimeEntryController::class)->except('show');
         Route::resource('income-entries', IncomeEntryController::class)->except('show');
+        Route::get('invoices/import', [InvoiceImportController::class, 'create'])->name('invoices.import.create');
+        Route::post('invoices/import/parse', [InvoiceImportController::class, 'parse'])->name('invoices.import.parse');
+        Route::post('invoices/import', [InvoiceImportController::class, 'store'])->name('invoices.import.store');
         Route::resource('invoices', InvoiceController::class);
         Route::get('invoices/{invoice}/pdf', InvoicePdfController::class)->name('invoices.pdf');
         Route::post('invoices/{invoice}/email', [InvoiceMailController::class, 'store'])->name('invoices.email');

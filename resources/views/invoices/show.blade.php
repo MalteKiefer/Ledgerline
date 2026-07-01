@@ -161,6 +161,15 @@
                 </div>
             @endif
 
+            @if ($invoice->files->isNotEmpty())
+                <div class="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
+                    <p class="text-xs uppercase tracking-wide text-gray-400">Source document</p>
+                    @foreach ($invoice->files as $doc)
+                        <a href="{{ route('files.show', $doc) }}" class="mt-1 block hover:underline">{{ $doc->displayTitle }}</a>
+                    @endforeach
+                </div>
+            @endif
+
             @if ($invoice->creditNotes->isNotEmpty())
                 <div class="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
                     <p class="text-xs uppercase tracking-wide text-gray-400">Credit notes</p>
