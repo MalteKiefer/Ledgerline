@@ -143,6 +143,115 @@ class FileController extends Controller
     }
 
     /**
+     * Extract a zip / tar / gzip archive into a new folder (named after the
+     * archive) beside it, recreating any internal folder structure.
+     */
+    public function extract(Request $request, File $file): RedirectResponse
+    {
+        $this->authorize('create', File::class);
+
+        $disk = Storage::disk(config('files.disk'));
+        $name = strtolower($file->name);
+
+        $ext = match (true) {
+            str_ends_with($name, '.zip') => 'zip',
+            str_ends_with($name, '.tar.gz'), str_ends_with($name, '.tgz'), str_ends_with($name, '.tar') => 'tar',
+            str_ends_with($name, '.gz') => 'gz',
+            default => null,
+        };
+
+        if ($ext === null) {
+            return back()->with('error', __('flash.extract_unsupported'));
+        }
+
+        // Work on a local copy with a suitable extension for the extractor.
+        $suffix = str_ends_with($name, '.tar.gz') ? '.tar.gz' : '.'.pathinfo($name, PATHINFO_EXTENSION);
+        $archive = tempnam(sys_get_temp_dir(), 'arc').$suffix;
+        file_put_contents($archive, $disk->readStream($file->disk_path));
+        $work = $archive.'-out';
+        mkdir($work, 0700, true);
+
+        try {
+            $this->unpack($ext, $archive, $work, pathinfo($file->name, PATHINFO_FILENAME));
+
+            $base = Folder::firstOrCreate([
+                'name' => mb_substr(preg_replace('/\.(zip|tar|tgz|gz)$/i', '', $file->name), 0, 255),
+                'parent_id' => $file->folder_id,
+            ])->id;
+
+            $cache = [];
+            $count = 0;
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($work, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::LEAVES_ONLY,
+            );
+
+            foreach ($iterator as $entry) {
+                if (! $entry->isFile()) {
+                    continue;
+                }
+                $rel = ltrim(str_replace($work, '', $entry->getPathname()), '/');
+                $target = $this->folderForPath($base, $rel, $cache);
+                $upload = new UploadedFile($entry->getPathname(), basename($rel), null, null, true);
+                $this->persist($upload, [], null, $request->user(), $target);
+                $count++;
+            }
+        } catch (\Throwable) {
+            return back()->with('error', __('flash.extract_failed'));
+        } finally {
+            @unlink($archive);
+            $this->removeDir($work);
+        }
+
+        return back()->with('status', __('flash.files_extracted', ['count' => $count]));
+    }
+
+    /**
+     * Unpack an archive of the given kind into a working directory.
+     */
+    private function unpack(string $kind, string $archive, string $work, string $baseName): void
+    {
+        if ($kind === 'zip') {
+            $zip = new \ZipArchive;
+            if ($zip->open($archive) !== true) {
+                throw new \RuntimeException('Cannot open zip');
+            }
+            $zip->extractTo($work);
+            $zip->close();
+
+            return;
+        }
+
+        if ($kind === 'tar') {
+            (new \PharData($archive))->extractTo($work, null, true);
+
+            return;
+        }
+
+        // A single gzip-compressed file → one output file.
+        $data = gzdecode((string) file_get_contents($archive));
+        if ($data === false) {
+            throw new \RuntimeException('Cannot decode gzip');
+        }
+        file_put_contents($work.'/'.$baseName, $data);
+    }
+
+    private function removeDir(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($items as $item) {
+            $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+        }
+        @rmdir($dir);
+    }
+
+    /**
      * Report which of the given relative paths already exist, so the uploader
      * can ask how to handle same-name files before sending them.
      */

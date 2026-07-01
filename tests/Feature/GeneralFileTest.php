@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\FileType;
 use App\Models\Customer;
 use App\Models\File;
 use App\Models\Folder;
@@ -78,6 +79,36 @@ class GeneralFileTest extends TestCase
         // Skip adds nothing.
         $this->post($route, $upload() + ['on_conflict' => 'skip']);
         $this->assertSame(2, File::where('folder_id', $folder->id)->count());
+    }
+
+    public function test_a_zip_archive_is_extracted_into_a_folder(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'z').'.zip';
+        $zip = new \ZipArchive;
+        $zip->open($zipPath, \ZipArchive::CREATE);
+        $zip->addFromString('docs/readme.txt', 'hello');
+        $zip->close();
+        Storage::disk('files')->put('files/archive.zip', file_get_contents($zipPath));
+        @unlink($zipPath);
+
+        $file = File::factory()->create([
+            'name' => 'archive.zip',
+            'type' => FileType::ARCHIVE,
+            'disk_path' => 'files/archive.zip',
+            'attachable_type' => null,
+            'attachable_id' => null,
+        ]);
+
+        $this->post(route('files.extract', $file))->assertRedirect();
+
+        $base = Folder::where('name', 'archive')->whereNull('parent_id')->first();
+        $this->assertNotNull($base);
+        $docs = Folder::where('name', 'docs')->where('parent_id', $base->id)->first();
+        $this->assertNotNull($docs);
+        $this->assertSame($docs->id, File::firstWhere('name', 'readme.txt')->folder_id);
     }
 
     public function test_conflicts_endpoint_reports_existing_paths(): void
