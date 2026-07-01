@@ -24,6 +24,8 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('finance.invoices.pdf', $invoice) }}" target="_blank" rel="noopener"
+                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">PDF ↗</a>
             @if ($invoice->isDraft())
                 <a href="{{ route('finance.invoices.edit', $invoice) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Edit</a>
                 <form method="POST" action="{{ route('finance.invoices.finalize', $invoice) }}" onsubmit="return confirm('Finalise this invoice? It will be locked and numbered.');">
@@ -142,6 +144,19 @@
                             <input type="date" id="paid_on" name="paid_on" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         </div>
                         <button type="submit" class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Record</button>
+                    </form>
+                </div>
+            @endif
+
+            @if ($invoice->isFinalized())
+                <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-sm font-semibold text-gray-900">Email invoice</h2>
+                    <p class="mt-1 text-xs text-gray-500">Sends the Factur-X PDF to the customer.</p>
+                    <form method="POST" action="{{ route('finance.invoices.email', $invoice) }}" class="mt-3 space-y-3">
+                        @csrf
+                        <input type="email" name="email" value="{{ $invoice->customer?->email }}" placeholder="recipient@example.com"
+                            class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Send</button>
                     </form>
                 </div>
             @endif
