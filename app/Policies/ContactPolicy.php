@@ -19,7 +19,7 @@ class ContactPolicy
 
     public function view(User $user, Contact $contact): bool
     {
-        return $user->belongsToTeam($contact->team_id);
+        return true;
     }
 
     public function create(User $user): bool
@@ -29,21 +29,21 @@ class ContactPolicy
 
     public function update(User $user, Contact $contact): bool
     {
-        return $user->belongsToTeam($contact->team_id);
+        return true;
     }
 
     public function delete(User $user, Contact $contact): bool
     {
-        return $user->belongsToTeam($contact->team_id);
+        return true;
     }
 
     public function restore(User $user, Contact $contact): bool
     {
-        return $user->belongsToTeam($contact->team_id);
+        return true;
     }
 
     public function forceDelete(User $user, Contact $contact): bool
     {
-        return $user->belongsToTeam($contact->team_id);
+        return true;
     }
 }

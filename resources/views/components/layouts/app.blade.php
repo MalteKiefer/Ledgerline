@@ -50,8 +50,6 @@
                 @auth
                     @php
                         $currentUser = auth()->user();
-                        $userTeams = $currentUser->teams->sortBy('display_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-                        $currentTeamId = $currentUser->currentTeamId();
                     @endphp
                     <div class="flex items-center gap-3">
                         <button type="button" @click="mobileOpen = ! mobileOpen" aria-label="Toggle menu"
@@ -63,21 +61,6 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
-
-                        @if ($userTeams->count() > 1)
-                            <form method="POST" action="{{ route('active-team.update') }}">
-                                @csrf
-                                <label for="active-team" class="sr-only">Active team</label>
-                                <select id="active-team" name="team_id" onchange="this.form.submit()"
-                                    class="hidden rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:block">
-                                    @foreach ($userTeams as $team)
-                                        <option value="{{ $team->id }}" @selected($team->id === $currentTeamId)>{{ $team->displayName }}</option>
-                                    @endforeach
-                                </select>
-                            </form>
-                        @elseif ($userTeams->count() === 1)
-                            <span class="hidden text-sm text-gray-500 sm:inline">{{ $userTeams->first()->displayName }}</span>
-                        @endif
 
                         <x-spotlight-search />
 
@@ -124,19 +107,6 @@
                                 {{ $item['label'] }}
                             </a>
                         @endforeach
-
-                        @if ($userTeams->count() > 1)
-                            <form method="POST" action="{{ route('active-team.update') }}" class="pt-2">
-                                @csrf
-                                <label for="active-team-mobile" class="block text-xs font-medium text-gray-500">Active team</label>
-                                <select id="active-team-mobile" name="team_id" onchange="this.form.submit()"
-                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                                    @foreach ($userTeams as $team)
-                                        <option value="{{ $team->id }}" @selected($team->id === $currentTeamId)>{{ $team->displayName }}</option>
-                                    @endforeach
-                                </select>
-                            </form>
-                        @endif
                     </div>
                 </div>
             @endauth
@@ -157,7 +127,5 @@
             Ledgerline v{{ config('app.version') }}
         </footer>
     </div>
-
-    <x-team-picker />
 </body>
 </html>

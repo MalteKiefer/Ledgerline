@@ -2,14 +2,12 @@
 
 declare(strict_types=1);
 
-use App\Http\Controllers\ActiveTeamController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\DefaultTeamController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
@@ -25,7 +23,6 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\TagController as SettingsTagController;
-use App\Http\Controllers\Settings\TeamController as SettingsTeamController;
 use App\Http\Controllers\TimeEntryController;
 use Illuminate\Support\Facades\Route;
 
@@ -43,8 +40,6 @@ Route::middleware('guest')->group(function (): void {
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
-    Route::post('/active-team', [ActiveTeamController::class, 'update'])->name('active-team.update');
-    Route::post('/default-team', [DefaultTeamController::class, 'update'])->name('default-team.update');
     Route::get('/search', [SearchController::class, 'index'])->name('search');
     Route::get('/search/suggest', [SearchController::class, 'suggest'])->name('search.suggest');
     Route::get('/profile', ProfileController::class)->name('profile');
@@ -59,8 +54,6 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/tags', [SettingsTagController::class, 'store'])->name('settings.tags.store');
     Route::put('/settings/tags/{tag}', [SettingsTagController::class, 'update'])->name('settings.tags.update');
     Route::delete('/settings/tags/{tag}', [SettingsTagController::class, 'destroy'])->name('settings.tags.destroy');
-    Route::get('/settings/teams', [SettingsTeamController::class, 'index'])->name('settings.teams.index');
-    Route::post('/settings/teams/reassign', [SettingsTeamController::class, 'reassign'])->name('settings.teams.reassign');
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
     Route::resource('customers', CustomerController::class);

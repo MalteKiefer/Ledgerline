@@ -8,8 +8,6 @@ use App\Enums\FileType;
 use App\Models\Customer;
 use App\Models\File;
 use App\Models\Project;
-use App\Models\Team;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -43,7 +41,6 @@ class FileCrudTest extends TestCase
 
         $this->assertNotNull($file);
         $this->assertSame(FileType::PDF, $file->type);
-        $this->assertSame($customer->team_id, $file->team_id);
         $this->assertTrue($file->attachable->is($customer));
         $this->assertEqualsCanonicalizing(['Contract', 'Signed'], $file->tags->pluck('name')->all());
         Storage::disk('files')->assertExists($file->disk_path);
@@ -102,18 +99,6 @@ class FileCrudTest extends TestCase
             'attachable' => 'nonsense',
             'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
         ])->assertSessionHasErrors('attachable');
-    }
-
-    public function test_overview_upload_cannot_target_another_teams_customer(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-        $foreign = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-
-        $this->post(route('files.store'), [
-            'attachable' => 'customer:'.$foreign->id,
-            'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
-        ])->assertNotFound();
     }
 
     public function test_upload_stores_a_file_for_a_project(): void
@@ -194,53 +179,6 @@ class FileCrudTest extends TestCase
             ->assertHeader('X-Frame-Options', 'SAMEORIGIN');
 
         $this->assertStringContainsString('inline', (string) $response->headers->get('Content-Disposition'));
-    }
-
-    public function test_cannot_download_another_teams_file(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        $foreignFile = File::factory()->forCustomer($foreignCustomer)->create();
-
-        $this->get(route('files.download', $foreignFile))->assertNotFound();
-    }
-
-    public function test_cannot_upload_to_another_teams_customer(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-
-        $this->post(route('customers.files.store', $foreignCustomer), [
-            'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
-        ])->assertNotFound();
-    }
-
-    public function test_overview_lists_only_own_team_files(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-        $customer = Customer::factory()->create();
-        File::factory()->forCustomer($customer)->create(['name' => 'Mine.pdf']);
-
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        File::factory()->forCustomer($foreignCustomer)->create(['name' => 'Theirs.pdf']);
-
-        $this->get(route('files.index'))
-            ->assertOk()
-            ->assertSee('Mine.pdf')
-            ->assertDontSee('Theirs.pdf');
-    }
-
-    public function test_policy_denies_users_outside_the_team(): void
-    {
-        $customer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        $file = File::factory()->forCustomer($customer)->create();
-        $outsider = User::factory()->create();
-
-        $this->assertFalse($outsider->can('view', $file));
-        $this->assertFalse($outsider->can('delete', $file));
     }
 
     public function test_search_finds_files_by_name_and_content(): void

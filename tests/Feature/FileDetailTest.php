@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Models\Customer;
 use App\Models\File;
-use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -56,15 +55,5 @@ class FileDetailTest extends TestCase
 
         $file->update(['title' => 'Nice Title']);
         $this->assertSame('Nice Title', $file->fresh()->displayTitle);
-    }
-
-    public function test_cannot_view_another_teams_file_detail(): void
-    {
-        $this->signIn();
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        $foreignFile = File::factory()->forCustomer($foreignCustomer)->create();
-
-        $this->get(route('files.show', $foreignFile))->assertNotFound();
-        $this->put(route('files.update', $foreignFile), ['title' => 'x'])->assertNotFound();
     }
 }

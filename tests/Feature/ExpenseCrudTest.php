@@ -126,6 +126,5 @@ class ExpenseCrudTest extends TestCase
 
         $file = File::firstWhere('name', 'receipt.pdf');
         $this->assertTrue($file->attachable->is($expense));
-        $this->assertSame($this->team->id, $file->team_id);
     }
 }

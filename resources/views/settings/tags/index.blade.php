@@ -3,7 +3,7 @@
         <a href="{{ route('settings') }}" class="hover:underline">Settings</a> <span aria-hidden="true">/</span> Tags
     </p>
     <h1 class="mt-1 text-2xl font-semibold text-gray-900">Tags</h1>
-    <p class="mt-1 text-sm text-gray-600">Tags for your active team, used on projects and files.</p>
+    <p class="mt-1 text-sm text-gray-600">Tags used on projects and files.</p>
 
     {{-- Add tag --}}
     <form method="POST" action="{{ route('settings.tags.store') }}"

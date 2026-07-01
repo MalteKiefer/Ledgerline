@@ -3,7 +3,7 @@
     <div class="flex items-center justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900">Files</h1>
-            <p class="mt-1 text-sm text-gray-600">All files across your team's customers and projects.</p>
+            <p class="mt-1 text-sm text-gray-600">All files across your customers and projects.</p>
         </div>
         @if (! empty($targets))
             <button type="button" @click="uploadOpen = ! uploadOpen"
