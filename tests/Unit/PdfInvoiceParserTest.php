@@ -131,6 +131,20 @@ class PdfInvoiceParserTest extends TestCase
         $this->assertSame(1071.0, $de['gross']);
     }
 
+    public function test_it_detects_units_from_line_text(): void
+    {
+        $text = implode("\n", [
+            'BESCHREIBUNG MENGE EINZELPREIS BETRAG',
+            "Beratung vor Ort Tage\t2\t45,00 €\t90,00 €",
+            "Zwischensumme\t90,00 €",
+            'Gesamt 107,10 €',
+        ]);
+
+        $r = $this->parser()->parse($text);
+
+        $this->assertSame('day', $r['lines'][0]['unit']);
+    }
+
     public function test_a_captured_number_must_contain_a_digit(): void
     {
         // "Rechnung Nr. Rechnungsdatum" table header must not be taken as the number.
