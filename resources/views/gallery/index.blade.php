@@ -1,8 +1,7 @@
 <x-layouts.app :title="__('gallery.title')">
-  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}')"
-    @if ($photos->getCollection()->contains(fn ($p) => ! $p->isReady()))
-        x-init="setTimeout(() => window.location.reload(), 5000)"
-    @endif>
+  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed') }}', {{ $photos->hasMorePages() ? 'true' : 'false' }})"
+       x-init="initGallery()"
+       @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()">
 
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -18,13 +17,6 @@
                 <input type="file" accept="image/*" multiple class="hidden" @change="pick($event)">
             </label>
         </div>
-    </div>
-
-    {{-- Drop zone --}}
-    <div @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="drop($event)"
-        :class="dragging ? 'border-gray-800 bg-gray-50' : 'border-gray-300'"
-        class="mt-4 rounded-lg border-2 border-dashed px-6 py-8 text-center text-sm text-gray-500">
-        {{ __('gallery.drop_hint') }}
     </div>
 
     {{-- Upload progress --}}
@@ -65,42 +57,54 @@
         </template>
     </div>
 
-    {{-- Timeline --}}
-    <div class="mt-6 space-y-8" x-data="{ lightbox: null }">
-        @forelse ($grouped as $day => $dayPhotos)
-            <section>
-                <h2 class="mb-3 text-sm font-semibold text-gray-700">{{ \Illuminate\Support\Carbon::parse($day)->isoFormat('LL') }}</h2>
-                <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
-                    @foreach ($dayPhotos as $photo)
-                        <div data-photo-id="{{ $photo->id }}" class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100">
-                            @if ($photo->isReady())
-                                <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
-                                    @click="lightbox = { src: '{{ route('gallery.image', ['photo' => $photo, 'size' => 'medium']) }}', download: '{{ route('gallery.image', ['photo' => $photo, 'size' => 'original']) }}', name: @js($photo->name) }"
-                                    class="h-full w-full cursor-pointer object-cover transition group-hover:opacity-90">
-                                <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
-                                    class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
-                                    :class="selected.includes({{ $photo->id }}) ? '!opacity-100' : ''">
-                            @else
-                                <div class="flex h-full w-full animate-pulse items-center justify-center bg-gray-200 text-xs text-gray-400">{{ __('gallery.processing') }}</div>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-            </section>
-        @empty
+    {{-- Timeline (infinite scroll appends here) --}}
+    <div x-ref="timeline" class="mt-6 space-y-8">
+        @include('gallery._timeline', ['grouped' => $grouped])
+        @if ($grouped->isEmpty())
             <p class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">{{ __('gallery.empty') }}</p>
-        @endforelse
-
-        {{-- Lightbox --}}
-        <template x-teleport="body">
-            <div x-show="lightbox" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" @keydown.escape.window="lightbox = null" @click="lightbox = null">
-                <img :src="lightbox?.src" :alt="lightbox?.name" class="max-h-[85vh] max-w-full rounded shadow-2xl" @click.stop>
-                <a x-show="lightbox" :href="lightbox?.download" @click.stop class="absolute bottom-6 rounded-md bg-white/90 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-white">{{ __('gallery.download') }}</a>
-                <button type="button" @click="lightbox = null" class="absolute right-6 top-6 text-2xl text-white/80 hover:text-white" aria-label="{{ __('gallery.close') }}">✕</button>
-            </div>
-        </template>
+        @endif
     </div>
 
-    <div class="mt-6">{{ $photos->links() }}</div>
+    {{-- Infinite-scroll sentinel --}}
+    <div x-intersect="loadMore()" class="h-10"></div>
+    <div x-show="loading" x-cloak class="py-4 text-center text-sm text-gray-400">…</div>
+
+    {{-- Full-screen drop overlay (Google Photos style) --}}
+    <div x-show="dragging" x-cloak @drop.prevent="drop($event)" @dragover.prevent
+        class="fixed inset-0 z-[900] flex items-center justify-center bg-gray-900/50 p-8">
+        <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">
+            {{ __('gallery.drop_hint') }}
+        </div>
+    </div>
+
+    {{-- Viewer with metadata sidebar + arrow-key navigation --}}
+    <template x-teleport="body">
+        <div x-show="viewerOpen" x-cloak class="fixed inset-0 z-[1000] flex bg-black/90" @keydown.escape.window="viewerOpen = false">
+            <div class="relative flex flex-1 items-center justify-center p-4">
+                <button type="button" @click="prev()" x-show="index > 0" class="absolute left-4 text-4xl text-white/70 hover:text-white" aria-label="‹">‹</button>
+                <img :src="current.medium" :alt="current.name" class="max-h-[92vh] max-w-full rounded shadow-2xl">
+                <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 text-4xl text-white/70 hover:text-white" aria-label="›">›</button>
+            </div>
+            <aside class="hidden w-80 shrink-0 overflow-y-auto bg-white p-6 sm:block">
+                <div class="flex items-start justify-between">
+                    <h2 class="text-sm font-semibold text-gray-900 break-all" x-text="current.name"></h2>
+                    <button type="button" @click="viewerOpen = false" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('gallery.close') }}">✕</button>
+                </div>
+                <dl class="mt-4 space-y-3 text-sm">
+                    <div><dt class="text-gray-500">{{ __('gallery.meta_date') }}</dt><dd class="text-gray-900" x-text="`${current.date} · ${current.time}`"></dd></div>
+                    <div x-show="current.camera"><dt class="text-gray-500">{{ __('gallery.meta_camera') }}</dt><dd class="text-gray-900" x-text="current.camera"></dd></div>
+                    <div x-show="current.dims"><dt class="text-gray-500">{{ __('gallery.meta_dimensions') }}</dt><dd class="text-gray-900" x-text="current.dims"></dd></div>
+                    <div><dt class="text-gray-500">{{ __('gallery.meta_size') }}</dt><dd class="text-gray-900" x-text="current.size"></dd></div>
+                    <div x-show="current.lat && current.lng">
+                        <dt class="text-gray-500">{{ __('gallery.meta_location') }}</dt>
+                        <dd class="text-gray-900"><span x-text="`${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}`"></span>
+                            <a :href="`https://www.openstreetmap.org/?mlat=${current.lat}&mlon=${current.lng}#map=14/${current.lat}/${current.lng}`" target="_blank" rel="noopener" class="ml-1 text-gray-500 underline">{{ __('gallery.map') }} ↗</a>
+                        </dd>
+                    </div>
+                </dl>
+                <a :href="current.original" class="mt-6 block rounded-md bg-gray-800 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.download') }}</a>
+            </aside>
+        </div>
+    </template>
   </div>
 </x-layouts.app>

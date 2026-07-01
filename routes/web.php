@@ -116,6 +116,7 @@ Route::middleware('auth')->group(function (): void {
     // Gallery: a photo timeline with drag-and-drop upload and a trash.
     Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery.index');
     Route::post('/gallery', [GalleryController::class, 'store'])->name('gallery.store');
+    Route::get('/gallery/feed', [GalleryController::class, 'feed'])->name('gallery.feed');
     Route::get('/gallery/map', [GalleryController::class, 'map'])->name('gallery.map');
     Route::get('/gallery/trips', [GalleryController::class, 'trips'])->name('gallery.trips');
     Route::get('/gallery/points', [GalleryController::class, 'points'])->name('gallery.points');

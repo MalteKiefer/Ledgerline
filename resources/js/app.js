@@ -1,4 +1,5 @@
 import Alpine from 'alpinejs';
+import intersect from '@alpinejs/intersect';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
@@ -407,14 +408,37 @@ Alpine.data('filesExplorer', (allIds = []) => ({
  * time via XMLHttpRequest, exposing a per-file progress list (Immich-style).
  * Reloads the page when the batch finishes so the timeline shows the new photos.
  *
- * @param {string} url    The gallery store endpoint.
- * @param {string} token  CSRF token.
+ * @param {string} url       The gallery store endpoint.
+ * @param {string} token     CSRF token.
+ * @param {string} feedUrl   The infinite-scroll feed endpoint.
+ * @param {boolean} hasMore  Whether a second page exists.
  */
-Alpine.data('gallery', (url, token) => ({
+Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
     dragging: false,
     queue: [],
     selected: [],
     busy: false,
+
+    // Infinite scroll.
+    page: 1,
+    hasMore,
+    loading: false,
+
+    // Viewer.
+    viewerOpen: false,
+    current: {},
+    list: [],
+    index: 0,
+
+    initGallery() {
+        // Show the drop overlay only while files are dragged over the window.
+        let depth = 0;
+        window.addEventListener('dragenter', (e) => {
+            if (e.dataTransfer?.types?.includes('Files')) { depth++; this.dragging = true; }
+        });
+        window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (! depth) this.dragging = false; });
+        window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
+    },
 
     pick(event) {
         this.enqueue(event.target.files);
@@ -424,6 +448,58 @@ Alpine.data('gallery', (url, token) => ({
     drop(event) {
         this.dragging = false;
         this.enqueue(event.dataTransfer.files);
+    },
+
+    /* ---- Infinite scroll ---- */
+
+    loadMore() {
+        if (this.loading || ! this.hasMore) {
+            return;
+        }
+        this.loading = true;
+        const next = this.page + 1;
+
+        fetch(`${feedUrl}?page=${next}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then((r) => r.text())
+            .then((html) => {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const target = this.$refs.timeline;
+                doc.querySelectorAll('section[data-day]').forEach((section) => {
+                    const day = section.dataset.day;
+                    const existing = target.querySelector(`section[data-day="${day}"] [data-day-grid]`);
+                    if (existing) {
+                        section.querySelectorAll('[data-day-grid] > *').forEach((tile) => existing.appendChild(tile));
+                    } else {
+                        target.appendChild(section);
+                    }
+                });
+                this.page = next;
+                this.hasMore = html.includes('data-has-more="1"');
+                this.loading = false;
+            })
+            .catch(() => { this.loading = false; });
+    },
+
+    /* ---- Viewer ---- */
+
+    openViewer(el) {
+        this.list = [...document.querySelectorAll('[data-photo]')];
+        this.index = this.list.indexOf(el);
+        this.setCurrent();
+        this.viewerOpen = true;
+    },
+
+    setCurrent() {
+        const d = this.list[this.index]?.dataset;
+        this.current = d ? { ...d } : {};
+    },
+
+    next() {
+        if (this.index < this.list.length - 1) { this.index++; this.setCurrent(); }
+    },
+
+    prev() {
+        if (this.index > 0) { this.index--; this.setCurrent(); }
     },
 
     enqueue(fileList) {
@@ -527,6 +603,8 @@ Alpine.data('photoMap', (pointsUrl) => ({
             });
     },
 }));
+
+Alpine.plugin(intersect);
 
 window.Alpine = Alpine;
 

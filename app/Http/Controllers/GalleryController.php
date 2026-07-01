@@ -9,10 +9,12 @@ use App\Models\CompanyProfile;
 use App\Models\Photo;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -24,16 +26,40 @@ class GalleryController extends Controller
 {
     public function index(Request $request): View
     {
-        // Group non-trashed photos by capture day, newest first. Paginate by
-        // photo, then group the current page for the day headers.
-        $photos = Photo::query()->orderByDesc('taken_at')->orderByDesc('id')->paginate(60);
-
-        $grouped = $photos->getCollection()->groupBy(fn (Photo $p): string => $p->taken_at->format('Y-m-d'));
+        $photos = $this->page($request);
 
         return view('gallery.index', [
             'photos' => $photos,
-            'grouped' => $grouped,
+            'grouped' => $this->groupByDay($photos),
         ]);
+    }
+
+    /**
+     * Return the next page of the timeline as a rendered fragment for infinite
+     * scroll, plus whether more pages remain.
+     */
+    public function feed(Request $request): View
+    {
+        $photos = $this->page($request);
+
+        return view('gallery._timeline', [
+            'grouped' => $this->groupByDay($photos),
+            'hasMore' => $photos->hasMorePages(),
+            'nextPage' => $photos->currentPage() + 1,
+        ]);
+    }
+
+    private function page(Request $request): LengthAwarePaginator
+    {
+        return Photo::query()->orderByDesc('taken_at')->orderByDesc('id')->paginate(100);
+    }
+
+    /**
+     * @return Collection<string, Collection<int, Photo>>
+     */
+    private function groupByDay(LengthAwarePaginator $photos): Collection
+    {
+        return $photos->getCollection()->groupBy(fn (Photo $p): string => $p->taken_at->format('Y-m-d'));
     }
 
     /**
