@@ -72,4 +72,38 @@
             </form>
         </div>
     </div>
+
+    {{-- Live queue status. Pending and failed job counts are read from the queue
+         backend; worker count and a completion estimate are not tracked without
+         Horizon, so they are not shown. --}}
+    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+         x-data="{
+            status: @js($queue),
+            async refresh() {
+                try {
+                    const r = await fetch('{{ route('settings.gallery.queue-status') }}', { headers: { Accept: 'application/json' } });
+                    if (r.ok) this.status = await r.json();
+                } catch (e) { /* keep the last known values */ }
+            },
+         }"
+         x-init="const t = setInterval(() => refresh(), 5000); refresh(); $el.addEventListener('alpine:destroyed', () => clearInterval(t));">
+        <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.queue_heading') }}</h2>
+        <p class="mt-1 text-sm text-gray-600">{{ __('settings.queue_hint') }}</p>
+
+        <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div class="rounded-md border border-gray-200 p-4">
+                <div class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.queue_pending') }}</div>
+                <div class="mt-1 text-2xl font-semibold text-gray-900">
+                    <span x-show="status.available" x-text="status.pending"></span>
+                    <span x-show="! status.available" class="text-base font-normal text-gray-400">{{ __('settings.queue_unavailable') }}</span>
+                </div>
+            </div>
+            <div class="rounded-md border border-gray-200 p-4">
+                <div class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.queue_failed') }}</div>
+                <div class="mt-1 text-2xl font-semibold" :class="status.failed > 0 ? 'text-red-600' : 'text-gray-900'" x-text="status.failed"></div>
+            </div>
+        </div>
+
+        <p class="mt-4 text-xs text-gray-500">{{ __('settings.queue_workers_note') }}</p>
+    </div>
 </x-layouts.app>
