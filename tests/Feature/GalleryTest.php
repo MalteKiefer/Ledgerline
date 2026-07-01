@@ -234,6 +234,7 @@ class GalleryTest extends TestCase
             ->assertOk()
             ->assertJsonCount(2, 'months')
             ->assertJsonPath('months.0.ym', '2026-06')
+            ->assertJsonPath('months.0.year', '2026')
             ->assertJsonPath('months.0.count', 2);
     }
 
