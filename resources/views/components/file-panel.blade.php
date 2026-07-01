@@ -58,8 +58,7 @@
                             <div class="text-gray-500">
                                 {{ $file->type->label() }} · {{ $formatBytes($file->size) }}
                                 @foreach ($file->tags as $tag)
-                                    <a href="{{ route('files.index', ['tag' => $tag->slug]) }}"
-                                        class="ml-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs hover:bg-gray-200">{{ $tag->name }}</a>
+                                    <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" class="ml-1" />
                                 @endforeach
                             </div>
                         </div>

@@ -133,8 +133,7 @@
                             <td class="px-4 py-3 text-gray-600">{{ $file->type->label() }}</td>
                             <td class="px-4 py-3 text-gray-600">
                                 @forelse ($file->tags as $tag)
-                                    <a href="{{ route('files.index', ['tag' => $tag->slug]) }}"
-                                        class="mr-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs hover:bg-gray-200">{{ $tag->name }}</a>
+                                    <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" class="mr-1" />
                                 @empty
                                     <span class="text-gray-400">—</span>
                                 @endforelse
