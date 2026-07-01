@@ -59,6 +59,8 @@ return [
     'ffmpeg_path_hint' => 'Pfad zum ffmpeg-Binary für Video-Thumbnails. Leer lassen, um GALLERY_FFMPEG_PATH oder den System-PATH zu nutzen.',
     'ffmpeg_resolved' => 'Aktuell verwendet',
     'filename_template' => 'Dateinamen-Vorlage',
+    'geocode_grid_km' => 'Standort-Raster (km)',
+    'geocode_grid_km_hint' => 'Fotos in diesem Umkreis teilen sich eine Ortsabfrage. Größer spart Anfragen, macht die Adresse aber gröber. 0 = jede Koordinate einzeln abfragen.',
     'general_heading' => 'Allgemein (Uploads)',
     'general_hint' => 'Einstellungen, die für jeden Upload gelten.',
     'filename_template_hint' => 'Wird beim Einlesen auf die Anzeigenamen angewendet. Platzhalter: {{y}} {{yy}} {{MM}} {{dd}} {{HH}} {{mm}} {{ss}} {{filename}} {{ext}}. Die ursprüngliche Endung bleibt immer erhalten. Leer lassen, um die Originalnamen zu behalten.',
