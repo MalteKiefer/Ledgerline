@@ -20,6 +20,8 @@ return [
     'file_deleted' => 'Datei gelöscht.',
     'file_updated' => 'Datei aktualisiert.',
     'file_uploaded' => 'Datei hochgeladen.',
+    'files_deleted' => ':count Datei(en) gelöscht.',
+    'files_moved' => ':count Datei(en) verschoben.',
     'finalise_needs_line' => 'Fügen Sie mindestens eine Position hinzu, bevor Sie finalisieren.',
     'folder_created' => 'Ordner erstellt.',
     'folder_deleted' => 'Ordner gelöscht; sein Inhalt wurde eine Ebene nach oben verschoben.',

@@ -67,6 +67,7 @@ class FileOverviewController extends Controller
             'files' => $files,
             'folder' => $folder,
             'subfolders' => $subfolders,
+            'allFolders' => Folder::query()->orderBy('name')->get(['id', 'name']),
             'breadcrumb' => $breadcrumb,
             'searching' => $searching,
             'types' => FileType::options(),
