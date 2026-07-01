@@ -97,13 +97,57 @@ class GalleryTest extends TestCase
         $this->assertSoftDeleted('photos', ['id' => $a->id]);
         $this->assertSame(0, Photo::count());
 
-        $this->post(route('gallery.restore', $a->id))->assertRedirect();
+        $this->post(route('gallery.restore'), ['photo_ids' => [$a->id]])->assertRedirect();
         $this->assertDatabaseHas('photos', ['id' => $a->id, 'deleted_at' => null]);
 
-        $this->delete(route('gallery.force-destroy', $b->id))->assertRedirect();
+        $this->delete(route('gallery.force-destroy'), ['photo_ids' => [$b->id]])->assertRedirect();
         $this->assertDatabaseMissing('photos', ['id' => $b->id]);
         Storage::disk('files')->assertMissing($b->disk_path);
         Storage::disk('files')->assertMissing($b->thumb_path);
+    }
+
+    public function test_trash_can_be_restored_and_emptied_in_bulk(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $photos = Photo::factory()->count(3)->create();
+        foreach ($photos as $p) {
+            Storage::disk('files')->put($p->disk_path, 'x');
+            $p->delete();
+        }
+
+        // Restore all.
+        $this->post(route('gallery.restore'), ['all' => 1])->assertRedirect();
+        $this->assertSame(3, Photo::count());
+
+        // Trash again, then empty the whole trash.
+        Photo::query()->get()->each->delete();
+        $this->delete(route('gallery.force-destroy'), ['all' => 1])->assertRedirect();
+        $this->assertSame(0, Photo::withTrashed()->count());
+    }
+
+    public function test_a_photo_can_be_favorited_and_unfavorited(): void
+    {
+        $this->signIn();
+        $photo = Photo::factory()->create();
+
+        $this->post(route('gallery.favorite', $photo))->assertRedirect();
+        $this->assertNotNull($photo->fresh()->favorited_at);
+
+        $this->post(route('gallery.favorite', $photo))->assertRedirect();
+        $this->assertNull($photo->fresh()->favorited_at);
+    }
+
+    public function test_index_can_filter_to_favorites_only(): void
+    {
+        $this->signIn();
+        $fav = Photo::factory()->create(['status' => 'ready', 'name' => 'Loved.jpg', 'favorited_at' => now()]);
+        Photo::factory()->create(['status' => 'ready', 'name' => 'Plain.jpg']);
+
+        $this->get(route('gallery.index', ['favorites' => 1]))
+            ->assertOk()
+            ->assertSee('Loved.jpg')
+            ->assertDontSee('Plain.jpg');
     }
 
     public function test_timeline_renders_photo_tiles_with_metadata(): void
