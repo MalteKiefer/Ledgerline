@@ -10,16 +10,20 @@
         </a>
     </div>
 
-    <div class="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="mt-4">
+        <x-table-search placeholder="Search projects…" />
+    </div>
+
+    <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         @if ($projects->isEmpty())
-            <p class="px-4 py-8 text-center text-sm text-gray-500">No projects yet.</p>
+            <p class="px-4 py-8 text-center text-sm text-gray-500">No projects found.</p>
         @else
             <table class="min-w-full divide-y divide-gray-200 text-sm">
                 <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <tr>
-                        <th scope="col" class="px-4 py-3">Name</th>
-                        <th scope="col" class="px-4 py-3">Reference</th>
-                        <th scope="col" class="px-4 py-3">Status</th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="name" label="Name" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="reference" label="Reference" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="status" label="Status" :sort="$sort" :dir="$dir" /></th>
                         <th scope="col" class="px-4 py-3"><span class="sr-only">Actions</span></th>
                     </tr>
                 </thead>

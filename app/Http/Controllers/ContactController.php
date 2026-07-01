@@ -13,6 +13,7 @@ use App\Models\ContactPhone;
 use App\Models\Customer;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,18 +29,31 @@ class ContactController extends Controller
     /**
      * Display a customer's contact persons.
      */
-    public function index(Customer $customer): View
+    public function index(Request $request, Customer $customer): View
     {
         $this->authorize('viewAny', Contact::class);
 
+        [$sort, $dir] = $this->sortFor($request, ['name', 'function'], 'name');
+
         $contacts = $customer->contacts()
             ->with(['emails', 'phones'])
-            ->orderBy('name')
-            ->paginate(15);
+            ->when($request->query('q'), function ($query, $term): void {
+                $like = '%'.mb_strtolower((string) $term).'%';
+                $query->where(function ($where) use ($like): void {
+                    $where->whereRaw('LOWER(name) LIKE ?', [$like])
+                        ->orWhereHas('emails', fn ($e) => $e->whereRaw('LOWER(email) LIKE ?', [$like]))
+                        ->orWhereHas('phones', fn ($p) => $p->whereRaw('LOWER(phone) LIKE ?', [$like]));
+                });
+            })
+            ->orderBy($sort, $dir)
+            ->paginate(15)
+            ->withQueryString();
 
         return view('contacts.index', [
             'customer' => $customer,
             'contacts' => $contacts,
+            'sort' => $sort,
+            'dir' => $dir,
         ]);
     }
 
