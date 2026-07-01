@@ -35,6 +35,38 @@ class GalleryController extends Controller
     }
 
     /**
+     * The map view (photos with a known location).
+     */
+    public function map(): View
+    {
+        return view('gallery.map');
+    }
+
+    /**
+     * Photo locations as JSON for the map (id, lat, lng, thumb, medium, date).
+     */
+    public function points(): JsonResponse
+    {
+        $points = Photo::query()
+            ->where('status', 'ready')
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->orderByDesc('taken_at')
+            ->get()
+            ->map(fn (Photo $p): array => [
+                'id' => $p->id,
+                'lat' => $p->latitude,
+                'lng' => $p->longitude,
+                'thumb' => route('gallery.image', ['photo' => $p, 'size' => 'thumb']),
+                'medium' => route('gallery.image', ['photo' => $p, 'size' => 'medium']),
+                'original' => route('gallery.image', ['photo' => $p, 'size' => 'original']),
+                'date' => $p->taken_at->toDateString(),
+            ]);
+
+        return response()->json(['points' => $points]);
+    }
+
+    /**
      * Store one uploaded photo (called per file by the uploader). Returns JSON
      * so the client can update its progress list.
      */
