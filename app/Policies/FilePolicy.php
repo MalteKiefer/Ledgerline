@@ -30,6 +30,11 @@ class FilePolicy
         return true;
     }
 
+    public function update(User $user, File $file): bool
+    {
+        return $user->belongsToTeam($file->team_id);
+    }
+
     public function delete(User $user, File $file): bool
     {
         return $user->belongsToTeam($file->team_id);

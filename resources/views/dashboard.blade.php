@@ -48,8 +48,8 @@
                     @foreach ($recentFiles as $file)
                         <li class="flex items-center justify-between px-4 py-3">
                             <span class="min-w-0">
-                                <a href="{{ route('files.download', $file) }}"
-                                    class="font-medium text-gray-900 hover:underline">{{ $file->name }}</a>
+                                <a href="{{ route('files.show', $file) }}"
+                                    class="font-medium text-gray-900 hover:underline">{{ $file->displayTitle }}</a>
                                 <span class="text-gray-500">
                                     — {{ $file->type->label() }}@if ($file->attachable) · {{ $file->attachable->name }}@endif
                                 </span>

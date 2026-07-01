@@ -107,10 +107,12 @@ class PocketIdController extends Controller
         $user->teams()->sync($teamIds);
         $user->forgetCachedTeamIds();
 
-        // With a single team there is nothing to choose, so activate it now.
-        // Otherwise leave the active team unset so the login picker overlay
-        // prompts the user to choose their default.
-        if (count($teamIds) === 1) {
+        // Activate the persisted default team if the user has one, or their only
+        // team. Otherwise leave the active team unset so the login picker
+        // prompts a first-time multi-team user to choose (and save) a default.
+        if ($user->hasChosenDefaultTeam()) {
+            session(['active_team_id' => $user->default_team_id]);
+        } elseif (count($teamIds) === 1) {
             session(['active_team_id' => $teamIds[0]]);
         }
     }

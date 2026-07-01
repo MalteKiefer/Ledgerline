@@ -18,8 +18,16 @@
     };
 @endphp
 
-<div class="space-y-4">
-    <form method="POST" action="{{ $uploadRoute }}" enctype="multipart/form-data"
+<div class="space-y-4" x-data="{ uploadOpen: false }">
+    <div class="flex justify-end">
+        <button type="button" @click="uploadOpen = ! uploadOpen"
+            class="inline-flex items-center gap-1 rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">
+            <span x-show="! uploadOpen">+ Add file</span>
+            <span x-show="uploadOpen" x-cloak>Close</span>
+        </button>
+    </div>
+
+    <form x-show="uploadOpen" x-cloak method="POST" action="{{ $uploadRoute }}" enctype="multipart/form-data"
         class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         @csrf
         <label class="block text-sm font-medium text-gray-700">Add a file</label>
@@ -45,8 +53,8 @@
                 @foreach ($files as $file)
                     <li class="flex items-center justify-between gap-4 px-4 py-3">
                         <div class="min-w-0">
-                            <a href="{{ route('files.download', $file) }}"
-                                class="font-medium text-gray-900 hover:underline">{{ $file->name }}</a>
+                            <a href="{{ route('files.show', $file) }}"
+                                class="font-medium text-gray-900 hover:underline">{{ $file->displayTitle }}</a>
                             <div class="text-gray-500">
                                 {{ $file->type->label() }} · {{ $formatBytes($file->size) }}
                                 @foreach ($file->tags as $tag)
@@ -55,12 +63,7 @@
                                 @endforeach
                             </div>
                         </div>
-                        <form method="POST" action="{{ route('files.destroy', $file) }}"
-                            onsubmit="return confirm('Delete this file?');">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="text-sm text-red-600 hover:text-red-800">Delete</button>
-                        </form>
+                        <a href="{{ route('files.show', $file) }}" class="shrink-0 text-sm text-gray-600 hover:text-gray-900">View</a>
                     </li>
                 @endforeach
             </ul>

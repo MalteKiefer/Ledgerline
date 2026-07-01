@@ -29,19 +29,19 @@ class FileSearchProvider extends AbstractSearchProvider
         return File::query()
             ->with('attachable')
             ->where(function ($query) use ($like): void {
-                $query->whereRaw('LOWER(name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(type) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(extracted_text) LIKE ?', [$like])
-                    ->orWhereHas('tags', fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]));
+                foreach (['name', 'title', 'description', 'note', 'type', 'extracted_text'] as $column) {
+                    $query->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
+                }
+                $query->orWhereHas('tags', fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]));
             })
             ->latest()
             ->limit($limit)
             ->get()
             ->map(fn (File $file): SearchResult => new SearchResult(
                 group: $this->group(),
-                title: $file->name,
+                title: $file->displayTitle,
                 subtitle: $file->type->label().($file->attachable ? ' · '.$file->attachable->name : ''),
-                url: route('files.download', $file),
+                url: route('files.show', $file),
             ))
             ->all();
     }
