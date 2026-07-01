@@ -387,6 +387,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     conflictOpen: false,
     conflictCount: 0,
     pendingFiles: [],
+    uploadItems: [],
 
     initDropzone() {
         let depth = 0;
@@ -470,6 +471,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     async uploadFiles(files, strategy = 'rename') {
         this.uploading = true;
         this.progress = { done: 0, total: files.length };
+        this.uploadItems = files.map((item) => ({ name: item.path, done: false }));
 
         // Send in batches to stay within the per-request file limit.
         const chunkSize = 25;
@@ -488,6 +490,9 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
             try {
                 await fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data });
             } catch (e) { /* continue with remaining batches */ }
+            for (let j = i; j < i + chunk.length; j++) {
+                this.uploadItems[j].done = true;
+            }
             this.progress.done = Math.min(files.length, i + chunk.length);
         }
 

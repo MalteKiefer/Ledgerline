@@ -14,9 +14,19 @@
         <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
     </div>
 
-    {{-- Upload progress --}}
-    <div x-show="uploading" x-cloak class="fixed inset-x-0 top-0 z-[950] bg-gray-800 px-4 py-2 text-center text-sm text-white">
-        {{ __('files.uploading') }} <span x-text="progress.done"></span> / <span x-text="progress.total"></span>
+    {{-- Upload tray (Google/Immich style) --}}
+    <div x-show="uploading" x-cloak class="fixed bottom-5 right-5 z-[950] w-80 rounded-lg border border-gray-200 bg-white shadow-xl">
+        <div class="border-b border-gray-100 px-4 py-2 text-sm font-medium text-gray-700">
+            {{ __('files.uploading') }} (<span x-text="progress.done"></span>/<span x-text="progress.total"></span>)
+        </div>
+        <div class="max-h-64 space-y-1 overflow-y-auto p-3">
+            <template x-for="(item, i) in uploadItems" :key="i">
+                <div class="flex items-center justify-between gap-2 text-xs">
+                    <span class="truncate text-gray-700" x-text="item.name"></span>
+                    <span class="shrink-0" :class="item.done ? 'text-green-600' : 'text-gray-400'" x-text="item.done ? '✓' : '…'"></span>
+                </div>
+            </template>
+        </div>
     </div>
 
     {{-- Floating upload button on mobile --}}
@@ -58,56 +68,25 @@
                 </span>
             @endif
         </div>
-        <div class="flex items-center gap-2" x-data="{ upload: false }">
-            <button type="button" @click="upload = ! upload"
-                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.upload') }}</button>
-
-            {{-- Multi-file upload into the current folder --}}
-            <div x-show="upload" x-cloak class="absolute right-4 z-30 mt-12 w-96 rounded-lg border border-gray-200 bg-white p-4 shadow-xl">
-                <form method="POST" action="{{ route('files.store.general') }}" enctype="multipart/form-data">
-                    @csrf
-                    <input type="hidden" name="folder_id" value="{{ $folder?->id }}">
-                    @if (request('customer'))<input type="hidden" name="customer_id" value="{{ request('customer') }}">@endif
-                    @if (request('project'))<input type="hidden" name="project_id" value="{{ request('project') }}">@endif
-                    <label class="block text-sm font-medium text-gray-700">{{ __('files.upload_here') }}</label>
-                    <input type="file" name="files[]" multiple required
-                        class="mt-2 w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-700">
-                    <div class="mt-3"><x-tag-input name="tags" :suggestions="$tagSuggestions" /></div>
-                    <button type="submit" class="mt-3 w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.upload') }}</button>
-                </form>
-            </div>
+        <div class="flex flex-wrap items-center gap-2">
+            {{-- New folder --}}
+            <form method="POST" action="{{ route('folders.store') }}" class="flex items-center gap-1">
+                @csrf
+                <input type="hidden" name="parent_id" value="{{ $folder?->id }}">
+                <input type="text" name="name" required placeholder="{{ __('files.new_folder') }}"
+                    class="w-40 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                <button type="submit" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">+</button>
+            </form>
+            {{-- Upload (files or folders); progress shows in the tray below --}}
+            <label class="hidden cursor-pointer rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 sm:inline-flex">
+                {{ __('files.upload') }}
+                <input type="file" multiple class="hidden"
+                    @change="startUpload([...$event.target.files].map(f => ({ file: f, path: f.name })))">
+            </label>
         </div>
     </div>
 
-    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-4">
-        {{-- Sidebar: folder tree --}}
-        <aside class="lg:col-span-1">
-            <div class="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-                <p class="px-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('files.folders') }}</p>
-                <ul class="mt-2 space-y-0.5">
-                    <li>
-                        <a href="{{ route('files.index') }}"
-                            @class(['block rounded px-2 py-1 text-sm', 'bg-gray-100 font-medium text-gray-900' => ! $folder, 'text-gray-600 hover:bg-gray-50' => (bool) $folder])>
-                            {{ __('files.all_files') }}
-                        </a>
-                    </li>
-                    @include('files._tree', ['nodes' => $tree, 'current' => $folder])
-                </ul>
-
-                {{-- New folder --}}
-                <form method="POST" action="{{ route('folders.store') }}" class="mt-3 flex gap-2 border-t border-gray-100 pt-3">
-                    @csrf
-                    <input type="hidden" name="parent_id" value="{{ $folder?->id }}">
-                    <input type="text" name="name" required placeholder="{{ __('files.new_folder') }}"
-                        class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">+</button>
-                </form>
-                @error('name')<p class="mt-1 px-2 text-xs text-red-600">{{ $message }}</p>@enderror
-            </div>
-        </aside>
-
-        {{-- Main --}}
-        <div class="lg:col-span-3">
+    <div class="mt-6">
             {{-- Filters --}}
             <form method="GET" class="flex flex-wrap items-end gap-3">
                 @if ($folder)<input type="hidden" name="folder" value="{{ $folder->id }}">@endif
@@ -139,37 +118,9 @@
                 <button type="button" @click="openBulkDelete()" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('common.delete') }}</button>
             </div>
 
-            {{-- Subfolders (folder browsing only) --}}
-            @if ($subfolders->isNotEmpty())
-                <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    @foreach ($subfolders as $sub)
-                        <div x-data="{ rename: false, menu: false }" class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
-                            <a href="{{ route('files.index', ['folder' => $sub->id]) }}" class="flex min-w-0 items-center gap-2 text-sm font-medium text-gray-900 hover:underline">
-                                <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
-                                <span x-show="! rename" class="truncate">{{ $sub->name }}</span>
-                            </a>
-                            <form x-show="rename" x-cloak method="POST" action="{{ route('folders.update', $sub) }}" class="flex flex-1 gap-2 px-2">
-                                @csrf @method('PUT')
-                                <input type="text" name="name" value="{{ $sub->name }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                                <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
-                            </form>
-                            <div class="relative shrink-0">
-                                <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
-                                <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
-                                    <button type="button" @click="rename = true; menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
-                                    <x-confirm-action :action="route('folders.destroy', $sub)" method="DELETE"
-                                        :trigger="__('common.delete')" trigger-class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"
-                                        :message="__('files.delete_folder_confirm')" />
-                                </div>
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-            @endif
-
-            {{-- Files --}}
+            {{-- Browser: folders first, then files (all alphabetical) --}}
             <div class="mt-4 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
-                @if ($files->isEmpty())
+                @if ($files->isEmpty() && $subfolders->isEmpty())
                     <p class="px-4 py-10 text-center text-sm text-gray-500">{{ $filtering ? __('files.empty_no_match') : __('files.empty_explorer') }}</p>
                 @else
                     <table class="min-w-full divide-y divide-gray-200 text-sm">
@@ -184,6 +135,38 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
+                            {{-- Folders first --}}
+                            @foreach ($subfolders as $sub)
+                                <tr x-data="{ rename: false, menu: false }" class="hover:bg-gray-50">
+                                    <td class="px-4 py-3"></td>
+                                    <td class="px-4 py-3 font-medium text-gray-900">
+                                        <a x-show="! rename" href="{{ route('files.index', ['folder' => $sub->id]) }}" class="flex items-center gap-2 hover:underline">
+                                            <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
+                                            {{ $sub->name }}
+                                        </a>
+                                        <form x-show="rename" x-cloak method="POST" action="{{ route('folders.update', $sub) }}" class="flex gap-2">
+                                            @csrf @method('PUT')
+                                            <input type="text" name="name" value="{{ $sub->name }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                            <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                                            <button type="button" @click="rename = false" class="text-sm text-gray-500">✕</button>
+                                        </form>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-600">{{ __('files.folder') }}</td>
+                                    <td class="px-4 py-3 text-right text-gray-400">{{ $sub->files_count }}</td>
+                                    <td class="px-4 py-3"></td>
+                                    <td class="px-4 py-3 text-right">
+                                        <div class="relative inline-block text-left">
+                                            <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
+                                            <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
+                                                <button type="button" @click="rename = true; menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
+                                                <x-confirm-action :action="route('folders.destroy', $sub)" method="DELETE"
+                                                    :trigger="__('common.delete')" trigger-class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"
+                                                    :message="__('files.delete_folder_confirm')" />
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
                             @foreach ($files as $file)
                                 <tr x-data="{ menu: false }" :class="selected.includes({{ $file->id }}) ? 'bg-gray-50' : ''">
                                     <td class="px-4 py-3"><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
@@ -217,6 +200,12 @@
                                                 <a href="{{ route('files.show', $file) }}" class="block px-3 py-1.5 text-gray-700 hover:bg-gray-50">{{ __('files.view') }}</a>
                                                 <button type="button" @click="startRename({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
                                                 <button type="button" @click="openMove({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
+                                                @if ($file->type === \App\Enums\FileType::ARCHIVE)
+                                                    <form method="POST" action="{{ route('files.extract', $file) }}">
+                                                        @csrf
+                                                        <button type="submit" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.extract') }}</button>
+                                                    </form>
+                                                @endif
                                                 <x-confirm-action :action="route('files.destroy', $file)" method="DELETE"
                                                     :trigger="__('common.delete')" trigger-class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"
                                                     :message="$file->attachable instanceof \App\Models\Invoice ? __('files.delete_invoice_warning', ['number' => $file->attachable->number ?? ('#'.$file->attachable->id)]) : __('files.delete_file_confirm')" />
@@ -231,7 +220,6 @@
             </div>
 
             <div class="mt-4">{{ $files->links() }}</div>
-        </div>
     </div>
 
     {{-- Move modal (shared: single row or selection) --}}
