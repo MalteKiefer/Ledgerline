@@ -75,6 +75,12 @@
         </div>
     </section>
 
+    <datalist id="units-list">
+        @foreach ($units as $u)
+            <option value="{{ $u->code }}">{{ $u->label() }}</option>
+        @endforeach
+    </datalist>
+
     {{-- Line editor --}}
     <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" x-data="invoiceLines(@js($lineRows))">
         <div class="flex items-center justify-between">
@@ -88,7 +94,7 @@
                         class="col-span-5 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="number" step="0.01" :name="`lines[${i}][quantity]`" x-model="line.quantity" placeholder="Qty"
                         class="col-span-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <input type="text" :name="`lines[${i}][unit]`" x-model="line.unit" placeholder="Unit"
+                    <input type="text" :name="`lines[${i}][unit]`" x-model="line.unit" placeholder="Unit" list="units-list"
                         class="col-span-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="number" step="0.01" :name="`lines[${i}][unit_price]`" x-model="line.unit_price" placeholder="Net price"
                         class="col-span-2 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
