@@ -106,6 +106,22 @@ class GallerySettingsTest extends TestCase
             ->assertJsonStructure(['connection', 'driver', 'pending', 'failed']);
     }
 
+    public function test_geocode_grid_accepts_a_comma_decimal(): void
+    {
+        $this->signIn();
+
+        $this->put(route('settings.gallery.update'), [
+            'gallery_trip_gap_days' => 2,
+            'gallery_trip_radius_km' => 100,
+            'gallery_map_zoom' => 13,
+            'gallery_max_upload_mb' => 200,
+            'gallery_video_frame' => 1,
+            'gallery_geocode_grid_km' => '2,5',
+        ])->assertRedirect(route('settings.gallery.edit'));
+
+        $this->assertSame(2.5, CompanyProfile::current()->gallery_geocode_grid_km);
+    }
+
     public function test_a_job_can_be_limited_to_the_newest_items(): void
     {
         Queue::fake();

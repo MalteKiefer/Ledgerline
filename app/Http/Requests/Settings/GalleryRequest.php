@@ -18,6 +18,19 @@ class GalleryRequest extends FormRequest
     }
 
     /**
+     * Accept a comma as the decimal separator for the location grid, so a value
+     * like "2,5" entered on a German keyboard is treated as 2.5.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->filled('gallery_geocode_grid_km')) {
+            $this->merge([
+                'gallery_geocode_grid_km' => str_replace(',', '.', (string) $this->input('gallery_geocode_grid_km')),
+            ]);
+        }
+    }
+
+    /**
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
