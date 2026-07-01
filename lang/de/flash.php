@@ -38,6 +38,8 @@ return [
     'invoice_emailed' => 'Rechnung an :email versendet.',
     'invoice_finalised' => 'Rechnung als :number finalisiert.',
     'invoice_imported' => 'Rechnung :number importiert.',
+    'invoice_restored' => 'Rechnung wiederhergestellt.',
+    'invoice_trashed' => 'Rechnung in den Papierkorb verschoben.',
     'invoice_updated' => 'Rechnung aktualisiert.',
     'no_recipient' => 'Keine E-Mail-Adresse des Empfängers.',
     'payment_recorded' => 'Zahlung erfasst.',
