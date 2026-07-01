@@ -15,7 +15,9 @@ use App\Http\Controllers\FolderController;
 use App\Http\Controllers\IncomeEntryController;
 use App\Http\Controllers\Invoice\CreditNoteController;
 use App\Http\Controllers\Invoice\FinalizeController;
+use App\Http\Controllers\Invoice\MailController as InvoiceMailController;
 use App\Http\Controllers\Invoice\PaymentController;
+use App\Http\Controllers\Invoice\PdfController as InvoicePdfController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
@@ -81,6 +83,8 @@ Route::middleware('auth')->group(function (): void {
         Route::resource('time-entries', TimeEntryController::class)->except('show');
         Route::resource('income-entries', IncomeEntryController::class)->except('show');
         Route::resource('invoices', InvoiceController::class);
+        Route::get('invoices/{invoice}/pdf', InvoicePdfController::class)->name('invoices.pdf');
+        Route::post('invoices/{invoice}/email', [InvoiceMailController::class, 'store'])->name('invoices.email');
         Route::post('invoices/{invoice}/finalize', [FinalizeController::class, 'store'])->name('invoices.finalize');
         Route::post('invoices/{invoice}/payments', [PaymentController::class, 'store'])->name('invoices.payments.store');
         Route::post('invoices/{invoice}/credit-note', [CreditNoteController::class, 'store'])->name('invoices.credit-note');
