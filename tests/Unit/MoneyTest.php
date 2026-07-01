@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Support\Money;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Support\Facades\App;
+use Tests\TestCase;
 
 class MoneyTest extends TestCase
 {
@@ -15,10 +16,19 @@ class MoneyTest extends TestCase
         $this->assertSame(1999, Money::fromAmount(19.99, 'EUR')->cents);
     }
 
-    public function test_it_formats_with_the_currency_code(): void
+    public function test_it_formats_in_english_by_default(): void
     {
+        App::setLocale('en');
+
         $this->assertSame('12.50 EUR', new Money(1250, 'EUR')->format());
         $this->assertSame('1,234.56 USD', new Money(123456, 'USD')->format());
+    }
+
+    public function test_it_formats_with_german_separators(): void
+    {
+        App::setLocale('de');
+
+        $this->assertSame('1.234,56 EUR', new Money(123456, 'EUR')->format());
     }
 
     public function test_amount_returns_major_units(): void

@@ -36,7 +36,7 @@ class InvoicePdfRenderer
 
         $dompdf = new Dompdf($options);
         $dompdf->loadHtml($html);
-        $dompdf->setPaper('A4');
+        $dompdf->setPaper($company->paper_size ?: 'A4');
         $dompdf->render();
 
         return (string) $dompdf->output();

@@ -69,7 +69,7 @@
                 <th>{{ __('invoice.description') }}</th>
                 <th class="right">{{ __('invoice.quantity') }}</th>
                 <th class="right">{{ __('invoice.unit_price') }}</th>
-                <th class="right">{{ __('invoice.vat') }}</th>
+                @if ($company->tax_display !== 'invoice')<th class="right">{{ __('invoice.vat') }}</th>@endif
                 <th class="right">{{ __('invoice.line_net') }}</th>
             </tr>
         </thead>
@@ -80,7 +80,7 @@
                     <td>{{ $line->description }}</td>
                     <td class="right">{{ rtrim(rtrim(number_format((float) $line->quantity, 2), "0"), ".") }} {{ $line->unitLabel($invoice->language) }}</td>
                     <td class="right">{{ $line->unitPrice()->format() }}</td>
-                    <td class="right">{{ $invoice->tax_mode->chargesTax() ? $line->tax_rate.'%' : '—' }}</td>
+                    @if ($company->tax_display !== 'invoice')<td class="right">{{ $invoice->tax_mode->chargesTax() ? $line->tax_rate.'%' : '—' }}</td>@endif
                     <td class="right">{{ $line->lineNet()->format() }}</td>
                 </tr>
             @endforeach

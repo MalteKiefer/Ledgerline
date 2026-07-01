@@ -129,6 +129,7 @@ class ImportController extends Controller
             $invoice->paid_cents = $paid ? $result['gross_cents'] : 0;
             $invoice->paid_on = $paid ? $data['issue_date'] : null;
             $invoice->finalized_at = now();
+            $invoice->imported_at = now();
             $invoice->created_by = $userId;
             $invoice->save();
 

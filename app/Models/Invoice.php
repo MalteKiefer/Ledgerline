@@ -67,6 +67,7 @@ class Invoice extends Model
             'due_date' => 'date',
             'paid_on' => 'date',
             'finalized_at' => 'datetime',
+            'imported_at' => 'datetime',
             'type' => InvoiceType::class,
             'status' => InvoiceStatus::class,
             'tax_mode' => TaxMode::class,
@@ -86,6 +87,11 @@ class Invoice extends Model
     public function isFinalized(): bool
     {
         return $this->finalized_at !== null;
+    }
+
+    public function isImported(): bool
+    {
+        return $this->imported_at !== null;
     }
 
     public function net(): Money
