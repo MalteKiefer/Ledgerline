@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\Expense;
 use App\Models\File;
 use App\Models\Folder;
+use App\Models\Invoice;
 use App\Models\Project;
 use App\Models\Tag;
 use App\Models\User;
@@ -211,8 +212,20 @@ class FileController extends Controller
     {
         $this->authorize('delete', $file);
 
+        // A file that is the source document of an invoice takes the invoice
+        // record with it (the source and the data belong together).
+        $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
+
         Storage::disk(config('files.disk'))->delete($file->disk_path);
         $file->delete();
+
+        if ($invoice !== null) {
+            $invoice->delete();
+
+            return redirect()
+                ->route('finance.invoices.index')
+                ->with('status', __('flash.invoice_and_file_deleted'));
+        }
 
         return redirect()
             ->back()

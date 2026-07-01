@@ -120,6 +120,7 @@ return [
             'subtitle' => 'Laden Sie eine bestehende Rechnungs-PDF hoch. Ihre Daten werden ausgelesen, damit Sie sie vor dem Speichern prüfen können.',
             'invoice_pdf' => 'Rechnungs-PDF',
             'read_review' => 'Auslesen &amp; prüfen',
+            'multiple_hint' => 'Wählen Sie eine oder mehrere PDFs — Sie prüfen jede vor dem Speichern.',
         ],
         'review' => [
             'title' => 'Importierte Rechnung prüfen',
@@ -154,6 +155,9 @@ return [
             'net_preview' => 'Netto-Vorschau:',
             'import_invoice' => 'Rechnung importieren',
             'cancel' => 'Abbrechen',
+            'progress' => 'Rechnung :position von :total',
+            'skip' => 'Überspringen',
+            'skip_confirm' => 'Diese Rechnung überspringen? Die hochgeladene Datei wird verworfen.',
         ],
     ],
 ];
