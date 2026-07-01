@@ -76,6 +76,46 @@ class FileCrudTest extends TestCase
         $this->assertNull(File::firstWhere('name', 'bundle.zip')->extracted_text);
     }
 
+    public function test_overview_upload_assigns_to_the_chosen_customer(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $customer = Customer::factory()->create();
+
+        $this->post(route('files.store'), [
+            'attachable' => 'customer:'.$customer->id,
+            'file' => UploadedFile::fake()->create('report.pdf', 20, 'application/pdf'),
+            'tags' => ['Report'],
+        ])->assertRedirect(route('files.index'));
+
+        $file = File::firstWhere('name', 'report.pdf');
+        $this->assertTrue($file->attachable->is($customer));
+        $this->assertSame(['Report'], $file->tags->pluck('name')->all());
+    }
+
+    public function test_overview_upload_rejects_an_invalid_target_format(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $this->post(route('files.store'), [
+            'attachable' => 'nonsense',
+            'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
+        ])->assertSessionHasErrors('attachable');
+    }
+
+    public function test_overview_upload_cannot_target_another_teams_customer(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $foreign = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
+
+        $this->post(route('files.store'), [
+            'attachable' => 'customer:'.$foreign->id,
+            'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
+        ])->assertNotFound();
+    }
+
     public function test_upload_stores_a_file_for_a_project(): void
     {
         Storage::fake('files');

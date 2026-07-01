@@ -22,20 +22,18 @@
     <form method="POST" action="{{ $uploadRoute }}" enctype="multipart/form-data"
         class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         @csrf
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div class="flex-1">
-                <label for="file-{{ md5($uploadRoute) }}" class="block text-sm font-medium text-gray-700">Add a file</label>
-                <input type="file" name="file" id="file-{{ md5($uploadRoute) }}" required
-                    class="mt-1 block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-800 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-700">
-                @error('file')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-            </div>
+        <label class="block text-sm font-medium text-gray-700">Add a file</label>
+        <div class="mt-1">
+            <x-file-dropzone :id="'file-'.md5($uploadRoute)" />
+        </div>
+        <div class="mt-3">
+            <x-tag-input name="tags" :suggestions="$tagSuggestions" />
+        </div>
+        <div class="mt-3">
             <button type="submit"
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
                 Upload
             </button>
-        </div>
-        <div class="mt-3">
-            <x-tag-input name="tags" :suggestions="$tagSuggestions" />
         </div>
     </form>
 

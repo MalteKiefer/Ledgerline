@@ -305,6 +305,29 @@ Alpine.data('tagInput', (initial = []) => ({
     },
 }));
 
+/**
+ * Drag-and-drop file field. Wraps a hidden native file input, reflects the
+ * chosen file name, and highlights while dragging over.
+ */
+Alpine.data('dropzone', () => ({
+    fileName: '',
+    over: false,
+
+    onDrop(event) {
+        this.over = false;
+        const files = event.dataTransfer?.files;
+
+        if (files && files.length) {
+            this.$refs.input.files = files;
+            this.fileName = files[0].name;
+        }
+    },
+
+    onChange() {
+        this.fileName = this.$refs.input.files.length ? this.$refs.input.files[0].name : '';
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();
