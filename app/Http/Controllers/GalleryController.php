@@ -18,7 +18,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * The photo gallery: a timeline grouped by capture day, drag-and-drop upload
@@ -143,11 +145,15 @@ class GalleryController extends Controller
      */
     public function store(Request $request, PhotoStorage $storage): JsonResponse
     {
+        $maxMb = (int) (CompanyProfile::current()->gallery_max_upload_mb ?? 200);
+
         $request->validate([
-            'photo' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,gif', 'max:51200'],
+            'photo' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,gif,mp4,mov', 'max:'.($maxMb * 1024)],
         ]);
 
         $upload = $request->file('photo');
+        $mime = $upload->getMimeType() ?: 'image/jpeg';
+        $mediaType = str_starts_with($mime, 'video/') ? 'video' : 'image';
 
         // Skip duplicates before writing any bytes: an upload counts as a
         // duplicate when its name, size and checksum all match a live photo.
@@ -172,10 +178,11 @@ class GalleryController extends Controller
             'uuid' => $original['uuid'],
             'name' => $upload->getClientOriginalName(),
             'status' => 'processing',
+            'media_type' => $mediaType,
             'disk_path' => $original['disk_path'],
             'thumb_path' => $original['disk_path'],
             'medium_path' => $original['disk_path'],
-            'mime_type' => $upload->getMimeType() ?: 'image/jpeg',
+            'mime_type' => $mime,
             'size' => $original['size'],
             'checksum' => $original['checksum'],
             'taken_at' => now(),
@@ -257,6 +264,34 @@ class GalleryController extends Controller
             'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
             'Cache-Control' => 'private, max-age=86400',
         ], $size === 'original' ? 'attachment' : 'inline');
+    }
+
+    /**
+     * Stream a video for inline HTML5 playback with HTTP Range support. On a
+     * remote disk this redirects to a short-lived signed URL so the storage
+     * backend serves the byte ranges; on a local disk a range-capable file
+     * response is returned.
+     */
+    public function video(Photo $photo): Response
+    {
+        abort_unless($photo->isVideo(), 404);
+
+        $disk = Storage::disk(config('files.disk'));
+        abort_unless($disk->exists($photo->disk_path), 404);
+
+        try {
+            return redirect()->away($disk->temporaryUrl($photo->disk_path, now()->addMinutes(30), [
+                'ResponseContentType' => $photo->mime_type,
+                'ResponseContentDisposition' => 'inline',
+            ]));
+        } catch (Throwable) {
+            // Local disk: BinaryFileResponse handles Range requests natively.
+            return response()->file($disk->path($photo->disk_path), [
+                'Content-Type' => $photo->mime_type,
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=86400',
+            ]);
+        }
     }
 
     /**

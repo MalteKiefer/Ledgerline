@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Jobs\ProcessPhoto;
 use App\Models\Photo;
+use App\Services\Gallery\VideoProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
@@ -83,6 +84,81 @@ class GalleryTest extends TestCase
         // No second row was created and no bytes were written.
         $this->assertSame(1, Photo::count());
         Queue::assertNotPushed(ProcessPhoto::class);
+    }
+
+    public function test_upload_accepts_a_video_and_flags_it(): void
+    {
+        Storage::fake('files');
+        Queue::fake();
+        $this->signIn();
+
+        $this->post(route('gallery.store'), [
+            'photo' => UploadedFile::fake()->create('clip.mp4', 2048, 'video/mp4'),
+        ])->assertCreated();
+
+        $photo = Photo::firstOrFail();
+        $this->assertSame('video', $photo->media_type);
+        $this->assertTrue($photo->isVideo());
+        Queue::assertPushed(ProcessPhoto::class);
+    }
+
+    public function test_video_processing_extracts_a_poster_and_metadata(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        // Fake ffmpeg: write a real JPEG poster and report fixed probe data.
+        $this->app->instance(VideoProcessor::class, new class extends VideoProcessor
+        {
+            public function __construct() {}
+
+            public function poster(string $localPath, int $second, string $destJpg): void
+            {
+                $img = imagecreatetruecolor(320, 240);
+                imagejpeg($img, $destJpg);
+                imagedestroy($img);
+            }
+
+            public function probe(string $localPath): array
+            {
+                return ['width' => 1920, 'height' => 1080, 'duration' => 42, 'raw' => ['format' => ['duration' => '42.0']]];
+            }
+        });
+
+        $this->post(route('gallery.store'), [
+            'photo' => UploadedFile::fake()->create('clip.mp4', 2048, 'video/mp4'),
+        ]);
+        $photo = Photo::firstOrFail();
+
+        $photo->refresh();
+        $this->assertSame('ready', $photo->status);
+        $this->assertSame(1920, $photo->width);
+        $this->assertSame(1080, $photo->height);
+        $this->assertSame(42, $photo->duration);
+        Storage::disk('files')->assertExists($photo->thumb_path);
+        Storage::disk('files')->assertExists($photo->medium_path);
+    }
+
+    public function test_video_streams_inline_for_playback(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $photo = Photo::factory()->create(['media_type' => 'video', 'mime_type' => 'video/mp4']);
+        Storage::disk('files')->put($photo->disk_path, 'video-bytes');
+
+        // Either a direct file response (local disk) or a redirect to a signed
+        // URL (a disk that can serve byte ranges itself) is acceptable.
+        $response = $this->get(route('gallery.video', $photo));
+        $this->assertContains($response->status(), [200, 302]);
+    }
+
+    public function test_video_stream_rejects_non_video_photos(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $photo = Photo::factory()->create(['media_type' => 'image']);
+
+        $this->get(route('gallery.video', $photo))->assertNotFound();
     }
 
     public function test_upload_rejects_non_images(): void

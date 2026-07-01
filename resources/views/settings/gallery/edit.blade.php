@@ -39,6 +39,29 @@
             @error('gallery_filename_template')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
         </div>
 
+        <h2 class="mt-6 text-sm font-semibold text-gray-900">{{ __('settings.video_heading') }}</h2>
+        <p class="mt-1 text-sm text-gray-600">{{ __('settings.video_hint') }}</p>
+        <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+                <label for="gallery_max_upload_mb" class="block text-sm font-medium text-gray-700">{{ __('settings.max_upload_mb') }}</label>
+                <input type="number" min="1" max="5120" id="gallery_max_upload_mb" name="gallery_max_upload_mb" value="{{ old('gallery_max_upload_mb', $company->gallery_max_upload_mb ?? 200) }}" class="{{ $input }}">
+                <p class="mt-1 text-xs text-gray-500">{{ __('settings.max_upload_mb_hint') }}</p>
+                @error('gallery_max_upload_mb')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label for="gallery_video_frame" class="block text-sm font-medium text-gray-700">{{ __('settings.video_frame') }}</label>
+                <input type="number" min="0" max="600" id="gallery_video_frame" name="gallery_video_frame" value="{{ old('gallery_video_frame', $company->gallery_video_frame ?? 1) }}" class="{{ $input }}">
+                <p class="mt-1 text-xs text-gray-500">{{ __('settings.video_frame_hint') }}</p>
+                @error('gallery_video_frame')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            </div>
+        </div>
+        <div class="mt-4">
+            <label for="gallery_ffmpeg_path" class="block text-sm font-medium text-gray-700">{{ __('settings.ffmpeg_path') }}</label>
+            <input type="text" id="gallery_ffmpeg_path" name="gallery_ffmpeg_path" value="{{ old('gallery_ffmpeg_path', $company->gallery_ffmpeg_path) }}" placeholder="ffmpeg" class="{{ $input }} font-mono">
+            <p class="mt-1 text-xs text-gray-500">{{ __('settings.ffmpeg_path_hint') }}</p>
+            @error('gallery_ffmpeg_path')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        </div>
+
         <div class="mt-4">
             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button>
         </div>

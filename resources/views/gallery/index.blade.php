@@ -88,7 +88,13 @@
         <div x-show="viewerOpen" x-cloak class="fixed inset-0 z-[1000] flex bg-black/90" @keydown.escape.window="viewerOpen = false">
             <div class="relative flex flex-1 items-center justify-center p-4">
                 <button type="button" @click="prev()" x-show="index > 0" class="absolute left-4 text-4xl text-white/70 hover:text-white" aria-label="‹">‹</button>
-                <img :src="current.medium" :alt="current.name" class="max-h-[92vh] max-w-full rounded shadow-2xl">
+                {{-- Video loads only on play (preload=none); until then the poster is shown. No autoplay. --}}
+                <template x-if="current.mediaType === 'video'">
+                    <video :src="current.video" :poster="current.medium" controls preload="none" playsinline class="max-h-[92vh] max-w-full rounded bg-black shadow-2xl"></video>
+                </template>
+                <template x-if="current.mediaType !== 'video'">
+                    <img :src="current.medium" :alt="current.name" class="max-h-[92vh] max-w-full rounded shadow-2xl">
+                </template>
                 <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 text-4xl text-white/70 hover:text-white" aria-label="›">›</button>
             </div>
             <aside class="hidden w-80 shrink-0 overflow-y-auto bg-white p-6 sm:block">
@@ -124,8 +130,8 @@
                 </dl>
                 {{-- Editing tools, hidden until the edit button is pressed. --}}
                 <div x-show="editing" x-cloak>
-                {{-- Transform (rotate / flip) — regenerates renditions from the original --}}
-                <div class="mt-6 flex gap-2">
+                {{-- Transform (rotate / flip) — images only; regenerates renditions from the original --}}
+                <div class="mt-6 flex gap-2" x-show="current.mediaType !== 'video'">
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
                         @csrf
                         <input type="hidden" name="action" value="rotate_left">
