@@ -40,11 +40,8 @@ class FileOverviewController extends Controller
         // browsing to a flat result set across all folders.
         $filtering = filled($term) || $type !== null || filled($tagSlug) || $customer !== null || $project !== null;
 
-        [$sort, $dir] = $this->sortFor($request, ['name', 'type', 'size', 'created_at'], 'created_at');
-
-        if ($request->query('sort') === null && $request->query('dir') === null) {
-            $dir = 'desc';
-        }
+        // Default to an alphabetical (A–Z) listing.
+        [$sort, $dir] = $this->sortFor($request, ['name', 'type', 'size', 'created_at'], 'name');
 
         $files = File::query()
             ->with(['attachable', 'tags'])

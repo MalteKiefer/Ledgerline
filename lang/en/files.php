@@ -31,6 +31,7 @@ return [
     'delete' => 'Delete',
     'delete_file_confirm' => 'Delete this file? This cannot be undone.',
     'delete_folder_confirm' => 'Delete this folder? Its contents move up one level.',
+    'extract' => 'Extract here',
     'delete_invoice_confirm' => 'Delete invoice',
     'delete_invoice_title' => 'Delete invoice and document?',
     'delete_invoice_warning' => 'This file is the source document of invoice :number. Deleting it will also delete the invoice record. This cannot be undone.',

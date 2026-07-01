@@ -31,6 +31,7 @@ return [
     'delete' => 'Löschen',
     'delete_file_confirm' => 'Diese Datei löschen? Dies kann nicht rückgängig gemacht werden.',
     'delete_folder_confirm' => 'Diesen Ordner löschen? Sein Inhalt wird eine Ebene nach oben verschoben.',
+    'extract' => 'Hier entpacken',
     'delete_invoice_confirm' => 'Rechnung löschen',
     'delete_invoice_title' => 'Rechnung und Dokument löschen?',
     'delete_invoice_warning' => 'Diese Datei ist das Belegdokument der Rechnung :number. Beim Löschen wird auch der Rechnungsdatensatz gelöscht. Dies kann nicht rückgängig gemacht werden.',
