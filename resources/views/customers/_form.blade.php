@@ -49,6 +49,14 @@
                     @error('vat_id') aria-invalid="true" @enderror class="{{ $input }}">
                 @error('vat_id')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
+
+            <div>
+                <label for="default_rate" class="block text-sm font-medium text-gray-700">Default hourly rate</label>
+                <input type="number" step="0.01" min="0" id="default_rate" name="default_rate"
+                    value="{{ old('default_rate', $customer->default_rate_cents ? number_format($customer->default_rate_cents / 100, 2, '.', '') : '') }}"
+                    @error('default_rate_cents') aria-invalid="true" @enderror class="{{ $input }}">
+                <p class="mt-1 text-xs text-gray-400">Used for time entries unless a project or entry overrides it.</p>
+            </div>
         </div>
     </section>
 
