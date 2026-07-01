@@ -62,13 +62,43 @@ class PhotoStorage
 
     /**
      * Generate renditions, read metadata and apply the filename template in one
-     * pass (upload path).
+     * pass (upload path). The original is downloaded once and reused so a large
+     * video is not fetched (and held in memory) several times.
      */
     public function process(Photo $photo): void
     {
-        $this->renditions($photo);
-        $this->readMetadata($photo);
-        $this->applyNameTemplate($photo);
+        $disk = Storage::disk(config('files.disk'));
+        $tmp = $this->download($photo, $disk);
+
+        try {
+            $this->generateRenditions($photo, $tmp, $disk);
+            $this->readMetadataFrom($photo, $tmp, $disk);
+            $this->applyNameTemplate($photo);
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    /**
+     * Stream the original to a local temp file without loading it entirely into
+     * memory (large videos would otherwise blow the worker's memory limit).
+     */
+    private function download(Photo $photo, Filesystem $disk): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'photo');
+        $source = $disk->readStream($photo->disk_path);
+
+        try {
+            // Passing the stream resource streams it to disk without holding the
+            // whole (possibly large) file in memory.
+            file_put_contents($tmp, $source);
+        } finally {
+            if (is_resource($source)) {
+                fclose($source);
+            }
+        }
+
+        return $tmp;
     }
 
     /**
@@ -93,13 +123,21 @@ class PhotoStorage
     public function renditions(Photo $photo): void
     {
         $disk = Storage::disk(config('files.disk'));
-
-        // Work on a local copy of the original (the disk may be remote S3).
-        $tmp = tempnam(sys_get_temp_dir(), 'photo');
-        file_put_contents($tmp, $disk->get($photo->disk_path));
+        $tmp = $this->download($photo, $disk);
 
         try {
-            $source = $photo->isVideo() ? $this->posterFrame($photo, $tmp) : $tmp;
+            $this->generateRenditions($photo, $tmp, $disk);
+        } finally {
+            @unlink($tmp);
+        }
+    }
+
+    private function generateRenditions(Photo $photo, string $tmp, Filesystem $disk): void
+    {
+        $poster = null;
+
+        try {
+            $source = $photo->isVideo() ? ($poster = $this->posterFrame($photo, $tmp)) : $tmp;
 
             $manager = new ImageManager(new Driver);
             $image = $this->transform($manager->decodePath($source), $photo);
@@ -128,12 +166,10 @@ class PhotoStorage
             }
 
             $photo->forceFill($attributes)->save();
-
-            if ($source !== $tmp) {
-                @unlink($source);
-            }
         } finally {
-            @unlink($tmp);
+            if ($poster !== null) {
+                @unlink($poster);
+            }
         }
     }
 
@@ -158,42 +194,45 @@ class PhotoStorage
     public function readMetadata(Photo $photo): void
     {
         $disk = Storage::disk(config('files.disk'));
-
-        $tmp = tempnam(sys_get_temp_dir(), 'photo');
-        file_put_contents($tmp, $disk->get($photo->disk_path));
+        $tmp = $this->download($photo, $disk);
 
         try {
-            if ($photo->isVideo()) {
-                $this->readVideoMetadata($photo, $tmp);
-
-                return;
-            }
-
-            $meta = $this->exif($tmp, $photo->mime_type);
-            $attributes = ['metadata' => $meta['raw']];
-
-            // Only pull date/location/camera from EXIF when the user has not
-            // edited them by hand (meta_locked). The place name always tracks
-            // whatever coordinates the photo currently has.
-            if (! $photo->meta_locked) {
-                $attributes['taken_at'] = $meta['taken_at'] ?? $photo->taken_at;
-                $attributes['latitude'] = $meta['lat'];
-                $attributes['longitude'] = $meta['lon'];
-                $attributes['camera'] = $meta['camera'];
-            }
-
-            $lat = $attributes['latitude'] ?? $photo->latitude;
-            $lon = $attributes['longitude'] ?? $photo->longitude;
-            $attributes['place'] = ($lat !== null && $lon !== null)
-                ? $this->geocoder->lookup((float) $lat, (float) $lon)
-                : null;
-
-            $attributes['motion_path'] = $this->extractMotion($photo, $tmp, $disk);
-
-            $photo->forceFill($attributes)->save();
+            $this->readMetadataFrom($photo, $tmp, $disk);
         } finally {
             @unlink($tmp);
         }
+    }
+
+    private function readMetadataFrom(Photo $photo, string $tmp, Filesystem $disk): void
+    {
+        if ($photo->isVideo()) {
+            $this->readVideoMetadata($photo, $tmp);
+
+            return;
+        }
+
+        $meta = $this->exif($tmp, $photo->mime_type);
+        $attributes = ['metadata' => $meta['raw']];
+
+        // Only pull date/location/camera from EXIF when the user has not
+        // edited them by hand (meta_locked). The place name always tracks
+        // whatever coordinates the photo currently has.
+        if (! $photo->meta_locked) {
+            $attributes['taken_at'] = $meta['taken_at'] ?? $photo->taken_at;
+            $attributes['latitude'] = $meta['lat'];
+            $attributes['longitude'] = $meta['lon'];
+            $attributes['camera'] = $meta['camera'];
+        }
+
+        $lat = $attributes['latitude'] ?? $photo->latitude;
+        $lon = $attributes['longitude'] ?? $photo->longitude;
+        $attributes['place'] = ($lat !== null && $lon !== null)
+            ? $this->geocoder->lookup((float) $lat, (float) $lon)
+            : null;
+
+        $attributes['motion_path'] = $this->extractMotion($photo, $tmp, $disk);
+
+        $photo->forceFill($attributes)->save();
     }
 
     /**
