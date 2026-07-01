@@ -105,33 +105,50 @@
         </div>
     </form>
 
-    {{-- Maintenance jobs: re-read metadata and regenerate thumbnails run
-         independently so either can be triggered on its own. --}}
-    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+    {{-- Maintenance jobs: each can run for the whole library or only the newest
+         N items, chosen in a scope dialog before dispatch. --}}
+    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+         x-data="{ open: false, action: '', label: '', scope: 'all', count: 30,
+                   ask(action, label) { this.action = action; this.label = label; this.scope = 'all'; this.count = 30; this.open = true; } }">
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.maintenance_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-600">{{ __('settings.maintenance_hint', ['count' => $photoCount]) }}</p>
         <div class="mt-3 flex flex-wrap gap-3">
-            <form method="POST" action="{{ route('settings.gallery.rescan') }}">
-                @csrf
-                <button type="submit" @disabled($photoCount === 0)
-                    class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.rescan') }}</button>
-            </form>
-            <form method="POST" action="{{ route('settings.gallery.regenerate') }}">
-                @csrf
-                <button type="submit" @disabled($photoCount === 0)
-                    class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.regenerate') }}</button>
-            </form>
-            <form method="POST" action="{{ route('settings.gallery.rename') }}">
-                @csrf
-                <button type="submit" @disabled($photoCount === 0)
-                    class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.rename') }}</button>
-            </form>
-            <form method="POST" action="{{ route('settings.gallery.run-all') }}">
-                @csrf
-                <button type="submit" @disabled($photoCount === 0)
-                    class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('settings.run_all_jobs') }}</button>
-            </form>
+            <button type="button" @click="ask('{{ route('settings.gallery.rescan') }}', '{{ __('settings.rescan') }}')" @disabled($photoCount === 0)
+                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.rescan') }}</button>
+            <button type="button" @click="ask('{{ route('settings.gallery.regenerate') }}', '{{ __('settings.regenerate') }}')" @disabled($photoCount === 0)
+                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.regenerate') }}</button>
+            <button type="button" @click="ask('{{ route('settings.gallery.rename') }}', '{{ __('settings.rename') }}')" @disabled($photoCount === 0)
+                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.rename') }}</button>
+            <button type="button" @click="ask('{{ route('settings.gallery.run-all') }}', '{{ __('settings.run_all_jobs') }}')" @disabled($photoCount === 0)
+                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('settings.run_all_jobs') }}</button>
         </div>
+
+        <template x-teleport="body">
+            <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="open = false">
+                <div class="absolute inset-0 bg-gray-900/40" @click="open = false"></div>
+                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900" x-text="label"></h3>
+                    <p class="mt-1 text-sm text-gray-600">{{ __('settings.job_scope_hint') }}</p>
+                    <div class="mt-4 space-y-2 text-sm">
+                        <label class="flex items-center gap-2">
+                            <input type="radio" value="all" x-model="scope" class="text-gray-800 focus:ring-gray-500">
+                            {{ __('settings.job_scope_all', ['count' => $photoCount]) }}
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="radio" value="recent" x-model="scope" class="text-gray-800 focus:ring-gray-500">
+                            {{ __('settings.job_scope_recent') }}
+                            <input type="number" min="1" max="100000" x-model.number="count" @focus="scope = 'recent'" class="w-24 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        </label>
+                    </div>
+                    <form method="POST" :action="action" class="mt-5 flex justify-end gap-3">
+                        @csrf
+                        <input type="hidden" name="limit" :value="scope === 'recent' ? count : ''">
+                        <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                        <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.job_scope_run') }}</button>
+                    </form>
+                </div>
+            </div>
+        </template>
     </div>
 
     {{-- Live queue status. Pending and failed job counts are read from the queue

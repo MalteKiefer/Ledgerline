@@ -19,9 +19,20 @@ class ReverseGeocoder
 
     public function lookup(float $lat, float $lon): ?string
     {
+        return $this->lookupDetailed($lat, $lon)['display'];
+    }
+
+    /**
+     * Reverse-geocode to both the full display name and the structured address
+     * parts (road, city, state, postcode, country, …).
+     *
+     * @return array{display: ?string, address: array<string, string>}
+     */
+    public function lookupDetailed(float $lat, float $lon): array
+    {
         $key = 'geocode:'.round($lat, 5).','.round($lon, 5);
 
-        return Cache::remember($key, now()->addDays(30), function () use ($lat, $lon): ?string {
+        return Cache::remember($key, now()->addDays(30), function () use ($lat, $lon): array {
             try {
                 $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
                     ->timeout(5)
@@ -30,11 +41,19 @@ class ReverseGeocoder
                         'lon' => $lon,
                         'format' => 'jsonv2',
                         'zoom' => 18,
+                        'addressdetails' => 1,
                     ]);
 
-                return $response->successful() ? ($response->json('display_name') ?: null) : null;
+                if (! $response->successful()) {
+                    return ['display' => null, 'address' => []];
+                }
+
+                return [
+                    'display' => $response->json('display_name') ?: null,
+                    'address' => array_map('strval', $response->json('address') ?: []),
+                ];
             } catch (Throwable) {
-                return null;
+                return ['display' => null, 'address' => []];
             }
         });
     }

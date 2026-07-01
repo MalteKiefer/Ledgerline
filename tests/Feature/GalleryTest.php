@@ -200,6 +200,20 @@ class GalleryTest extends TestCase
         );
     }
 
+    public function test_months_endpoint_buckets_by_year_month(): void
+    {
+        $this->signIn();
+        Photo::factory()->create(['taken_at' => '2026-06-10 10:00:00']);
+        Photo::factory()->create(['taken_at' => '2026-06-20 10:00:00']);
+        Photo::factory()->create(['taken_at' => '2026-05-01 10:00:00']);
+
+        $this->getJson(route('gallery.months'))
+            ->assertOk()
+            ->assertJsonCount(2, 'months')
+            ->assertJsonPath('months.0.ym', '2026-06')
+            ->assertJsonPath('months.0.count', 2);
+    }
+
     public function test_dashboard_shows_gallery_counts(): void
     {
         $this->signIn();
