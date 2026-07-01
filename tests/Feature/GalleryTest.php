@@ -106,6 +106,27 @@ class GalleryTest extends TestCase
         Storage::disk('files')->assertMissing($b->thumb_path);
     }
 
+    public function test_timeline_renders_photo_tiles_with_metadata(): void
+    {
+        $this->signIn();
+        Photo::factory()->create(['status' => 'ready', 'name' => 'Sunset.jpg', 'taken_at' => '2026-06-01 18:30:00', 'width' => 4000, 'height' => 3000]);
+
+        $this->get(route('gallery.index'))
+            ->assertOk()
+            ->assertSee('data-photo', false)
+            ->assertSee('Sunset.jpg');
+    }
+
+    public function test_feed_returns_the_next_page_fragment(): void
+    {
+        $this->signIn();
+        Photo::factory()->count(3)->create(['status' => 'ready']);
+
+        $this->get(route('gallery.feed', ['page' => 1]))
+            ->assertOk()
+            ->assertSee('data-day', false);
+    }
+
     public function test_map_points_returns_only_ready_geotagged_photos(): void
     {
         $this->signIn();
