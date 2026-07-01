@@ -5,7 +5,7 @@
 --}}
 @auth
     @php
-        $pickerTeams = auth()->user()->teams;
+        $pickerTeams = auth()->user()->teams->sortBy('display_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
     @endphp
 
     @if ($pickerTeams->count() > 1 && ! session('active_team_id'))
@@ -23,7 +23,7 @@
                             <input type="hidden" name="team_id" value="{{ $team->id }}">
                             <button type="submit"
                                 class="flex w-full items-center justify-between rounded-md border border-gray-200 px-4 py-3 text-left text-sm font-medium text-gray-900 hover:border-gray-800 hover:bg-gray-50">
-                                <span>{{ $team->name }}</span>
+                                <span>{{ $team->displayName }}</span>
                                 <span aria-hidden="true" class="text-gray-400">&rarr;</span>
                             </button>
                         </form>
