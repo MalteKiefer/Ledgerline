@@ -65,7 +65,7 @@
                         <label for="tax_mode" class="block text-sm font-medium text-gray-700">{{ __('invoices.import.review.tax_mode') }}</label>
                         <select id="tax_mode" name="tax_mode" class="{{ $input }}">
                             @foreach ($taxModes as $m)
-                                <option value="{{ $m['value'] }}" @selected(old('tax_mode', 'STANDARD') === $m['value'])>{{ $m['label'] }}</option>
+                                <option value="{{ $m['value'] }}" @selected(old('tax_mode', ($parsed['small_business'] ?? false) ? 'SMALL_BUSINESS' : 'STANDARD') === $m['value'])>{{ $m['label'] }}</option>
                             @endforeach
                         </select>
                     </div>

@@ -1,7 +1,8 @@
 <?php
 
+declare(strict_types=1);
+
 return [
-    // index
     'index_title' => 'Einstellungen',
     'heading' => 'Einstellungen',
     'subheading' => 'Verwalten Sie die Konfiguration Ihres Arbeitsbereichs.',
@@ -11,8 +12,6 @@ return [
     'tags_desc' => 'Fügen Sie die auf Projekten und Dateien verwendeten Schlagwörter hinzu, benennen Sie sie um, färben Sie sie ein und löschen Sie sie.',
     'units' => 'Einheiten',
     'units_desc' => 'Mehrsprachige Einheitentypen (Stunde, Tag, Stück…), die für Rechnungspositionen verwendet werden.',
-
-    // company/edit
     'company_title' => 'Unternehmensprofil',
     'breadcrumb_settings' => 'Einstellungen',
     'breadcrumb_company' => 'Unternehmen',
@@ -53,8 +52,6 @@ return [
     'invoice_number_next' => 'Nächste Rechnungsnummer (Start)',
     'invoice_footer_text' => 'Fußzeilentext der Rechnung',
     'save_company_profile' => 'Unternehmensprofil speichern',
-
-    // tags/index
     'tags_title' => 'Schlagwörter',
     'tags_breadcrumb' => 'Schlagwörter',
     'tags_heading' => 'Schlagwörter',
@@ -68,8 +65,6 @@ return [
     'save' => 'Speichern',
     'delete' => 'Löschen',
     'delete_tag_confirm' => 'Dieses Schlagwort löschen? Es wird von allen Projekten und Dateien entfernt.',
-
-    // units/index
     'units_title' => 'Einheiten',
     'units_breadcrumb' => 'Einheiten',
     'units_heading' => 'Einheiten',
@@ -84,4 +79,5 @@ return [
     'add' => 'Hinzufügen',
     'units_empty' => 'Keine Einheiten.',
     'delete_unit_confirm' => 'Diese Einheit löschen?',
+    'numbering_locked' => 'Die Nummernserie ist durch vorhandene Rechnungen festgelegt und kann nicht geändert werden.',
 ];

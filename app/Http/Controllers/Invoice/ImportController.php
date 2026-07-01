@@ -67,7 +67,7 @@ class ImportController extends Controller
         $file->uploaded_by = $request->user()->id;
         $file->save();
 
-        $parsed = $parser->parse($text);
+        $parsed = $parser->parse($text, $upload->getClientOriginalName());
 
         return view('invoices.import.review', [
             'file' => $file,

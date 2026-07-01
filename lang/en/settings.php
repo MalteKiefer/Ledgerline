@@ -1,7 +1,8 @@
 <?php
 
+declare(strict_types=1);
+
 return [
-    // index
     'index_title' => 'Settings',
     'heading' => 'Settings',
     'subheading' => 'Manage your workspace configuration.',
@@ -11,8 +12,6 @@ return [
     'tags_desc' => 'Add, rename, colour and delete the tags used on projects and files.',
     'units' => 'Units',
     'units_desc' => 'Multilingual unit types (hour, day, piece…) used on invoice line items.',
-
-    // company/edit
     'company_title' => 'Company profile',
     'breadcrumb_settings' => 'Settings',
     'breadcrumb_company' => 'Company',
@@ -53,8 +52,6 @@ return [
     'invoice_number_next' => 'Next invoice number (start)',
     'invoice_footer_text' => 'Invoice footer text',
     'save_company_profile' => 'Save company profile',
-
-    // tags/index
     'tags_title' => 'Tags',
     'tags_breadcrumb' => 'Tags',
     'tags_heading' => 'Tags',
@@ -68,12 +65,10 @@ return [
     'save' => 'Save',
     'delete' => 'Delete',
     'delete_tag_confirm' => 'Delete this tag? It will be removed from all projects and files.',
-
-    // units/index
     'units_title' => 'Units',
     'units_breadcrumb' => 'Units',
     'units_heading' => 'Units',
-    'units_subheading' => "Unit types for invoice line items. Labels are shown in the invoice's language; the code is stored on lines and the UN/ECE code is used for e-invoices.",
+    'units_subheading' => 'Unit types for invoice line items. Labels are shown in the invoice\'s language; the code is stored on lines and the UN/ECE code is used for e-invoices.',
     'unit_code' => 'Code',
     'unit_code_placeholder' => 'h',
     'unit_german' => 'German',
@@ -84,4 +79,5 @@ return [
     'add' => 'Add',
     'units_empty' => 'No units.',
     'delete_unit_confirm' => 'Delete this unit?',
+    'numbering_locked' => 'The number series is fixed by existing invoices and cannot be changed.',
 ];
