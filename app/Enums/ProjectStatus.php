@@ -23,13 +23,7 @@ enum ProjectStatus: string
      */
     public function label(): string
     {
-        return match ($this) {
-            self::PLANNED => 'Planned',
-            self::ACTIVE => 'Active',
-            self::ON_HOLD => 'On hold',
-            self::COMPLETED => 'Completed',
-            self::CANCELLED => 'Cancelled',
-        };
+        return __('enums.project_status.'.$this->name);
     }
 
     /**

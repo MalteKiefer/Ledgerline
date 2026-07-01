@@ -60,7 +60,7 @@ class IncomeEntryController extends Controller
     {
         $this->persist(new IncomeEntry, $request);
 
-        return redirect()->route('finance.income-entries.index')->with('status', 'Income added.');
+        return redirect()->route('finance.income-entries.index')->with('status', __('flash.income_added'));
     }
 
     public function edit(IncomeEntry $incomeEntry): View
@@ -72,14 +72,14 @@ class IncomeEntryController extends Controller
     {
         $this->persist($incomeEntry, $request);
 
-        return redirect()->route('finance.income-entries.index')->with('status', 'Income updated.');
+        return redirect()->route('finance.income-entries.index')->with('status', __('flash.income_updated'));
     }
 
     public function destroy(IncomeEntry $incomeEntry): RedirectResponse
     {
         $incomeEntry->delete();
 
-        return redirect()->route('finance.income-entries.index')->with('status', 'Income deleted.');
+        return redirect()->route('finance.income-entries.index')->with('status', __('flash.income_deleted'));
     }
 
     private function persist(IncomeEntry $entry, StoreIncomeEntryRequest $request): void

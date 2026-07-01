@@ -21,7 +21,7 @@ class FolderController extends Controller
 
         return redirect()
             ->route('files.index', ['folder' => $folder->parent_id])
-            ->with('status', 'Folder created.');
+            ->with('status', __('flash.folder_created'));
     }
 
     public function update(StoreFolderRequest $request, Folder $folder): RedirectResponse
@@ -31,7 +31,7 @@ class FolderController extends Controller
 
         return redirect()
             ->route('files.index', ['folder' => $folder->id])
-            ->with('status', 'Folder renamed.');
+            ->with('status', __('flash.folder_renamed'));
     }
 
     public function destroy(Folder $folder): RedirectResponse
@@ -47,6 +47,6 @@ class FolderController extends Controller
 
         return redirect()
             ->route('files.index', ['folder' => $parentId])
-            ->with('status', 'Folder deleted; its contents moved up one level.');
+            ->with('status', __('flash.folder_deleted'));
     }
 }

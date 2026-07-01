@@ -23,14 +23,7 @@ enum ProjectType: string
      */
     public function label(): string
     {
-        return match ($this) {
-            self::CONSULTING => 'Consulting',
-            self::DEVELOPMENT => 'Development',
-            self::NETWORK => 'Network',
-            self::MAINTENANCE => 'Maintenance',
-            self::SUPPORT => 'Support',
-            self::OTHER => 'Other',
-        };
+        return __('enums.project_type.'.$this->name);
     }
 
     /**

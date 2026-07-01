@@ -82,7 +82,7 @@ class ExpenseController extends Controller
         $expense->project_id = $this->scopedId(Project::class, $request->validated()['project_id'] ?? null);
         $expense->save();
 
-        return redirect()->route('finance.expenses.show', $expense)->with('status', 'Expense added.');
+        return redirect()->route('finance.expenses.show', $expense)->with('status', __('flash.expense_added'));
     }
 
     public function show(Expense $expense): View
@@ -104,14 +104,14 @@ class ExpenseController extends Controller
         $expense->project_id = $this->scopedId(Project::class, $request->validated()['project_id'] ?? null);
         $expense->save();
 
-        return redirect()->route('finance.expenses.show', $expense)->with('status', 'Expense updated.');
+        return redirect()->route('finance.expenses.show', $expense)->with('status', __('flash.expense_updated'));
     }
 
     public function destroy(Expense $expense): RedirectResponse
     {
         $expense->delete();
 
-        return redirect()->route('finance.expenses.index')->with('status', 'Expense deleted.');
+        return redirect()->route('finance.expenses.index')->with('status', __('flash.expense_deleted'));
     }
 
     /**

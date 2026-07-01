@@ -77,7 +77,7 @@ class BranchController extends Controller
 
         return redirect()
             ->route('customers.show', $customer)
-            ->with('status', 'Branch created.');
+            ->with('status', __('flash.branch_created'));
     }
 
     /**
@@ -118,7 +118,7 @@ class BranchController extends Controller
 
         return redirect()
             ->route('customers.show', $branch->customer_id)
-            ->with('status', 'Branch updated.');
+            ->with('status', __('flash.branch_updated'));
     }
 
     /**
@@ -133,6 +133,6 @@ class BranchController extends Controller
 
         return redirect()
             ->route('customers.show', $customerId)
-            ->with('status', 'Branch deleted.');
+            ->with('status', __('flash.branch_deleted'));
     }
 }

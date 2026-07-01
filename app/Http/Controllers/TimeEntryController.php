@@ -62,7 +62,7 @@ class TimeEntryController extends Controller
     {
         $this->persist(new TimeEntry, $request);
 
-        return redirect()->route('finance.time-entries.index')->with('status', 'Time entry added.');
+        return redirect()->route('finance.time-entries.index')->with('status', __('flash.time_entry_added'));
     }
 
     public function edit(TimeEntry $timeEntry): View
@@ -74,14 +74,14 @@ class TimeEntryController extends Controller
     {
         $this->persist($timeEntry, $request);
 
-        return redirect()->route('finance.time-entries.index')->with('status', 'Time entry updated.');
+        return redirect()->route('finance.time-entries.index')->with('status', __('flash.time_entry_updated'));
     }
 
     public function destroy(TimeEntry $timeEntry): RedirectResponse
     {
         $timeEntry->delete();
 
-        return redirect()->route('finance.time-entries.index')->with('status', 'Time entry deleted.');
+        return redirect()->route('finance.time-entries.index')->with('status', __('flash.time_entry_deleted'));
     }
 
     /**

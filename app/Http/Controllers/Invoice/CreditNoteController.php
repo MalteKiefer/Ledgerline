@@ -64,6 +64,6 @@ class CreditNoteController extends Controller
 
         return redirect()
             ->route('finance.invoices.show', $credit)
-            ->with('status', 'Credit note created. Finalise it to assign a number.');
+            ->with('status', __('flash.credit_note_created'));
     }
 }

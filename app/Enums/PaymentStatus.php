@@ -14,10 +14,7 @@ enum PaymentStatus: string
 
     public function label(): string
     {
-        return match ($this) {
-            self::OPEN => 'Open',
-            self::PAID => 'Paid',
-        };
+        return __('enums.payment_status.'.$this->name);
     }
 
     /**
