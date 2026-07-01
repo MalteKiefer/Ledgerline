@@ -110,9 +110,42 @@ class PhotoStorage
         $template = CompanyProfile::current()->gallery_filename_template;
         $name = $this->filenameTemplate->render($photo, $template);
 
-        if ($name !== null && $name !== $photo->name) {
+        if ($name === null) {
+            return;
+        }
+
+        $name = $this->uniqueName($photo, $name);
+
+        if ($name !== $photo->name) {
             $photo->forceFill(['name' => $name])->save();
         }
+    }
+
+    /**
+     * Ensure the templated name does not clash with a different image (same
+     * timestamp, different bytes). A clash with the same bytes needs no counter
+     * — it is the same picture. Appends _2, _3, … until free.
+     */
+    private function uniqueName(Photo $photo, string $name): string
+    {
+        $ext = pathinfo($name, PATHINFO_EXTENSION);
+        $base = pathinfo($name, PATHINFO_FILENAME);
+        $suffix = $ext !== '' ? '.'.$ext : '';
+
+        $candidate = $name;
+        $i = 1;
+
+        while (Photo::query()
+            ->where('name', $candidate)
+            ->where('id', '!=', $photo->id)
+            ->where(fn ($q) => $q->where('checksum', '!=', $photo->checksum)->orWhereNull('checksum'))
+            ->exists()
+        ) {
+            $i++;
+            $candidate = $base.'_'.$i.$suffix;
+        }
+
+        return $candidate;
     }
 
     /**

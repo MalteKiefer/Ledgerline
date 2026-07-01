@@ -106,13 +106,17 @@
     <div x-intersect="loadMore()" class="h-10"></div>
     <div x-show="loading" x-cloak class="py-4 text-center text-sm text-gray-400">…</div>
 
-    {{-- Year/month scrubber (jump to a month; loads pages as needed) --}}
+    {{-- Year/month scrubber: year headers with three-letter months below --}}
     <div x-show="months.length" x-cloak
-        class="fixed right-1 top-1/2 z-20 hidden max-h-[70vh] w-14 -translate-y-1/2 flex-col gap-px overflow-y-auto rounded-md bg-white/70 py-2 text-right backdrop-blur md:flex">
-        <template x-for="m in months" :key="m.ym">
-            <button type="button" @click="scrollToMonth(m.ym)"
-                class="px-2 py-0.5 text-[11px] leading-tight text-gray-500 hover:font-semibold hover:text-gray-900"
-                x-text="m.label"></button>
+        class="fixed right-1 top-1/2 z-20 hidden max-h-[70vh] w-14 -translate-y-1/2 flex-col overflow-y-auto rounded-md bg-white/70 py-2 text-right backdrop-blur md:flex">
+        <template x-for="(m, i) in months" :key="m.ym">
+            <div>
+                <div x-show="i === 0 || m.year !== months[i - 1].year"
+                    class="px-2 pt-2 text-[11px] font-bold uppercase tracking-wide text-gray-800" x-text="m.year"></div>
+                <button type="button" @click="scrollToMonth(m.ym)"
+                    class="block w-full px-2 py-0.5 text-[11px] leading-tight text-gray-500 hover:font-semibold hover:text-gray-900"
+                    x-text="m.month"></button>
+            </div>
         </template>
     </div>
 

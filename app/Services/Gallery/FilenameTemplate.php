@@ -31,9 +31,12 @@ class FilenameTemplate
             return null;
         }
 
+        // Base placeholders on the original upload name so re-running the
+        // template is stable (the display name may already be templated).
+        $source = (string) ($photo->original_name ?: $photo->name);
         $taken = $photo->taken_at;
-        $ext = strtolower(pathinfo((string) $photo->name, PATHINFO_EXTENSION) ?: 'jpg');
-        $base = pathinfo((string) $photo->name, PATHINFO_FILENAME);
+        $ext = strtolower(pathinfo($source, PATHINFO_EXTENSION) ?: 'jpg');
+        $base = pathinfo($source, PATHINFO_FILENAME);
 
         $replacements = [
             '{{y}}' => $taken?->format('Y') ?? '',

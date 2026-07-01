@@ -78,7 +78,9 @@ class GalleryController extends Controller
             ->groupBy(fn (Carbon $d): string => $d->format('Y-m'))
             ->map(fn (Collection $g, string $ym): array => [
                 'ym' => $ym,
-                'label' => Carbon::parse($ym.'-01')->isoFormat('MMM YYYY'),
+                'year' => substr($ym, 0, 4),
+                // At most three letters, e.g. Juli → Jul, September → Sep.
+                'month' => mb_substr(Carbon::parse($ym.'-01')->isoFormat('MMMM'), 0, 3),
                 'count' => $g->count(),
             ])
             ->values();
@@ -208,7 +210,7 @@ class GalleryController extends Controller
             ->when(
                 $checksum !== null,
                 fn ($q) => $q->where('checksum', $checksum),
-                fn ($q) => $q->where('name', $name),
+                fn ($q) => $q->where('original_name', $name),
             )
             ->first();
 
@@ -221,7 +223,8 @@ class GalleryController extends Controller
         // Save immediately with placeholder renditions; the queue fills the rest.
         $photo = new Photo([
             'uuid' => $original['uuid'],
-            'name' => $upload->getClientOriginalName(),
+            'name' => $name,
+            'original_name' => $name,
             'status' => 'processing',
             'media_type' => $mediaType,
             'disk_path' => $original['disk_path'],
