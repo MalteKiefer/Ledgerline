@@ -3,6 +3,7 @@
         ['label' => 'Expenses', 'route' => 'finance.expenses.index', 'pattern' => 'finance.expenses.*'],
         ['label' => 'Time', 'route' => 'finance.time-entries.index', 'pattern' => 'finance.time-entries.*'],
         ['label' => 'Income', 'route' => 'finance.income-entries.index', 'pattern' => 'finance.income-entries.*'],
+        ['label' => 'Invoices', 'route' => 'finance.invoices.index', 'pattern' => 'finance.invoices.*'],
     ];
 @endphp
 
