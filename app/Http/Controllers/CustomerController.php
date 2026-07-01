@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\Tag;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 /**
  * CRUD for customer records.
@@ -22,15 +23,30 @@ class CustomerController extends Controller
     /**
      * Display a paginated listing of customers.
      */
-    public function index(): View
+    public function index(Request $request): View
     {
         $this->authorize('viewAny', Customer::class);
 
-        $customers = Customer::query()
-            ->orderBy('name')
-            ->paginate(15);
+        [$sort, $dir] = $this->sortFor($request, ['name', 'email', 'city', 'country'], 'name');
 
-        return view('customers.index', ['customers' => $customers]);
+        $customers = Customer::query()
+            ->when($request->query('q'), function ($query, $term): void {
+                $like = '%'.mb_strtolower((string) $term).'%';
+                $query->where(function ($where) use ($like): void {
+                    foreach (['name', 'email', 'city', 'vat_id'] as $column) {
+                        $where->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
+                    }
+                });
+            })
+            ->orderBy($sort, $dir)
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('customers.index', [
+            'customers' => $customers,
+            'sort' => $sort,
+            'dir' => $dir,
+        ]);
     }
 
     /**

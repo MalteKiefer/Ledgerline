@@ -13,8 +13,8 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 
 /**
- * Lists every file across the current user's team(s) and offers an upload form
- * where the target customer or project is chosen. Reachable from the main menu.
+ * Lists every file across the current user's team(s), with search, sort, a type
+ * filter and a tag filter, plus an upload form. Reachable from the main menu.
  */
 class FileOverviewController extends Controller
 {
@@ -23,11 +23,26 @@ class FileOverviewController extends Controller
         $this->authorize('viewAny', File::class);
 
         $type = FileType::tryFrom((string) $request->query('type'));
+        $tagSlug = $request->query('tag');
+        [$sort, $dir] = $this->sortFor($request, ['name', 'type', 'size', 'created_at'], 'created_at');
+
+        // Default to newest-first until the user picks a sort.
+        if ($request->query('sort') === null && $request->query('dir') === null) {
+            $dir = 'desc';
+        }
 
         $files = File::query()
             ->with(['attachable', 'tags'])
             ->when($type, fn ($query) => $query->where('type', $type->value))
-            ->latest()
+            ->when($tagSlug, fn ($query) => $query->whereHas('tags', fn ($t) => $t->where('slug', $tagSlug)))
+            ->when($request->query('q'), function ($query, $term): void {
+                $like = '%'.mb_strtolower((string) $term).'%';
+                $query->where(function ($where) use ($like): void {
+                    $where->orWhereRaw('LOWER(name) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(extracted_text) LIKE ?', [$like]);
+                });
+            })
+            ->orderBy($sort, $dir)
             ->paginate(20)
             ->withQueryString();
 
@@ -35,6 +50,10 @@ class FileOverviewController extends Controller
             'files' => $files,
             'types' => FileType::options(),
             'activeType' => $type?->value,
+            'activeTagSlug' => $tagSlug,
+            'activeTagName' => $tagSlug ? Tag::where('slug', $tagSlug)->value('name') : null,
+            'sort' => $sort,
+            'dir' => $dir,
             'targets' => $this->targetOptions(),
             'tagSuggestions' => Tag::orderBy('name')->pluck('name')->all(),
         ]);

@@ -30,18 +30,30 @@ class ProjectController extends Controller
     /**
      * Display a customer's projects.
      */
-    public function index(Customer $customer): View
+    public function index(Request $request, Customer $customer): View
     {
         $this->authorize('viewAny', Project::class);
 
+        [$sort, $dir] = $this->sortFor($request, ['name', 'reference', 'type', 'status'], 'name');
+
         $projects = $customer->projects()
             ->with('tags')
-            ->orderBy('name')
-            ->paginate(15);
+            ->when($request->query('q'), function ($query, $term): void {
+                $like = '%'.mb_strtolower((string) $term).'%';
+                $query->where(function ($where) use ($like): void {
+                    $where->orWhereRaw('LOWER(name) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(reference) LIKE ?', [$like]);
+                });
+            })
+            ->orderBy($sort, $dir)
+            ->paginate(15)
+            ->withQueryString();
 
         return view('projects.index', [
             'customer' => $customer,
             'projects' => $projects,
+            'sort' => $sort,
+            'dir' => $dir,
         ]);
     }
 

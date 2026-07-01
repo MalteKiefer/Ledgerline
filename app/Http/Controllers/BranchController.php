@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\Customer;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 /**
  * CRUD for a customer's branch offices (Niederlassungen).
@@ -23,18 +24,31 @@ class BranchController extends Controller
     /**
      * Display a customer's branches.
      */
-    public function index(Customer $customer): View
+    public function index(Request $request, Customer $customer): View
     {
         $this->authorize('viewAny', Branch::class);
 
+        [$sort, $dir] = $this->sortFor($request, ['name', 'city', 'country'], 'name');
+
         $branches = $customer->branches()
             ->with('manager')
-            ->orderBy('name')
-            ->paginate(15);
+            ->when($request->query('q'), function ($query, $term): void {
+                $like = '%'.mb_strtolower((string) $term).'%';
+                $query->where(function ($where) use ($like): void {
+                    foreach (['name', 'city', 'email'] as $column) {
+                        $where->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
+                    }
+                });
+            })
+            ->orderBy($sort, $dir)
+            ->paginate(15)
+            ->withQueryString();
 
         return view('branches.index', [
             'customer' => $customer,
             'branches' => $branches,
+            'sort' => $sort,
+            'dir' => $dir,
         ]);
     }
 
