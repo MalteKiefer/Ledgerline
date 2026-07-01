@@ -10,7 +10,7 @@
 </head>
 <body class="h-full bg-gray-100 text-gray-900 antialiased">
     <div class="min-h-full">
-        <header class="border-b border-gray-200 bg-white">
+        <header class="border-b border-gray-200 bg-white" x-data="{ mobileOpen: false }">
             <nav class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
                 @php
                     $navItems = [
@@ -52,6 +52,16 @@
                         $currentTeamId = $currentUser->currentTeamId();
                     @endphp
                     <div class="flex items-center gap-3">
+                        <button type="button" @click="mobileOpen = ! mobileOpen" aria-label="Toggle menu"
+                            class="inline-flex items-center justify-center rounded-md p-2 text-gray-600 hover:bg-gray-50 sm:hidden">
+                            <svg x-show="! mobileOpen" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                            <svg x-show="mobileOpen" x-cloak class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
                         @if ($userTeams->count() > 1)
                             <form method="POST" action="{{ route('active-team.update') }}">
                                 @csrf
@@ -93,6 +103,40 @@
                     </div>
                 @endauth
             </nav>
+
+            @auth
+                {{-- Mobile navigation panel --}}
+                <div x-show="mobileOpen" x-cloak class="border-t border-gray-200 bg-white sm:hidden">
+                    <div class="space-y-1 px-4 py-3">
+                        @foreach ($navItems as $item)
+                            <a href="{{ $item['url'] }}" @click="mobileOpen = false"
+                                @class([
+                                    'flex items-center gap-2 rounded-md px-3 py-2 text-base font-medium',
+                                    'bg-gray-100 text-gray-900' => $item['active'],
+                                    'text-gray-700 hover:bg-gray-50' => ! $item['active'],
+                                ])>
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}" />
+                                </svg>
+                                {{ $item['label'] }}
+                            </a>
+                        @endforeach
+
+                        @if ($userTeams->count() > 1)
+                            <form method="POST" action="{{ route('active-team.update') }}" class="pt-2">
+                                @csrf
+                                <label for="active-team-mobile" class="block text-xs font-medium text-gray-500">Active team</label>
+                                <select id="active-team-mobile" name="team_id" onchange="this.form.submit()"
+                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                    @foreach ($userTeams as $team)
+                                        <option value="{{ $team->id }}" @selected($team->id === $currentTeamId)>{{ $team->displayName }}</option>
+                                    @endforeach
+                                </select>
+                            </form>
+                        @endif
+                    </div>
+                </div>
+            @endauth
         </header>
 
         <main class="mx-auto max-w-5xl px-4 py-8">
