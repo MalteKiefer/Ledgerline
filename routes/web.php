@@ -9,6 +9,7 @@ use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DefaultTeamController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
 use App\Http\Controllers\ProfileController;
@@ -32,6 +33,7 @@ Route::middleware('guest')->group(function (): void {
 Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::post('/active-team', [ActiveTeamController::class, 'update'])->name('active-team.update');
+    Route::post('/default-team', [DefaultTeamController::class, 'update'])->name('default-team.update');
     Route::get('/search', [SearchController::class, 'index'])->name('search');
     Route::get('/search/suggest', [SearchController::class, 'suggest'])->name('search.suggest');
     Route::get('/profile', ProfileController::class)->name('profile');
@@ -62,5 +64,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/customers/{customer}/files', [FileController::class, 'storeForCustomer'])->name('customers.files.store');
     Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
+    Route::get('/files/{file}', [FileController::class, 'show'])->name('files.show');
+    Route::put('/files/{file}', [FileController::class, 'update'])->name('files.update');
     Route::delete('/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');
 });

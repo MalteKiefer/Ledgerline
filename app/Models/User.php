@@ -8,6 +8,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -75,10 +76,29 @@ class User extends Authenticatable
     }
 
     /**
+     * The user's persisted default team.
+     *
+     * @return BelongsTo<Team, $this>
+     */
+    public function defaultTeam(): BelongsTo
+    {
+        return $this->belongsTo(Team::class, 'default_team_id');
+    }
+
+    /**
+     * Whether the user has a valid persisted default team (a team they are
+     * still a member of).
+     */
+    public function hasChosenDefaultTeam(): bool
+    {
+        return $this->default_team_id !== null && $this->teamIds()->contains($this->default_team_id);
+    }
+
+    /**
      * The id of the team that new records should belong to.
      *
-     * Honours a session-selected active team when it is one of the user's
-     * teams; otherwise falls back to the first team.
+     * Prefers a session-selected active team, then the persisted default team,
+     * then the first team the user belongs to.
      */
     public function currentTeamId(): ?int
     {
@@ -87,6 +107,10 @@ class User extends Authenticatable
 
         if ($active !== null && $ids->contains((int) $active)) {
             return (int) $active;
+        }
+
+        if ($this->hasChosenDefaultTeam()) {
+            return $this->default_team_id;
         }
 
         return $ids->first();

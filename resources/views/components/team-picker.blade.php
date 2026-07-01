@@ -5,20 +5,21 @@
 --}}
 @auth
     @php
-        $pickerTeams = auth()->user()->teams->sortBy('display_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+        $pickerUser = auth()->user();
+        $pickerTeams = $pickerUser->teams->sortBy('display_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
     @endphp
 
-    @if ($pickerTeams->count() > 1 && ! session('active_team_id'))
+    @if ($pickerTeams->count() > 1 && ! session('active_team_id') && ! $pickerUser->hasChosenDefaultTeam())
         <div class="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/50 p-4" role="dialog" aria-modal="true">
             <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
                 <h2 class="text-lg font-semibold text-gray-900">Choose your team</h2>
                 <p class="mt-1 text-sm text-gray-600">
-                    You belong to several teams. Pick the one to work in — you can switch anytime from the header.
+                    You belong to several teams. Pick your default — you'll only be asked once, and can change it later under Profile.
                 </p>
 
                 <div class="mt-4 space-y-2">
                     @foreach ($pickerTeams as $team)
-                        <form method="POST" action="{{ route('active-team.update') }}">
+                        <form method="POST" action="{{ route('default-team.update') }}">
                             @csrf
                             <input type="hidden" name="team_id" value="{{ $team->id }}">
                             <button type="submit"

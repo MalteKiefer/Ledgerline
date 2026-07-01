@@ -33,7 +33,7 @@ class CustomerController extends Controller
             ->when($request->query('q'), function ($query, $term): void {
                 $like = '%'.mb_strtolower((string) $term).'%';
                 $query->where(function ($where) use ($like): void {
-                    foreach (['name', 'email', 'city', 'vat_id'] as $column) {
+                    foreach (['name', 'email', 'phone', 'city', 'postal_code', 'street', 'country', 'vat_id'] as $column) {
                         $where->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
                     }
                 });
