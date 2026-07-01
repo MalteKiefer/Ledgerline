@@ -119,7 +119,7 @@
             </div>
 
             {{-- Browser: folders first, then files (all alphabetical) --}}
-            <div class="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div class="mt-4 overflow-visible rounded-lg border border-gray-200 bg-white shadow-sm">
                 @if ($files->isEmpty() && $subfolders->isEmpty())
                     <p class="px-4 py-10 text-center text-sm text-gray-500">{{ $filtering ? __('files.empty_no_match') : __('files.empty_explorer') }}</p>
                 @else
