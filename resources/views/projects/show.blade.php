@@ -75,10 +75,10 @@
 
     <section class="mt-8">
         <h2 class="text-lg font-semibold text-gray-900">{{ __('projects.show_files') }}</h2>
-        <div class="mt-3">
-            <x-file-panel :files="$project->files"
-                :upload-route="route('projects.files.store', $project)"
-                :tag-suggestions="$tagSuggestions" />
+        <div class="mt-3 rounded-lg border border-gray-200 bg-white p-6 text-center shadow-sm">
+            <p class="text-sm text-gray-600">{{ __('projects.show_files_count', ['count' => $project->files->count()]) }}</p>
+            <a href="{{ route('files.index', ['project' => $project->id]) }}"
+                class="mt-3 inline-block rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('projects.show_open_files') }}</a>
         </div>
     </section>
 

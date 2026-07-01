@@ -41,6 +41,8 @@ return [
         'no_branches' => 'No branches yet.',
         'manager' => 'Manager:',
         'back' => '← Back to customers',
+        'open_files' => 'Open in Files',
+        'files_count' => ':count file(s) attached to this customer.',
     ],
     'create' => [
         'title' => 'New customer',

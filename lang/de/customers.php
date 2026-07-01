@@ -41,6 +41,8 @@ return [
         'no_branches' => 'Noch keine Niederlassungen.',
         'manager' => 'Leiter:',
         'back' => '← Zurück zu den Kunden',
+        'open_files' => 'In Dateien öffnen',
+        'files_count' => ':count Datei(en) zu diesem Kunden.',
     ],
     'create' => [
         'title' => 'Neuer Kunde',
