@@ -16,9 +16,19 @@ set -euo pipefail
 target="$HOME/bin/ffmpeg"
 mkdir -p "$target"
 
-echo "Downloading the latest static ffmpeg release..."
+# Pick the static build matching the build machine's architecture. Laravel
+# Cloud builders are arm64; a mismatched binary fails with "Exec format error".
+case "$(uname -m)" in
+    x86_64 | amd64) arch="amd64" ;;
+    aarch64 | arm64) arch="arm64" ;;
+    armv7l | armv6l | armhf) arch="armhf" ;;
+    i686 | i386) arch="i686" ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+
+echo "Downloading the latest static ffmpeg release ($arch)..."
 tmp="$(mktemp -d)"
-curl -fsSL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" -o "$tmp/ffmpeg.tar.xz"
+curl -fsSL "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${arch}-static.tar.xz" -o "$tmp/ffmpeg.tar.xz"
 
 # The archive contains a single versioned directory; flatten it into $target.
 tar -xf "$tmp/ffmpeg.tar.xz" --strip-components=1 -C "$target"
