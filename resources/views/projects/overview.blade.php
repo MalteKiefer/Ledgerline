@@ -61,7 +61,7 @@
                             <td class="px-4 py-3 text-gray-600">{{ $project->status->label() }}</td>
                             <td class="px-4 py-3 text-gray-600">
                                 @forelse ($project->tags as $tag)
-                                    <span class="mr-1 inline-block rounded bg-gray-100 px-1.5 py-0.5 text-xs">{{ $tag->name }}</span>
+                                    <x-tag-chip :tag="$tag" class="mr-1" />
                                 @empty
                                     <span class="text-gray-400">—</span>
                                 @endforelse

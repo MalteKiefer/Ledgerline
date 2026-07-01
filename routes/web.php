@@ -16,6 +16,9 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectOverviewController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Settings\SettingsController;
+use App\Http\Controllers\Settings\TagController as SettingsTagController;
+use App\Http\Controllers\Settings\TeamController as SettingsTeamController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -38,6 +41,15 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/search/suggest', [SearchController::class, 'suggest'])->name('search.suggest');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
+
+    // Settings.
+    Route::get('/settings', SettingsController::class)->name('settings');
+    Route::get('/settings/tags', [SettingsTagController::class, 'index'])->name('settings.tags.index');
+    Route::post('/settings/tags', [SettingsTagController::class, 'store'])->name('settings.tags.store');
+    Route::put('/settings/tags/{tag}', [SettingsTagController::class, 'update'])->name('settings.tags.update');
+    Route::delete('/settings/tags/{tag}', [SettingsTagController::class, 'destroy'])->name('settings.tags.destroy');
+    Route::get('/settings/teams', [SettingsTeamController::class, 'index'])->name('settings.teams.index');
+    Route::post('/settings/teams/reassign', [SettingsTeamController::class, 'reassign'])->name('settings.teams.reassign');
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
     Route::resource('customers', CustomerController::class);
