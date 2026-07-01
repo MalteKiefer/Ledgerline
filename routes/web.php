@@ -156,6 +156,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/customers/{customer}/files', [FileController::class, 'storeForCustomer'])->name('customers.files.store');
     Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
     Route::post('/files/{file}/extract', [FileController::class, 'extract'])->name('files.extract');
+    Route::get('/files/{file}/edit', [FileController::class, 'edit'])->name('files.edit');
+    Route::put('/files/{file}/content', [FileController::class, 'updateContent'])->name('files.content');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
     Route::get('/files/{file}', [FileController::class, 'show'])->name('files.show');
     Route::put('/files/{file}', [FileController::class, 'update'])->name('files.update');

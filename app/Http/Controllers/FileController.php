@@ -479,6 +479,66 @@ class FileController extends Controller
     }
 
     /**
+     * The largest file we will attempt to open in the text editor.
+     */
+    private const EDIT_MAX_BYTES = 2 * 1024 * 1024;
+
+    /**
+     * Open a file in the text editor, reading its bytes as UTF-8 text. Binary
+     * or oversized files are shown as not editable.
+     */
+    public function edit(File $file): View
+    {
+        $this->authorize('update', $file);
+
+        $disk = Storage::disk(config('files.disk'));
+        $editable = false;
+        $content = '';
+
+        if ($disk->exists($file->disk_path) && $file->size <= self::EDIT_MAX_BYTES) {
+            $bytes = (string) $disk->get($file->disk_path);
+            // Treat it as text only when it is valid UTF-8 with no null bytes.
+            if (! str_contains($bytes, "\0") && mb_check_encoding($bytes, 'UTF-8')) {
+                $editable = true;
+                $content = $bytes;
+            }
+        }
+
+        return view('files.edit', [
+            'file' => $file,
+            'editable' => $editable,
+            'content' => $content,
+        ]);
+    }
+
+    /**
+     * Save edited text back to the file, refreshing its size, checksum and
+     * extracted text.
+     */
+    public function updateContent(Request $request, File $file): RedirectResponse
+    {
+        $this->authorize('update', $file);
+
+        $content = (string) $request->validate([
+            'content' => ['present', 'string', 'max:'.self::EDIT_MAX_BYTES],
+        ])['content'];
+
+        // Normalise line endings the browser may have sent.
+        $content = str_replace("\r\n", "\n", $content);
+
+        Storage::disk(config('files.disk'))->put($file->disk_path, $content);
+
+        $extractable = $file->type->isTextExtractable($file->mime_type);
+        $file->forceFill([
+            'size' => strlen($content),
+            'checksum' => hash('sha256', $content),
+            'extracted_text' => $extractable ? mb_substr($content, 0, (int) config('files.extract_text_max_bytes')) : $file->extracted_text,
+        ])->save();
+
+        return redirect()->route('files.edit', $file)->with('status', __('flash.file_saved'));
+    }
+
+    /**
      * Store a file uploaded from the files overview, assigning it to the chosen
      * customer or project.
      */

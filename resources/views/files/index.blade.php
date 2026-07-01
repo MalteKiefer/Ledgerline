@@ -198,6 +198,7 @@
                                             <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
                                             <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                                 <a href="{{ route('files.show', $file) }}" class="block px-3 py-1.5 text-gray-700 hover:bg-gray-50">{{ __('files.view') }}</a>
+                                                <a href="{{ route('files.edit', $file) }}" class="block px-3 py-1.5 text-gray-700 hover:bg-gray-50">{{ __('files.edit') }}</a>
                                                 <button type="button" @click="startRename({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
                                                 <button type="button" @click="openMove({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
                                                 @if ($file->type === \App\Enums\FileType::ARCHIVE)
