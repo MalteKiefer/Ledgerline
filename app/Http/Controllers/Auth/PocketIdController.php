@@ -128,7 +128,7 @@ class PocketIdController extends Controller
     private function normaliseGroup(mixed $group): array
     {
         if (is_string($group) && trim($group) !== '') {
-            return ['group:'.Str::slug($group), $this->humaniseGroupName($group)];
+            return ['group:'.Str::slug($group), Team::humanise($group)];
         }
 
         if (is_array($group)) {
@@ -136,20 +136,11 @@ class PocketIdController extends Controller
             $name = $group['name'] ?? $group['id'] ?? null;
 
             if ($id !== null) {
-                return ['group:'.Str::slug((string) $id), $this->humaniseGroupName((string) ($name ?? $id))];
+                return ['group:'.Str::slug((string) $id), Team::humanise((string) ($name ?? $id))];
             }
         }
 
         return [null, ''];
-    }
-
-    /**
-     * Turn a group slug into a readable display name ("kiefer_networks" ->
-     * "Kiefer Networks").
-     */
-    private function humaniseGroupName(string $value): string
-    {
-        return Str::of($value)->replace(['_', '-'], ' ')->squish()->title()->toString();
     }
 
     /**

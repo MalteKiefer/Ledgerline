@@ -122,7 +122,7 @@ class CustomerCrudTest extends TestCase
 
         $this->get(route('dashboard'))
             ->assertOk()
-            ->assertViewHas('stats', ['customers' => 3, 'projects' => 0]);
+            ->assertViewHas('stats', fn (array $stats): bool => $stats['customers'] === 3 && $stats['projects'] === 0);
     }
 
     public function test_store_accepts_website_and_iso_country(): void
