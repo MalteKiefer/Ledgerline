@@ -145,6 +145,46 @@ class PdfInvoiceParserTest extends TestCase
         $this->assertSame('day', $r['lines'][0]['unit']);
     }
 
+    public function test_it_keeps_only_self_consistent_lines_and_ignores_footer_noise(): void
+    {
+        $text = implode("\n", [
+            'Rechnung Nr.: 2026-004',
+            'Rechnungsdatum: 31.05.2026',
+            'RECHNUNG AN',
+            'Acme GmbH',
+            'BESCHREIBUNG MENGE EINZELPREIS BETRAG',
+            'Task one 0,13 45,00 € 5,85 €',
+            'Task two 0,07 45,00 € 3,15 €',
+            // Footer address line with numbers that must not become a line item.
+            'Kiefer Networks Adalbert-Stifter-Str. 6, 95512 Neudrossenfeld 1,07 45,00 € 99,99 €',
+            'Zwischensumme 9,00 €',
+            'Gesamt 10,71 €',
+        ]);
+
+        $r = $this->parser()->parse($text);
+
+        $this->assertCount(2, $r['lines']);
+        $this->assertSame(5.85, round($r['lines'][0]['quantity'] * $r['lines'][0]['unit_price'], 2));
+    }
+
+    public function test_it_reads_the_customer_when_the_block_ends_at_beschreibung(): void
+    {
+        $text = implode("\n", [
+            'RECHNUNG AN',
+            'IntellyTec GmbH',
+            'ingo.radermacher@intellytec.de',
+            'Grünenborn 1, 53797 Lohmar',
+            'Deutschland',
+            'USt-IdNr.: DE304323922',
+            'BESCHREIBUNG MENGE EINZELPREIS BETRAG',
+        ]);
+
+        $r = $this->parser()->parse($text);
+
+        $this->assertSame('IntellyTec GmbH', $r['customer']['name']);
+        $this->assertSame('DE304323922', $r['customer']['vat_id']);
+    }
+
     public function test_a_captured_number_must_contain_a_digit(): void
     {
         // "Rechnung Nr. Rechnungsdatum" table header must not be taken as the number.
