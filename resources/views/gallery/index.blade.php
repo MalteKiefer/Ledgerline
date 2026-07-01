@@ -42,7 +42,7 @@
                 <div class="flex items-center gap-3">
                     <div class="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100">
                         <template x-if="item.preview"><img :src="item.preview" class="h-full w-full object-cover"></template>
-                        <template x-if="! item.preview"><span class="flex h-full w-full items-center justify-center text-gray-400">🎬</span></template>
+                        <template x-if="! item.preview"><span class="flex h-full w-full items-center justify-center text-gray-400" x-text="item.isVideo ? '🎬' : '🖼️'"></span></template>
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="flex justify-between gap-2 text-xs">
