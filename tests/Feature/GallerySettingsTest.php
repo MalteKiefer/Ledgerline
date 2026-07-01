@@ -81,6 +81,15 @@ class GallerySettingsTest extends TestCase
         Queue::assertPushed(RenamePhotos::class, 3);
     }
 
+    public function test_queue_status_reports_pending_and_failed_counts(): void
+    {
+        $this->signIn();
+
+        $this->getJson(route('settings.gallery.queue-status'))
+            ->assertOk()
+            ->assertJsonStructure(['pending', 'failed', 'available']);
+    }
+
     public function test_run_all_queues_every_job_per_photo(): void
     {
         Queue::fake();
