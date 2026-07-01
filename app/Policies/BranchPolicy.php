@@ -8,10 +8,7 @@ use App\Models\Branch;
 use App\Models\User;
 
 /**
- * Authorization policy for branch offices.
- *
- * Every authenticated user of this internal ERP may manage all branches.
- * Gating each action here keeps a single place to tighten access later.
+ * Authorization policy for branch offices, scoped to the owning team.
  */
 class BranchPolicy
 {
@@ -22,7 +19,7 @@ class BranchPolicy
 
     public function view(User $user, Branch $branch): bool
     {
-        return true;
+        return $user->belongsToTeam($branch->team_id);
     }
 
     public function create(User $user): bool
@@ -32,21 +29,21 @@ class BranchPolicy
 
     public function update(User $user, Branch $branch): bool
     {
-        return true;
+        return $user->belongsToTeam($branch->team_id);
     }
 
     public function delete(User $user, Branch $branch): bool
     {
-        return true;
+        return $user->belongsToTeam($branch->team_id);
     }
 
     public function restore(User $user, Branch $branch): bool
     {
-        return true;
+        return $user->belongsToTeam($branch->team_id);
     }
 
     public function forceDelete(User $user, Branch $branch): bool
     {
-        return true;
+        return $user->belongsToTeam($branch->team_id);
     }
 }

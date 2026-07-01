@@ -67,6 +67,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether the user is a member of the given team.
+     */
+    public function belongsToTeam(?int $teamId): bool
+    {
+        return $teamId !== null && $this->teamIds()->contains($teamId);
+    }
+
+    /**
      * The id of the team that new records should belong to.
      *
      * Honours a session-selected active team when it is one of the user's
