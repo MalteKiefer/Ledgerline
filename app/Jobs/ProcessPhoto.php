@@ -18,6 +18,13 @@ class ProcessPhoto implements ShouldQueue
 {
     use Queueable;
 
+    /** Allow generous time for large videos (download + ffmpeg). */
+    public int $timeout = 600;
+
+    public int $tries = 2;
+
+    public bool $failOnTimeout = true;
+
     public function __construct(public int $photoId) {}
 
     public function handle(PhotoStorage $storage): void

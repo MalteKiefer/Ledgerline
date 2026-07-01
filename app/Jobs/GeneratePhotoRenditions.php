@@ -17,6 +17,12 @@ class GeneratePhotoRenditions implements ShouldQueue
 {
     use Queueable;
 
+    public int $timeout = 600;
+
+    public int $tries = 2;
+
+    public bool $failOnTimeout = true;
+
     public function __construct(public int $photoId) {}
 
     public function handle(PhotoStorage $storage): void
