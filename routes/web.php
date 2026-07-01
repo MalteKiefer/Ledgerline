@@ -14,6 +14,10 @@ use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
 use App\Http\Controllers\IncomeEntryController;
+use App\Http\Controllers\Invoice\CreditNoteController;
+use App\Http\Controllers\Invoice\FinalizeController;
+use App\Http\Controllers\Invoice\PaymentController;
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectOverviewController;
@@ -82,6 +86,10 @@ Route::middleware('auth')->group(function (): void {
         Route::post('expenses/{expense}/files', [FileController::class, 'storeForExpense'])->name('expenses.files.store');
         Route::resource('time-entries', TimeEntryController::class)->except('show');
         Route::resource('income-entries', IncomeEntryController::class)->except('show');
+        Route::resource('invoices', InvoiceController::class);
+        Route::post('invoices/{invoice}/finalize', [FinalizeController::class, 'store'])->name('invoices.finalize');
+        Route::post('invoices/{invoice}/payments', [PaymentController::class, 'store'])->name('invoices.payments.store');
+        Route::post('invoices/{invoice}/credit-note', [CreditNoteController::class, 'store'])->name('invoices.credit-note');
     });
 
     // Files: attached to a customer or project; a team-wide overview; download

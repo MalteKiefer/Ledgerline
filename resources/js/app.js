@@ -328,6 +328,37 @@ Alpine.data('dropzone', () => ({
     },
 }));
 
+/**
+ * Repeatable invoice line editor. Each row submits as lines[i][field]; the
+ * server recomputes all totals, so the live net here is only a preview.
+ *
+ * @param {{description: string, quantity: number, unit: string, unit_price: string, tax_rate: number}[]} initial
+ */
+Alpine.data('invoiceLines', (initial = []) => ({
+    lines: initial.length
+        ? initial
+        : [{ description: '', quantity: 1, unit: '', unit_price: '', tax_rate: 19 }],
+
+    add() {
+        this.lines.push({ description: '', quantity: 1, unit: '', unit_price: '', tax_rate: 19 });
+    },
+
+    remove(index) {
+        this.lines.splice(index, 1);
+        if (this.lines.length === 0) {
+            this.add();
+        }
+    },
+
+    /** Live net preview (quantity * unit price), for display only. */
+    get net() {
+        return this.lines.reduce(
+            (sum, line) => sum + (parseFloat(line.quantity || 0) * parseFloat(line.unit_price || 0)),
+            0,
+        );
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();
