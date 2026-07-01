@@ -93,9 +93,12 @@ class ProjectController extends Controller
     {
         $this->authorize('view', $project);
 
-        $project->load(['customer', 'tags']);
+        $project->load(['customer', 'tags', 'files' => fn ($query) => $query->with('tags')->latest()]);
 
-        return view('projects.show', ['project' => $project]);
+        return view('projects.show', [
+            'project' => $project,
+            'tagSuggestions' => Tag::orderBy('name')->pluck('name')->all(),
+        ]);
     }
 
     /**

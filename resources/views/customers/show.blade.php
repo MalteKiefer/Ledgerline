@@ -98,6 +98,12 @@
                     :class="tab === 'branches' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
                     Branches ({{ $customer->branches->count() }})
                 </button>
+                <button type="button" role="tab" id="tab-files" aria-controls="panel-files"
+                    :aria-selected="(tab === 'files').toString()" @click="tab = 'files'"
+                    class="border-b-2 px-1 py-3 text-sm font-medium"
+                    :class="tab === 'files' ? 'border-gray-800 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700'">
+                    Files ({{ $customer->files->count() }})
+                </button>
             </nav>
         </div>
 
@@ -205,6 +211,13 @@
                     </ul>
                 @endif
             </div>
+        </section>
+
+        {{-- Files panel --}}
+        <section id="panel-files" role="tabpanel" aria-labelledby="tab-files" x-show="tab === 'files'" x-cloak class="mt-4">
+            <x-file-panel :files="$customer->files"
+                :upload-route="route('customers.files.store', $customer)"
+                :tag-suggestions="$tagSuggestions" />
         </section>
     </div>
 

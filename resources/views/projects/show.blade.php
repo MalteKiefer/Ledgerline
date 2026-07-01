@@ -78,7 +78,16 @@
         </dl>
     </div>
 
-    <div class="mt-4">
+    <section class="mt-8">
+        <h2 class="text-lg font-semibold text-gray-900">Files</h2>
+        <div class="mt-3">
+            <x-file-panel :files="$project->files"
+                :upload-route="route('projects.files.store', $project)"
+                :tag-suggestions="$tagSuggestions" />
+        </div>
+    </section>
+
+    <div class="mt-6">
         <a href="{{ route('customers.show', $project->customer_id) }}"
             class="text-sm text-gray-600 hover:text-gray-900">&larr; Back to customer</a>
     </div>
