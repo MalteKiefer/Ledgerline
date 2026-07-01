@@ -2,7 +2,7 @@
     'customers',
     'name' => 'customer_id',
     'value' => null,
-    'label' => 'Customer',
+    'label' => null,
     'required' => true,
 ])
 
@@ -16,7 +16,7 @@
 
 <div x-data="selectCombobox(@js($options), @js((string) $initial))">
     <label for="{{ $name }}" class="block text-sm font-medium text-gray-700">
-        {{ $label }}@if ($required)<span class="text-red-600"> *</span>@endif
+        {{ $label ?? __('pages.customer.label') }}@if ($required)<span class="text-red-600"> *</span>@endif
     </label>
 
     <input type="hidden" name="{{ $name }}" :value="selected">
@@ -26,7 +26,7 @@
             aria-controls="{{ $name }}-listbox" :aria-expanded="open.toString()"
             x-model="query" @focus="open = true" @input="syncFromQuery()"
             @keydown.escape="open = false" @click="open = true"
-            placeholder="Type to search a customer…"
+            placeholder="{{ __('pages.customer.placeholder') }}"
             @error($name) aria-invalid="true" aria-describedby="{{ $name }}-error" @enderror
             class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
 
@@ -40,7 +40,7 @@
                     x-text="option.label"></li>
             </template>
             <template x-if="filtered.length === 0">
-                <li class="px-3 py-2 text-gray-500">No matching customer.</li>
+                <li class="px-3 py-2 text-gray-500">{{ __('pages.customer.no_match') }}</li>
             </template>
         </ul>
     </div>

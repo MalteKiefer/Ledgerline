@@ -14,7 +14,7 @@
     @endphp
 
     <p class="text-sm text-gray-500">
-        <a href="{{ route('files.index') }}" class="hover:underline">Files</a>
+        <a href="{{ route('files.index') }}" class="hover:underline">{{ __('files.breadcrumb_files') }}</a>
         @if ($attached instanceof \App\Models\Customer)
             <span aria-hidden="true">/</span>
             <a href="{{ route('customers.show', $attached) }}" class="hover:underline">{{ $attached->name }}</a>
@@ -28,13 +28,13 @@
         <h1 class="text-2xl font-semibold text-gray-900">{{ $file->displayTitle }}</h1>
         <div class="flex items-center gap-3">
             <a href="{{ route('files.download', $file) }}"
-                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Download</a>
+                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</a>
             <form method="POST" action="{{ route('files.destroy', $file) }}"
-                onsubmit="return confirm('Delete this file? This cannot be undone.');">
+                onsubmit="return confirm('{{ __('files.delete_file_confirm') }}');">
                 @csrf
                 @method('DELETE')
                 <button type="submit"
-                    class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Delete</button>
+                    class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
             </form>
         </div>
     </div>
@@ -49,22 +49,22 @@
                 @elseif ($file->mime_type === 'application/pdf')
                     <div class="mb-3 flex justify-end">
                         <a href="{{ route('files.download', $file) }}" target="_blank" rel="noopener"
-                            class="text-sm text-gray-600 hover:text-gray-900">Open in new tab ↗</a>
+                            class="text-sm text-gray-600 hover:text-gray-900">{{ __('files.open_in_new_tab') }}</a>
                     </div>
                     {{-- <object> renders the PDF inline; if framing is blocked (e.g. a
                          proxy forcing X-Frame-Options), the fallback link is shown. --}}
                     <object data="{{ route('files.download', $file) }}" type="application/pdf"
                         class="h-[600px] w-full rounded">
                         <p class="py-10 text-center text-sm text-gray-500">
-                            Inline preview is unavailable here.
+                            {{ __('files.inline_preview_unavailable') }}
                             <a href="{{ route('files.download', $file) }}" target="_blank" rel="noopener"
-                                class="text-gray-900 underline">Open the PDF in a new tab</a>.
+                                class="text-gray-900 underline">{{ __('files.open_pdf_new_tab') }}</a>.
                         </p>
                     </object>
                 @else
                     <p class="py-10 text-center text-sm text-gray-500">
-                        No inline preview for this file type.
-                        <a href="{{ route('files.download', $file) }}" class="text-gray-900 underline">Download</a> to view.
+                        {{ __('files.no_inline_preview') }}
+                        <a href="{{ route('files.download', $file) }}" class="text-gray-900 underline">{{ __('files.download') }}</a> {{ __('files.to_view') }}
                     </p>
                 @endif
             </div>
@@ -72,35 +72,35 @@
             <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Original name</dt>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.original_name') }}</dt>
                         <dd class="mt-1 break-all text-sm text-gray-900">{{ $file->name }}</dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Type</dt>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.col_type') }}</dt>
                         <dd class="mt-1 text-sm text-gray-900">{{ $file->type->label() }} · {{ $file->mime_type }}</dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Size</dt>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.size') }}</dt>
                         <dd class="mt-1 text-sm text-gray-900">{{ $formatBytes($file->size) }}</dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Encrypted</dt>
-                        <dd class="mt-1 text-sm text-gray-900">{{ $file->is_encrypted ? 'Yes' : 'No' }}</dd>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.encrypted') }}</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ $file->is_encrypted ? __('files.yes') : __('files.no') }}</dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Uploaded by</dt>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.uploaded_by') }}</dt>
                         <dd class="mt-1 text-sm text-gray-900">{{ $file->uploader?->name ?? '—' }}</dd>
                     </div>
                     <div>
-                        <dt class="text-sm font-medium text-gray-500">Uploaded</dt>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.uploaded') }}</dt>
                         <dd class="mt-1 text-sm text-gray-900">{{ $file->created_at?->format('Y-m-d H:i') }}</dd>
                     </div>
                     <div class="sm:col-span-2">
-                        <dt class="text-sm font-medium text-gray-500">Checksum (SHA-256)</dt>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.checksum') }}</dt>
                         <dd class="mt-1 break-all font-mono text-xs text-gray-600">{{ $file->checksum ?: '—' }}</dd>
                     </div>
                     <div class="sm:col-span-2">
-                        <dt class="text-sm font-medium text-gray-500">Tags</dt>
+                        <dt class="text-sm font-medium text-gray-500">{{ __('files.tags') }}</dt>
                         <dd class="mt-1 text-sm text-gray-900">
                             @forelse ($file->tags as $tag)
                                 <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" class="mr-1" />
@@ -119,40 +119,40 @@
                 class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
                 @csrf
                 @method('PUT')
-                <h2 class="text-sm font-semibold text-gray-900">Details</h2>
+                <h2 class="text-sm font-semibold text-gray-900">{{ __('files.details') }}</h2>
 
                 <div class="mt-4 space-y-4">
                     <div>
-                        <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
+                        <label for="title" class="block text-sm font-medium text-gray-700">{{ __('files.title_label') }}</label>
                         <input type="text" id="title" name="title" value="{{ old('title', $file->title) }}"
                             placeholder="{{ $file->name }}"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                         @error('title')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+                        <label for="description" class="block text-sm font-medium text-gray-700">{{ __('files.description') }}</label>
                         <textarea id="description" name="description" rows="3"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">{{ old('description', $file->description) }}</textarea>
                         @error('description')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="note" class="block text-sm font-medium text-gray-700">Note</label>
+                        <label for="note" class="block text-sm font-medium text-gray-700">{{ __('files.note') }}</label>
                         <textarea id="note" name="note" rows="3"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">{{ old('note', $file->note) }}</textarea>
                         @error('note')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="folder_id" class="block text-sm font-medium text-gray-700">Folder</label>
+                        <label for="folder_id" class="block text-sm font-medium text-gray-700">{{ __('files.folder') }}</label>
                         <select id="folder_id" name="folder_id"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                            <option value="">— None —</option>
+                            <option value="">{{ __('files.folder_none') }}</option>
                             @foreach ($folders as $f)
                                 <option value="{{ $f->id }}" @selected((int) old('folder_id', $file->folder_id) === $f->id)>{{ $f->name }}</option>
                             @endforeach
                         </select>
                     </div>
                     <button type="submit"
-                        class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Save</button>
+                        class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
                 </div>
             </form>
         </div>

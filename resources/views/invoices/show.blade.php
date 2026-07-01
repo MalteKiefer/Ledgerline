@@ -1,12 +1,12 @@
-<x-layouts.app :title="$invoice->number ?? 'Draft invoice'">
+<x-layouts.app :title="$invoice->number ?? __('invoices.show.title_draft')">
     @php $isCredit = $invoice->type->value === 'CREDIT_NOTE'; @endphp
 
-    <p class="text-sm text-gray-500"><a href="{{ route('finance.invoices.index') }}" class="hover:underline">Invoices</a></p>
+    <p class="text-sm text-gray-500"><a href="{{ route('finance.invoices.index') }}" class="hover:underline">{{ __('invoices.show.breadcrumb') }}</a></p>
 
     <div class="mt-1 flex flex-wrap items-start justify-between gap-3">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900">
-                {{ $isCredit ? 'Credit note' : 'Invoice' }} {{ $invoice->number ?? '(draft #'.$invoice->id.')' }}
+                {{ $isCredit ? __('invoices.show.credit_note') : __('invoices.show.invoice') }} {{ $invoice->number ?? __('invoices.show.draft_number', ['id' => $invoice->id]) }}
             </h1>
             <p class="mt-1 text-sm text-gray-500">
                 <span @class([
@@ -18,34 +18,34 @@
                     'bg-gray-200 text-gray-600' => $invoice->status->value === 'CANCELLED',
                 ])>{{ $invoice->status->label() }}</span>
                 @if ($invoice->parent)
-                    · credits <a href="{{ route('finance.invoices.show', $invoice->parent) }}" class="hover:underline">{{ $invoice->parent->number ?? 'draft' }}</a>
+                    · {{ __('invoices.show.credits') }} <a href="{{ route('finance.invoices.show', $invoice->parent) }}" class="hover:underline">{{ $invoice->parent->number ?? __('invoices.show.draft') }}</a>
                 @endif
             </p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
             <a href="{{ route('finance.invoices.pdf', $invoice) }}" target="_blank" rel="noopener"
-                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">PDF ↗</a>
+                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.show.pdf') }}</a>
             @if ($invoice->isDraft())
-                <a href="{{ route('finance.invoices.edit', $invoice) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Edit</a>
-                <form method="POST" action="{{ route('finance.invoices.finalize', $invoice) }}" onsubmit="return confirm('Finalise this invoice? It will be locked and numbered.');">
+                <a href="{{ route('finance.invoices.edit', $invoice) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.show.edit') }}</a>
+                <form method="POST" action="{{ route('finance.invoices.finalize', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_finalise') }}');">
                     @csrf
-                    <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Finalise</button>
+                    <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('invoices.show.finalise') }}</button>
                 </form>
-                <form method="POST" action="{{ route('finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('Delete this draft?');">
+                <form method="POST" action="{{ route('finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_delete_draft') }}');">
                     @csrf @method('DELETE')
-                    <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Delete</button>
+                    <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('invoices.show.delete') }}</button>
                 </form>
             @elseif (! $isCredit && $invoice->status->value !== 'CANCELLED')
-                <form method="POST" action="{{ route('finance.invoices.credit-note', $invoice) }}" onsubmit="return confirm('Create a credit note and cancel this invoice?');">
+                <form method="POST" action="{{ route('finance.invoices.credit-note', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_credit_note') }}');">
                     @csrf
-                    <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Create credit note</button>
+                    <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.show.create_credit_note') }}</button>
                 </form>
             @endif
             @if ($invoice->isImported())
-                <form method="POST" action="{{ route('finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('Delete this imported invoice and its source PDF?');">
+                <form method="POST" action="{{ route('finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_delete_imported') }}');">
                     @csrf @method('DELETE')
-                    <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Delete</button>
+                    <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('invoices.show.delete') }}</button>
                 </form>
             @endif
         </div>
@@ -60,20 +60,20 @@
             {{-- Parties --}}
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div class="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
-                    <p class="text-xs uppercase tracking-wide text-gray-400">From</p>
+                    <p class="text-xs uppercase tracking-wide text-gray-400">{{ __('invoices.show.from') }}</p>
                     <p class="mt-1 font-medium text-gray-900">{{ $company->legal_name }}</p>
                     @if ($company->address_line1)<p class="text-gray-600">{{ $company->address_line1 }}</p>@endif
                     @if ($company->postal_code || $company->city)<p class="text-gray-600">{{ $company->postal_code }} {{ $company->city }}</p>@endif
-                    @if ($company->vat_id)<p class="text-gray-500">VAT: {{ $company->vat_id }}</p>@endif
+                    @if ($company->vat_id)<p class="text-gray-500">{{ __('invoices.show.vat') }}: {{ $company->vat_id }}</p>@endif
                 </div>
                 <div class="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
-                    <p class="text-xs uppercase tracking-wide text-gray-400">To</p>
+                    <p class="text-xs uppercase tracking-wide text-gray-400">{{ __('invoices.show.to') }}</p>
                     <p class="mt-1 font-medium text-gray-900">{{ $invoice->customer?->name ?? '—' }}</p>
                     @if ($invoice->customer?->street)<p class="text-gray-600">{{ $invoice->customer->street }}</p>@endif
                     @if ($invoice->customer && ($invoice->customer->postal_code || $invoice->customer->city))
                         <p class="text-gray-600">{{ $invoice->customer->postal_code }} {{ $invoice->customer->city }}</p>
                     @endif
-                    @if ($invoice->customer?->vat_id)<p class="text-gray-500">VAT: {{ $invoice->customer->vat_id }}</p>@endif
+                    @if ($invoice->customer?->vat_id)<p class="text-gray-500">{{ __('invoices.show.vat') }}: {{ $invoice->customer->vat_id }}</p>@endif
                 </div>
             </div>
 
@@ -82,11 +82,11 @@
                 <table class="min-w-full divide-y divide-gray-200 text-sm">
                     <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                         <tr>
-                            <th class="px-4 py-3">Description</th>
-                            <th class="px-4 py-3 text-right">Qty</th>
-                            <th class="px-4 py-3 text-right">Net price</th>
-                            @if ($company->tax_display !== 'invoice')<th class="px-4 py-3 text-right">VAT</th>@endif
-                            <th class="px-4 py-3 text-right">Net</th>
+                            <th class="px-4 py-3">{{ __('invoices.show.col_description') }}</th>
+                            <th class="px-4 py-3 text-right">{{ __('invoices.show.col_qty') }}</th>
+                            <th class="px-4 py-3 text-right">{{ __('invoices.show.col_net_price') }}</th>
+                            @if ($company->tax_display !== 'invoice')<th class="px-4 py-3 text-right">{{ __('invoices.show.col_vat') }}</th>@endif
+                            <th class="px-4 py-3 text-right">{{ __('invoices.show.col_net') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
@@ -99,7 +99,7 @@
                                 <td class="px-4 py-3 text-right text-gray-900">{{ $line->lineNet()->format() }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="{{ $company->tax_display !== 'invoice' ? 5 : 4 }}" class="px-4 py-6 text-center text-gray-500">No lines.</td></tr>
+                            <tr><td colspan="{{ $company->tax_display !== 'invoice' ? 5 : 4 }}" class="px-4 py-6 text-center text-gray-500">{{ __('invoices.show.no_lines') }}</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -108,8 +108,8 @@
             @if (! $invoice->tax_mode->chargesTax())
                 <p class="text-sm text-gray-600">
                     {{ $invoice->tax_mode->value === 'REVERSE_CHARGE'
-                        ? 'Reverse charge: VAT is to be accounted for by the recipient.'
-                        : 'Small business under §19 UStG — no VAT is charged.' }}
+                        ? __('invoices.show.reverse_charge')
+                        : __('invoices.show.small_business') }}
                 </p>
             @endif
 
@@ -122,54 +122,54 @@
             <div class="rounded-lg border border-gray-200 bg-white p-6 text-sm shadow-sm">
                 <dl class="space-y-2">
                     @if ($invoice->discount_cents > 0)
-                        <div class="flex justify-between"><dt class="text-gray-500">Discount</dt><dd class="text-gray-900">-{{ number_format($invoice->discount_cents / 100, 2) }} {{ $invoice->currency }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{ __('invoices.show.discount') }}</dt><dd class="text-gray-900">-{{ number_format($invoice->discount_cents / 100, 2) }} {{ $invoice->currency }}</dd></div>
                     @endif
-                    <div class="flex justify-between"><dt class="text-gray-500">Net</dt><dd class="text-gray-900">{{ $invoice->net()->format() }}</dd></div>
-                    <div class="flex justify-between"><dt class="text-gray-500">VAT</dt><dd class="text-gray-900">{{ $invoice->tax()->format() }}</dd></div>
-                    <div class="flex justify-between border-t border-gray-100 pt-2 text-base font-semibold"><dt>Gross</dt><dd>{{ $invoice->gross()->format() }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">{{ __('invoices.show.net') }}</dt><dd class="text-gray-900">{{ $invoice->net()->format() }}</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">{{ __('invoices.show.vat') }}</dt><dd class="text-gray-900">{{ $invoice->tax()->format() }}</dd></div>
+                    <div class="flex justify-between border-t border-gray-100 pt-2 text-base font-semibold"><dt>{{ __('invoices.show.gross') }}</dt><dd>{{ $invoice->gross()->format() }}</dd></div>
                     @if ($invoice->paid_cents !== 0)
-                        <div class="flex justify-between"><dt class="text-gray-500">Paid</dt><dd class="text-gray-900">{{ $invoice->paid()->format() }}</dd></div>
-                        <div class="flex justify-between"><dt class="text-gray-500">Outstanding</dt><dd class="font-medium text-gray-900">{{ $invoice->outstanding()->format() }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{ __('invoices.show.paid') }}</dt><dd class="text-gray-900">{{ $invoice->paid()->format() }}</dd></div>
+                        <div class="flex justify-between"><dt class="text-gray-500">{{ __('invoices.show.outstanding') }}</dt><dd class="font-medium text-gray-900">{{ $invoice->outstanding()->format() }}</dd></div>
                     @endif
                 </dl>
-                @if ($invoice->issue_date)<p class="mt-4 text-xs text-gray-400">Issued {{ $invoice->issue_date->format('Y-m-d') }}@if ($invoice->due_date) · due {{ $invoice->due_date->format('Y-m-d') }}@endif</p>@endif
+                @if ($invoice->issue_date)<p class="mt-4 text-xs text-gray-400">{{ __('invoices.show.issued', ['date' => $invoice->issue_date->format('Y-m-d')]) }}@if ($invoice->due_date) · {{ __('invoices.show.due', ['date' => $invoice->due_date->format('Y-m-d')]) }}@endif</p>@endif
             </div>
 
             @if ($invoice->isFinalized() && ! $isCredit && $invoice->status->value !== 'CANCELLED' && $invoice->status->value !== 'PAID')
                 <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-                    <h2 class="text-sm font-semibold text-gray-900">Record payment</h2>
+                    <h2 class="text-sm font-semibold text-gray-900">{{ __('invoices.show.record_payment') }}</h2>
                     <form method="POST" action="{{ route('finance.invoices.payments.store', $invoice) }}" class="mt-3 space-y-3">
                         @csrf
                         <div>
-                            <label for="amount" class="block text-sm font-medium text-gray-700">Amount</label>
+                            <label for="amount" class="block text-sm font-medium text-gray-700">{{ __('invoices.show.amount') }}</label>
                             <input type="number" step="0.01" min="0" id="amount" name="amount" value="{{ number_format($invoice->outstanding()->cents / 100, 2, '.', '') }}"
                                 class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         </div>
                         <div>
-                            <label for="paid_on" class="block text-sm font-medium text-gray-700">Paid on</label>
+                            <label for="paid_on" class="block text-sm font-medium text-gray-700">{{ __('invoices.show.paid_on') }}</label>
                             <input type="date" id="paid_on" name="paid_on" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         </div>
-                        <button type="submit" class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Record</button>
+                        <button type="submit" class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('invoices.show.record') }}</button>
                     </form>
                 </div>
             @endif
 
             @if ($invoice->isFinalized())
                 <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-                    <h2 class="text-sm font-semibold text-gray-900">Email invoice</h2>
-                    <p class="mt-1 text-xs text-gray-500">Sends the Factur-X PDF to the customer.</p>
+                    <h2 class="text-sm font-semibold text-gray-900">{{ __('invoices.show.email_invoice') }}</h2>
+                    <p class="mt-1 text-xs text-gray-500">{{ __('invoices.show.email_hint') }}</p>
                     <form method="POST" action="{{ route('finance.invoices.email', $invoice) }}" class="mt-3 space-y-3">
                         @csrf
-                        <input type="email" name="email" value="{{ $invoice->customer?->email }}" placeholder="recipient@example.com"
+                        <input type="email" name="email" value="{{ $invoice->customer?->email }}" placeholder="{{ __('invoices.show.email_placeholder') }}"
                             class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Send</button>
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.show.send') }}</button>
                     </form>
                 </div>
             @endif
 
             @if ($invoice->files->isNotEmpty())
                 <div class="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
-                    <p class="text-xs uppercase tracking-wide text-gray-400">Source document</p>
+                    <p class="text-xs uppercase tracking-wide text-gray-400">{{ __('invoices.show.source_document') }}</p>
                     @foreach ($invoice->files as $doc)
                         <a href="{{ route('files.show', $doc) }}" class="mt-1 block hover:underline">{{ $doc->displayTitle }}</a>
                     @endforeach
@@ -178,9 +178,9 @@
 
             @if ($invoice->creditNotes->isNotEmpty())
                 <div class="rounded-lg border border-gray-200 bg-white p-4 text-sm shadow-sm">
-                    <p class="text-xs uppercase tracking-wide text-gray-400">Credit notes</p>
+                    <p class="text-xs uppercase tracking-wide text-gray-400">{{ __('invoices.show.credit_notes') }}</p>
                     @foreach ($invoice->creditNotes as $note)
-                        <a href="{{ route('finance.invoices.show', $note) }}" class="mt-1 block hover:underline">{{ $note->number ?? 'Draft #'.$note->id }}</a>
+                        <a href="{{ route('finance.invoices.show', $note) }}" class="mt-1 block hover:underline">{{ $note->number ?? __('invoices.show.draft_hash', ['id' => $note->id]) }}</a>
                     @endforeach
                 </div>
             @endif

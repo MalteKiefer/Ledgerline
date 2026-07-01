@@ -1,8 +1,7 @@
-<x-layouts.app title="Profile">
-    <h1 class="text-2xl font-semibold text-gray-900">Profile</h1>
+<x-layouts.app :title="__('pages.profile.title')">
+    <h1 class="text-2xl font-semibold text-gray-900">{{ __('pages.profile.heading') }}</h1>
     <p class="mt-1 text-sm text-gray-600">
-        Your identity is managed by Pocket-ID. These details are read-only and
-        refresh each time you sign in.
+        {{ __('pages.profile.subtitle') }}
     </p>
 
     <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
@@ -16,11 +15,11 @@
 
         <dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 border-t border-gray-100 pt-6 sm:grid-cols-2">
             <div>
-                <dt class="text-sm font-medium text-gray-500">Name</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('pages.profile.name') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $user->name ?: '—' }}</dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Email</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('pages.profile.email') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
                     @if ($user->email)
                         <a href="mailto:{{ $user->email }}" class="text-gray-900 hover:underline">{{ $user->email }}</a>
@@ -30,23 +29,23 @@
                 </dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Email verified</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('pages.profile.email_verified') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
-                    {{ $user->email_verified_at ? 'Yes, on '.$user->email_verified_at->format('Y-m-d') : 'No' }}
+                    {{ $user->email_verified_at ? __('pages.profile.verified_yes', ['date' => $user->email_verified_at->format('Y-m-d')]) : __('pages.profile.verified_no') }}
                 </dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Pocket-ID subject</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('pages.profile.pocketid_subject') }}</dt>
                 <dd class="mt-1 break-all font-mono text-sm text-gray-900">{{ $user->oidc_sub ?: '—' }}</dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Avatar</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('pages.profile.avatar') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
-                    {{ $user->avatar ? 'Provided by Pocket-ID, stored locally' : 'None' }}
+                    {{ $user->avatar ? __('pages.profile.avatar_provided') : __('pages.profile.avatar_none') }}
                 </dd>
             </div>
             <div>
-                <dt class="text-sm font-medium text-gray-500">Account created</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('pages.profile.account_created') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $user->created_at?->format('Y-m-d H:i') ?: '—' }}</dd>
             </div>
         </dl>

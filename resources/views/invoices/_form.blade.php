@@ -21,9 +21,9 @@
     <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-                <label for="customer_id" class="block text-sm font-medium text-gray-700">Customer<span class="text-red-600"> *</span></label>
+                <label for="customer_id" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.customer') }}<span class="text-red-600"> *</span></label>
                 <select id="customer_id" name="customer_id" required class="{{ $input }}">
-                    <option value="" disabled @selected(! $selCustomer)>Select…</option>
+                    <option value="" disabled @selected(! $selCustomer)>{{ __('invoices.form.select') }}</option>
                     @foreach ($customers as $customer)
                         <option value="{{ $customer->id }}" @selected((int) $selCustomer === $customer->id)>{{ $customer->name }}</option>
                     @endforeach
@@ -32,19 +32,19 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
                 <div>
-                    <label for="issue_date" class="block text-sm font-medium text-gray-700">Issue date<span class="text-red-600"> *</span></label>
+                    <label for="issue_date" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.issue_date') }}<span class="text-red-600"> *</span></label>
                     <input type="date" id="issue_date" name="issue_date" value="{{ old('issue_date', $invoice->issue_date?->format('Y-m-d')) }}" required class="{{ $input }}">
                     @error('issue_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label for="due_date" class="block text-sm font-medium text-gray-700">Due date</label>
+                    <label for="due_date" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.due_date') }}</label>
                     <input type="date" id="due_date" name="due_date" value="{{ old('due_date', $invoice->due_date?->format('Y-m-d')) }}" class="{{ $input }}">
                     @error('due_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>
             <div class="grid grid-cols-3 gap-2">
                 <div>
-                    <label for="language" class="block text-sm font-medium text-gray-700">Language</label>
+                    <label for="language" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.language') }}</label>
                     <select id="language" name="language" class="{{ $input }}">
                         @foreach ($languages as $code => $label)
                             <option value="{{ $code }}" @selected($selLanguage === $code)>{{ strtoupper($code) }}</option>
@@ -52,7 +52,7 @@
                     </select>
                 </div>
                 <div>
-                    <label for="currency" class="block text-sm font-medium text-gray-700">Currency</label>
+                    <label for="currency" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.currency') }}</label>
                     <select id="currency" name="currency" class="{{ $input }}">
                         @foreach ($currencies as $cur)
                             <option value="{{ $cur }}" @selected($selCurrency === $cur)>{{ $cur }}</option>
@@ -60,12 +60,12 @@
                     </select>
                 </div>
                 <div>
-                    <label for="payment_terms_days" class="block text-sm font-medium text-gray-700">Terms (days)</label>
+                    <label for="payment_terms_days" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.terms_days') }}</label>
                     <input type="number" min="0" max="365" id="payment_terms_days" name="payment_terms_days" value="{{ old('payment_terms_days', $invoice->payment_terms_days ?? 14) }}" class="{{ $input }}">
                 </div>
             </div>
             <div>
-                <label for="tax_mode" class="block text-sm font-medium text-gray-700">Tax mode</label>
+                <label for="tax_mode" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.tax_mode') }}</label>
                 <select id="tax_mode" name="tax_mode" class="{{ $input }}">
                     @foreach ($taxModes as $m)
                         <option value="{{ $m['value'] }}" @selected($selTaxMode === $m['value'])>{{ $m['label'] }}</option>
@@ -84,31 +84,31 @@
     {{-- Line editor --}}
     <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm" x-data="invoiceLines(@js($lineRows))">
         <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-900">Lines</h2>
-            <button type="button" @click="add()" class="text-sm text-gray-700 hover:text-gray-900">+ Add line</button>
+            <h2 class="text-sm font-semibold text-gray-900">{{ __('invoices.form.lines') }}</h2>
+            <button type="button" @click="add()" class="text-sm text-gray-700 hover:text-gray-900">{{ __('invoices.form.add_line') }}</button>
         </div>
         <div class="mt-3 space-y-2">
             <template x-for="(line, i) in lines" :key="i">
                 <div class="grid grid-cols-12 gap-2">
-                    <input type="text" :name="`lines[${i}][description]`" x-model="line.description" placeholder="Description"
+                    <input type="text" :name="`lines[${i}][description]`" x-model="line.description" placeholder="{{ __('invoices.form.description') }}"
                         class="col-span-5 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <input type="number" step="0.01" :name="`lines[${i}][quantity]`" x-model="line.quantity" placeholder="Qty"
+                    <input type="number" step="0.01" :name="`lines[${i}][quantity]`" x-model="line.quantity" placeholder="{{ __('invoices.form.qty') }}"
                         class="col-span-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <input type="text" :name="`lines[${i}][unit]`" x-model="line.unit" placeholder="Unit" list="units-list"
+                    <input type="text" :name="`lines[${i}][unit]`" x-model="line.unit" placeholder="{{ __('invoices.form.unit') }}" list="units-list"
                         class="col-span-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <input type="number" step="0.01" :name="`lines[${i}][unit_price]`" x-model="line.unit_price" placeholder="Net price"
+                    <input type="number" step="0.01" :name="`lines[${i}][unit_price]`" x-model="line.unit_price" placeholder="{{ __('invoices.form.net_price') }}"
                         class="col-span-2 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <input type="number" min="0" max="100" :name="`lines[${i}][tax_rate]`" x-model="line.tax_rate" placeholder="VAT%"
+                    <input type="number" min="0" max="100" :name="`lines[${i}][tax_rate]`" x-model="line.tax_rate" placeholder="{{ __('invoices.form.vat_percent') }}"
                         class="col-span-2 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <button type="button" @click="remove(i)" class="col-span-1 text-sm text-red-600 hover:text-red-800">✕</button>
                 </div>
             </template>
         </div>
-        <p class="mt-3 text-right text-sm text-gray-500">Net preview: <span class="font-medium text-gray-900" x-text="net.toFixed(2)"></span></p>
+        <p class="mt-3 text-right text-sm text-gray-500">{{ __('invoices.form.net_preview') }} <span class="font-medium text-gray-900" x-text="net.toFixed(2)"></span></p>
 
         <div class="mt-4 grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 sm:grid-cols-2">
             <div>
-                <label for="discount" class="block text-sm font-medium text-gray-700">Discount (net)</label>
+                <label for="discount" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.discount_net') }}</label>
                 <input type="number" step="0.01" min="0" id="discount" name="discount" value="{{ $discount }}" class="{{ $input }}">
             </div>
         </div>
@@ -116,8 +116,8 @@
 
     @if ($showImports && ($importableTime->isNotEmpty() || $importableExpenses->isNotEmpty()))
         <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 class="text-sm font-semibold text-gray-900">Import unbilled items</h2>
-            <p class="mt-1 text-sm text-gray-600">Selected time and expenses are added as lines and marked billed on finalisation.</p>
+            <h2 class="text-sm font-semibold text-gray-900">{{ __('invoices.form.import_unbilled') }}</h2>
+            <p class="mt-1 text-sm text-gray-600">{{ __('invoices.form.import_hint') }}</p>
             <div class="mt-3 space-y-1 text-sm">
                 @foreach ($importableTime as $t)
                     <label class="flex items-center gap-2">
@@ -138,11 +138,11 @@
     <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-                <label for="intro_text" class="block text-sm font-medium text-gray-700">Intro text</label>
+                <label for="intro_text" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.intro_text') }}</label>
                 <textarea id="intro_text" name="intro_text" rows="3" class="{{ $input }}">{{ old('intro_text', $invoice->intro_text) }}</textarea>
             </div>
             <div>
-                <label for="closing_text" class="block text-sm font-medium text-gray-700">Closing text</label>
+                <label for="closing_text" class="block text-sm font-medium text-gray-700">{{ __('invoices.form.closing_text') }}</label>
                 <textarea id="closing_text" name="closing_text" rows="3" class="{{ $input }}">{{ old('closing_text', $invoice->closing_text) }}</textarea>
             </div>
         </div>

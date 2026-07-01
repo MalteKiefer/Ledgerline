@@ -3,7 +3,7 @@
         <a href="{{ route('customers.show', $contact->customer_id) }}" class="hover:underline">
             {{ $contact->customer->name }}
         </a>
-        <span aria-hidden="true">/</span> Contacts
+        <span aria-hidden="true">/</span> {{ __('contacts.show.breadcrumb') }}
     </p>
 
     <div class="mt-1 flex items-center justify-between">
@@ -11,15 +11,15 @@
         <div class="flex items-center gap-3">
             <a href="{{ route('contacts.edit', $contact) }}"
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                Edit
+                {{ __('contacts.show.edit') }}
             </a>
             <form method="POST" action="{{ route('contacts.destroy', $contact) }}"
-                onsubmit="return confirm('Delete this contact? This cannot be undone.');">
+                onsubmit="return confirm('{{ __('contacts.show.delete_confirm') }}');">
                 @csrf
                 @method('DELETE')
                 <button type="submit"
                     class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                    Delete
+                    {{ __('contacts.show.delete') }}
                 </button>
             </form>
         </div>
@@ -28,12 +28,12 @@
     <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         <dl class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
             <div>
-                <dt class="text-sm font-medium text-gray-500">Function</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('contacts.show.function') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $contact->function->label() }}</dd>
             </div>
 
             <div class="sm:col-span-2">
-                <dt class="text-sm font-medium text-gray-500">Email addresses</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('contacts.show.email_addresses') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
                     @forelse ($contact->emails as $email)
                         <div class="flex items-baseline gap-2">
@@ -47,7 +47,7 @@
             </div>
 
             <div class="sm:col-span-2">
-                <dt class="text-sm font-medium text-gray-500">Phone numbers</dt>
+                <dt class="text-sm font-medium text-gray-500">{{ __('contacts.show.phone_numbers') }}</dt>
                 <dd class="mt-1 text-sm text-gray-900">
                     @forelse ($contact->phones as $phone)
                         <div class="flex items-baseline gap-2">
@@ -64,6 +64,6 @@
 
     <div class="mt-4">
         <a href="{{ route('customers.show', $contact->customer_id) }}"
-            class="text-sm text-gray-600 hover:text-gray-900">&larr; Back to customer</a>
+            class="text-sm text-gray-600 hover:text-gray-900">{{ __('contacts.show.back') }}</a>
     </div>
 </x-layouts.app>

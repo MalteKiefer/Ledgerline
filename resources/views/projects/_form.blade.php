@@ -24,7 +24,7 @@
     @if ($lockedCustomer)
         <input type="hidden" name="customer_id" value="{{ $lockedCustomer->id }}">
         <div>
-            <span class="block text-sm font-medium text-gray-700">Customer</span>
+            <span class="block text-sm font-medium text-gray-700">{{ __('projects.form_customer') }}</span>
             <p class="mt-1 text-sm text-gray-900">{{ $lockedCustomer->name }}</p>
         </div>
     @else
@@ -34,7 +34,7 @@
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div class="sm:col-span-2">
             <label for="name" class="block text-sm font-medium text-gray-700">
-                Name<span class="text-red-600"> *</span>
+                {{ __('projects.form_name') }}<span class="text-red-600"> *</span>
             </label>
             <input type="text" id="name" name="name" value="{{ old('name', $project->name) }}" required
                 @error('name') aria-invalid="true" @enderror class="{{ $input }}">
@@ -42,7 +42,7 @@
         </div>
 
         <div>
-            <label for="reference" class="block text-sm font-medium text-gray-700">Reference</label>
+            <label for="reference" class="block text-sm font-medium text-gray-700">{{ __('projects.form_reference') }}</label>
             <input type="text" id="reference" name="reference" value="{{ old('reference', $project->reference) }}"
                 @error('reference') aria-invalid="true" @enderror class="{{ $input }}">
             @error('reference')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
@@ -50,10 +50,10 @@
 
         <div>
             <label for="type" class="block text-sm font-medium text-gray-700">
-                Type<span class="text-red-600"> *</span>
+                {{ __('projects.form_type') }}<span class="text-red-600"> *</span>
             </label>
             <select id="type" name="type" required @error('type') aria-invalid="true" @enderror class="{{ $input }}">
-                <option value="" disabled @selected($selectedType === null)>Select a type…</option>
+                <option value="" disabled @selected($selectedType === null)>{{ __('projects.form_select_type') }}</option>
                 @foreach ($types as $type)
                     <option value="{{ $type['value'] }}" @selected($selectedType === $type['value'])>{{ $type['label'] }}</option>
                 @endforeach
@@ -63,10 +63,10 @@
 
         <div>
             <label for="status" class="block text-sm font-medium text-gray-700">
-                Status<span class="text-red-600"> *</span>
+                {{ __('projects.form_status') }}<span class="text-red-600"> *</span>
             </label>
             <select id="status" name="status" required @error('status') aria-invalid="true" @enderror class="{{ $input }}">
-                <option value="" disabled @selected($selectedStatus === null)>Select a status…</option>
+                <option value="" disabled @selected($selectedStatus === null)>{{ __('projects.form_select_status') }}</option>
                 @foreach ($statuses as $status)
                     <option value="{{ $status['value'] }}" @selected($selectedStatus === $status['value'])>{{ $status['label'] }}</option>
                 @endforeach
@@ -76,7 +76,7 @@
 
         <div>
             <label for="priority" class="block text-sm font-medium text-gray-700">
-                Priority<span class="text-red-600"> *</span>
+                {{ __('projects.form_priority') }}<span class="text-red-600"> *</span>
             </label>
             <select id="priority" name="priority" required @error('priority') aria-invalid="true" @enderror class="{{ $input }}">
                 @foreach ($priorities as $priority)
@@ -87,7 +87,7 @@
         </div>
 
         <div>
-            <label for="start_date" class="block text-sm font-medium text-gray-700">Start date</label>
+            <label for="start_date" class="block text-sm font-medium text-gray-700">{{ __('projects.form_start_date') }}</label>
             <input type="date" id="start_date" name="start_date"
                 value="{{ old('start_date', $project->start_date?->format('Y-m-d')) }}"
                 @error('start_date') aria-invalid="true" @enderror class="{{ $input }}">
@@ -95,7 +95,7 @@
         </div>
 
         <div>
-            <label for="end_date" class="block text-sm font-medium text-gray-700">End date</label>
+            <label for="end_date" class="block text-sm font-medium text-gray-700">{{ __('projects.form_end_date') }}</label>
             <input type="date" id="end_date" name="end_date"
                 value="{{ old('end_date', $project->end_date?->format('Y-m-d')) }}"
                 @error('end_date') aria-invalid="true" @enderror class="{{ $input }}">
@@ -103,7 +103,7 @@
         </div>
 
         <div>
-            <label for="budget" class="block text-sm font-medium text-gray-700">Budget</label>
+            <label for="budget" class="block text-sm font-medium text-gray-700">{{ __('projects.form_budget') }}</label>
             <input type="number" step="0.01" min="0" id="budget" name="budget"
                 value="{{ old('budget', $project->budget) }}"
                 @error('budget') aria-invalid="true" @enderror class="{{ $input }}">
@@ -111,7 +111,7 @@
         </div>
 
         <div>
-            <label for="estimated_hours" class="block text-sm font-medium text-gray-700">Estimated hours</label>
+            <label for="estimated_hours" class="block text-sm font-medium text-gray-700">{{ __('projects.form_estimated_hours') }}</label>
             <input type="number" step="0.25" min="0" id="estimated_hours" name="estimated_hours"
                 value="{{ old('estimated_hours', $project->estimated_hours) }}"
                 @error('estimated_hours') aria-invalid="true" @enderror class="{{ $input }}">
@@ -119,18 +119,18 @@
         </div>
 
         <div>
-            <label for="default_rate" class="block text-sm font-medium text-gray-700">Default hourly rate</label>
+            <label for="default_rate" class="block text-sm font-medium text-gray-700">{{ __('projects.form_default_rate') }}</label>
             <input type="number" step="0.01" min="0" id="default_rate" name="default_rate"
                 value="{{ old('default_rate', $project->default_rate_cents ? number_format($project->default_rate_cents / 100, 2, '.', '') : '') }}"
                 @error('default_rate_cents') aria-invalid="true" @enderror class="{{ $input }}">
-            <p class="mt-1 text-xs text-gray-400">Overrides the customer rate for time entries.</p>
+            <p class="mt-1 text-xs text-gray-400">{{ __('projects.form_default_rate_help') }}</p>
         </div>
     </div>
 
     <x-tag-input name="tags" :value="$existingTags" :suggestions="$tagSuggestions" />
 
     <div>
-        <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
+        <label for="description" class="block text-sm font-medium text-gray-700">{{ __('projects.form_description') }}</label>
         <textarea id="description" name="description" rows="4"
             @error('description') aria-invalid="true" @enderror class="{{ $input }}">{{ old('description', $project->description) }}</textarea>
         @error('description')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror

@@ -1,4 +1,4 @@
-<x-layouts.app title="Dashboard">
+<x-layouts.app :title="__('pages.dashboard.title')">
     @php
         $formatBytes = static function (int $bytes): string {
             $units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -13,36 +13,36 @@
         };
     @endphp
 
-    <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
-    <p class="mt-1 text-sm text-gray-600">Overview of your ERP records.</p>
+    <h1 class="text-2xl font-semibold text-gray-900">{{ __('pages.dashboard.heading') }}</h1>
+    <p class="mt-1 text-sm text-gray-600">{{ __('pages.dashboard.subtitle') }}</p>
 
     <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <a href="{{ route('customers.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500">Customers</dt>
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.customers') }}</dt>
             <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $stats['customers'] }}</dd>
         </a>
         <a href="{{ route('projects.overview') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500">Projects</dt>
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.projects') }}</dt>
             <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $stats['projects'] }}</dd>
         </a>
         <a href="{{ route('files.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500">Files</dt>
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.files') }}</dt>
             <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $stats['files'] }}</dd>
         </a>
         <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            <dt class="text-sm font-medium text-gray-500">Storage used</dt>
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.storage_used') }}</dt>
             <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $formatBytes($stats['storage']) }}</dd>
         </div>
     </div>
 
     <section class="mt-8">
         <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">Recent files</h2>
-            <a href="{{ route('files.index') }}" class="text-sm text-gray-600 hover:text-gray-900">View all</a>
+            <h2 class="text-lg font-semibold text-gray-900">{{ __('pages.dashboard.recent_files') }}</h2>
+            <a href="{{ route('files.index') }}" class="text-sm text-gray-600 hover:text-gray-900">{{ __('pages.dashboard.view_all') }}</a>
         </div>
         <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
             @if ($recentFiles->isEmpty())
-                <p class="px-4 py-6 text-center text-sm text-gray-500">No files yet.</p>
+                <p class="px-4 py-6 text-center text-sm text-gray-500">{{ __('pages.dashboard.no_files') }}</p>
             @else
                 <ul class="divide-y divide-gray-100 text-sm">
                     @foreach ($recentFiles as $file)

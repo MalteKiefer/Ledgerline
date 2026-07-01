@@ -1,17 +1,17 @@
-<x-layouts.app title="Search">
-    <h1 class="text-2xl font-semibold text-gray-900">Search</h1>
+<x-layouts.app :title="__('pages.search.title')">
+    <h1 class="text-2xl font-semibold text-gray-900">{{ __('pages.search.heading') }}</h1>
 
     <form method="GET" action="{{ route('search') }}" role="search" class="mt-4">
-        <label for="search-input" class="sr-only">Search</label>
+        <label for="search-input" class="sr-only">{{ __('pages.search.heading') }}</label>
         <input type="search" id="search-input" name="q" value="{{ $term }}" autofocus
-            placeholder="Search customers, contacts, branches, projects…"
+            placeholder="{{ __('pages.search.placeholder') }}"
             class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
     </form>
 
     @if ($term === '')
-        <p class="mt-6 text-sm text-gray-500">Type a term above to search across everything.</p>
+        <p class="mt-6 text-sm text-gray-500">{{ __('pages.search.prompt') }}</p>
     @elseif ($total === 0)
-        <p class="mt-6 text-sm text-gray-500">No results for "<span class="font-medium">{{ $term }}</span>".</p>
+        <p class="mt-6 text-sm text-gray-500">{{ __('pages.search.no_results', ['term' => $term]) }}</p>
     @else
         <p class="mt-6 text-sm text-gray-500">
             {{ $total }} {{ Str::plural('result', $total) }} for "<span class="font-medium">{{ $term }}</span>".

@@ -1,0 +1,81 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'common' => [
+        'search' => 'Suchen',
+        'no_results' => 'Keine Ergebnisse.',
+        'see_all_results' => 'Alle Ergebnisse anzeigen',
+        'search_placeholder' => 'Kunden, Kontakte, Filialen, Projekte durchsuchen…',
+    ],
+    'spotlight' => [
+        'search_button_label' => 'Suchen (⌘K)',
+        'placeholder' => 'Kunden, Kontakte, Filialen, Projekte durchsuchen…',
+        'no_results' => 'Keine Ergebnisse.',
+        'see_all_results' => 'Alle Ergebnisse anzeigen',
+    ],
+    'menu' => [
+        'toggle_menu' => 'Menü umschalten',
+    ],
+    'tag_input' => [
+        'label' => 'Schlagwörter',
+        'remove_tag' => 'Schlagwort entfernen',
+        'placeholder' => 'Schlagwort hinzufügen…',
+        'help' => 'Zum Hinzufügen Enter oder Komma drücken. Vorhandene Schlagwörter werden vorgeschlagen.',
+    ],
+    'dropzone' => [
+        'drag_prompt' => 'Datei hierher ziehen oder',
+        'browse' => 'durchsuchen',
+    ],
+    'country' => [
+        'label' => 'Land',
+        'placeholder' => 'Zum Suchen eines Landes tippen…',
+        'no_match' => 'Kein passendes Land.',
+    ],
+    'customer' => [
+        'label' => 'Kunde',
+        'placeholder' => 'Zum Suchen eines Kunden tippen…',
+        'no_match' => 'Kein passender Kunde.',
+    ],
+    'login' => [
+        'title' => 'Anmelden',
+        'heading' => 'Ledgerline',
+        'subtitle' => 'Melden Sie sich mit Ihrem Pocket-ID-Konto an, um fortzufahren.',
+        'continue' => 'Mit Pocket-ID fortfahren',
+    ],
+    'dashboard' => [
+        'title' => 'Übersicht',
+        'heading' => 'Übersicht',
+        'subtitle' => 'Überblick über Ihre ERP-Datensätze.',
+        'customers' => 'Kunden',
+        'projects' => 'Projekte',
+        'files' => 'Dateien',
+        'storage_used' => 'Belegter Speicher',
+        'recent_files' => 'Letzte Dateien',
+        'view_all' => 'Alle anzeigen',
+        'no_files' => 'Noch keine Dateien.',
+    ],
+    'profile' => [
+        'title' => 'Profil',
+        'heading' => 'Profil',
+        'subtitle' => 'Ihre Identität wird von Pocket-ID verwaltet. Diese Angaben sind schreibgeschützt und werden bei jeder Anmeldung aktualisiert.',
+        'name' => 'Name',
+        'email' => 'E-Mail',
+        'email_verified' => 'E-Mail bestätigt',
+        'verified_yes' => 'Ja, am :date',
+        'verified_no' => 'Nein',
+        'pocketid_subject' => 'Pocket-ID-Subjekt',
+        'avatar' => 'Avatar',
+        'avatar_provided' => 'Von Pocket-ID bereitgestellt, lokal gespeichert',
+        'avatar_none' => 'Keiner',
+        'account_created' => 'Konto erstellt',
+    ],
+    'search' => [
+        'title' => 'Suche',
+        'heading' => 'Suche',
+        'placeholder' => 'Kunden, Kontakte, Filialen, Projekte durchsuchen…',
+        'prompt' => 'Geben Sie oben einen Begriff ein, um alles zu durchsuchen.',
+        'no_results' => 'Keine Ergebnisse für „:term".',
+    ],
+];
