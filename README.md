@@ -105,47 +105,22 @@ All sign-in goes through Pocket-ID:
 Register an OIDC client in Pocket-ID with the redirect URI set to
 `<APP_URL>/auth/callback` and copy the client ID/secret into `.env`.
 
-## Teams & data isolation
+## Access model
 
-Data is owned by **teams**, which mirror **Pocket-ID groups**. The application
-requests the `groups` scope at login and, on each sign-in, maps every group to
-a team (key `group:<id>`) and syncs the user's memberships. A user with no
-groups gets a private personal team (`user:<id>`).
-
-Every owned record (customers and their contacts, branches and projects) carries
-a `team_id`. A global Eloquent scope restricts **all** queries — including
-route-model binding, dashboard counts and global search — to the current user's
-teams, so a user can never see or reach another team's data; an out-of-team
-record simply returns 404. Users in multiple teams pick an **active team** (in
-the header) which owns newly created records.
-
-To make this work, configure the Pocket-ID OIDC client to include group
-membership in the `groups` claim.
-
-### Reassigning existing data to a group
-
-The teams migration parks any pre-existing records in a **Default Team**. Since
-a real user is synced to their Pocket-ID group teams on login, that data will
-not be visible until it is moved into the right team. Use the console:
-
-```bash
-php artisan teams:list                              # find team ids/keys + counts
-php artisan teams:reassign default group:engineering --with-members
-```
-
-`teams:reassign` moves all customers, contacts, branches, projects and files
-from the source team to the target (by id or key); `--with-members` also adds
-the source team's members to the target.
+All authenticated users share a single workspace: everyone who can sign in via
+Pocket-ID sees the same customers, projects, files and finance records. There is
+no per-team data isolation. Authentication is handled entirely by Pocket-ID
+(OIDC); the application never stores passwords.
 
 ## File storage
 
-Files can be attached to customers and projects and are listed team-wide under
-**Files** in the menu. They are stored on a private, S3-compatible object store
-(the `files` disk): **MinIO** locally, **Cloudflare R2 / S3** in production.
+Files can be attached to customers and projects and are listed under **Files**
+in the menu. They are stored on a private, S3-compatible object store (the
+`files` disk): **MinIO** locally, **Cloudflare R2 / S3** in production.
 
 - Uploads stream through the app, which detects the file type from its content
   and, for unencrypted text-extractable files, captures searchable text.
-- Downloads always stream through the app behind team authorization; the bucket
+- Downloads always stream through the app behind authentication; the bucket
   is never public and no object ACLs are set (R2 rejects ACLs).
 - Files are tagged and included in global search (by name, type, tags, and
   extracted content when unencrypted).

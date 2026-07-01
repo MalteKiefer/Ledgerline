@@ -10,7 +10,6 @@ use App\Enums\ProjectType;
 use App\Models\Customer;
 use App\Models\Project;
 use App\Models\Tag;
-use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -54,26 +53,6 @@ class ProjectCrudTest extends TestCase
             ->assertDontSee('Unrelated Project');
     }
 
-    public function test_cannot_view_another_teams_project(): void
-    {
-        $this->signIn();
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-        $foreignProject = Project::factory()->for($foreignCustomer)->create();
-
-        $this->get(route('projects.show', $foreignProject))->assertNotFound();
-    }
-
-    public function test_cannot_create_a_project_under_another_teams_customer(): void
-    {
-        $this->signIn();
-        $foreignCustomer = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-
-        $this->post(route('projects.store'), $this->payload($foreignCustomer))
-            ->assertNotFound();
-
-        $this->assertSame(0, Project::withoutGlobalScopes()->where('customer_id', $foreignCustomer->id)->count());
-    }
-
     public function test_global_create_form_renders_with_a_customer_picker(): void
     {
         $this->signIn();
@@ -100,7 +79,6 @@ class ProjectCrudTest extends TestCase
 
         $project = Project::firstWhere('name', 'ERP Rollout');
 
-        $this->assertSame($customer->team_id, $project->team_id);
         $this->assertSame(ProjectType::CONSULTING, $project->type);
         $this->assertEqualsCanonicalizing(['AWS', 'Migration'], $project->tags->pluck('name')->all());
     }

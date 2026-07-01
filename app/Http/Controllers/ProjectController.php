@@ -193,7 +193,7 @@ class ProjectController extends Controller
             ->map(fn (string $name): string => trim($name))
             ->filter()
             ->unique(fn (string $name): string => mb_strtolower($name))
-            ->map(fn (string $name): int => Tag::findOrCreateByName($name, $project->team_id)->id)
+            ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
             ->all();
 
         $project->tags()->sync($ids);

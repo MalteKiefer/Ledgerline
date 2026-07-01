@@ -14,7 +14,7 @@
     @endphp
 
     <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
-    <p class="mt-1 text-sm text-gray-600">Overview of your team's ERP records.</p>
+    <p class="mt-1 text-sm text-gray-600">Overview of your ERP records.</p>
 
     <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <a href="{{ route('customers.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">

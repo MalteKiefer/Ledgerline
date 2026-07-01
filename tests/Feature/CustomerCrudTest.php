@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Customer;
-use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -18,24 +17,14 @@ class CustomerCrudTest extends TestCase
         $this->get(route('customers.index'))->assertRedirect(route('login'));
     }
 
-    public function test_index_lists_only_own_team_customers(): void
+    public function test_index_lists_customers(): void
     {
         $this->signIn();
         Customer::factory()->create(['name' => 'Acme Industries']);
-        Customer::factory()->create(['team_id' => Team::factory()->create()->id, 'name' => 'Other Team Co']);
 
         $this->get(route('customers.index'))
             ->assertOk()
-            ->assertSee('Acme Industries')
-            ->assertDontSee('Other Team Co');
-    }
-
-    public function test_cannot_view_another_teams_customer(): void
-    {
-        $this->signIn();
-        $foreign = Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
-
-        $this->get(route('customers.show', $foreign))->assertNotFound();
+            ->assertSee('Acme Industries');
     }
 
     public function test_create_form_renders(): void
@@ -47,7 +36,7 @@ class CustomerCrudTest extends TestCase
             ->assertSee('New customer');
     }
 
-    public function test_store_creates_a_customer_in_the_active_team(): void
+    public function test_store_creates_a_customer(): void
     {
         $this->signIn();
 
@@ -61,7 +50,6 @@ class CustomerCrudTest extends TestCase
 
         $this->assertNotNull($customer);
         $response->assertRedirect(route('customers.show', $customer));
-        $this->assertSame($this->team->id, $customer->team_id);
     }
 
     public function test_store_requires_a_name(): void
@@ -114,11 +102,10 @@ class CustomerCrudTest extends TestCase
         $this->assertDatabaseMissing('customers', ['id' => $customer->id]);
     }
 
-    public function test_dashboard_counts_only_own_team(): void
+    public function test_dashboard_counts_customers(): void
     {
         $this->signIn();
         Customer::factory()->count(3)->create();
-        Customer::factory()->create(['team_id' => Team::factory()->create()->id]);
 
         $this->get(route('dashboard'))
             ->assertOk()

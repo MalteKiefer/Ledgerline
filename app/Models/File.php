@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\FileType;
-use App\Models\Concerns\BelongsToTeam;
 use Database\Factories\FileFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -19,9 +18,8 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * An uploaded file attached to a customer or a project.
  *
  * The bytes live on the object-storage disk; this record holds only metadata.
- * The file is owned by a team (denormalised team_id) and only visible to its
- * members. team_id and the polymorphic owner are set explicitly by the
- * controller, so they are not mass-assignable.
+ * The polymorphic owner is set explicitly by the controller, so it is not
+ * mass-assignable.
  */
 #[Fillable([
     'name',
@@ -39,7 +37,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class File extends Model
 {
     /** @use HasFactory<FileFactory> */
-    use BelongsToTeam, HasFactory;
+    use HasFactory;
 
     /**
      * @return array<string, string>

@@ -24,15 +24,14 @@ class StoreIncomeEntryRequest extends FormRequest
      */
     public function rules(): array
     {
-        $teams = $this->user()->teamIds()->all();
 
         return [
             'date' => ['required', 'date'],
             'description' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0', 'max:99999999'],
             'currency' => ['required', Rule::in(config('finance.currencies'))],
-            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->whereIn('team_id', $teams)],
-            'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')->whereIn('team_id', $teams)],
+            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')],
+            'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')],
         ];
     }
 }

@@ -49,40 +49,6 @@
                 <dt class="text-sm font-medium text-gray-500">Account created</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ $user->created_at?->format('Y-m-d H:i') ?: '—' }}</dd>
             </div>
-            <div class="sm:col-span-2">
-                <dt class="text-sm font-medium text-gray-500">Teams</dt>
-                <dd class="mt-1 text-sm text-gray-900">
-                    @forelse ($user->teams->sortBy('display_name', SORT_NATURAL | SORT_FLAG_CASE) as $team)
-                        <span class="mr-1 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs">{{ $team->displayName }}</span>
-                    @empty
-                        —
-                    @endforelse
-                </dd>
-            </div>
         </dl>
     </div>
-
-    @php
-        $profileTeams = $user->teams->sortBy('display_name', SORT_NATURAL | SORT_FLAG_CASE)->values();
-    @endphp
-    @if ($profileTeams->count() > 1)
-        <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 class="text-sm font-semibold text-gray-900">Default team</h2>
-            <p class="mt-1 text-sm text-gray-600">The team activated when you sign in.</p>
-            <form method="POST" action="{{ route('default-team.update') }}" class="mt-3 flex items-end gap-3">
-                @csrf
-                <div>
-                    <label for="default-team" class="sr-only">Default team</label>
-                    <select id="default-team" name="team_id"
-                        class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        @foreach ($profileTeams as $team)
-                            <option value="{{ $team->id }}" @selected($team->id === $user->default_team_id)>{{ $team->displayName }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <button type="submit"
-                    class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Save</button>
-            </form>
-        </div>
-    @endif
 </x-layouts.app>

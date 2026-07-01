@@ -218,15 +218,12 @@ class FileController extends Controller
             'is_encrypted' => false,
             'extracted_text' => $extracted,
         ]);
-        // Team-owned records supply their team; global records (e.g. expenses)
-        // inherit the uploader's active team so the file stays visible to them.
-        $file->team_id = $attachable->team_id ?? $uploader->currentTeamId();
         $file->uploaded_by = $uploader->id;
         $file->attachable()->associate($attachable);
         $file->save();
 
         $tagIds = collect($tags)
-            ->map(fn (string $name): int => Tag::findOrCreateByName($name, $file->team_id)->id)
+            ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
             ->all();
         $file->tags()->sync($tagIds);
     }
