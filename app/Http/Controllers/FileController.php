@@ -9,6 +9,7 @@ use App\Http\Requests\StoreFileRequest;
 use App\Http\Requests\StoreTeamFileRequest;
 use App\Http\Requests\UpdateFileRequest;
 use App\Models\Customer;
+use App\Models\Expense;
 use App\Models\File;
 use App\Models\Project;
 use App\Models\Tag;
@@ -55,6 +56,21 @@ class FileController extends Controller
 
         return redirect()
             ->route('projects.show', $project)
+            ->with('status', 'File uploaded.');
+    }
+
+    /**
+     * Store an uploaded file for an expense (a global finance record). The
+     * file inherits the uploader's active team so it stays visible to them.
+     */
+    public function storeForExpense(StoreFileRequest $request, Expense $expense): RedirectResponse
+    {
+        $this->authorize('create', File::class);
+
+        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $expense, $request->user());
+
+        return redirect()
+            ->route('finance.expenses.show', $expense)
             ->with('status', 'File uploaded.');
     }
 
@@ -202,7 +218,9 @@ class FileController extends Controller
             'is_encrypted' => false,
             'extracted_text' => $extracted,
         ]);
-        $file->team_id = $attachable->team_id;
+        // Team-owned records supply their team; global records (e.g. expenses)
+        // inherit the uploader's active team so the file stays visible to them.
+        $file->team_id = $attachable->team_id ?? $uploader->currentTeamId();
         $file->uploaded_by = $uploader->id;
         $file->attachable()->associate($attachable);
         $file->save();
