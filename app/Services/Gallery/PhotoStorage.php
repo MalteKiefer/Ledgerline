@@ -235,7 +235,8 @@ class PhotoStorage
         $tags = $probe['raw']['format']['tags'] ?? [];
 
         if (! $photo->meta_locked) {
-            $created = $tags['creation_time'] ?? null;
+            // Prefer the local-timezone creation date over the UTC creation_time.
+            $created = $tags['com.apple.quicktime.creationdate'] ?? ($tags['creation_time'] ?? null);
             if (is_string($created)) {
                 try {
                     $attributes['taken_at'] = Carbon::parse($created);
