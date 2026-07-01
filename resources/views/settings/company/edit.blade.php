@@ -165,12 +165,15 @@
                 </div>
                 <div>
                     <label for="invoice_number_prefix" class="block text-sm font-medium text-gray-700">{{ __('settings.invoice_number_prefix') }}</label>
-                    <input type="text" id="invoice_number_prefix" name="invoice_number_prefix" value="{{ old('invoice_number_prefix', $company->invoice_number_prefix) }}" class="{{ $input }}">
+                    <input type="text" id="invoice_number_prefix" name="invoice_number_prefix" value="{{ old('invoice_number_prefix', $company->invoice_number_prefix) }}" @readonly($numberingLocked) class="{{ $input }} @if($numberingLocked) bg-gray-100 @endif">
                 </div>
                 <div>
                     <label for="invoice_number_next" class="block text-sm font-medium text-gray-700">{{ __('settings.invoice_number_next') }}</label>
-                    <input type="number" min="1" id="invoice_number_next" name="invoice_number_next" value="{{ old('invoice_number_next', $company->invoice_number_next) }}" class="{{ $input }}">
+                    <input type="number" min="1" id="invoice_number_next" name="invoice_number_next" value="{{ old('invoice_number_next', $company->invoice_number_next) }}" @readonly($numberingLocked) class="{{ $input }} @if($numberingLocked) bg-gray-100 @endif">
                     @error('invoice_number_next')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+                    @if ($numberingLocked)
+                        <p class="mt-1 text-xs text-gray-400">{{ __('settings.numbering_locked') }}</p>
+                    @endif
                 </div>
                 <div class="sm:col-span-2">
                     <label for="invoice_footer_text" class="block text-sm font-medium text-gray-700">{{ __('settings.invoice_footer_text') }}</label>

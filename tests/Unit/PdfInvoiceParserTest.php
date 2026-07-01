@@ -92,4 +92,49 @@ class PdfInvoiceParserTest extends TestCase
         $this->assertCount(2, $r['lines']);
         $this->assertSame(45.0, $r['lines'][0]['unit_price']);
     }
+
+    public function test_it_falls_back_to_the_file_name(): void
+    {
+        $r = $this->parser()->parse('', '20190114_ Kiefer Networks_ Rechnung R-00072 - STN Nürnberg.pdf');
+
+        $this->assertSame('R-00072', $r['number']);
+        $this->assertSame('2019-01-14', $r['issue_date']);
+        $this->assertSame('STN Nürnberg', $r['customer']['name']);
+    }
+
+    public function test_it_detects_small_business(): void
+    {
+        $text = implode("\n", [
+            'Rechnung Nr.: 1',
+            'Rechnungsdatum: 10.04.2014',
+            'Gesamt EUR 146,58',
+            'Gemäß § 19 (1) UStG erheben wir keine Umsatzsteuer.',
+        ]);
+
+        $r = $this->parser()->parse($text);
+
+        $this->assertTrue($r['small_business']);
+        $this->assertSame(0, $r['tax_rate']);
+        $this->assertSame(146.58, $r['net']);
+        $this->assertSame(146.58, $r['gross']);
+    }
+
+    public function test_it_parses_english_and_german_number_formats(): void
+    {
+        // € prefix, dot decimal.
+        $en = $this->parser()->parse("Rechnung #: 2026-001\nRechnungsdatum: 02.02.2026\nZwischensumme: €157.50\nGesamt: €187.43");
+        $this->assertSame('2026-001', $en['number']);
+        $this->assertSame(157.50, $en['net']);
+
+        // German thousands + comma decimal.
+        $de = $this->parser()->parse("Rechnung Nr.: 2026-005\nRechnungsdatum: 12.06.2026\nZwischensumme 900,00 €\nGESAMT 1.071,00 €");
+        $this->assertSame(1071.0, $de['gross']);
+    }
+
+    public function test_a_captured_number_must_contain_a_digit(): void
+    {
+        // "Rechnung Nr. Rechnungsdatum" table header must not be taken as the number.
+        $r = $this->parser()->parse('Rechnung Nr. Rechnungsdatum');
+        $this->assertNull($r['number']);
+    }
 }
