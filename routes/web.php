@@ -67,6 +67,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
     Route::put('/settings/gallery', [SettingsGalleryController::class, 'update'])->name('settings.gallery.update');
     Route::post('/settings/gallery/rescan', [SettingsGalleryController::class, 'rescan'])->name('settings.gallery.rescan');
+    Route::post('/settings/gallery/regenerate', [SettingsGalleryController::class, 'regenerate'])->name('settings.gallery.regenerate');
     Route::get('/settings/units', [SettingsUnitController::class, 'index'])->name('settings.units.index');
     Route::post('/settings/units', [SettingsUnitController::class, 'store'])->name('settings.units.store');
     Route::put('/settings/units/{unit}', [SettingsUnitController::class, 'update'])->name('settings.units.update');

@@ -34,6 +34,7 @@
                             data-size="{{ $fmtBytes($photo->size) }}"
                             data-lat="{{ $photo->latitude }}"
                             data-lng="{{ $photo->longitude }}"
+                            data-place="{{ $photo->place }}"
                             data-favorite="{{ $photo->isFavorite() ? '1' : '0' }}"
                             @click="openViewer($el)"
                             class="block h-full w-full">

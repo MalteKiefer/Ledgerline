@@ -111,8 +111,11 @@
                     <div><dt class="text-gray-500">{{ __('gallery.meta_size') }}</dt><dd class="text-gray-900" x-text="current.size"></dd></div>
                     <div x-show="current.lat && current.lng">
                         <dt class="text-gray-500">{{ __('gallery.meta_location') }}</dt>
-                        <dd class="text-gray-900"><span x-text="`${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}`"></span>
+                        <dd class="text-gray-900">
+                            <span x-show="current.place" x-text="current.place" class="block"></span>
+                            <span x-text="`${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}`" class="text-gray-500"></span>
                             <a :href="`https://www.openstreetmap.org/?mlat=${current.lat}&mlon=${current.lng}#map=14/${current.lat}/${current.lng}`" target="_blank" rel="noopener" class="ml-1 text-gray-500 underline">{{ __('gallery.map') }} ↗</a>
+                            <div x-ref="miniMap" x-show="current.lat && current.lng" class="mt-2 h-40 w-full overflow-hidden rounded-md border border-gray-200"></div>
                         </dd>
                     </div>
                 </dl>
