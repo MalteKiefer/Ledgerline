@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'uuid',
     'name',
+    'status',
     'disk_path',
     'thumb_path',
     'medium_path',
@@ -26,8 +27,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'size',
     'width',
     'height',
+    'latitude',
+    'longitude',
+    'camera',
     'checksum',
     'taken_at',
+    'processed_at',
 ])]
 class Photo extends Model
 {
@@ -41,10 +46,23 @@ class Photo extends Model
     {
         return [
             'taken_at' => 'datetime',
+            'processed_at' => 'datetime',
             'size' => 'integer',
             'width' => 'integer',
             'height' => 'integer',
+            'latitude' => 'float',
+            'longitude' => 'float',
         ];
+    }
+
+    public function isReady(): bool
+    {
+        return $this->status === 'ready';
+    }
+
+    public function hasLocation(): bool
+    {
+        return $this->latitude !== null && $this->longitude !== null;
     }
 
     /**
