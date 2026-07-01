@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'disk_path',
     'thumb_path',
     'medium_path',
+    'motion_path',
     'mime_type',
     'size',
     'width',
@@ -79,6 +80,11 @@ class Photo extends Model
         return $this->media_type === 'video';
     }
 
+    public function hasMotion(): bool
+    {
+        return $this->motion_path !== null;
+    }
+
     public function hasLocation(): bool
     {
         return $this->latitude !== null && $this->longitude !== null;
@@ -104,6 +110,6 @@ class Photo extends Model
      */
     public function allPaths(): array
     {
-        return array_values(array_filter([$this->disk_path, $this->thumb_path, $this->medium_path]));
+        return array_values(array_filter([$this->disk_path, $this->thumb_path, $this->medium_path, $this->motion_path]));
     }
 }

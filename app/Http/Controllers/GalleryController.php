@@ -295,6 +295,31 @@ class GalleryController extends Controller
     }
 
     /**
+     * Stream a motion photo's embedded clip for inline playback, using the same
+     * signed-URL / range-capable local file strategy as video().
+     */
+    public function motion(Photo $photo): Response
+    {
+        abort_unless($photo->hasMotion(), 404);
+
+        $disk = Storage::disk(config('files.disk'));
+        abort_unless($disk->exists($photo->motion_path), 404);
+
+        try {
+            return redirect()->away($disk->temporaryUrl($photo->motion_path, now()->addMinutes(30), [
+                'ResponseContentType' => 'video/mp4',
+                'ResponseContentDisposition' => 'inline',
+            ]));
+        } catch (Throwable) {
+            return response()->file($disk->path($photo->motion_path), [
+                'Content-Type' => 'video/mp4',
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=86400',
+            ]);
+        }
+    }
+
+    /**
      * Soft-delete a selection of photos (move to trash).
      */
     public function destroy(Request $request): RedirectResponse

@@ -430,6 +430,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
     list: [],
     index: 0,
     editing: false,
+    motionPlaying: false,
     miniMap: null,
     mapZoom,
 
@@ -509,6 +510,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
         const d = this.list[this.index]?.dataset;
         this.current = d ? { ...d } : {};
         this.editing = false;
+        this.motionPlaying = false;
         this.$nextTick(() => this.renderMiniMap());
     },
 
