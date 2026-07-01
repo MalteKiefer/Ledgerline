@@ -122,6 +122,21 @@ the header) which owns newly created records.
 To make this work, configure the Pocket-ID OIDC client to include group
 membership in the `groups` claim.
 
+### Reassigning existing data to a group
+
+The teams migration parks any pre-existing records in a **Default Team**. Since
+a real user is synced to their Pocket-ID group teams on login, that data will
+not be visible until it is moved into the right team. Use the console:
+
+```bash
+php artisan teams:list                              # find team ids/keys + counts
+php artisan teams:reassign default group:engineering --with-members
+```
+
+`teams:reassign` moves all customers, contacts, branches, projects and files
+from the source team to the target (by id or key); `--with-members` also adds
+the source team's members to the target.
+
 ## File storage
 
 Files can be attached to customers and projects and are listed team-wide under

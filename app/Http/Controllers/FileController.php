@@ -6,12 +6,15 @@ namespace App\Http\Controllers;
 
 use App\Enums\FileType;
 use App\Http\Requests\StoreFileRequest;
+use App\Http\Requests\StoreTeamFileRequest;
 use App\Models\Customer;
 use App\Models\File;
 use App\Models\Project;
 use App\Models\Tag;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -32,7 +35,7 @@ class FileController extends Controller
     {
         $this->authorize('create', File::class);
 
-        $this->persist($request, $customer);
+        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $customer, $request->user());
 
         return redirect()
             ->route('customers.show', $customer)
@@ -46,10 +49,32 @@ class FileController extends Controller
     {
         $this->authorize('create', File::class);
 
-        $this->persist($request, $project);
+        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $project, $request->user());
 
         return redirect()
             ->route('projects.show', $project)
+            ->with('status', 'File uploaded.');
+    }
+
+    /**
+     * Store a file uploaded from the team-wide overview, assigning it to the
+     * chosen customer or project (which must belong to the user's team).
+     */
+    public function store(StoreTeamFileRequest $request): RedirectResponse
+    {
+        $this->authorize('create', File::class);
+
+        [$type, $id] = explode(':', $request->validated()['attachable'], 2);
+
+        // findOrFail is team-scoped, so a target outside the user's team 404s.
+        $attachable = $type === 'customer'
+            ? Customer::findOrFail($id)
+            : Project::findOrFail($id);
+
+        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $attachable, $request->user());
+
+        return redirect()
+            ->route('files.index')
             ->with('status', 'File uploaded.');
     }
 
@@ -108,10 +133,11 @@ class FileController extends Controller
 
     /**
      * Persist an uploaded file against its owning record.
+     *
+     * @param  list<string>  $tags
      */
-    private function persist(StoreFileRequest $request, Model $attachable): void
+    private function persist(UploadedFile $upload, array $tags, Model $attachable, User $uploader): void
     {
-        $upload = $request->file('file');
         $mime = $upload->getMimeType() ?: ($upload->getClientMimeType() ?: 'application/octet-stream');
         $type = FileType::fromMime($mime);
 
@@ -136,11 +162,11 @@ class FileController extends Controller
             'extracted_text' => $extracted,
         ]);
         $file->team_id = $attachable->team_id;
-        $file->uploaded_by = $request->user()->id;
+        $file->uploaded_by = $uploader->id;
         $file->attachable()->associate($attachable);
         $file->save();
 
-        $tagIds = collect($request->validated()['tags'] ?? [])
+        $tagIds = collect($tags)
             ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
             ->all();
         $file->tags()->sync($tagIds);
