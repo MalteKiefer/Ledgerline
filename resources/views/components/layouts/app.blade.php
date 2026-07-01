@@ -78,6 +78,20 @@
                                 class="absolute right-0 z-40 mt-2 w-48 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg">
                                 <a href="{{ route('profile') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Profile</a>
                                 <a href="{{ route('settings') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Settings</a>
+                                <div class="flex gap-1 border-t border-gray-100 px-4 py-2">
+                                    @foreach (config('finance.languages') as $code => $label)
+                                        <form method="POST" action="{{ route('locale.update') }}">
+                                            @csrf
+                                            <input type="hidden" name="locale" value="{{ $code }}">
+                                            <button type="submit"
+                                                @class([
+                                                    'rounded px-2 py-1 text-xs font-medium',
+                                                    'bg-gray-800 text-white' => app()->getLocale() === $code,
+                                                    'text-gray-600 hover:bg-gray-100' => app()->getLocale() !== $code,
+                                                ])>{{ strtoupper($code) }}</button>
+                                        </form>
+                                    @endforeach
+                                </div>
                                 <form method="POST" action="{{ route('logout') }}">
                                     @csrf
                                     <button type="submit" class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">

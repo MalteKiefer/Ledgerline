@@ -14,6 +14,7 @@ use App\Http\Controllers\FileOverviewController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\FolderController;
 use App\Http\Controllers\IncomeEntryController;
+use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\Invoice\CreditNoteController;
 use App\Http\Controllers\Invoice\FinalizeController;
 use App\Http\Controllers\Invoice\ImportController as InvoiceImportController;
@@ -48,6 +49,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::get('/search', [SearchController::class, 'index'])->name('search');
     Route::get('/search/suggest', [SearchController::class, 'suggest'])->name('search.suggest');
+    Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
 

@@ -28,6 +28,21 @@ return [
     |
     */
 
-    'currencies' => ['EUR', 'USD', 'GBP', 'CHF'],
+    'currencies' => [
+        'EUR', 'USD', 'GBP', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF',
+        'RON', 'BGN', 'ISK', 'TRY', 'CAD', 'AUD', 'NZD', 'JPY', 'CNY', 'HKD',
+        'SGD', 'INR', 'AED', 'SAR', 'ZAR', 'BRL', 'MXN',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Paper sizes
+    |--------------------------------------------------------------------------
+    |
+    | Page sizes offered for the invoice PDF.
+    |
+    */
+
+    'paper_sizes' => ['A4', 'A5', 'Letter', 'Legal'],
 
 ];
