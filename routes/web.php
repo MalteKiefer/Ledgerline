@@ -13,6 +13,7 @@ use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
 use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\FolderController;
+use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\IncomeEntryController;
 use App\Http\Controllers\Invoice\CreditNoteController;
 use App\Http\Controllers\Invoice\FinalizeController;
@@ -107,6 +108,16 @@ Route::middleware('auth')->group(function (): void {
         Route::post('invoices/{invoice}/payments', [PaymentController::class, 'store'])->name('invoices.payments.store');
         Route::post('invoices/{invoice}/credit-note', [CreditNoteController::class, 'store'])->name('invoices.credit-note');
     });
+
+    // Gallery: a photo timeline with drag-and-drop upload and a trash.
+    Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery.index');
+    Route::post('/gallery', [GalleryController::class, 'store'])->name('gallery.store');
+    Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
+    Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
+    Route::post('/gallery/{photo}/restore', [GalleryController::class, 'restore'])->name('gallery.restore');
+    Route::delete('/gallery/{photo}/force', [GalleryController::class, 'forceDestroy'])->name('gallery.force-destroy');
+    Route::get('/gallery/{photo}/{size}', [GalleryController::class, 'image'])
+        ->whereIn('size', ['thumb', 'medium', 'original'])->name('gallery.image');
 
     // Files: attached to a customer or project; a team-wide overview; download
     // and delete by id.

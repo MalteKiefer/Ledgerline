@@ -397,6 +397,89 @@ Alpine.data('filesExplorer', (allIds = []) => ({
     },
 }));
 
+/**
+ * Gallery uploader: accepts dropped/selected images and uploads them one at a
+ * time via XMLHttpRequest, exposing a per-file progress list (Immich-style).
+ * Reloads the page when the batch finishes so the timeline shows the new photos.
+ *
+ * @param {string} url    The gallery store endpoint.
+ * @param {string} token  CSRF token.
+ */
+Alpine.data('gallery', (url, token) => ({
+    dragging: false,
+    queue: [],
+    selected: [],
+    busy: false,
+
+    pick(event) {
+        this.enqueue(event.target.files);
+        event.target.value = '';
+    },
+
+    drop(event) {
+        this.dragging = false;
+        this.enqueue(event.dataTransfer.files);
+    },
+
+    enqueue(fileList) {
+        for (const file of fileList) {
+            if (file.type.startsWith('image/')) {
+                this.queue.push({ name: file.name, progress: 0, done: false, error: false, file });
+            }
+        }
+        if (!this.busy) {
+            this.processNext();
+        }
+    },
+
+    processNext() {
+        const item = this.queue.find((entry) => !entry.done && !entry.error);
+        if (!item) {
+            this.busy = false;
+            if (this.queue.length) {
+                window.location.reload();
+            }
+            return;
+        }
+
+        this.busy = true;
+        const data = new FormData();
+        data.append('photo', item.file);
+        data.append('_token', token);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                item.progress = Math.round((e.loaded / e.total) * 100);
+            }
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                item.progress = 100;
+                item.done = true;
+            } else {
+                item.error = true;
+            }
+            this.processNext();
+        };
+        xhr.onerror = () => {
+            item.error = true;
+            this.processNext();
+        };
+        xhr.send(data);
+    },
+
+    toggleAll(event) {
+        this.selected = event.target.checked ? [...this.allIds()] : [];
+    },
+
+    allIds() {
+        return [...document.querySelectorAll('[data-photo-id]')].map((el) => Number(el.dataset.photoId));
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();

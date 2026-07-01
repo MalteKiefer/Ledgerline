@@ -9,6 +9,7 @@ return [
         'projects' => 'Projekte',
         'files' => 'Dateien',
         'finance' => 'Finanzen',
+        'gallery' => 'Galerie',
     ],
     'menu' => [
         'profile' => 'Profil',

@@ -1,0 +1,124 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers;
+
+use App\Models\Photo;
+use App\Services\Gallery\PhotoStorage;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+/**
+ * The photo gallery: a timeline grouped by capture day, drag-and-drop upload
+ * (one photo per request, with progress), thumbnails, a lightbox, and a trash.
+ */
+class GalleryController extends Controller
+{
+    public function index(Request $request): View
+    {
+        // Group non-trashed photos by capture day, newest first. Paginate by
+        // photo, then group the current page for the day headers.
+        $photos = Photo::query()->orderByDesc('taken_at')->orderByDesc('id')->paginate(60);
+
+        $grouped = $photos->getCollection()->groupBy(fn (Photo $p): string => $p->taken_at->format('Y-m-d'));
+
+        return view('gallery.index', [
+            'photos' => $photos,
+            'grouped' => $grouped,
+        ]);
+    }
+
+    /**
+     * Store one uploaded photo (called per file by the uploader). Returns JSON
+     * so the client can update its progress list.
+     */
+    public function store(Request $request, PhotoStorage $storage): JsonResponse
+    {
+        $request->validate([
+            'photo' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,gif', 'max:51200'],
+        ]);
+
+        $upload = $request->file('photo');
+        $data = $storage->store($upload);
+
+        $photo = new Photo($data);
+        $photo->name = $upload->getClientOriginalName();
+        $photo->uploaded_by = $request->user()->id;
+        $photo->save();
+
+        return response()->json([
+            'id' => $photo->id,
+            'name' => $photo->name,
+            'thumb' => route('gallery.image', ['photo' => $photo, 'size' => 'thumb']),
+        ], 201);
+    }
+
+    /**
+     * Stream a photo rendition (thumb, medium or original) inline.
+     */
+    public function image(Request $request, Photo $photo, string $size): StreamedResponse
+    {
+        $path = match ($size) {
+            'thumb' => $photo->thumb_path,
+            'medium' => $photo->medium_path,
+            default => $photo->disk_path,
+        };
+
+        $disk = Storage::disk(config('files.disk'));
+        abort_unless($disk->exists($path), 404);
+
+        return $disk->response($path, $photo->name, [
+            'Content-Type' => $size === 'original' ? $photo->mime_type : 'image/jpeg',
+            'X-Content-Type-Options' => 'nosniff',
+            'X-Frame-Options' => 'SAMEORIGIN',
+            'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
+            'Cache-Control' => 'private, max-age=86400',
+        ], $size === 'original' ? 'attachment' : 'inline');
+    }
+
+    /**
+     * Soft-delete a selection of photos (move to trash).
+     */
+    public function destroy(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'photo_ids' => ['required', 'array'],
+            'photo_ids.*' => ['integer'],
+        ]);
+
+        $count = Photo::query()->whereIn('id', $validated['photo_ids'])->get()->each->delete()->count();
+
+        return back()->with('status', __('flash.photos_trashed', ['count' => $count]));
+    }
+
+    public function trash(): View
+    {
+        return view('gallery.trash', [
+            'photos' => Photo::onlyTrashed()->orderByDesc('deleted_at')->paginate(60),
+        ]);
+    }
+
+    public function restore(int $photo): RedirectResponse
+    {
+        Photo::onlyTrashed()->findOrFail($photo)->restore();
+
+        return back()->with('status', __('flash.photo_restored'));
+    }
+
+    /**
+     * Permanently delete a trashed photo and all its object-storage renditions.
+     */
+    public function forceDestroy(int $photo): RedirectResponse
+    {
+        $model = Photo::onlyTrashed()->findOrFail($photo);
+        Storage::disk(config('files.disk'))->delete($model->allPaths());
+        $model->forceDelete();
+
+        return back()->with('status', __('flash.photo_deleted'));
+    }
+}
