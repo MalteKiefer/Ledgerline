@@ -6,7 +6,7 @@
         </div>
     </div>
 
-    <div x-data="photoMap('{{ route('gallery.points') }}')" class="mt-4">
+    <div x-data="photoMap('{{ route('gallery.points') }}', {{ (int) $mapZoom }})" class="mt-4">
         <div x-ref="map" class="h-[70vh] w-full overflow-hidden rounded-lg border border-gray-200 shadow-sm"></div>
 
         <template x-teleport="body">
