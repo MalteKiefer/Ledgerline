@@ -34,6 +34,8 @@ class ReverseGeocoder
 
         return Cache::remember($key, now()->addDays(30), function () use ($lat, $lon): array {
             try {
+                $this->throttle();
+
                 $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
                     ->timeout(5)
                     ->get(self::HOST, [
@@ -56,5 +58,37 @@ class ReverseGeocoder
                 return ['display' => null, 'address' => []];
             }
         });
+    }
+
+    /**
+     * Space requests across all workers so Nominatim's one-per-second policy is
+     * respected during bulk imports. A short lock serialises workers; the stored
+     * timestamp enforces the interval.
+     */
+    private function throttle(): void
+    {
+        $interval = (int) config('gallery.geocode_interval_ms', 1100);
+        if ($interval <= 0) {
+            return;
+        }
+
+        $lock = Cache::lock('geocode:nominatim:lock', 15);
+
+        try {
+            $lock->block(30);
+
+            $last = (float) Cache::get('geocode:nominatim:last', 0.0);
+            $waitMs = $interval - (int) ((microtime(true) - $last) * 1000);
+            if ($waitMs > 0 && $waitMs <= $interval) {
+                usleep($waitMs * 1000);
+            }
+
+            Cache::put('geocode:nominatim:last', microtime(true), now()->addMinutes(5));
+        } catch (Throwable) {
+            // Could not acquire the lock in time; proceed without spacing rather
+            // than fail the whole metadata read.
+        } finally {
+            optional($lock)->release();
+        }
     }
 }
