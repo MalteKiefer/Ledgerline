@@ -65,6 +65,7 @@ return [
     'map_zoom_hint' => 'Zoom (1–19) für die Kartenelemente, z. B. die Detail-Minikarte.',
     'job_scope_all' => 'Alle Elemente (:count)',
     'job_scope_hint' => 'Für die ganze Bibliothek ausführen oder nur die neuesten Elemente?',
+    'job_scope_missing' => 'Nur wo es fehlt (z. B. Thumbnails, Metadaten)',
     'job_scope_recent' => 'Nur die neuesten',
     'job_scope_run' => 'Ausführen',
     'maintenance_heading' => 'Wartung',

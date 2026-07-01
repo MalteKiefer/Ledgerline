@@ -65,6 +65,7 @@ return [
     'map_zoom_hint' => 'Zoom (1–19) for the map elements, e.g. the detail mini-map.',
     'job_scope_all' => 'All items (:count)',
     'job_scope_hint' => 'Run for the whole library or only the newest items?',
+    'job_scope_missing' => 'Only where it is missing (e.g. thumbnails, metadata)',
     'job_scope_recent' => 'Only the newest',
     'job_scope_run' => 'Run',
     'maintenance_heading' => 'Maintenance',
