@@ -384,6 +384,9 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     dragging: false,
     uploading: false,
     progress: { done: 0, total: 0 },
+    conflictOpen: false,
+    conflictCount: 0,
+    pendingFiles: [],
 
     initDropzone() {
         let depth = 0;
@@ -409,9 +412,41 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
             files = [...event.dataTransfer.files].map((f) => ({ file: f, path: f.name }));
         }
 
-        if (files.length) {
-            await this.uploadFiles(files);
+        await this.startUpload(files);
+    },
+
+    // Check for same-name clashes first; ask how to handle them if any.
+    async startUpload(files) {
+        if (! files.length) {
+            return;
         }
+        let conflicts = [];
+        try {
+            const data = new FormData();
+            data.append('_token', config.token);
+            if (config.folderId) data.append('folder_id', config.folderId);
+            if (config.customerId) data.append('customer_id', config.customerId);
+            if (config.projectId) data.append('project_id', config.projectId);
+            files.forEach((item) => data.append('paths[]', item.path));
+            const r = await fetch(config.conflictsUrl, { method: 'POST', headers: { Accept: 'application/json' }, body: data });
+            if (r.ok) conflicts = (await r.json()).conflicts || [];
+        } catch (e) { /* if the check fails, fall through and upload */ }
+
+        if (conflicts.length) {
+            this.pendingFiles = files;
+            this.conflictCount = conflicts.length;
+            this.conflictOpen = true;
+            return;
+        }
+
+        await this.uploadFiles(files, 'rename');
+    },
+
+    resolveConflict(strategy) {
+        this.conflictOpen = false;
+        const files = this.pendingFiles;
+        this.pendingFiles = [];
+        this.uploadFiles(files, strategy);
     },
 
     walkEntry(entry, prefix, out) {
@@ -432,7 +467,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
         });
     },
 
-    async uploadFiles(files) {
+    async uploadFiles(files, strategy = 'rename') {
         this.uploading = true;
         this.progress = { done: 0, total: files.length };
 
@@ -442,6 +477,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
             const chunk = files.slice(i, i + chunkSize);
             const data = new FormData();
             data.append('_token', config.token);
+            data.append('on_conflict', strategy);
             if (config.folderId) data.append('folder_id', config.folderId);
             if (config.customerId) data.append('customer_id', config.customerId);
             if (config.projectId) data.append('project_id', config.projectId);

@@ -19,7 +19,9 @@ use App\Models\User;
 use App\Services\Files\ImageExif;
 use App\Services\Files\ReverseGeocoder;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -98,8 +100,10 @@ class FileController extends Controller
             'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')],
             'tags' => ['array'],
             'tags.*' => ['string', 'max:50'],
+            'on_conflict' => ['nullable', 'in:overwrite,rename,skip'],
         ]);
 
+        $strategy = $validated['on_conflict'] ?? 'rename';
         $folderId = $validated['folder_id'] ?? null;
 
         // When uploading inside a customer/project filter, attach to that record.
@@ -112,11 +116,21 @@ class FileController extends Controller
         $paths = $validated['paths'] ?? [];
         $folderCache = [];
 
+        $stored = 0;
+
         foreach ($validated['files'] as $i => $upload) {
             // A dropped folder passes a relative path like "Trip/Day1/img.jpg";
             // recreate that folder chain under the current folder.
             $target = $this->folderForPath($folderId, $paths[$i] ?? null, $folderCache);
-            $this->persist($upload, $validated['tags'] ?? [], $attachable, $request->user(), $target);
+
+            // Resolve a same-name clash per the chosen strategy.
+            $name = $this->resolveConflict($upload->getClientOriginalName(), $target, $attachable, $strategy);
+            if ($name === null) {
+                continue; // skipped
+            }
+
+            $this->persist($upload, $validated['tags'] ?? [], $attachable, $request->user(), $target, $name);
+            $stored++;
         }
 
         return redirect()
@@ -125,7 +139,121 @@ class FileController extends Controller
                 'customer' => $validated['customer_id'] ?? null,
                 'project' => $validated['project_id'] ?? null,
             ]))
-            ->with('status', __('flash.files_uploaded', ['count' => count($validated['files'])]));
+            ->with('status', __('flash.files_uploaded', ['count' => $stored]));
+    }
+
+    /**
+     * Report which of the given relative paths already exist, so the uploader
+     * can ask how to handle same-name files before sending them.
+     */
+    public function conflicts(Request $request): JsonResponse
+    {
+        $this->authorize('create', File::class);
+
+        $validated = $request->validate([
+            'paths' => ['required', 'array'],
+            'paths.*' => ['string', 'max:1024'],
+            'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
+            'customer_id' => ['nullable', 'integer'],
+            'project_id' => ['nullable', 'integer'],
+        ]);
+
+        $attachable = match (true) {
+            filled($validated['customer_id'] ?? null) => Customer::find($validated['customer_id']),
+            filled($validated['project_id'] ?? null) => Project::find($validated['project_id']),
+            default => null,
+        };
+
+        $conflicts = [];
+        foreach ($validated['paths'] as $path) {
+            $folderId = $this->existingFolderForPath($validated['folder_id'] ?? null, $path);
+            if ($folderId === false) {
+                continue; // folder chain does not exist yet → no clash
+            }
+
+            if ($this->fileQuery(basename($path), $folderId, $attachable)->exists()) {
+                $conflicts[] = $path;
+            }
+        }
+
+        return response()->json(['conflicts' => $conflicts]);
+    }
+
+    /**
+     * Apply the conflict strategy for a target name. Returns the name to store
+     * (possibly renamed), or null to skip. Overwrite removes the existing file.
+     */
+    private function resolveConflict(string $name, ?int $folderId, ?Model $attachable, string $strategy): ?string
+    {
+        $existing = $this->fileQuery($name, $folderId, $attachable)->first();
+        if ($existing === null) {
+            return $name;
+        }
+
+        if ($strategy === 'skip') {
+            return null;
+        }
+
+        if ($strategy === 'overwrite') {
+            Storage::disk(config('files.disk'))->delete($existing->disk_path);
+            $existing->delete();
+
+            return $name;
+        }
+
+        // Rename: append a counter until the name is free.
+        $ext = pathinfo($name, PATHINFO_EXTENSION);
+        $base = pathinfo($name, PATHINFO_FILENAME);
+        $suffix = $ext !== '' ? '.'.$ext : '';
+        $i = 1;
+        $candidate = $name;
+        while ($this->fileQuery($candidate, $folderId, $attachable)->exists()) {
+            $i++;
+            $candidate = $base.'_'.$i.$suffix;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * A query for a file of the given name in a folder and ownership context.
+     *
+     * @return Builder<File>
+     */
+    private function fileQuery(string $name, ?int $folderId, ?Model $attachable): Builder
+    {
+        $query = File::query()->where('name', $name)->where('folder_id', $folderId);
+
+        return $attachable !== null
+            ? $query->where('attachable_type', $attachable->getMorphClass())->where('attachable_id', $attachable->getKey())
+            : $query->whereNull('attachable_type');
+    }
+
+    /**
+     * The id of the existing folder for a relative path without creating any,
+     * or false when the chain does not fully exist.
+     */
+    private function existingFolderForPath(?int $baseId, string $relativePath): int|false|null
+    {
+        $dir = trim(str_replace('\\', '/', dirname($relativePath)), '/');
+        if ($dir === '' || $dir === '.') {
+            return $baseId;
+        }
+
+        $parent = $baseId;
+        foreach (explode('/', $dir) as $segment) {
+            $segment = trim($segment);
+            if ($segment === '') {
+                continue;
+            }
+            $folder = Folder::query()->where('name', $segment)->where('parent_id', $parent)->first();
+            if ($folder === null) {
+                return false;
+            }
+            $parent = $folder->id;
+        }
+
+        return $parent;
     }
 
     /**
@@ -388,7 +516,7 @@ class FileController extends Controller
      *
      * @param  list<string>  $tags
      */
-    private function persist(UploadedFile $upload, array $tags, ?Model $attachable, User $uploader, ?int $folderId = null): void
+    private function persist(UploadedFile $upload, array $tags, ?Model $attachable, User $uploader, ?int $folderId = null, ?string $name = null): void
     {
         $mime = $upload->getMimeType() ?: ($upload->getClientMimeType() ?: 'application/octet-stream');
         $type = FileType::fromMime($mime);
@@ -404,7 +532,7 @@ class FileController extends Controller
         $path = Storage::disk(config('files.disk'))->putFile('files', $upload);
 
         $file = new File([
-            'name' => $upload->getClientOriginalName(),
+            'name' => $name ?? $upload->getClientOriginalName(),
             'disk_path' => $path,
             'mime_type' => $mime,
             'type' => $type,
