@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Jobs\ProcessPhoto;
 use App\Models\Photo;
 use App\Services\Gallery\PhotoStorage;
+use App\Services\Gallery\VideoProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -79,6 +80,38 @@ class PhotoEditTest extends TestCase
         $this->assertSame('2020-01-01 00:00', $photo->taken_at->format('Y-m-d H:i'));
         $this->assertSame(10.0, $photo->latitude);
         $this->assertSame('ready', $photo->status);
+    }
+
+    public function test_video_metadata_pulls_gps_and_reverse_geocodes(): void
+    {
+        Storage::fake('files');
+        Http::fake(['nominatim.openstreetmap.org/*' => Http::response(['display_name' => 'San Francisco, CA'])]);
+        $this->signIn();
+
+        $this->app->instance(VideoProcessor::class, new class extends VideoProcessor
+        {
+            public function __construct() {}
+
+            public function probe(string $localPath): array
+            {
+                return ['width' => 1920, 'height' => 1080, 'duration' => 10, 'raw' => ['format' => ['tags' => [
+                    'com.apple.quicktime.location.ISO6709' => '+37.7858-122.4064+010.000/',
+                    'com.apple.quicktime.make' => 'Apple',
+                    'com.apple.quicktime.model' => 'iPhone 15',
+                ]]]];
+            }
+        });
+
+        $photo = Photo::factory()->create(['media_type' => 'video', 'mime_type' => 'video/mp4']);
+        Storage::disk('files')->put($photo->disk_path, 'video-bytes');
+
+        app(PhotoStorage::class)->readMetadata($photo->fresh());
+
+        $photo->refresh();
+        $this->assertSame(37.7858, $photo->latitude);
+        $this->assertSame(-122.4064, $photo->longitude);
+        $this->assertSame('Apple iPhone 15', $photo->camera);
+        $this->assertSame('San Francisco, CA', $photo->place);
     }
 
     public function test_reading_metadata_extracts_an_embedded_motion_clip(): void

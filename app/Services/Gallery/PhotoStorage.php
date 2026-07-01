@@ -232,8 +232,10 @@ class PhotoStorage
             $attributes['height'] = $probe['height'];
         }
 
+        $tags = $probe['raw']['format']['tags'] ?? [];
+
         if (! $photo->meta_locked) {
-            $created = $probe['raw']['format']['tags']['creation_time'] ?? null;
+            $created = $tags['creation_time'] ?? null;
             if (is_string($created)) {
                 try {
                     $attributes['taken_at'] = Carbon::parse($created);
@@ -241,9 +243,55 @@ class PhotoStorage
                     // Leave the existing capture date in place.
                 }
             }
+
+            [$lat, $lon] = $this->videoLocation($tags);
+            $attributes['latitude'] = $lat;
+            $attributes['longitude'] = $lon;
+            $attributes['camera'] = $this->videoCamera($tags);
         }
 
+        // Reverse-geocode whatever coordinates the video now has so it shows a
+        // place and joins the map and trips like a photo.
+        $lat = $attributes['latitude'] ?? $photo->latitude;
+        $lon = $attributes['longitude'] ?? $photo->longitude;
+        $attributes['place'] = ($lat !== null && $lon !== null)
+            ? $this->geocoder->lookup((float) $lat, (float) $lon)
+            : null;
+
         $photo->forceFill($attributes)->save();
+    }
+
+    /**
+     * Extract latitude/longitude from a video's container tags. Phones store an
+     * ISO 6709 string such as "+37.7858-122.4064+010.000/".
+     *
+     * @param  array<string, mixed>  $tags
+     * @return array{0: ?float, 1: ?float}
+     */
+    private function videoLocation(array $tags): array
+    {
+        $iso = $tags['com.apple.quicktime.location.ISO6709']
+            ?? ($tags['location-eng'] ?? ($tags['location'] ?? null));
+
+        if (is_string($iso) && preg_match('/([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)/', $iso, $m)) {
+            return [round((float) $m[1], 7), round((float) $m[2], 7)];
+        }
+
+        return [null, null];
+    }
+
+    /**
+     * Build a camera label from a video's make/model tags, if present.
+     *
+     * @param  array<string, mixed>  $tags
+     */
+    private function videoCamera(array $tags): ?string
+    {
+        $make = $tags['com.apple.quicktime.make'] ?? ($tags['make'] ?? '');
+        $model = $tags['com.apple.quicktime.model'] ?? ($tags['model'] ?? '');
+        $camera = trim(trim((string) $make).' '.trim((string) $model));
+
+        return $camera !== '' ? $camera : null;
     }
 
     /**
