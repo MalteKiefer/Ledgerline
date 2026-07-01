@@ -10,6 +10,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DefaultTeamController;
+use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
 use App\Http\Controllers\ProfileController;
@@ -72,6 +73,12 @@ Route::middleware('auth')->group(function (): void {
 
     // Customer-independent overview of all projects.
     Route::get('/projects', ProjectOverviewController::class)->name('projects.overview');
+
+    // Finance.
+    Route::prefix('finance')->name('finance.')->group(function (): void {
+        Route::resource('expenses', ExpenseController::class);
+        Route::post('expenses/{expense}/files', [FileController::class, 'storeForExpense'])->name('expenses.files.store');
+    });
 
     // Files: attached to a customer or project; a team-wide overview; download
     // and delete by id.

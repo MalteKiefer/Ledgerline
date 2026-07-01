@@ -22,6 +22,8 @@
                             'icon' => 'M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z'],
                         ['label' => 'Files', 'url' => route('files.index'), 'active' => request()->routeIs('files.*'),
                             'icon' => 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
+                        ['label' => 'Finance', 'url' => route('finance.expenses.index'), 'active' => request()->routeIs('finance.*'),
+                            'icon' => 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2m-6-4h8m0 0l-3-3m3 3l-3 3'],
                     ];
                 @endphp
                 <div class="flex items-center gap-8">
