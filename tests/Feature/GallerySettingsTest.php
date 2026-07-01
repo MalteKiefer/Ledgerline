@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Jobs\GeneratePhotoRenditions;
 use App\Jobs\ReadPhotoMetadata;
+use App\Jobs\RenamePhotos;
 use App\Models\CompanyProfile;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -36,11 +37,15 @@ class GallerySettingsTest extends TestCase
         $this->put(route('settings.gallery.update'), [
             'gallery_trip_gap_days' => 5,
             'gallery_trip_radius_km' => 250,
+            'gallery_map_zoom' => 15,
+            'gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}',
         ])->assertRedirect(route('settings.gallery.edit'));
 
         $company = CompanyProfile::current();
         $this->assertSame(5, $company->gallery_trip_gap_days);
         $this->assertSame(250, $company->gallery_trip_radius_km);
+        $this->assertSame(15, $company->gallery_map_zoom);
+        $this->assertSame('{{y}}-{{MM}}-{{dd}}', $company->gallery_filename_template);
     }
 
     public function test_rescan_queues_a_metadata_job_per_photo(): void
@@ -63,5 +68,29 @@ class GallerySettingsTest extends TestCase
         $this->post(route('settings.gallery.regenerate'))->assertRedirect();
 
         Queue::assertPushed(GeneratePhotoRenditions::class, 3);
+    }
+
+    public function test_rename_queues_a_rename_job_per_photo(): void
+    {
+        Queue::fake();
+        $this->signIn();
+        Photo::factory()->count(3)->create();
+
+        $this->post(route('settings.gallery.rename'))->assertRedirect();
+
+        Queue::assertPushed(RenamePhotos::class, 3);
+    }
+
+    public function test_run_all_queues_every_job_per_photo(): void
+    {
+        Queue::fake();
+        $this->signIn();
+        Photo::factory()->count(2)->create();
+
+        $this->post(route('settings.gallery.run-all'))->assertRedirect();
+
+        Queue::assertPushed(GeneratePhotoRenditions::class, 2);
+        Queue::assertPushed(ReadPhotoMetadata::class, 2);
+        Queue::assertPushed(RenamePhotos::class, 2);
     }
 }

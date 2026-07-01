@@ -24,7 +24,21 @@
                 <input type="number" min="1" max="5000" id="gallery_trip_radius_km" name="gallery_trip_radius_km" value="{{ old('gallery_trip_radius_km', $company->gallery_trip_radius_km ?? 100) }}" class="{{ $input }}">
                 @error('gallery_trip_radius_km')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
+            <div>
+                <label for="gallery_map_zoom" class="block text-sm font-medium text-gray-700">{{ __('settings.map_zoom') }}</label>
+                <input type="number" min="1" max="19" id="gallery_map_zoom" name="gallery_map_zoom" value="{{ old('gallery_map_zoom', $company->gallery_map_zoom ?? 13) }}" class="{{ $input }}">
+                <p class="mt-1 text-xs text-gray-500">{{ __('settings.map_zoom_hint') }}</p>
+                @error('gallery_map_zoom')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            </div>
         </div>
+
+        <div class="mt-4">
+            <label for="gallery_filename_template" class="block text-sm font-medium text-gray-700">{{ __('settings.filename_template') }}</label>
+            <input type="text" id="gallery_filename_template" name="gallery_filename_template" value="{{ old('gallery_filename_template', $company->gallery_filename_template) }}" placeholder="@{{y}}-@{{MM}}-@{{dd}}_@{{HH}}-@{{mm}}-@{{ss}}" class="{{ $input }} font-mono">
+            <p class="mt-1 text-xs text-gray-500">{{ __('settings.filename_template_hint') }}</p>
+            @error('gallery_filename_template')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+        </div>
+
         <div class="mt-4">
             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button>
         </div>
@@ -45,6 +59,16 @@
                 @csrf
                 <button type="submit" @disabled($photoCount === 0)
                     class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.regenerate') }}</button>
+            </form>
+            <form method="POST" action="{{ route('settings.gallery.rename') }}">
+                @csrf
+                <button type="submit" @disabled($photoCount === 0)
+                    class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.rename') }}</button>
+            </form>
+            <form method="POST" action="{{ route('settings.gallery.run-all') }}">
+                @csrf
+                <button type="submit" @disabled($photoCount === 0)
+                    class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('settings.run_all_jobs') }}</button>
             </form>
         </div>
     </div>

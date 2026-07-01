@@ -39,6 +39,8 @@ use Illuminate\Database\Eloquent\Model;
     'paper_size',
     'gallery_trip_gap_days',
     'gallery_trip_radius_km',
+    'gallery_filename_template',
+    'gallery_map_zoom',
     'invoice_number_prefix',
     'invoice_number_next',
     'invoice_number_pad',
@@ -60,6 +62,7 @@ class CompanyProfile extends Model
             'payment_terms_days' => 'integer',
             'gallery_trip_gap_days' => 'integer',
             'gallery_trip_radius_km' => 'integer',
+            'gallery_map_zoom' => 'integer',
         ];
     }
 

@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('gallery.title')">
-  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed') }}', {{ $photos->hasMorePages() ? 'true' : 'false' }})"
+  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed') }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }})"
        x-init="initGallery()"
        @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()">
 
@@ -94,6 +94,8 @@
                 <div class="flex items-start justify-between gap-2">
                     <h2 class="text-sm font-semibold text-gray-900 break-all" x-text="current.name"></h2>
                     <div class="flex shrink-0 items-center gap-2">
+                        <button type="button" @click="editing = ! editing" :title="'{{ __('gallery.edit') }}'"
+                            :class="editing ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'" class="text-base">✎</button>
                         <form method="POST" :action="`/gallery/${current.id}/favorite`">
                             @csrf
                             <button type="submit" :title="current.favorite === '1' ? '{{ __('gallery.unfavorite') }}' : '{{ __('gallery.favorite') }}'"
@@ -119,6 +121,8 @@
                         </dd>
                     </div>
                 </dl>
+                {{-- Editing tools, hidden until the edit button is pressed. --}}
+                <div x-show="editing" x-cloak>
                 {{-- Transform (rotate / flip) — regenerates renditions from the original --}}
                 <div class="mt-6 flex gap-2">
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
@@ -138,19 +142,21 @@
                     </form>
                 </div>
 
-                {{-- Edit date / time / location --}}
+                {{-- Edit name / date / time / location --}}
                 <form method="POST" :action="`/gallery/${current.id}/meta`" class="mt-4 space-y-2 border-t border-gray-100 pt-4">
                     @csrf @method('PUT')
+                    <input type="text" name="name" x-model="current.name" placeholder="{{ __('gallery.meta_name') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <div class="grid grid-cols-2 gap-2">
                         <input type="date" name="date" :value="current.dateiso" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <input type="time" name="time" :value="current.time" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
                     <div class="grid grid-cols-2 gap-2">
-                        <input type="number" step="any" name="latitude" :value="current.lat" placeholder="lat" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <input type="number" step="any" name="longitude" :value="current.lng" placeholder="lng" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="number" step="any" name="latitude" x-model="current.lat" placeholder="lat" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="number" step="any" name="longitude" x-model="current.lng" placeholder="lng" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
                     <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.save_meta') }}</button>
                 </form>
+                </div>
 
                 <a :href="current.original" class="mt-4 block rounded-md bg-gray-800 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.download') }}</a>
             </aside>

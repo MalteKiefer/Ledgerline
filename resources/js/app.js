@@ -413,7 +413,7 @@ Alpine.data('filesExplorer', (allIds = []) => ({
  * @param {string} feedUrl   The infinite-scroll feed endpoint.
  * @param {boolean} hasMore  Whether a second page exists.
  */
-Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
+Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13) => ({
     dragging: false,
     queue: [],
     selected: [],
@@ -429,7 +429,9 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
     current: {},
     list: [],
     index: 0,
+    editing: false,
     miniMap: null,
+    mapZoom,
 
     initGallery() {
         // Show the drop overlay only while files are dragged over the window.
@@ -443,6 +445,10 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
         // Tear the mini-map down when the viewer closes so it re-initialises
         // cleanly for the next photo.
         this.$watch('viewerOpen', (open) => { if (! open) this.destroyMiniMap(); });
+
+        // Live-update the mini-map as the coordinates are edited.
+        this.$watch('current.lat', () => { if (this.viewerOpen) this.renderMiniMap(); });
+        this.$watch('current.lng', () => { if (this.viewerOpen) this.renderMiniMap(); });
     },
 
     pick(event) {
@@ -497,6 +503,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
     setCurrent() {
         const d = this.list[this.index]?.dataset;
         this.current = d ? { ...d } : {};
+        this.editing = false;
         this.$nextTick(() => this.renderMiniMap());
     },
 
@@ -518,7 +525,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
             doubleClickZoom: false,
             boxZoom: false,
             keyboard: false,
-        }).setView([lat, lng], 13);
+        }).setView([lat, lng], this.mapZoom);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.miniMap);
 
@@ -614,11 +621,12 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
  *
  * @param {string} pointsUrl  Endpoint returning { points: [...] }.
  */
-Alpine.data('photoMap', (pointsUrl) => ({
+Alpine.data('photoMap', (pointsUrl, mapZoom = 13) => ({
     lightbox: null,
 
     init() {
         const map = L.map(this.$refs.map, { scrollWheelZoom: true }).setView([20, 0], 2);
+        this.mapZoom = mapZoom;
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
@@ -645,7 +653,7 @@ Alpine.data('photoMap', (pointsUrl) => ({
                     clusters.addLayer(marker);
                 }
                 map.addLayer(clusters);
-                map.fitBounds(clusters.getBounds().pad(0.2));
+                map.fitBounds(clusters.getBounds().pad(0.2), { maxZoom: this.mapZoom });
             });
     },
 }));

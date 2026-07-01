@@ -28,6 +28,7 @@ return [
     'meta_date' => 'Datum',
     'meta_dimensions' => 'Abmessungen',
     'meta_location' => 'Standort',
+    'meta_name' => 'Dateiname',
     'meta_size' => 'Größe',
     'photos_count' => ':count Fotos',
     'processing' => 'Wird verarbeitet…',
