@@ -35,6 +35,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'end_date',
     'budget',
     'estimated_hours',
+    'default_rate_cents',
 ])]
 class Project extends Model
 {

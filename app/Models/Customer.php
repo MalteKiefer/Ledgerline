@@ -31,6 +31,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'city',
     'country',
     'notes',
+    'default_rate_cents',
 ])]
 class Customer extends Model
 {

@@ -1,4 +1,5 @@
 <x-layouts.app title="Expenses">
+    <x-finance-nav />
     <div class="flex items-center justify-between">
         <div>
             <h1 class="text-2xl font-semibold text-gray-900">Expenses</h1>
