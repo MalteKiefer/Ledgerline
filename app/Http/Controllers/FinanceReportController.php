@@ -89,13 +89,15 @@ class FinanceReportController extends Controller
             ->whereNotNull('customer_id')
             ->whereBetween('issue_date', [$from, $to])
             ->groupBy('customer_id')
-            ->pluck(DB::raw('SUM(net_cents)'), 'customer_id');
+            ->selectRaw('customer_id, SUM(net_cents) AS aggregate')
+            ->pluck('aggregate', 'customer_id');
 
         $expenses = Expense::query()
             ->whereNotNull('customer_id')
             ->whereBetween('date', [$from, $to])
             ->groupBy('customer_id')
-            ->pluck(DB::raw('SUM(amount_cents - tax_cents)'), 'customer_id');
+            ->selectRaw('customer_id, SUM(amount_cents - tax_cents) AS aggregate')
+            ->pluck('aggregate', 'customer_id');
 
         $ids = $revenue->keys()->merge($expenses->keys())->unique();
         $names = Customer::query()->whereIn('id', $ids)->pluck('name', 'id');
@@ -121,7 +123,8 @@ class FinanceReportController extends Controller
         return Expense::query()
             ->whereBetween('date', [$from, $to])
             ->groupBy('category')
-            ->pluck(DB::raw('SUM(amount_cents - tax_cents)'), 'category')
+            ->selectRaw('category, SUM(amount_cents - tax_cents) AS aggregate')
+            ->pluck('aggregate', 'category')
             ->map(fn ($net, $category): array => [
                 'label' => ExpenseCategory::tryFrom((string) $category)?->label() ?? (string) $category,
                 'net' => (int) $net,
