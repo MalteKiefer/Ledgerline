@@ -359,6 +359,44 @@ Alpine.data('invoiceLines', (initial = []) => ({
     },
 }));
 
+/**
+ * File explorer: multiselect, a shared "move to folder" modal (for a single row
+ * or the whole selection), inline rename, and a bulk-delete modal.
+ *
+ * @param {number[]} allIds  Ids of the files currently listed.
+ */
+Alpine.data('filesExplorer', (allIds = []) => ({
+    allIds,
+    selected: [],
+    moveOpen: false,
+    moveIds: [],
+    target: '',
+    deleteOpen: false,
+    renaming: null,
+
+    toggleAll(event) {
+        this.selected = event.target.checked ? [...this.allIds] : [];
+    },
+
+    /** Open the move modal for a single file or, with no argument, the selection. */
+    openMove(id = null) {
+        this.moveIds = id === null ? [...this.selected] : [id];
+        this.target = '';
+        this.moveOpen = true;
+    },
+
+    openBulkDelete() {
+        if (this.selected.length) {
+            this.deleteOpen = true;
+        }
+    },
+
+    startRename(id) {
+        this.renaming = id;
+        this.$nextTick(() => this.$refs['rename-' + id]?.focus());
+    },
+}));
+
 window.Alpine = Alpine;
 
 Alpine.start();

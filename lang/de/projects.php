@@ -1,7 +1,8 @@
 <?php
 
+declare(strict_types=1);
+
 return [
-    // index
     'index_heading' => 'Projekte',
     'index_add_project' => 'Projekt hinzufügen',
     'search_placeholder' => 'Projekte suchen…',
@@ -11,8 +12,6 @@ return [
     'col_status' => 'Status',
     'actions' => 'Aktionen',
     'edit' => 'Bearbeiten',
-
-    // overview
     'overview_heading' => 'Projekte',
     'overview_subtitle' => 'Alle Projekte über sämtliche Kunden hinweg.',
     'overview_new_project' => 'Neues Projekt',
@@ -21,8 +20,6 @@ return [
     'col_customer' => 'Kunde',
     'col_type' => 'Typ',
     'col_tags' => 'Tags',
-
-    // show
     'show_projects_crumb' => 'Projekte',
     'show_edit' => 'Bearbeiten',
     'show_delete' => 'Löschen',
@@ -39,20 +36,14 @@ return [
     'show_description' => 'Beschreibung',
     'show_files' => 'Dateien',
     'show_back_to_customer' => '← Zurück zum Kunden',
-
-    // create
     'create_projects_crumb' => 'Projekte',
     'create_heading' => 'Neues Projekt',
     'create_submit' => 'Projekt erstellen',
     'create_cancel' => 'Abbrechen',
-
-    // edit
     'edit_projects_crumb' => 'Projekte',
     'edit_heading' => 'Projekt bearbeiten',
     'edit_submit' => 'Änderungen speichern',
     'edit_cancel' => 'Abbrechen',
-
-    // form
     'form_customer' => 'Kunde',
     'form_name' => 'Name',
     'form_reference' => 'Referenz',
@@ -68,4 +59,6 @@ return [
     'form_default_rate' => 'Standard-Stundensatz',
     'form_default_rate_help' => 'Überschreibt den Kundensatz für Zeiteinträge.',
     'form_description' => 'Beschreibung',
+    'show_open_files' => 'In Dateien öffnen',
+    'show_files_count' => ':count Datei(en) zu diesem Projekt.',
 ];

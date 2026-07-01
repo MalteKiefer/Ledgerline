@@ -208,11 +208,13 @@
             </div>
         </section>
 
-        {{-- Files panel --}}
+        {{-- Files panel: documents live in the central Files view, filtered here --}}
         <section id="panel-files" role="tabpanel" aria-labelledby="tab-files" x-show="tab === 'files'" x-cloak class="mt-4">
-            <x-file-panel :files="$customer->files"
-                :upload-route="route('customers.files.store', $customer)"
-                :tag-suggestions="$tagSuggestions" />
+            <div class="rounded-lg border border-gray-200 bg-white p-6 text-center shadow-sm">
+                <p class="text-sm text-gray-600">{{ __('customers.show.files_count', ['count' => $customer->files->count()]) }}</p>
+                <a href="{{ route('files.index', ['customer' => $customer->id]) }}"
+                    class="mt-3 inline-block rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('customers.show.open_files') }}</a>
+            </div>
         </section>
     </div>
 

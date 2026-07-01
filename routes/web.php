@@ -112,6 +112,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/general', [FileController::class, 'storeGeneral'])->name('files.store.general');
     Route::post('/files/bulk/move', [FileController::class, 'bulkMove'])->name('files.bulk.move');
     Route::post('/files/bulk/delete', [FileController::class, 'bulkDelete'])->name('files.bulk.delete');
+    Route::put('/files/{file}/rename', [FileController::class, 'rename'])->name('files.rename');
 
     // Virtual folders for organising files.
     Route::post('/folders', [FolderController::class, 'store'])->name('folders.store');

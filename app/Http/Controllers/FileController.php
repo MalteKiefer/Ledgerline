@@ -84,17 +84,53 @@ class FileController extends Controller
      * Store a general (company) file with no customer or project, optionally in
      * a folder.
      */
-    public function storeGeneral(StoreFileRequest $request): RedirectResponse
+    public function storeGeneral(Request $request): RedirectResponse
     {
         $this->authorize('create', File::class);
 
-        $folderId = Folder::query()->whereKey($request->input('folder_id'))->value('id');
+        $validated = $request->validate([
+            'files' => ['required', 'array', 'max:50'],
+            'files.*' => ['file', 'max:51200'],
+            'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
+            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')],
+            'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')],
+            'tags' => ['array'],
+            'tags.*' => ['string', 'max:50'],
+        ]);
 
-        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], null, $request->user(), $folderId);
+        $folderId = $validated['folder_id'] ?? null;
+
+        // When uploading inside a customer/project filter, attach to that record.
+        $attachable = match (true) {
+            filled($validated['customer_id'] ?? null) => Customer::find($validated['customer_id']),
+            filled($validated['project_id'] ?? null) => Project::find($validated['project_id']),
+            default => null,
+        };
+
+        foreach ($validated['files'] as $upload) {
+            $this->persist($upload, $validated['tags'] ?? [], $attachable, $request->user(), $folderId);
+        }
 
         return redirect()
-            ->route('files.index', ['folder' => $folderId])
-            ->with('status', __('flash.file_uploaded'));
+            ->route('files.index', array_filter([
+                'folder' => $folderId,
+                'customer' => $validated['customer_id'] ?? null,
+                'project' => $validated['project_id'] ?? null,
+            ]))
+            ->with('status', __('flash.files_uploaded', ['count' => count($validated['files'])]));
+    }
+
+    /**
+     * Rename a file (its display title) inline.
+     */
+    public function rename(Request $request, File $file): RedirectResponse
+    {
+        $this->authorize('update', $file);
+
+        $validated = $request->validate(['title' => ['required', 'string', 'max:255']]);
+        $file->update(['title' => $validated['title']]);
+
+        return back()->with('status', __('flash.file_renamed'));
     }
 
     /**
@@ -215,26 +251,22 @@ class FileController extends Controller
     {
         $this->authorize('delete', $file);
 
-        // A file that is the source document of a deletable invoice (draft or
-        // imported) takes the invoice record with it. A finalised, non-imported
-        // invoice is never removed this way (same rule as the invoice controller).
+        // A file that is an invoice's source document takes the invoice record
+        // with it — the document and its data belong together. (Only imported
+        // invoices ever carry an attached file.)
         $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
-        $deletableInvoice = $invoice !== null && ($invoice->isDraft() || $invoice->isImported());
 
         $path = $file->disk_path;
         $folderId = $file->folder_id;
 
-        DB::transaction(function () use ($file, $deletableInvoice, $invoice): void {
+        DB::transaction(function () use ($file, $invoice): void {
             $file->delete();
-
-            if ($deletableInvoice) {
-                $invoice->delete();
-            }
+            $invoice?->delete();
         });
 
         Storage::disk(config('files.disk'))->delete($path);
 
-        if ($deletableInvoice) {
+        if ($invoice !== null) {
             return redirect()
                 ->route('finance.invoices.index')
                 ->with('status', __('flash.invoice_and_file_deleted'));
@@ -284,10 +316,7 @@ class FileController extends Controller
                 $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
                 $paths[] = $file->disk_path;
                 $file->delete();
-
-                if ($invoice !== null && ($invoice->isDraft() || $invoice->isImported())) {
-                    $invoice->delete();
-                }
+                $invoice?->delete();
             }
         });
 
