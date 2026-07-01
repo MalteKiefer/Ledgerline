@@ -128,6 +128,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/gallery/points', [GalleryController::class, 'points'])->name('gallery.points');
     Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
     Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
+    Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
     Route::put('/gallery/{photo}/meta', [GalleryController::class, 'editMeta'])->name('gallery.meta');
     Route::post('/gallery/{photo}/transform', [GalleryController::class, 'transform'])->name('gallery.transform');
     Route::post('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->name('gallery.favorite');

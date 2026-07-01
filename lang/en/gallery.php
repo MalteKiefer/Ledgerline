@@ -55,6 +55,8 @@ return [
     'save_meta' => 'Save details',
     'select_all' => 'Select all',
     'selected' => ':count selected',
+    'set_location' => 'Set location',
+    'set_location_hint' => 'Apply these coordinates to all selected items.',
     'subtitle' => 'Drag photos here to upload.',
     'timeline' => 'Timeline',
     'title' => 'Gallery',

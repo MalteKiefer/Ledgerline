@@ -48,6 +48,7 @@ return [
     'photo_restored' => 'Photo restored.',
     'photo_updated' => 'Photo updated.',
     'photos_deleted' => ':count photo(s) permanently deleted.',
+    'photos_location_set' => 'Location set on :count photo(s).',
     'photos_all_jobs_queued' => 'Queued all jobs for :count photo(s).',
     'photos_regenerate_queued' => 'Queued :count photo(s) for thumbnail regeneration.',
     'photos_rename_queued' => 'Queued :count photo(s) for renaming.',

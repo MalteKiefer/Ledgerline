@@ -55,6 +55,8 @@ return [
     'save_meta' => 'Details speichern',
     'select_all' => 'Alle auswählen',
     'selected' => ':count ausgewählt',
+    'set_location' => 'Standort setzen',
+    'set_location_hint' => 'Diese Koordinaten auf alle ausgewählten Elemente anwenden.',
     'subtitle' => 'Fotos hierher ziehen zum Hochladen.',
     'timeline' => 'Zeitverlauf',
     'title' => 'Galerie',

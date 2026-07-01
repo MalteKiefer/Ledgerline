@@ -74,9 +74,32 @@
     </div>
 
     {{-- Bulk bar --}}
-    <div x-show="selected.length" x-cloak class="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm" x-data="{ deleteOpen: false }">
+    <div x-show="selected.length" x-cloak class="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm" x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
+        <button type="button" @click="locationOpen = true" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.set_location') }}</button>
         <button type="button" @click="deleteOpen = true" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('gallery.delete') }}</button>
+
+        <template x-teleport="body">
+            <div x-show="locationOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="locationOpen = false">
+                <div class="absolute inset-0 bg-gray-900/40" @click="locationOpen = false"></div>
+                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('gallery.set_location') }}</h3>
+                    <p class="mt-1 text-sm text-gray-600">{{ __('gallery.set_location_hint') }}</p>
+                    <form method="POST" action="{{ route('gallery.location') }}" class="mt-4">
+                        @csrf
+                        <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="number" step="any" name="latitude" x-model="lat" placeholder="lat" required class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            <input type="number" step="any" name="longitude" x-model="lng" placeholder="lng" required class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        </div>
+                        <div class="mt-5 flex justify-end gap-3">
+                            <button type="button" @click="locationOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                            <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.save_meta') }}</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </template>
 
         <template x-teleport="body">
             <div x-show="deleteOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="deleteOpen = false">
@@ -104,7 +127,7 @@
     </div>
 
     {{-- Infinite-scroll sentinel --}}
-    <div x-intersect="loadMore()" class="h-10"></div>
+    <div x-ref="sentinel" x-intersect.margin.800px="loadMore()" class="h-10"></div>
     <div x-show="loading" x-cloak class="py-4 text-center text-sm text-gray-400">…</div>
 
     {{-- Year/month scrubber: year headers with three-letter months below --}}
