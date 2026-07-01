@@ -1,5 +1,5 @@
 @props([
-    'placeholder' => 'Search…',
+    'placeholder' => null,
 ])
 
 @php
@@ -13,7 +13,7 @@
             <input type="hidden" name="{{ $key }}" value="{{ $value }}">
         @endif
     @endforeach
-    <label for="table-search" class="sr-only">Search</label>
-    <input type="search" id="table-search" name="q" value="{{ request('q') }}" placeholder="{{ $placeholder }}"
+    <label for="table-search" class="sr-only">{{ __('pages.common.search') }}</label>
+    <input type="search" id="table-search" name="q" value="{{ request('q') }}" placeholder="{{ $placeholder ?? __('pages.common.search_placeholder') }}"
         class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
 </form>

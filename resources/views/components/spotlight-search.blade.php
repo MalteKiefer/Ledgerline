@@ -9,7 +9,7 @@
     @keydown.window.meta.k.prevent="openPalette()"
     @keydown.window.ctrl.k.prevent="openPalette()">
 
-    <button type="button" @click="openPalette()" aria-label="Search (⌘K)" title="Search (⌘K)"
+    <button type="button" @click="openPalette()" aria-label="{{ __('pages.spotlight.search_button_label') }}" title="{{ __('pages.spotlight.search_button_label') }}"
         class="inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round"
@@ -34,7 +34,7 @@
                             @input.debounce.200ms="runSearch()"
                             @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)"
                             @keydown.enter.prevent="go()"
-                            placeholder="Search customers, contacts, branches, projects…"
+                            placeholder="{{ __('pages.spotlight.placeholder') }}"
                             class="w-full border-0 bg-transparent py-3.5 text-sm focus:ring-0"
                             autocomplete="off" spellcheck="false">
                         <span x-show="loading" x-cloak class="text-xs text-gray-400">…</span>
@@ -42,7 +42,7 @@
 
                     <div class="max-h-80 overflow-y-auto">
                         <p x-show="query.trim() !== '' && flat.length === 0 && !loading" x-cloak
-                            class="px-4 py-6 text-center text-sm text-gray-500">No results.</p>
+                            class="px-4 py-6 text-center text-sm text-gray-500">{{ __('pages.spotlight.no_results') }}</p>
 
                         <template x-for="group in groups" :key="group.group">
                             <div class="py-1">
@@ -66,7 +66,7 @@
 
                         <a x-show="query.trim() !== '' && flat.length > 0" x-cloak href="#" @click.prevent="seeAll()"
                             class="block border-t border-gray-100 px-4 py-2 text-center text-xs text-gray-500 hover:bg-gray-50">
-                            See all results
+                            {{ __('pages.spotlight.see_all_results') }}
                         </a>
                     </div>
                 </div>

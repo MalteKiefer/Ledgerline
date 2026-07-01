@@ -8,7 +8,7 @@
     <input type="file" name="{{ $name }}" id="{{ $id }}" x-ref="input" @change="onChange()" required class="sr-only">
     <label for="{{ $id }}" class="cursor-pointer text-sm text-gray-600">
         <span x-show="! fileName">
-            Drag a file here or <span class="font-medium text-gray-900 underline">browse</span>
+            {{ __('pages.dropzone.drag_prompt') }} <span class="font-medium text-gray-900 underline">{{ __('pages.dropzone.browse') }}</span>
         </span>
         <span x-show="fileName" x-cloak x-text="fileName" class="font-medium text-gray-900"></span>
     </label>

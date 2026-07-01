@@ -27,7 +27,7 @@
 <div class="space-y-6">
     <div>
         <label for="name" class="block text-sm font-medium text-gray-700">
-            Name<span class="text-red-600"> *</span>
+            {{ __('contacts.form.name') }}<span class="text-red-600"> *</span>
         </label>
         <input type="text" id="name" name="name" value="{{ old('name', $contact->name) }}" required
             @error('name') aria-invalid="true" aria-describedby="name-error" @enderror
@@ -40,7 +40,7 @@
     {{-- Function: type-ahead combobox over the fixed ContactFunction enum. --}}
     <div x-data="contactFunctionCombobox(@js($functions), @js(old('function', $contact->function?->value)))">
         <label for="function-input" class="block text-sm font-medium text-gray-700">
-            Function<span class="text-red-600"> *</span>
+            {{ __('contacts.form.function') }}<span class="text-red-600"> *</span>
         </label>
         <input type="hidden" name="function" :value="selected">
         <div class="relative mt-1">
@@ -48,7 +48,7 @@
                 aria-controls="function-listbox" :aria-expanded="open.toString()"
                 x-model="query" @focus="open = true" @input="syncFromQuery()"
                 @keydown.escape="open = false" @click="open = true"
-                placeholder="Type to search a function…"
+                :placeholder="__('contacts.form.function_placeholder')"
                 @error('function') aria-invalid="true" aria-describedby="function-error" @enderror
                 class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
             <ul x-show="open" x-cloak @click.outside="open = false" id="function-listbox" role="listbox"
@@ -61,7 +61,7 @@
                         x-text="option.label"></li>
                 </template>
                 <template x-if="filtered.length === 0">
-                    <li class="px-3 py-2 text-gray-500">No matching function.</li>
+                    <li class="px-3 py-2 text-gray-500">{{ __('contacts.form.no_matching_function') }}</li>
                 </template>
             </ul>
         </div>
@@ -81,47 +81,47 @@
         @endif
 
         <fieldset>
-            <legend class="text-sm font-medium text-gray-700">Email addresses</legend>
+            <legend class="text-sm font-medium text-gray-700">{{ __('contacts.form.email_addresses') }}</legend>
             <div class="mt-2 space-y-2">
                 <template x-for="(email, index) in emails" :key="index">
                     <div class="flex items-start gap-2">
-                        <input type="text" list="email-label-suggestions" placeholder="Label"
+                        <input type="text" list="email-label-suggestions" placeholder="{{ __('contacts.form.label') }}"
                             :name="`emails[${index}][label]`" x-model="email.label"
                             class="w-32 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                        <input type="email" placeholder="name@example.com"
+                        <input type="email" placeholder="{{ __('contacts.form.email_placeholder') }}"
                             :name="`emails[${index}][email]`" x-model="email.value"
                             class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                         <button type="button" @click="removeEmail(index)"
                             class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                            Remove
+                            {{ __('contacts.form.remove') }}
                         </button>
                     </div>
                 </template>
             </div>
             <button type="button" @click="addEmail()"
-                class="mt-2 text-sm font-medium text-gray-700 hover:text-gray-900">+ Add email</button>
+                class="mt-2 text-sm font-medium text-gray-700 hover:text-gray-900">{{ __('contacts.form.add_email') }}</button>
         </fieldset>
 
         <fieldset>
-            <legend class="text-sm font-medium text-gray-700">Phone numbers</legend>
+            <legend class="text-sm font-medium text-gray-700">{{ __('contacts.form.phone_numbers') }}</legend>
             <div class="mt-2 space-y-2">
                 <template x-for="(phone, index) in phones" :key="index">
                     <div class="flex items-start gap-2">
-                        <input type="text" list="phone-label-suggestions" placeholder="Label"
+                        <input type="text" list="phone-label-suggestions" placeholder="{{ __('contacts.form.label') }}"
                             :name="`phones[${index}][label]`" x-model="phone.label"
                             class="w-32 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                        <input type="text" placeholder="+49 …"
+                        <input type="text" placeholder="{{ __('contacts.form.phone_placeholder') }}"
                             :name="`phones[${index}][phone]`" x-model="phone.value"
                             class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                         <button type="button" @click="removePhone(index)"
                             class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                            Remove
+                            {{ __('contacts.form.remove') }}
                         </button>
                     </div>
                 </template>
             </div>
             <button type="button" @click="addPhone()"
-                class="mt-2 text-sm font-medium text-gray-700 hover:text-gray-900">+ Add phone</button>
+                class="mt-2 text-sm font-medium text-gray-700 hover:text-gray-900">{{ __('contacts.form.add_phone') }}</button>
         </fieldset>
     </div>
 </div>

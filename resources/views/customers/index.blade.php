@@ -1,27 +1,27 @@
-<x-layouts.app title="Customers">
+<x-layouts.app :title="__('customers.index.title')">
     <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-semibold text-gray-900">Customers</h1>
+        <h1 class="text-2xl font-semibold text-gray-900">{{ __('customers.index.heading') }}</h1>
         <a href="{{ route('customers.create') }}"
             class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-            New customer
+            {{ __('customers.index.new') }}
         </a>
     </div>
 
     <div class="mt-4">
-        <x-table-search placeholder="Search customers…" />
+        <x-table-search :placeholder="__('customers.index.search_placeholder')" />
     </div>
 
     <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         @if ($customers->isEmpty())
-            <p class="px-4 py-8 text-center text-sm text-gray-500">No customers found.</p>
+            <p class="px-4 py-8 text-center text-sm text-gray-500">{{ __('customers.index.empty') }}</p>
         @else
             <table class="min-w-full divide-y divide-gray-200 text-sm">
                 <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <tr>
-                        <th scope="col" class="px-4 py-3"><x-sortable-header column="name" label="Name" :sort="$sort" :dir="$dir" /></th>
-                        <th scope="col" class="px-4 py-3"><x-sortable-header column="email" label="Email" :sort="$sort" :dir="$dir" /></th>
-                        <th scope="col" class="px-4 py-3"><x-sortable-header column="city" label="City" :sort="$sort" :dir="$dir" /></th>
-                        <th scope="col" class="px-4 py-3"><span class="sr-only">Actions</span></th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="name" :label="__('customers.index.col_name')" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="email" :label="__('customers.index.col_email')" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="city" :label="__('customers.index.col_city')" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3"><span class="sr-only">{{ __('customers.index.actions') }}</span></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -36,7 +36,7 @@
                             <td class="px-4 py-3 text-gray-600">{{ $customer->city }}</td>
                             <td class="px-4 py-3 text-right">
                                 <a href="{{ route('customers.edit', $customer) }}"
-                                    class="text-gray-600 hover:text-gray-900">Edit</a>
+                                    class="text-gray-600 hover:text-gray-900">{{ __('customers.index.edit') }}</a>
                             </td>
                         </tr>
                     @endforeach

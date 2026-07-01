@@ -22,15 +22,15 @@
     <div class="flex justify-end">
         <button type="button" @click="uploadOpen = ! uploadOpen"
             class="inline-flex items-center gap-1 rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">
-            <span x-show="! uploadOpen">+ Add file</span>
-            <span x-show="uploadOpen" x-cloak>Close</span>
+            <span x-show="! uploadOpen">{{ __('files.add_file') }}</span>
+            <span x-show="uploadOpen" x-cloak>{{ __('files.close') }}</span>
         </button>
     </div>
 
     <form x-show="uploadOpen" x-cloak method="POST" action="{{ $uploadRoute }}" enctype="multipart/form-data"
         class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         @csrf
-        <label class="block text-sm font-medium text-gray-700">Add a file</label>
+        <label class="block text-sm font-medium text-gray-700">{{ __('files.add_a_file') }}</label>
         <div class="mt-1">
             <x-file-dropzone :id="'file-'.md5($uploadRoute)" />
         </div>
@@ -40,14 +40,14 @@
         <div class="mt-3">
             <button type="submit"
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
-                Upload
+                {{ __('files.upload') }}
             </button>
         </div>
     </form>
 
     <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         @if ($files->isEmpty())
-            <p class="px-4 py-6 text-center text-sm text-gray-500">No files yet.</p>
+            <p class="px-4 py-6 text-center text-sm text-gray-500">{{ __('files.no_files_yet') }}</p>
         @else
             <ul class="divide-y divide-gray-100 text-sm">
                 @foreach ($files as $file)
@@ -62,7 +62,7 @@
                                 @endforeach
                             </div>
                         </div>
-                        <a href="{{ route('files.show', $file) }}" class="shrink-0 text-sm text-gray-600 hover:text-gray-900">View</a>
+                        <a href="{{ route('files.show', $file) }}" class="shrink-0 text-sm text-gray-600 hover:text-gray-900">{{ __('files.view') }}</a>
                     </li>
                 @endforeach
             </ul>

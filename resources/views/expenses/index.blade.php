@@ -1,78 +1,78 @@
-<x-layouts.app title="Expenses">
+<x-layouts.app :title="__('expenses.index.title')">
     <x-finance-nav />
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-semibold text-gray-900">Expenses</h1>
-            <p class="mt-1 text-sm text-gray-600">Money spent for the company, customers or projects.</p>
+            <h1 class="text-2xl font-semibold text-gray-900">{{ __('expenses.index.heading') }}</h1>
+            <p class="mt-1 text-sm text-gray-600">{{ __('expenses.index.subtitle') }}</p>
         </div>
         <a href="{{ route('finance.expenses.create') }}"
-            class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">New expense</a>
+            class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('expenses.index.new') }}</a>
     </div>
 
     {{-- Total(s) for the current filter --}}
     <div class="mt-4 flex flex-wrap gap-3">
         @forelse ($totals as $currency => $cents)
             <div class="rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm">
-                <span class="text-xs uppercase tracking-wide text-gray-400">Total ({{ $currency }})</span>
+                <span class="text-xs uppercase tracking-wide text-gray-400">{{ __('expenses.index.total', ['currency' => $currency]) }}</span>
                 <div class="text-lg font-semibold text-gray-900">{{ number_format($cents / 100, 2) }} {{ $currency }}</div>
             </div>
         @empty
-            <div class="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 shadow-sm">No expenses.</div>
+            <div class="rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 shadow-sm">{{ __('expenses.index.no_expenses') }}</div>
         @endforelse
     </div>
 
     {{-- Filters --}}
     <form method="GET" class="mt-4 flex flex-wrap items-end gap-3">
         <div>
-            <label class="block text-xs font-medium text-gray-500">Search</label>
-            <input type="search" name="q" value="{{ request('q') }}" placeholder="Description / vendor…"
+            <label class="block text-xs font-medium text-gray-500">{{ __('expenses.index.search') }}</label>
+            <input type="search" name="q" value="{{ request('q') }}" placeholder="{{ __('expenses.index.search_placeholder') }}"
                 class="mt-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
         </div>
         <div>
-            <label class="block text-xs font-medium text-gray-500">Category</label>
+            <label class="block text-xs font-medium text-gray-500">{{ __('expenses.index.category') }}</label>
             <select name="category" class="mt-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                <option value="">All</option>
+                <option value="">{{ __('expenses.index.all') }}</option>
                 @foreach ($categories as $c)
                     <option value="{{ $c['value'] }}" @selected($activeCategory === $c['value'])>{{ $c['label'] }}</option>
                 @endforeach
             </select>
         </div>
         <div>
-            <label class="block text-xs font-medium text-gray-500">Status</label>
+            <label class="block text-xs font-medium text-gray-500">{{ __('expenses.index.status') }}</label>
             <select name="status" class="mt-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                <option value="">All</option>
+                <option value="">{{ __('expenses.index.all') }}</option>
                 @foreach ($statuses as $s)
                     <option value="{{ $s['value'] }}" @selected($activeStatus === $s['value'])>{{ $s['label'] }}</option>
                 @endforeach
             </select>
         </div>
         <div>
-            <label class="block text-xs font-medium text-gray-500">From</label>
+            <label class="block text-xs font-medium text-gray-500">{{ __('expenses.index.from') }}</label>
             <input type="date" name="from" value="{{ request('from') }}" class="mt-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
         </div>
         <div>
-            <label class="block text-xs font-medium text-gray-500">To</label>
+            <label class="block text-xs font-medium text-gray-500">{{ __('expenses.index.to') }}</label>
             <input type="date" name="to" value="{{ request('to') }}" class="mt-1 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
         </div>
-        <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Filter</button>
+        <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('expenses.index.filter') }}</button>
         @if (request()->hasAny(['q', 'category', 'status', 'from', 'to']))
-            <a href="{{ route('finance.expenses.index') }}" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>
+            <a href="{{ route('finance.expenses.index') }}" class="text-sm text-gray-500 hover:text-gray-700">{{ __('expenses.index.clear') }}</a>
         @endif
     </form>
 
     <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         @if ($expenses->isEmpty())
-            <p class="px-4 py-8 text-center text-sm text-gray-500">No expenses found.</p>
+            <p class="px-4 py-8 text-center text-sm text-gray-500">{{ __('expenses.index.empty') }}</p>
         @else
             <table class="min-w-full divide-y divide-gray-200 text-sm">
                 <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <tr>
-                        <th scope="col" class="px-4 py-3"><x-sortable-header column="date" label="Date" :sort="$sort" :dir="$dir" /></th>
-                        <th scope="col" class="px-4 py-3"><x-sortable-header column="description" label="Description" :sort="$sort" :dir="$dir" /></th>
-                        <th scope="col" class="px-4 py-3"><x-sortable-header column="category" label="Category" :sort="$sort" :dir="$dir" /></th>
-                        <th scope="col" class="px-4 py-3">Linked</th>
-                        <th scope="col" class="px-4 py-3 text-right"><x-sortable-header column="amount_cents" label="Gross" :sort="$sort" :dir="$dir" /></th>
-                        <th scope="col" class="px-4 py-3">Status</th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="date" :label="__('expenses.index.col_date')" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="description" :label="__('expenses.index.col_description')" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3"><x-sortable-header column="category" :label="__('expenses.index.col_category')" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3">{{ __('expenses.index.col_linked') }}</th>
+                        <th scope="col" class="px-4 py-3 text-right"><x-sortable-header column="amount_cents" :label="__('expenses.index.col_gross')" :sort="$sort" :dir="$dir" /></th>
+                        <th scope="col" class="px-4 py-3">{{ __('expenses.index.col_status') }}</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -94,7 +94,7 @@
                                     'bg-green-100 text-green-800' => $expense->payment_status->value === 'PAID',
                                     'bg-amber-100 text-amber-800' => $expense->payment_status->value === 'OPEN',
                                 ])>{{ $expense->payment_status->label() }}</span>
-                                @if ($expense->billable)<span class="ml-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-800">Billable</span>@endif
+                                @if ($expense->billable)<span class="ml-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-800">{{ __('expenses.index.billable') }}</span>@endif
                             </td>
                         </tr>
                     @endforeach
