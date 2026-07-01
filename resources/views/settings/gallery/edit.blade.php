@@ -72,7 +72,7 @@
                 </div>
                 <div>
                     <label for="gallery_geocode_grid_km" class="block text-sm font-medium text-gray-700">{{ __('settings.geocode_grid_km') }}</label>
-                    <input type="number" step="0.1" min="0" max="100" id="gallery_geocode_grid_km" name="gallery_geocode_grid_km" value="{{ old('gallery_geocode_grid_km', $company->gallery_geocode_grid_km ?? 0.5) }}" class="{{ $input }}">
+                    <input type="text" inputmode="decimal" id="gallery_geocode_grid_km" name="gallery_geocode_grid_km" value="{{ old('gallery_geocode_grid_km', $company->gallery_geocode_grid_km ?? 0.5) }}" class="{{ $input }}">
                     <p class="mt-1 text-xs text-gray-500">{{ __('settings.geocode_grid_km_hint') }}</p>
                     @error('gallery_geocode_grid_km')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>

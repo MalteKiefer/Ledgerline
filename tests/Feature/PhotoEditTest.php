@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Jobs\ProcessPhoto;
+use App\Models\CompanyProfile;
 use App\Models\Photo;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\VideoProcessor;
@@ -117,6 +118,27 @@ class PhotoEditTest extends TestCase
         // The local-timezone creationdate (wall-clock 10:08) wins over the UTC
         // creation_time (08:08), so the capture time reads as it was shot.
         $this->assertSame('2026-06-06 10:08:38', $photo->taken_at->format('Y-m-d H:i:s'));
+    }
+
+    public function test_processing_applies_the_filename_template_with_metadata(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        CompanyProfile::current()->update(['gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}']);
+
+        $image = UploadedFile::fake()->image('orig.jpg', 100, 100);
+        $photo = Photo::factory()->create([
+            'name' => 'orig.jpg',
+            'media_type' => 'image',
+            'mime_type' => 'image/jpeg',
+            'taken_at' => '2024-03-04 09:00:00',
+        ]);
+        Storage::disk('files')->put($photo->disk_path, $image->getContent());
+
+        app(PhotoStorage::class)->process($photo->fresh());
+
+        // The upload pipeline renames from the template using the capture date.
+        $this->assertSame('2024-03-04.jpg', $photo->fresh()->name);
     }
 
     public function test_reading_metadata_extracts_an_embedded_motion_clip(): void
