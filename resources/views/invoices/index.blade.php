@@ -7,6 +7,8 @@
             <p class="mt-1 text-sm text-gray-600">{{ __('invoices.index.subtitle') }}</p>
         </div>
         <div class="flex items-center gap-2">
+            <a href="{{ route('finance.invoices.trash') }}"
+                class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.index.trash') }}</a>
             <a href="{{ route('finance.invoices.import.create') }}"
                 class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.index.import') }}</a>
             <a href="{{ route('finance.invoices.create') }}"

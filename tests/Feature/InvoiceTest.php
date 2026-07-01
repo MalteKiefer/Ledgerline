@@ -152,12 +152,46 @@ class InvoiceTest extends TestCase
         $this->assertSame('CANCELLED', $invoice->fresh()->status->value);
     }
 
-    public function test_only_drafts_can_be_deleted(): void
+    public function test_any_invoice_can_be_trashed_and_restored(): void
     {
         $this->signIn();
         $invoice = $this->createDraft();
         $this->post(route('finance.invoices.finalize', $invoice));
+        $invoice->refresh();
 
-        $this->delete(route('finance.invoices.destroy', $invoice->fresh()))->assertForbidden();
+        // A finalised (and even paid) invoice can be moved to the trash.
+        $invoice->update(['status' => 'PAID', 'paid_cents' => $invoice->gross_cents]);
+        $this->delete(route('finance.invoices.destroy', $invoice))
+            ->assertRedirect(route('finance.invoices.index'));
+
+        $this->assertSoftDeleted('invoices', ['id' => $invoice->id]);
+        $this->assertDatabaseMissing('invoices', ['id' => $invoice->id, 'deleted_at' => null]);
+
+        // It appears in the trash and can be restored.
+        $this->get(route('finance.invoices.trash'))->assertOk()->assertSee($invoice->number);
+        $this->post(route('finance.invoices.restore', $invoice->id))->assertRedirect();
+        $this->assertDatabaseHas('invoices', ['id' => $invoice->id, 'deleted_at' => null]);
+    }
+
+    public function test_force_delete_removes_a_trashed_invoice_permanently(): void
+    {
+        $this->signIn();
+        $invoice = $this->createDraft();
+        $this->delete(route('finance.invoices.destroy', $invoice));
+
+        $this->delete(route('finance.invoices.force-destroy', $invoice->id))
+            ->assertRedirect(route('finance.invoices.trash'));
+
+        $this->assertDatabaseMissing('invoices', ['id' => $invoice->id]);
+    }
+
+    public function test_trashed_invoices_are_hidden_from_the_list(): void
+    {
+        $this->signIn();
+        $invoice = $this->createDraft();
+        $this->delete(route('finance.invoices.destroy', $invoice));
+
+        $this->assertSame(0, Invoice::count());
+        $this->assertSame(1, Invoice::withTrashed()->count());
     }
 }

@@ -92,6 +92,9 @@ Route::middleware('auth')->group(function (): void {
         Route::post('expenses/{expense}/files', [FileController::class, 'storeForExpense'])->name('expenses.files.store');
         Route::resource('time-entries', TimeEntryController::class)->except('show');
         Route::resource('income-entries', IncomeEntryController::class)->except('show');
+        Route::get('invoices/trash', [InvoiceController::class, 'trash'])->name('invoices.trash');
+        Route::post('invoices/{invoice}/restore', [InvoiceController::class, 'restore'])->name('invoices.restore');
+        Route::delete('invoices/{invoice}/force', [InvoiceController::class, 'forceDestroy'])->name('invoices.force-destroy');
         Route::get('invoices/import', [InvoiceImportController::class, 'create'])->name('invoices.import.create');
         Route::post('invoices/import/parse', [InvoiceImportController::class, 'parse'])->name('invoices.import.parse');
         Route::get('invoices/import/next', [InvoiceImportController::class, 'next'])->name('invoices.import.next');

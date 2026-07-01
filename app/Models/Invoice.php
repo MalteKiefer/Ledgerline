@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use RuntimeException;
 
 /**
@@ -39,10 +40,10 @@ use RuntimeException;
 class Invoice extends Model
 {
     /** @use HasFactory<InvoiceFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
-    /** Fields that may still change after finalisation. */
-    private const MUTABLE_AFTER_FINALIZE = ['status', 'paid_cents', 'paid_on', 'updated_at'];
+    /** Fields that may still change after finalisation (incl. trashing/restoring). */
+    private const MUTABLE_AFTER_FINALIZE = ['status', 'paid_cents', 'paid_on', 'updated_at', 'deleted_at'];
 
     protected static function booted(): void
     {

@@ -87,7 +87,7 @@ class InvoiceImportTest extends TestCase
         $this->delete(route('files.destroy', $file->fresh()))
             ->assertRedirect(route('finance.invoices.index'));
 
-        $this->assertDatabaseMissing('invoices', ['id' => $invoice->id]);
+        $this->assertSoftDeleted('invoices', ['id' => $invoice->id]);
         $this->assertDatabaseMissing('files', ['id' => $file->id]);
     }
 
@@ -144,7 +144,7 @@ class InvoiceImportTest extends TestCase
         $this->assertTrue($invoice->isImported());
         $this->delete(route('finance.invoices.destroy', $invoice))
             ->assertRedirect(route('finance.invoices.index'));
-        $this->assertDatabaseMissing('invoices', ['id' => $invoice->id]);
+        $this->assertSoftDeleted('invoices', ['id' => $invoice->id]);
     }
 
     public function test_import_number_must_be_unique(): void

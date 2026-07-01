@@ -26,6 +26,7 @@ return [
         'col_outstanding' => 'Offen',
         'draft' => 'Entwurf #:id',
         'credit' => 'Gutschrift',
+        'trash' => 'Papierkorb',
     ],
     'create' => [
         'title' => 'Neue Rechnung',
@@ -88,6 +89,8 @@ return [
         'source_document' => 'Quelldokument',
         'credit_notes' => 'Gutschriften',
         'draft_hash' => 'Entwurf #:id',
+        'trash' => 'In Papierkorb',
+        'trash_confirm' => 'Diese Rechnung in den Papierkorb verschieben? Sie können sie später wiederherstellen.',
     ],
     'form' => [
         'customer' => 'Kunde',
@@ -159,5 +162,16 @@ return [
             'skip' => 'Überspringen',
             'skip_confirm' => 'Diese Rechnung überspringen? Die hochgeladene Datei wird verworfen.',
         ],
+    ],
+    'trash' => [
+        'title' => 'Papierkorb',
+        'heading' => 'Gelöschte Rechnungen',
+        'empty' => 'Papierkorb ist leer.',
+        'deleted_at' => 'Gelöscht',
+        'restore' => 'Wiederherstellen',
+        'delete_forever' => 'Endgültig löschen',
+        'delete_forever_confirm' => 'Diese Rechnung und ihr Belegdokument endgültig löschen? Dies kann nicht rückgängig gemacht werden.',
+        'back' => 'Zurück zu Rechnungen',
+        'open' => 'Papierkorb',
     ],
 ];

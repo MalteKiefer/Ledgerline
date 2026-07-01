@@ -34,10 +34,6 @@
                     :message="__('invoices.show.confirm_finalise')"
                     :confirm="__('invoices.show.finalise')"
                     confirm-class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700" />
-                <x-confirm-action :action="route('finance.invoices.destroy', $invoice)" method="DELETE"
-                    :trigger="__('invoices.show.delete')"
-                    trigger-class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-                    :message="__('invoices.show.confirm_delete_draft')" />
             @elseif (! $isCredit && $invoice->status->value !== 'CANCELLED')
                 <x-confirm-action :action="route('finance.invoices.credit-note', $invoice)" method="POST"
                     :trigger="__('invoices.show.create_credit_note')"
@@ -46,12 +42,11 @@
                     :confirm="__('invoices.show.create_credit_note')"
                     confirm-class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700" />
             @endif
-            @if ($invoice->isImported())
-                <x-confirm-action :action="route('finance.invoices.destroy', $invoice)" method="DELETE"
-                    :trigger="__('invoices.show.delete')"
-                    trigger-class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-                    :message="__('invoices.show.confirm_delete_imported')" />
-            @endif
+            {{-- Any invoice, regardless of status, can be moved to the trash. --}}
+            <x-confirm-action :action="route('finance.invoices.destroy', $invoice)" method="DELETE"
+                :trigger="__('invoices.show.trash')"
+                trigger-class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                :message="__('invoices.show.trash_confirm')" />
         </div>
     </div>
 
