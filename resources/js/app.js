@@ -689,8 +689,10 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         const skipped = this.queue.filter((e) => e.state === 'skipped').map((e) => e.name);
         const errored = this.queue.filter((e) => e.state === 'error').map((e) => e.name);
 
-        // Nothing to review: reveal the new items straight away.
-        if (created > 0 && duplicates.length === 0 && skipped.length === 0 && errored.length === 0) {
+        // Any new photos → refresh to show them. Only keep the tray open when
+        // nothing was added (everything was a duplicate, skipped or failed) so
+        // that list stays visible to review.
+        if (created > 0) {
             window.location.reload();
             return;
         }
