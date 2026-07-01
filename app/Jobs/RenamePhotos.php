@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Models\Photo;
 use App\Services\Gallery\PhotoStorage;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -14,7 +15,7 @@ use Illuminate\Foundation\Queue\Queueable;
  */
 class RenamePhotos implements ShouldQueue
 {
-    use Queueable;
+    use Batchable, Queueable;
 
     public function __construct(public int $photoId) {}
 

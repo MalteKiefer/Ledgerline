@@ -22,4 +22,17 @@ return [
 
     'ffmpeg_path' => env('GALLERY_FFMPEG_PATH', 'ffmpeg'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Reverse-geocoding rate limit
+    |--------------------------------------------------------------------------
+    |
+    | Minimum spacing (milliseconds) between Nominatim requests, enforced across
+    | all workers. OpenStreetMap's usage policy allows at most one request per
+    | second; bulk imports would otherwise get the server blocked.
+    |
+    */
+
+    'geocode_interval_ms' => (int) env('GALLERY_GEOCODE_INTERVAL_MS', 1100),
+
 ];

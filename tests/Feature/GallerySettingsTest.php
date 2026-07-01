@@ -87,6 +87,15 @@ class GallerySettingsTest extends TestCase
         Queue::assertPushed(RenamePhotos::class, 3);
     }
 
+    public function test_batch_status_reports_not_found_without_an_id(): void
+    {
+        $this->signIn();
+
+        $this->getJson(route('settings.gallery.batch-status'))
+            ->assertOk()
+            ->assertJson(['found' => false]);
+    }
+
     public function test_queue_status_reports_pending_and_failed_counts(): void
     {
         $this->signIn();
