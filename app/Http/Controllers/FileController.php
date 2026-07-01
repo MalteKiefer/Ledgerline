@@ -15,6 +15,8 @@ use App\Models\Folder;
 use App\Models\Project;
 use App\Models\Tag;
 use App\Models\User;
+use App\Services\Files\ImageExif;
+use App\Services\Files\ReverseGeocoder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
@@ -129,15 +131,25 @@ class FileController extends Controller
     /**
      * Show a file's detail page.
      */
-    public function show(File $file): View
+    public function show(File $file, ImageExif $exifReader, ReverseGeocoder $geocoder): View
     {
         $this->authorize('view', $file);
 
         $file->load(['attachable', 'tags', 'uploader', 'folder']);
 
+        $exif = $exifReader->read($file);
+        $location = null;
+
+        if ($exif !== null && $exif['gps'] !== null) {
+            [$lat, $lon] = $exif['gps'];
+            $location = ['lat' => $lat, 'lon' => $lon, 'address' => $geocoder->lookup($lat, $lon)];
+        }
+
         return view('files.show', [
             'file' => $file,
             'folders' => Folder::query()->orderBy('name')->get(),
+            'exif' => $exif,
+            'location' => $location,
         ]);
     }
 
