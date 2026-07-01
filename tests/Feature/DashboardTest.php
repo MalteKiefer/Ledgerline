@@ -30,7 +30,8 @@ class DashboardTest extends TestCase
             ->assertSee('Projects')
             ->assertSee('Files')
             ->assertSee('Storage used')
-            ->assertSee('Recent files');
+            ->assertSee('Recent files')
+            ->assertSee('Toggle menu');
     }
 
     public function test_counts_reflect_only_the_users_team(): void
