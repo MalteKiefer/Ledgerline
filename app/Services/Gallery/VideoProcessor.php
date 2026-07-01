@@ -103,10 +103,19 @@ class VideoProcessor
         }
     }
 
-    private function ffmpeg(): string
+    /**
+     * The resolved ffmpeg binary path: a per-workspace override, otherwise the
+     * configured path (read through config so it survives config caching).
+     */
+    public function binaryPath(): string
     {
         return CompanyProfile::current()->gallery_ffmpeg_path
-            ?: (string) env('GALLERY_FFMPEG_PATH', 'ffmpeg');
+            ?: (string) config('gallery.ffmpeg_path', 'ffmpeg');
+    }
+
+    private function ffmpeg(): string
+    {
+        return $this->binaryPath();
     }
 
     private function ffprobe(): string

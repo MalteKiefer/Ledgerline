@@ -11,6 +11,7 @@ use App\Jobs\ReadPhotoMetadata;
 use App\Jobs\RenamePhotos;
 use App\Models\CompanyProfile;
 use App\Models\Photo;
+use App\Services\Gallery\VideoProcessor;
 use App\Services\QueueStatus;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -22,12 +23,14 @@ use Illuminate\Http\RedirectResponse;
  */
 class GalleryController extends Controller
 {
-    public function edit(QueueStatus $queue): View
+    public function edit(QueueStatus $queue, VideoProcessor $video): View
     {
         return view('settings.gallery.edit', [
             'company' => CompanyProfile::current(),
             'photoCount' => Photo::count(),
             'queue' => $queue->snapshot(),
+            'ffmpegResolved' => $video->binaryPath(),
+            'ffmpegAvailable' => $video->available(),
         ]);
     }
 
