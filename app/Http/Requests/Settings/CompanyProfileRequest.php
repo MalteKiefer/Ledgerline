@@ -48,6 +48,8 @@ class CompanyProfileRequest extends FormRequest
             'default_tax_rate' => ['required', 'integer', 'min:0', 'max:100'],
             'tax_display' => ['required', Rule::in(['line', 'invoice'])],
             'paper_size' => ['required', Rule::in(config('finance.paper_sizes'))],
+            'gallery_trip_gap_days' => ['required', 'integer', 'min:1', 'max:60'],
+            'gallery_trip_radius_km' => ['required', 'integer', 'min:1', 'max:5000'],
             'invoice_number_prefix' => ['required', 'string', 'max:20'],
             'invoice_number_next' => ['required', 'integer', 'min:1'],
             'payment_terms_days' => ['required', 'integer', 'min:0', 'max:365'],

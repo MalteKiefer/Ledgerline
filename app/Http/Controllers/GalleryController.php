@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessPhoto;
+use App\Models\CompanyProfile;
 use App\Models\Photo;
 use App\Services\Gallery\PhotoStorage;
+use App\Services\Gallery\TripGrouper;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -40,6 +42,29 @@ class GalleryController extends Controller
     public function map(): View
     {
         return view('gallery.map');
+    }
+
+    /**
+     * Trips: geotagged photos grouped by location and date.
+     */
+    public function trips(TripGrouper $grouper): View
+    {
+        $company = CompanyProfile::current();
+
+        $photos = Photo::query()
+            ->where('status', 'ready')
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->orderBy('taken_at')
+            ->get();
+
+        $trips = $grouper->group(
+            $photos,
+            (int) ($company->gallery_trip_gap_days ?? 2),
+            (float) ($company->gallery_trip_radius_km ?? 100),
+        );
+
+        return view('gallery.trips', ['trips' => $trips]);
     }
 
     /**
