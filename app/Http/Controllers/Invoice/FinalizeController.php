@@ -21,7 +21,7 @@ class FinalizeController extends Controller
         abort_unless($invoice->isDraft(), 403, 'Only draft invoices can be finalised.');
 
         if ($invoice->lines()->count() === 0) {
-            return back()->with('error', 'Add at least one line before finalising.');
+            return back()->with('error', __('flash.finalise_needs_line'));
         }
 
         $generator->assign($invoice);
@@ -40,6 +40,6 @@ class FinalizeController extends Controller
 
         return redirect()
             ->route('finance.invoices.show', $invoice)
-            ->with('status', "Invoice finalised as {$invoice->number}.");
+            ->with('status', __('flash.invoice_finalised', ['number' => $invoice->number]));
     }
 }

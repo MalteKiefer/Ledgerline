@@ -88,7 +88,7 @@ class InvoiceController extends Controller
         $invoice->created_by = $request->user()->id;
         $this->fillDraft($invoice, $request->validated());
 
-        return redirect()->route('finance.invoices.show', $invoice)->with('status', 'Invoice draft created.');
+        return redirect()->route('finance.invoices.show', $invoice)->with('status', __('flash.invoice_draft_created'));
     }
 
     public function show(Invoice $invoice): View
@@ -116,7 +116,7 @@ class InvoiceController extends Controller
 
         $this->fillDraft($invoice, $request->validated());
 
-        return redirect()->route('finance.invoices.show', $invoice)->with('status', 'Invoice updated.');
+        return redirect()->route('finance.invoices.show', $invoice)->with('status', __('flash.invoice_updated'));
     }
 
     public function destroy(Invoice $invoice): RedirectResponse
@@ -131,7 +131,7 @@ class InvoiceController extends Controller
 
         $invoice->delete();
 
-        return redirect()->route('finance.invoices.index')->with('status', 'Invoice deleted.');
+        return redirect()->route('finance.invoices.index')->with('status', __('flash.invoice_deleted'));
     }
 
     /**

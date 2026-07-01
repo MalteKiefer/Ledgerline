@@ -40,7 +40,7 @@ class TagController extends Controller
             'color' => $request->validated()['color'] ?? null,
         ]);
 
-        return redirect()->route('settings.tags.index')->with('status', 'Tag added.');
+        return redirect()->route('settings.tags.index')->with('status', __('flash.tag_added'));
     }
 
     public function update(TagRequest $request, Tag $tag): RedirectResponse
@@ -62,13 +62,13 @@ class TagController extends Controller
             'color' => $request->validated()['color'] ?? null,
         ]);
 
-        return redirect()->route('settings.tags.index')->with('status', 'Tag updated.');
+        return redirect()->route('settings.tags.index')->with('status', __('flash.tag_updated'));
     }
 
     public function destroy(Tag $tag): RedirectResponse
     {
         $tag->delete();
 
-        return redirect()->route('settings.tags.index')->with('status', 'Tag deleted.');
+        return redirect()->route('settings.tags.index')->with('status', __('flash.tag_deleted'));
     }
 }

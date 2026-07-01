@@ -15,7 +15,7 @@ class CustomerSearchProvider extends AbstractSearchProvider
 {
     public function group(): string
     {
-        return 'Customers';
+        return __('search.customers');
     }
 
     public function search(string $term, int $limit): array

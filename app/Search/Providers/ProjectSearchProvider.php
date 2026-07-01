@@ -15,7 +15,7 @@ class ProjectSearchProvider extends AbstractSearchProvider
 {
     public function group(): string
     {
-        return 'Projects';
+        return __('search.projects');
     }
 
     public function search(string $term, int $limit): array

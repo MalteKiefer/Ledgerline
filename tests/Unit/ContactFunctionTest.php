@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Enums\ContactFunction;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class ContactFunctionTest extends TestCase
 {

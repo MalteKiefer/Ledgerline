@@ -164,7 +164,7 @@ class ImportController extends Controller
 
         return redirect()
             ->route('finance.invoices.show', $invoice)
-            ->with('status', "Imported invoice {$invoice->number}.");
+            ->with('status', __('flash.invoice_imported', ['number' => $invoice->number]));
     }
 
     /**

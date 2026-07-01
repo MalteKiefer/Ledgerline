@@ -43,7 +43,7 @@ class FileController extends Controller
 
         return redirect()
             ->route('customers.show', $customer)
-            ->with('status', 'File uploaded.');
+            ->with('status', __('flash.file_uploaded'));
     }
 
     /**
@@ -57,7 +57,7 @@ class FileController extends Controller
 
         return redirect()
             ->route('projects.show', $project)
-            ->with('status', 'File uploaded.');
+            ->with('status', __('flash.file_uploaded'));
     }
 
     /**
@@ -71,7 +71,7 @@ class FileController extends Controller
 
         return redirect()
             ->route('finance.expenses.show', $expense)
-            ->with('status', 'File uploaded.');
+            ->with('status', __('flash.file_uploaded'));
     }
 
     /**
@@ -88,7 +88,7 @@ class FileController extends Controller
 
         return redirect()
             ->route('files.index', ['folder' => $folderId])
-            ->with('status', 'File uploaded.');
+            ->with('status', __('flash.file_uploaded'));
     }
 
     /**
@@ -109,7 +109,7 @@ class FileController extends Controller
 
         return redirect()
             ->route('files.index')
-            ->with('status', 'File uploaded.');
+            ->with('status', __('flash.file_uploaded'));
     }
 
     /**
@@ -152,7 +152,7 @@ class FileController extends Controller
 
         return redirect()
             ->route('files.show', $file)
-            ->with('status', 'File updated.');
+            ->with('status', __('flash.file_updated'));
     }
 
     /**
@@ -204,7 +204,7 @@ class FileController extends Controller
 
         return redirect()
             ->back()
-            ->with('status', 'File deleted.');
+            ->with('status', __('flash.file_deleted'));
     }
 
     /**

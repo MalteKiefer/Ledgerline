@@ -34,6 +34,6 @@ class PaymentController extends Controller
 
         $invoice->save();
 
-        return redirect()->route('finance.invoices.show', $invoice)->with('status', 'Payment recorded.');
+        return redirect()->route('finance.invoices.show', $invoice)->with('status', __('flash.payment_recorded'));
     }
 }

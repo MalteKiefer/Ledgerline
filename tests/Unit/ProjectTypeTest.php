@@ -6,7 +6,7 @@ namespace Tests\Unit;
 
 use App\Enums\ProjectPriority;
 use App\Enums\ProjectType;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class ProjectTypeTest extends TestCase
 {

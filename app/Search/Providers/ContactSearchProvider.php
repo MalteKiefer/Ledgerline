@@ -15,7 +15,7 @@ class ContactSearchProvider extends AbstractSearchProvider
 {
     public function group(): string
     {
-        return 'Contacts';
+        return __('search.contacts');
     }
 
     public function search(string $term, int $limit): array
