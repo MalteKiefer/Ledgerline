@@ -9,6 +9,7 @@ use App\Models\Photo;
 use App\Services\Gallery\VideoProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -246,6 +247,28 @@ class GalleryTest extends TestCase
         $this->get(route('dashboard'))
             ->assertOk()
             ->assertSee(__('pages.dashboard.gallery_videos'));
+    }
+
+    public function test_location_can_be_set_on_several_photos_at_once(): void
+    {
+        Http::fake(['nominatim.openstreetmap.org/*' => Http::response(['display_name' => 'Bayreuth'])]);
+        $this->signIn();
+        $a = Photo::factory()->create(['latitude' => null, 'longitude' => null]);
+        $b = Photo::factory()->create(['latitude' => null, 'longitude' => null]);
+
+        $this->post(route('gallery.location'), [
+            'photo_ids' => [$a->id, $b->id],
+            'latitude' => 49.9,
+            'longitude' => 11.5,
+        ])->assertRedirect();
+
+        foreach ([$a, $b] as $photo) {
+            $photo->refresh();
+            $this->assertSame(49.9, $photo->latitude);
+            $this->assertSame(11.5, $photo->longitude);
+            $this->assertSame('Bayreuth', $photo->place);
+            $this->assertTrue($photo->meta_locked);
+        }
     }
 
     public function test_trash_page_uses_a_modal_not_native_confirm(): void

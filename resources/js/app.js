@@ -503,6 +503,20 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         } catch (e) { /* leave hasMore as-is so a later scroll retries */ } finally {
             this.loading = false;
         }
+
+        // Fast scrolling can blow past the sentinel; keep loading while it is
+        // still within reach of the viewport.
+        this.$nextTick(() => this.fillViewport());
+    },
+
+    fillViewport() {
+        const el = this.$refs.sentinel;
+        if (! el || ! this.hasMore || this.loading) {
+            return;
+        }
+        if (el.getBoundingClientRect().top < window.innerHeight + 800) {
+            this.loadMore();
+        }
     },
 
     /* ---- Timeline scrubber ---- */

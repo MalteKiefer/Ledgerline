@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Jobs\ProcessPhoto;
 use App\Models\CompanyProfile;
 use App\Models\Photo;
+use App\Services\Files\ReverseGeocoder;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -289,6 +290,35 @@ class GalleryController extends Controller
         ProcessPhoto::dispatch($photo->id);
 
         return back()->with('status', __('flash.photo_updated'));
+    }
+
+    /**
+     * Set the same location on a selection of photos at once. The coordinates
+     * are geocoded a single time and applied to every selected photo, marking
+     * their metadata as user-locked.
+     */
+    public function bulkLocation(Request $request, ReverseGeocoder $geocoder): RedirectResponse
+    {
+        $validated = $request->validate([
+            'photo_ids' => ['required', 'array'],
+            'photo_ids.*' => ['integer'],
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        $geo = $geocoder->lookupDetailed((float) $validated['latitude'], (float) $validated['longitude']);
+
+        $count = Photo::query()->whereIn('id', $validated['photo_ids'])->get()
+            ->each(fn (Photo $photo) => $photo->forceFill([
+                'latitude' => $validated['latitude'],
+                'longitude' => $validated['longitude'],
+                'place' => $geo['display'],
+                'place_details' => $geo['address'] ?: null,
+                'meta_locked' => true,
+            ])->save())
+            ->count();
+
+        return back()->with('status', __('flash.photos_location_set', ['count' => $count]));
     }
 
     /**
