@@ -135,13 +135,26 @@ class FileController extends Controller
 
         abort_unless($disk->exists($file->disk_path), 404);
 
-        $disposition = in_array($file->mime_type, self::INLINE_SAFE_MIMES, true) ? 'inline' : 'attachment';
+        $inline = in_array($file->mime_type, self::INLINE_SAFE_MIMES, true);
 
-        return $disk->response($file->disk_path, $file->name, [
-            'Content-Type' => $file->mime_type,
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Security-Policy' => "default-src 'none'; sandbox",
-        ], $disposition);
+        // Attachments stay maximally locked down. Inline (image/PDF) previews
+        // must be framable by our own origin, so they use SAMEORIGIN and a CSP
+        // that permits same-origin framing while still blocking active content.
+        $headers = $inline
+            ? [
+                'Content-Type' => $file->mime_type,
+                'X-Content-Type-Options' => 'nosniff',
+                'X-Frame-Options' => 'SAMEORIGIN',
+                'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; object-src 'self'; frame-ancestors 'self'",
+            ]
+            : [
+                'Content-Type' => $file->mime_type,
+                'X-Content-Type-Options' => 'nosniff',
+                'X-Frame-Options' => 'DENY',
+                'Content-Security-Policy' => "default-src 'none'; sandbox",
+            ];
+
+        return $disk->response($file->disk_path, $file->name, $headers, $inline ? 'inline' : 'attachment');
     }
 
     /**
