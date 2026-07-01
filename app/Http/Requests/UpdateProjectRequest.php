@@ -7,6 +7,7 @@ namespace App\Http\Requests;
 use App\Enums\ProjectPriority;
 use App\Enums\ProjectStatus;
 use App\Enums\ProjectType;
+use App\Http\Requests\Concerns\ResolvesDefaultRate;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -20,6 +21,8 @@ use Illuminate\Validation\Rule;
  */
 class UpdateProjectRequest extends FormRequest
 {
+    use ResolvesDefaultRate;
+
     public function authorize(): bool
     {
         return true;
@@ -30,6 +33,8 @@ class UpdateProjectRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $this->mergeDefaultRate();
+
         $tags = $this->input('tags');
 
         if (is_array($tags)) {
@@ -67,6 +72,7 @@ class UpdateProjectRequest extends FormRequest
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'budget' => ['nullable', 'numeric', 'min:0', 'max:999999999.99'],
             'estimated_hours' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
+            'default_rate_cents' => ['nullable', 'integer', 'min:0'],
             'tags' => ['array'],
             'tags.*' => ['string', 'max:50'],
         ];

@@ -54,8 +54,10 @@ class StoreExpenseRequest extends FormRequest
             'payment_status' => ['required', Rule::enum(PaymentStatus::class)],
             'paid_on' => ['nullable', 'date'],
             'billable' => ['boolean'],
-            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')],
-            'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')],
+            // Only accept customers/projects the user actually belongs to (in
+            // addition to the team global scope enforced on the write).
+            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->whereIn('team_id', $this->user()->teamIds()->all())],
+            'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')->whereIn('team_id', $this->user()->teamIds()->all())],
             'labels' => ['array'],
             'labels.*' => ['string', 'max:50'],
         ];

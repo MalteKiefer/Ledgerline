@@ -13,6 +13,7 @@ use App\Http\Controllers\DefaultTeamController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
+use App\Http\Controllers\IncomeEntryController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectOverviewController;
@@ -21,6 +22,7 @@ use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\TagController as SettingsTagController;
 use App\Http\Controllers\Settings\TeamController as SettingsTeamController;
+use App\Http\Controllers\TimeEntryController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -78,6 +80,8 @@ Route::middleware('auth')->group(function (): void {
     Route::prefix('finance')->name('finance.')->group(function (): void {
         Route::resource('expenses', ExpenseController::class);
         Route::post('expenses/{expense}/files', [FileController::class, 'storeForExpense'])->name('expenses.files.store');
+        Route::resource('time-entries', TimeEntryController::class)->except('show');
+        Route::resource('income-entries', IncomeEntryController::class)->except('show');
     });
 
     // Files: attached to a customer or project; a team-wide overview; download

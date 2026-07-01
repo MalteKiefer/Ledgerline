@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ResolvesDefaultRate;
 use App\Support\Countries;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -17,12 +18,19 @@ use Illuminate\Validation\Rule;
  */
 class StoreCustomerRequest extends FormRequest
 {
+    use ResolvesDefaultRate;
+
     /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
         return true;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->mergeDefaultRate();
     }
 
     /**
@@ -43,6 +51,7 @@ class StoreCustomerRequest extends FormRequest
             'city' => ['nullable', 'string', 'max:255'],
             'country' => ['nullable', Rule::in(Countries::codes())],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'default_rate_cents' => ['nullable', 'integer', 'min:0'],
         ];
     }
 }
