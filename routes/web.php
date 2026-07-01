@@ -11,6 +11,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
+use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\FolderController;
 use App\Http\Controllers\IncomeEntryController;
 use App\Http\Controllers\Invoice\CreditNoteController;
@@ -79,6 +80,7 @@ Route::middleware('auth')->group(function (): void {
 
     // Finance.
     Route::prefix('finance')->name('finance.')->group(function (): void {
+        Route::get('report', FinanceReportController::class)->name('report');
         Route::resource('expenses', ExpenseController::class);
         Route::post('expenses/{expense}/files', [FileController::class, 'storeForExpense'])->name('expenses.files.store');
         Route::resource('time-entries', TimeEntryController::class)->except('show');
