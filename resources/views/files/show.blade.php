@@ -141,6 +141,16 @@
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">{{ old('note', $file->note) }}</textarea>
                         @error('note')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                     </div>
+                    <div>
+                        <label for="folder_id" class="block text-sm font-medium text-gray-700">Folder</label>
+                        <select id="folder_id" name="folder_id"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                            <option value="">— None —</option>
+                            @foreach ($folders as $f)
+                                <option value="{{ $f->id }}" @selected((int) old('folder_id', $file->folder_id) === $f->id)>{{ $f->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <button type="submit"
                         class="w-full rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">Save</button>
                 </div>

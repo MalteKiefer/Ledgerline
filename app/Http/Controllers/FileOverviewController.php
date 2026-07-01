@@ -7,14 +7,18 @@ namespace App\Http\Controllers;
 use App\Enums\FileType;
 use App\Models\Customer;
 use App\Models\File;
+use App\Models\Folder;
 use App\Models\Project;
 use App\Models\Tag;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 
 /**
- * Lists every file across the current user's team(s), with search, sort, a type
- * filter and a tag filter, plus an upload form. Reachable from the main menu.
+ * A folder-based browser over every file, with search, sort, type and tag
+ * filters, folder navigation, and general/company file upload.
+ *
+ * While browsing, only the current folder's subfolders and files are shown.
+ * Searching or filtering switches to a flat view across all folders.
  */
 class FileOverviewController extends Controller
 {
@@ -22,20 +26,27 @@ class FileOverviewController extends Controller
     {
         $this->authorize('viewAny', File::class);
 
+        $folder = $request->query('folder')
+            ? Folder::with('parent')->findOrFail($request->query('folder'))
+            : null;
+
         $type = FileType::tryFrom((string) $request->query('type'));
         $tagSlug = $request->query('tag');
+        $term = $request->query('q');
+        $searching = filled($term) || $type !== null || filled($tagSlug);
+
         [$sort, $dir] = $this->sortFor($request, ['name', 'type', 'size', 'created_at'], 'created_at');
 
-        // Default to newest-first until the user picks a sort.
         if ($request->query('sort') === null && $request->query('dir') === null) {
             $dir = 'desc';
         }
 
         $files = File::query()
             ->with(['attachable', 'tags'])
+            ->when(! $searching, fn ($query) => $query->where('folder_id', $folder?->id))
             ->when($type, fn ($query) => $query->where('type', $type->value))
             ->when($tagSlug, fn ($query) => $query->whereHas('tags', fn ($t) => $t->where('slug', $tagSlug)))
-            ->when($request->query('q'), function ($query, $term): void {
+            ->when($term, function ($query, $term): void {
                 $like = '%'.mb_strtolower((string) $term).'%';
                 $query->where(function ($where) use ($like): void {
                     $where->orWhereRaw('LOWER(name) LIKE ?', [$like])
@@ -46,8 +57,18 @@ class FileOverviewController extends Controller
             ->paginate(20)
             ->withQueryString();
 
+        $subfolders = $searching
+            ? collect()
+            : Folder::query()->where('parent_id', $folder?->id)->withCount('files')->orderBy('name')->get();
+
+        $breadcrumb = $folder ? $folder->ancestors()->push($folder) : collect();
+
         return view('files.index', [
             'files' => $files,
+            'folder' => $folder,
+            'subfolders' => $subfolders,
+            'breadcrumb' => $breadcrumb,
+            'searching' => $searching,
             'types' => FileType::options(),
             'activeType' => $type?->value,
             'activeTagSlug' => $tagSlug,
@@ -60,8 +81,7 @@ class FileOverviewController extends Controller
     }
 
     /**
-     * Build the "customer:<id>" / "project:<id>" options for the upload target,
-     * scoped to the user's team by the global scope on both models.
+     * Build the "customer:<id>" / "project:<id>" options for the upload target.
      *
      * @return array<int, array{value: string, label: string}>
      */
