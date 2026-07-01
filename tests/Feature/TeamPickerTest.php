@@ -24,6 +24,22 @@ class TeamPickerTest extends TestCase
             ->assertSee('Choose your team');
     }
 
+    public function test_picker_shows_humanised_names_in_alphabetical_order(): void
+    {
+        $user = User::factory()->create();
+        $user->teams()->attach([
+            Team::factory()->create(['name' => 'mail_admins'])->id,
+            Team::factory()->create(['name' => 'admin'])->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Mail Admins')
+            ->assertDontSee('mail_admins')
+            ->assertSeeInOrder(['Admin', 'Mail Admins']);
+    }
+
     public function test_picker_is_hidden_once_a_team_is_active(): void
     {
         $user = User::factory()->create();
