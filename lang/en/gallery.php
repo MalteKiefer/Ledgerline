@@ -15,6 +15,7 @@ return [
     'heading' => 'Photos',
     'map' => 'Map',
     'map_empty' => 'No geotagged photos yet.',
+    'photos_count' => ':count photos',
     'processing' => 'Processing…',
     'restore' => 'Restore',
     'select_all' => 'Select all',
@@ -26,6 +27,8 @@ return [
     'trash_empty' => 'Trash is empty.',
     'trash_heading' => 'Trashed photos',
     'trash_title' => 'Trash',
+    'trips' => 'Trips',
+    'trips_empty' => 'No trips yet — add photos with location data.',
     'upload' => 'Upload photos',
     'uploading' => 'Uploading',
 ];
