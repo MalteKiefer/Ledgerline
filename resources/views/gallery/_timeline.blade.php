@@ -42,6 +42,7 @@
                             data-media-type="{{ $photo->media_type }}"
                             data-mime="{{ $photo->mime_type }}"
                             data-video="{{ $photo->isVideo() ? route('gallery.video', $photo) : '' }}"
+                            data-motion="{{ $photo->hasMotion() ? route('gallery.motion', $photo) : '' }}"
                             @click="openViewer($el)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
@@ -53,6 +54,8 @@
                                 @if ($photo->duration)
                                     <span class="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-medium text-white">{{ $fmtDuration($photo->duration) }}</span>
                                 @endif
+                            @elseif ($photo->hasMotion())
+                                <span class="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-medium text-white">{{ __('gallery.motion') }}</span>
                             @endif
                         </button>
                         <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"

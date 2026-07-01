@@ -130,6 +130,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/gallery/{photo}/transform', [GalleryController::class, 'transform'])->name('gallery.transform');
     Route::post('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->name('gallery.favorite');
     Route::get('/gallery/{photo}/video', [GalleryController::class, 'video'])->name('gallery.video');
+    Route::get('/gallery/{photo}/motion', [GalleryController::class, 'motion'])->name('gallery.motion');
     Route::post('/gallery/trash/restore', [GalleryController::class, 'restore'])->name('gallery.restore');
     Route::delete('/gallery/trash', [GalleryController::class, 'forceDestroy'])->name('gallery.force-destroy');
     Route::get('/gallery/{photo}/{size}', [GalleryController::class, 'image'])

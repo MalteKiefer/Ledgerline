@@ -161,6 +161,19 @@ class GalleryTest extends TestCase
         $this->get(route('gallery.video', $photo))->assertNotFound();
     }
 
+    public function test_motion_clip_streams_and_requires_a_clip(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $with = Photo::factory()->create(['motion_path' => 'photos/2026/07/motion/x.mp4']);
+        Storage::disk('files')->put($with->motion_path, 'clip-bytes');
+        $this->assertContains($this->get(route('gallery.motion', $with))->status(), [200, 302]);
+
+        $without = Photo::factory()->create(['motion_path' => null]);
+        $this->get(route('gallery.motion', $without))->assertNotFound();
+    }
+
     public function test_upload_rejects_non_images(): void
     {
         Storage::fake('files');
