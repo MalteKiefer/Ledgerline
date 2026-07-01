@@ -18,7 +18,7 @@
 @endphp
 
 @foreach ($grouped as $day => $dayPhotos)
-    <section data-day="{{ $day }}">
+    <section data-day="{{ $day }}" data-month="{{ \Illuminate\Support\Carbon::parse($day)->format('Y-m') }}">
         <h2 class="mb-3 text-sm font-semibold text-gray-700">{{ \Illuminate\Support\Carbon::parse($day)->isoFormat('LL') }}</h2>
         <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6" data-day-grid>
             @foreach ($dayPhotos as $photo)
@@ -38,6 +38,7 @@
                             data-lat="{{ $photo->latitude }}"
                             data-lng="{{ $photo->longitude }}"
                             data-place="{{ $photo->place }}"
+                            data-place-lines="{{ implode('|', $photo->placeLines()) }}"
                             data-favorite="{{ $photo->isFavorite() ? '1' : '0' }}"
                             data-media-type="{{ $photo->media_type }}"
                             data-mime="{{ $photo->mime_type }}"
@@ -77,8 +78,15 @@
                                     'text-white/80 opacity-0 hover:text-white group-hover:opacity-100' => ! $photo->isFavorite(),
                                 ])>{{ $photo->isFavorite() ? '♥' : '♡' }}</button>
                         </form>
+                    @elseif ($photo->status === 'failed')
+                        <div class="flex h-full w-full items-center justify-center bg-red-50 text-center text-xs text-red-500">{{ __('gallery.failed') }}</div>
+                        <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
+                            class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                     @else
                         <div class="flex h-full w-full animate-pulse items-center justify-center bg-gray-200 text-xs text-gray-400">{{ __('gallery.processing') }}</div>
+                        <input type="checkbox" value="{{ $photo->id }}" x-model.number="selected"
+                            class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"
+                            :class="selected.includes({{ $photo->id }}) ? '!opacity-100' : ''">
                     @endif
                 </div>
             @endforeach

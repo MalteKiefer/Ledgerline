@@ -413,7 +413,7 @@ Alpine.data('filesExplorer', (allIds = []) => ({
  * @param {string} feedUrl   The infinite-scroll feed endpoint.
  * @param {boolean} hasMore  Whether a second page exists.
  */
-Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13) => ({
+Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13, monthsUrl = '') => ({
     dragging: false,
     queue: [],
     selected: [],
@@ -425,6 +425,9 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
     page: 1,
     hasMore,
     loading: false,
+
+    // Timeline scrubber.
+    months: [],
 
     // Viewer.
     viewerOpen: false,
@@ -457,6 +460,8 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
         // Live-update the mini-map as the coordinates are edited.
         this.$watch('current.lat', () => { if (this.viewerOpen) this.renderMiniMap(); });
         this.$watch('current.lng', () => { if (this.viewerOpen) this.renderMiniMap(); });
+
+        this.loadMonths();
     },
 
     pick(event) {
@@ -471,32 +476,59 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13)
 
     /* ---- Infinite scroll ---- */
 
-    loadMore() {
+    async loadMore() {
         if (this.loading || ! this.hasMore) {
             return;
         }
         this.loading = true;
         const next = this.page + 1;
 
-        fetch(`${feedUrl}?page=${next}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then((r) => r.text())
-            .then((html) => {
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const target = this.$refs.timeline;
-                doc.querySelectorAll('section[data-day]').forEach((section) => {
-                    const day = section.dataset.day;
-                    const existing = target.querySelector(`section[data-day="${day}"] [data-day-grid]`);
-                    if (existing) {
-                        section.querySelectorAll('[data-day-grid] > *').forEach((tile) => existing.appendChild(tile));
-                    } else {
-                        target.appendChild(section);
-                    }
-                });
-                this.page = next;
-                this.hasMore = html.includes('data-has-more="1"');
-                this.loading = false;
-            })
-            .catch(() => { this.loading = false; });
+        try {
+            const r = await fetch(`${feedUrl}?page=${next}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const html = await r.text();
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const target = this.$refs.timeline;
+            doc.querySelectorAll('section[data-day]').forEach((section) => {
+                const day = section.dataset.day;
+                const existing = target.querySelector(`section[data-day="${day}"] [data-day-grid]`);
+                if (existing) {
+                    section.querySelectorAll('[data-day-grid] > *').forEach((tile) => existing.appendChild(tile));
+                } else {
+                    target.appendChild(section);
+                }
+            });
+            this.page = next;
+            this.hasMore = html.includes('data-has-more="1"');
+        } catch (e) { /* leave hasMore as-is so a later scroll retries */ } finally {
+            this.loading = false;
+        }
+    },
+
+    /* ---- Timeline scrubber ---- */
+
+    loadMonths() {
+        if (! monthsUrl) {
+            return;
+        }
+        fetch(monthsUrl, { headers: { Accept: 'application/json' } })
+            .then((r) => r.json())
+            .then(({ months }) => { this.months = months; })
+            .catch(() => {});
+    },
+
+    // Scroll to a month, loading further pages until its section is present.
+    async scrollToMonth(ym) {
+        for (let guard = 0; guard < 80; guard++) {
+            const el = this.$refs.timeline.querySelector(`section[data-month="${ym}"]`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+            if (! this.hasMore) {
+                return;
+            }
+            await this.loadMore();
+        }
     },
 
     /* ---- Viewer ---- */

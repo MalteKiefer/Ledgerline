@@ -64,6 +64,7 @@ return [
     'trash_title' => 'Trash',
     'trips' => 'Trips',
     'trips_empty' => 'No trips yet — add photos with location data.',
+    'failed' => 'Processing failed',
     'failed_count' => 'failed',
     'skipped_count' => 'skipped',
     'skipped_generic' => 'Skipped',

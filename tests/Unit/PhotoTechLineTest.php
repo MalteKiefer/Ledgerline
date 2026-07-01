@@ -45,6 +45,33 @@ class PhotoTechLineTest extends TestCase
         $this->assertSame('ISO 25', $photo->iso());
     }
 
+    public function test_place_lines_break_down_the_address(): void
+    {
+        $photo = new Photo(['place_details' => [
+            'road' => 'B 303',
+            'hamlet' => 'Neubauer Forst-Süd',
+            'county' => 'Landkreis Wunsiedel im Fichtelgebirge',
+            'state' => 'Bayern',
+            'postcode' => '95709',
+            'country' => 'Deutschland',
+        ]]);
+
+        $this->assertSame([
+            'B 303',
+            '95709 Neubauer Forst-Süd',
+            'Landkreis Wunsiedel im Fichtelgebirge',
+            'Bayern',
+            'Deutschland',
+        ], $photo->placeLines());
+    }
+
+    public function test_place_lines_fall_back_to_splitting_the_display_name(): void
+    {
+        $photo = new Photo(['place' => 'B 303, Bayern, Deutschland']);
+
+        $this->assertSame(['B 303', 'Bayern', 'Deutschland'], $photo->placeLines());
+    }
+
     public function test_getters_are_null_without_metadata(): void
     {
         $photo = new Photo(['media_type' => 'image']);

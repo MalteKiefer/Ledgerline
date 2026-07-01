@@ -16,6 +16,7 @@ use App\Services\QueueStatus;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 /**
  * Gallery settings: trip-grouping thresholds and independent maintenance jobs
@@ -53,60 +54,70 @@ class GalleryController extends Controller
     }
 
     /**
-     * Re-read every photo's metadata (EXIF + reverse-geocoded place).
+     * Re-read metadata (EXIF + reverse-geocoded place).
      */
-    public function rescan(): RedirectResponse
+    public function rescan(Request $request): RedirectResponse
     {
-        $count = 0;
-        Photo::query()->orderBy('id')->each(function (Photo $photo) use (&$count): void {
-            ReadPhotoMetadata::dispatch($photo->id);
-            $count++;
-        });
+        $count = $this->dispatchToTargets($request, fn (int $id) => ReadPhotoMetadata::dispatch($id));
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_rescan_queued', ['count' => $count]));
     }
 
     /**
-     * Regenerate every photo's thumbnails from the original.
+     * Regenerate thumbnails from the original.
      */
-    public function regenerate(): RedirectResponse
+    public function regenerate(Request $request): RedirectResponse
     {
-        $count = 0;
-        Photo::query()->orderBy('id')->each(function (Photo $photo) use (&$count): void {
-            GeneratePhotoRenditions::dispatch($photo->id);
-            $count++;
-        });
+        $count = $this->dispatchToTargets($request, fn (int $id) => GeneratePhotoRenditions::dispatch($id));
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_regenerate_queued', ['count' => $count]));
     }
 
     /**
-     * Re-apply the filename template to every photo's display name.
+     * Re-apply the filename template to the display name.
      */
-    public function rename(): RedirectResponse
+    public function rename(Request $request): RedirectResponse
     {
-        $count = 0;
-        Photo::query()->orderBy('id')->each(function (Photo $photo) use (&$count): void {
-            RenamePhotos::dispatch($photo->id);
-            $count++;
-        });
+        $count = $this->dispatchToTargets($request, fn (int $id) => RenamePhotos::dispatch($id));
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_rename_queued', ['count' => $count]));
     }
 
     /**
-     * Queue every maintenance job (thumbnails, metadata, rename) for all photos.
+     * Queue every maintenance job (thumbnails, metadata, rename).
      */
-    public function runAll(): RedirectResponse
+    public function runAll(Request $request): RedirectResponse
     {
-        $count = 0;
-        Photo::query()->orderBy('id')->each(function (Photo $photo) use (&$count): void {
-            GeneratePhotoRenditions::dispatch($photo->id);
-            ReadPhotoMetadata::dispatch($photo->id);
-            RenamePhotos::dispatch($photo->id);
-            $count++;
+        $count = $this->dispatchToTargets($request, function (int $id): void {
+            GeneratePhotoRenditions::dispatch($id);
+            ReadPhotoMetadata::dispatch($id);
+            RenamePhotos::dispatch($id);
         });
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_all_jobs_queued', ['count' => $count]));
+    }
+
+    /**
+     * Dispatch a job for the target photos: the newest N when a limit is given,
+     * otherwise the whole library.
+     */
+    private function dispatchToTargets(Request $request, callable $dispatch): int
+    {
+        $limit = $request->validate([
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100000'],
+        ])['limit'] ?? null;
+
+        $query = Photo::query()->select('id')->orderByDesc('id');
+        if ($limit !== null) {
+            $query->limit((int) $limit);
+        }
+
+        $count = 0;
+        foreach ($query->get() as $photo) {
+            $dispatch($photo->id);
+            $count++;
+        }
+
+        return $count;
     }
 }

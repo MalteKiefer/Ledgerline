@@ -33,6 +33,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'latitude',
     'longitude',
     'place',
+    'place_details',
     'camera',
     'metadata',
     'rotation',
@@ -64,6 +65,7 @@ class Photo extends Model
             'latitude' => 'float',
             'longitude' => 'float',
             'metadata' => 'array',
+            'place_details' => 'array',
             'rotation' => 'integer',
             'flipped' => 'boolean',
             'meta_locked' => 'boolean',
@@ -224,6 +226,43 @@ class Photo extends Model
     public function hasLocation(): bool
     {
         return $this->latitude !== null && $this->longitude !== null;
+    }
+
+    /**
+     * The reverse-geocoded address as ordered, readable lines: street, postcode
+     * with locality, county/state, and country. Falls back to splitting the
+     * display name when structured parts are missing.
+     *
+     * @return list<string>
+     */
+    public function placeLines(): array
+    {
+        $a = is_array($this->place_details) ? $this->place_details : [];
+
+        if ($a === []) {
+            return $this->place !== null ? array_map('trim', explode(',', $this->place)) : [];
+        }
+
+        $pick = static fn (array $keys): ?string => collect($keys)
+            ->map(fn (string $k): ?string => $a[$k] ?? null)
+            ->first(fn (?string $v): bool => is_string($v) && $v !== '');
+
+        $street = trim(($pick(['road', 'pedestrian', 'footway', 'path']) ?? '').' '.($a['house_number'] ?? ''));
+        $locality = $pick(['city', 'town', 'village', 'municipality', 'hamlet', 'suburb']);
+        $postcode = trim(($a['postcode'] ?? '').' '.($locality ?? ''));
+
+        $lines = [
+            $street,
+            $postcode,
+            $pick(['county', 'state_district']),
+            $a['state'] ?? null,
+            $a['country'] ?? null,
+        ];
+
+        return array_values(array_filter(array_map(
+            static fn (?string $v): string => trim((string) $v),
+            $lines,
+        ), static fn (string $v): bool => $v !== ''));
     }
 
     public function isFavorite(): bool
