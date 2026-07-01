@@ -129,6 +129,8 @@
                     <div><dt class="text-gray-500">{{ __('gallery.meta_date') }}</dt><dd class="text-gray-900" x-text="`${current.date} · ${current.time}`"></dd></div>
                     <div x-show="current.camera"><dt class="text-gray-500">{{ __('gallery.meta_camera') }}</dt><dd class="text-gray-900" x-text="current.camera"></dd></div>
                     <div x-show="current.dims"><dt class="text-gray-500">{{ __('gallery.meta_dimensions') }}</dt><dd class="text-gray-900" x-text="current.dims"></dd></div>
+                    <div x-show="current.durationText"><dt class="text-gray-500">{{ __('gallery.meta_duration') }}</dt><dd class="text-gray-900" x-text="current.durationText"></dd></div>
+                    <div x-show="current.tech"><dt class="text-gray-500">{{ __('gallery.meta_tech') }}</dt><dd class="text-gray-900" x-text="current.tech"></dd></div>
                     <div><dt class="text-gray-500">{{ __('gallery.meta_size') }}</dt><dd class="text-gray-900" x-text="current.size"></dd></div>
                     <div x-show="current.lat && current.lng">
                         <dt class="text-gray-500">{{ __('gallery.meta_location') }}</dt>
