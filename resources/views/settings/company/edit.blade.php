@@ -182,22 +182,6 @@
             </div>
         </section>
 
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.gallery_section') }}</h2>
-            <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                    <label for="gallery_trip_gap_days" class="block text-sm font-medium text-gray-700">{{ __('settings.trip_gap_days') }}</label>
-                    <input type="number" min="1" max="60" id="gallery_trip_gap_days" name="gallery_trip_gap_days" value="{{ old('gallery_trip_gap_days', $company->gallery_trip_gap_days ?? 2) }}" class="{{ $input }}">
-                    @error('gallery_trip_gap_days')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label for="gallery_trip_radius_km" class="block text-sm font-medium text-gray-700">{{ __('settings.trip_radius_km') }}</label>
-                    <input type="number" min="1" max="5000" id="gallery_trip_radius_km" name="gallery_trip_radius_km" value="{{ old('gallery_trip_radius_km', $company->gallery_trip_radius_km ?? 100) }}" class="{{ $input }}">
-                    @error('gallery_trip_radius_km')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-                </div>
-            </div>
-        </section>
-
         <div>
             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save_company_profile') }}</button>
         </div>
