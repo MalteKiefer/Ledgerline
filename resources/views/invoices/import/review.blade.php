@@ -18,11 +18,12 @@
         @if (($total ?? 0) > 0)
             <div class="flex items-center gap-3">
                 <span class="rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700">{{ __('invoices.import.review.progress', ['position' => $position, 'total' => $total]) }}</span>
-                <form method="POST" action="{{ route('finance.invoices.import.skip') }}"
-                    onsubmit="return confirm('{{ __('invoices.import.review.skip_confirm') }}');">
-                    @csrf
-                    <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.import.review.skip') }}</button>
-                </form>
+                <x-confirm-action :action="route('finance.invoices.import.skip')" method="POST"
+                    :trigger="__('invoices.import.review.skip')"
+                    trigger-class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    :message="__('invoices.import.review.skip_confirm')"
+                    :confirm="__('invoices.import.review.skip')"
+                    confirm-class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700" />
             </div>
         @endif
     </div>

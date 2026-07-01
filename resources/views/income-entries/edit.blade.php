@@ -12,9 +12,10 @@
         </div>
     </form>
 
-    <form method="POST" action="{{ route('finance.income-entries.destroy', $entry) }}" class="mt-3" onsubmit="return confirm('{{ __('income.edit.confirm_delete') }}');">
-        @csrf
-        @method('DELETE')
-        <button type="submit" class="text-sm text-red-600 hover:text-red-800">{{ __('income.edit.delete') }}</button>
-    </form>
+    <div class="mt-3">
+        <x-confirm-action :action="route('finance.income-entries.destroy', $entry)" method="DELETE"
+            :trigger="__('income.edit.delete')"
+            trigger-class="text-sm text-red-600 hover:text-red-800"
+            :message="__('income.edit.confirm_delete')" />
+    </div>
 </x-layouts.app>

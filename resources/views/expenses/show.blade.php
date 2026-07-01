@@ -7,12 +7,10 @@
         <div class="flex items-center gap-3">
             <a href="{{ route('finance.expenses.edit', $expense) }}"
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('expenses.show.edit') }}</a>
-            <form method="POST" action="{{ route('finance.expenses.destroy', $expense) }}"
-                onsubmit="return confirm('{{ __('expenses.show.confirm_delete') }}');">
-                @csrf
-                @method('DELETE')
-                <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('expenses.show.delete') }}</button>
-            </form>
+            <x-confirm-action :action="route('finance.expenses.destroy', $expense)" method="DELETE"
+                :trigger="__('expenses.show.delete')"
+                trigger-class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                :message="__('expenses.show.confirm_delete')" />
         </div>
     </div>
 
