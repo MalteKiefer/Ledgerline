@@ -15,6 +15,7 @@ return [
     'heading' => 'Fotos',
     'map' => 'Karte',
     'map_empty' => 'Noch keine Fotos mit Standort.',
+    'photos_count' => ':count Fotos',
     'processing' => 'Wird verarbeitet…',
     'restore' => 'Wiederherstellen',
     'select_all' => 'Alle auswählen',
@@ -26,6 +27,8 @@ return [
     'trash_empty' => 'Papierkorb ist leer.',
     'trash_heading' => 'Gelöschte Fotos',
     'trash_title' => 'Papierkorb',
+    'trips' => 'Reisen',
+    'trips_empty' => 'Noch keine Reisen — fügen Sie Fotos mit Standortdaten hinzu.',
     'upload' => 'Fotos hochladen',
     'uploading' => 'Wird hochgeladen',
 ];

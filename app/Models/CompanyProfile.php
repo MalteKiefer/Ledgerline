@@ -37,6 +37,8 @@ use Illuminate\Database\Eloquent\Model;
     'default_tax_rate',
     'tax_display',
     'paper_size',
+    'gallery_trip_gap_days',
+    'gallery_trip_radius_km',
     'invoice_number_prefix',
     'invoice_number_next',
     'invoice_number_pad',
@@ -56,6 +58,8 @@ class CompanyProfile extends Model
             'invoice_number_next' => 'integer',
             'invoice_number_pad' => 'integer',
             'payment_terms_days' => 'integer',
+            'gallery_trip_gap_days' => 'integer',
+            'gallery_trip_radius_km' => 'integer',
         ];
     }
 
