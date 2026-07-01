@@ -27,6 +27,7 @@
                             data-original="{{ route('gallery.image', ['photo' => $photo, 'size' => 'original']) }}"
                             data-name="{{ $photo->name }}"
                             data-date="{{ $photo->taken_at->isoFormat('LL') }}"
+                            data-dateiso="{{ $photo->taken_at->format('Y-m-d') }}"
                             data-time="{{ $photo->taken_at->format('H:i') }}"
                             data-camera="{{ $photo->camera }}"
                             data-dims="{{ $photo->width && $photo->height ? $photo->width.' × '.$photo->height : '' }}"
