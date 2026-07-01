@@ -46,6 +46,7 @@ return [
     'payment_recorded' => 'Zahlung erfasst.',
     'photo_deleted' => 'Foto endgültig gelöscht.',
     'photo_restored' => 'Foto wiederhergestellt.',
+    'photo_updated' => 'Foto aktualisiert.',
     'photos_rescan_queued' => ':count Foto(s) zum Neu-Einlesen eingereiht.',
     'photos_trashed' => ':count Foto(s) in den Papierkorb verschoben.',
     'project_created' => 'Projekt erstellt.',

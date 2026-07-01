@@ -30,6 +30,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'latitude',
     'longitude',
     'camera',
+    'rotation',
+    'flipped',
+    'meta_locked',
     'checksum',
     'taken_at',
     'processed_at',
@@ -52,6 +55,9 @@ class Photo extends Model
             'height' => 'integer',
             'latitude' => 'float',
             'longitude' => 'float',
+            'rotation' => 'integer',
+            'flipped' => 'boolean',
+            'meta_locked' => 'boolean',
         ];
     }
 

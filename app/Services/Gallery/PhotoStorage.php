@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
+use Intervention\Image\Interfaces\ImageInterface;
 
 /**
  * Stores photo originals and, on the queue, generates their renditions and reads
@@ -62,7 +63,7 @@ class PhotoStorage
         try {
             $manager = new ImageManager(new Driver);
 
-            $image = $manager->decodePath($tmp);
+            $image = $this->transform($manager->decodePath($tmp), $photo);
             $width = $image->width();
             $height = $image->height();
 
@@ -71,25 +72,50 @@ class PhotoStorage
             $mediumPath = "{$dir}/medium/{$photo->uuid}.jpg";
 
             $disk->put($thumbPath, (string) $image->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75)));
-            $disk->put($mediumPath, (string) $manager->decodePath($tmp)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82)));
+            $disk->put($mediumPath, (string) $this->transform($manager->decodePath($tmp), $photo)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82)));
 
-            $meta = $this->exif($tmp, $photo->mime_type);
-
-            $photo->forceFill([
+            $attributes = [
                 'thumb_path' => $thumbPath,
                 'medium_path' => $mediumPath,
                 'width' => $width,
                 'height' => $height,
-                'taken_at' => $meta['taken_at'] ?? $photo->taken_at,
-                'latitude' => $meta['lat'],
-                'longitude' => $meta['lon'],
-                'camera' => $meta['camera'],
                 'status' => 'ready',
                 'processed_at' => Carbon::now(),
-            ])->save();
+            ];
+
+            // Only pull date/location/camera from EXIF when the user has not
+            // edited them by hand (meta_locked).
+            if (! $photo->meta_locked) {
+                $meta = $this->exif($tmp, $photo->mime_type);
+                $attributes['taken_at'] = $meta['taken_at'] ?? $photo->taken_at;
+                $attributes['latitude'] = $meta['lat'];
+                $attributes['longitude'] = $meta['lon'];
+                $attributes['camera'] = $meta['camera'];
+            }
+
+            $photo->forceFill($attributes)->save();
         } finally {
             @unlink($tmp);
         }
+    }
+
+    /**
+     * Apply the photo's stored, non-destructive edits (clockwise rotation and a
+     * horizontal flip) to a decoded image.
+     */
+    private function transform(ImageInterface $image, Photo $photo): ImageInterface
+    {
+        $rotation = ((int) $photo->rotation) % 360;
+        if ($rotation !== 0) {
+            // Intervention rotates counter-clockwise; negate for clockwise.
+            $image->rotate(360 - $rotation);
+        }
+
+        if ($photo->flipped) {
+            $image->flop();
+        }
+
+        return $image;
     }
 
     /**
