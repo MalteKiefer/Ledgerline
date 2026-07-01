@@ -420,6 +420,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     active: 0,
     maxConcurrent: 3,
     summary: null,
+    lastSelected: null,
 
     // Infinite scroll.
     page: 1,
@@ -698,6 +699,51 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
 
     allIds() {
         return [...document.querySelectorAll('[data-photo-id]')].map((el) => Number(el.dataset.photoId));
+    },
+
+    /* ---- Selection (click, shift-range, select-all) ---- */
+
+    selectableIds() {
+        return [...document.querySelectorAll('[data-select]')].map((cb) => Number(cb.value));
+    },
+
+    toggleSelect(event, id) {
+        // Shift-click extends the selection from the last clicked tile to here.
+        if (event.shiftKey && this.lastSelected !== null) {
+            const ids = this.selectableIds();
+            const from = ids.indexOf(this.lastSelected);
+            const to = ids.indexOf(id);
+            if (from !== -1 && to !== -1) {
+                const [a, b] = from < to ? [from, to] : [to, from];
+                const set = new Set(this.selected);
+                for (let i = a; i <= b; i++) {
+                    set.add(ids[i]);
+                }
+                this.selected = [...set];
+                this.lastSelected = id;
+                return;
+            }
+        }
+
+        this.selected = this.selected.includes(id)
+            ? this.selected.filter((x) => x !== id)
+            : [...this.selected, id];
+        this.lastSelected = id;
+    },
+
+    selectAllVisible() {
+        this.selected = this.selectableIds();
+    },
+
+    onKeydown(event) {
+        if ((event.metaKey || event.ctrlKey) && (event.key === 'a' || event.key === 'A')) {
+            const tag = document.activeElement?.tagName;
+            if (this.viewerOpen || tag === 'INPUT' || tag === 'TEXTAREA') {
+                return;
+            }
+            event.preventDefault();
+            this.selectAllVisible();
+        }
     },
 }));
 
