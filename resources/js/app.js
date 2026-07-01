@@ -429,6 +429,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
     current: {},
     list: [],
     index: 0,
+    miniMap: null,
 
     initGallery() {
         // Show the drop overlay only while files are dragged over the window.
@@ -438,6 +439,10 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
         });
         window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (! depth) this.dragging = false; });
         window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
+
+        // Tear the mini-map down when the viewer closes so it re-initialises
+        // cleanly for the next photo.
+        this.$watch('viewerOpen', (open) => { if (! open) this.destroyMiniMap(); });
     },
 
     pick(event) {
@@ -492,6 +497,47 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false) => ({
     setCurrent() {
         const d = this.list[this.index]?.dataset;
         this.current = d ? { ...d } : {};
+        this.$nextTick(() => this.renderMiniMap());
+    },
+
+    renderMiniMap() {
+        this.destroyMiniMap();
+
+        const el = this.$refs.miniMap;
+        const lat = parseFloat(this.current.lat);
+        const lng = parseFloat(this.current.lng);
+        if (! el || ! Number.isFinite(lat) || ! Number.isFinite(lng)) {
+            return;
+        }
+
+        this.miniMap = L.map(el, {
+            attributionControl: false,
+            zoomControl: false,
+            dragging: false,
+            scrollWheelZoom: false,
+            doubleClickZoom: false,
+            boxZoom: false,
+            keyboard: false,
+        }).setView([lat, lng], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.miniMap);
+
+        const icon = L.divIcon({
+            className: '',
+            html: '<div class="h-3 w-3 rounded-full bg-red-500 ring-2 ring-white shadow"></div>',
+            iconSize: [12, 12],
+            iconAnchor: [6, 6],
+        });
+        L.marker([lat, lng], { icon }).addTo(this.miniMap);
+
+        this.$nextTick(() => this.miniMap && this.miniMap.invalidateSize());
+    },
+
+    destroyMiniMap() {
+        if (this.miniMap) {
+            this.miniMap.remove();
+            this.miniMap = null;
+        }
     },
 
     next() {

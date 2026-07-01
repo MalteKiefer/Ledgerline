@@ -6,14 +6,16 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\GalleryRequest;
-use App\Jobs\ProcessPhoto;
+use App\Jobs\GeneratePhotoRenditions;
+use App\Jobs\ReadPhotoMetadata;
 use App\Models\CompanyProfile;
 use App\Models\Photo;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 
 /**
- * Gallery settings: trip-grouping thresholds and a metadata re-scan.
+ * Gallery settings: trip-grouping thresholds and independent maintenance jobs
+ * (re-read metadata, regenerate thumbnails).
  */
 class GalleryController extends Controller
 {
@@ -33,16 +35,30 @@ class GalleryController extends Controller
     }
 
     /**
-     * Re-queue every photo so its renditions and metadata are refreshed.
+     * Re-read every photo's metadata (EXIF + reverse-geocoded place).
      */
     public function rescan(): RedirectResponse
     {
         $count = 0;
         Photo::query()->orderBy('id')->each(function (Photo $photo) use (&$count): void {
-            ProcessPhoto::dispatch($photo->id);
+            ReadPhotoMetadata::dispatch($photo->id);
             $count++;
         });
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_rescan_queued', ['count' => $count]));
+    }
+
+    /**
+     * Regenerate every photo's thumbnails from the original.
+     */
+    public function regenerate(): RedirectResponse
+    {
+        $count = 0;
+        Photo::query()->orderBy('id')->each(function (Photo $photo) use (&$count): void {
+            GeneratePhotoRenditions::dispatch($photo->id);
+            $count++;
+        });
+
+        return redirect()->route('settings.gallery.edit')->with('status', __('flash.photos_regenerate_queued', ['count' => $count]));
     }
 }

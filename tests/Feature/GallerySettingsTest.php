@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Jobs\ProcessPhoto;
+use App\Jobs\GeneratePhotoRenditions;
+use App\Jobs\ReadPhotoMetadata;
 use App\Models\CompanyProfile;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -42,7 +43,7 @@ class GallerySettingsTest extends TestCase
         $this->assertSame(250, $company->gallery_trip_radius_km);
     }
 
-    public function test_rescan_queues_all_photos(): void
+    public function test_rescan_queues_a_metadata_job_per_photo(): void
     {
         Queue::fake();
         $this->signIn();
@@ -50,6 +51,17 @@ class GallerySettingsTest extends TestCase
 
         $this->post(route('settings.gallery.rescan'))->assertRedirect();
 
-        Queue::assertPushed(ProcessPhoto::class, 3);
+        Queue::assertPushed(ReadPhotoMetadata::class, 3);
+    }
+
+    public function test_regenerate_queues_a_rendition_job_per_photo(): void
+    {
+        Queue::fake();
+        $this->signIn();
+        Photo::factory()->count(3)->create();
+
+        $this->post(route('settings.gallery.regenerate'))->assertRedirect();
+
+        Queue::assertPushed(GeneratePhotoRenditions::class, 3);
     }
 }
