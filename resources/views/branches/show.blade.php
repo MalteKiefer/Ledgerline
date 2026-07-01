@@ -13,15 +13,10 @@
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
                 {{ __('branches.show.edit') }}
             </a>
-            <form method="POST" action="{{ route('branches.destroy', $branch) }}"
-                onsubmit="return confirm('{{ __('branches.show.delete_confirm') }}');">
-                @csrf
-                @method('DELETE')
-                <button type="submit"
-                    class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                    {{ __('branches.show.delete') }}
-                </button>
-            </form>
+            <x-confirm-action :action="route('branches.destroy', $branch)" method="DELETE"
+                :trigger="__('branches.show.delete')"
+                trigger-class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                :message="__('branches.show.delete_confirm')" />
         </div>
     </div>
 

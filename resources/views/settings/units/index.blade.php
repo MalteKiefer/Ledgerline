@@ -52,10 +52,10 @@
                                 <button type="submit" class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button>
                             </div>
                         </form>
-                        <form method="POST" action="{{ route('settings.units.destroy', $unit) }}" onsubmit="return confirm('{{ __('settings.delete_unit_confirm') }}');">
-                            @csrf @method('DELETE')
-                            <button type="submit" class="text-sm text-red-600 hover:text-red-800">{{ __('settings.delete') }}</button>
-                        </form>
+                        <x-confirm-action :action="route('settings.units.destroy', $unit)" method="DELETE"
+                            :trigger="__('settings.delete')"
+                            trigger-class="text-sm text-red-600 hover:text-red-800"
+                            :message="__('settings.delete_unit_confirm')" />
                     </li>
                 @endforeach
             </ul>

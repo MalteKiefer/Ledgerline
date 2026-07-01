@@ -28,25 +28,29 @@
                 class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.show.pdf') }}</a>
             @if ($invoice->isDraft())
                 <a href="{{ route('finance.invoices.edit', $invoice) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.show.edit') }}</a>
-                <form method="POST" action="{{ route('finance.invoices.finalize', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_finalise') }}');">
-                    @csrf
-                    <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('invoices.show.finalise') }}</button>
-                </form>
-                <form method="POST" action="{{ route('finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_delete_draft') }}');">
-                    @csrf @method('DELETE')
-                    <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('invoices.show.delete') }}</button>
-                </form>
+                <x-confirm-action :action="route('finance.invoices.finalize', $invoice)" method="POST"
+                    :trigger="__('invoices.show.finalise')"
+                    trigger-class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                    :message="__('invoices.show.confirm_finalise')"
+                    :confirm="__('invoices.show.finalise')"
+                    confirm-class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700" />
+                <x-confirm-action :action="route('finance.invoices.destroy', $invoice)" method="DELETE"
+                    :trigger="__('invoices.show.delete')"
+                    trigger-class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                    :message="__('invoices.show.confirm_delete_draft')" />
             @elseif (! $isCredit && $invoice->status->value !== 'CANCELLED')
-                <form method="POST" action="{{ route('finance.invoices.credit-note', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_credit_note') }}');">
-                    @csrf
-                    <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('invoices.show.create_credit_note') }}</button>
-                </form>
+                <x-confirm-action :action="route('finance.invoices.credit-note', $invoice)" method="POST"
+                    :trigger="__('invoices.show.create_credit_note')"
+                    trigger-class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    :message="__('invoices.show.confirm_credit_note')"
+                    :confirm="__('invoices.show.create_credit_note')"
+                    confirm-class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700" />
             @endif
             @if ($invoice->isImported())
-                <form method="POST" action="{{ route('finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('{{ __('invoices.show.confirm_delete_imported') }}');">
-                    @csrf @method('DELETE')
-                    <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('invoices.show.delete') }}</button>
-                </form>
+                <x-confirm-action :action="route('finance.invoices.destroy', $invoice)" method="DELETE"
+                    :trigger="__('invoices.show.delete')"
+                    trigger-class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                    :message="__('invoices.show.confirm_delete_imported')" />
             @endif
         </div>
     </div>

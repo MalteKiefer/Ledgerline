@@ -117,10 +117,9 @@
                     </div>
                     <div class="mt-2 flex items-center gap-3 text-xs">
                         <button type="button" @click="rename = ! rename" class="text-gray-500 hover:text-gray-700">{{ __('files.rename') }}</button>
-                        <form method="POST" action="{{ route('folders.destroy', $sub) }}" onsubmit="return confirm('{{ __('files.delete_folder_confirm') }}');">
-                            @csrf @method('DELETE')
-                            <button type="submit" class="text-red-600 hover:text-red-800">{{ __('files.delete') }}</button>
-                        </form>
+                        <x-confirm-action :action="route('folders.destroy', $sub)" method="DELETE"
+                            :trigger="__('files.delete')" trigger-class="text-red-600 hover:text-red-800"
+                            :message="__('files.delete_folder_confirm')" />
                     </div>
                     <form x-show="rename" x-cloak method="POST" action="{{ route('folders.update', $sub) }}" class="mt-2 flex gap-2">
                         @csrf @method('PUT')
@@ -133,11 +132,11 @@
     @endif
 
     {{-- Files --}}
-    <div x-data="{ selected: [], allIds: {{ $files->pluck('id')->toJson() }}, toggleAll(e) { this.selected = e.target.checked ? [...this.allIds] : [] } }">
+    <div x-data="{ selected: [], deleteOpen: false, allIds: {{ $files->pluck('id')->toJson() }}, toggleAll(e) { this.selected = e.target.checked ? [...this.allIds] : [] } }">
         {{-- Bulk action bar --}}
         <div x-show="selected.length" x-cloak class="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
             <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
-            <form method="POST" class="flex flex-wrap items-center gap-2">
+            <form id="bulk-files" method="POST" class="flex flex-wrap items-center gap-2">
                 @csrf
                 <template x-for="id in selected" :key="id"><input type="hidden" name="file_ids[]" :value="id"></template>
                 <select name="folder_id" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
@@ -148,10 +147,23 @@
                 </select>
                 <button type="submit" formaction="{{ route('files.bulk.move') }}"
                     class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move') }}</button>
-                <button type="submit" formaction="{{ route('files.bulk.delete') }}"
-                    onclick="return confirm('{{ __('files.bulk_delete_confirm') }}');"
-                    class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
             </form>
+            <button type="button" @click="deleteOpen = true"
+                class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('files.delete') }}</button>
+
+            <template x-teleport="body">
+                <div x-show="deleteOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="deleteOpen = false">
+                    <div class="absolute inset-0 bg-gray-900/40" @click="deleteOpen = false"></div>
+                    <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                        <h3 class="text-base font-semibold text-gray-900">{{ __('common.confirm_title') }}</h3>
+                        <p class="mt-2 text-sm text-gray-600">{{ __('files.bulk_delete_confirm') }}</p>
+                        <div class="mt-5 flex justify-end gap-3">
+                            <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                            <button type="submit" form="bulk-files" formaction="{{ route('files.bulk.delete') }}" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('common.delete') }}</button>
+                        </div>
+                    </div>
+                </div>
+            </template>
         </div>
 
         <div class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
