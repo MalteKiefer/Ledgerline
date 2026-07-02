@@ -1103,6 +1103,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     deleteRefs: [],   // [{kind, id, name}]
     deleteOpen: false,
     selected: [],     // ['kind:id', …]
+    tagsRef: null,    // {kind, id} being tagged
+    tagsOpen: false,
+    tagsValue: '',
+    activeTag: '',
     up: { active: false, done: 0, total: 0 },
     dl: { active: false, done: 0, total: 0 },
     error: '',
@@ -1219,17 +1223,34 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     get rows() {
         const q = this.query.trim().toLowerCase();
+        const tag = this.activeTag;
         const factor = this.sortDir === 'desc' ? -1 : 1;
         const cmp = (a, b) => factor * a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
 
-        const inScope = (list) => (q === ''
-            ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
-            : list.filter((x) => x.name.toLowerCase().includes(q)));
+        // A text search or an active tag filter switches from folder browsing to
+        // a flat, vault-wide result set.
+        const inScope = (list) => {
+            let scoped = (q === '' && tag === '')
+                ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
+                : list;
+            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q));
+            if (tag !== '') scoped = scoped.filter((x) => (x.tags ?? []).includes(tag));
+            return scoped;
+        };
 
         const folders = inScope(this.manifest.folders.map((f) => ({ ...f, kind: 'folder' })));
         const files = inScope(this.manifest.files.map((f) => ({ ...f, kind: 'file' })));
 
         return [...folders.sort(cmp), ...files.sort(cmp)];
+    },
+
+    // Every tag used anywhere in the manifest, for suggestions.
+    get allTags() {
+        const set = new Set();
+        for (const x of [...this.manifest.folders, ...this.manifest.files]) {
+            for (const t of x.tags ?? []) set.add(t);
+        }
+        return [...set].sort((a, b) => a.localeCompare(b));
     },
 
     typeLabel(file) {
@@ -1343,6 +1364,26 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
         this.selected = [];
         await this.persist().catch(() => {});
+    },
+
+    openTags(row) {
+        this.tagsRef = { kind: row.kind, id: row.id };
+        this.tagsValue = (row.tags ?? []).join(', ');
+        this.tagsOpen = true;
+    },
+
+    async applyTags() {
+        const ref = this.tagsRef;
+        this.tagsOpen = false;
+        this.tagsRef = null;
+        if (! ref) return;
+        const tags = [...new Set(this.tagsValue.split(',').map((t) => t.trim()).filter(Boolean))];
+        const list = ref.kind === 'folder' ? this.manifest.folders : this.manifest.files;
+        const item = list.find((x) => x.id === ref.id);
+        if (item) {
+            item.tags = tags;
+            await this.persist().catch(() => {});
+        }
     },
 
     confirmDelete(row) {
