@@ -1862,6 +1862,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
     shareExpiry: '86400',
     sharePassword: '',
     shareMaxViews: '',
+    shareAllowDownload: false,
     shareLink: '',
     shareBusy: false,
     shareError: '',
@@ -2123,6 +2124,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         this.sharePassword = '';
         this.shareMaxViews = '';
         this.shareExpiry = '86400';
+        this.shareAllowDownload = false;
         this.shareError = '';
         this.shareCopied = false;
         this.shareDialog = true;
@@ -2147,6 +2149,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
                 nonce: enc.nonce,
                 expires_in: Number(this.shareExpiry),
                 has_password: this.sharePassword !== '',
+                allow_download: this.shareAllowDownload,
             };
             const maxViews = Number(this.shareMaxViews);
             if (maxViews > 0) body.max_views = maxViews;
@@ -2178,6 +2181,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
                 id: data.id,
                 expires: data.expires_at,
                 hasPassword: this.sharePassword !== '',
+                allowDownload: this.shareAllowDownload,
                 maxViews: maxViews > 0 ? maxViews : null,
                 created: new Date().toISOString(),
             });
@@ -2309,6 +2313,11 @@ Alpine.data('sharedNote', (config = {}, labels = {}) => ({
     payload: null,
     title: '',
     html: '',
+    content: '',
+
+    get canDownload() {
+        return this.state === 'ready' && !! this.payload?.allow_download;
+    },
 
     async init() {
         await Vault.ensureReady();
@@ -2354,9 +2363,38 @@ Alpine.data('sharedNote', (config = {}, labels = {}) => ({
 
     render(snapshot) {
         this.title = snapshot.title || labels.untitled;
-        this.html = renderMarkdown(snapshot.content || '');
+        this.content = snapshot.content || '';
+        this.html = renderMarkdown(this.content);
         document.title = `${this.title} — Ledgerline`;
         this.state = 'ready';
+    },
+
+    // Filename from the shared note's title; falls back to "note".
+    downloadName(ext) {
+        const base = (this.title ?? '').trim().replace(/[\/\\:*?"<>|]+/g, '-').slice(0, 80);
+        return `${base || 'note'}.${ext}`;
+    },
+
+    downloadMarkdown() {
+        if (! this.canDownload) return;
+        saveBlobAs(this.content, this.downloadName('md'), 'text/markdown;charset=utf-8');
+    },
+
+    downloadPdf() {
+        if (! this.canDownload) return;
+        const el = document.createElement('div');
+        el.className = 'markdown-body';
+        el.style.cssText = 'max-width:46rem;margin:0 auto;padding:24px;background:#fff;';
+        el.innerHTML = this.html;
+        document.body.appendChild(el);
+        html2pdf().set({
+            filename: this.downloadName('pdf'),
+            margin: [10, 10, 10, 10],
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        }).from(el).save().finally(() => el.remove());
     },
 
     fail(message) {
