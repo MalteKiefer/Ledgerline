@@ -53,6 +53,7 @@
                 @auth
                     @php
                         $currentUser = auth()->user();
+                        $vaultConfigured = \App\Models\Vault::current() !== null;
                     @endphp
                     <div class="flex items-center gap-3">
                         <button type="button" @click="mobileOpen = ! mobileOpen" aria-label="{{ __('pages.menu.toggle_menu') }}"
@@ -66,6 +67,9 @@
                         </button>
 
                         <x-spotlight-search />
+
+                        {{-- Encryption vault: status trigger + setup/unlock modal (global) --}}
+                        @include('vault._panel', ['serverConfigured' => $vaultConfigured])
 
                         {{-- User menu --}}
                         <div class="relative" x-data="{ open: false }">
@@ -136,6 +140,16 @@
                     {{ session('status') }}
                 </div>
             @endif
+
+            @auth
+                @if (! ($vaultConfigured ?? true))
+                    <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        <span>🔒 {{ __('vault.not_set_up_notice') }}</span>
+                        <button type="button" @click="window.dispatchEvent(new CustomEvent('vault-panel'))"
+                            class="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700">{{ __('vault.setup') }}</button>
+                    </div>
+                @endif
+            @endauth
 
             {{ $slot }}
         </main>

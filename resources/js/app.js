@@ -537,11 +537,13 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     },
 
     // Recreate a dropped folder tree as encrypted folders. Returns a Map from
-    // each relative directory path to the created folder id ('' = current
-    // folder). Parents are created before children so nesting resolves.
+    // each relative directory path to the folder id ('' = current folder).
+    // Existing folders (matched by decrypted name under the same parent) are
+    // reused instead of duplicated; missing segments are created parents-first.
     async ensureEncryptedFolders(files) {
+        const rootId = config.folderId ?? null;
         const map = new Map();
-        map.set('', config.folderId ?? null);
+        map.set('', rootId);
 
         const dirs = new Set();
         for (const item of files) {
@@ -553,6 +555,26 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
                 dirs.add(acc);
             }
         }
+        if (! dirs.size) {
+            return map;
+        }
+
+        // Snapshot existing folders so a re-dropped tree reuses them. Created
+        // folders are pushed back in so sibling segments dedupe within this run.
+        let existing = [];
+        try {
+            existing = await (await fetch(config.foldersListUrl, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            })).json();
+        } catch (e) { /* fall back to always-create */ }
+
+        const sameParent = (a, b) => (a ?? null) === (b ?? null);
+        const folderName = (f) => {
+            if (f.enc_name) {
+                try { return Vault.decryptFileMeta(f.enc_name).name; } catch (e) { return null; }
+            }
+            return f.name;
+        };
 
         // Shallowest first, so each folder's parent already exists in the map.
         const ordered = [...dirs].sort((a, b) => a.split('/').length - b.split('/').length);
@@ -560,11 +582,18 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
             const cut = dir.lastIndexOf('/');
             const parentPath = cut === -1 ? '' : dir.slice(0, cut);
             const name = cut === -1 ? dir : dir.slice(cut + 1);
+            const parentId = map.get(parentPath);
 
+            const match = existing.find((f) => sameParent(f.parent_id, parentId) && folderName(f) === name);
+            if (match) {
+                map.set(dir, match.id);
+                continue;
+            }
+
+            const encName = Vault.sealName(name);
             const body = new FormData();
             body.append('_token', config.token);
-            body.append('enc_name', Vault.sealName(name));
-            const parentId = map.get(parentPath);
+            body.append('enc_name', encName);
             if (parentId != null) body.append('parent_id', parentId);
 
             const r = await fetch(config.foldersUrl, {
@@ -572,7 +601,9 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body,
             });
-            map.set(dir, (await r.json()).id);
+            const id = (await r.json()).id;
+            map.set(dir, id);
+            existing.push({ id, parent_id: parentId ?? null, name: '', enc_name: encName });
         }
 
         return map;

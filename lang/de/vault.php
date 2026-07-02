@@ -20,6 +20,7 @@ return [
     'forgot' => 'Passwort vergessen?',
     'lock' => 'Tresor sperren',
     'not_configured' => 'Der Tresor ist noch nicht eingerichtet.',
+    'not_set_up_notice' => 'Verschlüsselung ist noch nicht eingerichtet. Lege ein Verschlüsselungs-Passwort fest, um deine Dateien zu schützen.',
     'passphrase' => 'Passwort',
     'passphrase_confirm' => 'Passwort wiederholen',
     'recover_hint' => 'Wiederherstellungscode eingeben, um den Tresor zu entsperren.',
