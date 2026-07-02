@@ -2434,7 +2434,9 @@ Alpine.data('vaultMail', (labels = {}) => ({
     // background; otherwise load normally with a spinner.
     hydrateFolder() {
         this.reader.page = 1;
-        const cached = Vault.cacheGet(`msgs:${this.reader.account.id}:${this.reader.folderPath}`);
+        // Show a cached list instantly only if it is at most a day old (a fresh
+        // load runs right after anyway); older entries fall back to a spinner.
+        const cached = Vault.cacheGet(`msgs:${this.reader.account.id}:${this.reader.folderPath}`, 86400000);
         if (cached && (cached.messages ?? []).length) {
             this.reader.messages = cached.messages;
             this.reader.total = cached.total ?? cached.messages.length;
