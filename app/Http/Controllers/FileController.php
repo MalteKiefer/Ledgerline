@@ -809,7 +809,7 @@ class FileController extends Controller
 
     /**
      * Persist an uploaded file, optionally against an owning record and/or a
-     * folder. A general (company) file has no attachable.
+     * folder.
      *
      * @param  list<string>  $tags
      */
