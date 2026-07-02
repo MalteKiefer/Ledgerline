@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreFolderRequest;
 use App\Models\File;
 use App\Models\Folder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\DB;
  */
 class FolderController extends Controller
 {
-    public function store(StoreFolderRequest $request): RedirectResponse
+    public function store(StoreFolderRequest $request): RedirectResponse|JsonResponse
     {
         $data = $request->validated();
 
@@ -24,6 +25,12 @@ class FolderController extends Controller
             'enc_name' => $data['enc_name'] ?? null,
             'parent_id' => $data['parent_id'] ?? null,
         ]);
+
+        // Encrypted folder-tree creation during an upload drives this over AJAX
+        // and needs the new id to nest children and place files.
+        if ($request->expectsJson()) {
+            return response()->json(['id' => $folder->id, 'parent_id' => $folder->parent_id], 201);
+        }
 
         return redirect()
             ->route('files.index', ['folder' => $folder->parent_id])

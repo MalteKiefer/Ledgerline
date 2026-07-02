@@ -60,6 +60,32 @@ class GeneralFileTest extends TestCase
         $this->assertSame('ciphertext-bytes', Storage::disk('files')->get($file->disk_path));
     }
 
+    public function test_encrypted_uploads_land_in_their_resolved_folders(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        // The browser creates the encrypted folder tree first, then sends each
+        // file with the folder id it resolved to.
+        $trip = Folder::create(['name' => '', 'enc_name' => '{"c":"trip","n":"n"}']);
+        $day1 = Folder::create(['name' => '', 'enc_name' => '{"c":"day1","n":"n"}', 'parent_id' => $trip->id]);
+
+        $this->post(route('files.store.general'), [
+            'files' => [
+                UploadedFile::fake()->createWithContent('blob', 'a'),
+                UploadedFile::fake()->createWithContent('blob', 'b'),
+            ],
+            'encrypted' => '1',
+            'enc_metadata' => ['{"c":"a","n":"n"}', '{"c":"b","n":"n"}'],
+            'enc_file_key' => ['{"c":"ka","n":"n"}', '{"c":"kb","n":"n"}'],
+            'folder_ids' => [$day1->id, $trip->id],
+        ])->assertRedirect();
+
+        $files = File::where('is_encrypted', true)->get();
+        $this->assertSame(2, $files->count());
+        $this->assertSame($day1->id, $files[0]->folder_id);
+        $this->assertSame($trip->id, $files[1]->folder_id);
+    }
+
     public function test_an_existing_plaintext_file_can_be_encrypted_in_place(): void
     {
         Storage::fake('files');

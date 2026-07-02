@@ -493,6 +493,12 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
 
         const encrypting = this.$store.vault.configured && this.$store.vault.unlocked;
 
+        // For encrypted uploads the server cannot read folder names, so recreate
+        // any dropped-folder structure here: create the encrypted folder tree and
+        // map each relative directory to the folder id it became.
+        const folderMap = encrypting ? await this.ensureEncryptedFolders(files) : null;
+        const dirOf = (path) => { const p = path.split('/'); p.pop(); return p.join('/'); };
+
         // Send in batches to stay within the per-request file limit.
         const chunkSize = 25;
         for (let i = 0; i < files.length; i += chunkSize) {
@@ -510,6 +516,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
                     data.append('files[]', blob, 'blob');
                     data.append('enc_metadata[]', encMeta);
                     data.append('enc_file_key[]', encFileKey);
+                    data.append('folder_ids[]', folderMap.get(dirOf(item.path)) ?? '');
                 }
             } else {
                 chunk.forEach((item) => {
@@ -527,6 +534,48 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
         }
 
         window.location.reload();
+    },
+
+    // Recreate a dropped folder tree as encrypted folders. Returns a Map from
+    // each relative directory path to the created folder id ('' = current
+    // folder). Parents are created before children so nesting resolves.
+    async ensureEncryptedFolders(files) {
+        const map = new Map();
+        map.set('', config.folderId ?? null);
+
+        const dirs = new Set();
+        for (const item of files) {
+            const parts = item.path.split('/');
+            parts.pop(); // drop the filename
+            let acc = '';
+            for (const seg of parts) {
+                acc = acc ? `${acc}/${seg}` : seg;
+                dirs.add(acc);
+            }
+        }
+
+        // Shallowest first, so each folder's parent already exists in the map.
+        const ordered = [...dirs].sort((a, b) => a.split('/').length - b.split('/').length);
+        for (const dir of ordered) {
+            const cut = dir.lastIndexOf('/');
+            const parentPath = cut === -1 ? '' : dir.slice(0, cut);
+            const name = cut === -1 ? dir : dir.slice(cut + 1);
+
+            const body = new FormData();
+            body.append('_token', config.token);
+            body.append('enc_name', Vault.sealName(name));
+            const parentId = map.get(parentPath);
+            if (parentId != null) body.append('parent_id', parentId);
+
+            const r = await fetch(config.foldersUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body,
+            });
+            map.set(dir, (await r.json()).id);
+        }
+
+        return map;
     },
 
     toggleAll(event) {
