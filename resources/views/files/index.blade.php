@@ -14,6 +14,12 @@
         downloadFailed: @js(__('files.download_failed')),
      })">
 
+    {{-- Whole-window drop zone (folders with subfolders supported) --}}
+    <div x-show="dragging && state === 'ready'" x-cloak @drop.prevent="drop($event)" @dragover.prevent
+        class="fixed inset-0 z-[900] flex items-center justify-center bg-gray-900/50 p-8">
+        <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
+    </div>
+
     {{-- Vault not set up / locked: no browser, only the gate. The server holds
          no readable file metadata, so there is nothing else to show. --}}
     <template x-if="state === 'unconfigured' || state === 'locked'">
@@ -92,7 +98,7 @@
                 <tbody class="divide-y divide-gray-100">
                     <template x-for="row in rows" :key="row.kind + row.id">
                         <tr class="cursor-pointer hover:bg-gray-50" x-data="{ menu: false }"
-                            @click="if (renaming !== row.id) { row.kind === 'folder' ? cwd = row.id : download(row) }">
+                            @click="if (renaming !== row.id) { row.kind === 'folder' ? cwd = row.id : openFile(row) }">
                             <td class="px-4 py-3 font-medium text-gray-900">
                                 <span class="flex items-center gap-2" x-show="renaming !== row.id">
                                     <svg x-show="row.kind === 'folder'" class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
@@ -165,6 +171,48 @@
                 <div class="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
                     <button type="button" @click="moveOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyMove()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move_here') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Viewer / editor: image, PDF or editable text, decrypted in the browser --}}
+    <template x-teleport="body">
+        <div x-show="viewer.open" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeViewer()">
+            <div class="absolute inset-0 bg-gray-900/60" @click="closeViewer()"></div>
+            <div class="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl">
+                <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
+                    <h3 class="truncate text-base font-semibold text-gray-900" x-text="viewer.row?.name"></h3>
+                    <div class="flex shrink-0 items-center gap-3">
+                        <button type="button" @click="download(viewer.row)" class="text-sm text-gray-600 hover:text-gray-900">{{ __('files.download') }}</button>
+                        <button type="button" @click="closeViewer()" class="text-xl leading-none text-gray-400 hover:text-gray-600" aria-label="{{ __('common.cancel') }}">✕</button>
+                    </div>
+                </div>
+                <div class="min-h-0 flex-1 overflow-auto p-4">
+                    <img x-show="viewer.kind === 'image'" x-cloak :src="viewer.src" :alt="viewer.row?.name" class="mx-auto max-h-[75vh] rounded object-contain">
+                    <template x-if="viewer.kind === 'pdf'">
+                        <object :data="viewer.src" type="application/pdf" class="h-[75vh] w-full rounded"></object>
+                    </template>
+                    <div x-show="viewer.kind === 'text'" x-cloak>
+                        <div class="mb-2 flex items-center gap-2">
+                            <label class="text-xs font-medium text-gray-500">{{ __('files.language') }}</label>
+                            <select x-model="editorLang" @change="onEditorLanguageChange()"
+                                class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                <option value="">{{ __('files.plain_text') }}</option>
+                                <template x-for="name in languageOptions" :key="name">
+                                    <option :value="name" x-text="name"></option>
+                                </template>
+                            </select>
+                            <span class="text-xs text-gray-400">{{ __('files.search_hint') }}</span>
+                        </div>
+                        <div x-ref="viewerEditor" class="overflow-hidden rounded-lg border border-gray-300"></div>
+                        <div class="mt-3 flex items-center gap-3">
+                            <button type="button" @click="saveText()" :disabled="viewer.saving"
+                                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('files.save') }}</button>
+                            <span x-show="viewer.saved" x-cloak class="text-sm text-green-600">✓</span>
+                        </div>
+                    </div>
+                    <p x-show="viewer.kind === 'none'" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('files.encrypted_no_preview') }}</p>
                 </div>
             </div>
         </div>
