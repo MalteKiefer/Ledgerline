@@ -52,6 +52,8 @@
                             <p class="truncate text-xs text-gray-500"><span x-text="a.username"></span> · <span x-text="a.host"></span>:<span x-text="a.port"></span></p>
                         </div>
                         <div class="flex shrink-0 items-center gap-1">
+                            <button type="button" @click="openReader(a)" title="{{ __('mail.open_reader') }}" aria-label="{{ __('mail.open_reader') }}"
+                                class="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="envelope" class="h-4 w-4" /></button>
                             <button type="button" @click="refresh(a)" :disabled="busyId" title="{{ __('mail.refresh') }}" aria-label="{{ __('mail.refresh') }}"
                                 class="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40">
                                 <x-icon name="arrow-path" class="h-4 w-4" ::class="busyId === a.id ? 'animate-spin' : ''" />
@@ -185,6 +187,100 @@
                 <div class="mt-5 flex justify-end gap-3">
                     <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyDelete()" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('mail.delete') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Reader overlay --}}
+    <template x-teleport="body">
+        <div x-show="reader.open" x-cloak class="fixed inset-0 z-[60] flex flex-col bg-white" @keydown.escape.window="reader.current ? (reader.current = null) : closeReader()">
+            {{-- Top bar --}}
+            <div class="flex items-center gap-3 border-b border-gray-200 px-4 py-2">
+                <button type="button" @click="closeReader()" title="{{ __('mail.close') }}" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                <span class="truncate text-sm font-semibold text-gray-900" x-text="reader.account?.name"></span>
+                <select x-model="reader.folderPath" @change="openFolder(reader.folderPath)" class="ml-2 max-w-[45%] rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <template x-if="readerFolders().length === 0"><option value="INBOX">INBOX</option></template>
+                    <template x-for="f in readerFolders()" :key="f.path">
+                        <option :value="f.path" x-text="`${f.name} (${f.unseen})`"></option>
+                    </template>
+                </select>
+                <div class="ml-auto flex items-center gap-2" x-show="! reader.current">
+                    <button type="button" @click="pageStep(-1)" :disabled="reader.page <= 1" class="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40">{{ __('mail.prev') }}</button>
+                    <span class="text-xs text-gray-500" x-text="@js(__('mail.page_of', ['page' => '%p', 'pages' => '%t'])).replace('%p', reader.page).replace('%t', readerPages)"></span>
+                    <button type="button" @click="pageStep(1)" :disabled="reader.page >= readerPages" class="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40">{{ __('mail.next') }}</button>
+                </div>
+                <button type="button" x-show="reader.current" @click="reader.current = null" class="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1"><x-icon name="chevron-left" class="h-3.5 w-3.5" />{{ __('mail.back_to_list') }}</span></button>
+            </div>
+
+            <p x-show="reader.error" x-cloak class="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700" x-text="reader.error"></p>
+
+            {{-- Message list --}}
+            <div x-show="! reader.current" class="min-h-0 flex-1 overflow-y-auto">
+                <p x-show="reader.loading" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.loading') }}</p>
+                <p x-show="! reader.loading && reader.messages.length === 0" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.list_empty') }}</p>
+                <ul class="divide-y divide-gray-100">
+                    <template x-for="m in reader.messages" :key="m.uid">
+                        <li class="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-gray-50" @click="openMsg(m.uid)">
+                            <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-blue-500'"></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="flex items-center gap-2">
+                                    <span class="truncate text-sm" :class="m.seen ? 'text-gray-700' : 'font-semibold text-gray-900'" x-text="fmtAddress(m.from) || '—'"></span>
+                                    <x-icon name="arrow-down-tray" x-show="m.hasAttachments" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                </span>
+                                <span class="block truncate text-sm" :class="m.seen ? 'text-gray-600' : 'text-gray-900'" x-text="m.subject || @js(__('mail.no_subject'))"></span>
+                            </span>
+                            <span class="shrink-0 text-xs text-gray-400" x-text="fmtDateTime(m.date)"></span>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+
+            {{-- Message view --}}
+            <div x-show="reader.current" x-cloak class="flex min-h-0 flex-1 flex-col">
+                {{-- Actions --}}
+                <div class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
+                    <button type="button" @click="msgAction('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                    <button type="button" @click="msgAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                    <select @change="if ($event.target.value) { msgAction('move', $event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <option value="">{{ __('mail.move_to_folder') }}</option>
+                        <template x-for="f in readerFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
+                    </select>
+                    <select x-show="otherAccounts().length" @change="if ($event.target.value) { transferMsg($event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <option value="">{{ __('mail.move_to_account') }}</option>
+                        <template x-for="a in otherAccounts()" :key="a.id"><option :value="a.id" x-text="a.name"></option></template>
+                    </select>
+                    <button type="button" @click="msgAction(reader.current.seen ? 'unseen' : 'seen')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" x-text="reader.current.seen ? @js(__('mail.mark_unread')) : @js(__('mail.mark_read'))"></button>
+                    <button type="button" @click="printMsg()" title="{{ __('mail.print') }}" class="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('mail.print') }}</button>
+                </div>
+
+                {{-- Headers --}}
+                <div class="border-b border-gray-100 px-6 py-4">
+                    <h1 class="text-lg font-semibold text-gray-900" x-text="reader.current.subject || @js(__('mail.no_subject'))"></h1>
+                    <dl class="mt-2 space-y-0.5 text-xs text-gray-500">
+                        <div><dt class="inline font-medium">{{ __('mail.msg_from') }}:</dt> <dd class="inline" x-text="fmtAddress(reader.current.from)"></dd></div>
+                        <div x-show="(reader.current.to ?? []).length"><dt class="inline font-medium">{{ __('mail.msg_to') }}:</dt> <dd class="inline" x-text="(reader.current.to ?? []).map(fmtAddress).join(', ')"></dd></div>
+                        <div><dt class="inline font-medium">{{ __('mail.msg_date') }}:</dt> <dd class="inline" x-text="fmtDateTime(reader.current.date)"></dd></div>
+                    </dl>
+                    {{-- Attachments --}}
+                    <div x-show="(reader.current.attachments ?? []).length" x-cloak class="mt-3 flex flex-wrap gap-2">
+                        <template x-for="att in reader.current.attachments" :key="att.id">
+                            <button type="button" @click="downloadAttachment(att)" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                                <x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /><span x-text="att.name"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                {{-- Remote images banner --}}
+                <div x-show="messageHasBlockedImages && ! reader.imagesAllowed" x-cloak class="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-6 py-2 text-xs text-amber-800">
+                    <span>{{ __('mail.images_blocked') }}</span>
+                    <button type="button" @click="reader.imagesAllowed = true" class="shrink-0 rounded-md border border-amber-300 px-2 py-1 font-medium hover:bg-amber-100">{{ __('mail.load_images') }}</button>
+                </div>
+
+                {{-- Body (sandboxed) --}}
+                <div class="min-h-0 flex-1 overflow-hidden bg-gray-50 p-2">
+                    <iframe :srcdoc="messageSrcdoc()" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="h-full w-full rounded border border-gray-200 bg-white"></iframe>
                 </div>
             </div>
         </div>

@@ -1107,6 +1107,11 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
+function escapeHtml(text) {
+    return String(text ?? '').replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function saveBlobAs(bytes, name, mime) {
     const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
     const a = document.createElement('a');
@@ -2366,6 +2371,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
     form: { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true },
     deleteOpen: false,
     deleteId: null,
+    reader: {
+        open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
+        messages: [], current: null, loading: false, error: '', imagesAllowed: false, busy: false, transferTo: '',
+    },
 
     async init() {
         await this.$store.vault.boot();
@@ -2500,6 +2509,218 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     sortedFolders(list) {
         return [...(list ?? [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
+    },
+
+    /* ---- Reader ---- */
+
+    credsBody(a) {
+        return {
+            host: a.host, port: a.port, encryption: a.encryption,
+            username: a.username, password: a.password, validate_cert: a.validateCert,
+        };
+    },
+
+    // Folders available for navigation / move targets (from cached stats).
+    readerFolders() {
+        return this.sortedFolders(this.reader.account?.stats?.folders ?? []);
+    },
+
+    otherAccounts() {
+        return this.sortedAccounts.filter((a) => a.id !== this.reader.account?.id);
+    },
+
+    async openReader(a) {
+        this.reader.open = true;
+        this.reader.account = a;
+        const folders = a.stats?.folders ?? [];
+        const inbox = folders.find((f) => /^inbox$/i.test(f.name)) ?? folders[0];
+        this.reader.folderPath = inbox?.path ?? 'INBOX';
+        this.reader.page = 1;
+        this.reader.current = null;
+        this.reader.transferTo = '';
+        await this.loadMessages();
+    },
+
+    closeReader() {
+        this.reader.open = false;
+        this.reader.account = null;
+        this.reader.messages = [];
+        this.reader.current = null;
+    },
+
+    openFolder(path) {
+        this.reader.folderPath = path;
+        this.reader.page = 1;
+        this.reader.current = null;
+        this.loadMessages();
+    },
+
+    async mailPost(url, extra) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json', 'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
+            },
+            body: JSON.stringify({ ...this.credsBody(this.reader.account), folder: this.reader.folderPath, ...extra }),
+        });
+        return res;
+    },
+
+    async loadMessages() {
+        this.reader.loading = true;
+        this.reader.error = '';
+        try {
+            const res = await this.mailPost('/mail/messages', { page: this.reader.page });
+            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            const data = await res.json();
+            this.reader.messages = data.messages ?? [];
+            this.reader.total = data.total ?? 0;
+        } catch (e) {
+            this.reader.error = labels.connectFailed;
+        } finally {
+            this.reader.loading = false;
+        }
+    },
+
+    get readerPages() {
+        return Math.max(1, Math.ceil(this.reader.total / this.reader.perPage));
+    },
+
+    async pageStep(delta) {
+        const next = this.reader.page + delta;
+        if (next < 1 || next > this.readerPages) return;
+        this.reader.page = next;
+        this.reader.current = null;
+        await this.loadMessages();
+    },
+
+    async openMsg(uid) {
+        this.reader.busy = true;
+        this.reader.imagesAllowed = false;
+        try {
+            const res = await this.mailPost('/mail/message', { uid, mark_seen: true });
+            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            this.reader.current = await res.json();
+            const row = this.reader.messages.find((m) => m.uid === uid);
+            if (row) row.seen = true;
+        } catch (e) {
+            this.reader.error = labels.connectFailed;
+        } finally {
+            this.reader.busy = false;
+        }
+    },
+
+    // Build the sandboxed iframe document. A strict CSP blocks remote content
+    // (images/CSS) until the user opts in, regardless of inline styles.
+    sanitizeEmail(html, allowImages) {
+        const clean = DOMPurify.sanitize(html ?? '', {
+            FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'],
+            FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+        });
+        const doc = new DOMParser().parseFromString(clean, 'text/html');
+        doc.querySelectorAll('a').forEach((a) => { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); });
+        if (! allowImages) {
+            doc.querySelectorAll('img').forEach((img) => {
+                const src = img.getAttribute('src') || '';
+                if (/^https?:/i.test(src)) { img.setAttribute('data-blocked', src); img.removeAttribute('src'); }
+            });
+        }
+        return doc.body.innerHTML;
+    },
+
+    messageSrcdoc() {
+        const c = this.reader.current;
+        if (! c) return '';
+        const body = c.html
+            ? this.sanitizeEmail(c.html, this.reader.imagesAllowed)
+            : `<pre style="white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace">${escapeHtml(c.text || '')}</pre>`;
+        const csp = this.reader.imagesAllowed
+            ? "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data:"
+            : "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:";
+        return `<!doctype html><html><head><meta charset="utf-8">`
+            + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
+            + `</head><body style="font-family:system-ui,-apple-system,sans-serif;margin:0;padding:12px;color:#111;word-break:break-word">${body}</body></html>`;
+    },
+
+    get messageHasBlockedImages() {
+        const c = this.reader.current;
+        return !! (c && c.html && /<img[^>]+src=["']https?:/i.test(c.html));
+    },
+
+    async msgAction(action, target = null) {
+        if (! this.reader.current) return;
+        this.reader.busy = true;
+        try {
+            const res = await this.mailPost('/mail/message/action', { uid: this.reader.current.uid, action, target });
+            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            if (action === 'seen' || action === 'unseen') {
+                this.reader.current.seen = action === 'seen';
+                const row = this.reader.messages.find((m) => m.uid === this.reader.current.uid);
+                if (row) row.seen = this.reader.current.seen;
+            } else {
+                this.reader.current = null;
+                await this.loadMessages();
+            }
+        } catch (e) {
+            this.reader.error = labels.connectFailed;
+        } finally {
+            this.reader.busy = false;
+        }
+    },
+
+    async transferMsg(targetAccountId) {
+        const a = this.manifest.accounts.find((x) => x.id === targetAccountId);
+        if (! a || ! this.reader.current) return;
+        this.reader.busy = true;
+        try {
+            const res = await fetch('/mail/message/transfer', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json', 'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    ...this.credsBody(this.reader.account), folder: this.reader.folderPath, uid: this.reader.current.uid,
+                    target: this.credsBody(a), target_folder: 'INBOX',
+                }),
+            });
+            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            this.reader.current = null;
+            this.reader.transferTo = '';
+            await this.loadMessages();
+        } catch (e) {
+            this.reader.error = labels.connectFailed;
+        } finally {
+            this.reader.busy = false;
+        }
+    },
+
+    async downloadAttachment(att) {
+        try {
+            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
+            if (! res.ok) return;
+            saveBlobAs(new Uint8Array(await res.arrayBuffer()), att.name, att.mime);
+        } catch (e) { /* ignore */ }
+    },
+
+    printMsg() {
+        const c = this.reader.current;
+        if (! c) return;
+        const body = c.html
+            ? this.sanitizeEmail(c.html, true)
+            : `<pre style="white-space:pre-wrap;word-break:break-word">${escapeHtml(c.text || '')}</pre>`;
+        const win = window.open('', '_blank');
+        if (! win) return;
+        win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(c.subject || '')}</title></head>`
+            + `<body style="font-family:system-ui,sans-serif;padding:16px">${body}`
+            + '<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>');
+        win.document.close();
+    },
+
+    fmtAddress(a) {
+        if (! a) return '';
+        return a.name ? `${a.name} <${a.email}>` : a.email;
     },
 }));
 
