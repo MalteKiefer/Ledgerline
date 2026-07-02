@@ -46,6 +46,21 @@ class PhotoEditTest extends TestCase
         $this->assertSame('Las Vegas, NV, USA', $photo->place);
     }
 
+    public function test_bulk_download_zips_the_selected_photos(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $a = Photo::factory()->create(['name' => 'a.jpg', 'disk_path' => 'photos/a.jpg']);
+        $b = Photo::factory()->create(['name' => 'b.jpg', 'disk_path' => 'photos/b.jpg']);
+        Storage::disk('files')->put('photos/a.jpg', 'AAA');
+        Storage::disk('files')->put('photos/b.jpg', 'BBB');
+
+        $res = $this->post(route('gallery.download'), ['photo_ids' => [$a->id, $b->id]]);
+
+        $res->assertOk();
+        $this->assertSame('application/zip', $res->headers->get('Content-Type'));
+    }
+
     public function test_bulk_location_rejects_more_than_1000_photos(): void
     {
         $this->signIn();
