@@ -2185,7 +2185,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     deleteId: null,
     cacheVersion: 0, // bumped on background sync to re-read cached stats
     reader: {
-        open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
+        open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50, uidValidity: 0,
         messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
         folders: [], foldersLoading: false, sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
@@ -2673,6 +2673,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
             const rows = data.messages ?? [];
             this.reader.messages = reset ? rows : [...this.reader.messages, ...rows];
             this.reader.total = data.total ?? 0;
+            // UIDs are only valid within one UIDVALIDITY. Track it so cached
+            // message bodies keyed by UID can't be reused after the mailbox is
+            // recreated (they'd otherwise point at a different message).
+            if (data.uidValidity != null) this.reader.uidValidity = data.uidValidity;
             this.cacheList(folder);
         } catch (e) {
             if (! background && this.reader.folderPath === folder) this.reader.error = labels.connectFailed;
@@ -2716,7 +2720,9 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     msgCacheKey(folder, uid) {
-        return `msg:${this.reader.account.id}:${folder}:${uid}`;
+        // Include UIDVALIDITY: a recreated mailbox reuses UID numbers for
+        // different messages, so a stale cached body must not be served.
+        return `msg:${this.reader.account.id}:${folder}:${this.reader.uidValidity}:${uid}`;
     },
 
     async openMsg(uid) {
@@ -2735,6 +2741,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
             if (this.reader.folderPath !== folder) return; // folder changed → drop
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
+            if (this.reader.current.uidValidity != null) this.reader.uidValidity = this.reader.current.uidValidity;
             Vault.cachePut(this.msgCacheKey(folder, uid), this.reader.current);
             // Opening marks \Seen server-side — reflect it in the list and the
             // folder's unread count without a reload.

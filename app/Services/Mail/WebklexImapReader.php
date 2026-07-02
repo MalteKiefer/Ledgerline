@@ -6,6 +6,7 @@ namespace App\Services\Mail;
 
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
+use Webklex\PHPIMAP\IMAP;
 
 /**
  * IMAP reading and message actions via webklex/php-imap (pure PHP).
@@ -161,9 +162,29 @@ final class WebklexImapReader implements ImapReader
                 ];
             }
 
-            return ['total' => $total, 'page' => max(1, $page), 'perPage' => $perPage, 'messages' => $out];
+            return [
+                'total' => $total,
+                'page' => max(1, $page),
+                'perPage' => $perPage,
+                'uidValidity' => $this->uidValidity($mailbox),
+                'messages' => $out,
+            ];
         } finally {
             $this->close($client);
+        }
+    }
+
+    /**
+     * A folder's UIDVALIDITY. UIDs are only meaningful within one UIDVALIDITY
+     * (RFC 3501 §2.3.1.1); the client keys cached messages by it so a mailbox
+     * that was recreated can never map a stale cached UID to a different message.
+     */
+    private function uidValidity($mailbox): int
+    {
+        try {
+            return (int) ($mailbox->examine()['uidvalidity'] ?? 0);
+        } catch (\Throwable) {
+            return 0;
         }
     }
 
@@ -206,6 +227,7 @@ final class WebklexImapReader implements ImapReader
                 'text' => $text !== '' ? $text : null,
                 'attachments' => $attachments,
                 'rawHeaders' => $this->str($m->getHeader()?->raw ?? ''),
+                'uidValidity' => $this->uidValidity($client->getFolderByPath($folder)),
             ];
         } finally {
             $this->close($client);
@@ -286,17 +308,22 @@ final class WebklexImapReader implements ImapReader
         $src = $this->connect($source);
         try {
             $message = $src->getFolderByPath($folder)->query()->getMessageByUid($uid);
-            // getRawBody() is only the body — rebuild the full RFC822 message
-            // (raw header + blank line + body), or the appended copy has no
-            // headers and looks corrupted. APPEND also needs CRLF line endings.
-            $rawHeader = rtrim((string) ($message->getHeader()?->raw ?? ''), "\r\n");
-            $raw = preg_replace('/\r?\n/', "\r\n", $rawHeader."\r\n\r\n".(string) $message->getRawBody());
+
+            // Copy the message verbatim: prefer the full BODY[] literal (headers
+            // + body, byte-for-byte), falling back to header + body. APPEND needs
+            // CRLF line endings.
+            $raw = preg_replace('/\r?\n/', "\r\n", $this->rawMessage($src, $folder, $uid, $message));
+
+            // Preserve the original flags (\Seen, \Answered, …) and received
+            // time, so the transferred copy is not reset to unread / "now".
+            $flags = $this->appendFlags($message);
+            $internalDate = $this->internalDate($src, $folder, $uid);
 
             $dst = $this->connect($target);
             try {
                 // appendMessage throws on a protocol error, so reaching the next
                 // line means the target server accepted the message.
-                $dst->getFolderByPath($targetFolder)->appendMessage($raw);
+                $dst->getFolderByPath($targetFolder)->appendMessage($raw, $flags ?: null, $internalDate);
             } finally {
                 $this->close($dst);
             }
@@ -311,6 +338,81 @@ final class WebklexImapReader implements ImapReader
         } finally {
             $this->close($src);
         }
+    }
+
+    /**
+     * The full RFC822 message, byte-for-byte where the server supports it.
+     *
+     * Fetching BODY[] returns the exact octets on the wire, so 8bit/MIME parts
+     * are copied without re-encoding. Falls back to the parsed header + body
+     * (which together form the RFC822 message) if the literal fetch fails.
+     */
+    private function rawMessage(Client $client, string $folder, int $uid, $message): string
+    {
+        try {
+            $client->openFolder($folder);
+            $data = $client->getConnection()->fetch(['BODY[]'], [$uid], null, IMAP::ST_UID)->validatedData();
+            $raw = $this->unwrapFetch($data[$uid] ?? null);
+            if ($raw !== '') {
+                return $raw;
+            }
+        } catch (\Throwable) {
+        }
+
+        $header = rtrim((string) ($message->getHeader()?->raw ?? ''), "\r\n");
+
+        return $header."\r\n\r\n".(string) $message->getRawBody();
+    }
+
+    /**
+     * The message's system flags mapped to IMAP APPEND form (\Seen, \Answered,
+     * \Flagged, \Draft). \Recent is dropped (it cannot be set by a client).
+     * Keyword flags are passed through unchanged.
+     *
+     * @return list<string>
+     */
+    private function appendFlags($message): array
+    {
+        $system = ['seen' => '\\Seen', 'answered' => '\\Answered', 'flagged' => '\\Flagged', 'draft' => '\\Draft'];
+        $out = [];
+        try {
+            foreach ($message->getFlags()->all() as $flag) {
+                $key = strtolower(ltrim((string) $flag, '\\'));
+                if ($key === 'recent' || $key === '') {
+                    continue;
+                }
+                $out[] = $system[$key] ?? (string) $flag;
+            }
+        } catch (\Throwable) {
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /** The server's INTERNALDATE for a message, or null (server then uses now). */
+    private function internalDate(Client $client, string $folder, int $uid): ?string
+    {
+        try {
+            $client->openFolder($folder);
+            $data = $client->getConnection()->fetch(['INTERNALDATE'], [$uid], null, IMAP::ST_UID)->validatedData();
+            $date = trim($this->unwrapFetch($data[$uid] ?? null));
+            if ($date !== '') {
+                return $date;
+            }
+        } catch (\Throwable) {
+        }
+
+        return null;
+    }
+
+    /** Normalise a webklex fetch value (string, or [item => value]) to a string. */
+    private function unwrapFetch($value): string
+    {
+        if (is_array($value)) {
+            $value = reset($value);
+        }
+
+        return is_string($value) ? $value : '';
     }
 
     /* ---- helpers ---- */

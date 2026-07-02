@@ -29,7 +29,7 @@ interface ImapReader
     /**
      * List a page of message envelopes (newest first), without bodies.
      *
-     * @return array{total:int, page:int, perPage:int, messages:list<array{
+     * @return array{total:int, page:int, perPage:int, uidValidity:int, messages:list<array{
      *     uid:int, subject:string, from:array{name:string,email:string}|null,
      *     date:string|null, seen:bool, flagged:bool, answered:bool}>}
      */
@@ -42,7 +42,7 @@ interface ImapReader
      *     to:list<array{name:string,email:string}>, cc:list<array{name:string,email:string}>,
      *     date:string|null, seen:bool, html:string|null, text:string|null,
      *     attachments:list<array{id:int,name:string,mime:string,size:int}>,
-     *     rawHeaders:string}
+     *     rawHeaders:string, uidValidity:int}
      */
     public function getMessage(ImapCredentials $c, string $folder, int $uid, bool $markSeen): array;
 
