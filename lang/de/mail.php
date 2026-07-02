@@ -70,4 +70,7 @@ return [
     'show_headers' => 'Kopfzeilen anzeigen',
     'headers_title' => 'Nachrichten-Kopfzeilen',
     'delete_question' => 'Diese Nachricht in den Papierkorb verschieben oder endgültig löschen?',
+    'select_all' => 'Alle auswählen',
+    'selected' => 'ausgewählt',
+    'clear_selection' => 'Aufheben',
 ];
