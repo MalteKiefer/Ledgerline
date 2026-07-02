@@ -20,4 +20,13 @@ return [
     'unconfigured_notice' => 'No vault yet. Set an encryption passphrase to create your zero-knowledge notes.',
     'stale' => 'The notes were changed somewhere else at the same time and were reloaded. Please repeat your last change.',
     'save_failed' => 'Could not save. Please try again.',
+    'trash' => 'Trash',
+    'empty_trash' => 'Empty trash',
+    'restore' => 'Restore',
+    'delete_forever' => 'Delete forever',
+    'pin' => 'Pin',
+    'unpin' => 'Unpin',
+    'edit_tags' => 'Edit tags',
+    'filtered_by' => 'Filtered by',
+    'active' => 'Notes',
 ];
