@@ -195,6 +195,10 @@
     {{-- Reader overlay --}}
     <template x-teleport="body">
         <div x-show="reader.open" x-cloak class="fixed inset-0 z-[60] flex flex-col bg-white" @keydown.escape.window="reader.current ? (reader.current = null) : closeReader()">
+            {{-- Busy overlay: blocks interaction while a message loads or an action runs --}}
+            <div x-show="reader.busy" x-cloak class="absolute inset-0 z-[68] flex items-center justify-center bg-white/60">
+                <x-icon name="arrow-path" class="h-8 w-8 animate-spin text-gray-500" />
+            </div>
             {{-- Top bar --}}
             <div class="flex items-center gap-3 border-b border-gray-200 px-4 py-2">
                 <button type="button" @click="closeReader()" title="{{ __('mail.close') }}" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="x-mark" class="h-5 w-5" /></button>
