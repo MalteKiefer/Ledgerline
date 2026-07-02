@@ -15,13 +15,13 @@
                     class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:w-56">
                 <button type="submit" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.search') }}</button>
                 @if ($searchQuery !== '')
-                    <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900" title="{{ __('gallery.search_clear') }}">✕</a>
+                    <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900" title="{{ __('gallery.search_clear') }}"><x-icon name="x-mark" /></a>
                 @endif
             </form>
             @if ($favoritesOnly)
                 <a href="{{ route('gallery.index') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.all_photos') }}</a>
             @else
-                <a href="{{ route('gallery.index', ['favorites' => 1]) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">♥ {{ __('gallery.favorites') }}</a>
+                <a href="{{ route('gallery.index', ['favorites' => 1]) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1.5"><x-icon name="heart" />{{ __('gallery.favorites') }}</span></a>
             @endif
             <a href="{{ route('gallery.trips') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trips') }}</a>
             <a href="{{ route('gallery.map') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.map') }}</a>
@@ -116,7 +116,7 @@
                             <input type="number" step="any" name="longitude" x-model="lng" placeholder="lng" required class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         </div>
                         <button type="button" @click="window.dispatchEvent(new CustomEvent('open-location-picker', { detail: { context: 'bulk', lat, lng } }))"
-                            class="mt-2 w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">📍 {{ __('gallery.change_location') }}</button>
+                            class="mt-2 w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center justify-center gap-1.5"><x-icon name="map-pin" />{{ __('gallery.change_location') }}</span></button>
                         <div class="mt-5 flex justify-end gap-3">
                             <button type="button" @click="locationOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.save_meta') }}</button>
@@ -189,17 +189,18 @@
                         <button type="submit" aria-label="{{ __('gallery.favorite') }}"
                             :class="current.favorite === '1' ? 'text-red-500' : 'text-white'"
                             class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-2xl backdrop-blur">
-                            <span x-text="current.favorite === '1' ? '♥' : '♡'"></span>
+                            <x-icon name="heart-solid" class="h-5 w-5" x-show="current.favorite === '1'" />
+                            <x-icon name="heart" class="h-5 w-5" x-show="current.favorite !== '1'" />
                         </button>
                     </form>
                     <button type="button" @click="editing = true; showDetails = true" aria-label="{{ __('gallery.edit') }}"
-                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur">✎</button>
+                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"><x-icon name="pencil" class="h-5 w-5" /></button>
                     <button type="button" @click="showDetails = ! showDetails" aria-label="{{ __('gallery.meta_tech') }}"
-                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur">ⓘ</button>
+                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"><x-icon name="info" class="h-5 w-5" /></button>
                     <button type="button" @click="viewerOpen = false" aria-label="{{ __('gallery.close') }}"
-                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-2xl leading-none text-white backdrop-blur">✕</button>
+                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"><x-icon name="x-mark" class="h-5 w-5" /></button>
                 </div>
-                <button type="button" @click="prev()" x-show="index > 0" class="absolute left-4 text-4xl text-white/70 hover:text-white" aria-label="‹">‹</button>
+                <button type="button" @click="prev()" x-show="index > 0" class="absolute left-4 text-white/70 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="chevron-left" class="h-9 w-9" /></button>
                 {{-- Video loads only on play (preload=none); until then the poster is shown. No autoplay. --}}
                 <template x-if="current.mediaType === 'video'">
                     <video :src="current.video" :poster="current.medium" controls preload="none" playsinline class="max-h-[92vh] max-w-full rounded bg-black shadow-2xl"></video>
@@ -215,11 +216,11 @@
                         </template>
                         <button type="button" x-show="current.motion" @click="motionPlaying = ! motionPlaying"
                             class="absolute bottom-3 left-3 rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white hover:bg-black/80">
-                            <span x-text="motionPlaying ? '■' : '▶'"></span> {{ __('gallery.motion') }}
+                            <span class="inline-flex items-center gap-1"><x-icon name="stop" class="h-3.5 w-3.5" x-show="motionPlaying" /><x-icon name="play" class="h-3.5 w-3.5" x-show="! motionPlaying" />{{ __('gallery.motion') }}</span>
                         </button>
                     </div>
                 </template>
-                <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 text-4xl text-white/70 hover:text-white" aria-label="›">›</button>
+                <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 text-white/70 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="chevron-right" class="h-9 w-9" /></button>
             </div>
             <aside :class="showDetails ? 'block' : 'hidden sm:block'"
                 class="fixed inset-x-0 bottom-0 z-[1010] max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl sm:static sm:z-auto sm:max-h-none sm:w-80 sm:shrink-0 sm:rounded-none sm:shadow-none">
@@ -227,15 +228,16 @@
                     <h2 class="text-sm font-semibold text-gray-900 break-all" x-text="current.name"></h2>
                     <div class="flex shrink-0 items-center gap-2">
                         <button type="button" @click="editing = ! editing" :title="'{{ __('gallery.edit') }}'"
-                            :class="editing ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'" class="text-base">✎</button>
+                            :class="editing ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'"><x-icon name="pencil" class="h-[18px] w-[18px]" /></button>
                         <form method="POST" :action="`/gallery/${current.id}/favorite`">
                             @csrf
                             <button type="submit" :title="current.favorite === '1' ? '{{ __('gallery.unfavorite') }}' : '{{ __('gallery.favorite') }}'"
                                 :class="current.favorite === '1' ? 'text-red-500' : 'text-gray-400 hover:text-red-500'" class="text-xl">
-                                <span x-text="current.favorite === '1' ? '♥' : '♡'"></span>
+                                <x-icon name="heart-solid" class="h-5 w-5" x-show="current.favorite === '1'" />
+                                <x-icon name="heart" class="h-5 w-5" x-show="current.favorite !== '1'" />
                             </button>
                         </form>
-                        <button type="button" @click="viewerOpen = false" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('gallery.close') }}">✕</button>
+                        <button type="button" @click="viewerOpen = false" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('gallery.close') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
                     </div>
                 </div>
                 @php
@@ -294,17 +296,17 @@
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
                         @csrf
                         <input type="hidden" name="action" value="rotate_left">
-                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_left') }}">⤺</button>
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_left') }}"><x-icon name="arrow-uturn-left" class="mx-auto" /></button>
                     </form>
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
                         @csrf
                         <input type="hidden" name="action" value="rotate_right">
-                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_right') }}">⤻</button>
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_right') }}"><x-icon name="arrow-uturn-right" class="mx-auto" /></button>
                     </form>
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
                         @csrf
                         <input type="hidden" name="action" value="flip">
-                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.flip') }}">⇋</button>
+                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.flip') }}"><x-icon name="arrows-right-left" class="mx-auto" /></button>
                     </form>
                 </div>
 
@@ -327,7 +329,7 @@
                         <input type="number" step="any" name="longitude" x-model="current.lng" placeholder="lng" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
                     <button type="button" @click="window.dispatchEvent(new CustomEvent('open-location-picker', { detail: { context: 'single', lat: current.lat, lng: current.lng } }))"
-                        class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">📍 {{ __('gallery.change_location') }}</button>
+                        class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center justify-center gap-1.5"><x-icon name="map-pin" />{{ __('gallery.change_location') }}</span></button>
                     <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.save_meta') }}</button>
                 </form>
                 </div>
