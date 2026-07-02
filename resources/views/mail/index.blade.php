@@ -219,7 +219,9 @@
                             class="shrink-0 rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-50"><x-icon name="folder-plus" class="h-4 w-4" /></button>
                     </form>
                     <div class="min-h-0 flex-1 overflow-y-auto">
-                        <p x-show="readerFolders().length === 0 && ! reader.loading" class="px-3 py-4 text-xs text-gray-400">INBOX</p>
+                        <div x-show="reader.foldersLoading && readerFolders().length === 0" class="flex items-center gap-2 px-3 py-4 text-xs text-gray-400">
+                            <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}
+                        </div>
                         <template x-for="f in readerFolders()" :key="f.path">
                             <div>
                                 {{-- Non-selectable container (e.g. Gmail "[Gmail]"): just a label --}}
@@ -253,6 +255,9 @@
                     <span class="flex shrink-0 items-center gap-3">
                         <button type="button" x-show="isTrashFolder() && reader.total" @click="reader.emptyChoiceOpen = true" :disabled="reader.busy"
                             class="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-0.5 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-3.5 w-3.5" />{{ __('mail.empty_folder') }}</button>
+                        <button type="button" @click="refreshCurrentFolder()" :disabled="reader.loading" title="{{ __('mail.refresh') }}" aria-label="{{ __('mail.refresh') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+                            <x-icon name="arrow-path" class="h-4 w-4" ::class="reader.loading ? 'animate-spin' : ''" />
+                        </button>
                         <span x-text="`${reader.messages.length} / ${reader.total}`"></span>
                         <button type="button" @click="toggleSort()" class="inline-flex items-center gap-1 hover:text-gray-700" title="{{ __('mail.msg_date') }}">
                             {{ __('mail.msg_date') }}

@@ -2375,7 +2375,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
         messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
-        folders: [], sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
+        folders: [], foldersLoading: false, sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
     },
 
@@ -2560,20 +2560,40 @@ Alpine.data('vaultMail', (labels = {}) => ({
         }
     },
 
-    async openReader(a) {
+    // Open instantly and load folders + messages in parallel (never
+    // folders-first-then-messages). Both show cached data at once, or a
+    // spinner, and fill in when their fetch resolves.
+    openReader(a) {
         this.reader.open = true;
         this.reader.account = a;
         this.reader.current = null;
         this.reader.transferOpen = false;
         this.reader.error = '';
-        this.reader.loading = true;
         this.reader.folders = [];
         this.reader.messages = [];
         this.reader.selected = [];
-        this.reader.folders = this.sortedFolders(await this.loadFolders(this.credsBody(a)));
-        const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
-        this.reader.folderPath = inbox?.path ?? 'INBOX';
-        this.hydrateFolder();
+        this.reader.folderPath = 'INBOX';
+        this.hydrateFolder();       // messages: cache instantly + background/foreground
+        this.loadFoldersAsync(a);   // folder sidebar in parallel, not awaited
+    },
+
+    loadFoldersAsync(a) {
+        this.reader.foldersLoading = true;
+        this.loadFolders(this.credsBody(a)).then((folders) => {
+            this.reader.folders = this.sortedFolders(folders);
+            // Adopt the server's real INBOX path only if still on the default.
+            const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
+            if (inbox && this.reader.folderPath === 'INBOX' && inbox.path !== 'INBOX') {
+                this.reader.folderPath = inbox.path;
+                this.hydrateFolder();
+            }
+        }).finally(() => { this.reader.foldersLoading = false; });
+    },
+
+    // Manual "check for new mail": reload the current folder and refresh counts.
+    refreshCurrentFolder() {
+        this.loadMessages(true);
+        this.loadFoldersAsync(this.reader.account);
     },
 
     // Show the cached message list instantly (if any), then refresh in the
