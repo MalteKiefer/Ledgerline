@@ -54,21 +54,23 @@ interface ImapReader
     public function getAttachment(ImapCredentials $c, string $folder, int $uid, int $attachmentId): array;
 
     /**
-     * Delete a message: move to Trash, or expunge permanently.
+     * Apply one action to a set of messages within a single connection.
      *
-     * @return array{deleted:bool, trashed:bool}
+     * Action: "trash" (move to Trash — never a silent expunge), "delete"
+     * (permanent expunge), "move" (to $target folder), "seen"/"unseen" (\Seen).
+     *
+     * @param  list<int>  $uids
+     * @return array{count:int}
      */
-    public function deleteMessage(ImapCredentials $c, string $folder, int $uid, bool $permanent): array;
-
-    /** Move a message to another folder in the same account. */
-    public function moveMessage(ImapCredentials $c, string $folder, int $uid, string $targetFolder): void;
-
-    /** Set or clear the \Seen flag. */
-    public function flagMessage(ImapCredentials $c, string $folder, int $uid, bool $seen): void;
+    public function actOnMessages(ImapCredentials $c, string $folder, array $uids, string $action, ?string $target): array;
 
     /**
-     * Copy a message to another account (append its raw source there), then
-     * remove it from the source account.
+     * Copy a set of messages to another account (append their raw source there),
+     * then move each source message to the source account's Trash. Uses one
+     * connection to the source and one to the target.
+     *
+     * @param  list<int>  $uids
+     * @return array{count:int}
      */
-    public function transferMessage(ImapCredentials $source, string $folder, int $uid, ImapCredentials $target, string $targetFolder): void;
+    public function transferMessages(ImapCredentials $source, string $folder, array $uids, ImapCredentials $target, string $targetFolder): array;
 }
