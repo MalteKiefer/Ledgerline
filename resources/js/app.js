@@ -1268,6 +1268,41 @@ Alpine.data('encFolderRow', (encName, lockedLabel = '🔒') => ({
     },
 }));
 
+// Client-side name sort for the file browser. The server cannot order encrypted
+// rows (their plaintext name is empty), so when the active sort is "name" we
+// reorder the visible rows by their real (decrypted) name once the vault is
+// unlocked — folders first, then files, honouring the sort direction. Only the
+// current page is reordered; cross-page ordering stays server-driven.
+Alpine.data('folderSort', (sort, dir) => ({
+    async run() {
+        if (sort !== 'name') {
+            return;
+        }
+        await this.$store.vault.boot();
+        const tbody = this.$el;
+        const rows = Array.from(tbody.querySelectorAll('tr[data-kind]'));
+        const unlocked = this.$store.vault.unlocked;
+
+        const nameOf = (tr) => {
+            let n = tr.dataset.name || '';
+            if (! n && tr.dataset.enc && unlocked) {
+                try {
+                    n = Vault.decryptFileMeta(tr.dataset.enc).name || '';
+                } catch (e) { /* leave empty */ }
+            }
+            return n;
+        };
+        const factor = dir === 'desc' ? -1 : 1;
+        const kind = (tr) => (tr.dataset.kind === 'folder' ? 0 : 1);
+
+        rows.sort((a, b) => (kind(a) - kind(b))
+            || factor * nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: 'base', numeric: true }));
+
+        // Re-append in the new order (moves existing nodes, preserving state).
+        rows.forEach((tr) => tbody.appendChild(tr));
+    },
+}));
+
 // Decrypt the <option> labels of a folder <select> that carry data-enc.
 Alpine.data('encOptions', () => ({
     async init() {
