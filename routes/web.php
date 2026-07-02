@@ -85,6 +85,7 @@ Route::middleware('auth')->group(function (): void {
     // Zero-knowledge file vault: the server stores one encrypted manifest and
     // opaque uuid-keyed blobs; it cannot see names, sizes, structure or counts.
     Route::view('/files', 'files.index')->name('files.index');
+    Route::view('/notes', 'notes.index')->name('notes.index');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
         ->whereIn('name', ['files', 'notes'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])

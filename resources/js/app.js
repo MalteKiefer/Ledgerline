@@ -6,6 +6,9 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import JSZip from 'jszip';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import 'github-markdown-css/github-markdown-light.css';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
@@ -1699,6 +1702,223 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             this.editorView = null;
         }
         this.viewer = { open: false, kind: 'none', src: '', row: null, saving: false, saved: false };
+    },
+}));
+
+
+/* ---- Zero-knowledge notes (manifest model) ----
+ *
+ * Whole notes — titles, markdown content, tags, timestamps — live inside one
+ * encrypted manifest; the server stores only that ciphertext. Rendering uses
+ * GitHub-flavored markdown, sanitised before it touches the DOM.
+ */
+
+marked.use({ gfm: true, breaks: true });
+
+function renderMarkdown(text) {
+    return DOMPurify.sanitize(marked.parse(text ?? ''));
+}
+
+Alpine.data('vaultNotes', (labels = {}) => ({
+    state: 'boot', // boot | locked | unconfigured | ready | error
+    manifest: { v: 1, notes: [] },
+    version: 0,
+    currentId: null,
+    query: '',
+    mobilePane: 'list', // list | editor (small screens)
+    previewing: false,
+    previewHtml: '',
+    saveState: 'idle', // idle | dirty | saving | saved
+    error: '',
+    editorView: null,
+    saveTimer: null,
+
+    async init() {
+        await this.$store.vault.boot();
+        window.addEventListener('vault-unlocked', () => this.load());
+        // Flush pending edits when leaving the page.
+        window.addEventListener('beforeunload', () => { if (this.saveState === 'dirty') this.saveNow(); });
+        if (! this.$store.vault.configured) {
+            this.state = 'unconfigured';
+            return;
+        }
+        if (! this.$store.vault.unlocked) {
+            this.state = 'locked';
+            return;
+        }
+        await this.load();
+    },
+
+    async load() {
+        try {
+            const { data, version } = await Vault.loadManifest('notes');
+            this.manifest = data.notes ? data : { v: 1, notes: [] };
+            this.version = version;
+            this.state = 'ready';
+            const open = new URLSearchParams(window.location.search).get('open');
+            if (open && this.manifest.notes.some((n) => n.id === open)) {
+                this.open(open);
+            }
+        } catch (e) {
+            this.state = 'error';
+        }
+    },
+
+    async persist() {
+        try {
+            this.version = await Vault.saveManifest('notes', this.manifest, this.version);
+            this.error = '';
+        } catch (e) {
+            if (e.stale) {
+                await this.load();
+                this.error = labels.stale;
+            } else {
+                this.error = labels.saveFailed;
+            }
+            throw e;
+        }
+    },
+
+    /* ---- Derived ---- */
+
+    get notes() {
+        const q = this.query.trim().toLowerCase();
+        let list = this.manifest.notes.filter((n) => ! n.trashed);
+        if (q !== '') {
+            // Full-text: title, tags and markdown content, all in memory.
+            list = list.filter((n) =>
+                (n.title ?? '').toLowerCase().includes(q)
+                || (n.tags ?? []).some((t) => t.toLowerCase().includes(q))
+                || (n.content ?? '').toLowerCase().includes(q));
+        }
+        return [...list].sort((a, b) =>
+            (Number(b.pinned) - Number(a.pinned)) || (b.updated ?? '').localeCompare(a.updated ?? ''));
+    },
+
+    get current() {
+        return this.manifest.notes.find((n) => n.id === this.currentId) ?? null;
+    },
+
+    excerpt(note) {
+        const line = (note.content ?? '').split('\n').map((l) => l.trim())
+            .find((l) => l !== '' && ! l.startsWith('#')) ?? '';
+        return line.replace(/[*_`>\[\]()#-]/g, '').slice(0, 120);
+    },
+
+    fmtDate(iso) {
+        return iso ? new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+    },
+
+    /* ---- CRUD ---- */
+
+    async create() {
+        const note = {
+            id: crypto.randomUUID(),
+            title: '',
+            content: '',
+            tags: [],
+            pinned: false,
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+            trashed: null,
+        };
+        this.manifest.notes.push(note);
+        await this.persist().catch(() => {});
+        this.open(note.id);
+    },
+
+    open(id) {
+        if (this.currentId === id) return;
+        if (this.saveState === 'dirty') this.saveNow();
+        this.currentId = id;
+        this.previewing = false;
+        this.saveState = 'idle';
+        this.mobilePane = 'editor';
+        this.$nextTick(() => this.mountEditor(this.current?.content ?? ''));
+    },
+
+    closeNote() {
+        if (this.saveState === 'dirty') this.saveNow();
+        this.destroyEditor();
+        this.currentId = null;
+        this.mobilePane = 'list';
+    },
+
+    mountEditor(content) {
+        this.destroyEditor();
+        const markDirty = () => this.markDirty();
+        const langComp = new Compartment();
+        this.editorView = new EditorView({
+            parent: this.$refs.noteEditor,
+            state: EditorState.create({
+                doc: content,
+                extensions: [
+                    basicSetup,
+                    langComp.of([]),
+                    EditorView.lineWrapping,
+                    EditorView.updateListener.of((update) => { if (update.docChanged) markDirty(); }),
+                    EditorView.theme({ '&': { height: '100%' }, '.cm-scroller': { overflow: 'auto' } }),
+                ],
+            }),
+        });
+        const md = LanguageDescription.matchFilename(languages, 'note.md');
+        if (md) {
+            md.load().then((support) => {
+                if (this.editorView) {
+                    this.editorView.dispatch({ effects: langComp.reconfigure(support) });
+                }
+            });
+        }
+    },
+
+    destroyEditor() {
+        if (this.editorView) {
+            this.editorView.destroy();
+            this.editorView = null;
+        }
+    },
+
+    markDirty() {
+        this.saveState = 'dirty';
+        clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => this.saveNow(), 3000);
+    },
+
+    async saveNow() {
+        const note = this.current;
+        if (! note) return;
+        clearTimeout(this.saveTimer);
+        if (this.editorView) {
+            note.content = this.editorView.state.doc.toString();
+        }
+        note.updated = new Date().toISOString();
+        this.saveState = 'saving';
+        try {
+            await this.persist();
+            this.saveState = 'saved';
+        } catch (e) {
+            this.saveState = 'dirty';
+        }
+    },
+
+    togglePreview() {
+        if (! this.previewing && this.editorView && this.current) {
+            this.current.content = this.editorView.state.doc.toString();
+        }
+        this.previewing = ! this.previewing;
+        if (this.previewing) {
+            this.previewHtml = renderMarkdown(this.current?.content ?? '');
+        } else {
+            this.$nextTick(() => this.mountEditor(this.current?.content ?? ''));
+        }
+    },
+
+    async toTrash(note) {
+        const target = this.manifest.notes.find((n) => n.id === note.id);
+        if (! target) return;
+        target.trashed = new Date().toISOString();
+        if (this.currentId === note.id) this.closeNote();
+        await this.persist().catch(() => {});
     },
 }));
 

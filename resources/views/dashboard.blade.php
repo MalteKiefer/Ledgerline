@@ -30,4 +30,16 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
         </svg>
     </a>
+
+    <a href="{{ route('notes.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+        <div>
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.notes') }}</dt>
+            <dd class="mt-2 text-base text-gray-900">
+                {{ $vaultConfigured ? __('pages.dashboard.notes_ready') : __('pages.dashboard.notes_unconfigured') }}
+            </dd>
+        </div>
+        <svg class="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+        </svg>
+    </a>
 </x-layouts.app>
