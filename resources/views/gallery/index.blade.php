@@ -88,7 +88,9 @@
     </div>
 
     {{-- Bulk bar --}}
-    <div x-show="selected.length" x-cloak class="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm" x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
+    <div x-show="selected.length" x-cloak x-transition
+        class="fixed inset-x-0 bottom-5 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl"
+        x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
         @location-picked.window="if ($event.detail.context === 'bulk') { lat = $event.detail.lat; lng = $event.detail.lng; }">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
         <button type="button" @click="locationOpen = true" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.set_location') }}</button>
@@ -173,16 +175,23 @@
     <template x-teleport="body">
         <div x-show="viewerOpen" x-cloak class="fixed inset-0 z-[1000] flex bg-black/90" @keydown.escape.window="viewerOpen = false">
             <div class="relative flex flex-1 items-center justify-center p-4">
-                {{-- Floating controls for mobile, where the sidebar is a bottom sheet. --}}
-                <div class="absolute right-3 top-3 z-10 flex items-center gap-4 sm:hidden">
+                {{-- Floating controls for mobile, where the sidebar is a bottom sheet.
+                     Large, tappable circular buttons. --}}
+                <div class="absolute right-3 top-3 z-10 flex items-center gap-3 sm:hidden">
                     <form method="POST" :action="`/gallery/${current.id}/favorite`">
                         @csrf
-                        <button type="submit" :class="current.favorite === '1' ? 'text-red-500' : 'text-white/80'" class="text-2xl">
+                        <button type="submit" aria-label="{{ __('gallery.favorite') }}"
+                            :class="current.favorite === '1' ? 'text-red-500' : 'text-white'"
+                            class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-2xl backdrop-blur">
                             <span x-text="current.favorite === '1' ? '♥' : '♡'"></span>
                         </button>
                     </form>
-                    <button type="button" @click="showDetails = ! showDetails" class="text-2xl text-white/80" aria-label="{{ __('gallery.meta_tech') }}">ⓘ</button>
-                    <button type="button" @click="viewerOpen = false" class="text-3xl leading-none text-white/80" aria-label="{{ __('gallery.close') }}">✕</button>
+                    <button type="button" @click="editing = true; showDetails = true" aria-label="{{ __('gallery.edit') }}"
+                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur">✎</button>
+                    <button type="button" @click="showDetails = ! showDetails" aria-label="{{ __('gallery.meta_tech') }}"
+                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-xl text-white backdrop-blur">ⓘ</button>
+                    <button type="button" @click="viewerOpen = false" aria-label="{{ __('gallery.close') }}"
+                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-2xl leading-none text-white backdrop-blur">✕</button>
                 </div>
                 <button type="button" @click="prev()" x-show="index > 0" class="absolute left-4 text-4xl text-white/70 hover:text-white" aria-label="‹">‹</button>
                 {{-- Video loads only on play (preload=none); until then the poster is shown. No autoplay. --}}
