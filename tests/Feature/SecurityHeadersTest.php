@@ -26,8 +26,9 @@ final class SecurityHeadersTest extends TestCase
         $this->assertStringContainsString("default-src 'self'", $csp);
         $this->assertStringContainsString("frame-ancestors 'none'", $csp);
         $this->assertStringContainsString("object-src 'none'", $csp);
-        // Alpine needs 'unsafe-eval'; inline scripts stay disallowed.
-        $this->assertStringContainsString("script-src 'self' 'unsafe-eval'", $csp);
-        $this->assertStringNotContainsString("script-src 'self' 'unsafe-inline'", $csp);
+        // Alpine needs 'unsafe-eval'; the Vite/platform bootstrap needs
+        // 'unsafe-inline'. Cross-origin scripts stay forbidden ('self' only).
+        $this->assertStringContainsString("script-src 'self' 'unsafe-inline' 'unsafe-eval'", $csp);
+        $this->assertStringNotContainsString('script-src https:', $csp);
     }
 }
