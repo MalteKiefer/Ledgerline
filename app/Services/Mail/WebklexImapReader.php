@@ -240,13 +240,19 @@ final class WebklexImapReader implements ImapReader
             $m = $client->getFolderByPath($folder)->query()->getMessageByUid($uid);
             $trash = $permanent ? null : $this->trashPath($client);
 
+            // A "move to Trash" request must never silently expunge: if no Trash
+            // folder can be resolved, refuse rather than permanently delete.
+            if (! $permanent && $trash === null) {
+                throw new \RuntimeException('No Trash folder found — refusing to permanently delete a message that was only meant to be trashed.');
+            }
+
             if ($trash !== null && $trash !== $folder) {
                 $m->delete(true, $trash, true); // move to Trash
 
                 return ['deleted' => true, 'trashed' => true];
             }
 
-            $m->delete(true); // permanent expunge
+            $m->delete(true); // permanent expunge (explicitly requested, or already in Trash)
 
             return ['deleted' => true, 'trashed' => false];
         } finally {
@@ -361,8 +367,22 @@ final class WebklexImapReader implements ImapReader
     private function trashPath(Client $client): ?string
     {
         try {
+            // Prefer the \Trash SPECIAL-USE flag (RFC 6154); fall back to the
+            // EN/DE name map. Same resolution as the sidebar's folder roles, so
+            // a localized or oddly-named Trash is still found.
+            $flagsByPath = [];
+            try {
+                foreach ($client->getConnection()->folders('', '*')->validatedData() as $path => $item) {
+                    $flagsByPath[$path] = array_map(
+                        static fn ($f): string => strtolower(ltrim((string) $f, '\\')),
+                        $item['flags'] ?? [],
+                    );
+                }
+            } catch (\Throwable) {
+            }
+
             foreach ($client->getFolders(false) as $folder) {
-                if (preg_match('/^(trash|deleted|papierkorb|deleted items|deleted messages)$/i', $folder->name ?? '')) {
+                if ($this->folderRole($folder->name ?? '', $folder->path ?? '', $flagsByPath[$folder->path] ?? []) === 'trash') {
                     return $folder->path;
                 }
             }

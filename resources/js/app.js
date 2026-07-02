@@ -1025,9 +1025,26 @@ Alpine.store('vault', {
         return this.ready;
     },
 
+    // Callbacks run — while the key is still present — right before an idle
+    // lock, so components can flush unsaved work (e.g. the notes editor).
+    _beforeLock: [],
+    onBeforeLock(fn) {
+        this._beforeLock.push(fn);
+    },
+    async flushBeforeLock() {
+        for (const fn of this._beforeLock) {
+            try {
+                await fn();
+            } catch (e) { /* a failed flush must not block the lock */ }
+        }
+    },
+
     // Enforce the idle timeout on an open page, not just on reload: user
     // activity extends the window, and a poll locks + re-gates the moment it
     // elapses so decrypted content never outlives the idle limit.
+    //
+    // Data-loss safety: before locking we flush pending saves while the vault
+    // key is still available, so an idle lock can never drop unsaved edits.
     startIdleWatch() {
         if (this._idleWatch) return;
         let lastBump = 0;
@@ -1040,11 +1057,12 @@ Alpine.store('vault', {
         ['mousemove', 'keydown', 'pointerdown', 'scroll', 'touchstart'].forEach(
             (ev) => window.addEventListener(ev, bump, { passive: true }),
         );
-        this._idleWatch = setInterval(() => {
-            if (Vault.expired()) {
-                this.lock();
-                window.location.reload();   // drop all in-memory decrypted state, show the gate
-            }
+        this._idleWatch = setInterval(async () => {
+            if (this._locking || ! Vault.expired()) return;
+            this._locking = true;
+            await this.flushBeforeLock();   // persist dirty edits while the key still exists
+            this.lock();
+            window.location.reload();       // drop all in-memory decrypted state, show the gate
         }, 10000);
     },
 
@@ -3090,12 +3108,24 @@ Alpine.data('vaultMail', (labels = {}) => ({
         const body = c.html
             ? this.sanitizeEmail(c.html, true)
             : `<pre style="white-space:pre-wrap;word-break:break-word">${escapeHtml(c.text || '')}</pre>`;
-        const win = window.open('', '_blank');
-        if (! win) return;
-        win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(c.subject || '')}</title></head>`
-            + `<body style="font-family:system-ui,sans-serif;padding:16px">${body}`
-            + '<script>window.onload=function(){window.focus();window.print();};<\/script></body></html>');
-        win.document.close();
+        // Print via a sandboxed, script-less iframe with a strict CSP — never a
+        // same-origin window with an injected <script>. Email HTML must never run
+        // in the app origin (a DOMPurify bypass could otherwise read the vault key
+        // from sessionStorage). No allow-scripts → nothing in the body executes.
+        const csp = "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data:";
+        const srcdoc = '<!doctype html><html><head><meta charset="utf-8">'
+            + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
+            + `<title>${escapeHtml(c.subject || '')}</title></head>`
+            + `<body style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;padding:16px;color:#111">${body}</body></html>`;
+        const frame = document.createElement('iframe');
+        frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
+        frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+        frame.srcdoc = srcdoc;
+        frame.onload = () => {
+            try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { /* ignore */ }
+            setTimeout(() => frame.remove(), 1000);
+        };
+        document.body.appendChild(frame);
     },
 
     fmtAddress(a) {
@@ -3138,6 +3168,11 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         window.addEventListener('vault-unlocked', () => this.load());
         // Flush pending edits when leaving the page.
         window.addEventListener('beforeunload', () => { if (this.saveState === 'dirty') this.saveNow(); });
+        // Flush before an idle lock, while the vault key is still available, so
+        // the auto-lock reload can never drop unsaved edits.
+        this.$store.vault.onBeforeLock(async () => {
+            if (this.saveState === 'dirty' || this.saveState === 'saving') await this.saveNow();
+        });
         if (! this.$store.vault.configured) {
             this.state = 'unconfigured';
             return;
