@@ -1143,6 +1143,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     migrateRow: null,
     migrateDelete: true,
     migrateBusy: false,
+    dragItem: null, // {kind, id} being dragged into a folder
     up: { active: false, done: 0, total: 0 },
     uploadBatches: 0, // concurrent uploadItems() runs still in flight
     dl: { active: false, done: 0, total: 0 },
@@ -1517,6 +1518,40 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
         this.selected = [];
         await this.persist().catch(() => {});
+    },
+
+    /* ---- Drag & drop into folders ---- */
+
+    // Parent folder of the current directory (null = root), for the ".." row.
+    get parentFolderId() {
+        const f = this.manifest.folders.find((x) => x.id === this.cwd);
+        return f ? (f.parent ?? null) : null;
+    },
+
+    onDragStart(event, row) {
+        this.dragItem = { kind: row.kind, id: row.id };
+        event.dataTransfer.effectAllowed = 'move';
+        try { event.dataTransfer.setData('text/plain', row.id); } catch (e) { /* ignore */ }
+    },
+
+    onDragEnd() {
+        this.dragItem = null;
+    },
+
+    // Move the dragged item into a folder (null = root / parent via "..").
+    async dropInto(targetFolderId) {
+        const item = this.dragItem;
+        this.dragItem = null;
+        if (! item) return;
+        if (item.kind === 'folder') {
+            if (item.id === targetFolderId) return;
+            if (targetFolderId !== null && this.subtree(item.id).has(targetFolderId)) return; // no cycle
+            const f = this.manifest.folders.find((x) => x.id === item.id);
+            if (f && (f.parent ?? null) !== targetFolderId) { f.parent = targetFolderId; await this.persist().catch(() => {}); }
+        } else {
+            const f = this.manifest.files.find((x) => x.id === item.id);
+            if (f && (f.folder ?? null) !== targetFolderId) { f.folder = targetFolderId; await this.persist().catch(() => {}); }
+        }
     },
 
     openTags(row) {
@@ -1981,6 +2016,7 @@ Alpine.data('vaultBookmarks', (labels = {}) => ({
     moveOpen: false,
     moveRef: null,
     moveTarget: '',
+    dragItem: null, // {kind, id} being dragged into a folder
 
     async init() {
         await this.$store.vault.boot();
@@ -2222,6 +2258,50 @@ Alpine.data('vaultBookmarks', (labels = {}) => ({
         if (! name) return;
         this.manifest.folders.push({ id: crypto.randomUUID(), name, parent: this.cwd });
         await this.persist().catch(() => {});
+    },
+
+    /* ---- Drag & drop into folders ---- */
+
+    get parentFolderId() {
+        const f = this.manifest.folders.find((x) => x.id === this.cwd);
+        return f ? (f.parent ?? null) : null;
+    },
+
+    folderSubtree(id) {
+        const set = new Set([id]);
+        let grew = true;
+        while (grew) {
+            grew = false;
+            for (const f of this.manifest.folders) {
+                if (f.parent != null && set.has(f.parent) && ! set.has(f.id)) { set.add(f.id); grew = true; }
+            }
+        }
+        return set;
+    },
+
+    onDragStart(event, row) {
+        this.dragItem = { kind: row.kind, id: row.id };
+        event.dataTransfer.effectAllowed = 'move';
+        try { event.dataTransfer.setData('text/plain', row.id); } catch (e) { /* ignore */ }
+    },
+
+    onDragEnd() {
+        this.dragItem = null;
+    },
+
+    async dropInto(targetFolderId) {
+        const item = this.dragItem;
+        this.dragItem = null;
+        if (! item) return;
+        if (item.kind === 'folder') {
+            if (item.id === targetFolderId) return;
+            if (targetFolderId !== null && this.folderSubtree(item.id).has(targetFolderId)) return; // no cycle
+            const f = this.manifest.folders.find((x) => x.id === item.id);
+            if (f && (f.parent ?? null) !== targetFolderId) { f.parent = targetFolderId; await this.persist().catch(() => {}); }
+        } else {
+            const b = this.manifest.bookmarks.find((x) => x.id === item.id);
+            if (b && (b.folder ?? null) !== targetFolderId) { b.folder = targetFolderId; await this.persist().catch(() => {}); }
+        }
     },
 
     // Reparent a folder's children up one level, then drop the folder. Bookmarks

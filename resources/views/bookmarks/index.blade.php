@@ -70,8 +70,21 @@
                 <p class="px-4 py-10 text-center text-sm text-gray-500">{{ __('bookmarks.empty') }}</p>
             </template>
             <ul class="divide-y divide-gray-100" x-show="rows.length > 0">
+                {{-- Parent-folder shortcut, like "cd .." — virtual row, never part
+                     of rows(), so excluded from actions. Also a drop target. --}}
+                <template x-if="cwd !== null && query === '' && activeTag === '' && view === 'active'">
+                    <li class="flex cursor-pointer items-center gap-2 px-4 py-3 text-gray-500 hover:bg-gray-50" @click="cwd = parentFolderId"
+                        @dragover="if (dragItem) $event.preventDefault()" @drop.prevent="dropInto(parentFolderId)">
+                        <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                        ..
+                    </li>
+                </template>
                 <template x-for="row in rows" :key="row.kind + row.id">
-                    <li class="relative flex items-center gap-3 px-4 py-3 hover:bg-gray-50" x-data="{ menu: false }">
+                    <li class="relative flex items-center gap-3 px-4 py-3 hover:bg-gray-50" x-data="{ menu: false }"
+                        draggable="true"
+                        @dragstart.stop="onDragStart($event, row)" @dragend="onDragEnd()"
+                        @dragover="if (row.kind === 'folder' && dragItem && !(dragItem.kind === 'folder' && dragItem.id === row.id)) $event.preventDefault()"
+                        @drop.prevent="row.kind === 'folder' && dropInto(row.id)">
                         {{-- Folder row --}}
                         <template x-if="row.kind === 'folder'">
                             <button type="button" @click="cwd = row.id" class="flex min-w-0 flex-1 items-center gap-2 text-left">
