@@ -219,7 +219,7 @@
                                         @endif
                                     </td>
                                     <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ $file->type->label() }}</td>
-                                    <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell">{{ number_format($file->size / 1024, 0) }} KB</td>
+                                    <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell"><x-file-size :bytes="$file->size" /></td>
                                     <td class="hidden px-4 py-3 text-gray-600 md:table-cell">
                                         @if ($file->attachable instanceof \App\Models\Customer)
                                             <a href="{{ route('files.index', ['customer' => $file->attachable->id]) }}" class="hover:underline">{{ __('files.location_customer', ['name' => $file->attachable->name]) }}</a>
