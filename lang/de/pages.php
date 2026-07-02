@@ -70,8 +70,9 @@ return [
         'verified_no' => 'Nein',
         'pocketid_subject' => 'Pocket-ID-Subjekt',
         'avatar' => 'Avatar',
-        'avatar_provided' => 'Von Pocket-ID bereitgestellt, lokal gespeichert',
+        'avatar_provided' => 'Von Pocket-ID bereitgestellt, im Objektspeicher abgelegt',
         'avatar_none' => 'Keiner',
+        'refresh_avatar' => 'Avatar aktualisieren',
         'account_created' => 'Konto erstellt',
     ],
     'search' => [

@@ -6,12 +6,10 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AvatarFetcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
-use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
 
@@ -40,7 +38,7 @@ class PocketIdController extends Controller
     /**
      * Handle the callback from Pocket-ID and sign the user in.
      */
-    public function callback(Request $request): RedirectResponse
+    public function callback(Request $request, AvatarFetcher $avatars): RedirectResponse
     {
         try {
             $oidcUser = Socialite::driver('pocketid')->user();
@@ -59,7 +57,15 @@ class PocketIdController extends Controller
             ],
         );
 
-        $this->syncAvatar($user, $oidcUser);
+        // Remember the current avatar source so it can be refreshed later, and
+        // download it once on first sign-in (or if the stored image went away).
+        $url = $oidcUser->getAvatar() ?: ($oidcUser->getRaw()['picture'] ?? null);
+        if (is_string($url) && $url !== '' && $user->avatar_url !== $url) {
+            $user->update(['avatar_url' => $url]);
+        }
+        if (empty($user->avatar)) {
+            $avatars->fetch($user, $user->avatar_url);
+        }
 
         Auth::login($user, remember: true);
 
@@ -67,76 +73,6 @@ class PocketIdController extends Controller
         $request->session()->regenerate();
 
         return redirect()->intended(route('dashboard'));
-    }
-
-    /**
-     * Download the user's Pocket-ID avatar and store it on the local disk.
-     *
-     * The image is hotlink-blocked cross-origin and would otherwise be an
-     * external runtime request, so we fetch it once at login and serve it from
-     * our own domain. The avatar is non-essential: any failure is swallowed so
-     * it can never block sign-in. The stored value is a relative path on the
-     * private "local" disk, served through the authenticated avatar route.
-     */
-    private function syncAvatar(User $user, SocialiteUser $oidcUser): void
-    {
-        $url = $oidcUser->getAvatar() ?: ($oidcUser->getRaw()['picture'] ?? null);
-
-        if (! is_string($url) || $url === '') {
-            return;
-        }
-
-        // SSRF guard: only ever fetch from the configured Pocket-ID host over
-        // http(s). This prevents the (semi-trusted) "picture" claim from
-        // pointing the server at internal/loopback addresses or other hosts.
-        $scheme = parse_url($url, PHP_URL_SCHEME);
-        $host = parse_url($url, PHP_URL_HOST);
-        $allowedHost = parse_url((string) config('services.pocketid.base_url'), PHP_URL_HOST);
-
-        if (! in_array($scheme, ['http', 'https'], true)
-            || $host === null
-            || $allowedHost === null
-            || strcasecmp($host, $allowedHost) !== 0) {
-            return;
-        }
-
-        try {
-            // Do not follow redirects (a redirect could escape the allowed host).
-            $response = Http::withOptions(['allow_redirects' => false])
-                ->timeout(5)
-                ->get($url);
-
-            if (! $response->successful()) {
-                return;
-            }
-
-            $type = (string) $response->header('Content-Type');
-
-            if (! str_starts_with($type, 'image/')) {
-                return;
-            }
-
-            $body = (string) $response->body();
-
-            // Reject anything implausibly large for an avatar (5 MiB cap).
-            if ($body === '' || strlen($body) > 5 * 1024 * 1024) {
-                return;
-            }
-
-            $extension = match (true) {
-                str_contains($type, 'png') => 'png',
-                str_contains($type, 'webp') => 'webp',
-                str_contains($type, 'gif') => 'gif',
-                default => 'jpg',
-            };
-
-            $path = "avatars/{$user->id}.{$extension}";
-            Storage::disk('local')->put($path, $body);
-
-            $user->update(['avatar' => $path]);
-        } catch (Throwable) {
-            // Avatar is optional; never fail login because of it.
-        }
     }
 
     /**

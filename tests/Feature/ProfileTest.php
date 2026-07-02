@@ -41,6 +41,6 @@ class ProfileTest extends TestCase
             ->get(route('profile'))
             ->assertOk()
             ->assertSee(route('profile.avatar'))
-            ->assertSee('stored locally');
+            ->assertSee('object storage');
     }
 }

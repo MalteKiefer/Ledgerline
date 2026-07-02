@@ -70,8 +70,9 @@ return [
         'verified_no' => 'No',
         'pocketid_subject' => 'Pocket-ID subject',
         'avatar' => 'Avatar',
-        'avatar_provided' => 'Provided by Pocket-ID, stored locally',
+        'avatar_provided' => 'Provided by Pocket-ID, stored on your object storage',
         'avatar_none' => 'None',
+        'refresh_avatar' => 'Refresh avatar',
         'account_created' => 'Account created',
     ],
     'search' => [
