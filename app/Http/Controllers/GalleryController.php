@@ -39,6 +39,8 @@ class GalleryController extends Controller
             'favoritesOnly' => $request->boolean('favorites'),
             'searchQuery' => trim((string) $request->input('q')),
             'mapZoom' => (int) (CompanyProfile::current()->gallery_map_zoom ?? 13),
+            // Cameras already seen, to offer as suggestions when editing.
+            'cameras' => Photo::query()->whereNotNull('camera')->distinct()->orderBy('camera')->pluck('camera')->all(),
         ]);
     }
 
@@ -291,6 +293,7 @@ class GalleryController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'date' => ['required', 'date'],
             'time' => ['required', 'date_format:H:i'],
+            'camera' => ['nullable', 'string', 'max:255'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
@@ -301,6 +304,7 @@ class GalleryController extends Controller
         $attributes = [
             'name' => $validated['name'],
             'taken_at' => Carbon::parse($validated['date'].' '.$validated['time']),
+            'camera' => ($validated['camera'] ?? null) ?: null,
             'latitude' => $lat,
             'longitude' => $lng,
             'meta_locked' => true,
