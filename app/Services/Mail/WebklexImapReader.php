@@ -199,7 +199,9 @@ final class WebklexImapReader implements ImapReader
         $src = $this->connect($source);
         try {
             $message = $src->getFolderByPath($folder)->query()->getMessageByUid($uid);
-            $raw = $message->getRawBody();
+            // IMAP APPEND requires CRLF line endings; a bare-LF raw message makes
+            // strict servers reject the command.
+            $raw = preg_replace('/\r?\n/', "\r\n", (string) $message->getRawBody());
 
             $dst = $this->connect($target);
             try {

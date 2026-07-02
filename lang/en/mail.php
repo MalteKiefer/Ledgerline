@@ -70,4 +70,7 @@ return [
     'show_headers' => 'Show headers',
     'headers_title' => 'Message headers',
     'delete_question' => 'Move this message to trash or delete it permanently?',
+    'select_all' => 'Select all',
+    'selected' => 'selected',
+    'clear_selection' => 'Clear',
 ];
