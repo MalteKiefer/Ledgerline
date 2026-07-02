@@ -16,6 +16,11 @@ const CACHE_KEY = 'vault.vk';
 const CACHE_EXPIRES = 'vault.vk.expires';
 const CACHE_OWNER = 'vault.vk.owner';
 
+// Bump when the shape of any cached object changes: the version is part of the
+// cache key, so entries from an older shape are simply never read again.
+const CACHE_SCHEMA = 'v2';
+const CACHE_PREFIX = 'mailcache:';
+
 // Idle timeout (minutes) is configurable in Security settings; default 10.
 function idleMs() {
     const meta = document.querySelector('meta[name="vault-idle-minutes"]')?.getAttribute('content');
@@ -223,32 +228,72 @@ export const Vault = {
 
     // ---- Encrypted client cache (localStorage, sealed with the vault key) ----
     //
-    // Used for mail stats/headers so they show instantly and can be prefetched
-    // in the background. Entries are ciphertext, namespaced by the current login
-    // owner, and dropped on lock/logout.
+    // Used for mail stats/headers/bodies so they show instantly and can be
+    // prefetched in the background. Payloads are ciphertext, namespaced by
+    // schema version + current login owner, and dropped on lock/logout. Each
+    // entry stores a plaintext timestamp (not sensitive) so it can be expired by
+    // age and evicted oldest-first when localStorage is full.
 
     cacheKey(key) {
-        return `mailcache:${currentOwner()}:${key}`;
+        return `${CACHE_PREFIX}${CACHE_SCHEMA}:${currentOwner()}:${key}`;
     },
 
     cachePut(key, obj) {
         if (! this.vk) return;
+        let payload;
         try {
             const sealed = seal(sodium.from_string(JSON.stringify(obj)), this.vk);
-            localStorage.setItem(this.cacheKey(key), JSON.stringify(sealed));
-        } catch (e) { /* quota or serialise error: skip caching */ }
+            payload = JSON.stringify({ ts: Date.now(), sealed });
+        } catch (e) { return; /* serialise/encrypt error: skip caching */ }
+
+        try {
+            localStorage.setItem(this.cacheKey(key), payload);
+        } catch (e) {
+            // Quota exceeded: evict the oldest entries and retry once.
+            this.cacheEvictOldest();
+            try {
+                localStorage.setItem(this.cacheKey(key), payload);
+            } catch (e2) { /* still full: give up on caching this entry */ }
+        }
     },
 
-    cacheGet(key) {
+    // maxAgeMs > 0 discards entries older than that (stale-guard for lists/stats);
+    // 0 keeps them for the whole unlocked session (used for read message bodies).
+    cacheGet(key, maxAgeMs = 0) {
         if (! this.vk) return null;
         try {
             const raw = localStorage.getItem(this.cacheKey(key));
             if (! raw) return null;
-            const { cipher, nonce } = JSON.parse(raw);
-            return JSON.parse(sodium.to_string(open(cipher, nonce, this.vk)));
+            const { ts, sealed } = JSON.parse(raw);
+            if (maxAgeMs > 0 && ts && (Date.now() - ts) > maxAgeMs) {
+                localStorage.removeItem(this.cacheKey(key));
+                return null;
+            }
+            return JSON.parse(sodium.to_string(open(sealed.cipher, sealed.nonce, this.vk)));
         } catch (e) {
             return null;
         }
+    },
+
+    // Drop roughly the oldest quarter of cache entries (by stored timestamp) to
+    // make room; also clears any left over from an older schema version.
+    cacheEvictOldest() {
+        try {
+            const entries = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const name = localStorage.key(i);
+                if (! name || ! name.startsWith(CACHE_PREFIX)) continue;
+                if (! name.startsWith(`${CACHE_PREFIX}${CACHE_SCHEMA}:`)) {
+                    localStorage.removeItem(name); i--; continue; // stale schema
+                }
+                let ts = 0;
+                try { ts = JSON.parse(localStorage.getItem(name)).ts || 0; } catch (e) { /* treat as oldest */ }
+                entries.push({ name, ts });
+            }
+            entries.sort((a, b) => a.ts - b.ts);
+            const drop = Math.max(1, Math.ceil(entries.length / 4));
+            entries.slice(0, drop).forEach((e) => localStorage.removeItem(e.name));
+        } catch (e) { /* ignore */ }
     },
 
     cacheClearAll() {
@@ -256,7 +301,7 @@ export const Vault = {
             const doomed = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const name = localStorage.key(i);
-                if (name && name.startsWith('mailcache:')) doomed.push(name);
+                if (name && name.startsWith(CACHE_PREFIX)) doomed.push(name);
             }
             doomed.forEach((n) => localStorage.removeItem(n));
         } catch (e) { /* ignore */ }
