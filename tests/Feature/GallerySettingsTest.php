@@ -7,7 +7,7 @@ namespace Tests\Feature;
 use App\Jobs\GeneratePhotoRenditions;
 use App\Jobs\ReadPhotoMetadata;
 use App\Jobs\RenamePhotos;
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -43,7 +43,7 @@ class GallerySettingsTest extends TestCase
             'gallery_geocode_grid_km' => 2.5,
         ])->assertRedirect(route('settings.gallery.edit'));
 
-        $company = CompanyProfile::current();
+        $company = AppSettings::current();
         $this->assertSame(5, $company->gallery_trip_gap_days);
         $this->assertSame(250, $company->gallery_trip_radius_km);
         $this->assertSame(15, $company->gallery_map_zoom);
@@ -117,7 +117,7 @@ class GallerySettingsTest extends TestCase
             'gallery_geocode_grid_km' => '2,5',
         ])->assertRedirect(route('settings.gallery.edit'));
 
-        $this->assertSame(2.5, CompanyProfile::current()->gallery_geocode_grid_km);
+        $this->assertSame(2.5, AppSettings::current()->gallery_geocode_grid_km);
     }
 
     public function test_a_job_can_be_limited_to_the_newest_items(): void

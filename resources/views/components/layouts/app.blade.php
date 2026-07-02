@@ -16,8 +16,8 @@
         }
     @endphp
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\CompanyProfile::current()->vault_idle_minutes ?? 10) }}">
-    <meta name="mail-sync-minutes" content="{{ (int) (\App\Models\CompanyProfile::current()->mail_sync_minutes ?? 5) }}">
+    <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\AppSettings::current()->vault_idle_minutes ?? 10) }}">
+    <meta name="mail-sync-minutes" content="{{ (int) (\App\Models\AppSettings::current()->mail_sync_minutes ?? 5) }}">
     <meta name="vault-owner" content="{{ $vaultOwner }}">
     <title>{{ $title }} — Ledgerline</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
