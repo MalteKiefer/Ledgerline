@@ -226,8 +226,13 @@ class MailReaderTest extends TestCase
             public function transferMessage(ImapCredentials $source, string $folder, int $uid, ImapCredentials $target, string $targetFolder): void {}
         });
 
-        $this->postJson(route('mail.messages'), $this->creds(['folder' => 'INBOX']))
+        $response = $this->postJson(route('mail.messages'), $this->creds(['folder' => 'INBOX']))
             ->assertStatus(422)
-            ->assertJsonStructure(['message']);
+            ->assertJsonStructure(['message', 'detail'])
+            // Only the exception class is surfaced — the raw message is withheld
+            // so server banners / folder names / commands cannot leak.
+            ->assertJsonPath('detail', 'RuntimeException');
+
+        $this->assertStringNotContainsString('boom', $response->getContent());
     }
 }
