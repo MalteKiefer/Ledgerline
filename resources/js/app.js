@@ -2375,7 +2375,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
         messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
-        folders: [], sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false,
+        folders: [], sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
     },
 
@@ -2596,6 +2596,62 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.account = null;
         this.reader.messages = [];
         this.reader.current = null;
+    },
+
+    /* ---- Folder tree / management ---- */
+
+    // Nesting depth of a folder from its path + delimiter, for indentation.
+    folderDepth(f) {
+        const parts = (f.path || '').split(f.delimiter || '/').filter(Boolean);
+        return Math.max(0, parts.length - 1);
+    },
+
+    isTrashFolder() {
+        const f = this.reader.folders.find((x) => x.path === this.reader.folderPath);
+        return /trash|deleted|papierkorb/i.test(f?.name || this.reader.folderPath || '');
+    },
+
+    // Re-fetch this account's stats into the cache so the overview + folder
+    // counts update everywhere without waiting for the next background sync.
+    async syncAccountStats(a) {
+        try {
+            const res = await mailPostRaw('/mail/stats', this.credsBody(a));
+            if (res.ok) { Vault.cachePut(`stats:${a.id}`, await res.json()); this.cacheVersion++; }
+        } catch (e) { /* ignore */ }
+    },
+
+    async createFolder(name) {
+        name = (name || '').trim();
+        if (! name || this.reader.busy) return;
+        this.reader.busy = true;
+        this.reader.error = '';
+        try {
+            const res = await this.mailPost('/mail/folder/create', { folder: name });
+            if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
+            this.reader.folders = this.sortedFolders(await this.loadFolders(this.credsBody(this.reader.account)));
+            await this.syncAccountStats(this.reader.account);
+        } finally {
+            this.reader.busy = false;
+        }
+    },
+
+    async emptyCurrentFolder() {
+        if (this.reader.busy) return;
+        this.reader.busy = true;
+        this.reader.error = '';
+        try {
+            const res = await this.mailPost('/mail/folder/empty', { folder: this.reader.folderPath });
+            if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
+            this.reader.messages = [];
+            this.reader.total = 0;
+            this.reader.selected = [];
+            this.reader.current = null;
+            this.cacheList();
+            this.reader.folders = this.sortedFolders(await this.loadFolders(this.credsBody(this.reader.account)));
+            await this.syncAccountStats(this.reader.account);
+        } finally {
+            this.reader.busy = false;
+        }
     },
 
     openFolder(path) {

@@ -21,7 +21,17 @@ class MailReaderTest extends TestCase
 
             public function listFolders(ImapCredentials $c): array
             {
-                return [['name' => 'INBOX', 'path' => 'INBOX', 'total' => 1, 'unseen' => 1]];
+                return [['name' => 'INBOX', 'path' => 'INBOX', 'delimiter' => '/', 'selectable' => true, 'total' => 1, 'unseen' => 1]];
+            }
+
+            public function createFolder(ImapCredentials $c, string $path): void
+            {
+                $this->calls[] = ['createFolder', $path];
+            }
+
+            public function emptyFolder(ImapCredentials $c, string $path): void
+            {
+                $this->calls[] = ['emptyFolder', $path];
             }
 
             public function listMessages(ImapCredentials $c, string $folder, int $page, int $perPage): array
@@ -94,6 +104,18 @@ class MailReaderTest extends TestCase
         $this->postJson(route('mail.folders'), $this->creds())
             ->assertOk()
             ->assertJsonPath('folders.0.path', 'INBOX');
+    }
+
+    public function test_create_and_empty_folder(): void
+    {
+        $this->signIn();
+        $fake = $this->fakeReader();
+
+        $this->postJson(route('mail.folder.create'), $this->creds(['folder' => 'Archive']))->assertOk();
+        $this->postJson(route('mail.folder.empty'), $this->creds(['folder' => 'Trash']))->assertOk();
+
+        $this->assertContains(['createFolder', 'Archive'], $fake->calls);
+        $this->assertContains(['emptyFolder', 'Trash'], $fake->calls);
     }
 
     public function test_list_returns_messages(): void
@@ -172,6 +194,10 @@ class MailReaderTest extends TestCase
             {
                 throw new \RuntimeException('boom');
             }
+
+            public function createFolder(ImapCredentials $c, string $path): void {}
+
+            public function emptyFolder(ImapCredentials $c, string $path): void {}
 
             public function listMessages(ImapCredentials $c, string $folder, int $page, int $perPage): array
             {
