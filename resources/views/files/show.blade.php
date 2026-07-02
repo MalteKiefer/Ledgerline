@@ -220,7 +220,7 @@
                             <option value="">{{ __('files.folder_none') }}</option>
                             @foreach ($folders as $f)
                                 <option value="{{ $f->id }}" @selected((int) old('folder_id', $file->folder_id) === $f->id)
-                                    @if ($f->enc_name) data-enc="{{ $f->enc_name }}" @endif>{{ $f->enc_name ? '🔒' : $f->name }}</option>
+                                    @if ($f->enc_name) data-enc="{{ $f->enc_name }}" @endif>{{ $f->enc_name ? '…' : $f->name }}</option>
                             @endforeach
                         </select>
                     </div>
