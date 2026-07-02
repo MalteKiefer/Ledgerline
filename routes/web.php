@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
-use App\Http\Controllers\BranchController;
-use App\Http\Controllers\ContactController;
-use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
@@ -14,8 +11,6 @@ use App\Http\Controllers\FolderController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\ProjectController;
-use App\Http\Controllers\ProjectOverviewController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
@@ -63,23 +58,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
-    Route::resource('customers', CustomerController::class);
-    Route::resource('customers.contacts', ContactController::class)->shallow();
-
-    // Projects: one unified create/store path (customer chosen in the form),
-    // a per-customer listing, and per-record actions. "create" is registered
-    // before the {project} routes so it is not captured as a project id.
-    Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');
-    Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
-    Route::resource('customers.projects', ProjectController::class)
-        ->shallow()
-        ->only(['index', 'show', 'edit', 'update', 'destroy']);
-
-    Route::resource('customers.branches', BranchController::class)->shallow();
-
-    // Customer-independent overview of all projects.
-    Route::get('/projects', ProjectOverviewController::class)->name('projects.overview');
-
     // Gallery: a photo timeline with drag-and-drop upload and a trash.
     Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery.index');
     Route::post('/gallery', [GalleryController::class, 'store'])->name('gallery.store');
@@ -113,7 +91,6 @@ Route::middleware('auth')->group(function (): void {
     // Files: attached to a customer or project; a team-wide overview; download
     // and delete by id.
     Route::get('/files', FileOverviewController::class)->name('files.index');
-    Route::post('/files', [FileController::class, 'store'])->name('files.store');
     Route::post('/files/general', [FileController::class, 'storeGeneral'])->name('files.store.general');
     Route::post('/files/conflicts', [FileController::class, 'conflicts'])->name('files.conflicts');
     Route::post('/files/bulk/download-manifest', [FileController::class, 'downloadManifest'])->name('files.bulk.manifest');
@@ -126,8 +103,6 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/folders/{folder}', [FolderController::class, 'update'])->name('folders.update');
     Route::put('/folders/{folder}/tags', [FolderController::class, 'updateTags'])->name('folders.tags');
     Route::delete('/folders/{folder}', [FolderController::class, 'destroy'])->name('folders.destroy');
-    Route::post('/customers/{customer}/files', [FileController::class, 'storeForCustomer'])->name('customers.files.store');
-    Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
     Route::post('/files/{file}/extract', [FileController::class, 'extract'])->name('files.extract');
     Route::get('/folders/list', [FolderController::class, 'index'])->name('folders.list');
     Route::get('/folders/{folder}/descendants', [FolderController::class, 'descendants'])->name('folders.descendants');

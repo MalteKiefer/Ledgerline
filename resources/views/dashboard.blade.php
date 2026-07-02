@@ -16,15 +16,7 @@
     <h1 class="text-2xl font-semibold text-gray-900">{{ __('pages.dashboard.heading') }}</h1>
     <p class="mt-1 text-sm text-gray-600">{{ __('pages.dashboard.subtitle') }}</p>
 
-    <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <a href="{{ route('customers.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.customers') }}</dt>
-            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $stats['customers'] }}</dd>
-        </a>
-        <a href="{{ route('projects.overview') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.projects') }}</dt>
-            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $stats['projects'] }}</dd>
-        </a>
+    <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
         <a href="{{ route('files.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.files') }}</dt>
             <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $stats['files'] }}</dd>
@@ -72,9 +64,7 @@
                                 @else
                                     <a href="{{ route('files.show', $file) }}"
                                         class="font-medium text-gray-900 hover:underline">{{ $file->displayTitle }}</a>
-                                    <span class="text-gray-500">
-                                        — {{ $file->type->label() }}@if ($file->attachable) · {{ $file->attachable->name }}@endif
-                                    </span>
+                                    <span class="text-gray-500">— {{ $file->type->label() }}</span>
                                 @endif
                             </span>
                             <span class="shrink-0 text-gray-500">{{ $formatBytes($file->size) }}</span>

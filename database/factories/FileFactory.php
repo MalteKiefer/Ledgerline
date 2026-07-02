@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Enums\FileType;
-use App\Models\Customer;
 use App\Models\File;
-use App\Models\Project;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -30,27 +28,5 @@ class FileFactory extends Factory
             'checksum' => hash('sha256', (string) Str::uuid()),
             'is_encrypted' => false,
         ];
-    }
-
-    /**
-     * Attach the file to a customer.
-     */
-    public function forCustomer(Customer $customer): static
-    {
-        return $this->state([
-            'attachable_type' => Customer::class,
-            'attachable_id' => $customer->id,
-        ]);
-    }
-
-    /**
-     * Attach the file to a project.
-     */
-    public function forProject(Project $project): static
-    {
-        return $this->state([
-            'attachable_type' => Project::class,
-            'attachable_id' => $project->id,
-        ]);
     }
 }

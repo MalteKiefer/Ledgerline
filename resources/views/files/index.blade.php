@@ -17,8 +17,6 @@
         largeZipConfirm: @js(__('files.large_zip_confirm')),
         token: '{{ csrf_token() }}',
         folderId: {{ $folder?->id ?? 'null' }},
-        customerId: {{ (int) request('customer') ?: 'null' }},
-        projectId: {{ (int) request('project') ?: 'null' }},
      })" x-init="initDropzone()">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -111,12 +109,6 @@
             @else
                 <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ $folder->name ?? __('messages.nav.files') }}</h1>
             @endif
-            @if ($recordFilter)
-                <span class="mt-1 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-800">
-                    {{ __('files.filtered_by') }}: {{ $recordFilter }}
-                    <a href="{{ route('files.index') }}" class="text-blue-500 hover:text-blue-700">✕</a>
-                </span>
-            @endif
         </div>
         <div class="flex flex-wrap items-center gap-2">
             {{-- New folder --}}
@@ -155,7 +147,7 @@
                     </select>
                 </div>
                 <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.filter') ?? 'Filter' }}</button>
-                @if (request()->hasAny(['q', 'type', 'tag', 'customer', 'project']))
+                @if (request()->hasAny(['q', 'type', 'tag']))
                     <a href="{{ route('files.index', ['folder' => $folder?->id]) }}" class="text-sm text-gray-500 hover:text-gray-700">{{ __('files.clear_filter') }}</a>
                 @endif
                 @if ($activeTagName)<span class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">#{{ $activeTagName }}</span>@endif

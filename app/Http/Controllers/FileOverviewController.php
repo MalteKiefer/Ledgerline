@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\FileType;
-use App\Models\Customer;
 use App\Models\File;
 use App\Models\Folder;
-use App\Models\Project;
 use App\Models\Tag;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
@@ -33,23 +31,19 @@ class FileOverviewController extends Controller
         $type = FileType::tryFrom((string) $request->query('type'));
         $tagSlug = $request->query('tag');
         $term = $request->query('q');
-        $customer = $request->query('customer') ? Customer::find($request->query('customer')) : null;
-        $project = $request->query('project') ? Project::find($request->query('project')) : null;
 
-        // A search/filter (text, type, tag, or record) switches from folder
-        // browsing to a flat result set across all folders.
-        $filtering = filled($term) || $type !== null || filled($tagSlug) || $customer !== null || $project !== null;
+        // A search/filter (text, type, tag) switches from folder browsing to a
+        // flat result set across all folders.
+        $filtering = filled($term) || $type !== null || filled($tagSlug);
 
         // Default to an alphabetical (A–Z) listing.
         [$sort, $dir] = $this->sortFor($request, ['name', 'type', 'size', 'created_at'], 'name');
 
         $files = File::query()
-            ->with(['attachable', 'tags'])
+            ->with(['tags'])
             ->when(! $filtering, fn ($query) => $query->where('folder_id', $folder?->id))
             ->when($type, fn ($query) => $query->where('type', $type->value))
             ->when($tagSlug, fn ($query) => $query->whereHas('tags', fn ($t) => $t->where('slug', $tagSlug)))
-            ->when($customer, fn ($query) => $query->where('attachable_type', Customer::class)->where('attachable_id', $customer->id))
-            ->when($project, fn ($query) => $query->where('attachable_type', Project::class)->where('attachable_id', $project->id))
             ->when($term, function ($query, $term): void {
                 $like = '%'.mb_strtolower((string) $term).'%';
                 $query->where(function ($where) use ($like): void {
@@ -76,10 +70,8 @@ class FileOverviewController extends Controller
             'activeType' => $type?->value,
             'activeTagSlug' => $tagSlug,
             'activeTagName' => $tagSlug ? Tag::where('slug', $tagSlug)->value('name') : null,
-            'recordFilter' => $this->recordFilterLabel($customer, $project),
             'sort' => $sort,
             'dir' => $dir,
-            'targets' => $this->targetOptions(),
             'tagSuggestions' => Tag::orderBy('name')->pluck('name')->all(),
         ]);
     }
@@ -101,34 +93,5 @@ class FileOverviewController extends Controller
         };
 
         return ($byParent->get(null) ?? collect())->map($attach)->values();
-    }
-
-    private function recordFilterLabel(?Customer $customer, ?Project $project): ?string
-    {
-        if ($customer !== null) {
-            return __('files.location_customer', ['name' => $customer->name]);
-        }
-
-        if ($project !== null) {
-            return __('files.location_project', ['name' => $project->name]);
-        }
-
-        return null;
-    }
-
-    /**
-     * Build the "customer:<id>" / "project:<id>" options for the upload target.
-     *
-     * @return array<int, array{value: string, label: string}>
-     */
-    private function targetOptions(): array
-    {
-        $customers = Customer::query()->orderBy('name')->get(['id', 'name'])
-            ->map(fn (Customer $c): array => ['value' => 'customer:'.$c->id, 'label' => 'Customer: '.$c->name]);
-
-        $projects = Project::query()->with('customer')->orderBy('name')->get()
-            ->map(fn (Project $p): array => ['value' => 'project:'.$p->id, 'label' => 'Project: '.$p->name.' ('.$p->customer->name.')']);
-
-        return $customers->concat($projects)->values()->all();
     }
 }

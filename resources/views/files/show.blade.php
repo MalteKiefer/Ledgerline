@@ -1,17 +1,6 @@
 <x-layouts.app :title="$file->displayTitle">
-    @php
-        $attached = $file->attachable;
-    @endphp
-
     <p class="text-sm text-gray-500">
         <a href="{{ route('files.index') }}" class="hover:underline">{{ __('files.breadcrumb_files') }}</a>
-        @if ($attached instanceof \App\Models\Customer)
-            <span aria-hidden="true">/</span>
-            <a href="{{ route('customers.show', $attached) }}" class="hover:underline">{{ $attached->name }}</a>
-        @elseif ($attached instanceof \App\Models\Project)
-            <span aria-hidden="true">/</span>
-            <a href="{{ route('projects.show', $attached) }}" class="hover:underline">{{ $attached->name }}</a>
-        @endif
     </p>
 
     <div class="mt-1 flex flex-wrap items-start justify-between gap-3">

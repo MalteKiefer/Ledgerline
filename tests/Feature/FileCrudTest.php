@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Enums\FileType;
-use App\Models\Customer;
 use App\Models\File;
-use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -19,41 +17,18 @@ class FileCrudTest extends TestCase
 
     public function test_guests_cannot_upload(): void
     {
-        $customer = Customer::factory()->create();
-
-        $this->post(route('customers.files.store', $customer), [
-            'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
+        $this->post(route('files.store.general'), [
+            'files' => [UploadedFile::fake()->create('x.pdf', 10, 'application/pdf')],
         ])->assertRedirect(route('login'));
-    }
-
-    public function test_upload_stores_a_file_for_a_customer_with_type_and_tags(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-        $customer = Customer::factory()->create();
-
-        $this->post(route('customers.files.store', $customer), [
-            'file' => UploadedFile::fake()->create('contract.pdf', 20, 'application/pdf'),
-            'tags' => ['Contract', 'Signed'],
-        ])->assertRedirect(route('customers.show', $customer));
-
-        $file = File::firstWhere('name', 'contract.pdf');
-
-        $this->assertNotNull($file);
-        $this->assertSame(FileType::PDF, $file->type);
-        $this->assertTrue($file->attachable->is($customer));
-        $this->assertEqualsCanonicalizing(['Contract', 'Signed'], $file->tags->pluck('name')->all());
-        Storage::disk('files')->assertExists($file->disk_path);
     }
 
     public function test_upload_extracts_text_from_plain_text_files(): void
     {
         Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
 
-        $this->post(route('customers.files.store', $customer), [
-            'file' => UploadedFile::fake()->createWithContent('notes.txt', 'the secret keyword is qzxwv'),
+        $this->post(route('files.store.general'), [
+            'files' => [UploadedFile::fake()->createWithContent('notes.txt', 'the secret keyword is qzxwv')],
         ]);
 
         $file = File::firstWhere('name', 'notes.txt');
@@ -64,64 +39,19 @@ class FileCrudTest extends TestCase
     {
         Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
 
-        $this->post(route('customers.files.store', $customer), [
-            'file' => UploadedFile::fake()->create('bundle.zip', 10, 'application/zip'),
+        $this->post(route('files.store.general'), [
+            'files' => [UploadedFile::fake()->create('bundle.zip', 10, 'application/zip')],
         ]);
 
         $this->assertNull(File::firstWhere('name', 'bundle.zip')->extracted_text);
-    }
-
-    public function test_overview_upload_assigns_to_the_chosen_customer(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-        $customer = Customer::factory()->create();
-
-        $this->post(route('files.store'), [
-            'attachable' => 'customer:'.$customer->id,
-            'file' => UploadedFile::fake()->create('report.pdf', 20, 'application/pdf'),
-            'tags' => ['Report'],
-        ])->assertRedirect(route('files.index'));
-
-        $file = File::firstWhere('name', 'report.pdf');
-        $this->assertTrue($file->attachable->is($customer));
-        $this->assertSame(['Report'], $file->tags->pluck('name')->all());
-    }
-
-    public function test_overview_upload_rejects_an_invalid_target_format(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-
-        $this->post(route('files.store'), [
-            'attachable' => 'nonsense',
-            'file' => UploadedFile::fake()->create('x.pdf', 10, 'application/pdf'),
-        ])->assertSessionHasErrors('attachable');
-    }
-
-    public function test_upload_stores_a_file_for_a_project(): void
-    {
-        Storage::fake('files');
-        $this->signIn();
-        $project = Project::factory()->create();
-
-        $this->post(route('projects.files.store', $project), [
-            'file' => UploadedFile::fake()->image('diagram.png'),
-        ])->assertRedirect(route('projects.show', $project));
-
-        $file = File::firstWhere('name', 'diagram.png');
-        $this->assertSame(FileType::IMAGE, $file->type);
-        $this->assertTrue($file->attachable->is($project));
     }
 
     public function test_download_streams_a_file(): void
     {
         Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
-        $file = File::factory()->forCustomer($customer)->create(['disk_path' => 'files/doc.pdf']);
+        $file = File::factory()->create(['disk_path' => 'files/doc.pdf']);
         Storage::disk('files')->put('files/doc.pdf', 'bytes');
 
         $this->get(route('files.download', $file))->assertOk();
@@ -131,8 +61,7 @@ class FileCrudTest extends TestCase
     {
         Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
-        $file = File::factory()->forCustomer($customer)->create(['disk_path' => 'files/doc.pdf']);
+        $file = File::factory()->create(['disk_path' => 'files/doc.pdf']);
         Storage::disk('files')->put('files/doc.pdf', 'bytes');
 
         $this->delete(route('files.destroy', $file))->assertRedirect();
@@ -145,8 +74,7 @@ class FileCrudTest extends TestCase
     {
         Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
-        $file = File::factory()->forCustomer($customer)->create([
+        $file = File::factory()->create([
             'disk_path' => 'files/x.svg',
             'mime_type' => 'image/svg+xml',
             'type' => FileType::IMAGE,
@@ -166,8 +94,7 @@ class FileCrudTest extends TestCase
     {
         Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
-        $file = File::factory()->forCustomer($customer)->create([
+        $file = File::factory()->create([
             'disk_path' => 'files/x.png',
             'mime_type' => 'image/png',
             'type' => FileType::IMAGE,
@@ -183,9 +110,9 @@ class FileCrudTest extends TestCase
 
     public function test_search_finds_files_by_name_and_content(): void
     {
+        Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
-        File::factory()->forCustomer($customer)->create([
+        File::factory()->create([
             'name' => 'Onboarding.txt',
             'extracted_text' => 'welcome qzxwvcontent handbook',
         ]);
