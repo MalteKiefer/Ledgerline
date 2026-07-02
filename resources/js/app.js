@@ -1620,27 +1620,37 @@ Alpine.store('vault', {
         const code = await Vault.setup(passphrase);
         this.configured = true;
         this.unlocked = true;
+        this.announceUnlocked();
         return code;
     },
 
     async unlock(passphrase) {
         await Vault.unlock(passphrase);
         this.unlocked = true;
+        this.announceUnlocked();
     },
 
     async recover(code) {
         await Vault.recover(code);
         this.unlocked = true;
+        this.announceUnlocked();
     },
 
     async changePassphrase(currentPass, newPass) {
         await Vault.changePassphrase(currentPass, newPass);
         this.unlocked = true;
+        this.announceUnlocked();
     },
 
     lock() {
         Vault.lock();
         this.unlocked = false;
+    },
+
+    // Let the encrypted-name/type/preview components on the page re-decrypt
+    // themselves once the key is available, without a manual page reload.
+    announceUnlocked() {
+        window.dispatchEvent(new CustomEvent('vault-unlocked'));
     },
 });
 
@@ -1741,12 +1751,16 @@ window.encryptFolderSubmit = async (e) => {
 
 // Row state for an encrypted folder: decrypts its name for the link and the
 // rename input, alongside the usual rename/menu toggles.
-Alpine.data('encFolderRow', (encName, lockedLabel = '🔒') => ({
+Alpine.data('encFolderRow', (encName, lockedLabel = '…') => ({
     rename: false,
     menu: false,
     folderName: lockedLabel,
     async init() {
         await this.$store.vault.boot();
+        this.reveal();
+        window.addEventListener('vault-unlocked', () => this.reveal());
+    },
+    reveal() {
         if (this.$store.vault.unlocked) {
             try {
                 this.folderName = Vault.decryptFileMeta(encName).name;
@@ -1765,7 +1779,11 @@ Alpine.data('folderSort', (sort, dir) => ({
         if (sort !== 'name') {
             return;
         }
+        window.addEventListener('vault-unlocked', () => this.reorder());
         await this.$store.vault.boot();
+        await this.reorder();
+    },
+    async reorder() {
         const tbody = this.$el;
         const rows = Array.from(tbody.querySelectorAll('tr[data-kind]'));
         const unlocked = this.$store.vault.unlocked;
@@ -1794,6 +1812,10 @@ Alpine.data('folderSort', (sort, dir) => ({
 Alpine.data('encOptions', () => ({
     async init() {
         await this.$store.vault.boot();
+        this.reveal();
+        window.addEventListener('vault-unlocked', () => this.reveal());
+    },
+    reveal() {
         if (! this.$store.vault.unlocked) {
             return;
         }
@@ -1807,10 +1829,14 @@ Alpine.data('encOptions', () => ({
 
 // Name label for an encrypted file (list row / detail heading): decrypts the
 // real name once the vault is unlocked, otherwise shows a lock placeholder.
-Alpine.data('encName', (encMeta, lockedLabel = '🔒') => ({
+Alpine.data('encName', (encMeta, lockedLabel = '…') => ({
     label: lockedLabel,
     async init() {
         await this.$store.vault.boot();
+        this.reveal();
+        window.addEventListener('vault-unlocked', () => this.reveal());
+    },
+    reveal() {
         if (this.$store.vault.unlocked) {
             try {
                 this.label = Vault.decryptFileMeta(encMeta).name;
@@ -1851,6 +1877,10 @@ Alpine.data('encType', (encMeta, labels) => ({
     typeLabel: labels.ENCRYPTED ?? '',
     async init() {
         await this.$store.vault.boot();
+        this.reveal();
+        window.addEventListener('vault-unlocked', () => this.reveal());
+    },
+    reveal() {
         if (this.$store.vault.unlocked) {
             try {
                 const mime = Vault.decryptFileMeta(encMeta).mime;
@@ -1865,6 +1895,10 @@ Alpine.data('encMime', (encMeta, labels) => ({
     label: labels.ENCRYPTED ?? '',
     async init() {
         await this.$store.vault.boot();
+        this.reveal();
+        window.addEventListener('vault-unlocked', () => this.reveal());
+    },
+    reveal() {
         if (this.$store.vault.unlocked) {
             try {
                 const mime = Vault.decryptFileMeta(encMeta).mime;
@@ -1882,10 +1916,15 @@ Alpine.data('encPreview', (url, encMeta, encFileKey) => ({
     name: '',
     async init() {
         await this.$store.vault.boot();
+        await this.reveal();
+        window.addEventListener('vault-unlocked', () => this.reveal());
+    },
+    async reveal() {
         if (! this.$store.vault.unlocked) {
             this.state = 'locked';
             return;
         }
+        this.state = 'loading';
         try {
             const meta = Vault.decryptFileMeta(encMeta);
             this.name = meta.name;
