@@ -33,6 +33,8 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
     'checksum',
     'is_encrypted',
     'extracted_text',
+    'enc_metadata',
+    'enc_file_key',
     'folder_id',
 ])]
 class File extends Model

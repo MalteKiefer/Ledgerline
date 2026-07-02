@@ -31,7 +31,7 @@
             catch (e) { this.error = '{{ __('vault.err_recover') }}'; }
             finally { this.busy = false; }
         },
-     }">
+     }" @vault-panel.window="panel()">
 
     {{-- Trigger reflecting current state --}}
     <template x-if="! $store.vault.configured">
