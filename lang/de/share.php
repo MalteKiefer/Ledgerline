@@ -14,4 +14,6 @@ return [
     'unlock' => 'Entsperren',
     'wrong_password' => 'Falsches Passwort. Bitte erneut versuchen.',
     'read_only_notice' => 'Schreibgeschützte geteilte Notiz. Auf dem Server ist nichts davon lesbar gespeichert.',
+    'download_markdown' => 'Markdown herunterladen',
+    'download_pdf' => 'PDF herunterladen',
 ];

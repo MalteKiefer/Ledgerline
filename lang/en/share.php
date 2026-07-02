@@ -14,4 +14,6 @@ return [
     'unlock' => 'Unlock',
     'wrong_password' => 'Wrong password. Please try again.',
     'read_only_notice' => 'Read-only shared note. Nothing here is stored readable on the server.',
+    'download_markdown' => 'Download Markdown',
+    'download_pdf' => 'Download PDF',
 ];
