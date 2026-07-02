@@ -12,6 +12,7 @@
         saveFailed: @js(__('files.save_failed')),
         uploadFailed: @js(__('files.upload_failed')),
         downloadFailed: @js(__('files.download_failed')),
+        largeZip: @js(__('files.large_zip_confirm')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -85,6 +86,7 @@
             <table x-show="rows.length > 0" class="min-w-full divide-y divide-gray-200 text-sm">
                 <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <tr>
+                        <th class="px-4 py-3"><input type="checkbox" @change="toggleAll($event)" aria-label="{{ __('files.select_all') }}" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></th>
                         <th class="px-4 py-3">
                             <button type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'" class="uppercase hover:text-gray-700">
                                 {{ __('files.col_name') }} <span x-text="sortDir === 'asc' ? '↑' : '↓'"></span>
@@ -99,6 +101,7 @@
                     <template x-for="row in rows" :key="row.kind + row.id">
                         <tr class="cursor-pointer hover:bg-gray-50" x-data="{ menu: false }"
                             @click="if (renaming !== row.id) { row.kind === 'folder' ? cwd = row.id : openFile(row) }">
+                            <td class="px-4 py-3" @click.stop><input type="checkbox" :value="rowKey(row)" x-model="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                             <td class="px-4 py-3 font-medium text-gray-900">
                                 <span class="flex items-center gap-2" x-show="renaming !== row.id">
                                     <svg x-show="row.kind === 'folder'" class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
@@ -133,6 +136,16 @@
       </div>
     </template>
 
+    {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling. --}}
+    <div x-show="selected.length" x-cloak x-transition
+        :class="(up.active || dl.active) ? 'bottom-72' : 'bottom-5'"
+        class="fixed inset-x-0 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl">
+        <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
+        <button type="button" @click="bulkDownload()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.download_zip') }}</button>
+        <button type="button" @click="openMove(null)" class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move') }}</button>
+        <button type="button" @click="confirmDelete(null)" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('common.delete') }}</button>
+    </div>
+
     {{-- Upload progress --}}
     <div x-show="up.active" x-cloak class="fixed bottom-5 right-5 z-[950] w-80 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl">
         <div class="flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700">
@@ -155,7 +168,7 @@
         <div x-show="moveOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="moveOpen = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="moveOpen = false"></div>
             <div class="relative flex max-h-[80vh] w-full max-w-md flex-col rounded-lg bg-white shadow-xl">
-                <h3 class="border-b border-gray-100 px-6 py-4 text-base font-semibold text-gray-900">{{ __('files.move_title') }}</h3>
+                <h3 class="border-b border-gray-100 px-6 py-4 text-base font-semibold text-gray-900">{{ __('files.move_title') }} <span class="text-gray-400">(<span x-text="moveRefs.length"></span>)</span></h3>
                 <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                     <label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
                         <input type="radio" name="move_target" value="" x-model="moveTarget" class="border-gray-300 text-gray-800 focus:ring-gray-500">
@@ -220,16 +233,16 @@
 
     {{-- Delete confirm --}}
     <template x-teleport="body">
-        <div x-show="deleteRef" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="deleteRef = null">
-            <div class="absolute inset-0 bg-gray-900/40" @click="deleteRef = null"></div>
+        <div x-show="deleteOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="deleteOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="deleteOpen = false"></div>
             <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900">{{ __('common.confirm_title') }}</h3>
                 <p class="mt-2 text-sm text-gray-600">
-                    <span x-text="deleteRef?.name"></span> —
-                    <span x-text="deleteRef?.kind === 'folder' ? @js(__('files.delete_folder_confirm')) : @js(__('files.delete_file_confirm'))"></span>
+                    <span x-text="deleteRefs.map(r => r.name).join(', ')"></span> —
+                    <span x-text="deleteRefs.some(r => r.kind === 'folder') ? @js(__('files.delete_folder_confirm')) : @js(__('files.delete_file_confirm'))"></span>
                 </p>
                 <div class="mt-5 flex justify-end gap-3">
-                    <button type="button" @click="deleteRef = null" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyDelete()" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('common.delete') }}</button>
                 </div>
             </div>
