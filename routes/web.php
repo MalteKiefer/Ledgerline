@@ -135,6 +135,7 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
     Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
     Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->name('gallery.download');
+    Route::get('/gallery/{photo}/download/edited', [GalleryController::class, 'downloadEdited'])->name('gallery.download.edited');
     Route::get('/gallery/geocode/reverse', [GalleryController::class, 'geocodeReverse'])->name('gallery.geocode.reverse');
     Route::get('/gallery/geocode/search', [GalleryController::class, 'geocodeSearch'])->name('gallery.geocode.search');
     Route::put('/gallery/{photo}/meta', [GalleryController::class, 'editMeta'])->name('gallery.meta');
