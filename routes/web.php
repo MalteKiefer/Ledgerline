@@ -29,6 +29,7 @@ use App\Http\Controllers\ProjectOverviewController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
+use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\TagController as SettingsTagController;
 use App\Http\Controllers\Settings\UnitController as SettingsUnitController;
@@ -65,6 +66,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/tags', [SettingsTagController::class, 'store'])->name('settings.tags.store');
     Route::put('/settings/tags/{tag}', [SettingsTagController::class, 'update'])->name('settings.tags.update');
     Route::delete('/settings/tags/{tag}', [SettingsTagController::class, 'destroy'])->name('settings.tags.destroy');
+    Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
+    Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
     Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
     Route::put('/settings/gallery', [SettingsGalleryController::class, 'update'])->name('settings.gallery.update');
     Route::post('/settings/gallery/rescan', [SettingsGalleryController::class, 'rescan'])->name('settings.gallery.rescan');
