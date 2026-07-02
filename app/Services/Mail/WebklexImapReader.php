@@ -258,86 +258,91 @@ final class WebklexImapReader implements ImapReader
         }
     }
 
-    public function deleteMessage(ImapCredentials $c, string $folder, int $uid, bool $permanent): array
+    public function actOnMessages(ImapCredentials $c, string $folder, array $uids, string $action, ?string $target): array
     {
         $client = $this->connect($c);
         try {
-            $m = $client->getFolderByPath($folder)->query()->getMessageByUid($uid);
-            $trash = $permanent ? null : $this->trashPath($client);
-
-            // A "move to Trash" request must never silently expunge: if no Trash
-            // folder can be resolved, refuse rather than permanently delete.
-            if (! $permanent && $trash === null) {
-                throw new \RuntimeException('No Trash folder found — refusing to permanently delete a message that was only meant to be trashed.');
+            // Resolve the Trash folder once per batch. A "trash" request must
+            // never silently expunge: if none is found, refuse the whole batch.
+            $trash = $action === 'trash' ? $this->trashPath($client) : null;
+            if ($action === 'trash' && $trash === null) {
+                throw new \RuntimeException('No Trash folder found — refusing to permanently delete messages that were only meant to be trashed.');
             }
 
-            if ($trash !== null && $trash !== $folder) {
-                $m->delete(true, $trash, true); // move to Trash
-
-                return ['deleted' => true, 'trashed' => true];
+            $mailbox = $client->getFolderByPath($folder);
+            $count = 0;
+            foreach ($uids as $uid) {
+                $m = $mailbox->query()->getMessageByUid((int) $uid);
+                switch ($action) {
+                    case 'trash':
+                        ($trash !== $folder) ? $m->delete(true, $trash, true) : $m->delete(true);
+                        break;
+                    case 'delete':
+                        $m->delete(true); // permanent expunge (explicitly requested)
+                        break;
+                    case 'move':
+                        if ($target !== null) {
+                            $m->move($target);
+                        }
+                        break;
+                    case 'seen':
+                        $m->setFlag('Seen');
+                        break;
+                    case 'unseen':
+                        $m->unsetFlag('Seen');
+                        break;
+                }
+                $count++;
             }
 
-            $m->delete(true); // permanent expunge (explicitly requested, or already in Trash)
-
-            return ['deleted' => true, 'trashed' => false];
+            return ['count' => $count];
         } finally {
             $this->close($client);
         }
     }
 
-    public function moveMessage(ImapCredentials $c, string $folder, int $uid, string $targetFolder): void
-    {
-        $client = $this->connect($c);
-        try {
-            $client->getFolderByPath($folder)->query()->getMessageByUid($uid)->move($targetFolder);
-        } finally {
-            $this->close($client);
-        }
-    }
-
-    public function flagMessage(ImapCredentials $c, string $folder, int $uid, bool $seen): void
-    {
-        $client = $this->connect($c);
-        try {
-            $m = $client->getFolderByPath($folder)->query()->getMessageByUid($uid);
-            $seen ? $m->setFlag('Seen') : $m->unsetFlag('Seen');
-        } finally {
-            $this->close($client);
-        }
-    }
-
-    public function transferMessage(ImapCredentials $source, string $folder, int $uid, ImapCredentials $target, string $targetFolder): void
+    public function transferMessages(ImapCredentials $source, string $folder, array $uids, ImapCredentials $target, string $targetFolder): array
     {
         $src = $this->connect($source);
         try {
-            $message = $src->getFolderByPath($folder)->query()->getMessageByUid($uid);
-
-            // Copy the message verbatim: prefer the full BODY[] literal (headers
-            // + body, byte-for-byte), falling back to header + body. APPEND needs
-            // CRLF line endings.
-            $raw = preg_replace('/\r?\n/', "\r\n", $this->rawMessage($src, $folder, $uid, $message));
-
-            // Preserve the original flags (\Seen, \Answered, …) and received
-            // time, so the transferred copy is not reset to unread / "now".
-            $flags = $this->appendFlags($message);
-            $internalDate = $this->internalDate($src, $folder, $uid);
+            $srcFolder = $src->getFolderByPath($folder);
+            $trash = $this->trashPath($src);
 
             $dst = $this->connect($target);
+            $count = 0;
             try {
-                // appendMessage throws on a protocol error, so reaching the next
-                // line means the target server accepted the message.
-                $dst->getFolderByPath($targetFolder)->appendMessage($raw, $flags ?: null, $internalDate);
+                $dstFolder = $dst->getFolderByPath($targetFolder);
+                foreach ($uids as $uid) {
+                    $uid = (int) $uid;
+                    $message = $srcFolder->query()->getMessageByUid($uid);
+
+                    // Copy verbatim: prefer the full BODY[] literal (headers +
+                    // body, byte-for-byte), fall back to header + body. APPEND
+                    // needs CRLF line endings.
+                    $raw = preg_replace('/\r?\n/', "\r\n", $this->rawMessage($src, $folder, $uid, $message));
+
+                    // Preserve the original flags (\Seen, …) and received time so
+                    // the copy is not reset to unread / "now".
+                    $flags = $this->appendFlags($message);
+                    $internalDate = $this->internalDate($src, $folder, $uid);
+
+                    // appendMessage throws on a protocol error, so reaching the
+                    // next line means the target accepted the message.
+                    $dstFolder->appendMessage($raw, $flags ?: null, $internalDate);
+
+                    // Remove from the source only into its Trash (recoverable) —
+                    // never expunge on a transfer. If no Trash is detected, keep
+                    // the source copy so a message can never be lost here.
+                    if ($trash !== null && $trash !== $folder) {
+                        $message->delete(true, $trash, true);
+                    }
+                    $count++;
+                }
             } finally {
                 $this->close($dst);
             }
 
-            // Remove from the source only into its Trash (recoverable) — never
-            // expunge on a transfer. If no Trash folder is detected, keep the
-            // source copy so a message can never be permanently lost here.
-            $trash = $this->trashPath($src);
-            if ($trash !== null && $trash !== $folder) {
-                $message->delete(true, $trash, true);
-            }
+            return ['count' => $count];
         } finally {
             $this->close($src);
         }

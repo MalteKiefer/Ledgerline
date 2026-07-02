@@ -124,22 +124,18 @@ class MailReaderController extends Controller
     {
         $v = $request->validate($this->credRules() + [
             'folder' => ['required', 'string', 'max:255'],
-            'uid' => ['required', 'integer', 'min:1'],
+            'uids' => ['required', 'array', 'min:1', 'max:500'],
+            'uids.*' => ['integer', 'min:1'],
             'action' => ['required', Rule::in(['trash', 'delete', 'move', 'seen', 'unseen'])],
             'target' => ['required_if:action,move', 'nullable', 'string', 'max:255'],
         ]);
 
         return $this->guard(function () use ($reader, $v) {
-            $creds = $this->creds($v);
-            $result = match ($v['action']) {
-                'trash' => $reader->deleteMessage($creds, $v['folder'], (int) $v['uid'], false),
-                'delete' => $reader->deleteMessage($creds, $v['folder'], (int) $v['uid'], true),
-                'move' => tap(['moved' => true], fn () => $reader->moveMessage($creds, $v['folder'], (int) $v['uid'], $v['target'])),
-                'seen' => tap(['seen' => true], fn () => $reader->flagMessage($creds, $v['folder'], (int) $v['uid'], true)),
-                'unseen' => tap(['seen' => false], fn () => $reader->flagMessage($creds, $v['folder'], (int) $v['uid'], false)),
-            };
+            $uids = array_map('intval', $v['uids']);
 
-            return response()->json($result);
+            return response()->json(
+                $reader->actOnMessages($this->creds($v), $v['folder'], $uids, $v['action'], $v['target'] ?? null),
+            );
         });
     }
 
@@ -147,17 +143,20 @@ class MailReaderController extends Controller
     {
         $v = $request->validate($this->credRules() + $this->credRules('target.') + [
             'folder' => ['required', 'string', 'max:255'],
-            'uid' => ['required', 'integer', 'min:1'],
+            'uids' => ['required', 'array', 'min:1', 'max:500'],
+            'uids.*' => ['integer', 'min:1'],
             'target_folder' => ['required', 'string', 'max:255'],
         ]);
 
         return $this->guard(function () use ($reader, $v) {
-            $reader->transferMessage(
-                $this->creds($v), $v['folder'], (int) $v['uid'],
-                $this->creds($v, 'target.'), $v['target_folder'],
-            );
+            $uids = array_map('intval', $v['uids']);
 
-            return response()->json(['transferred' => true]);
+            return response()->json(
+                $reader->transferMessages(
+                    $this->creds($v), $v['folder'], $uids,
+                    $this->creds($v, 'target.'), $v['target_folder'],
+                ),
+            );
         });
     }
 
