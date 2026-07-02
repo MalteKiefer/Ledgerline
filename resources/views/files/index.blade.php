@@ -185,14 +185,14 @@
                                 <th class="px-4 py-3"><x-sortable-header column="name" :label="__('files.col_name')" :sort="$sort" :dir="$dir" /></th>
                                 <th class="hidden px-4 py-3 sm:table-cell"><x-sortable-header column="type" :label="__('files.col_type')" :sort="$sort" :dir="$dir" /></th>
                                 <th class="hidden px-4 py-3 text-right sm:table-cell"><x-sortable-header column="size" :label="__('files.col_size')" :sort="$sort" :dir="$dir" /></th>
-                                <th class="hidden px-4 py-3 md:table-cell">{{ __('files.col_location') }}</th>
+                                <th class="hidden px-4 py-3 md:table-cell">{{ __('files.col_tags') }}</th>
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100" x-data="folderSort(@js($sort), @js($dir))" x-init="run()">
                             {{-- Folders first --}}
                             @foreach ($subfolders as $sub)
-                                <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false }' }}" class="cursor-pointer hover:bg-gray-50"
+                                <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false, tagsOpen: false }' }}" class="cursor-pointer hover:bg-gray-50"
                                     @rename-folder.window="if ($event.detail === {{ $sub->id }}) rename = true"
                                     @click="if (! rename) window.location.href = @js(route('files.index', ['folder' => $sub->id]))"
                                     data-kind="folder" data-name="{{ $sub->enc_name ? '' : $sub->name }}" @if ($sub->enc_name) data-enc="{{ $sub->enc_name }}" @endif>
@@ -212,12 +212,21 @@
                                     </td>
                                     <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ __('files.folder') }}</td>
                                     <td class="hidden px-4 py-3 text-right text-gray-400 sm:table-cell">—</td>
-                                    <td class="hidden px-4 py-3 md:table-cell"></td>
+                                    <td class="hidden px-4 py-3 md:table-cell" @click.stop>
+                                        <div class="flex flex-wrap gap-1">
+                                            @forelse ($sub->tags as $tag)
+                                                <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" />
+                                            @empty
+                                                <span class="text-gray-300">—</span>
+                                            @endforelse
+                                        </div>
+                                    </td>
                                     <td class="px-4 py-3 text-right" @click.stop>
                                         <div class="relative inline-block text-left">
                                             <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
                                             <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                                 <button type="button" @click="rename = true; menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
+                                                <button type="button" @click="tagsOpen = true; menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.edit_tags') }}</button>
                                                 <button type="button" @click="openMoveFolder({{ $sub->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
                                                 <button type="button" x-show="$store.vault.configured" @click="encryptFolder({{ $sub->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.encrypt_file') }}</button>
                                                 <x-confirm-action :action="route('folders.destroy', $sub)" method="DELETE"
@@ -225,6 +234,24 @@
                                                     :message="__('files.delete_folder_confirm')" />
                                             </div>
                                         </div>
+
+                                        {{-- Folder tags modal --}}
+                                        <template x-teleport="body">
+                                            <div x-show="tagsOpen" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center p-4 text-left" role="dialog" aria-modal="true" @keydown.escape.window="tagsOpen = false">
+                                                <div class="absolute inset-0 bg-gray-900/40" @click="tagsOpen = false"></div>
+                                                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                                                    <h3 class="text-base font-semibold text-gray-900">{{ __('files.edit_tags') }}</h3>
+                                                    <form method="POST" action="{{ route('folders.tags', $sub) }}" class="mt-4">
+                                                        @csrf @method('PUT')
+                                                        <x-tag-input name="tags" :value="$sub->tags->pluck('name')->all()" :suggestions="$tagSuggestions" :label="__('files.tags')" />
+                                                        <div class="mt-5 flex justify-end gap-3">
+                                                            <button type="button" @click="tagsOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                                                            <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </template>
                                     </td>
                                 </tr>
                             @endforeach
@@ -262,15 +289,13 @@
                                     </td>
                                     <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell"><x-file-size :bytes="$file->size" /></td>
                                     <td class="hidden px-4 py-3 text-gray-600 md:table-cell" @click.stop>
-                                        @if ($file->attachable instanceof \App\Models\Customer)
-                                            <a href="{{ route('files.index', ['customer' => $file->attachable->id]) }}" class="hover:underline">{{ __('files.location_customer', ['name' => $file->attachable->name]) }}</a>
-                                        @elseif ($file->attachable instanceof \App\Models\Project)
-                                            <a href="{{ route('files.index', ['project' => $file->attachable->id]) }}" class="hover:underline">{{ __('files.location_project', ['name' => $file->attachable->name]) }}</a>
-                                        @elseif ($file->attachable instanceof \App\Models\Invoice)
-                                            <a href="{{ route('finance.invoices.show', $file->attachable) }}" class="hover:underline">{{ __('files.location_invoice', ['number' => $file->attachable->number ?? ('#'.$file->attachable->id)]) }}</a>
-                                        @else
-                                            {{ __('files.location_general') }}
-                                        @endif
+                                        <div class="flex flex-wrap gap-1">
+                                            @forelse ($file->tags as $tag)
+                                                <x-tag-chip :tag="$tag" :href="route('files.index', ['tag' => $tag->slug])" />
+                                            @empty
+                                                <span class="text-gray-300">—</span>
+                                            @endforelse
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3 text-right" @click.stop>
                                         <div class="relative inline-block text-left">

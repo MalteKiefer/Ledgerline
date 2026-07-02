@@ -89,6 +89,17 @@ class FolderTest extends TestCase
         $this->assertSame('{"c":"c2","n":"n2"}', $folder->enc_name);
     }
 
+    public function test_a_folder_can_have_tags(): void
+    {
+        $this->signIn();
+        $folder = Folder::create(['name' => 'Tagged']);
+
+        $this->put(route('folders.tags', $folder), ['tags' => ['Alpha', 'Beta']])
+            ->assertRedirect();
+
+        $this->assertEqualsCanonicalizing(['Alpha', 'Beta'], $folder->fresh()->tags->pluck('name')->all());
+    }
+
     public function test_deleting_a_folder_moves_its_contents_up(): void
     {
         $this->signIn();

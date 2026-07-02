@@ -63,7 +63,7 @@ class FileOverviewController extends Controller
 
         $subfolders = $filtering
             ? collect()
-            : Folder::query()->where('parent_id', $folder?->id)->withCount('files')->orderBy('name')->get();
+            : Folder::query()->with('tags')->where('parent_id', $folder?->id)->withCount('files')->orderBy('name')->get();
 
         return view('files.index', [
             'files' => $files,
