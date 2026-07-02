@@ -14,11 +14,17 @@ namespace App\Services\Mail;
 interface ImapReader
 {
     /**
-     * List all mailboxes/folders of the account.
+     * List all mailboxes/folders of the account (hierarchical paths).
      *
-     * @return list<array{name:string, path:string, total:int, unseen:int}>
+     * @return list<array{name:string, path:string, delimiter:string, selectable:bool, total:int, unseen:int}>
      */
     public function listFolders(ImapCredentials $c): array;
+
+    /** Create a new folder at the given path. */
+    public function createFolder(ImapCredentials $c, string $path): void;
+
+    /** Permanently delete every message in a folder (empty it). */
+    public function emptyFolder(ImapCredentials $c, string $path): void;
 
     /**
      * List a page of message envelopes (newest first), without bodies.

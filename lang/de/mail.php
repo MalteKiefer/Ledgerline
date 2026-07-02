@@ -73,4 +73,7 @@ return [
     'select_all' => 'Alle auswählen',
     'selected' => 'ausgewählt',
     'clear_selection' => 'Aufheben',
+    'new_folder' => 'Neuer Ordner',
+    'empty_folder' => 'Ordner leeren',
+    'empty_folder_confirm' => 'Alle Nachrichten in diesem Ordner endgültig löschen? Kann nicht rückgängig gemacht werden.',
 ];

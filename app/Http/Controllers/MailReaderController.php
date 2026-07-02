@@ -53,6 +53,28 @@ class MailReaderController extends Controller
         return $this->guard(fn () => response()->json(['folders' => $reader->listFolders($this->creds($v))]));
     }
 
+    public function createFolder(Request $request, ImapReader $reader): JsonResponse
+    {
+        $v = $request->validate($this->credRules() + ['folder' => ['required', 'string', 'max:255']]);
+
+        return $this->guard(function () use ($reader, $v) {
+            $reader->createFolder($this->creds($v), $v['folder']);
+
+            return response()->json(['created' => true]);
+        });
+    }
+
+    public function emptyFolder(Request $request, ImapReader $reader): JsonResponse
+    {
+        $v = $request->validate($this->credRules() + ['folder' => ['required', 'string', 'max:255']]);
+
+        return $this->guard(function () use ($reader, $v) {
+            $reader->emptyFolder($this->creds($v), $v['folder']);
+
+            return response()->json(['emptied' => true]);
+        });
+    }
+
     public function messages(Request $request, ImapReader $reader): JsonResponse
     {
         $v = $request->validate($this->credRules() + [
