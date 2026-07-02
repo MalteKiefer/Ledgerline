@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -184,7 +185,11 @@ class MailReaderController extends Controller
 
             return response()->json([
                 'message' => __('mail.connect_failed'),
-                'detail' => class_basename($e),
+                // Surfaces the class and the IMAP server's own error message so a
+                // single-tenant operator can diagnose failures directly from the
+                // browser. Never includes vault content or credentials (the mail
+                // services do not expose them).
+                'detail' => class_basename($e).': '.Str::limit($e->getMessage(), 500),
             ], 422);
         }
     }

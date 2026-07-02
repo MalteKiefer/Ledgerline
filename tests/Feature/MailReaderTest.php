@@ -218,13 +218,11 @@ class MailReaderTest extends TestCase
             }
         });
 
-        $response = $this->postJson(route('mail.messages'), $this->creds(['folder' => 'INBOX']))
+        $this->postJson(route('mail.messages'), $this->creds(['folder' => 'INBOX']))
             ->assertStatus(422)
             ->assertJsonStructure(['message', 'detail'])
-            // Only the exception class is surfaced — the raw message is withheld
-            // so server banners / folder names / commands cannot leak.
-            ->assertJsonPath('detail', 'RuntimeException');
-
-        $this->assertStringNotContainsString('boom', $response->getContent());
+            // The class and the underlying error message are surfaced so a
+            // single-tenant operator can diagnose failures from the browser.
+            ->assertJsonPath('detail', 'RuntimeException: boom');
     }
 }
