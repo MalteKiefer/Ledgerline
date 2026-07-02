@@ -98,6 +98,7 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::view('/mail', 'mail.index')->name('mail.index');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
+    Route::post('/mail/folders', [MailReaderController::class, 'folders'])->name('mail.folders');
     Route::post('/mail/messages', [MailReaderController::class, 'messages'])->name('mail.messages');
     Route::post('/mail/message', [MailReaderController::class, 'message'])->name('mail.message');
     Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->name('mail.message.attachment');

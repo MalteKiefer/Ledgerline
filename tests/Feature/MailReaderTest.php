@@ -19,6 +19,11 @@ class MailReaderTest extends TestCase
         {
             public array $calls = [];
 
+            public function listFolders(ImapCredentials $c): array
+            {
+                return [['name' => 'INBOX', 'path' => 'INBOX', 'total' => 1, 'unseen' => 1]];
+            }
+
             public function listMessages(ImapCredentials $c, string $folder, int $page, int $perPage): array
             {
                 $this->calls[] = ['list', $folder, $page];
@@ -79,6 +84,16 @@ class MailReaderTest extends TestCase
     public function test_guests_are_blocked(): void
     {
         $this->post(route('mail.messages'), $this->creds(['folder' => 'INBOX']))->assertRedirect(route('login'));
+    }
+
+    public function test_folders_are_listed(): void
+    {
+        $this->signIn();
+        $this->fakeReader();
+
+        $this->postJson(route('mail.folders'), $this->creds())
+            ->assertOk()
+            ->assertJsonPath('folders.0.path', 'INBOX');
     }
 
     public function test_list_returns_messages(): void
@@ -153,6 +168,11 @@ class MailReaderTest extends TestCase
         $this->signIn();
         $this->app->instance(ImapReader::class, new class implements ImapReader
         {
+            public function listFolders(ImapCredentials $c): array
+            {
+                throw new \RuntimeException('boom');
+            }
+
             public function listMessages(ImapCredentials $c, string $folder, int $page, int $perPage): array
             {
                 throw new \RuntimeException('boom');
