@@ -205,6 +205,13 @@ export const Vault = {
         }
     },
 
+    // True when the vault is unlocked in memory but its idle window has elapsed.
+    // Used by the client-side idle watchdog to lock + re-gate without a reload.
+    expired() {
+        const e = Number(sessionStorage.getItem(CACHE_EXPIRES) || 0);
+        return this.vk !== null && e > 0 && e <= Date.now();
+    },
+
     lock() {
         this.vk = null;
         metaMemo.clear();

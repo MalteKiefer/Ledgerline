@@ -21,6 +21,19 @@ final class WebklexImapReader implements ImapReader
     {
         $client = $this->connect($c);
         try {
+            // Raw LIST flags per folder (webklex's Folder discards the
+            // SPECIAL-USE attributes we need to tell standard folders apart).
+            $flagsByPath = [];
+            try {
+                foreach ($client->getConnection()->folders('', '*')->validatedData() as $path => $item) {
+                    $flagsByPath[$path] = array_map(
+                        static fn ($f): string => strtolower(ltrim((string) $f, '\\')),
+                        $item['flags'] ?? [],
+                    );
+                }
+            } catch (\Throwable) {
+            }
+
             $out = [];
             foreach ($client->getFolders(false) as $folder) {
                 $total = 0;
@@ -37,6 +50,7 @@ final class WebklexImapReader implements ImapReader
                     'path' => $folder->path,
                     'delimiter' => $folder->delimiter ?: '/',
                     'selectable' => ! $folder->no_select,
+                    'role' => $this->folderRole($folder->name, $folder->path, $flagsByPath[$folder->path] ?? []),
                     'total' => $total,
                     'unseen' => $unseen,
                 ];
@@ -46,6 +60,41 @@ final class WebklexImapReader implements ImapReader
         } finally {
             $this->close($client);
         }
+    }
+
+    /**
+     * Classify a mailbox as a standard role from its SPECIAL-USE flags, with a
+     * name fallback (EN/DE) for servers that do not advertise SPECIAL-USE.
+     * Returns null for user/custom folders.
+     */
+    private function folderRole(string $name, string $path, array $flags): ?string
+    {
+        if (strtoupper($path) === 'INBOX' || strtoupper($name) === 'INBOX') {
+            return 'inbox';
+        }
+        foreach (['all', 'archive', 'drafts', 'flagged', 'junk', 'sent', 'trash', 'important'] as $role) {
+            if (in_array($role, $flags, true)) {
+                return $role;
+            }
+        }
+        $n = mb_strtolower(trim($name));
+        $names = [
+            'all' => ['all mail', 'alle nachrichten'],
+            'sent' => ['sent', 'sent mail', 'gesendet', 'gesendete objekte'],
+            'drafts' => ['drafts', 'draft', 'entwürfe', 'entwuerfe'],
+            'trash' => ['trash', 'deleted', 'deleted messages', 'deleted items', 'papierkorb', 'gelöschte objekte'],
+            'junk' => ['junk', 'spam', 'junk e-mail', 'junk email'],
+            'archive' => ['archive', 'archiv'],
+            'important' => ['important', 'wichtig'],
+            'flagged' => ['starred', 'markiert', 'flagged'],
+        ];
+        foreach ($names as $role => $aliases) {
+            if (in_array($n, $aliases, true)) {
+                return $role;
+            }
+        }
+
+        return null;
     }
 
     public function createFolder(ImapCredentials $c, string $path): void

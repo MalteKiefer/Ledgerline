@@ -1016,12 +1016,36 @@ Alpine.store('vault', {
             this.ready = (async () => {
                 await Vault.boot();
                 this.unlocked = Vault.unlocked();
+                this.startIdleWatch();
                 try {
                     this.configured = (await Vault.status()).configured;
                 } catch (e) { /* offline: leave defaults */ }
             })();
         }
         return this.ready;
+    },
+
+    // Enforce the idle timeout on an open page, not just on reload: user
+    // activity extends the window, and a poll locks + re-gates the moment it
+    // elapses so decrypted content never outlives the idle limit.
+    startIdleWatch() {
+        if (this._idleWatch) return;
+        let lastBump = 0;
+        const bump = () => {
+            const now = Date.now();
+            if (now - lastBump < 15000) return;   // throttle sessionStorage writes
+            lastBump = now;
+            Vault.touch();
+        };
+        ['mousemove', 'keydown', 'pointerdown', 'scroll', 'touchstart'].forEach(
+            (ev) => window.addEventListener(ev, bump, { passive: true }),
+        );
+        this._idleWatch = setInterval(() => {
+            if (Vault.expired()) {
+                this.lock();
+                window.location.reload();   // drop all in-memory decrypted state, show the gate
+            }
+        }, 10000);
     },
 
     async setup(passphrase) {
@@ -2628,7 +2652,65 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     isTrashFolder() {
         const f = this.reader.folders.find((x) => x.path === this.reader.folderPath);
-        return /trash|deleted|papierkorb/i.test(f?.name || this.reader.folderPath || '');
+        return f?.role === 'trash' || /trash|deleted|papierkorb/i.test(f?.name || this.reader.folderPath || '');
+    },
+
+    // Folders in tree order: children directly under their parent, siblings by
+    // role priority (Inbox, then the standard folders) then name. Fixes the
+    // alphabetical flat sort that interleaved [Gmail]/* with custom folders.
+    orderedFolders() {
+        const list = this.reader.folders;
+        const byPath = new Map(list.map((f) => [f.path, f]));
+        const parentPath = (f) => {
+            const d = f.delimiter || '/';
+            const i = f.path.lastIndexOf(d);
+            return i > 0 ? f.path.slice(0, i) : null;
+        };
+        const children = new Map();
+        for (const f of list) {
+            const p = parentPath(f);
+            const key = (p && byPath.has(p)) ? p : '__root__';
+            (children.get(key) ?? children.set(key, []).get(key)).push(f);
+        }
+        const prio = { inbox: 0, all: 1, drafts: 2, sent: 3, archive: 4, junk: 5, trash: 6, important: 7, flagged: 8 };
+        const cmp = (a, b) => {
+            const pa = a.role ? (prio[a.role] ?? 20) : 50;
+            const pb = b.role ? (prio[b.role] ?? 20) : 50;
+            return pa - pb || (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true });
+        };
+        const out = [];
+        const walk = (key) => {
+            for (const f of (children.get(key) ?? []).slice().sort(cmp)) { out.push(f); walk(f.path); }
+        };
+        walk('__root__');
+        return out;
+    },
+
+    // Selectable folders (no containers) in tree order, for move targets.
+    moveFolders() {
+        return this.orderedFolders().filter((f) => f.selectable);
+    },
+
+    // Localised display name for standard folders; custom folders keep their
+    // server name.
+    folderLabel(f) {
+        return (f.role && labels.folderNames && labels.folderNames[f.role]) ? labels.folderNames[f.role] : f.name;
+    },
+
+    // Heroicon path for a standard folder's role, or '' for custom folders.
+    folderIconPath(f) {
+        const icons = {
+            inbox: 'M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z',
+            sent: 'M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5',
+            drafts: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10',
+            trash: 'M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0',
+            junk: 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636',
+            archive: 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z',
+            important: 'M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5',
+        };
+        icons.all = icons.archive;
+        icons.flagged = icons.important;
+        return f.role ? (icons[f.role] ?? '') : '';
     },
 
     // Re-fetch this account's stats into the cache so the overview + folder

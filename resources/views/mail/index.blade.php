@@ -3,6 +3,17 @@
         stale: @js(__('mail.stale')),
         saveFailed: @js(__('mail.save_failed')),
         connectFailed: @js(__('mail.connect_failed')),
+        folderNames: @js([
+            'inbox' => __('mail.folder_inbox'),
+            'all' => __('mail.folder_all'),
+            'archive' => __('mail.folder_archive'),
+            'drafts' => __('mail.folder_drafts'),
+            'sent' => __('mail.folder_sent'),
+            'junk' => __('mail.folder_junk'),
+            'trash' => __('mail.folder_trash'),
+            'important' => __('mail.folder_important'),
+            'flagged' => __('mail.folder_flagged'),
+        ]),
      })">
 
     {{-- Vault not set up / locked: only the gate. --}}
@@ -222,17 +233,20 @@
                         <div x-show="reader.foldersLoading && readerFolders().length === 0" class="flex items-center gap-2 px-3 py-4 text-xs text-gray-400">
                             <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}
                         </div>
-                        <template x-for="f in readerFolders()" :key="f.path">
+                        <template x-for="f in orderedFolders()" :key="f.path">
                             <div>
                                 {{-- Non-selectable container (e.g. Gmail "[Gmail]"): just a label --}}
                                 <div x-show="! f.selectable" class="truncate px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
-                                    :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`" x-text="f.name"></div>
-                                {{-- Selectable folder --}}
+                                    :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`" x-text="folderLabel(f)"></div>
+                                {{-- Selectable folder — standard folders get a role icon; custom none --}}
                                 <button type="button" x-show="f.selectable" @click="openFolder(f.path)"
                                     class="flex w-full items-center justify-between gap-2 py-2 pr-3 text-left text-sm hover:bg-gray-50"
                                     :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`"
                                     :class="f.path === reader.folderPath ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700'">
-                                    <span class="truncate" x-text="f.name"></span>
+                                    <span class="flex min-w-0 items-center gap-2">
+                                        <svg x-show="folderIconPath(f)" class="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(f)" /></svg>
+                                        <span class="truncate" x-text="folderLabel(f)"></span>
+                                    </span>
                                     <span class="flex shrink-0 items-center gap-1 text-xs text-gray-400">
                                         <span x-show="f.unseen" class="rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white" x-text="f.unseen"></span>
                                         <span x-text="f.total"></span>
@@ -274,7 +288,7 @@
                     <button type="button" @click="bulkAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" aria-label="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-1.5 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
                     <select @change="if ($event.target.value) { bulkAction('move', $event.target.value); $event.target.value = '' }" title="{{ __('mail.move_to_folder') }}" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <option value="">{{ __('mail.move_to_folder') }}</option>
-                        <template x-for="f in readerFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
+                        <template x-for="f in moveFolders()" :key="f.path"><option :value="f.path" x-text="folderLabel(f)"></option></template>
                     </select>
                     <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="share" class="h-4 w-4" /></button>
                     <button type="button" @click="bulkAction('seen')" :disabled="reader.busy" title="{{ __('mail.mark_read') }}" aria-label="{{ __('mail.mark_read') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="envelope-open" class="h-4 w-4" /></button>
@@ -283,7 +297,9 @@
                 </div>
 
                 <div class="min-h-0 flex-1 overflow-y-auto">
-                    <p x-show="reader.loading" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.loading') }}</p>
+                    <div x-show="reader.loading" class="flex items-center justify-center gap-2 px-4 py-10 text-sm text-gray-500">
+                        <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}
+                    </div>
                     <p x-show="! reader.loading && reader.messages.length === 0" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.list_empty') }}</p>
                     <ul class="divide-y divide-gray-100">
                         <template x-for="m in sortedMessages()" :key="m.uid">
@@ -300,7 +316,9 @@
                     </ul>
                     {{-- Infinite scroll: load the next page when the sentinel comes into view. --}}
                     <div x-show="hasMoreMessages" x-intersect.margin.600px="loadMore()" class="h-10"></div>
-                    <p x-show="reader.loadingMore" x-cloak class="py-3 text-center text-xs text-gray-400">{{ __('mail.loading') }}</p>
+                    <div x-show="reader.loadingMore" x-cloak class="flex items-center justify-center gap-2 py-3 text-xs text-gray-400">
+                        <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}
+                    </div>
                 </div>
             </div>
 
@@ -314,7 +332,7 @@
                     <button type="button" @click="reader.headersOpen = true" title="{{ __('mail.show_headers') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="bars-3" class="h-4 w-4" /></button>
                     <select @change="if ($event.target.value) { msgAction('move', $event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <option value="">{{ __('mail.move_to_folder') }}</option>
-                        <template x-for="f in readerFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
+                        <template x-for="f in moveFolders()" :key="f.path"><option :value="f.path" x-text="folderLabel(f)"></option></template>
                     </select>
                     <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="share" class="h-4 w-4" /></button>
                     <button type="button" @click="msgAction(reader.current.seen ? 'unseen' : 'seen')" :disabled="reader.busy"
