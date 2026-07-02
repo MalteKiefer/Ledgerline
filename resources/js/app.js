@@ -1179,7 +1179,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     async load() {
         try {
-            const { data, version } = await Vault.loadManifest();
+            const { data, version } = await Vault.loadManifest('files');
             this.manifest = data;
             this.version = version;
             this.state = 'ready';
@@ -1191,7 +1191,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Persist the manifest; on a concurrent save, reload and surface it.
     async persist() {
         try {
-            this.version = await Vault.saveManifest(this.manifest, this.version);
+            this.version = await Vault.saveManifest('files', this.manifest, this.version);
             this.error = '';
         } catch (e) {
             if (e.stale) {

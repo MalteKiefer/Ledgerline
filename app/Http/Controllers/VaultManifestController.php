@@ -5,36 +5,38 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Vault;
+use App\Models\VaultManifest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Stores the vault's encrypted directory manifest.
+ * Stores the vault's encrypted manifests, one per zero-knowledge module
+ * (files, notes).
  *
- * The manifest is a single ciphertext blob (sealed with the vault key in the
- * browser) holding the entire file/folder structure: names, tree, mime types,
- * sizes, per-file keys and tags. The server can neither read nor partially
- * update it — it only swaps whole ciphertexts, guarded by an optimistic
- * version so concurrent tabs cannot overwrite each other.
+ * A manifest is a single ciphertext blob (sealed with the vault key in the
+ * browser) holding a module's entire structure and metadata. The server can
+ * neither read nor partially update it — it only swaps whole ciphertexts,
+ * guarded by an optimistic version so concurrent tabs cannot overwrite each
+ * other.
  */
 class VaultManifestController extends Controller
 {
-    public function show(): JsonResponse
+    public function show(string $name): JsonResponse
     {
-        $vault = Vault::current();
-        abort_if($vault === null, 404);
+        abort_if(Vault::current() === null, 404);
+
+        $manifest = VaultManifest::named($name);
 
         return response()->json([
-            'cipher' => $vault->manifest_cipher,
-            'nonce' => $vault->manifest_nonce,
-            'version' => (int) $vault->manifest_version,
+            'cipher' => $manifest->cipher,
+            'nonce' => $manifest->nonce,
+            'version' => (int) $manifest->version,
         ]);
     }
 
-    public function update(Request $request): JsonResponse
+    public function update(Request $request, string $name): JsonResponse
     {
-        $vault = Vault::current();
-        abort_if($vault === null, 404);
+        abort_if(Vault::current() === null, 404);
 
         $validated = $request->validate([
             'cipher' => ['required', 'string'],
@@ -42,20 +44,22 @@ class VaultManifestController extends Controller
             'version' => ['required', 'integer', 'min:0'],
         ]);
 
+        $manifest = VaultManifest::named($name);
+
         // Optimistic lock: the writer must have seen the current version.
-        if ((int) $validated['version'] !== (int) $vault->manifest_version) {
+        if ((int) $validated['version'] !== (int) $manifest->version) {
             return response()->json([
                 'message' => 'stale manifest',
-                'version' => (int) $vault->manifest_version,
+                'version' => (int) $manifest->version,
             ], 409);
         }
 
-        $vault->update([
-            'manifest_cipher' => $validated['cipher'],
-            'manifest_nonce' => $validated['nonce'],
-            'manifest_version' => $vault->manifest_version + 1,
+        $manifest->update([
+            'cipher' => $validated['cipher'],
+            'nonce' => $validated['nonce'],
+            'version' => $manifest->version + 1,
         ]);
 
-        return response()->json(['version' => (int) $vault->manifest_version]);
+        return response()->json(['version' => (int) $manifest->version]);
     }
 }
