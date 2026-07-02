@@ -37,6 +37,12 @@ function readU32le(bytes, off) {
     return bytes[off] | (bytes[off + 1] << 8) | (bytes[off + 2] << 16) | (bytes[off + 3] << 24);
 }
 
+// Per-page in-memory memo of decrypted metadata, keyed by the ciphertext blob.
+// It only lives in this JS context (never persisted), so the same folder or file
+// name shown in several places — breadcrumb, row, tree — is decrypted once, and
+// no extra plaintext is written to storage. Cleared when the vault locks.
+const metaMemo = new Map();
+
 function concat(chunks) {
     const size = chunks.reduce((n, c) => n + c.length, 0);
     const out = new Uint8Array(size);
@@ -112,6 +118,9 @@ export const Vault = {
         if (cached && expires > Date.now()) {
             this.vk = unb64(cached);
             this.touch();
+        } else if (cached) {
+            // The key expired (idle timeout): drop it and any decrypted names.
+            this.lock();
         }
     },
 
@@ -132,6 +141,7 @@ export const Vault = {
 
     lock() {
         this.vk = null;
+        metaMemo.clear();
         sessionStorage.removeItem(CACHE_KEY);
         sessionStorage.removeItem(CACHE_EXPIRES);
     },
@@ -327,9 +337,18 @@ export const Vault = {
         return concat(chunks);
     },
 
-    /** Decrypt a file's metadata blob (JSON {c,n}) to {name, mime, size}. */
+    /**
+     * Decrypt a file/folder metadata blob (JSON {c,n}) to {name, mime, size}.
+     * Memoised per page by the ciphertext so repeated lookups don't re-decrypt.
+     */
     decryptFileMeta(encMeta) {
+        const hit = metaMemo.get(encMeta);
+        if (hit) {
+            return hit;
+        }
         const m = JSON.parse(encMeta);
-        return this.decryptMeta(m.c, m.n);
+        const out = this.decryptMeta(m.c, m.n);
+        metaMemo.set(encMeta, out);
+        return out;
     },
 };
