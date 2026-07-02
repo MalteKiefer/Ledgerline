@@ -25,6 +25,12 @@
 .markdown-body ol {
     list-style-type: decimal;
 }
+/* Preflight forces `img { display: block }`; github-markdown-css leaves images
+ | at the default inline flow, so restore it or inline images break onto their
+ | own line. */
+.markdown-body img {
+    display: inline-block;
+}
 
 /*
  | Use the operating system's native font stack only. No web fonts are
