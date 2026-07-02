@@ -73,7 +73,10 @@ final class WebklexImapReader implements ImapReader
                     'seen' => $this->flag($m, 'Seen'),
                     'flagged' => $this->flag($m, 'Flagged'),
                     'answered' => $this->flag($m, 'Answered'),
-                    'hasAttachments' => $this->hasAttachments($m),
+                    // Attachment detection is intentionally omitted here: probing
+                    // it per message forces an extra body/structure fetch and made
+                    // large folders take tens of seconds. It is shown when the
+                    // message is opened (its parts are fetched then anyway).
                 ];
             }
 
@@ -121,6 +124,7 @@ final class WebklexImapReader implements ImapReader
                 'html' => $html !== '' ? $html : null,
                 'text' => $text !== '' ? $text : null,
                 'attachments' => $attachments,
+                'rawHeaders' => $this->str($m->getHeader()?->raw ?? ''),
             ];
         } finally {
             $this->close($client);
@@ -271,15 +275,6 @@ final class WebklexImapReader implements ImapReader
     {
         try {
             return $message->hasFlag($flag);
-        } catch (\Throwable) {
-            return false;
-        }
-    }
-
-    private function hasAttachments($message): bool
-    {
-        try {
-            return $message->getAttachments()->count() > 0;
         } catch (\Throwable) {
             return false;
         }

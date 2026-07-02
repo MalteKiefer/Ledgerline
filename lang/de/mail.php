@@ -67,4 +67,7 @@ return [
     'download' => 'Herunterladen',
     'back_to_list' => 'Zurück',
     'close' => 'Schließen',
+    'show_headers' => 'Kopfzeilen anzeigen',
+    'headers_title' => 'Nachrichten-Kopfzeilen',
+    'delete_question' => 'Diese Nachricht in den Papierkorb verschieben oder endgültig löschen?',
 ];
