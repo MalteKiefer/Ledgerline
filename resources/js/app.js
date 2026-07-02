@@ -864,50 +864,6 @@ Alpine.data('photoMap', (pointsUrl, mapZoom = 13) => ({
     },
 }));
 
-/**
- * Code editor (CodeMirror 6): line numbers, in-file search (Ctrl/Cmd+F),
- * syntax highlighting with detection by filename and a manual language picker.
- * The document is synced into a hidden input on submit.
- */
-Alpine.data('codeEditor', (initial = '', filename = '') => ({
-    view: null,
-    langComp: new Compartment(),
-    language: '',
-    languageOptions: languages.map((l) => l.name).sort((a, b) => a.localeCompare(b)),
-
-    init() {
-        this.view = new EditorView({
-            parent: this.$refs.editor,
-            state: EditorState.create({
-                doc: initial,
-                extensions: [
-                    basicSetup,
-                    this.langComp.of([]),
-                    EditorView.theme({ '&': { height: '60vh' }, '.cm-scroller': { overflow: 'auto' } }),
-                ],
-            }),
-        });
-
-        const detected = filename ? LanguageDescription.matchFilename(languages, filename) : null;
-        if (detected) {
-            this.applyLanguage(detected);
-        }
-    },
-
-    onLanguageChange() {
-        const desc = languages.find((l) => l.name === this.language);
-        desc ? this.applyLanguage(desc) : this.view.dispatch({ effects: this.langComp.reconfigure([]) });
-    },
-
-    applyLanguage(desc) {
-        this.language = desc.name;
-        desc.load().then((support) => this.view.dispatch({ effects: this.langComp.reconfigure(support) }));
-    },
-
-    sync() {
-        this.$refs.content.value = this.view.state.doc.toString();
-    },
-}));
 
 /**
  * Editor for an encrypted file: fetches the ciphertext, decrypts it to text in
@@ -1148,10 +1104,17 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     up: { active: false, done: 0, total: 0 },
     dl: { active: false, done: 0, total: 0 },
     error: '',
+    dragging: false,
+    viewer: { open: false, kind: 'none', src: '', row: null, saving: false, saved: false },
+    editorView: null,
+    editorLang: '',
+    langComp: null,
+    languageOptions: languages.map((l) => l.name).sort((a, b) => a.localeCompare(b)),
 
     async init() {
         await this.$store.vault.boot();
         window.addEventListener('vault-unlocked', () => this.load());
+        this.initDropzone();
         if (! this.$store.vault.configured) {
             this.state = 'unconfigured';
             return;
@@ -1161,6 +1124,51 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             return;
         }
         await this.load();
+    },
+
+    initDropzone() {
+        let depth = 0;
+        window.addEventListener('dragenter', (e) => {
+            if (e.dataTransfer?.types?.includes('Files')) { depth++; this.dragging = true; }
+        });
+        window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (! depth) this.dragging = false; });
+        window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
+    },
+
+    async drop(event) {
+        this.dragging = false;
+        if (this.state !== 'ready') return;
+        const items = event.dataTransfer.items;
+        let files = [];
+
+        // Prefer the entries API so dropped folders (and subfolders) are walked.
+        if (items && items.length && items[0].webkitGetAsEntry) {
+            const entries = [...items].map((i) => i.webkitGetAsEntry()).filter(Boolean);
+            for (const entry of entries) {
+                await this.walkEntry(entry, '', files);
+            }
+        } else {
+            files = [...event.dataTransfer.files].map((f) => ({ file: f, path: f.name }));
+        }
+        await this.uploadItems(files);
+    },
+
+    walkEntry(entry, prefix, out) {
+        return new Promise((resolve) => {
+            if (entry.isFile) {
+                entry.file((f) => { out.push({ file: f, path: prefix + f.name }); resolve(); }, () => resolve());
+                return;
+            }
+            const reader = entry.createReader();
+            const readBatch = () => reader.readEntries(async (batch) => {
+                if (! batch.length) { resolve(); return; }
+                for (const child of batch) {
+                    await this.walkEntry(child, prefix + entry.name + '/', out);
+                }
+                readBatch(); // readEntries yields in chunks; keep going until empty
+            }, () => resolve());
+            readBatch();
+        });
     },
 
     async load() {
@@ -1356,14 +1364,44 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     /* ---- Content operations ---- */
 
-    async upload(fileList) {
-        const files = [...fileList];
-        if (! files.length) return;
-        this.up = { active: true, done: 0, total: files.length };
+    upload(fileList) {
+        return this.uploadItems([...fileList].map((f) => ({ file: f, path: f.name })));
+    },
 
-        for (const file of files) {
+    // Upload files (optionally with relative paths from a dropped folder),
+    // recreating the folder chain in the manifest under the current folder.
+    // Existing sibling folders are reused by name so re-drops don't duplicate.
+    async uploadItems(items) {
+        if (! items.length) return;
+        this.up = { active: true, done: 0, total: items.length };
+
+        const dirCache = new Map(); // relative dir path -> folder id
+        dirCache.set('', this.cwd);
+        const folderFor = (path) => {
+            const parts = path.split('/');
+            parts.pop(); // drop the filename
+            let acc = '';
+            let parent = this.cwd;
+            for (const seg of parts) {
+                acc = acc ? `${acc}/${seg}` : seg;
+                if (dirCache.has(acc)) {
+                    parent = dirCache.get(acc);
+                    continue;
+                }
+                const existing = this.manifest.folders.find((f) => (f.parent ?? null) === parent && f.name === seg);
+                const id = existing ? existing.id : crypto.randomUUID();
+                if (! existing) {
+                    this.manifest.folders.push({ id, name: seg, parent });
+                }
+                dirCache.set(acc, id);
+                parent = id;
+            }
+            return parent;
+        };
+
+        for (const item of items) {
             try {
-                const bytes = new Uint8Array(await file.arrayBuffer());
+                const bytes = new Uint8Array(await item.file.arrayBuffer());
                 const { blob, key } = Vault.encryptBlob(bytes);
 
                 const data = new FormData();
@@ -1380,10 +1418,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 this.manifest.files.push({
                     id: crypto.randomUUID(),
                     blob: id,
-                    name: file.name,
-                    mime: file.type || 'application/octet-stream',
-                    size: file.size,
-                    folder: this.cwd,
+                    name: item.file.name,
+                    mime: item.file.type || 'application/octet-stream',
+                    size: item.file.size,
+                    folder: folderFor(item.path),
                     key,
                     created: new Date().toISOString(),
                 });
@@ -1397,20 +1435,143 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         await this.persist().catch(() => {});
     },
 
+    async fetchPlain(row) {
+        const res = await fetch(`${config.blobBase}/${row.blob}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (! res.ok) throw new Error('fetch failed');
+        const cipher = new Uint8Array(await res.arrayBuffer());
+        return Vault.decryptBlob(cipher, row.key, row.size);
+    },
+
     async download(row) {
         this.dl = { active: true, done: 0, total: 1 };
         try {
-            const res = await fetch(`${config.blobBase}/${row.blob}`, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            if (! res.ok) throw new Error('fetch failed');
-            const cipher = new Uint8Array(await res.arrayBuffer());
-            const plain = Vault.decryptBlob(cipher, row.key, row.size);
-            saveBlobAs(plain, row.name, row.mime);
+            saveBlobAs(await this.fetchPlain(row), row.name, row.mime);
         } catch (e) {
             this.error = labels.downloadFailed;
         }
         this.dl.active = false;
+    },
+
+    /* ---- Preview & editor (all in the browser, nothing readable leaves it) ---- */
+
+    async openFile(row) {
+        this.dl = { active: true, done: 0, total: 1 };
+        try {
+            const plain = await this.fetchPlain(row);
+            this.dl.active = false;
+            const mime = row.mime || 'application/octet-stream';
+
+            if (mime.startsWith('image/')) {
+                this.viewer = { open: true, kind: 'image', src: URL.createObjectURL(new Blob([plain], { type: mime })), row, saving: false, saved: false };
+                return;
+            }
+            if (mime === 'application/pdf') {
+                this.viewer = { open: true, kind: 'pdf', src: URL.createObjectURL(new Blob([plain], { type: mime })), row, saving: false, saved: false };
+                return;
+            }
+            // Editable text: valid UTF-8 and reasonably small.
+            if (row.size <= 2 * 1024 * 1024) {
+                try {
+                    const text = new TextDecoder('utf-8', { fatal: true }).decode(plain);
+                    this.viewer = { open: true, kind: 'text', src: '', row, saving: false, saved: false };
+                    this.$nextTick(() => this.mountEditor(text, row.name));
+                    return;
+                } catch (e) { /* binary: fall through */ }
+            }
+            this.viewer = { open: true, kind: 'none', src: '', row, saving: false, saved: false };
+        } catch (e) {
+            this.dl.active = false;
+            this.error = labels.downloadFailed;
+        }
+    },
+
+    mountEditor(text, filename) {
+        this.langComp = new Compartment();
+        this.editorView = new EditorView({
+            parent: this.$refs.viewerEditor,
+            state: EditorState.create({
+                doc: text,
+                extensions: [
+                    basicSetup,
+                    this.langComp.of([]),
+                    EditorView.theme({ '&': { height: '60vh' }, '.cm-scroller': { overflow: 'auto' } }),
+                ],
+            }),
+        });
+        const detected = filename ? LanguageDescription.matchFilename(languages, filename) : null;
+        if (detected) {
+            this.applyEditorLanguage(detected);
+        }
+    },
+
+    onEditorLanguageChange() {
+        const desc = languages.find((l) => l.name === this.editorLang);
+        desc ? this.applyEditorLanguage(desc) : this.editorView.dispatch({ effects: this.langComp.reconfigure([]) });
+    },
+
+    applyEditorLanguage(desc) {
+        this.editorLang = desc.name;
+        desc.load().then((support) => this.editorView.dispatch({ effects: this.langComp.reconfigure(support) }));
+    },
+
+    // Save the edited text: encrypt into a NEW blob, point the manifest at it,
+    // then discard the old blob — an atomic swap from the manifest's viewpoint.
+    async saveText() {
+        const row = this.viewer.row;
+        if (! this.editorView || ! row) return;
+        this.viewer.saving = true;
+        this.viewer.saved = false;
+        try {
+            const bytes = new TextEncoder().encode(this.editorView.state.doc.toString());
+            const { blob, key } = Vault.encryptBlob(bytes);
+
+            const data = new FormData();
+            data.append('_token', config.token);
+            data.append('blob', blob, 'blob');
+            const res = await fetch(config.blobBase, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: data,
+            });
+            if (! res.ok) throw new Error('upload failed');
+            const { id } = await res.json();
+
+            const entry = this.manifest.files.find((f) => f.id === row.id);
+            const oldBlob = entry?.blob;
+            if (entry) {
+                entry.blob = id;
+                entry.key = key;
+                entry.size = bytes.length;
+            }
+            await this.persist();
+
+            row.blob = id;
+            row.key = key;
+            row.size = bytes.length;
+            if (oldBlob && oldBlob !== id) {
+                fetch(`${config.blobBase}/${oldBlob}`, {
+                    method: 'DELETE',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                }).catch(() => {});
+            }
+            this.viewer.saved = true;
+        } catch (e) {
+            this.error = labels.saveFailed;
+        }
+        this.viewer.saving = false;
+    },
+
+    closeViewer() {
+        if (this.viewer.src) {
+            URL.revokeObjectURL(this.viewer.src);
+        }
+        if (this.editorView) {
+            this.editorView.destroy();
+            this.editorView = null;
+        }
+        this.viewer = { open: false, kind: 'none', src: '', row: null, saving: false, saved: false };
     },
 }));
 
