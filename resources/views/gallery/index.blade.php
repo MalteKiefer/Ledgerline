@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('gallery.title')">
-  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed', array_filter(['q' => $searchQuery ?: null, 'favorites' => $favoritesOnly ? 1 : null])) }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }}, '{{ route('gallery.months') }}')"
+  <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed', array_filter(['q' => $searchQuery ?: null, 'favorites' => $favoritesOnly ? 1 : null])) }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }}, '{{ route('gallery.months') }}', '{{ route('gallery.geocode.reverse') }}')"
        x-init="initGallery()"
        @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()"
        @keydown.window="onKeydown($event)">
