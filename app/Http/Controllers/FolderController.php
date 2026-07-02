@@ -7,8 +7,10 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreFolderRequest;
 use App\Models\File;
 use App\Models\Folder;
+use App\Models\Tag;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -81,6 +83,24 @@ class FolderController extends Controller
         return redirect()
             ->route('files.index', ['folder' => $folder->id])
             ->with('status', __('flash.folder_renamed'));
+    }
+
+    /**
+     * Sync a folder's tags from the free-text tag input.
+     */
+    public function updateTags(Request $request, Folder $folder): RedirectResponse
+    {
+        $validated = $request->validate([
+            'tags' => ['array'],
+            'tags.*' => ['string', 'max:50'],
+        ]);
+
+        $tagIds = collect($validated['tags'] ?? [])
+            ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
+            ->all();
+        $folder->tags()->sync($tagIds);
+
+        return back()->with('status', __('flash.folder_updated'));
     }
 
     public function destroy(Folder $folder): RedirectResponse

@@ -36,6 +36,7 @@ return [
     'folder_created' => 'Folder created.',
     'folder_deleted' => 'Folder deleted; its contents moved up one level.',
     'folder_renamed' => 'Folder renamed.',
+    'folder_updated' => 'Folder updated.',
     'gallery_settings_saved' => 'Gallery settings saved.',
     'security_saved' => 'Security settings saved.',
     'import_batch_done' => 'All invoices reviewed.',
