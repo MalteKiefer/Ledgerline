@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use App\Services\Files\ReverseGeocoder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -16,7 +16,7 @@ class GeocoderTest extends TestCase
 
     public function test_nearby_coordinates_share_one_lookup(): void
     {
-        CompanyProfile::current()->update(['gallery_geocode_grid_km' => 0.5]);
+        AppSettings::current()->update(['gallery_geocode_grid_km' => 0.5]);
         Http::fake(['nominatim.openstreetmap.org/*' => Http::response(['display_name' => 'Bayreuth'])]);
 
         $geo = app(ReverseGeocoder::class);

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Files;
 
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -146,7 +146,7 @@ class ReverseGeocoder
     private function snapToGrid(float $lat, float $lon): array
     {
         try {
-            $km = (float) (CompanyProfile::current()->gallery_geocode_grid_km
+            $km = (float) (AppSettings::current()->gallery_geocode_grid_km
                 ?? config('gallery.geocode_grid_km', 0.5));
         } catch (Throwable) {
             $km = (float) config('gallery.geocode_grid_km', 0.5);

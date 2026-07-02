@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Gallery;
 
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -107,7 +107,7 @@ class PhotoStorage
      */
     public function applyNameTemplate(Photo $photo): void
     {
-        $template = CompanyProfile::current()->gallery_filename_template;
+        $template = AppSettings::current()->gallery_filename_template;
         $name = $this->filenameTemplate->render($photo, $template);
 
         if ($name === null) {
@@ -212,7 +212,7 @@ class PhotoStorage
      */
     private function posterFrame(Photo $photo, string $videoTmp): string
     {
-        $second = (int) (CompanyProfile::current()->gallery_video_frame ?? 1);
+        $second = (int) (AppSettings::current()->gallery_video_frame ?? 1);
         $poster = tempnam(sys_get_temp_dir(), 'poster').'.jpg';
         $this->video->poster($videoTmp, $second, $poster);
 

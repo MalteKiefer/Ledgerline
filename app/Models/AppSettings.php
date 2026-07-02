@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The single, global workspace settings row: gallery and vault options.
+ * The single, global workspace settings row: gallery, vault and mail options.
  *
  * There is only ever one row; use current() to fetch (or lazily create) it.
  */
@@ -24,8 +24,10 @@ use Illuminate\Database\Eloquent\Model;
     'vault_idle_minutes',
     'mail_sync_minutes',
 ])]
-class CompanyProfile extends Model
+class AppSettings extends Model
 {
+    protected $table = 'app_settings';
+
     /**
      * @return array<string, string>
      */
@@ -44,7 +46,7 @@ class CompanyProfile extends Model
     }
 
     /**
-     * The company profile, creating an empty one on first use.
+     * The settings row, creating an empty one on first use.
      */
     public static function current(): self
     {

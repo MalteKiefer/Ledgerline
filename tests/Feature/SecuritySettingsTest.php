@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -21,8 +21,8 @@ class SecuritySettingsTest extends TestCase
         $this->put(route('settings.security.update'), ['vault_idle_minutes' => 10, 'mail_sync_minutes' => 5])
             ->assertRedirect(route('settings.security.edit'));
 
-        $this->assertSame(10, CompanyProfile::current()->vault_idle_minutes);
-        $this->assertSame(5, CompanyProfile::current()->mail_sync_minutes);
+        $this->assertSame(10, AppSettings::current()->vault_idle_minutes);
+        $this->assertSame(5, AppSettings::current()->mail_sync_minutes);
     }
 
     public function test_idle_timeout_is_bounded(): void

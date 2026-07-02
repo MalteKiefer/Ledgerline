@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +17,7 @@ class SecurityController extends Controller
 {
     public function edit(): View
     {
-        return view('settings.security.edit', ['company' => CompanyProfile::current()]);
+        return view('settings.security.edit', ['company' => AppSettings::current()]);
     }
 
     public function update(Request $request): RedirectResponse
@@ -29,7 +29,7 @@ class SecurityController extends Controller
             'mail_sync_minutes' => ['required', 'integer', 'min:5', 'lte:vault_idle_minutes'],
         ]);
 
-        CompanyProfile::current()->update($validated);
+        AppSettings::current()->update($validated);
 
         return redirect()->route('settings.security.edit')->with('status', __('flash.security_saved'));
     }
