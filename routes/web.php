@@ -5,9 +5,6 @@ declare(strict_types=1);
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\FileController;
-use App\Http\Controllers\FileOverviewController;
-use App\Http\Controllers\FolderController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProfileController;
@@ -15,8 +12,9 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
-use App\Http\Controllers\Settings\TagController as SettingsTagController;
+use App\Http\Controllers\VaultBlobController;
 use App\Http\Controllers\VaultController;
+use App\Http\Controllers\VaultManifestController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -42,10 +40,6 @@ Route::middleware('auth')->group(function (): void {
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
-    Route::get('/settings/tags', [SettingsTagController::class, 'index'])->name('settings.tags.index');
-    Route::post('/settings/tags', [SettingsTagController::class, 'store'])->name('settings.tags.store');
-    Route::put('/settings/tags/{tag}', [SettingsTagController::class, 'update'])->name('settings.tags.update');
-    Route::delete('/settings/tags/{tag}', [SettingsTagController::class, 'destroy'])->name('settings.tags.destroy');
     Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
     Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
     Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
@@ -88,29 +82,12 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/vault', [VaultController::class, 'store'])->name('vault.store');
     Route::put('/vault', [VaultController::class, 'rotate'])->name('vault.rotate');
 
-    // Files: attached to a customer or project; a team-wide overview; download
-    // and delete by id.
-    Route::get('/files', FileOverviewController::class)->name('files.index');
-    Route::post('/files/general', [FileController::class, 'storeGeneral'])->name('files.store.general');
-    Route::post('/files/conflicts', [FileController::class, 'conflicts'])->name('files.conflicts');
-    Route::post('/files/bulk/download-manifest', [FileController::class, 'downloadManifest'])->name('files.bulk.manifest');
-    Route::post('/files/bulk/move', [FileController::class, 'bulkMove'])->name('files.bulk.move');
-    Route::post('/files/bulk/delete', [FileController::class, 'bulkDelete'])->name('files.bulk.delete');
-    Route::put('/files/{file}/rename', [FileController::class, 'rename'])->name('files.rename');
-
-    // Virtual folders for organising files.
-    Route::post('/folders', [FolderController::class, 'store'])->name('folders.store');
-    Route::put('/folders/{folder}', [FolderController::class, 'update'])->name('folders.update');
-    Route::put('/folders/{folder}/tags', [FolderController::class, 'updateTags'])->name('folders.tags');
-    Route::delete('/folders/{folder}', [FolderController::class, 'destroy'])->name('folders.destroy');
-    Route::post('/files/{file}/extract', [FileController::class, 'extract'])->name('files.extract');
-    Route::get('/folders/list', [FolderController::class, 'index'])->name('folders.list');
-    Route::get('/folders/{folder}/descendants', [FolderController::class, 'descendants'])->name('folders.descendants');
-    Route::put('/files/{file}/encrypt', [FileController::class, 'encrypt'])->name('files.encrypt');
-    Route::get('/files/{file}/edit', [FileController::class, 'edit'])->name('files.edit');
-    Route::put('/files/{file}/content', [FileController::class, 'updateContent'])->name('files.content');
-    Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
-    Route::get('/files/{file}', [FileController::class, 'show'])->name('files.show');
-    Route::put('/files/{file}', [FileController::class, 'update'])->name('files.update');
-    Route::delete('/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');
+    // Zero-knowledge file vault: the server stores one encrypted manifest and
+    // opaque uuid-keyed blobs; it cannot see names, sizes, structure or counts.
+    Route::view('/files', 'files.index')->name('files.index');
+    Route::get('/vault/manifest', [VaultManifestController::class, 'show'])->name('vault.manifest.show');
+    Route::put('/vault/manifest', [VaultManifestController::class, 'update'])->name('vault.manifest.update');
+    Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
+    Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
+    Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
 });

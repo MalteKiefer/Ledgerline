@@ -58,6 +58,8 @@ return [
         'recent_files' => 'Letzte Dateien',
         'view_all' => 'Alle anzeigen',
         'no_files' => 'Noch keine Dateien.',
+        'vault_ready' => 'Tresor eingerichtet — verschlüsselten Datei-Browser öffnen.',
+        'vault_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
     ],
     'profile' => [
         'title' => 'Profil',

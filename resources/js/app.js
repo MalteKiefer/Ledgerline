@@ -388,479 +388,6 @@ Alpine.data('invoiceLines', (initial = []) => ({
  *
  * @param {number[]} allIds  Ids of the files currently listed.
  */
-Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
-    allIds,
-    folderIds: config.folderIds ?? [],
-    selected: [],
-    selectedFolders: [],
-    moveOpen: false,
-    moveIds: [],
-    moveFolderIds: [],
-    target: '',
-    deleteOpen: false,
-    renaming: null,
-    enc: { active: false, done: 0, total: 0 },
-    dl: { active: false, done: 0, total: 0 },
-
-    get selectionCount() {
-        return this.selected.length + this.selectedFolders.length;
-    },
-
-    // Drag-and-drop upload (whole-window dropzone, folders included).
-    dragging: false,
-    uploading: false,
-    progress: { done: 0, total: 0 },
-    conflictOpen: false,
-    conflictCount: 0,
-    pendingFiles: [],
-    uploadItems: [],
-
-    initDropzone() {
-        let depth = 0;
-        window.addEventListener('dragenter', (e) => {
-            if (e.dataTransfer?.types?.includes('Files')) { depth++; this.dragging = true; }
-        });
-        window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (! depth) this.dragging = false; });
-        window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
-    },
-
-    async drop(event) {
-        this.dragging = false;
-        const items = event.dataTransfer.items;
-        let files = [];
-
-        // Prefer the entries API so dropped folders (and subfolders) are walked.
-        if (items && items.length && items[0].webkitGetAsEntry) {
-            const entries = [...items].map((i) => i.webkitGetAsEntry()).filter(Boolean);
-            for (const entry of entries) {
-                await this.walkEntry(entry, '', files);
-            }
-        } else {
-            files = [...event.dataTransfer.files].map((f) => ({ file: f, path: f.name }));
-        }
-
-        await this.startUpload(files);
-    },
-
-    // Check for same-name clashes first; ask how to handle them if any.
-    async startUpload(files) {
-        if (! files.length) {
-            return;
-        }
-
-        // Zero-knowledge: once a vault exists, every upload is encrypted in the
-        // browser. Names are opaque, so there is no server-side conflict check.
-        await this.$store.vault.boot();
-        if (this.$store.vault.configured) {
-            if (! this.$store.vault.unlocked) {
-                window.dispatchEvent(new CustomEvent('vault-panel'));
-                return;
-            }
-            await this.uploadFiles(files, 'rename');
-            return;
-        }
-
-        let conflicts = [];
-        try {
-            const data = new FormData();
-            data.append('_token', config.token);
-            if (config.folderId) data.append('folder_id', config.folderId);
-            if (config.customerId) data.append('customer_id', config.customerId);
-            if (config.projectId) data.append('project_id', config.projectId);
-            files.forEach((item) => data.append('paths[]', item.path));
-            const r = await fetch(config.conflictsUrl, { method: 'POST', headers: { Accept: 'application/json' }, body: data });
-            if (r.ok) conflicts = (await r.json()).conflicts || [];
-        } catch (e) { /* if the check fails, fall through and upload */ }
-
-        if (conflicts.length) {
-            this.pendingFiles = files;
-            this.conflictCount = conflicts.length;
-            this.conflictOpen = true;
-            return;
-        }
-
-        await this.uploadFiles(files, 'rename');
-    },
-
-    resolveConflict(strategy) {
-        this.conflictOpen = false;
-        const files = this.pendingFiles;
-        this.pendingFiles = [];
-        this.uploadFiles(files, strategy);
-    },
-
-    walkEntry(entry, prefix, out) {
-        return new Promise((resolve) => {
-            if (entry.isFile) {
-                entry.file((f) => { out.push({ file: f, path: prefix + f.name }); resolve(); }, () => resolve());
-                return;
-            }
-            const reader = entry.createReader();
-            const readBatch = () => reader.readEntries(async (batch) => {
-                if (! batch.length) { resolve(); return; }
-                for (const child of batch) {
-                    await this.walkEntry(child, prefix + entry.name + '/', out);
-                }
-                readBatch(); // readEntries yields in chunks; keep going until empty
-            }, () => resolve());
-            readBatch();
-        });
-    },
-
-    async uploadFiles(files, strategy = 'rename') {
-        this.uploading = true;
-        this.progress = { done: 0, total: files.length };
-        this.uploadItems = files.map((item) => ({ name: item.path, done: false }));
-
-        const encrypting = this.$store.vault.configured && this.$store.vault.unlocked;
-
-        // For encrypted uploads the server cannot read folder names, so recreate
-        // any dropped-folder structure here: create the encrypted folder tree and
-        // map each relative directory to the folder id it became.
-        const folderMap = encrypting ? await this.ensureEncryptedFolders(files) : null;
-        const dirOf = (path) => { const p = path.split('/'); p.pop(); return p.join('/'); };
-
-        // Send in batches to stay within the per-request file limit.
-        const chunkSize = 25;
-        for (let i = 0; i < files.length; i += chunkSize) {
-            const chunk = files.slice(i, i + chunkSize);
-            const data = new FormData();
-            data.append('_token', config.token);
-            data.append('on_conflict', strategy);
-            if (config.folderId) data.append('folder_id', config.folderId);
-            if (config.customerId) data.append('customer_id', config.customerId);
-            if (config.projectId) data.append('project_id', config.projectId);
-            if (encrypting) {
-                data.append('encrypted', '1');
-                for (const item of chunk) {
-                    const { blob, encMeta, encFileKey } = await Vault.encryptFile(item.file);
-                    data.append('files[]', blob, 'blob');
-                    data.append('enc_metadata[]', encMeta);
-                    data.append('enc_file_key[]', encFileKey);
-                    data.append('folder_ids[]', folderMap.get(dirOf(item.path)) ?? '');
-                }
-            } else {
-                chunk.forEach((item) => {
-                    data.append('files[]', item.file);
-                    data.append('paths[]', item.path);
-                });
-            }
-            try {
-                await fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data });
-            } catch (e) { /* continue with remaining batches */ }
-            for (let j = i; j < i + chunk.length; j++) {
-                this.uploadItems[j].done = true;
-            }
-            this.progress.done = Math.min(files.length, i + chunk.length);
-        }
-
-        window.location.reload();
-    },
-
-    // Recreate a dropped folder tree as encrypted folders. Returns a Map from
-    // each relative directory path to the folder id ('' = current folder).
-    // Existing folders (matched by decrypted name under the same parent) are
-    // reused instead of duplicated; missing segments are created parents-first.
-    async ensureEncryptedFolders(files) {
-        const rootId = config.folderId ?? null;
-        const map = new Map();
-        map.set('', rootId);
-
-        const dirs = new Set();
-        for (const item of files) {
-            const parts = item.path.split('/');
-            parts.pop(); // drop the filename
-            let acc = '';
-            for (const seg of parts) {
-                acc = acc ? `${acc}/${seg}` : seg;
-                dirs.add(acc);
-            }
-        }
-        if (! dirs.size) {
-            return map;
-        }
-
-        // Snapshot existing folders so a re-dropped tree reuses them. Created
-        // folders are pushed back in so sibling segments dedupe within this run.
-        let existing = [];
-        try {
-            existing = await (await fetch(config.foldersListUrl, {
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            })).json();
-        } catch (e) { /* fall back to always-create */ }
-
-        const sameParent = (a, b) => (a ?? null) === (b ?? null);
-        const folderName = (f) => {
-            if (f.enc_name) {
-                try { return Vault.decryptFileMeta(f.enc_name).name; } catch (e) { return null; }
-            }
-            return f.name;
-        };
-
-        // Shallowest first, so each folder's parent already exists in the map.
-        const ordered = [...dirs].sort((a, b) => a.split('/').length - b.split('/').length);
-        for (const dir of ordered) {
-            const cut = dir.lastIndexOf('/');
-            const parentPath = cut === -1 ? '' : dir.slice(0, cut);
-            const name = cut === -1 ? dir : dir.slice(cut + 1);
-            const parentId = map.get(parentPath);
-
-            const match = existing.find((f) => sameParent(f.parent_id, parentId) && folderName(f) === name);
-            if (match) {
-                map.set(dir, match.id);
-                continue;
-            }
-
-            const encName = Vault.sealName(name);
-            const body = new FormData();
-            body.append('_token', config.token);
-            body.append('enc_name', encName);
-            if (parentId != null) body.append('parent_id', parentId);
-
-            const r = await fetch(config.foldersUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                body,
-            });
-            const id = (await r.json()).id;
-            map.set(dir, id);
-            existing.push({ id, parent_id: parentId ?? null, name: '', enc_name: encName });
-        }
-
-        return map;
-    },
-
-    toggleAll(event) {
-        this.selected = event.target.checked ? [...this.allIds] : [];
-        this.selectedFolders = event.target.checked ? [...this.folderIds] : [];
-    },
-
-    /** Open the move modal for a single file, or with no argument the selection. */
-    openMove(id = null) {
-        this.moveIds = id === null ? [...this.selected] : [id];
-        this.moveFolderIds = id === null ? [...this.selectedFolders] : [];
-        this.target = '';
-        this.moveOpen = true;
-    },
-
-    /** Open the move modal for a single folder. */
-    openMoveFolder(id) {
-        this.moveIds = [];
-        this.moveFolderIds = [id];
-        this.target = '';
-        this.moveOpen = true;
-    },
-
-    openBulkDelete() {
-        if (this.selectionCount) {
-            this.deleteOpen = true;
-        }
-    },
-
-    startRename(id) {
-        this.renaming = id;
-        this.$nextTick(() => this.$refs['rename-' + id]?.focus());
-    },
-
-    // --- Encrypting existing files and folders (zero-knowledge, in place) ---
-
-    async requireVault() {
-        await this.$store.vault.boot();
-        if (! this.$store.vault.configured || ! this.$store.vault.unlocked) {
-            window.dispatchEvent(new CustomEvent('vault-panel'));
-            return false;
-        }
-        return true;
-    },
-
-    async encryptOneFile(id, name, mime) {
-        const bytes = await fetchCipher(`${config.fileBase}/${id}/download`);
-        const sealed = Vault.encryptContent(bytes, { name, mime: mime || 'application/octet-stream' });
-        const data = new FormData();
-        data.append('_token', config.token);
-        data.append('_method', 'PUT');
-        data.append('file', sealed.blob, 'blob');
-        data.append('enc_metadata', sealed.encMeta);
-        data.append('enc_file_key', sealed.encFileKey);
-        await fetch(`${config.fileBase}/${id}/encrypt`, {
-            method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data,
-        });
-    },
-
-    async encryptOneFolderName(id, name) {
-        const data = new FormData();
-        data.append('_token', config.token);
-        data.append('_method', 'PUT');
-        data.append('enc_name', Vault.sealName(name));
-        await fetch(`${config.folderBase}/${id}`, {
-            method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data,
-        });
-    },
-
-    // Build the work list for a folder subtree: every plaintext file, then every
-    // plaintext folder name (files first so a folder is renamed once done).
-    async folderWork(id) {
-        const tree = await (await fetch(`${config.folderBase}/${id}/descendants`, {
-            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        })).json();
-        return [
-            ...tree.files.map((f) => ({ kind: 'file', id: f.id, name: f.name, mime: f.mime_type })),
-            ...tree.folders.map((d) => ({ kind: 'folder', id: d.id, name: d.name })),
-        ];
-    },
-
-    // Run an encryption work list with a visible progress bar, then reload.
-    async runEncryption(items) {
-        if (! items.length) {
-            return;
-        }
-        this.enc = { active: true, done: 0, total: items.length };
-        for (const it of items) {
-            if (it.kind === 'file') {
-                await this.encryptOneFile(it.id, it.name, it.mime);
-            } else {
-                await this.encryptOneFolderName(it.id, it.name);
-            }
-            this.enc.done++;
-        }
-        window.location.reload();
-    },
-
-    async encryptFolder(id) {
-        if (! await this.requireVault()) return;
-        await this.runEncryption(await this.folderWork(id));
-    },
-
-    async bulkEncrypt() {
-        if (! await this.requireVault()) return;
-        const work = [];
-        for (const id of this.selected) {
-            const row = document.querySelector(`tr[data-kind="file"] input[value="${id}"]`)?.closest('tr');
-            if (row && row.dataset.fname !== undefined) {
-                work.push({ kind: 'file', id, name: row.dataset.fname, mime: row.dataset.fmime });
-            }
-        }
-        for (const id of this.selectedFolders) {
-            work.push(...await this.folderWork(id));
-        }
-        await this.runEncryption(work);
-    },
-
-    // Download the selection (files + folders, recursively) as a single zip,
-    // built entirely in the browser so encrypted files come out decrypted and
-    // no plaintext ever reaches the server.
-    async bulkDownload() {
-        if (! this.selectionCount) {
-            return;
-        }
-        await this.$store.vault.boot();
-
-        // Manifest: every file in scope with the fields to build paths + decrypt.
-        const body = new FormData();
-        body.append('_token', config.token);
-        this.selected.forEach((id) => body.append('file_ids[]', id));
-        this.selectedFolders.forEach((id) => body.append('folder_ids[]', id));
-
-        let files;
-        try {
-            files = (await (await fetch(config.manifestUrl, {
-                method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body,
-            })).json()).files;
-        } catch (e) {
-            return;
-        }
-        if (! files || ! files.length) {
-            return;
-        }
-
-        if (files.some((f) => f.is_encrypted) && ! this.$store.vault.unlocked) {
-            window.dispatchEvent(new CustomEvent('vault-panel'));
-            return;
-        }
-
-        // Folder names, to rebuild each file's relative path (decrypt as needed).
-        let folders = [];
-        try {
-            folders = await (await fetch(config.foldersListUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })).json();
-        } catch (e) { /* no folders: files land at the root */ }
-        const fmap = new Map(folders.map((f) => [f.id, f]));
-        const folderName = (f) => {
-            if (f.enc_name) {
-                try { return Vault.decryptFileMeta(f.enc_name).name; } catch (e) { return 'folder'; }
-            }
-            return f.name || 'folder';
-        };
-        const folderPath = (id) => {
-            const parts = [];
-            let cur = id;
-            while (cur != null && fmap.has(cur)) {
-                const f = fmap.get(cur);
-                parts.unshift(folderName(f));
-                cur = f.parent_id;
-            }
-            return parts;
-        };
-
-        const total = files.reduce((n, f) => n + (f.size || 0), 0);
-        if (total > 2 * 1024 * 1024 * 1024 && ! window.confirm(config.largeZipConfirm)) {
-            return;
-        }
-
-        const zip = new JSZip();
-        const used = new Set();
-        this.dl = { active: true, done: 0, total: files.length };
-        for (const f of files) {
-            try {
-                const fileName = f.is_encrypted
-                    ? (Vault.decryptFileMeta(f.enc_metadata).name || `file-${f.id}`)
-                    : (f.name || `file-${f.id}`);
-                let path = [...folderPath(f.folder_id), fileName].join('/');
-                let candidate = path;
-                let i = 1;
-                while (used.has(candidate)) {
-                    const dot = path.lastIndexOf('.');
-                    candidate = dot > 0 ? `${path.slice(0, dot)} (${++i})${path.slice(dot)}` : `${path} (${++i})`;
-                }
-                used.add(candidate);
-
-                const bytes = await fetchCipher(`${config.fileBase}/${f.id}/download`);
-                zip.file(candidate, f.is_encrypted ? Vault.decryptFile(bytes, f.enc_file_key) : bytes);
-            } catch (e) { /* skip a file that cannot be fetched/decrypted */ }
-            this.dl.done++;
-        }
-
-        const blob = await zip.generateAsync({ type: 'blob' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'files.zip';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-        this.dl.active = false;
-    },
-
-    // Bulk bar rename is only shown for a single selection.
-    bulkRename() {
-        if (this.selected.length === 1) {
-            this.startRename(this.selected[0]);
-        } else if (this.selectedFolders.length === 1) {
-            window.dispatchEvent(new CustomEvent('rename-folder', { detail: this.selectedFolders[0] }));
-        }
-    },
-}));
-
-/**
- * Gallery uploader: accepts dropped/selected images and uploads them one at a
- * time via XMLHttpRequest, exposing a per-file progress list (Immich-style).
- * Reloads the page when the batch finishes so the timeline shows the new photos.
- *
- * @param {string} url       The gallery store endpoint.
- * @param {string} token     CSRF token.
- * @param {string} feedUrl   The infinite-scroll feed endpoint.
- * @param {boolean} hasMore  Whether a second page exists.
- */
 Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13, monthsUrl = '', reverseUrl = '') => ({
     dragging: false,
     queue: [],
@@ -1387,107 +914,6 @@ Alpine.data('codeEditor', (initial = '', filename = '') => ({
  * the browser, edits it in CodeMirror, and on save re-encrypts and PUTs the new
  * ciphertext. The server never sees the plaintext. Binary content is refused.
  */
-Alpine.data('encCodeEditor', (downloadUrl, saveUrl, token, encMeta, encFileKey) => ({
-    state: 'loading', // loading | locked | binary | ready | saving | error
-    error: '',
-    view: null,
-    langComp: new Compartment(),
-    language: '',
-    languageOptions: languages.map((l) => l.name).sort((a, b) => a.localeCompare(b)),
-    meta: null,
-
-    async init() {
-        await this.$store.vault.boot();
-        if (! this.$store.vault.unlocked) {
-            this.state = 'locked';
-            return;
-        }
-        try {
-            this.meta = Vault.decryptFileMeta(encMeta);
-            const cipher = await fetchCipher(downloadUrl);
-            const plain = Vault.decryptFile(cipher, encFileKey);
-            let text;
-            try {
-                text = new TextDecoder('utf-8', { fatal: true }).decode(plain);
-            } catch (e) {
-                this.state = 'binary';
-                return;
-            }
-            this.state = 'ready';
-            this.$nextTick(() => this.mount(text));
-        } catch (e) {
-            this.state = 'error';
-        }
-    },
-
-    mount(text) {
-        this.view = new EditorView({
-            parent: this.$refs.editor,
-            state: EditorState.create({
-                doc: text,
-                extensions: [
-                    basicSetup,
-                    this.langComp.of([]),
-                    EditorView.theme({ '&': { height: '60vh' }, '.cm-scroller': { overflow: 'auto' } }),
-                ],
-            }),
-        });
-        const detected = this.meta?.name ? LanguageDescription.matchFilename(languages, this.meta.name) : null;
-        if (detected) {
-            this.applyLanguage(detected);
-        }
-    },
-
-    onLanguageChange() {
-        const desc = languages.find((l) => l.name === this.language);
-        desc ? this.applyLanguage(desc) : this.view.dispatch({ effects: this.langComp.reconfigure([]) });
-    },
-
-    applyLanguage(desc) {
-        this.language = desc.name;
-        desc.load().then((support) => this.view.dispatch({ effects: this.langComp.reconfigure(support) }));
-    },
-
-    async save() {
-        if (! this.view) {
-            return;
-        }
-        this.state = 'saving';
-        this.error = '';
-        const bytes = new TextEncoder().encode(this.view.state.doc.toString());
-        const sealed = Vault.encryptContent(bytes, { name: this.meta.name, mime: this.meta.mime });
-
-        const data = new FormData();
-        data.append('_token', token);
-        data.append('_method', 'PUT');
-        data.append('encrypted', '1');
-        data.append('file', sealed.blob, 'blob');
-        data.append('enc_metadata', sealed.encMeta);
-        data.append('enc_file_key', sealed.encFileKey);
-
-        try {
-            const r = await fetch(saveUrl, {
-                method: 'POST',
-                headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
-                body: data,
-            });
-            if (! r.ok) {
-                throw new Error('save failed');
-            }
-            window.location.reload();
-        } catch (e) {
-            this.state = 'ready';
-            this.error = 'save';
-        }
-    },
-}));
-
-/**
- * Interactive location picker: an OSM map where you drop a pin by clicking, or
- * search an address (forward geocode) and pick a result. Opened via an
- * `open-location-picker` window event ({context, lat, lng}); on apply it emits
- * `location-picked` ({context, lat, lng}) for the opener to consume.
- */
 Alpine.data('locationPicker', (searchUrl) => ({
     open: false,
     context: null,
@@ -1654,201 +1080,15 @@ Alpine.store('vault', {
     },
 });
 
-/* ---- Encrypted-file read paths (zero-knowledge, browser-side) ---- */
+/* ---- Zero-knowledge file browser (manifest model) ----
+ *
+ * The whole directory structure lives in one encrypted manifest; the server
+ * stores only that ciphertext and anonymous, padded content blobs. Everything
+ * below — listing, search, sort, rename, move, delete — runs on the decrypted
+ * manifest in memory and is written back as a whole (optimistic-locked).
+ */
 
-// Trigger a browser download of decrypted bytes with the real name/mime.
-function saveDecrypted(bytes, name, mime) {
-    const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name || 'download';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-// Fetch a file's raw (ciphertext) bytes from the download route.
-async function fetchCipher(url) {
-    const r = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    if (! r.ok) {
-        throw new Error('fetch failed');
-    }
-    return new Uint8Array(await r.arrayBuffer());
-}
-
-// Decrypt an encrypted file and save it under its real name. If the vault is
-// locked, prompt to unlock instead.
-window.vaultDownload = async (url, encMeta, encFileKey) => {
-    await Alpine.store('vault').boot();
-    if (! Alpine.store('vault').unlocked) {
-        window.dispatchEvent(new CustomEvent('vault-panel'));
-        return;
-    }
-    const meta = Vault.decryptFileMeta(encMeta);
-    const cipher = await fetchCipher(url);
-    saveDecrypted(Vault.decryptFile(cipher, encFileKey), meta.name, meta.mime);
-};
-
-// Encrypt an existing plaintext file in place: fetch its bytes, seal them with
-// the vault key, and PUT the ciphertext + wrapped key/metadata. Prompts to set
-// up / unlock the vault if needed.
-window.vaultEncrypt = async (downloadUrl, encryptUrl, name, mime, token) => {
-    await Alpine.store('vault').boot();
-    if (! Alpine.store('vault').configured || ! Alpine.store('vault').unlocked) {
-        window.dispatchEvent(new CustomEvent('vault-panel'));
-        return;
-    }
-    const bytes = await fetchCipher(downloadUrl); // plaintext bytes for a plaintext file
-    const sealed = Vault.encryptContent(bytes, { name, mime });
-
-    const data = new FormData();
-    data.append('_token', token);
-    data.append('_method', 'PUT');
-    data.append('file', sealed.blob, 'blob');
-    data.append('enc_metadata', sealed.encMeta);
-    data.append('enc_file_key', sealed.encFileKey);
-
-    const r = await fetch(encryptUrl, {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
-        body: data,
-    });
-    if (r.ok) {
-        window.location.reload();
-    }
-};
-
-// Intercept a folder create/rename form: when a vault is set up, seal the name
-// into enc_name and drop the plaintext name before submitting. Plaintext when
-// no vault exists; prompts to unlock when the vault is locked.
-window.encryptFolderSubmit = async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const store = Alpine.store('vault');
-    await store.boot();
-    if (! store.configured) {
-        form.submit();
-        return;
-    }
-    if (! store.unlocked) {
-        window.dispatchEvent(new CustomEvent('vault-panel'));
-        return;
-    }
-    const nameInput = form.querySelector('input[name="name"]');
-    const enc = Vault.sealName(nameInput.value);
-    nameInput.removeAttribute('name'); // send only the ciphertext
-    let hidden = form.querySelector('input[name="enc_name"]');
-    if (! hidden) {
-        hidden = document.createElement('input');
-        hidden.type = 'hidden';
-        hidden.name = 'enc_name';
-        form.appendChild(hidden);
-    }
-    hidden.value = enc;
-    form.submit();
-};
-
-// Row state for an encrypted folder: decrypts its name for the link and the
-// rename input, alongside the usual rename/menu toggles.
-Alpine.data('encFolderRow', (encName, lockedLabel = '…') => ({
-    rename: false,
-    menu: false,
-    tagsOpen: false,
-    folderName: lockedLabel,
-    async init() {
-        await this.$store.vault.boot();
-        this.reveal();
-        window.addEventListener('vault-unlocked', () => this.reveal());
-    },
-    reveal() {
-        if (this.$store.vault.unlocked) {
-            try {
-                this.folderName = Vault.decryptFileMeta(encName).name;
-            } catch (e) { /* leave the placeholder */ }
-        }
-    },
-}));
-
-// Client-side name sort for the file browser. The server cannot order encrypted
-// rows (their plaintext name is empty), so when the active sort is "name" we
-// reorder the visible rows by their real (decrypted) name once the vault is
-// unlocked — folders first, then files, honouring the sort direction. Only the
-// current page is reordered; cross-page ordering stays server-driven.
-Alpine.data('folderSort', (sort, dir) => ({
-    async run() {
-        if (sort !== 'name') {
-            return;
-        }
-        window.addEventListener('vault-unlocked', () => this.reorder());
-        await this.$store.vault.boot();
-        await this.reorder();
-    },
-    async reorder() {
-        const tbody = this.$el;
-        const rows = Array.from(tbody.querySelectorAll('tr[data-kind]'));
-        const unlocked = this.$store.vault.unlocked;
-
-        const nameOf = (tr) => {
-            let n = tr.dataset.name || '';
-            if (! n && tr.dataset.enc && unlocked) {
-                try {
-                    n = Vault.decryptFileMeta(tr.dataset.enc).name || '';
-                } catch (e) { /* leave empty */ }
-            }
-            return n;
-        };
-        const factor = dir === 'desc' ? -1 : 1;
-        const kind = (tr) => (tr.dataset.kind === 'folder' ? 0 : 1);
-
-        rows.sort((a, b) => (kind(a) - kind(b))
-            || factor * nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: 'base', numeric: true }));
-
-        // Re-append in the new order (moves existing nodes, preserving state).
-        rows.forEach((tr) => tbody.appendChild(tr));
-    },
-}));
-
-// Decrypt the <option> labels of a folder <select> that carry data-enc.
-Alpine.data('encOptions', () => ({
-    async init() {
-        await this.$store.vault.boot();
-        this.reveal();
-        window.addEventListener('vault-unlocked', () => this.reveal());
-    },
-    reveal() {
-        if (! this.$store.vault.unlocked) {
-            return;
-        }
-        this.$el.querySelectorAll('option[data-enc]').forEach((opt) => {
-            try {
-                opt.textContent = Vault.decryptFileMeta(opt.dataset.enc).name;
-            } catch (e) { /* leave the placeholder */ }
-        });
-    },
-}));
-
-// Name label for an encrypted file (list row / detail heading): decrypts the
-// real name once the vault is unlocked, otherwise shows a lock placeholder.
-Alpine.data('encName', (encMeta, lockedLabel = '…') => ({
-    label: lockedLabel,
-    async init() {
-        await this.$store.vault.boot();
-        this.reveal();
-        window.addEventListener('vault-unlocked', () => this.reveal());
-    },
-    reveal() {
-        if (this.$store.vault.unlocked) {
-            try {
-                this.label = Vault.decryptFileMeta(encMeta).name;
-            } catch (e) { /* leave the placeholder */ }
-        }
-    },
-}));
-
-// Classify a mime into one of the FileType categories (mirrors the PHP
-// FileType::fromMime), so an encrypted file can show its real type once the
-// browser decrypts its metadata.
+// Map a mime to a FileType-like category key for the type column.
 function classifyMime(mime) {
     mime = (mime || '').toLowerCase();
     if (mime.startsWith('image/')) return 'IMAGE';
@@ -1872,81 +1112,305 @@ function classifyMime(mime) {
     return 'OTHER';
 }
 
-// Type-column label for an encrypted file: decrypts the mime and maps it to the
-// localized category label; shows the "encrypted" placeholder until unlocked.
-Alpine.data('encType', (encMeta, labels) => ({
-    typeLabel: labels.ENCRYPTED ?? '',
-    async init() {
-        await this.$store.vault.boot();
-        this.reveal();
-        window.addEventListener('vault-unlocked', () => this.reveal());
-    },
-    reveal() {
-        if (this.$store.vault.unlocked) {
-            try {
-                const mime = Vault.decryptFileMeta(encMeta).mime;
-                this.typeLabel = labels[classifyMime(mime)] ?? mime;
-            } catch (e) { /* leave the placeholder */ }
-        }
-    },
-}));
+function formatBytes(n) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = Number(n) || 0;
+    let i = 0;
+    while (value >= 1024 && i < units.length - 1) { value /= 1024; i++; }
+    const num = i === 0 ? String(Math.round(value)) : String(Math.round(value * 100) / 100);
+    return `${num} ${units[i]}`;
+}
 
-// Detail-page type label for an encrypted file: "Category · mime".
-Alpine.data('encMime', (encMeta, labels) => ({
-    label: labels.ENCRYPTED ?? '',
-    async init() {
-        await this.$store.vault.boot();
-        this.reveal();
-        window.addEventListener('vault-unlocked', () => this.reveal());
-    },
-    reveal() {
-        if (this.$store.vault.unlocked) {
-            try {
-                const mime = Vault.decryptFileMeta(encMeta).mime;
-                this.label = `${labels[classifyMime(mime)] ?? mime} · ${mime}`;
-            } catch (e) { /* leave the placeholder */ }
-        }
-    },
-}));
+function saveBlobAs(bytes, name, mime) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name || 'download';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
 
-// Inline preview for an encrypted file: fetches + decrypts, then renders an
-// image or PDF via an object URL, or offers a download for anything else.
-Alpine.data('encPreview', (url, encMeta, encFileKey) => ({
-    state: 'loading', // loading | image | pdf | none | locked | error
-    src: '',
-    name: '',
+Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
+    state: 'boot', // boot | locked | unconfigured | ready | error
+    manifest: { v: 1, folders: [], files: [] },
+    version: 0,
+    cwd: null,
+    query: '',
+    sortDir: 'asc',
+    renaming: null,   // item id currently renamed inline
+    renameValue: '',
+    moveItemRef: null, // {kind, id} for the move modal
+    moveTarget: '',
+    moveOpen: false,
+    deleteRef: null,  // {kind, id, name}
+    up: { active: false, done: 0, total: 0 },
+    dl: { active: false, done: 0, total: 0 },
+    error: '',
+
     async init() {
         await this.$store.vault.boot();
-        await this.reveal();
-        window.addEventListener('vault-unlocked', () => this.reveal());
-    },
-    async reveal() {
+        window.addEventListener('vault-unlocked', () => this.load());
+        if (! this.$store.vault.configured) {
+            this.state = 'unconfigured';
+            return;
+        }
         if (! this.$store.vault.unlocked) {
             this.state = 'locked';
             return;
         }
-        this.state = 'loading';
+        await this.load();
+    },
+
+    async load() {
         try {
-            const meta = Vault.decryptFileMeta(encMeta);
-            this.name = meta.name;
-            const cipher = await fetchCipher(url);
-            const plain = Vault.decryptFile(cipher, encFileKey);
-            const mime = meta.mime || 'application/octet-stream';
-            if (mime.startsWith('image/')) {
-                this.src = URL.createObjectURL(new Blob([plain], { type: mime }));
-                this.state = 'image';
-            } else if (mime === 'application/pdf') {
-                this.src = URL.createObjectURL(new Blob([plain], { type: mime }));
-                this.state = 'pdf';
-            } else {
-                this.state = 'none';
-            }
+            const { data, version } = await Vault.loadManifest();
+            this.manifest = data;
+            this.version = version;
+            this.state = 'ready';
         } catch (e) {
             this.state = 'error';
         }
     },
-    download() {
-        window.vaultDownload(url, encMeta, encFileKey);
+
+    // Persist the manifest; on a concurrent save, reload and surface it.
+    async persist() {
+        try {
+            this.version = await Vault.saveManifest(this.manifest, this.version);
+            this.error = '';
+        } catch (e) {
+            if (e.stale) {
+                await this.load();
+                this.error = labels.stale;
+            } else {
+                this.error = labels.saveFailed;
+            }
+            throw e;
+        }
+    },
+
+    /* ---- Derived views ---- */
+
+    get breadcrumb() {
+        const chain = [];
+        let cur = this.cwd;
+        const byId = new Map(this.manifest.folders.map((f) => [f.id, f]));
+        while (cur != null && byId.has(cur)) {
+            chain.unshift(byId.get(cur));
+            cur = byId.get(cur).parent;
+        }
+        return chain;
+    },
+
+    get currentFolderName() {
+        return this.breadcrumb.length ? this.breadcrumb[this.breadcrumb.length - 1].name : null;
+    },
+
+    get rows() {
+        const q = this.query.trim().toLowerCase();
+        const factor = this.sortDir === 'desc' ? -1 : 1;
+        const cmp = (a, b) => factor * a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+
+        const inScope = (list) => (q === ''
+            ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
+            : list.filter((x) => x.name.toLowerCase().includes(q)));
+
+        const folders = inScope(this.manifest.folders.map((f) => ({ ...f, kind: 'folder' })));
+        const files = inScope(this.manifest.files.map((f) => ({ ...f, kind: 'file' })));
+
+        return [...folders.sort(cmp), ...files.sort(cmp)];
+    },
+
+    typeLabel(file) {
+        return labels.types?.[classifyMime(file.mime)] ?? file.mime ?? '';
+    },
+
+    fmtSize: formatBytes,
+
+    /* ---- Structure operations ---- */
+
+    async mkdir(name) {
+        name = (name || '').trim();
+        if (! name) return;
+        this.manifest.folders.push({ id: crypto.randomUUID(), name, parent: this.cwd });
+        await this.persist().catch(() => {});
+    },
+
+    startRename(row) {
+        this.renaming = row.id;
+        this.renameValue = row.name;
+        this.$nextTick(() => this.$refs['rename']?.focus());
+    },
+
+    async applyRename(row) {
+        const name = this.renameValue.trim();
+        this.renaming = null;
+        if (! name || name === row.name) return;
+        const list = row.kind === 'folder' ? this.manifest.folders : this.manifest.files;
+        const item = list.find((x) => x.id === row.id);
+        if (item) {
+            item.name = name;
+            await this.persist().catch(() => {});
+        }
+    },
+
+    openMove(row) {
+        this.moveItemRef = { kind: row.kind, id: row.id };
+        this.moveTarget = '';
+        this.moveOpen = true;
+    },
+
+    // Folders eligible as a move target (never a folder's own subtree).
+    get moveOptions() {
+        const ref = this.moveItemRef;
+        const excluded = new Set();
+        if (ref?.kind === 'folder') {
+            excluded.add(ref.id);
+            let grew = true;
+            while (grew) {
+                grew = false;
+                for (const f of this.manifest.folders) {
+                    if (f.parent != null && excluded.has(f.parent) && ! excluded.has(f.id)) {
+                        excluded.add(f.id);
+                        grew = true;
+                    }
+                }
+            }
+        }
+        const path = (f) => {
+            const parts = [f.name];
+            const byId = new Map(this.manifest.folders.map((x) => [x.id, x]));
+            let cur = f.parent;
+            while (cur != null && byId.has(cur)) { parts.unshift(byId.get(cur).name); cur = byId.get(cur).parent; }
+            return parts.join(' / ');
+        };
+        return this.manifest.folders
+            .filter((f) => ! excluded.has(f.id))
+            .map((f) => ({ id: f.id, label: path(f) }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+    },
+
+    async applyMove() {
+        const ref = this.moveItemRef;
+        this.moveOpen = false;
+        if (! ref) return;
+        const target = this.moveTarget === '' ? null : this.moveTarget;
+        if (ref.kind === 'folder') {
+            const f = this.manifest.folders.find((x) => x.id === ref.id);
+            if (f) f.parent = target;
+        } else {
+            const f = this.manifest.files.find((x) => x.id === ref.id);
+            if (f) f.folder = target;
+        }
+        await this.persist().catch(() => {});
+    },
+
+    confirmDelete(row) {
+        this.deleteRef = { kind: row.kind, id: row.id, name: row.name };
+    },
+
+    async applyDelete() {
+        const ref = this.deleteRef;
+        this.deleteRef = null;
+        if (! ref) return;
+
+        const blobIds = [];
+        if (ref.kind === 'file') {
+            const f = this.manifest.files.find((x) => x.id === ref.id);
+            if (f) blobIds.push(f.blob);
+            this.manifest.files = this.manifest.files.filter((x) => x.id !== ref.id);
+        } else {
+            // Collect the whole subtree, remove its files and folders.
+            const doomed = new Set([ref.id]);
+            let grew = true;
+            while (grew) {
+                grew = false;
+                for (const f of this.manifest.folders) {
+                    if (f.parent != null && doomed.has(f.parent) && ! doomed.has(f.id)) {
+                        doomed.add(f.id);
+                        grew = true;
+                    }
+                }
+            }
+            for (const f of this.manifest.files) {
+                if (f.folder != null && doomed.has(f.folder)) blobIds.push(f.blob);
+            }
+            this.manifest.files = this.manifest.files.filter((f) => ! (f.folder != null && doomed.has(f.folder)));
+            this.manifest.folders = this.manifest.folders.filter((f) => ! doomed.has(f.id));
+        }
+
+        try {
+            await this.persist();
+        } catch (e) {
+            return; // manifest not saved: keep the blobs
+        }
+        // Blobs are orphaned once the manifest no longer references them.
+        for (const id of blobIds) {
+            fetch(`${config.blobBase}/${id}`, {
+                method: 'DELETE',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+            }).catch(() => {});
+        }
+    },
+
+    /* ---- Content operations ---- */
+
+    async upload(fileList) {
+        const files = [...fileList];
+        if (! files.length) return;
+        this.up = { active: true, done: 0, total: files.length };
+
+        for (const file of files) {
+            try {
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const { blob, key } = Vault.encryptBlob(bytes);
+
+                const data = new FormData();
+                data.append('_token', config.token);
+                data.append('blob', blob, 'blob');
+                const res = await fetch(config.blobBase, {
+                    method: 'POST',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: data,
+                });
+                if (! res.ok) throw new Error('upload failed');
+                const { id } = await res.json();
+
+                this.manifest.files.push({
+                    id: crypto.randomUUID(),
+                    blob: id,
+                    name: file.name,
+                    mime: file.type || 'application/octet-stream',
+                    size: file.size,
+                    folder: this.cwd,
+                    key,
+                    created: new Date().toISOString(),
+                });
+            } catch (e) {
+                this.error = labels.uploadFailed;
+            }
+            this.up.done++;
+        }
+
+        this.up.active = false;
+        await this.persist().catch(() => {});
+    },
+
+    async download(row) {
+        this.dl = { active: true, done: 0, total: 1 };
+        try {
+            const res = await fetch(`${config.blobBase}/${row.blob}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (! res.ok) throw new Error('fetch failed');
+            const cipher = new Uint8Array(await res.arrayBuffer());
+            const plain = Vault.decryptBlob(cipher, row.key, row.size);
+            saveBlobAs(plain, row.name, row.mime);
+        } catch (e) {
+            this.error = labels.downloadFailed;
+        }
+        this.dl.active = false;
     },
 }));
 
