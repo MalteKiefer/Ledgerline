@@ -2592,21 +2592,66 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return this.reader.messages.length > 0 && this.reader.messages.every((m) => this.reader.selected.includes(m.uid));
     },
 
-    // Run an action over every selected message, then reload the folder.
+    /* ---- Optimistic local updates (avoid re-fetching the whole list) ---- */
+
+    // Adjust a folder's total/unseen counts in the sidebar.
+    bumpFolder(path, dTotal, dUnseen) {
+        const f = this.reader.folders.find((x) => x.path === path);
+        if (! f) return;
+        f.total = Math.max(0, (f.total || 0) + dTotal);
+        f.unseen = Math.max(0, (f.unseen || 0) + dUnseen);
+    },
+
+    // Remove messages from the current view + total + folder counts.
+    removeMessages(uids) {
+        const removed = this.reader.messages.filter((m) => uids.includes(m.uid));
+        const unseen = removed.filter((m) => ! m.seen).length;
+        this.reader.messages = this.reader.messages.filter((m) => ! uids.includes(m.uid));
+        this.reader.total = Math.max(0, this.reader.total - removed.length);
+        this.bumpFolder(this.reader.folderPath, -removed.length, -unseen);
+        return { count: removed.length, unseen };
+    },
+
+    // Flip \Seen locally and keep the folder's unread count in sync.
+    markSeenLocal(uids, seen) {
+        uids.forEach((uid) => {
+            const m = this.reader.messages.find((x) => x.uid === uid);
+            if (m && !! m.seen !== seen) {
+                m.seen = seen;
+                this.bumpFolder(this.reader.folderPath, 0, seen ? -1 : 1);
+            }
+        });
+    },
+
+    // Apply an action's effect to the local list/counts (no reload).
+    applyActionLocal(action, uids, target = null) {
+        if (action === 'seen' || action === 'unseen') {
+            this.markSeenLocal(uids, action === 'seen');
+            return;
+        }
+        // trash / delete / move: leaves the current folder.
+        const { count, unseen } = this.removeMessages(uids);
+        if (action === 'move' && target) this.bumpFolder(target, count, unseen);
+    },
+
+    // Run an action over every selected message, updating locally as each
+    // succeeds — no full folder reload.
     async bulkAction(action, target = null) {
         if (! this.reader.selected.length || this.reader.busy) return;
         this.reader.busy = true;
+        this.reader.error = '';
+        const done = [];
         try {
             for (const uid of [...this.reader.selected]) {
                 const res = await this.mailPost('/mail/message/action', { uid, action, target });
                 if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; break; }
+                done.push(uid);
             }
         } finally {
+            if (done.length) this.applyActionLocal(action, done, target);
+            this.reader.selected = [];
             this.reader.busy = false;
         }
-        this.reader.selected = [];
-        this.reader.current = null;
-        await this.loadMessages();
     },
 
     async mailPost(url, extra) {
@@ -2680,8 +2725,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
             const res = await this.mailPost('/mail/message', { uid, mark_seen: true });
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
+            // Opening marks \Seen server-side — reflect it in the list and the
+            // folder's unread count without a reload.
             const row = this.reader.messages.find((m) => m.uid === uid);
-            if (row) row.seen = true;
+            if (row && ! row.seen) { row.seen = true; this.bumpFolder(this.reader.folderPath, 0, -1); }
         } catch (e) {
             this.reader.error = labels.connectFailed;
         } finally {
@@ -2728,17 +2775,18 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     async msgAction(action, target = null) {
         if (! this.reader.current) return;
+        const uid = this.reader.current.uid;
         this.reader.busy = true;
+        this.reader.error = '';
         try {
-            const res = await this.mailPost('/mail/message/action', { uid: this.reader.current.uid, action, target });
-            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            const res = await this.mailPost('/mail/message/action', { uid, action, target });
+            if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             if (action === 'seen' || action === 'unseen') {
                 this.reader.current.seen = action === 'seen';
-                const row = this.reader.messages.find((m) => m.uid === this.reader.current.uid);
-                if (row) row.seen = this.reader.current.seen;
+                this.markSeenLocal([uid], action === 'seen');
             } else {
+                this.applyActionLocal(action, [uid], target);
                 this.reader.current = null;
-                await this.loadMessages();
             }
         } catch (e) {
             this.reader.error = labels.connectFailed;
@@ -2778,6 +2826,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         if (! uids.length) return;
         this.reader.busy = true;
         this.reader.error = '';
+        const done = [];
         try {
             for (const uid of uids) {
                 const res = await fetch('/mail/message/transfer', {
@@ -2792,14 +2841,17 @@ Alpine.data('vaultMail', (labels = {}) => ({
                     }),
                 });
                 if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; break; }
+                done.push(uid);
             }
-            this.reader.transferOpen = false;
-            this.reader.current = null;
-            this.reader.selected = [];
-            await this.loadMessages();
         } catch (e) {
             this.reader.error = labels.connectFailed;
         } finally {
+            // Transferred messages leave this account's folder (target is another
+            // account, not in this sidebar) — remove them locally, no reload.
+            if (done.length) this.removeMessages(done);
+            this.reader.transferOpen = false;
+            this.reader.current = null;
+            this.reader.selected = [];
             this.reader.busy = false;
         }
     },
