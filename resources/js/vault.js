@@ -211,6 +211,48 @@ export const Vault = {
         sessionStorage.removeItem(CACHE_KEY);
         sessionStorage.removeItem(CACHE_EXPIRES);
         sessionStorage.removeItem(CACHE_OWNER);
+        this.cacheClearAll();
+    },
+
+    // ---- Encrypted client cache (localStorage, sealed with the vault key) ----
+    //
+    // Used for mail stats/headers so they show instantly and can be prefetched
+    // in the background. Entries are ciphertext, namespaced by the current login
+    // owner, and dropped on lock/logout.
+
+    cacheKey(key) {
+        return `mailcache:${currentOwner()}:${key}`;
+    },
+
+    cachePut(key, obj) {
+        if (! this.vk) return;
+        try {
+            const sealed = seal(sodium.from_string(JSON.stringify(obj)), this.vk);
+            localStorage.setItem(this.cacheKey(key), JSON.stringify(sealed));
+        } catch (e) { /* quota or serialise error: skip caching */ }
+    },
+
+    cacheGet(key) {
+        if (! this.vk) return null;
+        try {
+            const raw = localStorage.getItem(this.cacheKey(key));
+            if (! raw) return null;
+            const { cipher, nonce } = JSON.parse(raw);
+            return JSON.parse(sodium.to_string(open(cipher, nonce, this.vk)));
+        } catch (e) {
+            return null;
+        }
+    },
+
+    cacheClearAll() {
+        try {
+            const doomed = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const name = localStorage.key(i);
+                if (name && name.startsWith('mailcache:')) doomed.push(name);
+            }
+            doomed.forEach((n) => localStorage.removeItem(n));
+        } catch (e) { /* ignore */ }
     },
 
     async status() {

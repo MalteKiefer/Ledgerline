@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_video_frame',
     'gallery_geocode_grid_km',
     'vault_idle_minutes',
+    'mail_sync_minutes',
 ])]
 class CompanyProfile extends Model
 {
@@ -38,6 +39,7 @@ class CompanyProfile extends Model
             'gallery_video_frame' => 'integer',
             'gallery_geocode_grid_km' => 'float',
             'vault_idle_minutes' => 'integer',
+            'mail_sync_minutes' => 'integer',
         ];
     }
 
