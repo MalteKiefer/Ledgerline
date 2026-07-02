@@ -60,6 +60,9 @@ return [
         'no_files' => 'Noch keine Dateien.',
         'vault_ready' => 'Tresor eingerichtet — verschlüsselten Datei-Browser öffnen.',
         'vault_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
+        'notes' => 'Notizen',
+        'notes_ready' => 'Tresor eingerichtet — verschlüsselte Notizen öffnen.',
+        'notes_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
     ],
     'profile' => [
         'title' => 'Profil',
