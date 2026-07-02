@@ -288,13 +288,12 @@ final class WebklexImapReader implements ImapReader
     private function date($message): ?string
     {
         try {
-            $date = $message->getDate();
-            if (! $date) {
+            $value = $message->getDate()?->first();
+            if (! $value) {
                 return null;
             }
-            $carbon = method_exists($date, 'toDate') ? $date->toDate() : $date;
 
-            return $carbon ? (string) $carbon : null;
+            return method_exists($value, 'toIso8601String') ? $value->toIso8601String() : (string) $value;
         } catch (\Throwable) {
             return null;
         }
@@ -303,21 +302,22 @@ final class WebklexImapReader implements ImapReader
     /**
      * @return array{name:string, email:string}|null
      */
-    private function firstAddress($collection): ?array
+    private function firstAddress($attribute): ?array
     {
-        $all = $this->addresses($collection);
-
-        return $all[0] ?? null;
+        return $this->addresses($attribute)[0] ?? null;
     }
 
     /**
+     * webklex returns addresses as an Attribute (ArrayAccess, not iterable);
+     * read the underlying array via all().
+     *
      * @return list<array{name:string, email:string}>
      */
-    private function addresses($collection): array
+    private function addresses($attribute): array
     {
         $out = [];
         try {
-            foreach ($collection ?? [] as $a) {
+            foreach ($attribute?->all() ?? [] as $a) {
                 $out[] = ['name' => $this->str($a->personal ?? ''), 'email' => $this->str($a->mail ?? '')];
             }
         } catch (\Throwable) {
