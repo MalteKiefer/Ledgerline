@@ -1,16 +1,10 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { Vault } from './vault';
-import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, Compartment } from '@codemirror/state';
-import { LanguageDescription } from '@codemirror/language';
-import { languages } from '@codemirror/language-data';
-import JSZip from 'jszip';
 import { marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
-import html2pdf from 'html2pdf.js';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
 import L from 'leaflet';
@@ -29,6 +23,38 @@ L.Icon.Default.mergeOptions({
     iconRetinaUrl: markerIcon2x,
     shadowUrl: markerShadow,
 });
+
+// Heavy, feature-specific libraries are code-split and loaded on first use so
+// they stay out of the initial bundle (pages that never open an editor / export
+// a PDF / bulk-download never download them). Each loader is memoised.
+let cmModule = null;
+async function loadCodeMirror() {
+    if (! cmModule) {
+        const [core, state, language, data] = await Promise.all([
+            import('codemirror'),
+            import('@codemirror/state'),
+            import('@codemirror/language'),
+            import('@codemirror/language-data'),
+        ]);
+        cmModule = {
+            EditorView: core.EditorView,
+            basicSetup: core.basicSetup,
+            EditorState: state.EditorState,
+            Compartment: state.Compartment,
+            LanguageDescription: language.LanguageDescription,
+            languages: data.languages,
+        };
+    }
+    return cmModule;
+}
+
+async function loadJSZip() {
+    return (await import('jszip')).default;
+}
+
+async function loadHtml2Pdf() {
+    return (await import('html2pdf.js')).default;
+}
 
 /**
  * Spotlight-style global search palette. Opens a centred modal, searches live
@@ -938,7 +964,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     editorView: null,
     editorLang: '',
     langComp: null,
-    languageOptions: languages.map((l) => l.name).sort((a, b) => a.localeCompare(b)),
+    languageOptions: [], // populated when the editor (CodeMirror) is loaded on first open
 
     async init() {
         await this.$store.vault.boot();
@@ -1439,6 +1465,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const total = jobs.reduce((n, j) => n + (j.file.size || 0), 0);
         if (total > 2 * 1024 * 1024 * 1024 && ! window.confirm(labels.largeZip)) return;
 
+        const JSZip = await loadJSZip();
         const zip = new JSZip();
         const used = new Set();
         this.dl = { active: true, done: 0, total: jobs.length };
@@ -1597,7 +1624,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
-    mountEditor(text, filename) {
+    async mountEditor(text, filename) {
+        const { EditorView, EditorState, Compartment, LanguageDescription, languages, basicSetup } = await loadCodeMirror();
+        if (! this.languageOptions.length) {
+            this.languageOptions = languages.map((l) => l.name).sort((a, b) => a.localeCompare(b));
+        }
         this.langComp = new Compartment();
         this.editorView = new EditorView({
             parent: this.$refs.viewerEditor,
@@ -1617,7 +1648,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     onEditorLanguageChange() {
-        const desc = languages.find((l) => l.name === this.editorLang);
+        const desc = cmModule?.languages.find((l) => l.name === this.editorLang);
         desc ? this.applyEditorLanguage(desc) : this.editorView.dispatch({ effects: this.langComp.reconfigure([]) });
     },
 
@@ -3040,8 +3071,9 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         this.mobilePane = 'list';
     },
 
-    mountEditor(content) {
+    async mountEditor(content) {
         this.destroyEditor();
+        const { EditorView, EditorState, Compartment, LanguageDescription, languages, basicSetup } = await loadCodeMirror();
         const markDirty = () => this.markDirty();
         const langComp = new Compartment();
         this.editorView = new EditorView({
@@ -3297,8 +3329,9 @@ Alpine.data('vaultNotes', (labels = {}) => ({
     // Zero-knowledge PDF: render the markdown into an offscreen element styled
     // with the app's github-markdown-css and let html2pdf build a finished PDF
     // that downloads directly — no print dialog, nothing leaves the browser.
-    exportPdf() {
+    async exportPdf() {
         if (! this.current) return;
+        const html2pdf = await loadHtml2Pdf();
         const el = document.createElement('div');
         el.className = 'markdown-body';
         el.style.cssText = 'max-width:46rem;margin:0 auto;padding:24px;background:#fff;';
@@ -3425,8 +3458,9 @@ Alpine.data('sharedNote', (config = {}, labels = {}) => ({
         saveBlobAs(this.content, this.downloadName('md'), 'text/markdown;charset=utf-8');
     },
 
-    downloadPdf() {
+    async downloadPdf() {
         if (! this.canDownload) return;
+        const html2pdf = await loadHtml2Pdf();
         const el = document.createElement('div');
         el.className = 'markdown-body';
         el.style.cssText = 'max-width:46rem;margin:0 auto;padding:24px;background:#fff;';
