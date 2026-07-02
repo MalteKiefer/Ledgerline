@@ -41,6 +41,7 @@ return [
         'SPREADSHEET' => 'Tabelle',
         'ARCHIVE' => 'Archiv',
         'OTHER' => 'Sonstiges',
+        'ENCRYPTED' => 'Verschlüsselt',
     ],
     'contact_function' => [
         'CEO' => 'Geschäftsführer (CEO)',

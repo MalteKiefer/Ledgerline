@@ -41,6 +41,7 @@ return [
         'SPREADSHEET' => 'Spreadsheet',
         'ARCHIVE' => 'Archive',
         'OTHER' => 'Other',
+        'ENCRYPTED' => 'Encrypted',
     ],
     'contact_function' => [
         'CEO' => 'Chief Executive Officer',

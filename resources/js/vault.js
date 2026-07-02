@@ -25,6 +25,29 @@ function idleMs() {
 const b64 = (bytes) => sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
 const unb64 = (str) => sodium.from_base64(str, sodium.base64_variants.ORIGINAL);
 
+// Secretstream message size for file content.
+const CHUNK = 4 * 1024 * 1024;
+
+// Little-endian uint32 length prefix framing each ciphertext chunk.
+function u32le(n) {
+    return new Uint8Array([n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff]);
+}
+
+function readU32le(bytes, off) {
+    return bytes[off] | (bytes[off + 1] << 8) | (bytes[off + 2] << 16) | (bytes[off + 3] << 24);
+}
+
+function concat(chunks) {
+    const size = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(size);
+    let off = 0;
+    for (const c of chunks) {
+        out.set(c, off);
+        off += c.length;
+    }
+    return out;
+}
+
 async function ready() {
     if (! sodium) {
         await _sodium.ready;
@@ -182,5 +205,90 @@ export const Vault = {
 
     decryptMeta(cipherB64, nonceB64) {
         return JSON.parse(sodium.to_string(open(cipherB64, nonceB64, this.vk)));
+    },
+
+    /**
+     * Encrypt a File for upload. Content is sealed with a fresh per-file key via
+     * secretstream (chunked, TAG_FINAL on the last chunk); the file key is then
+     * wrapped with the vault key, and name/mime/size sealed as metadata. Nothing
+     * plaintext leaves the browser.
+     *
+     * @returns {Promise<{blob: Blob, encMeta: string, encFileKey: string}>}
+     */
+    async encryptFile(file) {
+        const fk = sodium.crypto_secretstream_xchacha20poly1305_keygen();
+        const { state, header } = sodium.crypto_secretstream_xchacha20poly1305_init_push(fk);
+
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const parts = [header];
+        const total = bytes.length;
+        // 4 MiB messages; a zero-length file still emits one final chunk.
+        for (let off = 0; off < total || off === 0; ) {
+            const end = Math.min(off + CHUNK, total);
+            const last = end >= total;
+            const cipher = sodium.crypto_secretstream_xchacha20poly1305_push(
+                state,
+                bytes.subarray(off, end),
+                null,
+                last ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
+                    : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE,
+            );
+            parts.push(u32le(cipher.length), cipher);
+            off = end;
+            if (last) {
+                break;
+            }
+        }
+
+        const encFileKey = seal(fk, this.vk);
+        const encMeta = this.encryptMeta({
+            name: file.name,
+            mime: file.type || 'application/octet-stream',
+            size: file.size,
+        });
+
+        return {
+            blob: new Blob(parts, { type: 'application/octet-stream' }),
+            encMeta: JSON.stringify({ c: encMeta.cipher, n: encMeta.nonce }),
+            encFileKey: JSON.stringify({ c: encFileKey.cipher, n: encFileKey.nonce }),
+        };
+    },
+
+    /**
+     * Decrypt ciphertext bytes (as produced by encryptFile) back to a Uint8Array.
+     *
+     * @param {ArrayBuffer|Uint8Array} buffer
+     * @param {string} encFileKey  JSON {c,n} of the wrapped file key.
+     */
+    decryptFile(buffer, encFileKey) {
+        const wrapped = JSON.parse(encFileKey);
+        const fk = open(wrapped.c, wrapped.n, this.vk);
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+
+        const H = sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES;
+        const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(bytes.subarray(0, H), fk);
+
+        const chunks = [];
+        let off = H;
+        for (;;) {
+            const len = readU32le(bytes, off);
+            off += 4;
+            const res = sodium.crypto_secretstream_xchacha20poly1305_pull(state, bytes.subarray(off, off + len));
+            if (res === false) {
+                throw new Error('decrypt failed');
+            }
+            off += len;
+            chunks.push(res.message);
+            if (res.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL) {
+                break;
+            }
+        }
+        return concat(chunks);
+    },
+
+    /** Decrypt a file's metadata blob (JSON {c,n}) to {name, mime, size}. */
+    decryptFileMeta(encMeta) {
+        const m = JSON.parse(encMeta);
+        return this.decryptMeta(m.c, m.n);
     },
 };

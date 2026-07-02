@@ -18,6 +18,7 @@ enum FileType: string
     case SPREADSHEET = 'SPREADSHEET';
     case ARCHIVE = 'ARCHIVE';
     case OTHER = 'OTHER';
+    case ENCRYPTED = 'ENCRYPTED';
 
     /**
      * Human-readable, English label.

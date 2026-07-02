@@ -101,6 +101,11 @@ class FileController extends Controller
             'tags' => ['array'],
             'tags.*' => ['string', 'max:50'],
             'on_conflict' => ['nullable', 'in:overwrite,rename,skip'],
+            'encrypted' => ['nullable', 'boolean'],
+            'enc_metadata' => ['array'],
+            'enc_metadata.*' => ['string'],
+            'enc_file_key' => ['array'],
+            'enc_file_key.*' => ['string'],
         ]);
 
         $strategy = $validated['on_conflict'] ?? 'rename';
@@ -112,6 +117,32 @@ class FileController extends Controller
             filled($validated['project_id'] ?? null) => Project::find($validated['project_id']),
             default => null,
         };
+
+        // Zero-knowledge uploads arrive already encrypted in the browser: the
+        // bytes are ciphertext and the real name/mime live in enc_metadata. No
+        // name conflict resolution or folder recreation (names are opaque here).
+        if (! empty($validated['encrypted'])) {
+            $stored = 0;
+            foreach ($validated['files'] as $i => $upload) {
+                $this->persistEncrypted(
+                    $upload,
+                    $validated['enc_metadata'][$i] ?? '',
+                    $validated['enc_file_key'][$i] ?? '',
+                    $attachable,
+                    $request->user(),
+                    $folderId,
+                );
+                $stored++;
+            }
+
+            return redirect()
+                ->route('files.index', array_filter([
+                    'folder' => $folderId,
+                    'customer' => $validated['customer_id'] ?? null,
+                    'project' => $validated['project_id'] ?? null,
+                ]))
+                ->with('status', __('flash.files_uploaded', ['count' => $stored]));
+        }
 
         $paths = $validated['paths'] ?? [];
         $folderCache = [];
@@ -785,5 +816,36 @@ class FileController extends Controller
             ->map(fn (string $name): int => Tag::findOrCreateByName($name)->id)
             ->all();
         $file->tags()->sync($tagIds);
+    }
+
+    /**
+     * Store an already-encrypted upload. The server treats the bytes as opaque
+     * ciphertext: no checksum, no text extraction, no type detection. The real
+     * name and mime live only inside the client-encrypted enc_metadata blob.
+     */
+    private function persistEncrypted(UploadedFile $blob, string $encMetadata, string $encFileKey, ?Model $attachable, User $uploader, ?int $folderId): void
+    {
+        $path = Storage::disk(config('files.disk'))->putFile('files', $blob);
+
+        $file = new File([
+            'name' => '',
+            'disk_path' => $path,
+            'mime_type' => 'application/octet-stream',
+            'type' => FileType::ENCRYPTED,
+            'size' => $blob->getSize(),
+            'checksum' => null,
+            'is_encrypted' => true,
+            'extracted_text' => null,
+            'enc_metadata' => $encMetadata,
+            'enc_file_key' => $encFileKey,
+        ]);
+        $file->uploaded_by = $uploader->id;
+        $file->folder_id = $folderId;
+
+        if ($attachable !== null) {
+            $file->attachable()->associate($attachable);
+        }
+
+        $file->save();
     }
 }
