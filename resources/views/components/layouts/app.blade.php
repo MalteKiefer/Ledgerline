@@ -5,6 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\CompanyProfile::current()->vault_idle_minutes ?? 10) }}">
     <title>{{ $title }} — Ledgerline</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>

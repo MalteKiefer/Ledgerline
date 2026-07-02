@@ -14,7 +14,13 @@ import _sodium from 'libsodium-wrappers-sumo';
 let sodium = null;
 const CACHE_KEY = 'vault.vk';
 const CACHE_EXPIRES = 'vault.vk.expires';
-const IDLE_MS = 30 * 60 * 1000; // re-prompt after 30 minutes idle
+
+// Idle timeout (minutes) is configurable in Security settings; default 10.
+function idleMs() {
+    const meta = document.querySelector('meta[name="vault-idle-minutes"]')?.getAttribute('content');
+    const minutes = Number(meta) > 0 ? Number(meta) : 10;
+    return minutes * 60 * 1000;
+}
 
 const b64 = (bytes) => sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
 const unb64 = (str) => sodium.from_base64(str, sodium.base64_variants.ORIGINAL);
@@ -97,7 +103,7 @@ export const Vault = {
 
     touch() {
         if (this.vk) {
-            sessionStorage.setItem(CACHE_EXPIRES, String(Date.now() + IDLE_MS));
+            sessionStorage.setItem(CACHE_EXPIRES, String(Date.now() + idleMs()));
         }
     },
 
