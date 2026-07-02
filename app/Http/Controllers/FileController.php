@@ -801,9 +801,9 @@ class FileController extends Controller
         $this->authorize('create', File::class);
 
         $validated = $request->validate([
-            'file_ids' => ['array', 'required_without:folder_ids'],
+            'file_ids' => ['array', 'max:1000', 'required_without:folder_ids'],
             'file_ids.*' => ['integer'],
-            'folder_ids' => ['array'],
+            'folder_ids' => ['array', 'max:1000'],
             'folder_ids.*' => ['integer', Rule::exists('folders', 'id')],
             'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
         ]);
@@ -850,9 +850,9 @@ class FileController extends Controller
         $this->authorize('create', File::class);
 
         $validated = $request->validate([
-            'file_ids' => ['array', 'required_without:folder_ids'],
+            'file_ids' => ['array', 'max:1000', 'required_without:folder_ids'],
             'file_ids.*' => ['integer'],
-            'folder_ids' => ['array'],
+            'folder_ids' => ['array', 'max:1000'],
             'folder_ids.*' => ['integer', Rule::exists('folders', 'id')],
         ]);
 

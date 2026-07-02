@@ -772,6 +772,8 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     maxConcurrent: 3,
     summary: null,
     lastSelected: null,
+    maxSelection: 1000,
+    capNotice: false,
 
     // Infinite scroll.
     page: 1,
@@ -1099,17 +1101,55 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     },
 
     toggleAll(event) {
-        this.selected = event.target.checked ? [...this.allIds()] : [];
+        this.applySelection(event.target.checked ? this.allIds() : []);
     },
 
     allIds() {
         return [...document.querySelectorAll('[data-photo-id]')].map((el) => Number(el.dataset.photoId));
     },
 
-    /* ---- Selection (click, shift-range, select-all) ---- */
+    /* ---- Selection (click, shift-range, select-all, per-day) ---- */
 
     selectableIds() {
         return [...document.querySelectorAll('[data-select]')].map((cb) => Number(cb.value));
+    },
+
+    // Photo ids under a given day section.
+    dayIds(day) {
+        return [...document.querySelectorAll(`section[data-day="${day}"] [data-select]`)].map((cb) => Number(cb.value));
+    },
+
+    dayFullySelected(day) {
+        const ids = this.dayIds(day);
+        return ids.length > 0 && ids.every((id) => this.selected.includes(id));
+    },
+
+    // Select or clear all photos of one day at once.
+    toggleDay(day) {
+        const ids = this.dayIds(day);
+        if (this.dayFullySelected(day)) {
+            const remove = new Set(ids);
+            this.selected = this.selected.filter((id) => ! remove.has(id));
+        } else {
+            this.applySelection([...this.selected, ...ids]);
+        }
+    },
+
+    // Cap every multi-selection at maxSelection; warn and keep the first N.
+    applySelection(ids) {
+        const unique = [...new Set(ids)];
+        if (unique.length > this.maxSelection) {
+            this.selected = unique.slice(0, this.maxSelection);
+            this.notifyCap();
+        } else {
+            this.selected = unique;
+        }
+    },
+
+    notifyCap() {
+        this.capNotice = true;
+        clearTimeout(this._capTimer);
+        this._capTimer = setTimeout(() => { this.capNotice = false; }, 5000);
     },
 
     toggleSelect(event, id) {
@@ -1124,20 +1164,24 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
                 for (let i = a; i <= b; i++) {
                     set.add(ids[i]);
                 }
-                this.selected = [...set];
+                this.applySelection([...set]);
                 this.lastSelected = id;
                 return;
             }
         }
 
-        this.selected = this.selected.includes(id)
-            ? this.selected.filter((x) => x !== id)
-            : [...this.selected, id];
+        if (this.selected.includes(id)) {
+            this.selected = this.selected.filter((x) => x !== id);
+        } else if (this.selected.length >= this.maxSelection) {
+            this.notifyCap(); // at the cap: refuse to add more
+        } else {
+            this.selected = [...this.selected, id];
+        }
         this.lastSelected = id;
     },
 
     selectAllVisible() {
-        this.selected = this.selectableIds();
+        this.applySelection(this.selectableIds());
     },
 
     onKeydown(event) {
