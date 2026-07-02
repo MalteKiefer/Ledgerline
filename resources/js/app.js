@@ -222,6 +222,17 @@ Alpine.data('spotlight', () => ({
 
             const data = await response.json();
             this.groups = data.groups || [];
+
+            // Merge zero-knowledge notes, searched client-side over the
+            // decrypted manifest (only while the vault is unlocked).
+            const notes = await searchNotesClient(term);
+            if (notes.length) {
+                this.groups.push({
+                    group: document.documentElement.lang === 'de' ? 'Notizen' : 'Notes',
+                    results: notes,
+                });
+            }
+
             this.flat = this.groups.flatMap((group) => group.results);
             this.activeIndex = this.flat.length ? 0 : -1;
         } catch (error) {
@@ -1716,7 +1727,48 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 marked.use({ gfm: true, breaks: true });
 
 function renderMarkdown(text) {
-    return DOMPurify.sanitize(marked.parse(text ?? ''));
+    // marked renders GFM task checkboxes disabled; strip that so they stay
+    // clickable in the preview (the click handler writes back to the source).
+    return DOMPurify.sanitize(marked.parse(text ?? '')).replace(/<input disabled(="")?\s/g, '<input ');
+}
+
+/* Client-side notes search for the global palette. The manifest is cached in
+ * memory and invalidated whenever the notes page saves. Locked vault → no
+ * results, nothing leaks. */
+let notesSearchCache = null;
+window.addEventListener('notes-changed', () => { notesSearchCache = null; });
+window.addEventListener('vault-unlocked', () => { notesSearchCache = null; });
+
+async function searchNotesClient(term) {
+    if (! Alpine.store('vault').unlocked) return [];
+    try {
+        if (! notesSearchCache) {
+            notesSearchCache = (await Vault.loadManifest('notes')).data;
+        }
+    } catch (e) {
+        return [];
+    }
+    const q = term.toLowerCase();
+    const out = [];
+    for (const n of notesSearchCache.notes ?? []) {
+        if (n.trashed) continue;
+        const title = n.title ?? '';
+        const content = n.content ?? '';
+        const inTitle = title.toLowerCase().includes(q);
+        const at = content.toLowerCase().indexOf(q);
+        const inTags = (n.tags ?? []).some((t) => t.toLowerCase().includes(q));
+        if (! inTitle && at === -1 && ! inTags) continue;
+        const snippet = at !== -1
+            ? content.slice(Math.max(0, at - 30), at + q.length + 30).replace(/\s+/g, ' ').trim()
+            : (n.tags ?? []).join(', ');
+        out.push({
+            title: title || '…',
+            subtitle: snippet,
+            url: `/notes?open=${n.id}`,
+        });
+        if (out.length >= 5) break;
+    }
+    return out;
 }
 
 Alpine.data('vaultNotes', (labels = {}) => ({
@@ -1732,6 +1784,11 @@ Alpine.data('vaultNotes', (labels = {}) => ({
     error: '',
     editorView: null,
     saveTimer: null,
+    view: 'active', // active | trash
+    activeTag: '',
+    tagsRef: null,
+    tagsOpen: false,
+    tagsValue: '',
 
     async init() {
         await this.$store.vault.boot();
@@ -1768,6 +1825,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         try {
             this.version = await Vault.saveManifest('notes', this.manifest, this.version);
             this.error = '';
+            window.dispatchEvent(new CustomEvent('notes-changed'));
         } catch (e) {
             if (e.stale) {
                 await this.load();
@@ -1779,11 +1837,26 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         }
     },
 
+    get trashCount() {
+        return this.manifest.notes.filter((n) => n.trashed).length;
+    },
+
+    get allTags() {
+        const set = new Set();
+        for (const n of this.manifest.notes) {
+            for (const t of n.tags ?? []) set.add(t);
+        }
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+
     /* ---- Derived ---- */
 
     get notes() {
         const q = this.query.trim().toLowerCase();
-        let list = this.manifest.notes.filter((n) => ! n.trashed);
+        let list = this.manifest.notes.filter((n) => this.view === 'trash' ? n.trashed : ! n.trashed);
+        if (this.activeTag !== '') {
+            list = list.filter((n) => (n.tags ?? []).includes(this.activeTag));
+        }
         if (q !== '') {
             // Full-text: title, tags and markdown content, all in memory.
             list = list.filter((n) =>
@@ -1918,6 +1991,69 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         if (! target) return;
         target.trashed = new Date().toISOString();
         if (this.currentId === note.id) this.closeNote();
+        await this.persist().catch(() => {});
+    },
+
+    async restore(note) {
+        const target = this.manifest.notes.find((n) => n.id === note.id);
+        if (! target) return;
+        target.trashed = null;
+        await this.persist().catch(() => {});
+    },
+
+    async destroyForever(note) {
+        this.manifest.notes = this.manifest.notes.filter((n) => n.id !== note.id);
+        if (this.currentId === note.id) this.closeNote();
+        await this.persist().catch(() => {});
+    },
+
+    async emptyTrash() {
+        this.manifest.notes = this.manifest.notes.filter((n) => ! n.trashed);
+        await this.persist().catch(() => {});
+    },
+
+    async togglePin(note) {
+        const target = this.manifest.notes.find((n) => n.id === note.id);
+        if (! target) return;
+        target.pinned = ! target.pinned;
+        await this.persist().catch(() => {});
+    },
+
+    openTags(note) {
+        this.tagsRef = note.id;
+        this.tagsValue = (note.tags ?? []).join(', ');
+        this.tagsOpen = true;
+    },
+
+    async applyTags() {
+        const id = this.tagsRef;
+        this.tagsOpen = false;
+        this.tagsRef = null;
+        if (! id) return;
+        const note = this.manifest.notes.find((n) => n.id === id);
+        if (note) {
+            note.tags = [...new Set(this.tagsValue.split(',').map((t) => t.trim()).filter(Boolean))];
+            await this.persist().catch(() => {});
+        }
+    },
+
+    // Toggle the nth GFM task checkbox from the rendered preview back into the
+    // markdown source, save, and re-render — checkboxes stay interactive.
+    async togglePreviewTask(event) {
+        const box = event.target;
+        if (box.tagName !== 'INPUT' || box.type !== 'checkbox' || ! this.current) return;
+        const boxes = [...this.$refs.notePreview.querySelectorAll('input[type=checkbox]')];
+        const index = boxes.indexOf(box);
+        if (index === -1) return;
+
+        let i = -1;
+        this.current.content = this.current.content.replace(/(-\s\[)([ xX])(\])/g, (m, a, mark, c) => {
+            i++;
+            if (i !== index) return m;
+            return a + (mark === ' ' ? 'x' : ' ') + c;
+        });
+        this.previewHtml = renderMarkdown(this.current.content);
+        this.current.updated = new Date().toISOString();
         await this.persist().catch(() => {});
     },
 }));
