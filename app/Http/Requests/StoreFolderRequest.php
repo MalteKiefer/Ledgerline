@@ -24,7 +24,9 @@ class StoreFolderRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
+            // Either a plaintext name or, for a zero-knowledge vault, an encrypted one.
+            'name' => ['required_without:enc_name', 'nullable', 'string', 'max:255'],
+            'enc_name' => ['required_without:name', 'nullable', 'string', 'max:1024'],
             'parent_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
         ];
     }

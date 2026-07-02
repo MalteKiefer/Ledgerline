@@ -217,11 +217,12 @@
                     </div>
                     <div>
                         <label for="folder_id" class="block text-sm font-medium text-gray-700">{{ __('files.folder') }}</label>
-                        <select id="folder_id" name="folder_id"
+                        <select id="folder_id" name="folder_id" x-data="encOptions()"
                             class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                             <option value="">{{ __('files.folder_none') }}</option>
                             @foreach ($folders as $f)
-                                <option value="{{ $f->id }}" @selected((int) old('folder_id', $file->folder_id) === $f->id)>{{ $f->name }}</option>
+                                <option value="{{ $f->id }}" @selected((int) old('folder_id', $file->folder_id) === $f->id)
+                                    @if ($f->enc_name) data-enc="{{ $f->enc_name }}" @endif>{{ $f->enc_name ? '🔒' : $f->name }}</option>
                             @endforeach
                         </select>
                     </div>

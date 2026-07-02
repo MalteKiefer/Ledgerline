@@ -14,7 +14,7 @@ use Illuminate\Support\Collection;
  * A virtual, nestable folder for organising files. Folders are global and can
  * contain subfolders and files.
  */
-#[Fillable(['name', 'parent_id'])]
+#[Fillable(['name', 'enc_name', 'parent_id'])]
 class Folder extends Model
 {
     /**

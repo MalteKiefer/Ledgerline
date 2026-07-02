@@ -232,6 +232,12 @@ export const Vault = {
         return JSON.parse(sodium.to_string(open(cipherB64, nonceB64, this.vk)));
     },
 
+    /** Seal a folder name as a JSON {c,n} string (same shape as file metadata). */
+    sealName(name) {
+        const m = this.encryptMeta({ name });
+        return JSON.stringify({ c: m.cipher, n: m.nonce });
+    },
+
     /**
      * Encrypt a File for upload. Content is sealed with a fresh per-file key via
      * secretstream (chunked, TAG_FINAL on the last chunk); the file key is then

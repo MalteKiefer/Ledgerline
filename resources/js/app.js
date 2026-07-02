@@ -1222,6 +1222,67 @@ window.vaultEncrypt = async (downloadUrl, encryptUrl, name, mime, token) => {
     }
 };
 
+// Intercept a folder create/rename form: when a vault is set up, seal the name
+// into enc_name and drop the plaintext name before submitting. Plaintext when
+// no vault exists; prompts to unlock when the vault is locked.
+window.encryptFolderSubmit = async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const store = Alpine.store('vault');
+    await store.boot();
+    if (! store.configured) {
+        form.submit();
+        return;
+    }
+    if (! store.unlocked) {
+        window.dispatchEvent(new CustomEvent('vault-panel'));
+        return;
+    }
+    const nameInput = form.querySelector('input[name="name"]');
+    const enc = Vault.sealName(nameInput.value);
+    nameInput.removeAttribute('name'); // send only the ciphertext
+    let hidden = form.querySelector('input[name="enc_name"]');
+    if (! hidden) {
+        hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'enc_name';
+        form.appendChild(hidden);
+    }
+    hidden.value = enc;
+    form.submit();
+};
+
+// Row state for an encrypted folder: decrypts its name for the link and the
+// rename input, alongside the usual rename/menu toggles.
+Alpine.data('encFolderRow', (encName, lockedLabel = '🔒') => ({
+    rename: false,
+    menu: false,
+    folderName: lockedLabel,
+    async init() {
+        await this.$store.vault.boot();
+        if (this.$store.vault.unlocked) {
+            try {
+                this.folderName = Vault.decryptFileMeta(encName).name;
+            } catch (e) { /* leave the placeholder */ }
+        }
+    },
+}));
+
+// Decrypt the <option> labels of a folder <select> that carry data-enc.
+Alpine.data('encOptions', () => ({
+    async init() {
+        await this.$store.vault.boot();
+        if (! this.$store.vault.unlocked) {
+            return;
+        }
+        this.$el.querySelectorAll('option[data-enc]').forEach((opt) => {
+            try {
+                opt.textContent = Vault.decryptFileMeta(opt.dataset.enc).name;
+            } catch (e) { /* leave the placeholder */ }
+        });
+    },
+}));
+
 // Name label for an encrypted file (list row / detail heading): decrypts the
 // real name once the vault is unlocked, otherwise shows a lock placeholder.
 Alpine.data('encName', (encMeta, lockedLabel = '🔒') => ({
