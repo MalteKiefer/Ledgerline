@@ -96,6 +96,8 @@ return [
     'vault_heading' => 'Verschlüsselungs-Tresor',
     'vault_hint' => 'Nach so vielen Minuten ohne Aktivität muss das Passwort erneut eingegeben werden.',
     'vault_idle_minutes' => 'Automatisch sperren nach (Minuten)',
+    'mail_sync_minutes' => 'Mails im Hintergrund aktualisieren alle (Minuten)',
+    'mail_sync_minutes_hint' => 'Mindestens 5 Minuten und nicht länger als die Sperrzeit. Läuft nur bei entsperrtem Tresor.',
     'save_company_profile' => 'Unternehmensprofil speichern',
     'section_address' => 'Adresse',
     'section_company' => 'Unternehmen',

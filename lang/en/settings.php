@@ -96,6 +96,8 @@ return [
     'vault_heading' => 'Encryption vault',
     'vault_hint' => 'After this many minutes without activity, the encryption passphrase must be entered again.',
     'vault_idle_minutes' => 'Auto-lock after (minutes)',
+    'mail_sync_minutes' => 'Refresh mail in background every (minutes)',
+    'mail_sync_minutes_hint' => 'At least 5 minutes and not longer than the auto-lock time. Runs only while the vault is unlocked.',
     'save_company_profile' => 'Save company profile',
     'section_address' => 'Address',
     'section_company' => 'Company',
