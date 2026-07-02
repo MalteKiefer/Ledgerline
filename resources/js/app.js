@@ -2407,6 +2407,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     version: 0,
     error: '',
     busyId: null, // account id currently refreshing
+    refreshingAll: false, // "refresh all" in progress
     errors: {}, // per-account error message
     dialogOpen: false,
     editingId: null,
@@ -2542,7 +2543,13 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     async refreshAll() {
-        for (const a of this.manifest.accounts) await this.refresh(a);
+        if (this.refreshingAll) return;
+        this.refreshingAll = true;
+        try {
+            for (const a of this.manifest.accounts) await this.refresh(a);
+        } finally {
+            this.refreshingAll = false;
+        }
     },
 
     fmtBytes(n) { return formatBytes(n); },

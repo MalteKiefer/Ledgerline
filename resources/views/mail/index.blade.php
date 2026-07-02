@@ -40,8 +40,8 @@
                 <p class="mt-1 text-sm text-gray-600">{{ __('mail.subtitle') }}</p>
             </div>
             <div class="flex items-center gap-2">
-                <button type="button" x-show="manifest.accounts.length" @click="refreshAll()" title="{{ __('mail.refresh_all') }}" aria-label="{{ __('mail.refresh_all') }}"
-                    class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-path" class="h-5 w-5" /></button>
+                <button type="button" x-show="manifest.accounts.length" @click="refreshAll()" :disabled="refreshingAll || busyId" title="{{ __('mail.refresh_all') }}" aria-label="{{ __('mail.refresh_all') }}"
+                    class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50 disabled:opacity-40"><x-icon name="arrow-path" class="h-5 w-5" ::class="refreshingAll ? 'animate-spin' : ''" /></button>
                 <button type="button" @click="openAdd()" title="{{ __('mail.add_account') }}" aria-label="{{ __('mail.add_account') }}"
                     class="rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="plus" class="h-5 w-5" /></button>
             </div>
