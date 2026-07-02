@@ -7,6 +7,7 @@ use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
@@ -94,10 +95,12 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/files', 'files.index')->name('files.index');
     Route::view('/notes', 'notes.index')->name('notes.index');
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
+    Route::view('/mail', 'mail.index')->name('mail.index');
+    Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks'])->name('vault.manifest.show');
+        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks'])->name('vault.manifest.update');
+        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.update');
     Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
     Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
     Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
