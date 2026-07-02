@@ -107,8 +107,31 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
+                    {{-- Parent-folder shortcut, like "cd .." — virtual row, never
+                         part of rows(), so it is excluded from selection, actions
+                         and export. Also a drop target to move items up. --}}
+                    <template x-if="cwd !== null && query === '' && activeTag === ''">
+                        <tr class="cursor-pointer text-gray-500 hover:bg-gray-50" @click="cwd = parentFolderId"
+                            @dragover="if (dragItem) $event.preventDefault()" @drop.prevent="dropInto(parentFolderId)">
+                            <td class="px-4 py-3"></td>
+                            <td class="px-4 py-3 font-medium">
+                                <span class="flex items-center gap-2">
+                                    <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                                    ..
+                                </span>
+                            </td>
+                            <td class="hidden px-4 py-3 sm:table-cell"></td>
+                            <td class="hidden px-4 py-3 text-right sm:table-cell"></td>
+                            <td class="hidden px-4 py-3 md:table-cell"></td>
+                            <td class="px-4 py-3"></td>
+                        </tr>
+                    </template>
                     <template x-for="row in rows" :key="row.kind + row.id">
                         <tr class="cursor-pointer hover:bg-gray-50" x-data="{ menu: false }"
+                            :draggable="renaming === row.id ? 'false' : 'true'"
+                            @dragstart.stop="onDragStart($event, row)" @dragend="onDragEnd()"
+                            @dragover="if (row.kind === 'folder' && dragItem && !(dragItem.kind === 'folder' && dragItem.id === row.id)) $event.preventDefault()"
+                            @drop.prevent="row.kind === 'folder' && dropInto(row.id)"
                             @click="if (renaming !== row.id) { row.kind === 'folder' ? cwd = row.id : openFile(row) }">
                             <td class="px-4 py-3" @click.stop><input type="checkbox" :value="rowKey(row)" x-model="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                             <td class="px-4 py-3 font-medium text-gray-900">
