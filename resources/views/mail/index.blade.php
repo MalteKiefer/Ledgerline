@@ -244,19 +244,19 @@
                     </span>
                 </div>
 
-                {{-- Bulk action bar --}}
+                {{-- Bulk action bar (icon-only, tooltips) --}}
                 <div x-show="reader.selected.length" x-cloak class="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs">
                     <span class="font-medium text-gray-700"><span x-text="reader.selected.length"></span> {{ __('mail.selected') }}</span>
-                    <button type="button" @click="bulkAction('trash')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.action_trash') }}</button>
-                    <button type="button" @click="bulkAction('delete')" :disabled="reader.busy" class="rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50">{{ __('mail.action_delete') }}</button>
-                    <select @change="if ($event.target.value) { bulkAction('move', $event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <button type="button" @click="bulkAction('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" aria-label="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="trash" class="h-4 w-4" /></button>
+                    <button type="button" @click="bulkAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" aria-label="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-1.5 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                    <select @change="if ($event.target.value) { bulkAction('move', $event.target.value); $event.target.value = '' }" title="{{ __('mail.move_to_folder') }}" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <option value="">{{ __('mail.move_to_folder') }}</option>
                         <template x-for="f in readerFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
                     </select>
-                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.move_to_account') }}</button>
-                    <button type="button" @click="bulkAction('seen')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.mark_read') }}</button>
-                    <button type="button" @click="bulkAction('unseen')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.mark_unread') }}</button>
-                    <button type="button" @click="reader.selected = []" class="ml-auto text-gray-500 hover:text-gray-700">{{ __('mail.clear_selection') }}</button>
+                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="share" class="h-4 w-4" /></button>
+                    <button type="button" @click="bulkAction('seen')" :disabled="reader.busy" title="{{ __('mail.mark_read') }}" aria-label="{{ __('mail.mark_read') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="envelope-open" class="h-4 w-4" /></button>
+                    <button type="button" @click="bulkAction('unseen')" :disabled="reader.busy" title="{{ __('mail.mark_unread') }}" aria-label="{{ __('mail.mark_unread') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="envelope" class="h-4 w-4" /></button>
+                    <button type="button" @click="reader.selected = []" title="{{ __('mail.clear_selection') }}" aria-label="{{ __('mail.clear_selection') }}" class="ml-auto rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
 
                 <div class="min-h-0 flex-1 overflow-y-auto">
@@ -293,9 +293,15 @@
                         <option value="">{{ __('mail.move_to_folder') }}</option>
                         <template x-for="f in readerFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
                     </select>
-                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('mail.move_to_account') }}</button>
-                    <button type="button" @click="msgAction(reader.current.seen ? 'unseen' : 'seen')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" x-text="reader.current.seen ? @js(__('mail.mark_unread')) : @js(__('mail.mark_read'))"></button>
-                    <button type="button" @click="printMsg()" title="{{ __('mail.print') }}" class="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('mail.print') }}</button>
+                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="share" class="h-4 w-4" /></button>
+                    <button type="button" @click="msgAction(reader.current.seen ? 'unseen' : 'seen')" :disabled="reader.busy"
+                        :title="reader.current.seen ? @js(__('mail.mark_unread')) : @js(__('mail.mark_read'))"
+                        :aria-label="reader.current.seen ? @js(__('mail.mark_unread')) : @js(__('mail.mark_read'))"
+                        class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50">
+                        <x-icon name="envelope" x-show="reader.current.seen" />
+                        <x-icon name="envelope-open" x-show="! reader.current.seen" x-cloak />
+                    </button>
+                    <button type="button" @click="printMsg()" title="{{ __('mail.print') }}" aria-label="{{ __('mail.print') }}" class="ml-auto rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="printer" class="h-4 w-4" /></button>
                 </div>
 
                 {{-- Headers --}}
