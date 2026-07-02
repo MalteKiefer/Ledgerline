@@ -7,11 +7,11 @@
             <div class="relative w-full max-w-2xl rounded-lg bg-white p-4 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900">{{ __('gallery.pick_location') }}</h3>
 
-                <div class="relative mt-3">
+                <div class="relative z-[1000] mt-3">
                     <input type="search" x-model="query" @input="queueSearch()" @keydown.enter.prevent="runSearch()"
                         placeholder="{{ __('gallery.search_address') }}"
                         class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <div x-show="results.length" x-cloak class="absolute z-[10] mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                    <div x-show="results.length" x-cloak class="absolute z-[1000] mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
                         <template x-for="(res, i) in results" :key="i">
                             <button type="button" @click="choose(res)" class="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50" x-text="res.display"></button>
                         </template>
