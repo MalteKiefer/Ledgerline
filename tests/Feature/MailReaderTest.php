@@ -38,7 +38,7 @@ class MailReaderTest extends TestCase
             {
                 $this->calls[] = ['list', $folder, $page];
 
-                return ['total' => 1, 'page' => $page, 'perPage' => $perPage, 'messages' => [
+                return ['total' => 1, 'page' => $page, 'perPage' => $perPage, 'uidValidity' => 42, 'messages' => [
                     ['uid' => 5, 'subject' => 'Hi', 'from' => ['name' => 'A', 'email' => 'a@x.test'], 'date' => null, 'seen' => false, 'flagged' => false, 'answered' => false, 'hasAttachments' => false],
                 ]];
             }
@@ -47,7 +47,7 @@ class MailReaderTest extends TestCase
             {
                 $this->calls[] = ['get', $uid, $markSeen];
 
-                return ['uid' => $uid, 'subject' => 'Hi', 'from' => null, 'to' => [], 'cc' => [], 'date' => null, 'seen' => true, 'html' => null, 'text' => 'body', 'attachments' => []];
+                return ['uid' => $uid, 'subject' => 'Hi', 'from' => null, 'to' => [], 'cc' => [], 'date' => null, 'seen' => true, 'html' => null, 'text' => 'body', 'attachments' => [], 'uidValidity' => 42];
             }
 
             public function getAttachment(ImapCredentials $c, string $folder, int $uid, int $attachmentId): array
