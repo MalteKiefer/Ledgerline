@@ -60,6 +60,40 @@ class GeneralFileTest extends TestCase
         $this->assertSame('ciphertext-bytes', Storage::disk('files')->get($file->disk_path));
     }
 
+    public function test_an_encrypted_file_is_not_read_server_side_for_editing(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $file = File::factory()->create([
+            'name' => '', 'type' => FileType::ENCRYPTED, 'is_encrypted' => true,
+            'disk_path' => 'files/enc.bin', 'mime_type' => 'application/octet-stream',
+            'enc_metadata' => '{"c":"m","n":"n"}', 'enc_file_key' => '{"c":"k","n":"n"}',
+            'attachable_type' => null, 'attachable_id' => null,
+        ]);
+        Storage::disk('files')->put('files/enc.bin', 'ciphertext');
+
+        $this->get(route('files.edit', $file))
+            ->assertOk()
+            ->assertSee(__('files.encrypted_edit_hint'))
+            ->assertDontSee('ciphertext');
+    }
+
+    public function test_download_returns_encrypted_bytes_untouched(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $file = File::factory()->create([
+            'name' => '', 'type' => FileType::ENCRYPTED, 'is_encrypted' => true,
+            'disk_path' => 'files/enc.bin', 'mime_type' => 'application/octet-stream',
+            'attachable_type' => null, 'attachable_id' => null,
+        ]);
+        Storage::disk('files')->put('files/enc.bin', 'raw-ciphertext-bytes');
+
+        $res = $this->get(route('files.download', $file));
+        $res->assertOk();
+        $this->assertSame('raw-ciphertext-bytes', $res->streamedContent());
+    }
+
     public function test_a_dropped_folder_recreates_its_subfolders(): void
     {
         Storage::fake('files');

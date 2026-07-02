@@ -172,14 +172,19 @@
                                 <tr x-data="{ menu: false }" :class="selected.includes({{ $file->id }}) ? 'bg-gray-50' : ''">
                                     <td class="px-4 py-3"><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
-                                        <a x-show="renaming !== {{ $file->id }}" href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
-                                        <form x-show="renaming === {{ $file->id }}" x-cloak method="POST" action="{{ route('files.rename', $file) }}" class="flex gap-2">
-                                            @csrf @method('PUT')
-                                            <input type="text" name="title" value="{{ $file->displayTitle }}" x-ref="rename-{{ $file->id }}"
-                                                class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                                            <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
-                                            <button type="button" @click="renaming = null" class="text-sm text-gray-500">✕</button>
-                                        </form>
+                                        @if ($file->is_encrypted)
+                                            <a href="{{ route('files.show', $file) }}" class="flex items-center gap-1 hover:underline"
+                                                x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></a>
+                                        @else
+                                            <a x-show="renaming !== {{ $file->id }}" href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
+                                            <form x-show="renaming === {{ $file->id }}" x-cloak method="POST" action="{{ route('files.rename', $file) }}" class="flex gap-2">
+                                                @csrf @method('PUT')
+                                                <input type="text" name="title" value="{{ $file->displayTitle }}" x-ref="rename-{{ $file->id }}"
+                                                    class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                                <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                                                <button type="button" @click="renaming = null" class="text-sm text-gray-500">✕</button>
+                                            </form>
+                                        @endif
                                     </td>
                                     <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ $file->type->label() }}</td>
                                     <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell">{{ number_format($file->size / 1024, 0) }} KB</td>
@@ -200,7 +205,9 @@
                                             <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                                 <a href="{{ route('files.show', $file) }}" class="block px-3 py-1.5 text-gray-700 hover:bg-gray-50">{{ __('files.view') }}</a>
                                                 <a href="{{ route('files.edit', $file) }}" class="block px-3 py-1.5 text-gray-700 hover:bg-gray-50">{{ __('files.edit') }}</a>
-                                                <button type="button" @click="startRename({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
+                                                @unless ($file->is_encrypted)
+                                                    <button type="button" @click="startRename({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
+                                                @endunless
                                                 <button type="button" @click="openMove({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
                                                 @if ($file->type === \App\Enums\FileType::ARCHIVE)
                                                     <form method="POST" action="{{ route('files.extract', $file) }}">

@@ -429,6 +429,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
 
         // Zero-knowledge: once a vault exists, every upload is encrypted in the
         // browser. Names are opaque, so there is no server-side conflict check.
+        await this.$store.vault.boot();
         if (this.$store.vault.configured) {
             if (! this.$store.vault.unlocked) {
                 window.dispatchEvent(new CustomEvent('vault-panel'));
@@ -1011,13 +1012,21 @@ Alpine.store('vault', {
     configured: false,
     unlocked: false,
     busy: false,
+    ready: null,
 
-    async boot() {
-        await Vault.boot();
-        this.unlocked = Vault.unlocked();
-        try {
-            this.configured = (await Vault.status()).configured;
-        } catch (e) { /* offline: leave defaults */ }
+    // Idempotent: repeated calls return the same in-flight/settled promise, so
+    // components can `await boot()` to be sure the cached key was restored.
+    boot() {
+        if (! this.ready) {
+            this.ready = (async () => {
+                await Vault.boot();
+                this.unlocked = Vault.unlocked();
+                try {
+                    this.configured = (await Vault.status()).configured;
+                } catch (e) { /* offline: leave defaults */ }
+            })();
+        }
+        return this.ready;
     },
 
     async setup(passphrase) {
@@ -1043,8 +1052,99 @@ Alpine.store('vault', {
     },
 });
 
+/* ---- Encrypted-file read paths (zero-knowledge, browser-side) ---- */
+
+// Trigger a browser download of decrypted bytes with the real name/mime.
+function saveDecrypted(bytes, name, mime) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name || 'download';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+// Fetch a file's raw (ciphertext) bytes from the download route.
+async function fetchCipher(url) {
+    const r = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    if (! r.ok) {
+        throw new Error('fetch failed');
+    }
+    return new Uint8Array(await r.arrayBuffer());
+}
+
+// Decrypt an encrypted file and save it under its real name. If the vault is
+// locked, prompt to unlock instead.
+window.vaultDownload = async (url, encMeta, encFileKey) => {
+    await Alpine.store('vault').boot();
+    if (! Alpine.store('vault').unlocked) {
+        window.dispatchEvent(new CustomEvent('vault-panel'));
+        return;
+    }
+    const meta = Vault.decryptFileMeta(encMeta);
+    const cipher = await fetchCipher(url);
+    saveDecrypted(Vault.decryptFile(cipher, encFileKey), meta.name, meta.mime);
+};
+
+// Name label for an encrypted file (list row / detail heading): decrypts the
+// real name once the vault is unlocked, otherwise shows a lock placeholder.
+Alpine.data('encName', (encMeta, lockedLabel = '🔒') => ({
+    label: lockedLabel,
+    async init() {
+        await this.$store.vault.boot();
+        if (this.$store.vault.unlocked) {
+            try {
+                this.label = Vault.decryptFileMeta(encMeta).name;
+            } catch (e) { /* leave the placeholder */ }
+        }
+    },
+}));
+
+// Inline preview for an encrypted file: fetches + decrypts, then renders an
+// image or PDF via an object URL, or offers a download for anything else.
+Alpine.data('encPreview', (url, encMeta, encFileKey) => ({
+    state: 'loading', // loading | image | pdf | none | locked | error
+    src: '',
+    name: '',
+    async init() {
+        await this.$store.vault.boot();
+        if (! this.$store.vault.unlocked) {
+            this.state = 'locked';
+            return;
+        }
+        try {
+            const meta = Vault.decryptFileMeta(encMeta);
+            this.name = meta.name;
+            const cipher = await fetchCipher(url);
+            const plain = Vault.decryptFile(cipher, encFileKey);
+            const mime = meta.mime || 'application/octet-stream';
+            if (mime.startsWith('image/')) {
+                this.src = URL.createObjectURL(new Blob([plain], { type: mime }));
+                this.state = 'image';
+            } else if (mime === 'application/pdf') {
+                this.src = URL.createObjectURL(new Blob([plain], { type: mime }));
+                this.state = 'pdf';
+            } else {
+                this.state = 'none';
+            }
+        } catch (e) {
+            this.state = 'error';
+        }
+    },
+    download() {
+        window.vaultDownload(url, encMeta, encFileKey);
+    },
+}));
+
 Alpine.plugin(intersect);
 
 window.Alpine = Alpine;
+
+// Boot the vault store on every page: it restores a cached (unlocked) vault key
+// from sessionStorage so encrypted files decrypt on the detail/edit pages too,
+// not only on the files browser where the unlock panel lives.
+document.addEventListener('alpine:init', () => Alpine.store('vault').boot());
 
 Alpine.start();

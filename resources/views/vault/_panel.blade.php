@@ -4,7 +4,6 @@
         open: false,
         mode: 'unlock',
         pass: '', pass2: '', code: '', recovery: '', error: '', busy: false,
-        init() { $store.vault.boot(); },
         panel() {
             this.mode = $store.vault.configured ? 'unlock' : 'setup';
             this.pass = this.pass2 = this.code = this.recovery = this.error = '';
