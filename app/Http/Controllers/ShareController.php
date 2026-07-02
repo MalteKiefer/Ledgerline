@@ -35,6 +35,7 @@ class ShareController extends Controller
             'expires_in' => ['required', 'integer', Rule::in(self::LIFETIMES)],
             'max_views' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'has_password' => ['required', 'boolean'],
+            'allow_download' => ['sometimes', 'boolean'],
             'wrapped_key' => ['required_if:has_password,true', 'nullable', 'string'],
             'wrap_salt' => ['required_if:has_password,true', 'nullable', 'string', 'max:255'],
             'wrap_nonce' => ['required_if:has_password,true', 'nullable', 'string', 'max:255'],
@@ -46,6 +47,7 @@ class ShareController extends Controller
             'cipher' => $validated['cipher'],
             'nonce' => $validated['nonce'],
             'has_password' => $validated['has_password'],
+            'allow_download' => $validated['allow_download'] ?? false,
             'wrapped_key' => $validated['wrapped_key'] ?? null,
             'wrap_salt' => $validated['wrap_salt'] ?? null,
             'wrap_nonce' => $validated['wrap_nonce'] ?? null,
@@ -91,6 +93,7 @@ class ShareController extends Controller
             'cipher' => $share->cipher,
             'nonce' => $share->nonce,
             'has_password' => $share->has_password,
+            'allow_download' => $share->allow_download,
         ];
 
         if ($share->has_password) {

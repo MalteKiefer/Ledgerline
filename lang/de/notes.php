@@ -49,6 +49,7 @@ return [
     'share_expiry_30d' => 'Nach 30 Tagen',
     'share_password' => 'Passwort (optional)',
     'share_max_views' => 'Abruf-Limit (optional)',
+    'share_allow_download' => 'Download als Markdown / PDF erlauben',
     'share_no_password_hint' => 'Ohne Passwort kann jede Person mit dem Link die Notiz lesen, bis er abläuft.',
     'share_create' => 'Link erzeugen',
     'share_your_link' => 'Dein Link',

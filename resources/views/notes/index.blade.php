@@ -201,6 +201,10 @@
                         <input type="number" min="1" x-model="shareMaxViews"
                             class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" x-model="shareAllowDownload" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                        {{ __('notes.share_allow_download') }}
+                    </label>
                     <p x-show="! sharePassword" x-cloak class="text-xs text-amber-700">{{ __('notes.share_no_password_hint') }}</p>
                     <p x-show="shareError" x-cloak class="text-xs text-red-600" x-text="shareError"></p>
                 </div>

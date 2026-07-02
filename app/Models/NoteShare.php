@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
     'cipher',
     'nonce',
     'has_password',
+    'allow_download',
     'wrapped_key',
     'wrap_salt',
     'wrap_nonce',
@@ -33,6 +34,7 @@ class NoteShare extends Model
 
     protected $casts = [
         'has_password' => 'boolean',
+        'allow_download' => 'boolean',
         'views' => 'integer',
         'max_views' => 'integer',
         'expires_at' => 'datetime',

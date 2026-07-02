@@ -49,6 +49,7 @@ return [
     'share_expiry_30d' => 'After 30 days',
     'share_password' => 'Password (optional)',
     'share_max_views' => 'View limit (optional)',
+    'share_allow_download' => 'Allow downloading as Markdown / PDF',
     'share_no_password_hint' => 'Without a password, anyone with the link can read the note until it expires.',
     'share_create' => 'Create link',
     'share_your_link' => 'Your link',

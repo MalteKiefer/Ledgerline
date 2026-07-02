@@ -46,6 +46,36 @@ class ShareTest extends TestCase
         $this->assertSame($share->id, $response->json('id'));
     }
 
+    public function test_store_persists_and_exposes_allow_download(): void
+    {
+        $this->signIn();
+
+        $this->postJson(route('shares.store'), [
+            'cipher' => 'Y2lwaGVy',
+            'nonce' => 'bm9uY2U=',
+            'expires_in' => 86400,
+            'has_password' => false,
+            'allow_download' => true,
+        ])->assertCreated();
+
+        $share = NoteShare::query()->firstOrFail();
+        $this->assertTrue($share->allow_download);
+
+        $this->getJson(route('shares.data', $share))
+            ->assertOk()
+            ->assertJson(['allow_download' => true]);
+    }
+
+    public function test_shares_are_not_downloadable_by_default(): void
+    {
+        $share = $this->makeShare();
+
+        $this->assertFalse($share->fresh()->allow_download);
+        $this->getJson(route('shares.data', $share))
+            ->assertOk()
+            ->assertJson(['allow_download' => false]);
+    }
+
     public function test_store_rejects_a_disallowed_lifetime(): void
     {
         $this->signIn();

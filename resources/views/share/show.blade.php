@@ -36,9 +36,15 @@
         {{-- Note --}}
         <template x-if="state === 'ready'">
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
-                <div class="border-b border-gray-100 px-6 py-4">
-                    <h1 class="text-lg font-semibold text-gray-900" x-text="title"></h1>
-                    <p class="mt-1 text-xs text-gray-400">{{ __('share.read_only_notice') }}</p>
+                <div class="flex items-start justify-between gap-3 border-b border-gray-100 px-6 py-4">
+                    <div class="min-w-0">
+                        <h1 class="text-lg font-semibold text-gray-900" x-text="title"></h1>
+                        <p class="mt-1 text-xs text-gray-400">{{ __('share.read_only_notice') }}</p>
+                    </div>
+                    <div x-show="canDownload" x-cloak class="flex shrink-0 items-center gap-2">
+                        <button type="button" @click="downloadMarkdown()" title="{{ __('share.download_markdown') }}" aria-label="{{ __('share.download_markdown') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-5 w-5" /></button>
+                        <button type="button" @click="downloadPdf()" title="{{ __('share.download_pdf') }}" aria-label="{{ __('share.download_pdf') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="document-arrow-down" class="h-5 w-5" /></button>
+                    </div>
                 </div>
                 <article class="markdown-body p-6" x-html="html"></article>
             </div>
