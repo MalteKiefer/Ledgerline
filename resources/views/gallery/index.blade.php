@@ -323,5 +323,11 @@
     </template>
 
     @include('gallery._location_picker')
+
+    {{-- Selection cap warning --}}
+    <div x-show="capNotice" x-cloak x-transition
+        class="fixed bottom-5 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+        {{ __('gallery.selection_capped', ['max' => 1000]) }}
+    </div>
   </div>
 </x-layouts.app>

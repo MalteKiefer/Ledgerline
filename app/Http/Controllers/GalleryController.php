@@ -389,7 +389,7 @@ class GalleryController extends Controller
     public function bulkLocation(Request $request, ReverseGeocoder $geocoder): RedirectResponse
     {
         $validated = $request->validate([
-            'photo_ids' => ['required', 'array'],
+            'photo_ids' => ['required', 'array', 'max:1000'],
             'photo_ids.*' => ['integer'],
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
@@ -492,7 +492,7 @@ class GalleryController extends Controller
     public function destroy(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'photo_ids' => ['required', 'array'],
+            'photo_ids' => ['required', 'array', 'max:1000'],
             'photo_ids.*' => ['integer'],
         ]);
 
@@ -544,7 +544,7 @@ class GalleryController extends Controller
     {
         $request->validate([
             'all' => ['nullable', 'boolean'],
-            'photo_ids' => ['nullable', 'array'],
+            'photo_ids' => ['nullable', 'array', 'max:1000'],
             'photo_ids.*' => ['integer'],
         ]);
 
