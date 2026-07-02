@@ -1819,6 +1819,61 @@ Alpine.data('encName', (encMeta, lockedLabel = '🔒') => ({
     },
 }));
 
+// Classify a mime into one of the FileType categories (mirrors the PHP
+// FileType::fromMime), so an encrypted file can show its real type once the
+// browser decrypts its metadata.
+function classifyMime(mime) {
+    mime = (mime || '').toLowerCase();
+    if (mime.startsWith('image/')) return 'IMAGE';
+    if (mime === 'application/pdf') return 'PDF';
+    if ([
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.oasis.opendocument.spreadsheet',
+        'text/csv', 'application/csv',
+    ].includes(mime)) return 'SPREADSHEET';
+    if ([
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.oasis.opendocument.text',
+        'application/rtf', 'text/plain', 'text/markdown',
+    ].includes(mime)) return 'DOCUMENT';
+    if ([
+        'application/zip', 'application/x-tar', 'application/gzip',
+        'application/x-7z-compressed', 'application/x-rar-compressed', 'application/vnd.rar',
+    ].includes(mime)) return 'ARCHIVE';
+    return 'OTHER';
+}
+
+// Type-column label for an encrypted file: decrypts the mime and maps it to the
+// localized category label; shows the "encrypted" placeholder until unlocked.
+Alpine.data('encType', (encMeta, labels) => ({
+    typeLabel: labels.ENCRYPTED ?? '',
+    async init() {
+        await this.$store.vault.boot();
+        if (this.$store.vault.unlocked) {
+            try {
+                const mime = Vault.decryptFileMeta(encMeta).mime;
+                this.typeLabel = labels[classifyMime(mime)] ?? mime;
+            } catch (e) { /* leave the placeholder */ }
+        }
+    },
+}));
+
+// Detail-page type label for an encrypted file: "Category · mime".
+Alpine.data('encMime', (encMeta, labels) => ({
+    label: labels.ENCRYPTED ?? '',
+    async init() {
+        await this.$store.vault.boot();
+        if (this.$store.vault.unlocked) {
+            try {
+                const mime = Vault.decryptFileMeta(encMeta).mime;
+                this.label = `${labels[classifyMime(mime)] ?? mime} · ${mime}`;
+            } catch (e) { /* leave the placeholder */ }
+        }
+    },
+}));
+
 // Inline preview for an encrypted file: fetches + decrypts, then renders an
 // image or PDF via an object URL, or offers a download for anything else.
 Alpine.data('encPreview', (url, encMeta, encFileKey) => ({

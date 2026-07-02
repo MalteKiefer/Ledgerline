@@ -1,4 +1,10 @@
 <x-layouts.app :title="__('messages.nav.files')">
+  @php
+      // mime → localized category label, so encrypted files can show their real
+      // type once decrypted in the browser.
+      $fileTypeLabels = collect(\App\Enums\FileType::cases())
+          ->mapWithKeys(fn (\App\Enums\FileType $c): array => [$c->value => $c->label()]);
+  @endphp
   <div x-data="filesExplorer({{ $files->pluck('id')->toJson() }}, {
         folderIds: {{ $subfolders->pluck('id')->toJson() }},
         uploadUrl: '{{ route('files.store.general') }}',
@@ -229,21 +235,30 @@
                                     @if ($file->is_encrypted) data-enc="{{ $file->enc_metadata }}" @else data-fname="{{ $file->name }}" data-fmime="{{ $file->mime_type }}" @endif>
                                     <td class="px-4 py-3" @click.stop><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
+                                        <span class="flex items-center gap-2">
+                                            <x-lock-badge :encrypted="$file->is_encrypted" />
+                                            @if ($file->is_encrypted)
+                                                <a href="{{ route('files.show', $file) }}" class="hover:underline"
+                                                    x-data="encName(@js($file->enc_metadata), @js(__('files.encrypted')))" x-text="label"></a>
+                                            @else
+                                                <a x-show="renaming !== {{ $file->id }}" href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
+                                                <form x-show="renaming === {{ $file->id }}" x-cloak method="POST" action="{{ route('files.rename', $file) }}" class="flex gap-2" @click.stop>
+                                                    @csrf @method('PUT')
+                                                    <input type="text" name="title" value="{{ $file->displayTitle }}" x-ref="rename-{{ $file->id }}"
+                                                        class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                                    <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                                                    <button type="button" @click="renaming = null" class="text-sm text-gray-500">✕</button>
+                                                </form>
+                                            @endif
+                                        </span>
+                                    </td>
+                                    <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">
                                         @if ($file->is_encrypted)
-                                            <a href="{{ route('files.show', $file) }}" class="flex items-center gap-1 hover:underline"
-                                                x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></a>
+                                            <span x-data="encType(@js($file->enc_metadata), @js($fileTypeLabels))" x-text="typeLabel"></span>
                                         @else
-                                            <a x-show="renaming !== {{ $file->id }}" href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
-                                            <form x-show="renaming === {{ $file->id }}" x-cloak method="POST" action="{{ route('files.rename', $file) }}" class="flex gap-2" @click.stop>
-                                                @csrf @method('PUT')
-                                                <input type="text" name="title" value="{{ $file->displayTitle }}" x-ref="rename-{{ $file->id }}"
-                                                    class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                                                <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
-                                                <button type="button" @click="renaming = null" class="text-sm text-gray-500">✕</button>
-                                            </form>
+                                            {{ $file->type->label() }}
                                         @endif
                                     </td>
-                                    <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ $file->type->label() }}</td>
                                     <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell"><x-file-size :bytes="$file->size" /></td>
                                     <td class="hidden px-4 py-3 text-gray-600 md:table-cell" @click.stop>
                                         @if ($file->attachable instanceof \App\Models\Customer)
