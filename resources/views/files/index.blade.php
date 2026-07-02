@@ -143,10 +143,11 @@
                                 <th class="px-4 py-3"></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-100">
+                        <tbody class="divide-y divide-gray-100" x-data="folderSort(@js($sort), @js($dir))" x-init="run()">
                             {{-- Folders first --}}
                             @foreach ($subfolders as $sub)
-                                <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false }' }}" class="hover:bg-gray-50">
+                                <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false }' }}" class="hover:bg-gray-50"
+                                    data-kind="folder" data-name="{{ $sub->enc_name ? '' : $sub->name }}" @if ($sub->enc_name) data-enc="{{ $sub->enc_name }}" @endif>
                                     <td class="px-4 py-3"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
                                         <a x-show="! rename" href="{{ route('files.index', ['folder' => $sub->id]) }}" class="flex items-center gap-2 hover:underline">
@@ -177,7 +178,8 @@
                                 </tr>
                             @endforeach
                             @foreach ($files as $file)
-                                <tr x-data="{ menu: false }" :class="selected.includes({{ $file->id }}) ? 'bg-gray-50' : ''">
+                                <tr x-data="{ menu: false }" :class="selected.includes({{ $file->id }}) ? 'bg-gray-50' : ''"
+                                    data-kind="file" data-name="{{ $file->is_encrypted ? '' : $file->displayTitle }}" @if ($file->is_encrypted) data-enc="{{ $file->enc_metadata }}" @endif>
                                     <td class="px-4 py-3"><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
                                         @if ($file->is_encrypted)
