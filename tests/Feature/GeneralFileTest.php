@@ -34,6 +34,32 @@ class GeneralFileTest extends TestCase
         $this->assertSame($folder->id, $file->folder_id);
     }
 
+    public function test_an_encrypted_upload_stores_only_opaque_blobs(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $folder = Folder::create(['name' => 'Vault']);
+
+        $this->post(route('files.store.general'), [
+            'files' => [UploadedFile::fake()->createWithContent('blob', 'ciphertext-bytes')],
+            'folder_id' => $folder->id,
+            'encrypted' => '1',
+            'enc_metadata' => ['{"c":"metacipher","n":"metanonce"}'],
+            'enc_file_key' => ['{"c":"keycipher","n":"keynonce"}'],
+        ])->assertRedirect(route('files.index', ['folder' => $folder->id]));
+
+        $file = File::where('folder_id', $folder->id)->sole();
+        $this->assertTrue($file->is_encrypted);
+        $this->assertSame(FileType::ENCRYPTED, $file->type);
+        $this->assertSame('', $file->name);
+        $this->assertNull($file->checksum);
+        $this->assertNull($file->extracted_text);
+        $this->assertSame('{"c":"metacipher","n":"metanonce"}', $file->enc_metadata);
+        $this->assertSame('{"c":"keycipher","n":"keynonce"}', $file->enc_file_key);
+        // The stored bytes are the ciphertext, untouched by the server.
+        $this->assertSame('ciphertext-bytes', Storage::disk('files')->get($file->disk_path));
+    }
+
     public function test_a_dropped_folder_recreates_its_subfolders(): void
     {
         Storage::fake('files');

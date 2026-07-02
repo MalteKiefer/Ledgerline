@@ -426,6 +426,18 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
         if (! files.length) {
             return;
         }
+
+        // Zero-knowledge: once a vault exists, every upload is encrypted in the
+        // browser. Names are opaque, so there is no server-side conflict check.
+        if (this.$store.vault.configured) {
+            if (! this.$store.vault.unlocked) {
+                window.dispatchEvent(new CustomEvent('vault-panel'));
+                return;
+            }
+            await this.uploadFiles(files, 'rename');
+            return;
+        }
+
         let conflicts = [];
         try {
             const data = new FormData();
@@ -478,6 +490,8 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
         this.progress = { done: 0, total: files.length };
         this.uploadItems = files.map((item) => ({ name: item.path, done: false }));
 
+        const encrypting = this.$store.vault.configured && this.$store.vault.unlocked;
+
         // Send in batches to stay within the per-request file limit.
         const chunkSize = 25;
         for (let i = 0; i < files.length; i += chunkSize) {
@@ -488,10 +502,20 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
             if (config.folderId) data.append('folder_id', config.folderId);
             if (config.customerId) data.append('customer_id', config.customerId);
             if (config.projectId) data.append('project_id', config.projectId);
-            chunk.forEach((item) => {
-                data.append('files[]', item.file);
-                data.append('paths[]', item.path);
-            });
+            if (encrypting) {
+                data.append('encrypted', '1');
+                for (const item of chunk) {
+                    const { blob, encMeta, encFileKey } = await Vault.encryptFile(item.file);
+                    data.append('files[]', blob, 'blob');
+                    data.append('enc_metadata[]', encMeta);
+                    data.append('enc_file_key[]', encFileKey);
+                }
+            } else {
+                chunk.forEach((item) => {
+                    data.append('files[]', item.file);
+                    data.append('paths[]', item.path);
+                });
+            }
             try {
                 await fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data });
             } catch (e) { /* continue with remaining batches */ }
