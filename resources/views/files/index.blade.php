@@ -36,7 +36,12 @@
     {{-- Encrypting existing items: progress + keep-open warning --}}
     <div x-show="enc.active" x-cloak class="fixed bottom-5 right-5 z-[950] w-80 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl">
         <div class="flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700">
-            <span>🔒 {{ __('files.encrypting') }}</span>
+            <span class="flex items-center gap-2">
+                <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+                {{ __('files.encrypting') }}
+            </span>
             <span class="text-gray-500"><span x-text="enc.done"></span>/<span x-text="enc.total"></span></span>
         </div>
         <div class="h-2 bg-gray-100">
