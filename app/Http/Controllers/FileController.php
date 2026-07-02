@@ -801,14 +801,45 @@ class FileController extends Controller
         $this->authorize('create', File::class);
 
         $validated = $request->validate([
-            'file_ids' => ['required', 'array'],
+            'file_ids' => ['array', 'required_without:folder_ids'],
             'file_ids.*' => ['integer'],
+            'folder_ids' => ['array'],
+            'folder_ids.*' => ['integer', Rule::exists('folders', 'id')],
             'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
         ]);
 
-        $count = File::query()->whereIn('id', $validated['file_ids'])->update(['folder_id' => $validated['folder_id'] ?? null]);
+        $target = $validated['folder_id'] ?? null;
 
-        return back()->with('status', __('flash.files_moved', ['count' => $count]));
+        $count = File::query()->whereIn('id', $validated['file_ids'] ?? [])->update(['folder_id' => $target]);
+
+        // Reparent selected folders, skipping any move into the folder itself or
+        // one of its own descendants (which would orphan the subtree).
+        foreach (Folder::query()->whereIn('id', $validated['folder_ids'] ?? [])->get() as $folder) {
+            if ($folder->id === $target || $this->folderContains($folder->id, $target)) {
+                continue;
+            }
+            $folder->update(['parent_id' => $target]);
+            $count++;
+        }
+
+        return back()->with('status', __('flash.items_moved', ['count' => $count]));
+    }
+
+    /**
+     * Whether $ancestorId is $folderId or one of its ancestors — i.e. moving a
+     * folder into $folderId would create a cycle.
+     */
+    private function folderContains(int $ancestorId, ?int $folderId): bool
+    {
+        $node = $folderId;
+        while ($node !== null) {
+            if ($node === $ancestorId) {
+                return true;
+            }
+            $node = Folder::query()->whereKey($node)->value('parent_id');
+        }
+
+        return false;
     }
 
     /**
@@ -819,19 +850,30 @@ class FileController extends Controller
         $this->authorize('create', File::class);
 
         $validated = $request->validate([
-            'file_ids' => ['required', 'array'],
+            'file_ids' => ['array', 'required_without:folder_ids'],
             'file_ids.*' => ['integer'],
+            'folder_ids' => ['array'],
+            'folder_ids.*' => ['integer', Rule::exists('folders', 'id')],
         ]);
 
-        $files = File::query()->with('attachable')->whereIn('id', $validated['file_ids'])->get();
+        $files = File::query()->with('attachable')->whereIn('id', $validated['file_ids'] ?? [])->get();
         $paths = [];
+        $folders = Folder::query()->whereIn('id', $validated['folder_ids'] ?? [])->get();
 
-        DB::transaction(function () use ($files, &$paths): void {
+        DB::transaction(function () use ($files, $folders, &$paths): void {
             foreach ($files as $file) {
                 $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
                 $paths[] = $file->disk_path;
                 $file->delete();
                 $invoice?->delete();
+            }
+
+            // Deleting a folder lifts its contents up one level (same as the
+            // single-folder delete), so nothing inside is lost.
+            foreach ($folders as $folder) {
+                Folder::where('parent_id', $folder->id)->update(['parent_id' => $folder->parent_id]);
+                File::where('folder_id', $folder->id)->update(['folder_id' => $folder->parent_id]);
+                $folder->delete();
             }
         });
 
@@ -840,7 +882,7 @@ class FileController extends Controller
             $disk->delete($path);
         }
 
-        return back()->with('status', __('flash.files_deleted', ['count' => $files->count()]));
+        return back()->with('status', __('flash.items_deleted', ['count' => $files->count() + $folders->count()]));
     }
 
     /**

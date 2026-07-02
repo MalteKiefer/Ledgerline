@@ -1,9 +1,12 @@
 <x-layouts.app :title="__('messages.nav.files')">
   <div x-data="filesExplorer({{ $files->pluck('id')->toJson() }}, {
+        folderIds: {{ $subfolders->pluck('id')->toJson() }},
         uploadUrl: '{{ route('files.store.general') }}',
         conflictsUrl: '{{ route('files.conflicts') }}',
         foldersUrl: '{{ route('folders.store') }}',
         foldersListUrl: '{{ route('folders.list') }}',
+        fileBase: '{{ url('/files') }}',
+        folderBase: '{{ url('/folders') }}',
         token: '{{ csrf_token() }}',
         folderId: {{ $folder?->id ?? 'null' }},
         customerId: {{ (int) request('customer') ?: 'null' }},
@@ -14,6 +17,11 @@
     <div x-show="dragging" x-cloak @drop.prevent="drop($event)" @dragover.prevent
         class="fixed inset-0 z-[900] flex items-center justify-center bg-gray-900/50 p-8">
         <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
+    </div>
+
+    {{-- Encrypting existing items --}}
+    <div x-show="busy" x-cloak class="fixed bottom-5 right-5 z-[950] rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-xl">
+        🔒 {{ __('files.encrypting') }}
     </div>
 
     {{-- Upload tray (Google/Immich style) --}}
@@ -122,9 +130,11 @@
             </form>
 
             {{-- Bulk bar --}}
-            <div x-show="selected.length" x-cloak class="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-                <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
+            <div x-show="selectionCount" x-cloak class="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <span class="text-sm font-medium text-gray-700"><span x-text="selectionCount"></span> {{ __('files.selected_word') }}</span>
                 <button type="button" @click="openMove()" class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move') }}</button>
+                <button type="button" x-show="$store.vault.configured" @click="bulkEncrypt()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.encrypt_file') }}</button>
+                <button type="button" x-show="selectionCount === 1" x-cloak @click="bulkRename()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
                 <button type="button" @click="openBulkDelete()" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('common.delete') }}</button>
             </div>
 
@@ -148,8 +158,9 @@
                             {{-- Folders first --}}
                             @foreach ($subfolders as $sub)
                                 <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false }' }}" class="hover:bg-gray-50"
+                                    @rename-folder.window="if ($event.detail === {{ $sub->id }}) rename = true"
                                     data-kind="folder" data-name="{{ $sub->enc_name ? '' : $sub->name }}" @if ($sub->enc_name) data-enc="{{ $sub->enc_name }}" @endif>
-                                    <td class="px-4 py-3"></td>
+                                    <td class="px-4 py-3"><input type="checkbox" value="{{ $sub->id }}" x-model.number="selectedFolders" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
                                         <a x-show="! rename" href="{{ route('files.index', ['folder' => $sub->id]) }}" class="flex items-center gap-2 hover:underline">
                                             <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
@@ -170,6 +181,8 @@
                                             <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
                                             <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                                 <button type="button" @click="rename = true; menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
+                                                <button type="button" @click="openMoveFolder({{ $sub->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
+                                                <button type="button" x-show="$store.vault.configured" @click="encryptFolder({{ $sub->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.encrypt_file') }}</button>
                                                 <x-confirm-action :action="route('folders.destroy', $sub)" method="DELETE"
                                                     :trigger="__('common.delete')" trigger-class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"
                                                     :message="__('files.delete_folder_confirm')" />
@@ -180,7 +193,8 @@
                             @endforeach
                             @foreach ($files as $file)
                                 <tr x-data="{ menu: false }" :class="selected.includes({{ $file->id }}) ? 'bg-gray-50' : ''"
-                                    data-kind="file" data-name="{{ $file->is_encrypted ? '' : $file->displayTitle }}" @if ($file->is_encrypted) data-enc="{{ $file->enc_metadata }}" @endif>
+                                    data-kind="file" data-name="{{ $file->is_encrypted ? '' : $file->displayTitle }}"
+                                    @if ($file->is_encrypted) data-enc="{{ $file->enc_metadata }}" @else data-fname="{{ $file->name }}" data-fmime="{{ $file->mime_type }}" @endif>
                                     <td class="px-4 py-3"><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
                                         @if ($file->is_encrypted)
@@ -251,10 +265,11 @@
         <div x-show="moveOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="moveOpen = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="moveOpen = false"></div>
             <div class="relative flex max-h-[80vh] w-full max-w-md flex-col rounded-lg bg-white shadow-xl">
-                <h3 class="border-b border-gray-100 px-6 py-4 text-base font-semibold text-gray-900">{{ __('files.move_title') }} <span class="text-gray-400">(<span x-text="moveIds.length"></span>)</span></h3>
+                <h3 class="border-b border-gray-100 px-6 py-4 text-base font-semibold text-gray-900">{{ __('files.move_title') }} <span class="text-gray-400">(<span x-text="moveIds.length + moveFolderIds.length"></span>)</span></h3>
                 <form method="POST" action="{{ route('files.bulk.move') }}" class="flex min-h-0 flex-1 flex-col" x-data="{ radioName: 'folder_pick' }">
                     @csrf
                     <template x-for="id in moveIds" :key="id"><input type="hidden" name="file_ids[]" :value="id"></template>
+                    <template x-for="id in moveFolderIds" :key="'d'+id"><input type="hidden" name="folder_ids[]" :value="id"></template>
                     <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
                         <label class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
                             <input type="radio" :name="radioName" value="" x-model="target" class="border-gray-300 text-gray-800 focus:ring-gray-500">
@@ -282,6 +297,7 @@
                 <form method="POST" action="{{ route('files.bulk.delete') }}" class="mt-5 flex justify-end gap-3">
                     @csrf
                     <template x-for="id in selected" :key="id"><input type="hidden" name="file_ids[]" :value="id"></template>
+                    <template x-for="id in selectedFolders" :key="'d'+id"><input type="hidden" name="folder_ids[]" :value="id"></template>
                     <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('common.delete') }}</button>
                 </form>

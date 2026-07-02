@@ -28,6 +28,27 @@ class FolderController extends Controller
         );
     }
 
+    /**
+     * The plaintext files and folders inside a folder subtree (the folder plus
+     * all descendants). Used by the browser to encrypt an existing folder tree:
+     * it needs each item's real name/mime to seal them. Already-encrypted items
+     * are omitted.
+     */
+    public function descendants(Folder $folder): JsonResponse
+    {
+        $ids = [$folder->id];
+        $frontier = [$folder->id];
+        while ($frontier !== []) {
+            $frontier = Folder::query()->whereIn('parent_id', $frontier)->pluck('id')->all();
+            $ids = array_merge($ids, $frontier);
+        }
+
+        return response()->json([
+            'folders' => Folder::query()->whereIn('id', $ids)->whereNull('enc_name')->get(['id', 'name']),
+            'files' => File::query()->whereIn('folder_id', $ids)->where('is_encrypted', false)->get(['id', 'name', 'mime_type']),
+        ]);
+    }
+
     public function store(StoreFolderRequest $request): RedirectResponse|JsonResponse
     {
         $data = $request->validated();

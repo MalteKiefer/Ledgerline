@@ -166,6 +166,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
     Route::post('/files/{file}/extract', [FileController::class, 'extract'])->name('files.extract');
     Route::get('/folders/list', [FolderController::class, 'index'])->name('folders.list');
+    Route::get('/folders/{folder}/descendants', [FolderController::class, 'descendants'])->name('folders.descendants');
     Route::put('/files/{file}/encrypt', [FileController::class, 'encrypt'])->name('files.encrypt');
     Route::get('/files/{file}/edit', [FileController::class, 'edit'])->name('files.edit');
     Route::put('/files/{file}/content', [FileController::class, 'updateContent'])->name('files.content');
