@@ -29,4 +29,8 @@ return [
     'edit_tags' => 'Edit tags',
     'filtered_by' => 'Filtered by',
     'active' => 'Notes',
+    'menu' => 'More actions',
+    'export' => 'Export',
+    'export_markdown' => 'Export as Markdown',
+    'export_pdf' => 'Export as PDF',
 ];

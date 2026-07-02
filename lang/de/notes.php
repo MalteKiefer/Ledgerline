@@ -29,4 +29,8 @@ return [
     'edit_tags' => 'Tags bearbeiten',
     'filtered_by' => 'Gefiltert nach',
     'active' => 'Notizen',
+    'menu' => 'Weitere Aktionen',
+    'export' => 'Export',
+    'export_markdown' => 'Als Markdown exportieren',
+    'export_pdf' => 'Als PDF exportieren',
 ];
