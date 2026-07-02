@@ -44,7 +44,7 @@
 
         {{-- Account cards --}}
         <div class="mt-6 grid gap-4 md:grid-cols-2">
-            <template x-for="a in manifest.accounts" :key="a.id">
+            <template x-for="a in sortedAccounts" :key="a.id">
                 <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm" x-data="{ menu: false, open: false }">
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
@@ -101,7 +101,7 @@
                             {{-- Folders --}}
                             <button type="button" @click="open = ! open" class="mt-3 text-xs text-gray-500 hover:text-gray-700" x-text="open ? '▾ {{ __('mail.stat_folders') }}' : '▸ {{ __('mail.stat_folders') }}'"></button>
                             <ul x-show="open" x-cloak class="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs">
-                                <template x-for="f in (a.stats.folders ?? [])" :key="f.name">
+                                <template x-for="f in sortedFolders(a.stats.folders)" :key="f.name">
                                     <li class="flex items-center justify-between gap-2 border-b border-gray-50 py-1">
                                         <span class="min-w-0 truncate text-gray-700" x-text="f.name"></span>
                                         <span class="shrink-0 text-gray-400"><span x-text="f.total"></span> · <span x-text="f.unseen"></span></span>
