@@ -20,6 +20,7 @@ return [
     'forgot' => 'Forgot passphrase?',
     'lock' => 'Lock the vault',
     'not_configured' => 'The vault is not set up yet.',
+    'not_set_up_notice' => 'Encryption is not set up yet. Set an encryption passphrase to protect your files.',
     'passphrase' => 'Passphrase',
     'passphrase_confirm' => 'Repeat passphrase',
     'recover_hint' => 'Enter your recovery code to unlock the vault.',

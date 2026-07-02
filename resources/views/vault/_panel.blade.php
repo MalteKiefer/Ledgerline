@@ -4,6 +4,16 @@
         open: false,
         mode: 'unlock',
         pass: '', pass2: '', code: '', recovery: '', error: '', busy: false,
+        init() {
+            // No vault yet: prompt setup automatically, once per tab session.
+            @if (! ($serverConfigured ?? true))
+                if (! sessionStorage.getItem('vault.setup-prompted')) {
+                    sessionStorage.setItem('vault.setup-prompted', '1');
+                    this.mode = 'setup';
+                    this.open = true;
+                }
+            @endif
+        },
         panel() {
             this.mode = $store.vault.configured ? 'unlock' : 'setup';
             this.pass = this.pass2 = this.code = this.recovery = this.error = '';

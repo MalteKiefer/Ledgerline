@@ -3,6 +3,7 @@
         uploadUrl: '{{ route('files.store.general') }}',
         conflictsUrl: '{{ route('files.conflicts') }}',
         foldersUrl: '{{ route('folders.store') }}',
+        foldersListUrl: '{{ route('folders.list') }}',
         token: '{{ csrf_token() }}',
         folderId: {{ $folder?->id ?? 'null' }},
         customerId: {{ (int) request('customer') ?: 'null' }},
@@ -78,7 +79,6 @@
             @endif
         </div>
         <div class="flex flex-wrap items-center gap-2">
-            @include('vault._panel')
             {{-- New folder --}}
             <form method="POST" action="{{ route('folders.store') }}" class="flex items-center gap-1" @submit="window.encryptFolderSubmit($event)">
                 @csrf
