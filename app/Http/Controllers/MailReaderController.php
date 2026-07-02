@@ -9,6 +9,7 @@ use App\Services\Mail\ImapReader;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 /**
@@ -172,6 +173,15 @@ class MailReaderController extends Controller
         try {
             return $operation();
         } catch (\Throwable $e) {
+            // Log the exception detail server-side for diagnostics. This is the
+            // IMAP server's own error (class + message + origin) — never vault
+            // content or credentials, which the mail services do not expose.
+            Log::warning('Mail operation failed', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile().':'.$e->getLine(),
+            ]);
+
             return response()->json([
                 'message' => __('mail.connect_failed'),
                 'detail' => class_basename($e),
