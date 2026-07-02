@@ -319,7 +319,7 @@
                                                 @endif
                                                 <x-confirm-action :action="route('files.destroy', $file)" method="DELETE"
                                                     :trigger="__('common.delete')" trigger-class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"
-                                                    :message="$file->attachable instanceof \App\Models\Invoice ? __('files.delete_invoice_warning', ['number' => $file->attachable->number ?? ('#'.$file->attachable->id)]) : __('files.delete_file_confirm')" />
+                                                    :message="__('files.delete_file_confirm')" />
                                             </div>
                                         </div>
                                     </td>

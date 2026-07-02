@@ -22,12 +22,10 @@ class GallerySettingsTest extends TestCase
         $this->get(route('settings.gallery.edit'))->assertRedirect(route('login'));
     }
 
-    public function test_gallery_settings_page_renders_separately_from_company(): void
+    public function test_gallery_settings_page_renders(): void
     {
         $this->signIn();
         $this->get(route('settings.gallery.edit'))->assertOk();
-        // The company profile page no longer carries the gallery fields.
-        $this->get(route('settings.company.edit'))->assertOk()->assertDontSee('gallery_trip_gap_days');
     }
 
     public function test_trip_thresholds_can_be_saved(): void

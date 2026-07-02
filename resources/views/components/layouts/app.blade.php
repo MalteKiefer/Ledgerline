@@ -27,16 +27,8 @@
             <nav class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
                 @php
                     $navItems = [
-                        ['label' => __('messages.nav.dashboard'), 'url' => route('dashboard'), 'active' => request()->routeIs('dashboard'),
-                            'icon' => 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
-                        ['label' => __('messages.nav.customers'), 'url' => route('customers.index'), 'active' => request()->routeIs('customers.*'),
-                            'icon' => 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z'],
-                        ['label' => __('messages.nav.projects'), 'url' => route('projects.overview'), 'active' => request()->routeIs('projects.*'),
-                            'icon' => 'M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z'],
                         ['label' => __('messages.nav.files'), 'url' => route('files.index'), 'active' => request()->routeIs('files.*'),
                             'icon' => 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
-                        ['label' => __('messages.nav.finance'), 'url' => route('finance.expenses.index'), 'active' => request()->routeIs('finance.*'),
-                            'icon' => 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2m-6-4h8m0 0l-3-3m3 3l-3 3'],
                         ['label' => __('messages.nav.gallery'), 'url' => route('gallery.index'), 'active' => request()->routeIs('gallery.*'),
                             'icon' => 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M18 12h.008v.008H18V12zM2.25 6h19.5A2.25 2.25 0 0124 8.25v10.5A2.25 2.25 0 0121.75 21H2.25A2.25 2.25 0 010 18.75V8.25A2.25 2.25 0 012.25 6z'],
                     ];
