@@ -2806,15 +2806,18 @@ Alpine.data('vaultMail', (labels = {}) => ({
     messageSrcdoc() {
         const c = this.reader.current;
         if (! c) return '';
+        // Plain text: render in a normal sans-serif with comfortable line height
+        // (like other mail clients) instead of monospace <pre>, keeping the
+        // original line breaks.
         const body = c.html
             ? this.sanitizeEmail(c.html, this.reader.imagesAllowed)
-            : `<pre style="white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace">${escapeHtml(c.text || '')}</pre>`;
+            : `<div style="white-space:pre-wrap">${escapeHtml(c.text || '')}</div>`;
         const csp = this.reader.imagesAllowed
             ? "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data:"
             : "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:";
         return `<!doctype html><html><head><meta charset="utf-8">`
             + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
-            + `</head><body style="font-family:system-ui,-apple-system,sans-serif;margin:0;padding:12px;color:#111;word-break:break-word">${body}</body></html>`;
+            + `</head><body style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;margin:0;padding:16px;color:#111;word-break:break-word">${body}</body></html>`;
     },
 
     get messageHasBlockedImages() {
