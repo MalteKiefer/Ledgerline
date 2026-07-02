@@ -93,10 +93,11 @@
         x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
         @location-picked.window="if ($event.detail.context === 'bulk') { lat = $event.detail.lat; lng = $event.detail.lng; }">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
-        <form method="POST" action="{{ route('gallery.download') }}">
+        <form method="POST" action="{{ route('gallery.download') }}" class="flex items-center gap-2">
             @csrf
             <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
-            <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download') }}</button>
+            <button type="submit" name="variant" value="original" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download') }}: {{ __('gallery.download_original') }}</button>
+            <button type="submit" name="variant" value="edited" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download_edited') }}</button>
         </form>
         <button type="button" @click="locationOpen = true" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.set_location') }}</button>
         <button type="button" @click="deleteOpen = true" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('gallery.delete') }}</button>
@@ -331,7 +332,13 @@
                 </form>
                 </div>
 
-                <a :href="current.original" class="mt-4 block rounded-md bg-gray-800 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.download') }}</a>
+                <div class="mt-4">
+                    <p class="mb-1 text-xs font-medium text-gray-500">{{ __('gallery.download') }}</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <a :href="current.original" class="rounded-md bg-gray-800 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.download_original') }}</a>
+                        <a :href="`/gallery/${current.id}/download/edited`" class="rounded-md border border-gray-300 px-4 py-2 text-center text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download_edited') }}</a>
+                    </div>
+                </div>
             </aside>
         </div>
     </template>

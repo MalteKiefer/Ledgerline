@@ -46,6 +46,30 @@ class PhotoEditTest extends TestCase
         $this->assertSame('Las Vegas, NV, USA', $photo->place);
     }
 
+    public function test_edited_download_bakes_edits_and_returns_a_jpeg(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $img = imagecreatetruecolor(6, 4);
+        ob_start();
+        imagejpeg($img);
+        $jpeg = (string) ob_get_clean();
+        imagedestroy($img);
+
+        $photo = Photo::factory()->create([
+            'disk_path' => 'photos/x.jpg', 'mime_type' => 'image/jpeg', 'name' => 'x.jpg',
+            'rotation' => 90, 'taken_at' => now(), 'latitude' => 52.5, 'longitude' => 13.4, 'camera' => 'TestCam',
+        ]);
+        Storage::disk('files')->put('photos/x.jpg', $jpeg);
+
+        $res = $this->get(route('gallery.download.edited', $photo));
+
+        $res->assertOk();
+        $res->assertDownload('x.jpg');
+        $this->assertSame("\xFF\xD8", substr($res->getFile()->getContent(), 0, 2)); // JPEG SOI marker
+    }
+
     public function test_bulk_download_zips_the_selected_photos(): void
     {
         Storage::fake('files');
