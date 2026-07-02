@@ -93,10 +93,11 @@ Route::middleware('auth')->group(function (): void {
     // opaque uuid-keyed blobs; it cannot see names, sizes, structure or counts.
     Route::view('/files', 'files.index')->name('files.index');
     Route::view('/notes', 'notes.index')->name('notes.index');
+    Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['files', 'notes'])->name('vault.manifest.show');
+        ->whereIn('name', ['files', 'notes', 'bookmarks'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['files', 'notes'])->name('vault.manifest.update');
+        ->whereIn('name', ['files', 'notes', 'bookmarks'])->name('vault.manifest.update');
     Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
     Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
     Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');

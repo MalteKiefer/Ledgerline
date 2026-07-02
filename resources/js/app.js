@@ -237,6 +237,14 @@ Alpine.data('spotlight', () => ({
                 });
             }
 
+            const bookmarks = await searchBookmarksClient(term);
+            if (bookmarks.length) {
+                this.groups.push({
+                    group: document.documentElement.lang === 'de' ? 'Lesezeichen' : 'Bookmarks',
+                    results: bookmarks,
+                });
+            }
+
             this.flat = this.groups.flatMap((group) => group.results);
             this.activeIndex = this.flat.length ? 0 : -1;
         } catch (error) {
@@ -1920,6 +1928,351 @@ async function searchNotesClient(term) {
     }
     return out;
 }
+
+/* Client-side bookmark search for the global palette. Same zero-knowledge
+ * pattern as notes: the decrypted manifest is memoised and invalidated on save
+ * or unlock. */
+let bookmarksSearchCache = null;
+window.addEventListener('bookmarks-changed', () => { bookmarksSearchCache = null; });
+window.addEventListener('vault-unlocked', () => { bookmarksSearchCache = null; });
+
+async function searchBookmarksClient(term) {
+    if (! Alpine.store('vault').unlocked) return [];
+    try {
+        if (! bookmarksSearchCache) {
+            bookmarksSearchCache = (await Vault.loadManifest('bookmarks')).data;
+        }
+    } catch (e) {
+        return [];
+    }
+    const q = term.toLowerCase();
+    const out = [];
+    for (const b of bookmarksSearchCache.bookmarks ?? []) {
+        if (b.trashed) continue;
+        const title = b.title ?? '';
+        const url = b.url ?? '';
+        const hit = title.toLowerCase().includes(q)
+            || url.toLowerCase().includes(q)
+            || (b.description ?? '').toLowerCase().includes(q)
+            || (b.tags ?? []).some((t) => t.toLowerCase().includes(q));
+        if (! hit) continue;
+        out.push({ title: title || url || '…', subtitle: url, url: `/bookmarks?open=${b.id}` });
+        if (out.length >= 5) break;
+    }
+    return out;
+}
+
+Alpine.data('vaultBookmarks', (labels = {}) => ({
+    state: 'boot', // boot | locked | unconfigured | ready | error
+    manifest: { v: 1, folders: [], bookmarks: [] },
+    version: 0,
+    cwd: null,
+    query: '',
+    view: 'active', // active | trash
+    activeTag: '',
+    error: '',
+    dialogOpen: false,
+    editingId: null, // null = creating a new bookmark
+    form: { url: '', title: '', description: '', tags: '', folder: '', favorite: false, favicon: null },
+    fetching: false,
+    tagsOpen: false,
+    tagsRef: null,
+    tagsValue: '',
+    moveOpen: false,
+    moveRef: null,
+    moveTarget: '',
+
+    async init() {
+        await this.$store.vault.boot();
+        window.addEventListener('vault-unlocked', () => this.load());
+        if (! this.$store.vault.configured) { this.state = 'unconfigured'; return; }
+        if (! this.$store.vault.unlocked) { this.state = 'locked'; return; }
+        await this.load();
+    },
+
+    async load() {
+        try {
+            const { data, version } = await Vault.loadManifest('bookmarks');
+            this.manifest = data.bookmarks ? data : { v: 1, folders: [], bookmarks: [] };
+            this.version = version;
+            this.state = 'ready';
+            const open = new URLSearchParams(window.location.search).get('open');
+            const b = open && this.manifest.bookmarks.find((x) => x.id === open);
+            if (b) this.openEdit(b);
+        } catch (e) {
+            this.state = 'error';
+        }
+    },
+
+    async persist() {
+        try {
+            this.version = await Vault.saveManifest('bookmarks', this.manifest, this.version);
+            this.error = '';
+            window.dispatchEvent(new CustomEvent('bookmarks-changed'));
+        } catch (e) {
+            if (e.stale) { await this.load(); this.error = labels.stale; } else { this.error = labels.saveFailed; }
+            throw e;
+        }
+    },
+
+    /* ---- Derived ---- */
+
+    get breadcrumb() {
+        const chain = [];
+        const byId = new Map(this.manifest.folders.map((f) => [f.id, f]));
+        let cur = this.cwd;
+        while (cur != null && byId.has(cur)) { chain.unshift(byId.get(cur)); cur = byId.get(cur).parent; }
+        return chain;
+    },
+
+    get currentFolderName() {
+        return this.breadcrumb.length ? this.breadcrumb[this.breadcrumb.length - 1].name : null;
+    },
+
+    get rows() {
+        const q = this.query.trim().toLowerCase();
+        const tag = this.activeTag;
+        const flat = q !== '' || tag !== '';
+        let bms = this.manifest.bookmarks.filter((b) => (this.view === 'trash' ? b.trashed : ! b.trashed));
+        if (! flat) bms = bms.filter((b) => (b.folder ?? null) === this.cwd);
+        if (q !== '') {
+            bms = bms.filter((b) => (b.title ?? '').toLowerCase().includes(q)
+                || (b.url ?? '').toLowerCase().includes(q)
+                || (b.description ?? '').toLowerCase().includes(q)
+                || (b.tags ?? []).some((t) => t.toLowerCase().includes(q)));
+        }
+        if (tag !== '') bms = bms.filter((b) => (b.tags ?? []).includes(tag));
+        bms = [...bms].sort((a, b) => (Number(b.favorite) - Number(a.favorite)) || (b.updated ?? '').localeCompare(a.updated ?? ''));
+
+        let folders = [];
+        if (! flat && this.view === 'active') {
+            folders = this.manifest.folders
+                .filter((f) => (f.parent ?? null) === this.cwd)
+                .map((f) => ({ ...f, kind: 'folder' }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+        }
+        return [...folders, ...bms.map((b) => ({ ...b, kind: 'bookmark' }))];
+    },
+
+    get allTags() {
+        const set = new Set();
+        for (const b of this.manifest.bookmarks) for (const t of b.tags ?? []) set.add(t);
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+
+    get trashCount() {
+        return this.manifest.bookmarks.filter((b) => b.trashed).length;
+    },
+
+    // All folders as flat, path-labelled options for the move dialog.
+    get moveOptions() {
+        const byId = new Map(this.manifest.folders.map((f) => [f.id, f]));
+        const path = (f) => {
+            const parts = [];
+            let cur = f;
+            while (cur) { parts.unshift(cur.name); cur = cur.parent != null ? byId.get(cur.parent) : null; }
+            return parts.join(' / ');
+        };
+        return this.manifest.folders.map((f) => ({ id: f.id, label: path(f) })).sort((a, b) => a.label.localeCompare(b.label));
+    },
+
+    hostname(url) {
+        try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return url; }
+    },
+
+    /* ---- URL helpers ---- */
+
+    normalizeUrl(u) {
+        u = (u || '').trim();
+        if (! u) return '';
+        if (! /^https?:\/\//i.test(u)) u = `https://${u}`;
+        return u;
+    },
+
+    isHttpUrl(u) {
+        try { const p = new URL(u); return p.protocol === 'http:' || p.protocol === 'https:'; } catch (e) { return false; }
+    },
+
+    openBookmark(b) {
+        if (this.isHttpUrl(b.url)) window.open(b.url, '_blank', 'noopener,noreferrer');
+    },
+
+    /* ---- Add / edit ---- */
+
+    openAdd() {
+        this.editingId = null;
+        this.form = { url: '', title: '', description: '', tags: '', folder: this.cwd ?? '', favorite: false, favicon: null };
+        this.error = '';
+        this.dialogOpen = true;
+    },
+
+    openEdit(b) {
+        const src = this.manifest.bookmarks.find((x) => x.id === b.id) ?? b;
+        this.editingId = src.id;
+        this.form = {
+            url: src.url ?? '', title: src.title ?? '', description: src.description ?? '',
+            tags: (src.tags ?? []).join(', '), folder: src.folder ?? '', favorite: !! src.favorite, favicon: src.favicon ?? null,
+        };
+        this.error = '';
+        this.dialogOpen = true;
+    },
+
+    async saveBookmark() {
+        const url = this.normalizeUrl(this.form.url);
+        if (! this.isHttpUrl(url)) { this.error = labels.invalidUrl; return; }
+        const tags = [...new Set((this.form.tags || '').split(',').map((t) => t.trim()).filter(Boolean))];
+        const now = new Date().toISOString();
+        if (this.editingId) {
+            const b = this.manifest.bookmarks.find((x) => x.id === this.editingId);
+            if (b) {
+                Object.assign(b, {
+                    url, title: this.form.title || this.hostname(url), description: this.form.description ?? '',
+                    tags, folder: this.form.folder || null, favorite: !! this.form.favorite,
+                    favicon: this.form.favicon ?? b.favicon ?? null, updated: now,
+                });
+            }
+        } else {
+            this.manifest.bookmarks.push({
+                id: crypto.randomUUID(), url, title: this.form.title || this.hostname(url),
+                description: this.form.description ?? '', tags, favorite: !! this.form.favorite,
+                folder: this.form.folder || null, favicon: this.form.favicon ?? null,
+                created: now, updated: now, trashed: null,
+            });
+        }
+        this.dialogOpen = false;
+        await this.persist().catch(() => {});
+    },
+
+    // Best-effort: the browser fetches the page title and favicon directly from
+    // the target site (never via our server). Cross-origin reads are usually
+    // blocked by CORS, so the title falls back to the hostname and the favicon
+    // to none — then the user just types it.
+    async fetchMeta() {
+        const url = this.normalizeUrl(this.form.url);
+        if (! this.isHttpUrl(url)) { this.error = labels.invalidUrl; return; }
+        this.form.url = url;
+        this.error = '';
+        this.fetching = true;
+        try {
+            try {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 4000);
+                const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+                const html = await res.text();
+                clearTimeout(timer);
+                const title = new DOMParser().parseFromString(html, 'text/html').querySelector('title')?.textContent?.trim();
+                if (title) this.form.title = title;
+            } catch (e) { /* CORS / opaque / timeout: fall back below */ }
+            if (! this.form.title) this.form.title = this.hostname(url);
+            this.form.favicon = await this.fetchFavicon(url);
+        } finally {
+            this.fetching = false;
+        }
+    },
+
+    async fetchFavicon(url) {
+        try {
+            const origin = new URL(url).origin;
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 4000);
+            const res = await fetch(`${origin}/favicon.ico`, { signal: ctrl.signal });
+            clearTimeout(timer);
+            if (! res.ok) return null;
+            const blob = await res.blob();
+            if (! blob.type.startsWith('image/') || blob.size > 100 * 1024) return null;
+            return await new Promise((resolve) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result);
+                fr.onerror = () => resolve(null);
+                fr.readAsDataURL(blob);
+            });
+        } catch (e) {
+            return null;
+        }
+    },
+
+    /* ---- Actions ---- */
+
+    async toggleFavorite(b) {
+        const t = this.manifest.bookmarks.find((x) => x.id === b.id);
+        if (! t) return;
+        t.favorite = ! t.favorite;
+        await this.persist().catch(() => {});
+    },
+
+    openTags(b) {
+        this.tagsRef = b.id;
+        this.tagsValue = (b.tags ?? []).join(', ');
+        this.tagsOpen = true;
+    },
+
+    async applyTags() {
+        const id = this.tagsRef;
+        this.tagsOpen = false;
+        this.tagsRef = null;
+        const b = id && this.manifest.bookmarks.find((x) => x.id === id);
+        if (b) {
+            b.tags = [...new Set(this.tagsValue.split(',').map((t) => t.trim()).filter(Boolean))];
+            await this.persist().catch(() => {});
+        }
+    },
+
+    async mkdir(name) {
+        name = (name || '').trim();
+        if (! name) return;
+        this.manifest.folders.push({ id: crypto.randomUUID(), name, parent: this.cwd });
+        await this.persist().catch(() => {});
+    },
+
+    // Reparent a folder's children up one level, then drop the folder. Bookmarks
+    // are never lost, so no confirmation is needed.
+    async deleteFolder(f) {
+        const pid = f.parent ?? null;
+        this.manifest.bookmarks.forEach((b) => { if ((b.folder ?? null) === f.id) b.folder = pid; });
+        this.manifest.folders.forEach((x) => { if ((x.parent ?? null) === f.id) x.parent = pid; });
+        this.manifest.folders = this.manifest.folders.filter((x) => x.id !== f.id);
+        if (this.cwd === f.id) this.cwd = pid;
+        await this.persist().catch(() => {});
+    },
+
+    openMove(b) {
+        this.moveRef = b.id;
+        this.moveTarget = this.manifest.bookmarks.find((x) => x.id === b.id)?.folder ?? '';
+        this.moveOpen = true;
+    },
+
+    async applyMove() {
+        const id = this.moveRef;
+        this.moveOpen = false;
+        this.moveRef = null;
+        const b = id && this.manifest.bookmarks.find((x) => x.id === id);
+        if (b) { b.folder = this.moveTarget || null; await this.persist().catch(() => {}); }
+    },
+
+    async toTrash(b) {
+        const t = this.manifest.bookmarks.find((x) => x.id === b.id);
+        if (! t) return;
+        t.trashed = new Date().toISOString();
+        await this.persist().catch(() => {});
+    },
+
+    async restore(b) {
+        const t = this.manifest.bookmarks.find((x) => x.id === b.id);
+        if (! t) return;
+        t.trashed = null;
+        await this.persist().catch(() => {});
+    },
+
+    async destroyForever(b) {
+        this.manifest.bookmarks = this.manifest.bookmarks.filter((x) => x.id !== b.id);
+        await this.persist().catch(() => {});
+    },
+
+    async emptyTrash() {
+        this.manifest.bookmarks = this.manifest.bookmarks.filter((b) => ! b.trashed);
+        await this.persist().catch(() => {});
+    },
+}));
 
 Alpine.data('vaultNotes', (labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
