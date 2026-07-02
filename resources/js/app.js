@@ -7,8 +7,11 @@ import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import JSZip from 'jszip';
 import { marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
+import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
+import 'highlight.js/styles/github.css';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
@@ -1725,6 +1728,15 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
  */
 
 marked.use({ gfm: true, breaks: true });
+// GitHub-style syntax highlighting for fenced code blocks; the hljs output is
+// plain spans and survives the DOMPurify pass.
+marked.use(markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code, lang) {
+        const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+        return hljs.highlight(code, { language }).value;
+    },
+}));
 
 function renderMarkdown(text) {
     // marked renders GFM task checkboxes disabled; strip that so they stay
