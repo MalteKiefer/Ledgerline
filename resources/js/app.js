@@ -2274,6 +2274,146 @@ Alpine.data('vaultBookmarks', (labels = {}) => ({
     },
 }));
 
+Alpine.data('vaultMail', (labels = {}) => ({
+    state: 'boot', // boot | locked | unconfigured | ready | error
+    manifest: { v: 1, accounts: [] },
+    version: 0,
+    error: '',
+    busyId: null, // account id currently refreshing
+    errors: {}, // per-account error message
+    dialogOpen: false,
+    editingId: null,
+    form: { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true },
+    deleteOpen: false,
+    deleteId: null,
+
+    async init() {
+        await this.$store.vault.boot();
+        window.addEventListener('vault-unlocked', () => this.load());
+        if (! this.$store.vault.configured) { this.state = 'unconfigured'; return; }
+        if (! this.$store.vault.unlocked) { this.state = 'locked'; return; }
+        await this.load();
+    },
+
+    async load() {
+        try {
+            const { data, version } = await Vault.loadManifest('mail');
+            this.manifest = data.accounts ? data : { v: 1, accounts: [] };
+            this.version = version;
+            this.state = 'ready';
+        } catch (e) {
+            this.state = 'error';
+        }
+    },
+
+    async persist() {
+        try {
+            this.version = await Vault.saveManifest('mail', this.manifest, this.version);
+            this.error = '';
+        } catch (e) {
+            if (e.stale) { await this.load(); this.error = labels.stale; } else { this.error = labels.saveFailed; }
+            throw e;
+        }
+    },
+
+    openAdd() {
+        this.editingId = null;
+        this.form = { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true };
+        this.error = '';
+        this.dialogOpen = true;
+    },
+
+    openEdit(a) {
+        this.editingId = a.id;
+        this.form = {
+            name: a.name ?? '', host: a.host ?? '', port: a.port ?? 993, encryption: a.encryption ?? 'ssl',
+            username: a.username ?? '', password: a.password ?? '', validateCert: a.validateCert !== false,
+        };
+        this.error = '';
+        this.dialogOpen = true;
+    },
+
+    async saveAccount() {
+        const f = this.form;
+        if (! f.host.trim() || ! f.username.trim() || ! f.password) { this.error = labels.saveFailed; return; }
+        const now = new Date().toISOString();
+        const fields = {
+            name: f.name.trim() || f.host.trim(), host: f.host.trim(), port: Number(f.port) || 993,
+            encryption: f.encryption, username: f.username.trim(), password: f.password, validateCert: !! f.validateCert,
+        };
+        if (this.editingId) {
+            const a = this.manifest.accounts.find((x) => x.id === this.editingId);
+            if (a) Object.assign(a, fields, { updated: now });
+        } else {
+            this.manifest.accounts.push({ id: crypto.randomUUID(), ...fields, stats: null, created: now, updated: now });
+        }
+        this.dialogOpen = false;
+        await this.persist().catch(() => {});
+    },
+
+    confirmDelete(a) { this.deleteId = a.id; this.deleteOpen = true; },
+
+    async applyDelete() {
+        this.deleteOpen = false;
+        this.manifest.accounts = this.manifest.accounts.filter((x) => x.id !== this.deleteId);
+        this.deleteId = null;
+        await this.persist().catch(() => {});
+    },
+
+    // Decrypted credentials are posted to the stateless stats endpoint only for
+    // this fetch; the server never stores them. The result is cached back into
+    // the encrypted manifest so it shows instantly next time.
+    async refresh(a) {
+        if (this.busyId) return;
+        this.busyId = a.id;
+        this.errors = { ...this.errors, [a.id]: '' };
+        try {
+            const res = await fetch('/mail/stats', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json', 'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    host: a.host, port: a.port, encryption: a.encryption,
+                    username: a.username, password: a.password, validate_cert: a.validateCert,
+                }),
+            });
+            if (! res.ok) {
+                const body = await res.json().catch(() => ({}));
+                this.errors = { ...this.errors, [a.id]: body.message || labels.connectFailed };
+                return;
+            }
+            const stats = await res.json();
+            const t = this.manifest.accounts.find((x) => x.id === a.id);
+            if (t) {
+                t.stats = { ...stats, fetchedAt: new Date().toISOString() };
+                await this.persist().catch(() => {});
+            }
+        } catch (e) {
+            this.errors = { ...this.errors, [a.id]: labels.connectFailed };
+        } finally {
+            this.busyId = null;
+        }
+    },
+
+    async refreshAll() {
+        for (const a of this.manifest.accounts) await this.refresh(a);
+    },
+
+    fmtBytes(n) { return formatBytes(n); },
+
+    fmtDateTime(iso) {
+        return iso ? new Date(iso).toLocaleString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        }) : '';
+    },
+
+    quotaPct(s) {
+        return s && s.quotaLimit ? Math.min(100, Math.round((s.quotaUsed / s.quotaLimit) * 100)) : 0;
+    },
+}));
+
 Alpine.data('vaultNotes', (labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
     manifest: { v: 1, notes: [] },

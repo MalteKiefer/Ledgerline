@@ -76,6 +76,16 @@ class VaultManifestTest extends TestCase
         ])->assertOk()->assertJson(['version' => 1]);
     }
 
+    public function test_mail_manifest_is_accepted(): void
+    {
+        $this->signIn();
+        $this->makeVault();
+
+        $this->getJson(route('vault.manifest.show', 'mail'))
+            ->assertOk()
+            ->assertJson(['cipher' => null, 'version' => 0]);
+    }
+
     public function test_files_and_notes_manifests_are_independent(): void
     {
         $this->signIn();

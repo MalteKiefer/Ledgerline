@@ -17,7 +17,8 @@
         "predis/predis": "^3.5",
         "smalot/pdfparser": "^2.12",
         "socialiteproviders/pocketid": "^5.1",
-        "symfony/intl": "^8.1"
+        "symfony/intl": "^8.1",
+        "webklex/php-imap": "^6.2"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

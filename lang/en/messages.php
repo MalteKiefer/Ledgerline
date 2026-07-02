@@ -6,6 +6,7 @@ return [
     'nav' => [
         'notes' => 'Notes',
         'bookmarks' => 'Bookmarks',
+        'mail' => 'Mail',
         'dashboard' => 'Dashboard',
         'customers' => 'Customers',
         'projects' => 'Projects',
