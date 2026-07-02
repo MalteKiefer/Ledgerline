@@ -14,6 +14,13 @@ namespace App\Services\Mail;
 interface ImapReader
 {
     /**
+     * List all mailboxes/folders of the account.
+     *
+     * @return list<array{name:string, path:string, total:int, unseen:int}>
+     */
+    public function listFolders(ImapCredentials $c): array;
+
+    /**
      * List a page of message envelopes (newest first), without bodies.
      *
      * @return array{total:int, page:int, perPage:int, messages:list<array{

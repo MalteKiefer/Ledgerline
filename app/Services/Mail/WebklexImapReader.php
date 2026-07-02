@@ -17,6 +17,30 @@ final class WebklexImapReader implements ImapReader
 {
     private const TIMEOUT = 15;
 
+    public function listFolders(ImapCredentials $c): array
+    {
+        $client = $this->connect($c);
+        try {
+            $out = [];
+            foreach ($client->getFolders(false) as $folder) {
+                $total = 0;
+                $unseen = 0;
+                try {
+                    $status = $folder->status();
+                    $total = (int) ($status['messages'] ?? 0);
+                    $unseen = (int) ($status['unseen'] ?? 0);
+                } catch (\Throwable) {
+                    // \Noselect containers etc. — still list them.
+                }
+                $out[] = ['name' => $folder->name ?: $folder->path, 'path' => $folder->path, 'total' => $total, 'unseen' => $unseen];
+            }
+
+            return $out;
+        } finally {
+            $this->close($client);
+        }
+    }
+
     public function listMessages(ImapCredentials $c, string $folder, int $page, int $perPage): array
     {
         $client = $this->connect($c);
