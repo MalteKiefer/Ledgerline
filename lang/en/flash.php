@@ -25,6 +25,8 @@ return [
     'files_deleted' => ':count file(s) deleted.',
     'files_extracted' => 'Extracted :count file(s) from the archive.',
     'files_moved' => ':count file(s) moved.',
+    'items_moved' => ':count item(s) moved.',
+    'items_deleted' => ':count item(s) deleted.',
     'files_uploaded' => ':count file(s) uploaded.',
     'extract_failed' => 'The archive could not be extracted.',
     'extract_unsupported' => 'This archive type is not supported.',

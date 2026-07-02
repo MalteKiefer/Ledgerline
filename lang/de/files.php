@@ -46,6 +46,7 @@ return [
     'download' => 'Herunterladen',
     'decrypting' => 'Entschlüsseln…',
     'encrypt_file' => 'Verschlüsseln',
+    'encrypting' => 'Verschlüsseln…',
     'encrypted' => 'Verschlüsselt',
     'encrypted_locked' => 'Tresor entsperren, um diese Datei anzuzeigen.',
     'encrypted_no_preview' => 'Für diesen Dateityp ist keine Inline-Vorschau verfügbar.',

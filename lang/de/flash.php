@@ -25,6 +25,8 @@ return [
     'files_deleted' => ':count Datei(en) gelöscht.',
     'files_extracted' => ':count Datei(en) aus dem Archiv entpackt.',
     'files_moved' => ':count Datei(en) verschoben.',
+    'items_moved' => ':count Element(e) verschoben.',
+    'items_deleted' => ':count Element(e) gelöscht.',
     'files_uploaded' => ':count Datei(en) hochgeladen.',
     'extract_failed' => 'Das Archiv konnte nicht entpackt werden.',
     'extract_unsupported' => 'Dieser Archivtyp wird nicht unterstützt.',
