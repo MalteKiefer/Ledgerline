@@ -2757,13 +2757,23 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.sortDir = this.reader.sortDir === 'desc' ? 'asc' : 'desc';
     },
 
+    msgCacheKey(uid) {
+        return `msg:${this.reader.account.id}:${this.reader.folderPath}:${uid}`;
+    },
+
     async openMsg(uid) {
-        this.reader.busy = true;
         this.reader.imagesAllowed = false;
+        // Served from the encrypted cache if this message was already read this
+        // session — instant, no re-fetch. The cache is dropped on lock/logout.
+        const cached = Vault.cacheGet(this.msgCacheKey(uid));
+        if (cached) { this.reader.current = cached; return; }
+
+        this.reader.busy = true;
         try {
             const res = await this.mailPost('/mail/message', { uid, mark_seen: true });
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
+            Vault.cachePut(this.msgCacheKey(uid), this.reader.current);
             // Opening marks \Seen server-side — reflect it in the list and the
             // folder's unread count without a reload.
             const row = this.reader.messages.find((m) => m.uid === uid);
