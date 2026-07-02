@@ -53,20 +53,24 @@
             catch (e) { this.error = '{{ __('vault.err_change') }}'; }
             finally { this.busy = false; }
         },
-     }" @vault-panel.window="panel()">
+     }" @vault-panel.window="panel()" @vault-change.window="changePanel()">
 
-    {{-- Trigger reflecting current state --}}
-    <template x-if="! $store.vault.configured">
-        <button type="button" @click="panel()" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">🔒 {{ __('vault.setup') }}</button>
-    </template>
-    <template x-if="$store.vault.configured && ! $store.vault.unlocked">
-        <button type="button" @click="panel()" class="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50">🔒 {{ __('vault.unlock') }}</button>
-    </template>
+    {{-- Monochrome padlock: open = unlocked, closed = locked / not set up. --}}
     <template x-if="$store.vault.configured && $store.vault.unlocked">
-        <span class="inline-flex items-center gap-1">
-            <button type="button" @click="$store.vault.lock()" class="rounded-md border border-green-300 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-50" title="{{ __('vault.lock') }}">🔓 {{ __('vault.unlocked') }}</button>
-            <button type="button" @click="changePanel()" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" title="{{ __('vault.change') }}">⚙</button>
-        </span>
+        <button type="button" @click="$store.vault.lock()" title="{{ __('vault.unlocked') }}"
+            class="rounded-md p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900" aria-label="{{ __('vault.unlocked') }}">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+        </button>
+    </template>
+    <template x-if="! ($store.vault.configured && $store.vault.unlocked)">
+        <button type="button" @click="panel()" :title="$store.vault.configured ? '{{ __('vault.unlock') }}' : '{{ __('vault.setup') }}'"
+            class="rounded-md p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900" :aria-label="$store.vault.configured ? '{{ __('vault.unlock') }}' : '{{ __('vault.setup') }}'">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+        </button>
     </template>
 
     <template x-teleport="body">
