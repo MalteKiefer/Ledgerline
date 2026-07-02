@@ -12,14 +12,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * An uploaded file attached to a customer or a project.
+ * An uploaded file in the workspace file vault.
  *
  * The bytes live on the object-storage disk; this record holds only metadata.
- * The polymorphic owner is set explicitly by the controller, so it is not
- * mass-assignable.
  */
 #[Fillable([
     'name',
@@ -78,24 +75,6 @@ class File extends Model
     public function isImage(): bool
     {
         return $this->type === FileType::IMAGE && $this->mime_type !== 'image/svg+xml';
-    }
-
-    /**
-     * The customer or project this file is attached to.
-     *
-     * @return MorphTo<Model, $this>
-     */
-    public function attachable(): MorphTo
-    {
-        return $this->morphTo();
-    }
-
-    /**
-     * Whether this is a general file (not tied to a customer or project).
-     */
-    public function isGeneral(): bool
-    {
-        return $this->attachable_type === null;
     }
 
     /**

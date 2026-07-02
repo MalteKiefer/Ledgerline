@@ -27,7 +27,6 @@ class FileSearchProvider extends AbstractSearchProvider
         $like = $this->wildcard($term);
 
         return File::query()
-            ->with('attachable')
             ->where(function ($query) use ($like): void {
                 foreach (['name', 'title', 'description', 'note', 'type', 'extracted_text'] as $column) {
                     $query->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
@@ -40,7 +39,7 @@ class FileSearchProvider extends AbstractSearchProvider
             ->map(fn (File $file): SearchResult => new SearchResult(
                 group: $this->group(),
                 title: $file->displayTitle,
-                subtitle: $file->type->label().($file->attachable ? ' · '.$file->attachable->name : ''),
+                subtitle: $file->type->label(),
                 url: route('files.show', $file),
             ))
             ->all();
