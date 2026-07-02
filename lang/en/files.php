@@ -52,6 +52,7 @@ return [
     'encrypting' => 'Encrypting…',
     'encrypting_keep_open' => 'Keep this page open until encryption is finished.',
     'encrypted' => 'Encrypted',
+    'not_encrypted' => 'Not encrypted',
     'encrypted_locked' => 'Unlock the vault to view this file.',
     'encrypted_no_preview' => 'No inline preview for this file type.',
     'save_failed' => 'Could not save. Please try again.',
