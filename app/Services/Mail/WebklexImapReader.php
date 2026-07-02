@@ -239,6 +239,11 @@ final class WebklexImapReader implements ImapReader
             'password' => $c->password,
             'protocol' => 'imap',
             'timeout' => self::TIMEOUT,
+            // Do not parse headers with ext-imap's imap_rfc822_parse_headers:
+            // on some servers (iCloud) it yields empty/garbled results — the
+            // cause of "GetMessagesFailedException: Empty response" — and emits
+            // c-client warnings. webklex's own parser is used instead.
+            'options' => ['rfc822' => false],
         ]);
         $client->connect();
 
@@ -260,6 +265,12 @@ final class WebklexImapReader implements ImapReader
     private function close(Client $client): void
     {
         restore_error_handler();
+        // Drain the c-client error queue so ext-imap does not dump accumulated
+        // "Unterminated mailbox" / address-parse warnings at request shutdown.
+        if (function_exists('imap_errors')) {
+            @imap_errors();
+            @imap_alerts();
+        }
         try {
             $client->disconnect();
         } catch (\Throwable) {
