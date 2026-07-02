@@ -2205,6 +2205,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
         folders: [], foldersLoading: false, sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
+        saveAtt: { open: false, att: null, folder: '', busy: false, error: '', done: false }, filesFolders: [],
     },
 
     async init() {
@@ -2908,6 +2909,99 @@ Alpine.data('vaultMail', (labels = {}) => ({
             if (! res.ok) return;
             saveBlobAs(new Uint8Array(await res.arrayBuffer()), att.name, att.mime);
         } catch (e) { /* ignore */ }
+    },
+
+    // ---- Save an attachment into the Files vault (encrypted blob + manifest) ----
+
+    async openSaveAttachment(att) {
+        this.reader.saveAtt = { open: true, att, folder: '', busy: false, error: '', done: false };
+        // Load the Files manifest's folders for the destination picker.
+        try {
+            const { data } = await Vault.loadManifest('files');
+            this.reader.filesFolders = this.buildFolderOptions((data && data.folders) ? data.folders : []);
+        } catch (e) {
+            this.reader.filesFolders = [];
+        }
+    },
+
+    // Flatten the folder tree into "A / B / C" labelled options for a <select>.
+    buildFolderOptions(folders) {
+        const byId = new Map(folders.map((f) => [f.id, f]));
+        const pathOf = (f) => {
+            const parts = [];
+            let cur = f;
+            let guard = 0;
+            while (cur && guard++ < 64) { parts.unshift(cur.name); cur = cur.parent ? byId.get(cur.parent) : null; }
+            return parts.join(' / ');
+        };
+        return folders
+            .map((f) => ({ id: f.id, label: pathOf(f) }))
+            .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+    },
+
+    async saveAttachmentToFiles() {
+        const s = this.reader.saveAtt;
+        if (! s || ! s.att || s.busy || ! this.reader.current) return;
+        s.busy = true;
+        s.error = '';
+        try {
+            // Fetch the attachment bytes from the stateless endpoint.
+            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: s.att.id });
+            if (! res.ok) { s.error = labels.saveFailed; return; }
+            const bytes = new Uint8Array(await res.arrayBuffer());
+
+            // Encrypt with a fresh per-blob key and upload the opaque blob.
+            const { blob, key } = Vault.encryptBlob(bytes);
+            const fd = new FormData();
+            fd.append('_token', csrfToken());
+            fd.append('blob', blob, 'blob');
+            const up = await fetch(labels.blobBase, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd,
+            });
+            if (! up.ok) { s.error = labels.saveFailed; return; }
+            const { id: blobId } = await up.json();
+
+            const ok = await this.appendFileEntry({
+                id: crypto.randomUUID(),
+                blob: blobId,
+                name: s.att.name || 'attachment',
+                mime: s.att.mime || 'application/octet-stream',
+                size: s.att.size || bytes.length,
+                folder: s.folder || null,
+                key,
+                created: new Date().toISOString(),
+            });
+            if (! ok) { s.error = labels.saveFailed; return; }
+
+            s.done = true;
+            window.dispatchEvent(new CustomEvent('files-changed'));
+            setTimeout(() => { if (this.reader.saveAtt) this.reader.saveAtt.open = false; }, 1000);
+        } catch (e) {
+            s.error = labels.saveFailed;
+        } finally {
+            s.busy = false;
+        }
+    },
+
+    // Append one file entry to the Files manifest, reloading + retrying once if
+    // another tab saved in between (optimistic version, like the note migration).
+    async appendFileEntry(entry) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const { data, version } = await Vault.loadManifest('files');
+            const manifest = data.files ? data : { v: 1, folders: [], files: [] };
+            // Drop a destination folder that no longer exists → save at the root.
+            entry.folder = (entry.folder && manifest.folders.some((f) => f.id === entry.folder)) ? entry.folder : null;
+            manifest.files.push(entry);
+            try {
+                await Vault.saveManifest('files', manifest, version);
+                return true;
+            } catch (e) {
+                if (! e.stale) throw e;
+            }
+        }
+        return false;
     },
 
     printMsg() {

@@ -3,6 +3,7 @@
         stale: @js(__('mail.stale')),
         saveFailed: @js(__('mail.save_failed')),
         connectFailed: @js(__('mail.connect_failed')),
+        blobBase: '{{ url('/vault/blobs') }}',
         folderNames: @js([
             'inbox' => __('mail.folder_inbox'),
             'all' => __('mail.folder_all'),
@@ -359,9 +360,13 @@
                     {{-- Attachments --}}
                     <div x-show="(reader.current.attachments ?? []).length" x-cloak class="mt-3 flex flex-wrap gap-2">
                         <template x-for="att in reader.current.attachments" :key="att.id">
-                            <button type="button" @click="downloadAttachment(att)" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
-                                <x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /><span x-text="att.name"></span>
-                            </button>
+                            <span class="inline-flex items-center overflow-hidden rounded-md border border-gray-300 text-xs text-gray-700">
+                                <span class="max-w-[16rem] truncate px-2 py-1" x-text="att.name"></span>
+                                <button type="button" @click="downloadAttachment(att)" title="{{ __('mail.download') }}" aria-label="{{ __('mail.download') }}"
+                                    class="border-l border-gray-300 p-1.5 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /></button>
+                                <button type="button" @click="openSaveAttachment(att)" title="{{ __('mail.save_to_files') }}" aria-label="{{ __('mail.save_to_files') }}"
+                                    class="border-l border-gray-300 p-1.5 hover:bg-gray-50"><x-icon name="arrow-up-tray" class="h-3.5 w-3.5" /></button>
+                            </span>
                         </template>
                     </div>
                 </div>
@@ -442,6 +447,28 @@
                     <div class="mt-5 flex justify-end gap-3">
                         <button type="button" @click="reader.transferOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                         <button type="button" @click="confirmTransfer()" :disabled="reader.busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('mail.transfer_move') }}</button>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Save attachment into the Files vault --}}
+            <div x-show="reader.saveAtt.open" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="reader.saveAtt.open = false">
+                <div class="absolute inset-0 bg-gray-900/40" @click="reader.saveAtt.open = false"></div>
+                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('mail.save_to_files_title') }}</h3>
+                    <p class="mt-1 truncate text-xs text-gray-500" x-text="reader.saveAtt.att?.name"></p>
+                    <div class="mt-4">
+                        <label class="block text-xs font-medium text-gray-700">{{ __('mail.dest_folder') }}</label>
+                        <select x-model="reader.saveAtt.folder" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            <option value="">{{ __('mail.root_folder') }}</option>
+                            <template x-for="f in reader.filesFolders" :key="f.id"><option :value="f.id" x-text="f.label"></option></template>
+                        </select>
+                    </div>
+                    <p x-show="reader.saveAtt.error" x-cloak class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" x-text="reader.saveAtt.error"></p>
+                    <p x-show="reader.saveAtt.done" x-cloak class="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">{{ __('mail.saved_to_files') }}</p>
+                    <div class="mt-5 flex justify-end gap-3">
+                        <button type="button" @click="reader.saveAtt.open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                        <button type="button" @click="saveAttachmentToFiles()" :disabled="reader.saveAtt.busy || reader.saveAtt.done" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('mail.save') }}</button>
                     </div>
                 </div>
             </div>
