@@ -8,22 +8,12 @@ return [
         'bookmarks' => 'Lesezeichen',
         'mail' => 'Mail',
         'dashboard' => 'Übersicht',
-        'customers' => 'Kunden',
-        'projects' => 'Projekte',
         'files' => 'Dateien',
-        'finance' => 'Finanzen',
         'gallery' => 'Galerie',
     ],
     'menu' => [
         'profile' => 'Profil',
         'settings' => 'Einstellungen',
         'logout' => 'Abmelden',
-    ],
-    'finance' => [
-        'expenses' => 'Ausgaben',
-        'time' => 'Zeiten',
-        'income' => 'Einnahmen',
-        'invoices' => 'Rechnungen',
-        'report' => 'Bericht',
     ],
 ];
