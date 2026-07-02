@@ -13,7 +13,7 @@
             <form method="GET" action="{{ route('gallery.index') }}" class="flex w-full items-center gap-1 sm:w-auto">
                 <input type="search" name="q" value="{{ $searchQuery }}" placeholder="{{ __('gallery.search_placeholder') }}"
                     class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:w-56">
-                <button type="submit" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.search') }}</button>
+                <button type="submit" title="{{ __('gallery.search') }}" aria-label="{{ __('gallery.search') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="magnifying-glass" class="h-5 w-5" /></button>
                 @if ($searchQuery !== '')
                     <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900" title="{{ __('gallery.search_clear') }}"><x-icon name="x-mark" /></a>
                 @endif
@@ -21,21 +21,21 @@
             @if ($favoritesOnly)
                 <a href="{{ route('gallery.index') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.all_photos') }}</a>
             @else
-                <a href="{{ route('gallery.index', ['favorites' => 1]) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1.5"><x-icon name="heart" />{{ __('gallery.favorites') }}</span></a>
+                <a href="{{ route('gallery.index', ['favorites' => 1]) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.favorites') }}</a>
             @endif
             <a href="{{ route('gallery.trips') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trips') }}</a>
             <a href="{{ route('gallery.map') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.map') }}</a>
             <a href="{{ route('gallery.trash') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trash') }}</a>
-            <label class="hidden cursor-pointer rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 sm:inline-flex">
-                {{ __('gallery.upload') }}
+            <label title="{{ __('gallery.upload') }}" aria-label="{{ __('gallery.upload') }}" class="hidden cursor-pointer rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700 sm:inline-flex">
+                <x-icon name="arrow-up-tray" class="h-5 w-5" />
                 <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
             </label>
         </div>
     </div>
 
     {{-- Floating upload button on mobile (hidden while selecting, to clear the bulk bar). --}}
-    <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-800 text-3xl text-white shadow-lg hover:bg-gray-700 sm:hidden" aria-label="{{ __('gallery.upload') }}">
-        +
+    <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-800 text-white shadow-lg hover:bg-gray-700 sm:hidden" aria-label="{{ __('gallery.upload') }}" title="{{ __('gallery.upload') }}">
+        <x-icon name="arrow-up-tray" class="h-6 w-6" />
         <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
     </label>
 
@@ -96,11 +96,11 @@
         <form method="POST" action="{{ route('gallery.download') }}" class="flex items-center gap-2">
             @csrf
             <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
-            <button type="submit" name="variant" value="original" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download') }}: {{ __('gallery.download_original') }}</button>
-            <button type="submit" name="variant" value="edited" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download_edited') }}</button>
+            <button type="submit" name="variant" value="original" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_original') }}</button>
+            <button type="submit" name="variant" value="edited" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_edited') }}</button>
         </form>
-        <button type="button" @click="locationOpen = true" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.set_location') }}</button>
-        <button type="button" @click="deleteOpen = true" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('gallery.delete') }}</button>
+        <button type="button" @click="locationOpen = true" title="{{ __('gallery.set_location') }}" aria-label="{{ __('gallery.set_location') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="map-pin" class="h-5 w-5" /></button>
+        <button type="button" @click="deleteOpen = true" title="{{ __('gallery.delete') }}" aria-label="{{ __('gallery.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
 
         <template x-teleport="body">
             <div x-show="locationOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="locationOpen = false">
