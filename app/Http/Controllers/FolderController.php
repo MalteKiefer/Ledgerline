@@ -16,6 +16,18 @@ use Illuminate\Support\Facades\DB;
  */
 class FolderController extends Controller
 {
+    /**
+     * All folders as JSON (id, parent, plaintext or encrypted name). Used by the
+     * browser to match an encrypted folder tree during upload so a re-dropped
+     * tree reuses existing folders instead of duplicating them.
+     */
+    public function index(): JsonResponse
+    {
+        return response()->json(
+            Folder::query()->get(['id', 'parent_id', 'name', 'enc_name'])
+        );
+    }
+
     public function store(StoreFolderRequest $request): RedirectResponse|JsonResponse
     {
         $data = $request->validated();
