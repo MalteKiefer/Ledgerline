@@ -32,10 +32,42 @@ final class WebklexImapReader implements ImapReader
                 } catch (\Throwable) {
                     // \Noselect containers etc. — still list them.
                 }
-                $out[] = ['name' => $folder->name ?: $folder->path, 'path' => $folder->path, 'total' => $total, 'unseen' => $unseen];
+                $out[] = [
+                    'name' => $folder->name ?: $folder->path,
+                    'path' => $folder->path,
+                    'delimiter' => $folder->delimiter ?: '/',
+                    'selectable' => ! $folder->no_select,
+                    'total' => $total,
+                    'unseen' => $unseen,
+                ];
             }
 
             return $out;
+        } finally {
+            $this->close($client);
+        }
+    }
+
+    public function createFolder(ImapCredentials $c, string $path): void
+    {
+        $client = $this->connect($c);
+        try {
+            $client->createFolder($path);
+        } finally {
+            $this->close($client);
+        }
+    }
+
+    public function emptyFolder(ImapCredentials $c, string $path): void
+    {
+        $client = $this->connect($c);
+        try {
+            $folder = $client->getFolderByPath($path);
+            $client->openFolder($path);
+            foreach ($folder->query()->whereAll()->setFetchBody(false)->setFetchFlags(false)->get() as $message) {
+                $message->delete(false); // mark \Deleted, expunge once below
+            }
+            $client->expunge();
         } finally {
             $this->close($client);
         }

@@ -210,19 +210,35 @@
             {{-- Two-column: folders left, messages/message right --}}
             <div class="flex min-h-0 flex-1">
                 {{-- Folder sidebar --}}
-                <aside class="w-44 shrink-0 overflow-y-auto border-r border-gray-200 md:w-64">
-                    <p x-show="readerFolders().length === 0 && ! reader.loading" class="px-3 py-4 text-xs text-gray-400">INBOX</p>
-                    <template x-for="f in readerFolders()" :key="f.path">
-                        <button type="button" @click="openFolder(f.path)"
-                            class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                            :class="f.path === reader.folderPath ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700'">
-                            <span class="truncate" x-text="f.name"></span>
-                            <span class="flex shrink-0 items-center gap-1 text-xs text-gray-400">
-                                <span x-show="f.unseen" class="rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white" x-text="f.unseen"></span>
-                                <span x-text="f.total"></span>
-                            </span>
-                        </button>
-                    </template>
+                <aside class="flex w-44 shrink-0 flex-col border-r border-gray-200 md:w-64">
+                    {{-- New folder --}}
+                    <form class="flex items-center gap-1 border-b border-gray-100 p-2" @submit.prevent="createFolder($refs.newFolder.value); $refs.newFolder.value = ''">
+                        <input type="text" x-ref="newFolder" required placeholder="{{ __('mail.new_folder') }}"
+                            class="w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <button type="submit" title="{{ __('mail.new_folder') }}" aria-label="{{ __('mail.new_folder') }}" :disabled="reader.busy"
+                            class="shrink-0 rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-50"><x-icon name="folder-plus" class="h-4 w-4" /></button>
+                    </form>
+                    <div class="min-h-0 flex-1 overflow-y-auto">
+                        <p x-show="readerFolders().length === 0 && ! reader.loading" class="px-3 py-4 text-xs text-gray-400">INBOX</p>
+                        <template x-for="f in readerFolders()" :key="f.path">
+                            <div>
+                                {{-- Non-selectable container (e.g. Gmail "[Gmail]"): just a label --}}
+                                <div x-show="! f.selectable" class="truncate px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                                    :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`" x-text="f.name"></div>
+                                {{-- Selectable folder --}}
+                                <button type="button" x-show="f.selectable" @click="openFolder(f.path)"
+                                    class="flex w-full items-center justify-between gap-2 py-2 pr-3 text-left text-sm hover:bg-gray-50"
+                                    :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`"
+                                    :class="f.path === reader.folderPath ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700'">
+                                    <span class="truncate" x-text="f.name"></span>
+                                    <span class="flex shrink-0 items-center gap-1 text-xs text-gray-400">
+                                        <span x-show="f.unseen" class="rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white" x-text="f.unseen"></span>
+                                        <span x-text="f.total"></span>
+                                    </span>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
                 </aside>
 
                 {{-- Right pane --}}
@@ -235,6 +251,8 @@
                         <span class="truncate font-medium text-gray-700" x-text="reader.folderPath"></span>
                     </span>
                     <span class="flex shrink-0 items-center gap-3">
+                        <button type="button" x-show="isTrashFolder() && reader.total" @click="reader.emptyChoiceOpen = true" :disabled="reader.busy"
+                            class="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-0.5 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-3.5 w-3.5" />{{ __('mail.empty_folder') }}</button>
                         <span x-text="`${reader.messages.length} / ${reader.total}`"></span>
                         <button type="button" @click="toggleSort()" class="inline-flex items-center gap-1 hover:text-gray-700" title="{{ __('mail.msg_date') }}">
                             {{ __('mail.msg_date') }}
@@ -350,6 +368,19 @@
                         <button type="button" @click="reader.deleteChoiceOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                         <button type="button" @click="reader.deleteChoiceOpen = false; msgAction('trash')" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('mail.action_trash') }}</button>
                         <button type="button" @click="reader.deleteChoiceOpen = false; msgAction('delete')" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('mail.action_delete') }}</button>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Empty folder confirm --}}
+            <div x-show="reader.emptyChoiceOpen" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="reader.emptyChoiceOpen = false">
+                <div class="absolute inset-0 bg-gray-900/40" @click="reader.emptyChoiceOpen = false"></div>
+                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('common.confirm_title') }}</h3>
+                    <p class="mt-2 text-sm text-gray-600">{{ __('mail.empty_folder_confirm') }}</p>
+                    <div class="mt-5 flex justify-end gap-3">
+                        <button type="button" @click="reader.emptyChoiceOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                        <button type="button" @click="reader.emptyChoiceOpen = false; emptyCurrentFolder()" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('mail.empty_folder') }}</button>
                     </div>
                 </div>
             </div>

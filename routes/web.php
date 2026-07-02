@@ -99,6 +99,8 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/mail', 'mail.index')->name('mail.index');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
     Route::post('/mail/folders', [MailReaderController::class, 'folders'])->name('mail.folders');
+    Route::post('/mail/folder/create', [MailReaderController::class, 'createFolder'])->name('mail.folder.create');
+    Route::post('/mail/folder/empty', [MailReaderController::class, 'emptyFolder'])->name('mail.folder.empty');
     Route::post('/mail/messages', [MailReaderController::class, 'messages'])->name('mail.messages');
     Route::post('/mail/message', [MailReaderController::class, 'message'])->name('mail.message');
     Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->name('mail.message.attachment');

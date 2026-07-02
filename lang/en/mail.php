@@ -73,4 +73,7 @@ return [
     'select_all' => 'Select all',
     'selected' => 'selected',
     'clear_selection' => 'Clear',
+    'new_folder' => 'New folder',
+    'empty_folder' => 'Empty folder',
+    'empty_folder_confirm' => 'Permanently delete all messages in this folder? This cannot be undone.',
 ];
