@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Jobs\ProcessPhoto;
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use App\Models\Photo;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\VideoProcessor;
@@ -289,7 +289,7 @@ class PhotoEditTest extends TestCase
     {
         Storage::fake('files');
         $this->signIn();
-        CompanyProfile::current()->update(['gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}']);
+        AppSettings::current()->update(['gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}']);
 
         $image = UploadedFile::fake()->image('orig.jpg', 100, 100);
         $photo = Photo::factory()->create([
@@ -310,7 +310,7 @@ class PhotoEditTest extends TestCase
     {
         Storage::fake('files');
         $this->signIn();
-        CompanyProfile::current()->update(['gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}']);
+        AppSettings::current()->update(['gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}']);
 
         // A different image already occupies the templated name.
         Photo::factory()->create(['name' => '2024-03-04.jpg', 'checksum' => 'other-checksum']);

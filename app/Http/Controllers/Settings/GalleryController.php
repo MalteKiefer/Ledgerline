@@ -9,7 +9,7 @@ use App\Http\Requests\Settings\GalleryRequest;
 use App\Jobs\GeneratePhotoRenditions;
 use App\Jobs\ReadPhotoMetadata;
 use App\Jobs\RenamePhotos;
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use App\Models\Photo;
 use App\Services\Gallery\VideoProcessor;
 use App\Services\QueueStatus;
@@ -32,7 +32,7 @@ class GalleryController extends Controller
         $counts = Photo::counts();
 
         return view('settings.gallery.edit', [
-            'company' => CompanyProfile::current(),
+            'company' => AppSettings::current(),
             'photoCount' => $counts['total'],
             'counts' => $counts,
             'queue' => $queue->snapshot(),
@@ -51,7 +51,7 @@ class GalleryController extends Controller
 
     public function update(GalleryRequest $request): RedirectResponse
     {
-        CompanyProfile::current()->update($request->validated());
+        AppSettings::current()->update($request->validated());
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.gallery_settings_saved'));
     }

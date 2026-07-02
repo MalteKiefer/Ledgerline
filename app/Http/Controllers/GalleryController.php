@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessPhoto;
-use App\Models\CompanyProfile;
+use App\Models\AppSettings;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
 use App\Services\Gallery\PhotoExporter;
@@ -41,7 +41,7 @@ class GalleryController extends Controller
             'grouped' => $this->groupByDay($photos),
             'favoritesOnly' => $request->boolean('favorites'),
             'searchQuery' => trim((string) $request->input('q')),
-            'mapZoom' => (int) (CompanyProfile::current()->gallery_map_zoom ?? 13),
+            'mapZoom' => (int) (AppSettings::current()->gallery_map_zoom ?? 13),
             // Cameras already seen, to offer as suggestions when editing.
             'cameras' => Photo::query()->whereNotNull('camera')->distinct()->orderBy('camera')->pluck('camera')->all(),
         ]);
@@ -153,7 +153,7 @@ class GalleryController extends Controller
     public function map(): View
     {
         return view('gallery.map', [
-            'mapZoom' => (int) (CompanyProfile::current()->gallery_map_zoom ?? 13),
+            'mapZoom' => (int) (AppSettings::current()->gallery_map_zoom ?? 13),
         ]);
     }
 
@@ -162,7 +162,7 @@ class GalleryController extends Controller
      */
     public function trips(TripGrouper $grouper): View
     {
-        $company = CompanyProfile::current();
+        $company = AppSettings::current();
 
         $photos = Photo::query()
             ->where('status', 'ready')
@@ -210,7 +210,7 @@ class GalleryController extends Controller
      */
     public function store(Request $request, PhotoStorage $storage): JsonResponse
     {
-        $maxMb = (int) (CompanyProfile::current()->gallery_max_upload_mb ?? 200);
+        $maxMb = (int) (AppSettings::current()->gallery_max_upload_mb ?? 200);
 
         // Validate presence and size first, so an unsupported-but-valid file
         // (e.g. HEIC) can be reported as skipped rather than a hard error.
