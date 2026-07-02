@@ -30,6 +30,19 @@
             catch (e) { this.error = '{{ __('vault.err_recover') }}'; }
             finally { this.busy = false; }
         },
+        changePanel() {
+            this.mode = 'change';
+            this.pass = this.pass2 = this.code = this.error = '';
+            this.open = true;
+        },
+        async doChange() {
+            this.error = '';
+            if (this.pass2.length < 10) { this.error = '{{ __('vault.err_short') }}'; return; }
+            this.busy = true;
+            try { await $store.vault.changePassphrase(this.pass, this.pass2); this.open = false; }
+            catch (e) { this.error = '{{ __('vault.err_change') }}'; }
+            finally { this.busy = false; }
+        },
      }" @vault-panel.window="panel()">
 
     {{-- Trigger reflecting current state --}}
@@ -40,7 +53,10 @@
         <button type="button" @click="panel()" class="rounded-md border border-amber-300 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50">🔒 {{ __('vault.unlock') }}</button>
     </template>
     <template x-if="$store.vault.configured && $store.vault.unlocked">
-        <button type="button" @click="$store.vault.lock()" class="rounded-md border border-green-300 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-50" title="{{ __('vault.lock') }}">🔓 {{ __('vault.unlocked') }}</button>
+        <span class="inline-flex items-center gap-1">
+            <button type="button" @click="$store.vault.lock()" class="rounded-md border border-green-300 px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-50" title="{{ __('vault.lock') }}">🔓 {{ __('vault.unlocked') }}</button>
+            <button type="button" @click="changePanel()" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" title="{{ __('vault.change') }}">⚙</button>
+        </span>
     </template>
 
     <template x-teleport="body">
@@ -86,6 +102,21 @@
                         <div class="mt-5 flex items-center justify-between">
                             <button type="button" @click="mode = 'recover'; error = ''" class="text-sm text-gray-500 hover:text-gray-900">{{ __('vault.forgot') }}</button>
                             <button type="button" @click="doUnlock()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.unlock') }}</button>
+                        </div>
+                    </div>
+                </template>
+
+                {{-- Change passphrase --}}
+                <template x-if="mode === 'change'">
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">{{ __('vault.change_title') }}</h3>
+                        <p class="mt-2 text-sm text-gray-600">{{ __('vault.change_hint') }}</p>
+                        <input type="password" x-model="pass" placeholder="{{ __('vault.change_current') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="password" x-model="pass2" @keydown.enter="doChange()" placeholder="{{ __('vault.change_new') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
+                        <div class="mt-5 flex justify-end gap-3">
+                            <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                            <button type="button" @click="doChange()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.change') }}</button>
                         </div>
                     </div>
                 </template>

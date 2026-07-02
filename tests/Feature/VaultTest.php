@@ -66,4 +66,26 @@ class VaultTest extends TestCase
         $this->assertSame('cm90YXRlZA==', Vault::current()->wrapped_vault_key);
         $this->assertDatabaseCount('vault', 1);
     }
+
+    public function test_a_passphrase_change_rotate_keeps_the_recovery_wrap(): void
+    {
+        $this->signIn();
+        Vault::create($this->payload());
+
+        // A passphrase change re-wraps only the vault key; no recovery fields.
+        $this->putJson(route('vault.rotate'), [
+            'salt' => 'bmV3c2FsdA==',
+            'kdf_ops' => 3,
+            'kdf_mem' => 67108864,
+            'wrapped_vault_key' => 'cmV3cmFwcGVk',
+            'wrap_nonce' => 'bmV3bm9uY2U=',
+        ])->assertOk();
+
+        $vault = Vault::current();
+        $this->assertSame('cmV3cmFwcGVk', $vault->wrapped_vault_key);
+        $this->assertSame('bmV3c2FsdA==', $vault->salt);
+        // The original recovery wrap is untouched.
+        $this->assertSame('cmVjb3Zlcg==', $vault->wrapped_vault_key_recovery);
+        $this->assertSame('cm5vbmNl', $vault->recovery_nonce);
+    }
 }
