@@ -35,13 +35,13 @@ class Tag extends Model
     }
 
     /**
-     * The projects carrying this tag.
+     * The folders carrying this tag.
      *
-     * @return BelongsToMany<Project, $this>
+     * @return BelongsToMany<Folder, $this>
      */
-    public function projects(): BelongsToMany
+    public function folders(): BelongsToMany
     {
-        return $this->belongsToMany(Project::class);
+        return $this->belongsToMany(Folder::class);
     }
 
     /**

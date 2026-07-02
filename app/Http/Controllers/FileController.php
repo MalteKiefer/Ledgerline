@@ -5,20 +5,15 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\FileType;
-use App\Http\Requests\StoreFileRequest;
-use App\Http\Requests\StoreTeamFileRequest;
 use App\Http\Requests\UpdateFileRequest;
-use App\Models\Customer;
 use App\Models\File;
 use App\Models\Folder;
-use App\Models\Project;
 use App\Models\Tag;
 use App\Models\User;
 use App\Services\Files\ImageExif;
 use App\Services\Files\ReverseGeocoder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -39,34 +34,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class FileController extends Controller
 {
     /**
-     * Store an uploaded file for a customer.
-     */
-    public function storeForCustomer(StoreFileRequest $request, Customer $customer): RedirectResponse
-    {
-        $this->authorize('create', File::class);
-
-        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $customer, $request->user());
-
-        return redirect()
-            ->route('customers.show', $customer)
-            ->with('status', __('flash.file_uploaded'));
-    }
-
-    /**
-     * Store an uploaded file for a project.
-     */
-    public function storeForProject(StoreFileRequest $request, Project $project): RedirectResponse
-    {
-        $this->authorize('create', File::class);
-
-        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $project, $request->user());
-
-        return redirect()
-            ->route('projects.show', $project)
-            ->with('status', __('flash.file_uploaded'));
-    }
-
-    /**
      * Store a general (company) file with no customer or project, optionally in
      * a folder.
      */
@@ -80,8 +47,6 @@ class FileController extends Controller
             'paths' => ['array'],
             'paths.*' => ['nullable', 'string', 'max:1024'],
             'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
-            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')],
-            'project_id' => ['nullable', 'integer', Rule::exists('projects', 'id')],
             'tags' => ['array'],
             'tags.*' => ['string', 'max:50'],
             'on_conflict' => ['nullable', 'in:overwrite,rename,skip'],
@@ -99,13 +64,6 @@ class FileController extends Controller
         $strategy = $validated['on_conflict'] ?? 'rename';
         $folderId = $validated['folder_id'] ?? null;
 
-        // When uploading inside a customer/project filter, attach to that record.
-        $attachable = match (true) {
-            filled($validated['customer_id'] ?? null) => Customer::find($validated['customer_id']),
-            filled($validated['project_id'] ?? null) => Project::find($validated['project_id']),
-            default => null,
-        };
-
         // Zero-knowledge uploads arrive already encrypted in the browser: the
         // bytes are ciphertext and the real name/mime live in enc_metadata. No
         // name conflict resolution or folder recreation (names are opaque here).
@@ -117,7 +75,6 @@ class FileController extends Controller
                     $upload,
                     $validated['enc_metadata'][$i] ?? '',
                     $validated['enc_file_key'][$i] ?? '',
-                    $attachable,
                     $request->user(),
                     $encFolderIds[$i] ?? $folderId,
                 );
@@ -125,11 +82,7 @@ class FileController extends Controller
             }
 
             return redirect()
-                ->route('files.index', array_filter([
-                    'folder' => $folderId,
-                    'customer' => $validated['customer_id'] ?? null,
-                    'project' => $validated['project_id'] ?? null,
-                ]))
+                ->route('files.index', array_filter(['folder' => $folderId]))
                 ->with('status', __('flash.files_uploaded', ['count' => $stored]));
         }
 
@@ -144,21 +97,17 @@ class FileController extends Controller
             $target = $this->folderForPath($folderId, $paths[$i] ?? null, $folderCache);
 
             // Resolve a same-name clash per the chosen strategy.
-            $name = $this->resolveConflict($upload->getClientOriginalName(), $target, $attachable, $strategy);
+            $name = $this->resolveConflict($upload->getClientOriginalName(), $target, $strategy);
             if ($name === null) {
                 continue; // skipped
             }
 
-            $this->persist($upload, $validated['tags'] ?? [], $attachable, $request->user(), $target, $name);
+            $this->persist($upload, $validated['tags'] ?? [], $request->user(), $target, $name);
             $stored++;
         }
 
         return redirect()
-            ->route('files.index', array_filter([
-                'folder' => $folderId,
-                'customer' => $validated['customer_id'] ?? null,
-                'project' => $validated['project_id'] ?? null,
-            ]))
+            ->route('files.index', array_filter(['folder' => $folderId]))
             ->with('status', __('flash.files_uploaded', ['count' => $stored]));
     }
 
@@ -232,7 +181,7 @@ class FileController extends Controller
                 $rel = ltrim(str_replace($work, '', $entry->getPathname()), '/');
                 $target = $this->folderForPath($base, $rel, $cache);
                 $upload = new UploadedFile($entry->getPathname(), basename($rel), null, null, true);
-                $this->persist($upload, [], null, $request->user(), $target);
+                $this->persist($upload, [], $request->user(), $target);
                 $count++;
             }
         } catch (\Throwable) {
@@ -345,15 +294,7 @@ class FileController extends Controller
             'paths' => ['required', 'array'],
             'paths.*' => ['string', 'max:1024'],
             'folder_id' => ['nullable', 'integer', Rule::exists('folders', 'id')],
-            'customer_id' => ['nullable', 'integer'],
-            'project_id' => ['nullable', 'integer'],
         ]);
-
-        $attachable = match (true) {
-            filled($validated['customer_id'] ?? null) => Customer::find($validated['customer_id']),
-            filled($validated['project_id'] ?? null) => Project::find($validated['project_id']),
-            default => null,
-        };
 
         $conflicts = [];
         foreach ($validated['paths'] as $path) {
@@ -362,7 +303,7 @@ class FileController extends Controller
                 continue; // folder chain does not exist yet → no clash
             }
 
-            if ($this->fileQuery(basename($path), $folderId, $attachable)->exists()) {
+            if ($this->fileQuery(basename($path), $folderId)->exists()) {
                 $conflicts[] = $path;
             }
         }
@@ -374,9 +315,9 @@ class FileController extends Controller
      * Apply the conflict strategy for a target name. Returns the name to store
      * (possibly renamed), or null to skip. Overwrite removes the existing file.
      */
-    private function resolveConflict(string $name, ?int $folderId, ?Model $attachable, string $strategy): ?string
+    private function resolveConflict(string $name, ?int $folderId, string $strategy): ?string
     {
-        $existing = $this->fileQuery($name, $folderId, $attachable)->first();
+        $existing = $this->fileQuery($name, $folderId)->first();
         if ($existing === null) {
             return $name;
         }
@@ -398,7 +339,7 @@ class FileController extends Controller
         $suffix = $ext !== '' ? '.'.$ext : '';
         $i = 1;
         $candidate = $name;
-        while ($this->fileQuery($candidate, $folderId, $attachable)->exists()) {
+        while ($this->fileQuery($candidate, $folderId)->exists()) {
             $i++;
             $candidate = $base.'_'.$i.$suffix;
         }
@@ -407,17 +348,13 @@ class FileController extends Controller
     }
 
     /**
-     * A query for a file of the given name in a folder and ownership context.
+     * A query for a file of the given name in a folder.
      *
      * @return Builder<File>
      */
-    private function fileQuery(string $name, ?int $folderId, ?Model $attachable): Builder
+    private function fileQuery(string $name, ?int $folderId): Builder
     {
-        $query = File::query()->where('name', $name)->where('folder_id', $folderId);
-
-        return $attachable !== null
-            ? $query->where('attachable_type', $attachable->getMorphClass())->where('attachable_id', $attachable->getKey())
-            : $query->whereNull('attachable_type');
+        return File::query()->where('name', $name)->where('folder_id', $folderId);
     }
 
     /**
@@ -625,27 +562,6 @@ class FileController extends Controller
     }
 
     /**
-     * Store a file uploaded from the files overview, assigning it to the chosen
-     * customer or project.
-     */
-    public function store(StoreTeamFileRequest $request): RedirectResponse
-    {
-        $this->authorize('create', File::class);
-
-        [$type, $id] = explode(':', $request->validated()['attachable'], 2);
-
-        $attachable = $type === 'customer'
-            ? Customer::findOrFail($id)
-            : Project::findOrFail($id);
-
-        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $attachable, $request->user());
-
-        return redirect()
-            ->route('files.index')
-            ->with('status', __('flash.file_uploaded'));
-    }
-
-    /**
      * MIME types that are safe to render inline on our own origin.
      *
      * Deliberately excludes SVG, HTML and XML, which can execute script and
@@ -666,7 +582,7 @@ class FileController extends Controller
     {
         $this->authorize('view', $file);
 
-        $file->load(['attachable', 'tags', 'uploader', 'folder']);
+        $file->load(['tags', 'uploader', 'folder']);
 
         $exif = $exifReader->read($file);
         $location = null;
@@ -897,7 +813,7 @@ class FileController extends Controller
      *
      * @param  list<string>  $tags
      */
-    private function persist(UploadedFile $upload, array $tags, ?Model $attachable, User $uploader, ?int $folderId = null, ?string $name = null): void
+    private function persist(UploadedFile $upload, array $tags, User $uploader, ?int $folderId = null, ?string $name = null): void
     {
         $mime = $upload->getMimeType() ?: ($upload->getClientMimeType() ?: 'application/octet-stream');
         $type = FileType::fromMime($mime);
@@ -924,11 +840,6 @@ class FileController extends Controller
         ]);
         $file->uploaded_by = $uploader->id;
         $file->folder_id = $folderId;
-
-        if ($attachable !== null) {
-            $file->attachable()->associate($attachable);
-        }
-
         $file->save();
 
         $tagIds = collect($tags)
@@ -942,7 +853,7 @@ class FileController extends Controller
      * ciphertext: no checksum, no text extraction, no type detection. The real
      * name and mime live only inside the client-encrypted enc_metadata blob.
      */
-    private function persistEncrypted(UploadedFile $blob, string $encMetadata, string $encFileKey, ?Model $attachable, User $uploader, ?int $folderId): void
+    private function persistEncrypted(UploadedFile $blob, string $encMetadata, string $encFileKey, User $uploader, ?int $folderId): void
     {
         $path = Storage::disk(config('files.disk'))->putFile('files', $blob);
 
@@ -960,11 +871,6 @@ class FileController extends Controller
         ]);
         $file->uploaded_by = $uploader->id;
         $file->folder_id = $folderId;
-
-        if ($attachable !== null) {
-            $file->attachable()->associate($attachable);
-        }
-
         $file->save();
     }
 }

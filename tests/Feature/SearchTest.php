@@ -4,16 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Enums\ContactFunction;
-use App\Enums\ProjectType;
-use App\Models\Branch;
-use App\Models\Contact;
-use App\Models\ContactEmail;
-use App\Models\Customer;
 use App\Models\File;
-use App\Models\Project;
-use App\Models\Tag;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -38,33 +31,11 @@ class SearchTest extends TestCase
         $this->get(route('search'))->assertOk()->assertSee('Type a term');
     }
 
-    public function test_it_finds_customers_by_name(): void
-    {
-        $this->signIn();
-        Customer::factory()->create(['name' => 'Qzxwv Industries']);
-
-        $this->search('qzxwv')
-            ->assertOk()
-            ->assertSee('Customers')
-            ->assertSee('Qzxwv Industries');
-    }
-
-    public function test_it_finds_customers_by_postal_code(): void
-    {
-        $this->signIn();
-        Customer::factory()->create(['name' => 'Lohmar GmbH', 'postal_code' => '53797']);
-
-        $this->search('53797')
-            ->assertOk()
-            ->assertSee('Customers')
-            ->assertSee('Lohmar GmbH');
-    }
-
     public function test_it_finds_files_by_note(): void
     {
+        Storage::fake('files');
         $this->signIn();
-        $customer = Customer::factory()->create();
-        File::factory()->forCustomer($customer)->create([
+        File::factory()->create([
             'name' => 'Contract.pdf',
             'note' => 'renewal due qzxwvnote',
         ]);
@@ -75,78 +46,22 @@ class SearchTest extends TestCase
             ->assertSee('Contract.pdf');
     }
 
-    public function test_it_finds_contacts_by_related_email(): void
-    {
-        $this->signIn();
-        $contact = Contact::factory()->create([
-            'name' => 'Jane Searchable',
-            'function' => ContactFunction::CEO->value,
-        ]);
-        ContactEmail::factory()->for($contact)->create(['email' => 'find-me@qzxwv.test']);
-
-        $this->search('qzxwv.test')
-            ->assertOk()
-            ->assertSee('Contacts')
-            ->assertSee('Jane Searchable');
-    }
-
-    public function test_it_finds_branches_by_name(): void
-    {
-        $this->signIn();
-        Branch::factory()->create(['name' => 'Qzxwv Branch']);
-
-        $this->search('qzxwv branch')
-            ->assertOk()
-            ->assertSee('Branches')
-            ->assertSee('Qzxwv Branch');
-    }
-
-    public function test_it_finds_projects_by_reference(): void
-    {
-        $this->signIn();
-        Project::factory()->create(['name' => 'Some Project', 'reference' => 'QZXWV-9001']);
-
-        $this->search('qzxwv-9001')
-            ->assertOk()
-            ->assertSee('Projects')
-            ->assertSee('Some Project');
-    }
-
-    public function test_it_finds_projects_by_tag(): void
-    {
-        $this->signIn();
-        $project = Project::factory()->create(['name' => 'Tagged Project']);
-        $project->tags()->attach(Tag::findOrCreateByName('Qzxwvtag')->id);
-
-        $this->search('qzxwvtag')->assertOk()->assertSee('Tagged Project');
-    }
-
-    public function test_it_finds_projects_by_type(): void
-    {
-        $this->signIn();
-        Project::factory()->create([
-            'name' => 'Server Patching Qzxwv',
-            'type' => ProjectType::MAINTENANCE->value,
-        ]);
-
-        $this->search('maintenance')->assertOk()->assertSee('Server Patching Qzxwv');
-    }
-
     public function test_results_are_grouped_by_entity_type(): void
     {
+        Storage::fake('files');
         $this->signIn();
-        Customer::factory()->create(['name' => 'Qzxwv Customer']);
-        Branch::factory()->create(['name' => 'Qzxwv Branch']);
+        File::factory()->create(['name' => 'Qzxwv.pdf']);
 
         $this->search('qzxwv')->assertOk()->assertViewHas('groups', function (array $groups): bool {
-            return array_key_exists('Customers', $groups) && array_key_exists('Branches', $groups);
+            return array_key_exists('Files', $groups);
         });
     }
 
     public function test_unmatched_query_reports_no_results(): void
     {
+        Storage::fake('files');
         $this->signIn();
-        Customer::factory()->create(['name' => 'Acme']);
+        File::factory()->create(['name' => 'Acme.pdf']);
 
         $this->search('zzz-no-such-token-zzz')->assertOk()->assertSee('No results');
     }
@@ -158,13 +73,14 @@ class SearchTest extends TestCase
 
     public function test_suggest_returns_grouped_json(): void
     {
+        Storage::fake('files');
         $this->signIn();
-        Customer::factory()->create(['name' => 'Qzxwv Industries']);
+        File::factory()->create(['name' => 'Qzxwv.pdf']);
 
         $this->getJson(route('search.suggest', ['q' => 'qzxwv']))
             ->assertOk()
-            ->assertJsonPath('groups.0.group', 'Customers')
-            ->assertJsonFragment(['title' => 'Qzxwv Industries']);
+            ->assertJsonPath('groups.0.group', 'Files')
+            ->assertJsonFragment(['title' => 'Qzxwv.pdf']);
     }
 
     public function test_suggest_for_empty_term_returns_no_groups(): void

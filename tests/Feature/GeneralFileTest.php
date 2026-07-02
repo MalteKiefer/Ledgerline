@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Enums\FileType;
-use App\Models\Customer;
 use App\Models\File;
 use App\Models\Folder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -336,8 +335,7 @@ class GeneralFileTest extends TestCase
     {
         $this->signIn();
         $folder = Folder::create(['name' => 'Contracts']);
-        $customer = Customer::factory()->create();
-        $file = File::factory()->forCustomer($customer)->create();
+        $file = File::factory()->create();
 
         $this->put(route('files.update', $file), ['folder_id' => $folder->id])
             ->assertRedirect(route('files.show', $file));
@@ -350,9 +348,8 @@ class GeneralFileTest extends TestCase
         $this->signIn();
         $folder = Folder::create(['name' => 'Contracts']);
         Folder::create(['name' => 'Twenty-Six', 'parent_id' => $folder->id]);
-        $customer = Customer::factory()->create();
-        File::factory()->forCustomer($customer)->create(['name' => 'signed.pdf', 'folder_id' => $folder->id]);
-        File::factory()->forCustomer($customer)->create(['name' => 'rootfile.pdf']);
+        File::factory()->create(['name' => 'signed.pdf', 'folder_id' => $folder->id]);
+        File::factory()->create(['name' => 'rootfile.pdf']);
 
         $this->get(route('files.index', ['folder' => $folder->id]))
             ->assertOk()
@@ -364,8 +361,7 @@ class GeneralFileTest extends TestCase
     public function test_root_lists_unfiled_files(): void
     {
         $this->signIn();
-        $customer = Customer::factory()->create();
-        File::factory()->forCustomer($customer)->create(['name' => 'rootfile.pdf']);
+        File::factory()->create(['name' => 'rootfile.pdf']);
 
         $this->get(route('files.index'))
             ->assertOk()
