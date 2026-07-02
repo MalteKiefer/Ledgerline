@@ -28,8 +28,6 @@ class GeneralFileTest extends TestCase
         ])->assertRedirect(route('files.index', ['folder' => $folder->id]));
 
         $file = File::firstWhere('name', 'letterhead.pdf');
-        $this->assertNull($file->attachable_type);
-        $this->assertTrue($file->isGeneral());
         $this->assertSame($folder->id, $file->folder_id);
     }
 
@@ -93,7 +91,6 @@ class GeneralFileTest extends TestCase
             'name' => 'notes.txt', 'title' => 'Notes', 'type' => FileType::DOCUMENT,
             'is_encrypted' => false, 'disk_path' => 'files/notes.txt', 'mime_type' => 'text/plain',
             'checksum' => hash('sha256', 'plain'), 'extracted_text' => 'plain', 'size' => 5,
-            'attachable_type' => null, 'attachable_id' => null,
         ]);
         Storage::disk('files')->put('files/notes.txt', 'plain');
 
@@ -128,7 +125,6 @@ class GeneralFileTest extends TestCase
             'name' => '', 'type' => FileType::ENCRYPTED, 'is_encrypted' => true,
             'disk_path' => 'files/enc.bin', 'mime_type' => 'application/octet-stream',
             'enc_metadata' => '{"c":"m","n":"n"}', 'enc_file_key' => '{"c":"k","n":"n"}',
-            'attachable_type' => null, 'attachable_id' => null,
         ]);
         Storage::disk('files')->put('files/enc.bin', 'ciphertext');
 
@@ -147,7 +143,6 @@ class GeneralFileTest extends TestCase
             'name' => '', 'type' => FileType::ENCRYPTED, 'is_encrypted' => true,
             'disk_path' => 'files/enc.bin', 'mime_type' => 'application/octet-stream', 'size' => 3,
             'enc_metadata' => '{"c":"old","n":"n"}', 'enc_file_key' => '{"c":"oldk","n":"n"}',
-            'attachable_type' => null, 'attachable_id' => null,
         ]);
         Storage::disk('files')->put('files/enc.bin', 'old');
 
@@ -173,7 +168,6 @@ class GeneralFileTest extends TestCase
         $file = File::factory()->create([
             'name' => '', 'type' => FileType::ENCRYPTED, 'is_encrypted' => true,
             'disk_path' => 'files/enc.bin', 'mime_type' => 'application/octet-stream',
-            'attachable_type' => null, 'attachable_id' => null,
         ]);
         Storage::disk('files')->put('files/enc.bin', 'raw-ciphertext-bytes');
 
@@ -246,8 +240,6 @@ class GeneralFileTest extends TestCase
             'name' => 'archive.zip',
             'type' => FileType::ARCHIVE,
             'disk_path' => 'files/archive.zip',
-            'attachable_type' => null,
-            'attachable_id' => null,
         ]);
 
         $this->post(route('files.extract', $file))->assertRedirect();
@@ -274,7 +266,7 @@ class GeneralFileTest extends TestCase
 
         $file = File::factory()->create([
             'name' => 'bad.zip', 'type' => FileType::ARCHIVE,
-            'disk_path' => 'files/bad.zip', 'attachable_type' => null, 'attachable_id' => null,
+            'disk_path' => 'files/bad.zip',
         ]);
 
         $this->post(route('files.extract', $file))->assertRedirect();
@@ -290,7 +282,7 @@ class GeneralFileTest extends TestCase
         $this->signIn();
         $file = File::factory()->create([
             'disk_path' => 'files/note.txt', 'size' => 5, 'mime_type' => 'text/plain',
-            'type' => FileType::DOCUMENT, 'attachable_type' => null, 'attachable_id' => null,
+            'type' => FileType::DOCUMENT,
         ]);
         Storage::disk('files')->put('files/note.txt', 'hello');
 
@@ -310,7 +302,7 @@ class GeneralFileTest extends TestCase
         $this->signIn();
         $file = File::factory()->create([
             'disk_path' => 'files/blob.bin', 'size' => 4, 'mime_type' => 'application/octet-stream',
-            'type' => FileType::OTHER, 'attachable_type' => null, 'attachable_id' => null,
+            'type' => FileType::OTHER,
         ]);
         Storage::disk('files')->put('files/blob.bin', "\x00\x01\xff\xfe");
 
@@ -323,7 +315,7 @@ class GeneralFileTest extends TestCase
     {
         $this->signIn();
         $folder = Folder::create(['name' => 'Docs']);
-        File::factory()->create(['name' => 'a.txt', 'folder_id' => $folder->id, 'attachable_type' => null, 'attachable_id' => null]);
+        File::factory()->create(['name' => 'a.txt', 'folder_id' => $folder->id]);
 
         $this->postJson(route('files.conflicts'), [
             'paths' => ['a.txt', 'b.txt'],

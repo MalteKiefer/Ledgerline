@@ -90,7 +90,7 @@ class BulkFileTest extends TestCase
         Storage::fake('files');
         $this->signIn();
         $folder = Folder::create(['name' => 'Doomed']);
-        $file = File::factory()->create(['folder_id' => $folder->id, 'attachable_type' => null, 'attachable_id' => null]);
+        $file = File::factory()->create(['folder_id' => $folder->id]);
 
         $this->post(route('files.bulk.delete'), ['folder_ids' => [$folder->id]])->assertRedirect();
 
@@ -104,9 +104,9 @@ class BulkFileTest extends TestCase
         $this->signIn();
         $folder = Folder::create(['name' => 'Trip']);
         $sub = Folder::create(['name' => 'Day1', 'parent_id' => $folder->id]);
-        $loose = File::factory()->create(['name' => 'loose.txt', 'attachable_type' => null, 'attachable_id' => null]);
-        $inSub = File::factory()->create(['name' => 'deep.txt', 'folder_id' => $sub->id, 'attachable_type' => null, 'attachable_id' => null]);
-        $other = File::factory()->create(['name' => 'other.txt', 'attachable_type' => null, 'attachable_id' => null]);
+        $loose = File::factory()->create(['name' => 'loose.txt']);
+        $inSub = File::factory()->create(['name' => 'deep.txt', 'folder_id' => $sub->id]);
+        $other = File::factory()->create(['name' => 'other.txt']);
 
         $res = $this->postJson(route('files.bulk.manifest'), [
             'file_ids' => [$loose->id],
@@ -125,8 +125,8 @@ class BulkFileTest extends TestCase
         $root = Folder::create(['name' => 'Root']);
         $sub = Folder::create(['name' => 'Sub', 'parent_id' => $root->id]);
         $enc = Folder::create(['name' => '', 'enc_name' => '{"c":"c","n":"n"}', 'parent_id' => $root->id]);
-        $plain = File::factory()->create(['name' => 'a.txt', 'folder_id' => $sub->id, 'is_encrypted' => false, 'attachable_type' => null, 'attachable_id' => null]);
-        File::factory()->create(['name' => '', 'folder_id' => $sub->id, 'is_encrypted' => true, 'attachable_type' => null, 'attachable_id' => null]);
+        $plain = File::factory()->create(['name' => 'a.txt', 'folder_id' => $sub->id, 'is_encrypted' => false]);
+        File::factory()->create(['name' => '', 'folder_id' => $sub->id, 'is_encrypted' => true]);
 
         $res = $this->getJson(route('folders.descendants', $root))->assertOk();
 
