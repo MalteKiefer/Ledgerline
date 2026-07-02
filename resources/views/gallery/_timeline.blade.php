@@ -2,16 +2,6 @@
      feed. Each tile carries data-* so the viewer can read metadata without a
      round-trip. --}}
 @php
-    $fmtBytes = static function (?int $bytes): string {
-        if (! $bytes) {
-            return '—';
-        }
-        $units = ['B', 'KB', 'MB', 'GB'];
-        $i = 0;
-        $v = (float) $bytes;
-        while ($v >= 1024 && $i < count($units) - 1) { $v /= 1024; $i++; }
-        return number_format($v, $i ? 1 : 0).' '.$units[$i];
-    };
     $fmtDuration = static function (int $seconds): string {
         return sprintf('%d:%02d', intdiv($seconds, 60), $seconds % 60);
     };
@@ -34,7 +24,7 @@
                             data-time="{{ $photo->taken_at->format('H:i') }}"
                             data-camera="{{ $photo->camera }}"
                             data-dims="{{ $photo->width && $photo->height ? $photo->width.' × '.$photo->height : '' }}"
-                            data-size="{{ $fmtBytes($photo->size) }}"
+                            data-size="{{ \App\Support\Bytes::format($photo->size) }}"
                             data-lat="{{ $photo->latitude }}"
                             data-lng="{{ $photo->longitude }}"
                             data-place="{{ $photo->place }}"
