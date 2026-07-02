@@ -1132,6 +1132,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     infoOpen: false,
     infoRow: null,
     up: { active: false, done: 0, total: 0 },
+    uploadBatches: 0, // concurrent uploadItems() runs still in flight
     dl: { active: false, done: 0, total: 0 },
     error: '',
     dragging: false,
@@ -1562,7 +1563,15 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Existing sibling folders are reused by name so re-drops don't duplicate.
     async uploadItems(items) {
         if (! items.length) return;
-        this.up = { active: true, done: 0, total: items.length };
+        // Accumulate across concurrent drops: a new batch dropped while another
+        // is still uploading adds to the running total instead of resetting it.
+        // The counter starts fresh only when nothing is in flight.
+        if (this.uploadBatches === 0) {
+            this.up = { active: true, done: 0, total: 0 };
+        }
+        this.up.total += items.length;
+        this.up.active = true;
+        this.uploadBatches++;
 
         const dirCache = new Map(); // relative dir path -> folder id
         dirCache.set('', this.cwd);
@@ -1620,7 +1629,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             this.up.done++;
         }
 
-        this.up.active = false;
+        // Only hide the indicator once every concurrent batch has finished.
+        this.uploadBatches--;
+        if (this.uploadBatches === 0) this.up.active = false;
         await this.persist().catch(() => {});
     },
 
