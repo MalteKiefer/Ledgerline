@@ -39,12 +39,15 @@ final class WebklexImapReader implements ImapReader
             foreach ($client->getFolders(false) as $folder) {
                 $total = 0;
                 $unseen = 0;
-                try {
-                    $status = $folder->status();
-                    $total = (int) ($status['messages'] ?? 0);
-                    $unseen = (int) ($status['unseen'] ?? 0);
-                } catch (\Throwable) {
-                    // \Noselect containers etc. — still list them.
+                // STATUS on a \Noselect container (e.g. Gmail's "[Gmail]") returns
+                // NO; skip it to avoid a wasted round-trip per such folder.
+                if (! $folder->no_select) {
+                    try {
+                        $status = $folder->status();
+                        $total = (int) ($status['messages'] ?? 0);
+                        $unseen = (int) ($status['unseen'] ?? 0);
+                    } catch (\Throwable) {
+                    }
                 }
                 $out[] = [
                     'name' => $folder->name ?: $folder->path,
