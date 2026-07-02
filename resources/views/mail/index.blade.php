@@ -205,11 +205,7 @@
                         <option :value="f.path" x-text="`${f.name} (${f.unseen})`"></option>
                     </template>
                 </select>
-                <div class="ml-auto flex items-center gap-2" x-show="! reader.current">
-                    <button type="button" @click="pageStep(-1)" :disabled="reader.page <= 1" class="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40">{{ __('mail.prev') }}</button>
-                    <span class="text-xs text-gray-500" x-text="@js(__('mail.page_of', ['page' => '%p', 'pages' => '%t'])).replace('%p', reader.page).replace('%t', readerPages)"></span>
-                    <button type="button" @click="pageStep(1)" :disabled="reader.page >= readerPages" class="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40">{{ __('mail.next') }}</button>
-                </div>
+                <span class="ml-auto text-xs text-gray-500" x-show="! reader.current" x-text="`${reader.messages.length} / ${reader.total}`"></span>
                 <button type="button" x-show="reader.current" @click="reader.current = null" class="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1"><x-icon name="chevron-left" class="h-3.5 w-3.5" />{{ __('mail.back_to_list') }}</span></button>
             </div>
 
@@ -234,6 +230,9 @@
                         </li>
                     </template>
                 </ul>
+                {{-- Infinite scroll: load the next page when the sentinel comes into view. --}}
+                <div x-show="hasMoreMessages" x-intersect.margin.600px="loadMore()" class="h-10"></div>
+                <p x-show="reader.loadingMore" x-cloak class="py-3 text-center text-xs text-gray-400">{{ __('mail.loading') }}</p>
             </div>
 
             {{-- Message view --}}

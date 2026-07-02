@@ -9,6 +9,7 @@ use App\Services\Mail\ImapReader;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -140,15 +141,19 @@ class MailReaderController extends Controller
     }
 
     /**
-     * Run an IMAP operation, converting any failure into a generic 422 so raw
-     * connection errors (and the posted credentials) never leak or get logged.
+     * Run an IMAP operation, converting any failure into a 422. The exception
+     * message (never the credentials) is surfaced as "detail" so the account
+     * owner can diagnose connection problems (bad cert, wrong port, auth).
      */
     private function guard(\Closure $operation): Response|JsonResponse
     {
         try {
             return $operation();
-        } catch (\Throwable) {
-            return response()->json(['message' => __('mail.connect_failed')], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => __('mail.connect_failed'),
+                'detail' => Str::limit(class_basename($e).': '.$e->getMessage(), 300),
+            ], 422);
         }
     }
 }

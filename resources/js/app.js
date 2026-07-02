@@ -2373,7 +2373,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     deleteId: null,
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
-        messages: [], current: null, loading: false, error: '', imagesAllowed: false, busy: false,
+        messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
         folders: [], transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
     },
 
@@ -2555,6 +2555,8 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.transferOpen = false;
         this.reader.error = '';
         this.reader.loading = true;
+        this.reader.folders = [];
+        this.reader.messages = [];
         this.reader.folders = this.sortedFolders(await this.loadFolders(this.credsBody(a)));
         const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
         this.reader.folderPath = inbox?.path ?? 'INBOX';
@@ -2588,32 +2590,40 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return res;
     },
 
-    async loadMessages() {
-        this.reader.loading = true;
+    // Load a page of messages. reset=true starts a fresh folder view; otherwise
+    // the next page is appended (infinite scroll, gallery-style).
+    async loadMessages(reset = true) {
+        if (reset) { this.reader.page = 1; this.reader.messages = []; this.reader.total = 0; }
+        this.reader.loading = reset;
+        this.reader.loadingMore = ! reset;
         this.reader.error = '';
         try {
             const res = await this.mailPost('/mail/messages', { page: this.reader.page });
-            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            if (! res.ok) {
+                const body = await res.json().catch(() => ({}));
+                this.reader.error = body.detail || labels.connectFailed;
+                return;
+            }
             const data = await res.json();
-            this.reader.messages = data.messages ?? [];
+            const rows = data.messages ?? [];
+            this.reader.messages = reset ? rows : [...this.reader.messages, ...rows];
             this.reader.total = data.total ?? 0;
         } catch (e) {
             this.reader.error = labels.connectFailed;
         } finally {
             this.reader.loading = false;
+            this.reader.loadingMore = false;
         }
     },
 
-    get readerPages() {
-        return Math.max(1, Math.ceil(this.reader.total / this.reader.perPage));
+    get hasMoreMessages() {
+        return this.reader.messages.length < this.reader.total;
     },
 
-    async pageStep(delta) {
-        const next = this.reader.page + delta;
-        if (next < 1 || next > this.readerPages) return;
-        this.reader.page = next;
-        this.reader.current = null;
-        await this.loadMessages();
+    async loadMore() {
+        if (this.reader.loading || this.reader.loadingMore || ! this.hasMoreMessages) return;
+        this.reader.page += 1;
+        await this.loadMessages(false);
     },
 
     async openMsg(uid) {
@@ -2621,7 +2631,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.imagesAllowed = false;
         try {
             const res = await this.mailPost('/mail/message', { uid, mark_seen: true });
-            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
             const row = this.reader.messages.find((m) => m.uid === uid);
             if (row) row.seen = true;
