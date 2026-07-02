@@ -13,5 +13,15 @@
             <h2 class="text-base font-semibold text-gray-900">{{ __('settings.security_section') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.security_desc') }}</p>
         </a>
+        <a href="{{ route('settings.notifications.edit') }}"
+            class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+            <h2 class="text-base font-semibold text-gray-900">{{ __('settings.notifications_section') }}</h2>
+            <p class="mt-1 text-sm text-gray-600">{{ __('settings.notifications_desc') }}</p>
+        </a>
+        <a href="{{ route('settings.backup.index') }}"
+            class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+            <h2 class="text-base font-semibold text-gray-900">{{ __('settings.backup_section') }}</h2>
+            <p class="mt-1 text-sm text-gray-600">{{ __('settings.backup_desc') }}</p>
+        </a>
     </div>
 </x-layouts.app>
