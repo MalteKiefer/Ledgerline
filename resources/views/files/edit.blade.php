@@ -3,9 +3,21 @@
         <a href="{{ route('files.show', $file) }}" class="hover:underline">{{ __('files.view') }}</a>
         <span aria-hidden="true">/</span> {{ __('files.edit_file') }}
     </p>
-    <h1 class="mt-1 text-2xl font-semibold text-gray-900 break-all">{{ $file->displayTitle }}</h1>
+    @if ($file->is_encrypted)
+        <h1 class="mt-1 text-2xl font-semibold text-gray-900 break-all" x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></h1>
+    @else
+        <h1 class="mt-1 text-2xl font-semibold text-gray-900 break-all">{{ $file->displayTitle }}</h1>
+    @endif
 
-    @if ($editable)
+    @if ($file->is_encrypted)
+        <p class="mt-6 rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">
+            {{ __('files.encrypted_edit_hint') }}
+        </p>
+        <div class="mt-4">
+            <button type="button" @click="window.vaultDownload(@js(route('files.download', $file)), @js($file->enc_metadata), @js($file->enc_file_key))"
+                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</button>
+        </div>
+    @elseif ($editable)
         <form method="POST" action="{{ route('files.content', $file) }}" class="mt-6"
               x-data="codeEditor(@js($content), @js($file->displayTitle))" @submit="sync()">
             @csrf

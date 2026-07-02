@@ -526,7 +526,9 @@ class FileController extends Controller
         $editable = false;
         $content = '';
 
-        if ($disk->exists($file->disk_path) && $file->size <= self::EDIT_MAX_BYTES) {
+        // Encrypted files are opaque ciphertext here; the browser decrypts them.
+        // Editing them server-side is impossible, so never read the bytes.
+        if (! $file->is_encrypted && $disk->exists($file->disk_path) && $file->size <= self::EDIT_MAX_BYTES) {
             $bytes = (string) $disk->get($file->disk_path);
             // Treat it as text only when it is valid UTF-8 with no null bytes.
             if (! str_contains($bytes, "\0") && mb_check_encoding($bytes, 'UTF-8')) {

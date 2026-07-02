@@ -25,12 +25,21 @@
     </p>
 
     <div class="mt-1 flex flex-wrap items-start justify-between gap-3">
-        <h1 class="text-2xl font-semibold text-gray-900">{{ $file->displayTitle }}</h1>
+        @if ($file->is_encrypted)
+            <h1 class="text-2xl font-semibold text-gray-900 break-all" x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></h1>
+        @else
+            <h1 class="text-2xl font-semibold text-gray-900">{{ $file->displayTitle }}</h1>
+        @endif
         <div class="flex items-center gap-3">
             <a href="{{ route('files.edit', $file) }}"
                 class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.edit') }}</a>
-            <a href="{{ route('files.download', $file) }}"
-                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</a>
+            @if ($file->is_encrypted)
+                <button type="button" @click="window.vaultDownload(@js(route('files.download', $file)), @js($file->enc_metadata), @js($file->enc_file_key))"
+                    class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</button>
+            @else
+                <a href="{{ route('files.download', $file) }}"
+                    class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</a>
+            @endif
             @php $linkedInvoice = $file->attachable instanceof \App\Models\Invoice ? $file->attachable : null; @endphp
             @if ($linkedInvoice)
                 <div x-data="{ open: false }" class="inline">
@@ -62,7 +71,21 @@
         {{-- Preview + metadata --}}
         <div class="space-y-6 lg:col-span-2">
             <div class="overflow-hidden rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                @if ($file->isImage())
+                @if ($file->is_encrypted)
+                    <div x-data="encPreview(@js(route('files.download', $file)), @js($file->enc_metadata), @js($file->enc_file_key))">
+                        <p x-show="state === 'loading'" class="py-10 text-center text-sm text-gray-500">{{ __('files.decrypting') }}</p>
+                        <p x-show="state === 'locked'" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('files.encrypted_locked') }}</p>
+                        <p x-show="state === 'error'" x-cloak class="py-10 text-center text-sm text-red-600">{{ __('files.encrypted_locked') }}</p>
+                        <img x-show="state === 'image'" x-cloak :src="src" :alt="name" class="mx-auto max-h-[520px] rounded object-contain">
+                        <template x-if="state === 'pdf'">
+                            <object :data="src" type="application/pdf" class="h-[600px] w-full rounded"></object>
+                        </template>
+                        <div x-show="state === 'none'" x-cloak class="py-10 text-center text-sm text-gray-500">
+                            {{ __('files.encrypted_no_preview') }}
+                            <button type="button" @click="download()" class="text-gray-900 underline">{{ __('files.download') }}</button>
+                        </div>
+                    </div>
+                @elseif ($file->isImage())
                     <img src="{{ route('files.download', $file) }}" alt="{{ $file->displayTitle }}"
                         class="mx-auto max-h-[520px] rounded object-contain">
                 @elseif ($file->mime_type === 'application/pdf')
@@ -92,7 +115,11 @@
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                     <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.original_name') }}</dt>
-                        <dd class="mt-1 break-all text-sm text-gray-900">{{ $file->name }}</dd>
+                        @if ($file->is_encrypted)
+                            <dd class="mt-1 break-all text-sm text-gray-900" x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></dd>
+                        @else
+                            <dd class="mt-1 break-all text-sm text-gray-900">{{ $file->name }}</dd>
+                        @endif
                     </div>
                     <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.col_type') }}</dt>
