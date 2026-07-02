@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'avatar_refreshed' => 'Avatar aktualisiert.',
+    'avatar_refresh_failed' => 'Avatar konnte nicht aktualisiert werden.',
     'branch_created' => 'Niederlassung erstellt.',
     'branch_deleted' => 'Niederlassung gelöscht.',
     'branch_updated' => 'Niederlassung aktualisiert.',
