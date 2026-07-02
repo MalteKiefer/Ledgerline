@@ -15,11 +15,14 @@
     </p>
 
     <div class="mt-1 flex flex-wrap items-start justify-between gap-3">
-        @if ($file->is_encrypted)
-            <h1 class="text-2xl font-semibold text-gray-900 break-all" x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></h1>
-        @else
-            <h1 class="text-2xl font-semibold text-gray-900">{{ $file->displayTitle }}</h1>
-        @endif
+        <h1 class="flex items-center gap-2 text-2xl font-semibold text-gray-900 break-all">
+            <x-lock-badge :encrypted="$file->is_encrypted" class="h-5 w-5" />
+            @if ($file->is_encrypted)
+                <span x-data="encName(@js($file->enc_metadata), @js(__('files.encrypted')))" x-text="label"></span>
+            @else
+                {{ $file->displayTitle }}
+            @endif
+        </h1>
         <div class="flex items-center gap-3">
             <a href="{{ route('files.edit', $file) }}"
                 class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.edit') }}</a>
@@ -106,14 +109,19 @@
                     <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.original_name') }}</dt>
                         @if ($file->is_encrypted)
-                            <dd class="mt-1 break-all text-sm text-gray-900" x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></dd>
+                            <dd class="mt-1 break-all text-sm text-gray-900" x-data="encName(@js($file->enc_metadata), @js(__('files.encrypted')))" x-text="label"></dd>
                         @else
                             <dd class="mt-1 break-all text-sm text-gray-900">{{ $file->name }}</dd>
                         @endif
                     </div>
                     <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.col_type') }}</dt>
-                        <dd class="mt-1 text-sm text-gray-900">{{ $file->type->label() }} · {{ $file->mime_type }}</dd>
+                        @if ($file->is_encrypted)
+                            @php $fileTypeLabels = collect(\App\Enums\FileType::cases())->mapWithKeys(fn (\App\Enums\FileType $c): array => [$c->value => $c->label()]); @endphp
+                            <dd class="mt-1 text-sm text-gray-900" x-data="encMime(@js($file->enc_metadata), @js($fileTypeLabels))" x-text="label"></dd>
+                        @else
+                            <dd class="mt-1 text-sm text-gray-900">{{ $file->type->label() }} · {{ $file->mime_type }}</dd>
+                        @endif
                     </div>
                     <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.size') }}</dt>

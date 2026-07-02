@@ -52,6 +52,7 @@ return [
     'encrypting' => 'Verschlüsseln…',
     'encrypting_keep_open' => 'Diese Seite geöffnet lassen, bis die Verschlüsselung abgeschlossen ist.',
     'encrypted' => 'Verschlüsselt',
+    'not_encrypted' => 'Nicht verschlüsselt',
     'encrypted_locked' => 'Tresor entsperren, um diese Datei anzuzeigen.',
     'encrypted_no_preview' => 'Für diesen Dateityp ist keine Inline-Vorschau verfügbar.',
     'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
