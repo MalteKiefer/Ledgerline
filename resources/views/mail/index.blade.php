@@ -253,8 +253,9 @@
                 </div>
             </div>
 
-            {{-- Message view --}}
-            <div x-show="reader.current" x-cloak class="flex min-h-0 flex-1 flex-col">
+            {{-- Message view (x-if so children aren't evaluated when current is null) --}}
+            <template x-if="reader.current">
+              <div class="flex min-h-0 flex-1 flex-col">
                 {{-- Actions --}}
                 <div class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
                     <button type="button" @click="reader.current = null" title="{{ __('mail.back_to_list') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="chevron-left" class="h-4 w-4" /></button>
@@ -297,7 +298,8 @@
                 <div class="min-h-0 flex-1 overflow-hidden bg-gray-50 p-2">
                     <iframe :srcdoc="messageSrcdoc()" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="h-full w-full rounded border border-gray-200 bg-white"></iframe>
                 </div>
-            </div>
+              </div>
+            </template>
                 </div>{{-- /right pane --}}
             </div>{{-- /two-column --}}
 
