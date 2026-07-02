@@ -18,6 +18,8 @@ class ReverseGeocoder
 {
     private const HOST = 'https://nominatim.openstreetmap.org/reverse';
 
+    private const SEARCH_HOST = 'https://nominatim.openstreetmap.org/search';
+
     public function lookup(float $lat, float $lon): ?string
     {
         return $this->lookupDetailed($lat, $lon)['display'];
@@ -79,6 +81,59 @@ class ReverseGeocoder
             ];
         } catch (Throwable) {
             return ['display' => null, 'address' => []];
+        }
+    }
+
+    /**
+     * Forward-geocode a free-text query (address / place) to candidate matches.
+     * Results are cached per query; requests only go to the fixed Nominatim host.
+     *
+     * @return list<array{display: string, lat: float, lon: float}>
+     */
+    public function search(string $query): array
+    {
+        $query = trim($query);
+        if ($query === '') {
+            return [];
+        }
+
+        $key = 'geocode:search:'.md5(mb_strtolower($query));
+        $cached = Cache::get($key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        try {
+            $this->throttle();
+
+            $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
+                ->timeout(5)
+                ->get(self::SEARCH_HOST, [
+                    'q' => $query,
+                    'format' => 'jsonv2',
+                    'limit' => 5,
+                    'addressdetails' => 0,
+                ]);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $results = collect($response->json() ?: [])
+                ->map(static fn (array $row): array => [
+                    'display' => (string) ($row['display_name'] ?? ''),
+                    'lat' => (float) ($row['lat'] ?? 0),
+                    'lon' => (float) ($row['lon'] ?? 0),
+                ])
+                ->filter(static fn (array $r): bool => $r['display'] !== '')
+                ->values()
+                ->all();
+
+            Cache::put($key, $results, now()->addDays(7));
+
+            return $results;
+        } catch (Throwable) {
+            return [];
         }
     }
 

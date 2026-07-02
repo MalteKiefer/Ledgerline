@@ -88,7 +88,8 @@
     </div>
 
     {{-- Bulk bar --}}
-    <div x-show="selected.length" x-cloak class="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm" x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }">
+    <div x-show="selected.length" x-cloak class="mt-4 flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm" x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
+        @location-picked.window="if ($event.detail.context === 'bulk') { lat = $event.detail.lat; lng = $event.detail.lng; }">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
         <button type="button" @click="locationOpen = true" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.set_location') }}</button>
         <button type="button" @click="deleteOpen = true" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('gallery.delete') }}</button>
@@ -106,6 +107,8 @@
                             <input type="number" step="any" name="latitude" x-model="lat" placeholder="lat" required class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                             <input type="number" step="any" name="longitude" x-model="lng" placeholder="lng" required class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         </div>
+                        <button type="button" @click="window.dispatchEvent(new CustomEvent('open-location-picker', { detail: { context: 'bulk', lat, lng } }))"
+                            class="mt-2 w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">📍 {{ __('gallery.change_location') }}</button>
                         <div class="mt-5 flex justify-end gap-3">
                             <button type="button" @click="locationOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.save_meta') }}</button>
@@ -302,6 +305,8 @@
                         <input type="number" step="any" name="latitude" x-model="current.lat" placeholder="lat" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <input type="number" step="any" name="longitude" x-model="current.lng" placeholder="lng" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
+                    <button type="button" @click="window.dispatchEvent(new CustomEvent('open-location-picker', { detail: { context: 'single', lat: current.lat, lng: current.lng } }))"
+                        class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">📍 {{ __('gallery.change_location') }}</button>
                     <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.save_meta') }}</button>
                 </form>
                 </div>
@@ -310,5 +315,7 @@
             </aside>
         </div>
     </template>
+
+    @include('gallery._location_picker')
   </div>
 </x-layouts.app>
