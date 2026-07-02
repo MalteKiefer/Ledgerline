@@ -19,6 +19,9 @@ use Illuminate\Database\Eloquent\Model;
     'wrap_nonce',
     'wrapped_vault_key_recovery',
     'recovery_nonce',
+    'manifest_cipher',
+    'manifest_nonce',
+    'manifest_version',
 ])]
 class Vault extends Model
 {

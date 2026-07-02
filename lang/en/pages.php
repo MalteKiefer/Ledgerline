@@ -58,6 +58,8 @@ return [
         'recent_files' => 'Recent files',
         'view_all' => 'View all',
         'no_files' => 'No files yet.',
+        'vault_ready' => 'Vault set up — open the encrypted file browser.',
+        'vault_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
     ],
     'profile' => [
         'title' => 'Profile',

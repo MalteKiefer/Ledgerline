@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\File;
+use App\Models\Photo;
+use App\Models\Vault;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class DashboardTest extends TestCase
@@ -21,25 +21,27 @@ class DashboardTest extends TestCase
     public function test_authenticated_user_sees_dashboard_with_summary_cards(): void
     {
         $this->signIn();
+        Photo::factory()->count(2)->create();
 
         $this->get(route('dashboard'))
             ->assertOk()
             ->assertSee('Dashboard')
-            ->assertSee('Files')
-            ->assertSee('Storage used')
-            ->assertSee('Recent files')
-            ->assertSee('Toggle menu');
+            ->assertViewHas('gallery', fn (array $gallery): bool => $gallery['total'] === 2);
     }
 
-    public function test_dashboard_shows_file_stats_and_recent_files(): void
+    public function test_dashboard_reports_the_vault_state_without_file_details(): void
     {
-        Storage::fake('files');
         $this->signIn();
-        File::factory()->create(['name' => 'Handbook.pdf', 'size' => 2048]);
 
-        $this->get(route('dashboard'))
-            ->assertOk()
-            ->assertSee('Handbook.pdf')
-            ->assertViewHas('stats', fn (array $stats): bool => $stats['files'] === 1 && $stats['storage'] === 2048);
+        // No vault yet.
+        $this->get(route('dashboard'))->assertOk()->assertViewHas('vaultConfigured', false);
+
+        Vault::create([
+            'salt' => 'c2FsdA==', 'kdf_ops' => 3, 'kdf_mem' => 67108864,
+            'wrapped_vault_key' => 'd3JhcHBlZA==', 'wrap_nonce' => 'bm9uY2U=',
+            'wrapped_vault_key_recovery' => 'cg==', 'recovery_nonce' => 'cm4=',
+        ]);
+
+        $this->get(route('dashboard'))->assertOk()->assertViewHas('vaultConfigured', true);
     }
 }

@@ -4,27 +4,23 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\File;
 use App\Models\Photo;
+use App\Models\Vault;
 use Illuminate\Contracts\View\View;
 
 /**
- * The post-login landing page: file and gallery summary counts plus recent files.
+ * The post-login landing page: gallery summary counts and the vault status.
+ *
+ * File statistics are deliberately absent — the file vault is zero-knowledge,
+ * so the server knows nothing about the files, not even how many exist.
  */
 class DashboardController extends Controller
 {
-    /**
-     * Display the dashboard.
-     */
     public function __invoke(): View
     {
         return view('dashboard', [
-            'stats' => [
-                'files' => File::count(),
-                'storage' => (int) File::sum('size'),
-            ],
             'gallery' => Photo::counts(),
-            'recentFiles' => File::query()->latest()->limit(5)->get(),
+            'vaultConfigured' => Vault::current() !== null,
         ]);
     }
 }

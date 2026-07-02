@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\File;
+use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -31,37 +30,31 @@ class SearchTest extends TestCase
         $this->get(route('search'))->assertOk()->assertSee('Type a term');
     }
 
-    public function test_it_finds_files_by_note(): void
+    public function test_it_finds_photos_by_place(): void
     {
-        Storage::fake('files');
         $this->signIn();
-        File::factory()->create([
-            'name' => 'Contract.pdf',
-            'note' => 'renewal due qzxwvnote',
-        ]);
+        Photo::factory()->create(['name' => 'Beach.jpg', 'place' => 'Qzxwvtown, Portugal']);
 
-        $this->search('qzxwvnote')
+        $this->search('qzxwvtown')
             ->assertOk()
-            ->assertSee('Files')
-            ->assertSee('Contract.pdf');
+            ->assertSee('Photos')
+            ->assertSee('Beach.jpg');
     }
 
     public function test_results_are_grouped_by_entity_type(): void
     {
-        Storage::fake('files');
         $this->signIn();
-        File::factory()->create(['name' => 'Qzxwv.pdf']);
+        Photo::factory()->create(['name' => 'Qzxwv.jpg']);
 
         $this->search('qzxwv')->assertOk()->assertViewHas('groups', function (array $groups): bool {
-            return array_key_exists('Files', $groups);
+            return array_key_exists('Photos', $groups);
         });
     }
 
     public function test_unmatched_query_reports_no_results(): void
     {
-        Storage::fake('files');
         $this->signIn();
-        File::factory()->create(['name' => 'Acme.pdf']);
+        Photo::factory()->create(['name' => 'Acme.jpg']);
 
         $this->search('zzz-no-such-token-zzz')->assertOk()->assertSee('No results');
     }
@@ -73,14 +66,13 @@ class SearchTest extends TestCase
 
     public function test_suggest_returns_grouped_json(): void
     {
-        Storage::fake('files');
         $this->signIn();
-        File::factory()->create(['name' => 'Qzxwv.pdf']);
+        Photo::factory()->create(['name' => 'Qzxwv.jpg']);
 
         $this->getJson(route('search.suggest', ['q' => 'qzxwv']))
             ->assertOk()
-            ->assertJsonPath('groups.0.group', 'Files')
-            ->assertJsonFragment(['title' => 'Qzxwv.pdf']);
+            ->assertJsonPath('groups.0.group', 'Photos')
+            ->assertJsonFragment(['title' => 'Qzxwv.jpg']);
     }
 
     public function test_suggest_for_empty_term_returns_no_groups(): void
