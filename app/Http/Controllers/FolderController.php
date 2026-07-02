@@ -17,7 +17,13 @@ class FolderController extends Controller
 {
     public function store(StoreFolderRequest $request): RedirectResponse
     {
-        $folder = Folder::create($request->validated());
+        $data = $request->validated();
+
+        $folder = Folder::create([
+            'name' => filled($data['enc_name'] ?? null) ? '' : $data['name'],
+            'enc_name' => $data['enc_name'] ?? null,
+            'parent_id' => $data['parent_id'] ?? null,
+        ]);
 
         return redirect()
             ->route('files.index', ['folder' => $folder->parent_id])
@@ -27,7 +33,10 @@ class FolderController extends Controller
     public function update(StoreFolderRequest $request, Folder $folder): RedirectResponse
     {
         // Only the name is editable here; the parent is fixed at creation.
-        $folder->update(['name' => $request->validated()['name']]);
+        $data = $request->validated();
+        $folder->update(filled($data['enc_name'] ?? null)
+            ? ['name' => '', 'enc_name' => $data['enc_name']]
+            : ['name' => $data['name'], 'enc_name' => null]);
 
         return redirect()
             ->route('files.index', ['folder' => $folder->id])
