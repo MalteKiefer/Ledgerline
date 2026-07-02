@@ -16,7 +16,7 @@ interface ImapReader
     /**
      * List all mailboxes/folders of the account (hierarchical paths).
      *
-     * @return list<array{name:string, path:string, delimiter:string, selectable:bool, total:int, unseen:int}>
+     * @return list<array{name:string, path:string, delimiter:string, selectable:bool, role:?string, total:int, unseen:int}>
      */
     public function listFolders(ImapCredentials $c): array;
 
