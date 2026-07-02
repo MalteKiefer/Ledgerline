@@ -136,8 +136,9 @@
                 @if ($activeTagName)<span class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">#{{ $activeTagName }}</span>@endif
             </form>
 
-            {{-- Bulk bar --}}
-            <div x-show="selectionCount" x-cloak class="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+            {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling up. --}}
+            <div x-show="selectionCount" x-cloak x-transition
+                class="fixed inset-x-0 bottom-5 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl">
                 <span class="text-sm font-medium text-gray-700"><span x-text="selectionCount"></span> {{ __('files.selected_word') }}</span>
                 <button type="button" @click="openMove()" class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move') }}</button>
                 <button type="button" x-show="$store.vault.configured" @click="bulkEncrypt()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.encrypt_file') }}</button>
