@@ -25,8 +25,7 @@ interface ImapReader
      *
      * @return array{total:int, page:int, perPage:int, messages:list<array{
      *     uid:int, subject:string, from:array{name:string,email:string}|null,
-     *     date:string|null, seen:bool, flagged:bool, answered:bool,
-     *     hasAttachments:bool}>}
+     *     date:string|null, seen:bool, flagged:bool, answered:bool}>}
      */
     public function listMessages(ImapCredentials $c, string $folder, int $page, int $perPage): array;
 
@@ -36,7 +35,8 @@ interface ImapReader
      * @return array{uid:int, subject:string, from:array{name:string,email:string}|null,
      *     to:list<array{name:string,email:string}>, cc:list<array{name:string,email:string}>,
      *     date:string|null, seen:bool, html:string|null, text:string|null,
-     *     attachments:list<array{id:int,name:string,mime:string,size:int}>}
+     *     attachments:list<array{id:int,name:string,mime:string,size:int}>,
+     *     rawHeaders:string}
      */
     public function getMessage(ImapCredentials $c, string $folder, int $uid, bool $markSeen): array;
 

@@ -67,4 +67,7 @@ return [
     'download' => 'Download',
     'back_to_list' => 'Back',
     'close' => 'Close',
+    'show_headers' => 'Show headers',
+    'headers_title' => 'Message headers',
+    'delete_question' => 'Move this message to trash or delete it permanently?',
 ];

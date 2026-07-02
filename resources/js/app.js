@@ -2374,7 +2374,8 @@ Alpine.data('vaultMail', (labels = {}) => ({
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
         messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
-        folders: [], transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
+        folders: [], sortDir: 'desc', deleteChoiceOpen: false, headersOpen: false,
+        transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
     },
 
     async init() {
@@ -2624,6 +2625,22 @@ Alpine.data('vaultMail', (labels = {}) => ({
         if (this.reader.loading || this.reader.loadingMore || ! this.hasMoreMessages) return;
         this.reader.page += 1;
         await this.loadMessages(false);
+    },
+
+    // Loaded messages sorted by date (newest first by default). Fetch order is
+    // newest-first by UID; this keeps the displayed order correct by date and
+    // lets the user flip it via the Date column.
+    sortedMessages() {
+        const dir = this.reader.sortDir === 'asc' ? 1 : -1;
+        return [...this.reader.messages].sort((a, b) => {
+            const ta = a.date ? Date.parse(a.date) || 0 : 0;
+            const tb = b.date ? Date.parse(b.date) || 0 : 0;
+            return (ta - tb) * dir;
+        });
+    },
+
+    toggleSort() {
+        this.reader.sortDir = this.reader.sortDir === 'desc' ? 'asc' : 'desc';
     },
 
     async openMsg(uid) {
