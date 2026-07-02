@@ -45,6 +45,13 @@ class MailReaderController extends Controller
         );
     }
 
+    public function folders(Request $request, ImapReader $reader): JsonResponse
+    {
+        $v = $request->validate($this->credRules());
+
+        return $this->guard(fn () => response()->json(['folders' => $reader->listFolders($this->creds($v))]));
+    }
+
     public function messages(Request $request, ImapReader $reader): JsonResponse
     {
         $v = $request->validate($this->credRules() + [

@@ -2374,7 +2374,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
         messages: [], current: null, loading: false, error: '', imagesAllowed: false, busy: false,
-        transferOpen: false, transferAccount: '', transferFolder: 'INBOX',
+        folders: [], transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
     },
 
     async init() {
@@ -2521,24 +2521,44 @@ Alpine.data('vaultMail', (labels = {}) => ({
         };
     },
 
-    // Folders available for navigation / move targets (from cached stats).
+    // Folders available for navigation / move targets — fetched live from the
+    // account (not the cached stats), so the list is always complete.
     readerFolders() {
-        return this.sortedFolders(this.reader.account?.stats?.folders ?? []);
+        return this.sortedFolders(this.reader.folders);
     },
 
     otherAccounts() {
         return this.sortedAccounts.filter((a) => a.id !== this.reader.account?.id);
     },
 
+    async loadFolders(creds) {
+        try {
+            const res = await fetch('/mail/folders', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json', 'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify(creds),
+            });
+            if (! res.ok) return [];
+            return (await res.json()).folders ?? [];
+        } catch (e) {
+            return [];
+        }
+    },
+
     async openReader(a) {
         this.reader.open = true;
         this.reader.account = a;
-        const folders = a.stats?.folders ?? [];
-        const inbox = folders.find((f) => /^inbox$/i.test(f.name)) ?? folders[0];
-        this.reader.folderPath = inbox?.path ?? 'INBOX';
-        this.reader.page = 1;
         this.reader.current = null;
         this.reader.transferOpen = false;
+        this.reader.error = '';
+        this.reader.loading = true;
+        this.reader.folders = this.sortedFolders(await this.loadFolders(this.credsBody(a)));
+        const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
+        this.reader.folderPath = inbox?.path ?? 'INBOX';
+        this.reader.page = 1;
         await this.loadMessages();
     },
 
@@ -2670,26 +2690,27 @@ Alpine.data('vaultMail', (labels = {}) => ({
         }
     },
 
-    // Folders of the currently selected transfer-target account (from its
-    // cached stats); INBOX fallback when the account was never refreshed.
+    // Folders of the selected transfer-target account, fetched live; INBOX
+    // fallback while loading or on failure.
     transferFolders() {
-        const a = this.manifest.accounts.find((x) => x.id === this.reader.transferAccount);
-        const folders = this.sortedFolders(a?.stats?.folders ?? []);
+        const folders = this.sortedFolders(this.reader.transferFolderList);
         return folders.length ? folders : [{ name: 'INBOX', path: 'INBOX', total: 0, unseen: 0 }];
     },
 
-    openTransfer() {
+    async openTransfer() {
         const first = this.otherAccounts()[0];
         this.reader.transferAccount = first?.id ?? '';
-        this.onTransferAccountChange();
+        this.reader.transferFolderList = [];
         this.reader.transferOpen = true;
+        await this.onTransferAccountChange();
     },
 
-    // Reset the folder selection to the target account's INBOX (or its first
-    // folder) whenever the account changes.
-    onTransferAccountChange() {
+    // Load the target account's folders and default to its INBOX.
+    async onTransferAccountChange() {
+        const a = this.manifest.accounts.find((x) => x.id === this.reader.transferAccount);
+        this.reader.transferFolderList = a ? this.sortedFolders(await this.loadFolders(this.credsBody(a))) : [];
         const folders = this.transferFolders();
-        const inbox = folders.find((f) => /^inbox$/i.test(f.name)) ?? folders[0];
+        const inbox = folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path)) ?? folders[0];
         this.reader.transferFolder = inbox?.path ?? 'INBOX';
     },
 
