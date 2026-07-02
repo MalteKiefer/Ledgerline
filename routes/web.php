@@ -12,6 +12,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
+use App\Http\Controllers\ShareController;
 use App\Http\Controllers\VaultBlobController;
 use App\Http\Controllers\VaultController;
 use App\Http\Controllers\VaultManifestController;
@@ -20,6 +21,12 @@ use Illuminate\Support\Facades\Route;
 // The root simply forwards to the dashboard; unauthenticated visitors are then
 // redirected to the login page by the "auth" middleware.
 Route::get('/', static fn () => redirect()->route('dashboard'));
+
+// Public note share links: no auth and no guest middleware, so a recipient
+// without an account can open them and a signed-in user is not redirected
+// away. The server only serves ciphertext; the key lives in the fragment.
+Route::get('/s/{share}', [ShareController::class, 'show'])->name('shares.show');
+Route::get('/s/{share}/data', [ShareController::class, 'data'])->name('shares.data');
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake.
 Route::middleware('guest')->group(function (): void {
@@ -93,4 +100,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
     Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
     Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
+
+    // Note sharing: create and revoke time-limited public links (the public
+    // show/data endpoints live outside this auth group).
+    Route::post('/shares', [ShareController::class, 'store'])->name('shares.store');
+    Route::delete('/shares/{share}', [ShareController::class, 'destroy'])->name('shares.destroy');
 });

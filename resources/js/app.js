@@ -1099,6 +1099,10 @@ function escapeHtml(text) {
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+}
+
 function saveBlobAs(bytes, name, mime) {
     const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
     const a = document.createElement('a');
@@ -1806,6 +1810,14 @@ Alpine.data('vaultNotes', (labels = {}) => ({
     tagsRef: null,
     tagsOpen: false,
     tagsValue: '',
+    shareDialog: false,
+    shareExpiry: '86400',
+    sharePassword: '',
+    shareMaxViews: '',
+    shareLink: '',
+    shareBusy: false,
+    shareError: '',
+    shareCopied: false,
 
     async init() {
         await this.$store.vault.boot();
@@ -2042,6 +2054,117 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         this.tagsOpen = true;
     },
 
+    /* ---- Sharing ---- */
+
+    get activeShares() {
+        return this.current?.shares ?? [];
+    },
+
+    openShare() {
+        this.shareLink = '';
+        this.sharePassword = '';
+        this.shareMaxViews = '';
+        this.shareExpiry = '86400';
+        this.shareError = '';
+        this.shareCopied = false;
+        this.shareDialog = true;
+    },
+
+    // Freeze the current note into an encrypted snapshot and register a
+    // time-limited public link. The share key never reaches the server: it
+    // goes into the link fragment, or (with a password) is wrapped client-side.
+    async createShare() {
+        const note = this.current;
+        if (! note || this.shareBusy) return;
+        this.shareBusy = true;
+        this.shareError = '';
+        this.shareCopied = false;
+        try {
+            const content = this.exportContent();
+            const snapshot = { title: note.title ?? '', content, created: note.created };
+            const enc = Vault.shareEncrypt(snapshot);
+
+            const body = {
+                cipher: enc.cipher,
+                nonce: enc.nonce,
+                expires_in: Number(this.shareExpiry),
+                has_password: this.sharePassword !== '',
+            };
+            const maxViews = Number(this.shareMaxViews);
+            if (maxViews > 0) body.max_views = maxViews;
+            if (this.sharePassword !== '') {
+                Object.assign(body, Vault.sharePasswordWrap(enc.key, this.sharePassword));
+            }
+
+            const res = await fetch('/shares', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify(body),
+            });
+            if (! res.ok) throw new Error('share failed');
+            const data = await res.json();
+
+            // No password → the key travels in the fragment; with a password the
+            // recipient derives it, so the link carries no key.
+            this.shareLink = this.sharePassword !== ''
+                ? data.url
+                : `${data.url}#k=${encodeURIComponent(enc.key)}`;
+
+            note.shares = note.shares ?? [];
+            note.shares.push({
+                id: data.id,
+                expires: data.expires_at,
+                hasPassword: this.sharePassword !== '',
+                maxViews: maxViews > 0 ? maxViews : null,
+                created: new Date().toISOString(),
+            });
+            await this.persist().catch(() => {});
+            this.sharePassword = '';
+            this.shareMaxViews = '';
+        } catch (e) {
+            this.shareError = labels.shareFailed ?? 'Could not create the link.';
+        } finally {
+            this.shareBusy = false;
+        }
+    },
+
+    async revokeShare(share) {
+        try {
+            await fetch(`/shares/${share.id}`, {
+                method: 'DELETE',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+            });
+        } catch (e) { /* remove locally regardless */ }
+        const note = this.current;
+        if (note) {
+            note.shares = (note.shares ?? []).filter((s) => s.id !== share.id);
+            await this.persist().catch(() => {});
+        }
+    },
+
+    async copyShareLink() {
+        try {
+            await navigator.clipboard.writeText(this.shareLink);
+            this.shareCopied = true;
+            setTimeout(() => { this.shareCopied = false; }, 2000);
+        } catch (e) { /* clipboard blocked; the field is selectable */ }
+    },
+
+    fmtDateTime(iso) {
+        return iso ? new Date(iso).toLocaleString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        }) : '';
+    },
+
     /* ---- Export ---- */
 
     // Best-effort filename from the note title; falls back to "note".
@@ -2115,6 +2238,73 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         this.previewHtml = renderMarkdown(this.current.content);
         this.current.updated = new Date().toISOString();
         await this.persist().catch(() => {});
+    },
+}));
+
+// Public viewer for a shared note. Runs on a page with no unlocked vault: it
+// fetches the ciphertext, then decrypts it with the key from the URL fragment
+// or from a password the recipient types. Nothing is sent back to the server.
+Alpine.data('sharedNote', (config = {}, labels = {}) => ({
+    id: config.id,
+    state: 'loading', // loading | password | ready | error
+    errorMsg: '',
+    password: '',
+    payload: null,
+    title: '',
+    html: '',
+
+    async init() {
+        await Vault.ensureReady();
+        let res;
+        try {
+            res = await fetch(`/s/${this.id}/data`, { headers: { Accept: 'application/json' } });
+        } catch (e) {
+            return this.fail(labels.error);
+        }
+        if (res.status === 410 || res.status === 404) return this.fail(labels.gone);
+        if (! res.ok) return this.fail(labels.error);
+        this.payload = await res.json();
+
+        if (this.payload.has_password) {
+            this.state = 'password';
+            return;
+        }
+        this.reveal();
+    },
+
+    // No password: the share key is in the fragment (#k=…), never sent to the
+    // server. Decrypt directly.
+    reveal() {
+        const hash = window.location.hash;
+        const key = hash.startsWith('#k=') ? decodeURIComponent(hash.slice(3)) : '';
+        if (! key) return this.fail(labels.no_key);
+        try {
+            this.render(Vault.shareDecrypt(this.payload.cipher, this.payload.nonce, key));
+        } catch (e) {
+            this.fail(labels.error);
+        }
+    },
+
+    submitPassword() {
+        this.errorMsg = '';
+        try {
+            const key = Vault.sharePasswordUnwrap(this.payload, this.password);
+            this.render(Vault.shareDecrypt(this.payload.cipher, this.payload.nonce, key));
+        } catch (e) {
+            this.errorMsg = labels.wrong_password;
+        }
+    },
+
+    render(snapshot) {
+        this.title = snapshot.title || labels.untitled;
+        this.html = renderMarkdown(snapshot.content || '');
+        document.title = `${this.title} — Ledgerline`;
+        this.state = 'ready';
+    },
+
+    fail(message) {
+        this.errorMsg = message;
+        this.state = 'error';
     },
 }));
 
