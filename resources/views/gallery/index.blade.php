@@ -193,9 +193,7 @@
                             <x-icon name="heart" class="h-5 w-5" x-show="current.favorite !== '1'" />
                         </button>
                     </form>
-                    <button type="button" @click="editing = true; showDetails = true" aria-label="{{ __('gallery.edit') }}"
-                        class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"><x-icon name="pencil" class="h-5 w-5" /></button>
-                    <button type="button" @click="showDetails = ! showDetails" aria-label="{{ __('gallery.meta_tech') }}"
+                    <button type="button" @click="showDetails = ! showDetails; editing = showDetails" aria-label="{{ __('gallery.meta_tech') }}"
                         class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"><x-icon name="info" class="h-5 w-5" /></button>
                     <button type="button" @click="viewerOpen = false" aria-label="{{ __('gallery.close') }}"
                         class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"><x-icon name="x-mark" class="h-5 w-5" /></button>
@@ -226,7 +224,7 @@
                 class="fixed inset-x-0 bottom-0 z-[1010] max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl sm:static sm:z-auto sm:max-h-none sm:w-80 sm:shrink-0 sm:rounded-none sm:shadow-none">
                 <div class="flex items-start justify-between gap-2">
                     <h2 class="text-sm font-semibold text-gray-900 break-all" x-text="current.name"></h2>
-                    <div class="flex shrink-0 items-center gap-2">
+                    <div class="hidden shrink-0 items-center gap-2 sm:flex">
                         <button type="button" @click="editing = ! editing" :title="'{{ __('gallery.edit') }}'"
                             :class="editing ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'"><x-icon name="pencil" class="h-[18px] w-[18px]" /></button>
                         <form method="POST" :action="`/gallery/${current.id}/favorite`">
