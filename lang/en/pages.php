@@ -60,6 +60,9 @@ return [
         'no_files' => 'No files yet.',
         'vault_ready' => 'Vault set up — open the encrypted file browser.',
         'vault_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
+        'notes' => 'Notes',
+        'notes_ready' => 'Vault set up — open your encrypted notes.',
+        'notes_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
     ],
     'profile' => [
         'title' => 'Profile',

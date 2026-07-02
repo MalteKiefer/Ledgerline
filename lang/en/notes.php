@@ -1,0 +1,23 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'title' => 'Notes',
+    'new_note' => 'New note',
+    'untitled' => 'Untitled',
+    'search' => 'Search notes…',
+    'edit' => 'Edit',
+    'preview' => 'Preview',
+    'saving' => 'Saving…',
+    'saved' => 'Saved',
+    'to_trash' => 'Move to trash',
+    'back' => 'Back',
+    'empty' => 'No notes yet — create your first one.',
+    'no_selection' => 'Select a note or create a new one.',
+    'title_placeholder' => 'Title',
+    'locked_notice' => 'Your notes are locked. Unlock the vault to read and write them — nothing about them is stored readable on the server.',
+    'unconfigured_notice' => 'No vault yet. Set an encryption passphrase to create your zero-knowledge notes.',
+    'stale' => 'The notes were changed somewhere else at the same time and were reloaded. Please repeat your last change.',
+    'save_failed' => 'Could not save. Please try again.',
+];
