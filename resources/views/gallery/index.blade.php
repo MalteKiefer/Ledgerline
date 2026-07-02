@@ -93,6 +93,11 @@
         x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
         @location-picked.window="if ($event.detail.context === 'bulk') { lat = $event.detail.lat; lng = $event.detail.lng; }">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
+        <form method="POST" action="{{ route('gallery.download') }}">
+            @csrf
+            <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
+            <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download') }}</button>
+        </form>
         <button type="button" @click="locationOpen = true" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.set_location') }}</button>
         <button type="button" @click="deleteOpen = true" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('gallery.delete') }}</button>
 

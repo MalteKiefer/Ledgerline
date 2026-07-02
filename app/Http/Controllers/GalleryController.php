@@ -19,9 +19,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
+use ZipArchive;
 
 /**
  * The photo gallery: a timeline grouped by capture day, drag-and-drop upload
@@ -431,6 +433,61 @@ class GalleryController extends Controller
             'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
             'Cache-Control' => 'private, max-age=86400',
         ], $size === 'original' ? 'attachment' : 'inline');
+    }
+
+    /**
+     * Download the selected photos' originals as a single zip. Photos are added
+     * one at a time to a temp file so memory stays bounded regardless of the
+     * total size; the file is streamed and removed after sending.
+     */
+    public function bulkDownload(Request $request): BinaryFileResponse
+    {
+        $ids = $request->validate([
+            'photo_ids' => ['required', 'array', 'max:1000'],
+            'photo_ids.*' => ['integer'],
+        ])['photo_ids'];
+
+        $photos = Photo::query()->whereIn('id', $ids)->get();
+        abort_if($photos->isEmpty(), 404);
+
+        $disk = Storage::disk(config('files.disk'));
+        $tmp = tempnam(sys_get_temp_dir(), 'gallery-zip').'.zip';
+
+        $zip = new ZipArchive;
+        $zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        $used = [];
+        foreach ($photos as $photo) {
+            if (! $disk->exists($photo->disk_path)) {
+                continue;
+            }
+            $zip->addFromString($this->uniqueZipName($photo->name ?: ('photo-'.$photo->id), $used), (string) $disk->get($photo->disk_path));
+        }
+        $zip->close();
+
+        return response()->download($tmp, 'photos.zip', ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * A zip entry name unique within the archive, appending " (n)" before the
+     * extension on collisions.
+     *
+     * @param  array<string, bool>  $used
+     */
+    private function uniqueZipName(string $name, array &$used): string
+    {
+        $name = trim(str_replace(['/', '\\'], '-', $name)) ?: 'file';
+        $candidate = $name;
+        $dot = strrpos($name, '.');
+        [$base, $ext] = $dot > 0 ? [substr($name, 0, $dot), substr($name, $dot)] : [$name, ''];
+
+        $i = 1;
+        while (isset($used[$candidate])) {
+            $candidate = $base.' ('.(++$i).')'.$ext;
+        }
+        $used[$candidate] = true;
+
+        return $candidate;
     }
 
     /**
