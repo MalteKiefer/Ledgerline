@@ -52,7 +52,11 @@ final class WebklexImapReader implements ImapReader
             } catch (\Throwable) {
             }
 
+            // whereAll() → "SEARCH ALL": without an explicit criterion webklex
+            // sends an empty SEARCH, which some servers reject with
+            // "BAD Could not parse command".
             $messages = $mailbox->query()
+                ->whereAll()
                 ->setFetchBody(false)
                 ->setFetchFlags(true)
                 ->setFetchOrderDesc()
