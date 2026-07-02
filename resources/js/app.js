@@ -1146,6 +1146,11 @@ Alpine.store('vault', {
         this.unlocked = true;
     },
 
+    async changePassphrase(currentPass, newPass) {
+        await Vault.changePassphrase(currentPass, newPass);
+        this.unlocked = true;
+    },
+
     lock() {
         Vault.lock();
         this.unlocked = false;

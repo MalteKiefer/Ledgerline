@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 return [
     'already_configured' => 'The vault is already set up.',
+    'change' => 'Change passphrase',
+    'change_current' => 'Current passphrase',
+    'change_hint' => 'Enter your current passphrase and a new one. Your files are not re-encrypted; only the passphrase that unlocks them changes.',
+    'change_new' => 'New passphrase',
+    'change_title' => 'Change passphrase',
+    'changed' => 'Passphrase changed.',
     'create' => 'Set up',
+    'err_change' => 'Could not change the passphrase. Check your current one.',
     'err_generic' => 'Something went wrong. Please try again.',
     'err_mismatch' => 'The passphrases do not match.',
     'err_recover' => 'Invalid recovery code.',

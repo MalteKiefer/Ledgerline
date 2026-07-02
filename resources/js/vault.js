@@ -197,6 +197,31 @@ export const Vault = {
         this.cache();
     },
 
+    /**
+     * Change the passphrase: verify the current one, then re-wrap the same vault
+     * key under a key derived from the new passphrase (fresh salt). Files are
+     * untouched — the vault key does not change. The recovery wrap is preserved.
+     */
+    async changePassphrase(currentPass, newPass) {
+        await this.unlock(currentPass); // verifies the current passphrase, loads VK
+
+        const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
+        const ops = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
+        const mem = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
+        const kek = deriveKek(newPass, salt, ops, mem);
+        const wrapped = seal(this.vk, kek);
+
+        await api('PUT', {
+            salt: b64(salt),
+            kdf_ops: ops,
+            kdf_mem: mem,
+            wrapped_vault_key: wrapped.cipher,
+            wrap_nonce: wrapped.nonce,
+        });
+
+        this.cache();
+    },
+
     // ---- Data operations (used by later phases) ----
 
     encryptMeta(obj) {
