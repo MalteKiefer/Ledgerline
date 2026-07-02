@@ -36,26 +36,72 @@ class PhotoExporter
     public function __construct(private readonly VideoProcessor $video) {}
 
     /**
-     * Build the edited export and return its temp file path (caller must delete).
+     * Build the edited export(s) for a photo and return them as
+     * [{name, path}, …]. A plain photo or video yields one file; a motion photo
+     * yields two — the still (with EXIF) and its motion clip (with container
+     * metadata) — so nothing about the item is lost on export. The caller must
+     * delete every returned path.
+     *
+     * @return list<array{name: string, path: string}>
      */
-    public function editedFile(Photo $photo): string
+    public function editedFiles(Photo $photo): array
+    {
+        $baseName = $photo->name ?: ('photo-'.$photo->id);
+        $files = [];
+
+        if ($photo->media_type === 'video' || str_starts_with((string) $photo->mime_type, 'video/')) {
+            $files[] = ['name' => $baseName, 'path' => $this->editVideo($this->localCopy($photo->disk_path), $photo)];
+
+            return $files;
+        }
+
+        // The still image (with baked-in edits + EXIF).
+        $files[] = ['name' => $baseName, 'path' => $this->editImage($this->localCopy($photo->disk_path), $photo)];
+
+        // A motion photo also carries a short clip: export it too, with the same
+        // metadata written into its container.
+        if ($photo->hasMotion()) {
+            $clip = $this->editVideo($this->localCopy($photo->motion_path), $photo);
+            $files[] = ['name' => $this->stripExtension($baseName).' (motion).mp4', 'path' => $clip];
+        }
+
+        return $files;
+    }
+
+    /**
+     * Whether a single edited download must be packaged as a zip (more than one
+     * output file, i.e. a motion photo).
+     */
+    public function isBundle(Photo $photo): bool
+    {
+        return $photo->hasMotion() && $photo->media_type !== 'video';
+    }
+
+    /**
+     * Stream one of the photo's object-storage files to a local temp path so it
+     * can be transcoded/rewritten without holding it in memory.
+     */
+    private function localCopy(string $path): string
     {
         $disk = Storage::disk(config('files.disk'));
-        $src = tempnam(sys_get_temp_dir(), 'export-src');
-        $stream = $disk->readStream($photo->disk_path);
+        $tmp = tempnam(sys_get_temp_dir(), 'export-src');
+        $stream = $disk->readStream($path);
         try {
-            file_put_contents($src, $stream);
+            file_put_contents($tmp, $stream);
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);
             }
         }
 
-        if ($photo->media_type === 'video' || str_starts_with((string) $photo->mime_type, 'video/')) {
-            return $this->editVideo($src, $photo);
-        }
+        return $tmp;
+    }
 
-        return $this->editImage($src, $photo);
+    private function stripExtension(string $name): string
+    {
+        $dot = strrpos($name, '.');
+
+        return $dot > 0 ? substr($name, 0, $dot) : $name;
     }
 
     private function editImage(string $src, Photo $photo): string
@@ -64,6 +110,7 @@ class PhotoExporter
 
         $transformed = (((int) $photo->rotation) % 360 !== 0) || $photo->flipped;
         $isJpeg = in_array($photo->mime_type, ['image/jpeg', 'image/pjpeg'], true);
+        $isPng = $photo->mime_type === 'image/png';
 
         if ($transformed) {
             $image = (new ImageManager(new Driver))->decodePath($src);
@@ -85,12 +132,17 @@ class PhotoExporter
             $bytes = (string) $image->encode($encoder);
         }
 
-        if ($isJpeg) {
-            try {
-                $bytes = $this->writeExif($bytes, $photo, $transformed);
-            } catch (Throwable) {
-                // EXIF is best-effort; fall back to the (transformed) pixels.
+        // Write the current metadata into the pixels' container. JPEG carries a
+        // full EXIF/APP1 segment; PNG gets an eXIf chunk (both built from PEL).
+        // WebP/GIF cannot reliably hold EXIF here, so they keep transforms only.
+        try {
+            if ($isJpeg) {
+                $bytes = $this->writeJpegExif($bytes, $photo, $transformed);
+            } elseif ($isPng) {
+                $bytes = $this->writePngExif($bytes, $photo, $transformed);
             }
+        } catch (Throwable) {
+            // Metadata is best-effort; fall back to the (transformed) pixels.
         }
 
         @unlink($src);
@@ -137,10 +189,9 @@ class PhotoExporter
     }
 
     /**
-     * Patch capture date, camera and GPS into a JPEG's EXIF, resetting the
-     * orientation to 1 when the pixels were already rotated.
+     * Write the photo's current metadata into a JPEG's EXIF segment.
      */
-    private function writeExif(string $bytes, Photo $photo, bool $resetOrientation): string
+    private function writeJpegExif(string $bytes, Photo $photo, bool $resetOrientation): string
     {
         $jpeg = new PelJpeg($bytes);
 
@@ -152,6 +203,40 @@ class PhotoExporter
         }
 
         $tiff = $exif->getTiff();
+        $this->fillTiff($tiff, $photo, $resetOrientation);
+
+        return $jpeg->getBytes();
+    }
+
+    /**
+     * Write the metadata into a PNG's eXIf chunk (PNG 1.5+), inserted right
+     * after IHDR. The chunk payload is the raw TIFF block PEL produces.
+     */
+    private function writePngExif(string $bytes, Photo $photo, bool $resetOrientation): string
+    {
+        // Not a PNG (signature mismatch): leave it untouched.
+        if (substr($bytes, 0, 8) !== "\x89PNG\r\n\x1a\n") {
+            return $bytes;
+        }
+
+        $tiff = new PelTiff;
+        $this->fillTiff($tiff, $photo, $resetOrientation);
+        $data = $tiff->getBytes();
+
+        $chunk = pack('N', strlen($data)).'eXIf'.$data;
+        $chunk .= pack('N', crc32('eXIf'.$data));
+
+        // IHDR is always the first chunk: 8-byte signature + (4 len + 4 type +
+        // 13 data + 4 crc) = 33 bytes. Insert the eXIf chunk immediately after.
+        return substr($bytes, 0, 33).$chunk.substr($bytes, 33);
+    }
+
+    /**
+     * Populate a PEL TIFF block with capture date, camera and GPS, resetting the
+     * orientation to 1 when the pixels were already rotated.
+     */
+    private function fillTiff(PelTiff $tiff, Photo $photo, bool $resetOrientation): void
+    {
         $ifd0 = $tiff->getIfd();
         if ($ifd0 === null) {
             $ifd0 = new PelIfd(PelIfd::IFD0);
@@ -191,8 +276,6 @@ class PhotoExporter
             $gps->addEntry(new PelEntryAscii(PelTag::GPS_LONGITUDE_REF, $lon >= 0 ? 'E' : 'W'));
             $gps->addEntry($this->degrees(PelTag::GPS_LONGITUDE, abs($lon)));
         }
-
-        return $jpeg->getBytes();
     }
 
     /**
