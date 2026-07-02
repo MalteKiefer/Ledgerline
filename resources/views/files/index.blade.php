@@ -57,10 +57,18 @@
                 <a href="{{ route('files.index') }}" class="hover:underline">{{ __('files.all_files') }}</a>
                 @foreach ($breadcrumb as $crumb)
                     <span aria-hidden="true">/</span>
-                    <a href="{{ route('files.index', ['folder' => $crumb->id]) }}" class="hover:underline">{{ $crumb->name }}</a>
+                    @if ($crumb->enc_name)
+                        <a href="{{ route('files.index', ['folder' => $crumb->id]) }}" class="hover:underline" x-data="encName(@js($crumb->enc_name))" x-text="label"></a>
+                    @else
+                        <a href="{{ route('files.index', ['folder' => $crumb->id]) }}" class="hover:underline">{{ $crumb->name }}</a>
+                    @endif
                 @endforeach
             </nav>
-            <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ $folder->name ?? __('messages.nav.files') }}</h1>
+            @if ($folder?->enc_name)
+                <h1 class="mt-1 text-2xl font-semibold text-gray-900" x-data="encName(@js($folder->enc_name))" x-text="label"></h1>
+            @else
+                <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ $folder->name ?? __('messages.nav.files') }}</h1>
+            @endif
             @if ($recordFilter)
                 <span class="mt-1 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-800">
                     {{ __('files.filtered_by') }}: {{ $recordFilter }}
@@ -71,7 +79,7 @@
         <div class="flex flex-wrap items-center gap-2">
             @include('vault._panel')
             {{-- New folder --}}
-            <form method="POST" action="{{ route('folders.store') }}" class="flex items-center gap-1">
+            <form method="POST" action="{{ route('folders.store') }}" class="flex items-center gap-1" @submit="window.encryptFolderSubmit($event)">
                 @csrf
                 <input type="hidden" name="parent_id" value="{{ $folder?->id }}">
                 <input type="text" name="name" required placeholder="{{ __('files.new_folder') }}"
@@ -138,16 +146,16 @@
                         <tbody class="divide-y divide-gray-100">
                             {{-- Folders first --}}
                             @foreach ($subfolders as $sub)
-                                <tr x-data="{ rename: false, menu: false }" class="hover:bg-gray-50">
+                                <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false }' }}" class="hover:bg-gray-50">
                                     <td class="px-4 py-3"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
                                         <a x-show="! rename" href="{{ route('files.index', ['folder' => $sub->id]) }}" class="flex items-center gap-2 hover:underline">
                                             <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
-                                            {{ $sub->name }}
+                                            @if ($sub->enc_name)<span x-text="folderName"></span>@else{{ $sub->name }}@endif
                                         </a>
-                                        <form x-show="rename" x-cloak method="POST" action="{{ route('folders.update', $sub) }}" class="flex gap-2">
+                                        <form x-show="rename" x-cloak method="POST" action="{{ route('folders.update', $sub) }}" class="flex gap-2" @submit="window.encryptFolderSubmit($event)">
                                             @csrf @method('PUT')
-                                            <input type="text" name="name" value="{{ $sub->name }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                            <input type="text" name="name" @if ($sub->enc_name) :value="folderName" @else value="{{ $sub->name }}" @endif class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                                             <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
                                             <button type="button" @click="rename = false" class="text-sm text-gray-500">✕</button>
                                         </form>

@@ -41,6 +41,31 @@ class FolderTest extends TestCase
         $this->assertSame('New', $folder->fresh()->name);
     }
 
+    public function test_can_create_a_folder_with_an_encrypted_name(): void
+    {
+        $this->signIn();
+
+        $this->post(route('folders.store'), ['enc_name' => '{"c":"cipher","n":"nonce"}'])
+            ->assertRedirect();
+
+        $folder = Folder::sole();
+        $this->assertSame('', $folder->name);
+        $this->assertSame('{"c":"cipher","n":"nonce"}', $folder->enc_name);
+    }
+
+    public function test_renaming_to_an_encrypted_name_clears_the_plaintext_name(): void
+    {
+        $this->signIn();
+        $folder = Folder::create(['name' => 'Old']);
+
+        $this->put(route('folders.update', $folder), ['enc_name' => '{"c":"c2","n":"n2"}'])
+            ->assertRedirect();
+
+        $folder->refresh();
+        $this->assertSame('', $folder->name);
+        $this->assertSame('{"c":"c2","n":"n2"}', $folder->enc_name);
+    }
+
     public function test_deleting_a_folder_moves_its_contents_up(): void
     {
         $this->signIn();
