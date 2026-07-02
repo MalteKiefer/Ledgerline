@@ -199,9 +199,11 @@ final class WebklexImapReader implements ImapReader
         $src = $this->connect($source);
         try {
             $message = $src->getFolderByPath($folder)->query()->getMessageByUid($uid);
-            // IMAP APPEND requires CRLF line endings; a bare-LF raw message makes
-            // strict servers reject the command.
-            $raw = preg_replace('/\r?\n/', "\r\n", (string) $message->getRawBody());
+            // getRawBody() is only the body — rebuild the full RFC822 message
+            // (raw header + blank line + body), or the appended copy has no
+            // headers and looks corrupted. APPEND also needs CRLF line endings.
+            $rawHeader = rtrim((string) ($message->getHeader()?->raw ?? ''), "\r\n");
+            $raw = preg_replace('/\r?\n/', "\r\n", $rawHeader."\r\n\r\n".(string) $message->getRawBody());
 
             $dst = $this->connect($target);
             try {
@@ -247,11 +249,17 @@ final class WebklexImapReader implements ImapReader
         } catch (\Throwable) {
         }
 
+        // Malformed sender/recipient headers (e.g. "undisclosed-recipients:;")
+        // make the address parser emit E_WARNING noise. Swallow non-fatal
+        // warnings for the duration of the IMAP session; errors still throw.
+        set_error_handler(static fn (): bool => true, E_WARNING | E_NOTICE | E_DEPRECATED);
+
         return $client;
     }
 
     private function close(Client $client): void
     {
+        restore_error_handler();
         try {
             $client->disconnect();
         } catch (\Throwable) {
