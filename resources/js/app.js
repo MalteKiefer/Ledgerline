@@ -2773,6 +2773,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
     // background=true refreshes silently over an already-shown cached list
     // (no blanking, no spinner). Successful loads are written to the cache.
     async loadMessages(reset = true, background = false) {
+        // Bind this load to the folder it was started for. A fast folder switch
+        // must not let a late response apply to (or cache under) another folder
+        // — that mixed UIDs across folders and caused "no headers found".
+        const folder = this.reader.folderPath;
         if (reset) {
             this.reader.page = 1;
             if (! background) { this.reader.messages = []; this.reader.total = 0; }
@@ -2782,27 +2786,29 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.error = '';
         try {
             const res = await this.mailPost('/mail/messages', { page: this.reader.page });
+            if (this.reader.folderPath !== folder) return; // folder changed mid-flight → drop
             if (! res.ok) {
                 const body = await res.json().catch(() => ({}));
                 if (! background) this.reader.error = body.detail || labels.connectFailed;
                 return;
             }
             const data = await res.json();
+            if (this.reader.folderPath !== folder) return; // changed while parsing
             const rows = data.messages ?? [];
             this.reader.messages = reset ? rows : [...this.reader.messages, ...rows];
             this.reader.total = data.total ?? 0;
-            this.cacheList();
+            this.cacheList(folder);
         } catch (e) {
-            if (! background) this.reader.error = labels.connectFailed;
+            if (! background && this.reader.folderPath === folder) this.reader.error = labels.connectFailed;
         } finally {
             this.reader.loading = false;
             this.reader.loadingMore = false;
         }
     },
 
-    cacheList() {
+    cacheList(folder = null) {
         if (! this.reader.account) return;
-        Vault.cachePut(`msgs:${this.reader.account.id}:${this.reader.folderPath}`, {
+        Vault.cachePut(`msgs:${this.reader.account.id}:${folder ?? this.reader.folderPath}`, {
             messages: this.reader.messages, total: this.reader.total, ts: Date.now(),
         });
     },
@@ -2833,27 +2839,31 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.sortDir = this.reader.sortDir === 'desc' ? 'asc' : 'desc';
     },
 
-    msgCacheKey(uid) {
-        return `msg:${this.reader.account.id}:${this.reader.folderPath}:${uid}`;
+    msgCacheKey(folder, uid) {
+        return `msg:${this.reader.account.id}:${folder}:${uid}`;
     },
 
     async openMsg(uid) {
+        // Bind to the folder the click happened in — UIDs are per-folder, so a
+        // folder switch mid-fetch must not apply the wrong message.
+        const folder = this.reader.folderPath;
         this.reader.imagesAllowed = false;
         // Served from the encrypted cache if this message was already read this
         // session — instant, no re-fetch. The cache is dropped on lock/logout.
-        const cached = Vault.cacheGet(this.msgCacheKey(uid));
+        const cached = Vault.cacheGet(this.msgCacheKey(folder, uid));
         if (cached) { this.reader.current = cached; return; }
 
         this.reader.busy = true;
         try {
             const res = await this.mailPost('/mail/message', { uid, mark_seen: true });
+            if (this.reader.folderPath !== folder) return; // folder changed → drop
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
-            Vault.cachePut(this.msgCacheKey(uid), this.reader.current);
+            Vault.cachePut(this.msgCacheKey(folder, uid), this.reader.current);
             // Opening marks \Seen server-side — reflect it in the list and the
             // folder's unread count without a reload.
             const row = this.reader.messages.find((m) => m.uid === uid);
-            if (row && ! row.seen) { row.seen = true; this.bumpFolder(this.reader.folderPath, 0, -1); this.cacheList(); }
+            if (row && ! row.seen) { row.seen = true; this.bumpFolder(folder, 0, -1); this.cacheList(folder); }
         } catch (e) {
             this.reader.error = labels.connectFailed;
         } finally {
