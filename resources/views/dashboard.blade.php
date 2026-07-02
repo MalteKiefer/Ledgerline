@@ -1,33 +1,8 @@
 <x-layouts.app :title="__('pages.dashboard.title')">
-    @php
-        $formatBytes = static function (int $bytes): string {
-            $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-            $i = 0;
-            $value = (float) $bytes;
-            while ($value >= 1024 && $i < count($units) - 1) {
-                $value /= 1024;
-                $i++;
-            }
-
-            return number_format($value, $i > 0 ? 1 : 0).' '.$units[$i];
-        };
-    @endphp
-
     <h1 class="text-2xl font-semibold text-gray-900">{{ __('pages.dashboard.heading') }}</h1>
     <p class="mt-1 text-sm text-gray-600">{{ __('pages.dashboard.subtitle') }}</p>
 
-    <div class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
-        <a href="{{ route('files.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.files') }}</dt>
-            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $stats['files'] }}</dd>
-        </a>
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.storage_used') }}</dt>
-            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $formatBytes($stats['storage']) }}</dd>
-        </div>
-    </div>
-
-    <div class="mt-4 grid grid-cols-3 gap-4">
+    <div class="mt-6 grid grid-cols-3 gap-4">
         <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.gallery_images') }}</dt>
             <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $gallery['images'] }}</dd>
@@ -42,36 +17,17 @@
         </a>
     </div>
 
-    <section class="mt-8">
-        <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold text-gray-900">{{ __('pages.dashboard.recent_files') }}</h2>
-            <a href="{{ route('files.index') }}" class="text-sm text-gray-600 hover:text-gray-900">{{ __('pages.dashboard.view_all') }}</a>
+    {{-- The file vault is zero-knowledge: the server cannot count or list files,
+         so the dashboard shows only a door into it. --}}
+    <a href="{{ route('files.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+        <div>
+            <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.files') }}</dt>
+            <dd class="mt-2 text-base text-gray-900">
+                {{ $vaultConfigured ? __('pages.dashboard.vault_ready') : __('pages.dashboard.vault_unconfigured') }}
+            </dd>
         </div>
-        <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-            @if ($recentFiles->isEmpty())
-                <p class="px-4 py-6 text-center text-sm text-gray-500">{{ __('pages.dashboard.no_files') }}</p>
-            @else
-                <ul class="divide-y divide-gray-100 text-sm">
-                    @php $fileTypeLabels = collect(\App\Enums\FileType::cases())->mapWithKeys(fn (\App\Enums\FileType $c): array => [$c->value => $c->label()]); @endphp
-                    @foreach ($recentFiles as $file)
-                        <li class="flex items-center justify-between px-4 py-3">
-                            <span class="flex min-w-0 items-center gap-2">
-                                <x-lock-badge :encrypted="$file->is_encrypted" />
-                                @if ($file->is_encrypted)
-                                    <a href="{{ route('files.show', $file) }}" class="font-medium text-gray-900 hover:underline"
-                                        x-data="encName(@js($file->enc_metadata), @js(__('files.encrypted')))" x-text="label"></a>
-                                    <span class="text-gray-500">— <span x-data="encType(@js($file->enc_metadata), @js($fileTypeLabels))" x-text="typeLabel"></span></span>
-                                @else
-                                    <a href="{{ route('files.show', $file) }}"
-                                        class="font-medium text-gray-900 hover:underline">{{ $file->displayTitle }}</a>
-                                    <span class="text-gray-500">— {{ $file->type->label() }}</span>
-                                @endif
-                            </span>
-                            <span class="shrink-0 text-gray-500">{{ $formatBytes($file->size) }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </div>
-    </section>
+        <svg class="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+        </svg>
+    </a>
 </x-layouts.app>

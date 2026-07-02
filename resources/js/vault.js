@@ -366,4 +366,132 @@ export const Vault = {
         metaMemo.set(encMeta, out);
         return out;
     },
+
+    // ---- Manifest model: one encrypted directory blob + anonymous content blobs ----
+
+    /**
+     * Pad a plaintext length to a size bucket so the stored blob length does not
+     * reveal the real file size: at least 4 KiB, then powers of two up to 1 MiB,
+     * above that the next 1 MiB multiple.
+     */
+    paddedSize(n) {
+        const MIB = 1024 * 1024;
+        if (n <= 4096) return 4096;
+        if (n >= MIB) return Math.ceil(n / MIB) * MIB;
+        let bucket = 4096;
+        while (bucket < n) bucket *= 2;
+        return bucket;
+    },
+
+    /**
+     * Seal raw bytes into an uploadable blob: pad to a size bucket, then
+     * secretstream-encrypt with a fresh per-file key. The key goes into the
+     * manifest (itself sealed with the vault key), never to the server.
+     *
+     * @returns {{blob: Blob, key: string}}
+     */
+    encryptBlob(bytes) {
+        const fk = sodium.crypto_secretstream_xchacha20poly1305_keygen();
+        const { state, header } = sodium.crypto_secretstream_xchacha20poly1305_init_push(fk);
+
+        const padded = new Uint8Array(this.paddedSize(bytes.length));
+        padded.set(bytes);
+        padded.set(sodium.randombytes_buf(padded.length - bytes.length), bytes.length);
+
+        const parts = [header];
+        const total = padded.length;
+        for (let off = 0; off < total || off === 0; ) {
+            const end = Math.min(off + CHUNK, total);
+            const last = end >= total;
+            const cipher = sodium.crypto_secretstream_xchacha20poly1305_push(
+                state,
+                padded.subarray(off, end),
+                null,
+                last ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
+                    : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE,
+            );
+            parts.push(u32le(cipher.length), cipher);
+            off = end;
+            if (last) {
+                break;
+            }
+        }
+
+        return { blob: new Blob(parts, { type: 'application/octet-stream' }), key: b64(fk) };
+    },
+
+    /**
+     * Decrypt a blob's ciphertext with its manifest key and strip the padding.
+     */
+    decryptBlob(buffer, keyB64, realSize) {
+        const fk = unb64(keyB64);
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+
+        const H = sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES;
+        const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(bytes.subarray(0, H), fk);
+
+        const chunks = [];
+        let off = H;
+        for (;;) {
+            const len = readU32le(bytes, off);
+            off += 4;
+            const res = sodium.crypto_secretstream_xchacha20poly1305_pull(state, bytes.subarray(off, off + len));
+            if (res === false) {
+                throw new Error('decrypt failed');
+            }
+            off += len;
+            chunks.push(res.message);
+            if (res.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL) {
+                break;
+            }
+        }
+
+        return concat(chunks).subarray(0, realSize);
+    },
+
+    /**
+     * Fetch and decrypt the directory manifest. An empty vault yields a fresh
+     * structure. Returns {data, version} for optimistic-locked saves.
+     */
+    async loadManifest() {
+        const res = await fetch('/vault/manifest', {
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (! res.ok) {
+            throw new Error('manifest load failed');
+        }
+        const { cipher, nonce, version } = await res.json();
+        if (! cipher) {
+            return { data: { v: 1, folders: [], files: [] }, version };
+        }
+
+        return { data: this.decryptMeta(cipher, nonce), version };
+    },
+
+    /**
+     * Seal and store the manifest. Throws {stale: true, version} when another
+     * tab saved first — reload, reapply, retry.
+     */
+    async saveManifest(data, version) {
+        const sealed = seal(sodium.from_string(JSON.stringify(data)), this.vk);
+        const res = await fetch('/vault/manifest', {
+            method: 'PUT',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrf(),
+            },
+            body: JSON.stringify({ cipher: sealed.cipher, nonce: sealed.nonce, version }),
+        });
+        if (res.status === 409) {
+            const body = await res.json();
+            throw Object.assign(new Error('stale manifest'), { stale: true, version: body.version });
+        }
+        if (! res.ok) {
+            throw new Error('manifest save failed');
+        }
+
+        return (await res.json()).version;
+    },
 };

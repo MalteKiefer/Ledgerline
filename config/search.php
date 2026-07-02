@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Search\Providers\FileSearchProvider;
+use App\Search\Providers\PhotoSearchProvider;
 
 return [
     /*
@@ -10,7 +10,7 @@ return [
     | class here to make a new entity searchable.
     */
     'providers' => [
-        FileSearchProvider::class,
+        PhotoSearchProvider::class,
     ],
 
     'limit_per_group' => 8,
