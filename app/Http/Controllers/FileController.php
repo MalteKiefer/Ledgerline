@@ -9,10 +9,8 @@ use App\Http\Requests\StoreFileRequest;
 use App\Http\Requests\StoreTeamFileRequest;
 use App\Http\Requests\UpdateFileRequest;
 use App\Models\Customer;
-use App\Models\Expense;
 use App\Models\File;
 use App\Models\Folder;
-use App\Models\Invoice;
 use App\Models\Project;
 use App\Models\Tag;
 use App\Models\User;
@@ -65,20 +63,6 @@ class FileController extends Controller
 
         return redirect()
             ->route('projects.show', $project)
-            ->with('status', __('flash.file_uploaded'));
-    }
-
-    /**
-     * Store an uploaded file for an expense (a global finance record).
-     */
-    public function storeForExpense(StoreFileRequest $request, Expense $expense): RedirectResponse
-    {
-        $this->authorize('create', File::class);
-
-        $this->persist($request->file('file'), $request->validated()['tags'] ?? [], $expense, $request->user());
-
-        return redirect()
-            ->route('finance.expenses.show', $expense)
             ->with('status', __('flash.file_uploaded'));
     }
 
@@ -766,26 +750,11 @@ class FileController extends Controller
     {
         $this->authorize('delete', $file);
 
-        // A file that is an invoice's source document takes the invoice record
-        // with it — the document and its data belong together. (Only imported
-        // invoices ever carry an attached file.)
-        $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
-
         $path = $file->disk_path;
         $folderId = $file->folder_id;
 
-        DB::transaction(function () use ($file, $invoice): void {
-            $file->delete();
-            $invoice?->delete();
-        });
-
+        $file->delete();
         Storage::disk(config('files.disk'))->delete($path);
-
-        if ($invoice !== null) {
-            return redirect()
-                ->route('finance.invoices.index')
-                ->with('status', __('flash.invoice_and_file_deleted'));
-        }
 
         // Return to the folder the file lived in, not the now-gone detail page.
         return redirect()
@@ -895,16 +864,14 @@ class FileController extends Controller
             'folder_ids.*' => ['integer', Rule::exists('folders', 'id')],
         ]);
 
-        $files = File::query()->with('attachable')->whereIn('id', $validated['file_ids'] ?? [])->get();
+        $files = File::query()->whereIn('id', $validated['file_ids'] ?? [])->get();
         $paths = [];
         $folders = Folder::query()->whereIn('id', $validated['folder_ids'] ?? [])->get();
 
         DB::transaction(function () use ($files, $folders, &$paths): void {
             foreach ($files as $file) {
-                $invoice = $file->attachable instanceof Invoice ? $file->attachable : null;
                 $paths[] = $file->disk_path;
                 $file->delete();
-                $invoice?->delete();
             }
 
             // Deleting a folder lifts its contents up one level (same as the

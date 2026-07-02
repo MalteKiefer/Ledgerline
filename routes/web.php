@@ -8,32 +8,19 @@ use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileOverviewController;
-use App\Http\Controllers\FinanceReportController;
 use App\Http\Controllers\FolderController;
 use App\Http\Controllers\GalleryController;
-use App\Http\Controllers\IncomeEntryController;
-use App\Http\Controllers\Invoice\CreditNoteController;
-use App\Http\Controllers\Invoice\FinalizeController;
-use App\Http\Controllers\Invoice\ImportController as InvoiceImportController;
-use App\Http\Controllers\Invoice\MailController as InvoiceMailController;
-use App\Http\Controllers\Invoice\PaymentController;
-use App\Http\Controllers\Invoice\PdfController as InvoicePdfController;
-use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectOverviewController;
 use App\Http\Controllers\SearchController;
-use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\TagController as SettingsTagController;
-use App\Http\Controllers\Settings\UnitController as SettingsUnitController;
-use App\Http\Controllers\TimeEntryController;
 use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
@@ -60,9 +47,6 @@ Route::middleware('auth')->group(function (): void {
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
-    Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
-    Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
-    Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
     Route::get('/settings/tags', [SettingsTagController::class, 'index'])->name('settings.tags.index');
     Route::post('/settings/tags', [SettingsTagController::class, 'store'])->name('settings.tags.store');
     Route::put('/settings/tags/{tag}', [SettingsTagController::class, 'update'])->name('settings.tags.update');
@@ -77,10 +61,6 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
     Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
     Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
-    Route::get('/settings/units', [SettingsUnitController::class, 'index'])->name('settings.units.index');
-    Route::post('/settings/units', [SettingsUnitController::class, 'store'])->name('settings.units.store');
-    Route::put('/settings/units/{unit}', [SettingsUnitController::class, 'update'])->name('settings.units.update');
-    Route::delete('/settings/units/{unit}', [SettingsUnitController::class, 'destroy'])->name('settings.units.destroy');
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
     Route::resource('customers', CustomerController::class);
@@ -99,29 +79,6 @@ Route::middleware('auth')->group(function (): void {
 
     // Customer-independent overview of all projects.
     Route::get('/projects', ProjectOverviewController::class)->name('projects.overview');
-
-    // Finance.
-    Route::prefix('finance')->name('finance.')->group(function (): void {
-        Route::get('report', FinanceReportController::class)->name('report');
-        Route::resource('expenses', ExpenseController::class);
-        Route::post('expenses/{expense}/files', [FileController::class, 'storeForExpense'])->name('expenses.files.store');
-        Route::resource('time-entries', TimeEntryController::class)->except('show');
-        Route::resource('income-entries', IncomeEntryController::class)->except('show');
-        Route::get('invoices/trash', [InvoiceController::class, 'trash'])->name('invoices.trash');
-        Route::post('invoices/{invoice}/restore', [InvoiceController::class, 'restore'])->name('invoices.restore');
-        Route::delete('invoices/{invoice}/force', [InvoiceController::class, 'forceDestroy'])->name('invoices.force-destroy');
-        Route::get('invoices/import', [InvoiceImportController::class, 'create'])->name('invoices.import.create');
-        Route::post('invoices/import/parse', [InvoiceImportController::class, 'parse'])->name('invoices.import.parse');
-        Route::get('invoices/import/next', [InvoiceImportController::class, 'next'])->name('invoices.import.next');
-        Route::post('invoices/import/skip', [InvoiceImportController::class, 'skip'])->name('invoices.import.skip');
-        Route::post('invoices/import', [InvoiceImportController::class, 'store'])->name('invoices.import.store');
-        Route::resource('invoices', InvoiceController::class);
-        Route::get('invoices/{invoice}/pdf', InvoicePdfController::class)->name('invoices.pdf');
-        Route::post('invoices/{invoice}/email', [InvoiceMailController::class, 'store'])->name('invoices.email');
-        Route::post('invoices/{invoice}/finalize', [FinalizeController::class, 'store'])->name('invoices.finalize');
-        Route::post('invoices/{invoice}/payments', [PaymentController::class, 'store'])->name('invoices.payments.store');
-        Route::post('invoices/{invoice}/credit-note', [CreditNoteController::class, 'store'])->name('invoices.credit-note');
-    });
 
     // Gallery: a photo timeline with drag-and-drop upload and a trash.
     Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery.index');
