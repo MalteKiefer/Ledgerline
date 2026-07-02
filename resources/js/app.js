@@ -1094,6 +1094,11 @@ function formatBytes(n) {
     return `${num} ${units[i]}`;
 }
 
+function escapeHtml(text) {
+    return String(text ?? '').replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function saveBlobAs(bytes, name, mime) {
     const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
     const a = document.createElement('a');
@@ -2035,6 +2040,49 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         this.tagsRef = note.id;
         this.tagsValue = (note.tags ?? []).join(', ');
         this.tagsOpen = true;
+    },
+
+    /* ---- Export ---- */
+
+    // Best-effort filename from the note title; falls back to "note".
+    exportName(ext) {
+        const base = (this.current?.title ?? '').trim().replace(/[\/\\:*?"<>|]+/g, '-').slice(0, 80);
+        return `${base || 'note'}.${ext}`;
+    },
+
+    // Sync the CodeMirror buffer into the note before reading its content, so
+    // an unsaved edit still exports.
+    exportContent() {
+        if (! this.previewing && this.editorView && this.current) {
+            this.current.content = this.editorView.state.doc.toString();
+        }
+        return this.current?.content ?? '';
+    },
+
+    exportMarkdown() {
+        if (! this.current) return;
+        saveBlobAs(this.exportContent(), this.exportName('md'), 'text/markdown;charset=utf-8');
+    },
+
+    // Zero-knowledge PDF: render the markdown in an isolated window with the
+    // app's own stylesheets and trigger the browser's print dialog ("Save as
+    // PDF"). Nothing leaves the browser.
+    exportPdf() {
+        if (! this.current) return;
+        const title = (this.current.title ?? '').trim() || '…';
+        const body = renderMarkdown(this.exportContent());
+        const styles = [...document.querySelectorAll('link[rel="stylesheet"]')]
+            .map((l) => `<link rel="stylesheet" href="${l.href}">`).join('');
+        const win = window.open('', '_blank');
+        if (! win) return;
+        win.document.write(
+            `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>${styles}`
+            + '<style>body{margin:0}.markdown-body{max-width:48rem;margin:0 auto;padding:2rem}'
+            + '@media print{@page{margin:1.5cm}.markdown-body{max-width:none;padding:0}}</style>'
+            + `</head><body><article class="markdown-body">${body}</article>`
+            + '<script>window.onload=function(){window.focus();window.print();};<\/script>'
+            + '</body></html>');
+        win.document.close();
     },
 
     async applyTags() {

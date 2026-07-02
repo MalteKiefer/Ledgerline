@@ -99,17 +99,25 @@
                         <button type="button" @click="closeNote()" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 md:hidden"><span class="inline-flex items-center gap-1"><x-icon name="chevron-left" class="h-3.5 w-3.5" />{{ __('notes.back') }}</span></button>
                         <input type="text" x-model="current.title" @input="markDirty()" placeholder="{{ __('notes.title_placeholder') }}"
                             class="min-w-0 flex-1 rounded-md border-gray-300 text-sm font-semibold shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <div class="flex shrink-0 items-center gap-2">
+                        <div class="flex shrink-0 items-center gap-2" x-data="{ menu: false }">
                             <span class="text-xs text-gray-400"
                                 x-text="saveState === 'saving' ? @js(__('notes.saving')) : (saveState === 'saved' ? @js(__('notes.saved')) : (saveState === 'dirty' ? '●' : ''))"></span>
-                            <button type="button" @click="togglePin(current)" :title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"
-                                class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-                                :class="current.pinned ? 'text-gray-900' : 'text-gray-400'"><x-icon name="bookmark-solid" x-show="current.pinned" /><x-icon name="bookmark" x-show="! current.pinned" /></button>
                             <button type="button" @click="togglePreview()"
                                 class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                                 x-text="previewing ? @js(__('notes.edit')) : @js(__('notes.preview'))"></button>
-                            <button type="button" @click="toTrash(current)" title="{{ __('notes.to_trash') }}"
-                                class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"><x-icon name="trash" /></button>
+                            <div class="relative">
+                                <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" title="{{ __('notes.menu') }}"
+                                    class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="ellipsis" /></button>
+                                <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
+                                    <button type="button" @click="togglePin(current); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50" x-text="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"></button>
+                                    <button type="button" @click="openTags(current); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.edit_tags') }}</button>
+                                    <div class="my-1 border-t border-gray-100"></div>
+                                    <button type="button" @click="exportMarkdown(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.export_markdown') }}</button>
+                                    <button type="button" @click="exportPdf(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.export_pdf') }}</button>
+                                    <div class="my-1 border-t border-gray-100"></div>
+                                    <button type="button" @click="toTrash(current); menu = false" class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50">{{ __('notes.to_trash') }}</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="min-h-0 flex-1 overflow-auto">
