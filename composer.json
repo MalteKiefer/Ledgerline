@@ -7,17 +7,13 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "dompdf/dompdf": "^3.1",
-        "horstoeko/zugferd": "^1.0",
         "intervention/image": "^4.1",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
         "lsolesen/pel": "^0.9",
         "predis/predis": "^3.5",
-        "smalot/pdfparser": "^2.12",
         "socialiteproviders/pocketid": "^5.1",
-        "symfony/intl": "^8.1",
         "webklex/php-imap": "^6.2"
     },
     "require-dev": {
