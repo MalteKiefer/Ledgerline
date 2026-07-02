@@ -74,6 +74,10 @@
         <div class="mt-6">
             <input type="search" x-model="query" placeholder="{{ __('files.search') }}"
                 class="w-64 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+            <span x-show="activeTag" x-cloak class="ml-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-800">
+                {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
+                <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700">✕</button>
+            </span>
         </div>
 
         <p x-show="error" x-cloak class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800" x-text="error"></p>
@@ -94,6 +98,7 @@
                         </th>
                         <th class="hidden px-4 py-3 sm:table-cell">{{ __('files.col_type') }}</th>
                         <th class="hidden px-4 py-3 text-right sm:table-cell">{{ __('files.col_size') }}</th>
+                        <th class="hidden px-4 py-3 md:table-cell">{{ __('files.col_tags') }}</th>
                         <th class="px-4 py-3"></th>
                     </tr>
                 </thead>
@@ -117,6 +122,14 @@
                             </td>
                             <td class="hidden px-4 py-3 text-gray-600 sm:table-cell" x-text="row.kind === 'folder' ? @js(__('files.folder')) : typeLabel(row)"></td>
                             <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell" x-text="row.kind === 'folder' ? '—' : fmtSize(row.size)"></td>
+                            <td class="hidden px-4 py-3 md:table-cell" @click.stop>
+                                <div class="flex flex-wrap gap-1">
+                                    <template x-for="tag in (row.tags ?? [])" :key="tag">
+                                        <button type="button" @click="activeTag = tag"
+                                            class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 hover:bg-gray-200" x-text="tag"></button>
+                                    </template>
+                                </div>
+                            </td>
                             <td class="px-4 py-3 text-right" @click.stop>
                                 <div class="relative inline-block text-left">
                                     <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
@@ -124,6 +137,7 @@
                                         <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.download') }}</button>
                                         <button type="button" @click="startRename(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
                                         <button type="button" @click="openMove(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
+                                        <button type="button" @click="openTags(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.edit_tags') }}</button>
                                         <button type="button" @click="confirmDelete(row); menu = false" class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50">{{ __('common.delete') }}</button>
                                     </div>
                                 </div>
@@ -226,6 +240,25 @@
                         </div>
                     </div>
                     <p x-show="viewer.kind === 'none'" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('files.encrypted_no_preview') }}</p>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Tags modal --}}
+    <template x-teleport="body">
+        <div x-show="tagsOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="tagsOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="tagsOpen = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('files.edit_tags') }}</h3>
+                <input type="text" x-model="tagsValue" list="vault-tags" placeholder="tag1, tag2"
+                    class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                <datalist id="vault-tags">
+                    <template x-for="tag in allTags" :key="tag"><option :value="tag"></option></template>
+                </datalist>
+                <div class="mt-5 flex justify-end gap-3">
+                    <button type="button" @click="tagsOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="applyTags()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
                 </div>
             </div>
         </div>

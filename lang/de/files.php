@@ -31,7 +31,6 @@ return [
     'col_name' => 'Name',
     'col_size' => 'Größe',
     'col_tags' => 'Schlagwörter',
-    'col_tags' => 'Tags',
     'col_type' => 'Typ',
     'edit_tags' => 'Tags bearbeiten',
     'create' => 'Erstellen',
