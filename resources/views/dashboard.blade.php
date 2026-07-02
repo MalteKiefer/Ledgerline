@@ -60,14 +60,22 @@
                 <p class="px-4 py-6 text-center text-sm text-gray-500">{{ __('pages.dashboard.no_files') }}</p>
             @else
                 <ul class="divide-y divide-gray-100 text-sm">
+                    @php $fileTypeLabels = collect(\App\Enums\FileType::cases())->mapWithKeys(fn (\App\Enums\FileType $c): array => [$c->value => $c->label()]); @endphp
                     @foreach ($recentFiles as $file)
                         <li class="flex items-center justify-between px-4 py-3">
-                            <span class="min-w-0">
-                                <a href="{{ route('files.show', $file) }}"
-                                    class="font-medium text-gray-900 hover:underline">{{ $file->displayTitle }}</a>
-                                <span class="text-gray-500">
-                                    — {{ $file->type->label() }}@if ($file->attachable) · {{ $file->attachable->name }}@endif
-                                </span>
+                            <span class="flex min-w-0 items-center gap-2">
+                                <x-lock-badge :encrypted="$file->is_encrypted" />
+                                @if ($file->is_encrypted)
+                                    <a href="{{ route('files.show', $file) }}" class="font-medium text-gray-900 hover:underline"
+                                        x-data="encName(@js($file->enc_metadata), @js(__('files.encrypted')))" x-text="label"></a>
+                                    <span class="text-gray-500">— <span x-data="encType(@js($file->enc_metadata), @js($fileTypeLabels))" x-text="typeLabel"></span></span>
+                                @else
+                                    <a href="{{ route('files.show', $file) }}"
+                                        class="font-medium text-gray-900 hover:underline">{{ $file->displayTitle }}</a>
+                                    <span class="text-gray-500">
+                                        — {{ $file->type->label() }}@if ($file->attachable) · {{ $file->attachable->name }}@endif
+                                    </span>
+                                @endif
                             </span>
                             <span class="shrink-0 text-gray-500">{{ $formatBytes($file->size) }}</span>
                         </li>
