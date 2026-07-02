@@ -13,6 +13,13 @@ export default defineConfig({
         }),
         tailwindcss(),
     ],
+    build: {
+        // Do not inject Vite's inline modulepreload-polyfill <script>: it would
+        // violate our Content-Security-Policy (script-src has no 'unsafe-inline'
+        // and the app ships no other inline scripts). Modern browsers support
+        // <link rel="modulepreload"> natively, so the preload links still work.
+        modulePreload: { polyfill: false },
+    },
     server: {
         watch: {
             ignored: ['**/storage/framework/views/**'],
