@@ -66,6 +66,9 @@ return [
         'bookmarks' => 'Bookmarks',
         'bookmarks_ready' => 'Vault set up — open your encrypted bookmarks.',
         'bookmarks_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
+        'mail' => 'Mail accounts',
+        'mail_ready' => 'Vault set up — manage your IMAP accounts.',
+        'mail_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
     ],
     'profile' => [
         'title' => 'Profile',

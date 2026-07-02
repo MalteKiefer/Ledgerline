@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Search\SearchManager;
+use App\Services\Mail\ImapStats;
+use App\Services\Mail\WebklexImapStats;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -27,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
 
             return new SearchManager($providers, (int) config('search.limit_per_group', 8));
         });
+
+        // Read-only IMAP statistics provider (pure-PHP, no ext-imap).
+        $this->app->bind(ImapStats::class, WebklexImapStats::class);
     }
 
     /**

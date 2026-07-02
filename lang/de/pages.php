@@ -66,6 +66,9 @@ return [
         'bookmarks' => 'Lesezeichen',
         'bookmarks_ready' => 'Tresor eingerichtet — verschlüsselte Lesezeichen öffnen.',
         'bookmarks_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
+        'mail' => 'Mailkonten',
+        'mail_ready' => 'Tresor eingerichtet — IMAP-Konten verwalten.',
+        'mail_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
     ],
     'profile' => [
         'title' => 'Profil',
