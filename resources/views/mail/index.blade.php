@@ -246,10 +246,7 @@
                         <option value="">{{ __('mail.move_to_folder') }}</option>
                         <template x-for="f in readerFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
                     </select>
-                    <select x-show="otherAccounts().length" @change="if ($event.target.value) { transferMsg($event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <option value="">{{ __('mail.move_to_account') }}</option>
-                        <template x-for="a in otherAccounts()" :key="a.id"><option :value="a.id" x-text="a.name"></option></template>
-                    </select>
+                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('mail.move_to_account') }}</button>
                     <button type="button" @click="msgAction(reader.current.seen ? 'unseen' : 'seen')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50" x-text="reader.current.seen ? @js(__('mail.mark_unread')) : @js(__('mail.mark_read'))"></button>
                     <button type="button" @click="printMsg()" title="{{ __('mail.print') }}" class="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('mail.print') }}</button>
                 </div>
@@ -281,6 +278,32 @@
                 {{-- Body (sandboxed) --}}
                 <div class="min-h-0 flex-1 overflow-hidden bg-gray-50 p-2">
                     <iframe :srcdoc="messageSrcdoc()" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="h-full w-full rounded border border-gray-200 bg-white"></iframe>
+                </div>
+            </div>
+
+            {{-- Transfer to another account: pick account + target folder --}}
+            <div x-show="reader.transferOpen" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="reader.transferOpen = false">
+                <div class="absolute inset-0 bg-gray-900/40" @click="reader.transferOpen = false"></div>
+                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('mail.move_to_account') }}</h3>
+                    <div class="mt-4 space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700">{{ __('mail.transfer_account') }}</label>
+                            <select x-model="reader.transferAccount" @change="onTransferAccountChange()" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                <template x-for="a in otherAccounts()" :key="a.id"><option :value="a.id" x-text="a.name"></option></template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700">{{ __('mail.transfer_folder') }}</label>
+                            <select x-model="reader.transferFolder" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                <template x-for="f in transferFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-5 flex justify-end gap-3">
+                        <button type="button" @click="reader.transferOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                        <button type="button" @click="confirmTransfer()" :disabled="reader.busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('mail.transfer_move') }}</button>
+                    </div>
                 </div>
             </div>
         </div>

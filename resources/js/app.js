@@ -2373,7 +2373,8 @@ Alpine.data('vaultMail', (labels = {}) => ({
     deleteId: null,
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
-        messages: [], current: null, loading: false, error: '', imagesAllowed: false, busy: false, transferTo: '',
+        messages: [], current: null, loading: false, error: '', imagesAllowed: false, busy: false,
+        transferOpen: false, transferAccount: '', transferFolder: 'INBOX',
     },
 
     async init() {
@@ -2537,7 +2538,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.folderPath = inbox?.path ?? 'INBOX';
         this.reader.page = 1;
         this.reader.current = null;
-        this.reader.transferTo = '';
+        this.reader.transferOpen = false;
         await this.loadMessages();
     },
 
@@ -2669,9 +2670,32 @@ Alpine.data('vaultMail', (labels = {}) => ({
         }
     },
 
-    async transferMsg(targetAccountId) {
-        const a = this.manifest.accounts.find((x) => x.id === targetAccountId);
-        if (! a || ! this.reader.current) return;
+    // Folders of the currently selected transfer-target account (from its
+    // cached stats); INBOX fallback when the account was never refreshed.
+    transferFolders() {
+        const a = this.manifest.accounts.find((x) => x.id === this.reader.transferAccount);
+        const folders = this.sortedFolders(a?.stats?.folders ?? []);
+        return folders.length ? folders : [{ name: 'INBOX', path: 'INBOX', total: 0, unseen: 0 }];
+    },
+
+    openTransfer() {
+        const first = this.otherAccounts()[0];
+        this.reader.transferAccount = first?.id ?? '';
+        this.onTransferAccountChange();
+        this.reader.transferOpen = true;
+    },
+
+    // Reset the folder selection to the target account's INBOX (or its first
+    // folder) whenever the account changes.
+    onTransferAccountChange() {
+        const folders = this.transferFolders();
+        const inbox = folders.find((f) => /^inbox$/i.test(f.name)) ?? folders[0];
+        this.reader.transferFolder = inbox?.path ?? 'INBOX';
+    },
+
+    async confirmTransfer() {
+        const a = this.manifest.accounts.find((x) => x.id === this.reader.transferAccount);
+        if (! a || ! this.reader.current || ! this.reader.transferFolder) return;
         this.reader.busy = true;
         try {
             const res = await fetch('/mail/message/transfer', {
@@ -2682,12 +2706,12 @@ Alpine.data('vaultMail', (labels = {}) => ({
                 },
                 body: JSON.stringify({
                     ...this.credsBody(this.reader.account), folder: this.reader.folderPath, uid: this.reader.current.uid,
-                    target: this.credsBody(a), target_folder: 'INBOX',
+                    target: this.credsBody(a), target_folder: this.reader.transferFolder,
                 }),
             });
             if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            this.reader.transferOpen = false;
             this.reader.current = null;
-            this.reader.transferTo = '';
             await this.loadMessages();
         } catch (e) {
             this.reader.error = labels.connectFailed;
