@@ -40,12 +40,15 @@ final class WebklexImapStats implements ImapStats
             foreach ($client->getFolders(false) as $folder) {
                 $messages = 0;
                 $unread = 0;
-                try {
-                    $status = $folder->status();
-                    $messages = (int) ($status['messages'] ?? 0);
-                    $unread = (int) ($status['unseen'] ?? 0);
-                } catch (\Throwable) {
-                    // Some folders are not selectable (\Noselect); skip counts.
+                // STATUS on a \Noselect container returns NO; skip the round-trip
+                // (this runs for every folder on every background-sync tick).
+                if (! $folder->no_select) {
+                    try {
+                        $status = $folder->status();
+                        $messages = (int) ($status['messages'] ?? 0);
+                        $unread = (int) ($status['unseen'] ?? 0);
+                    } catch (\Throwable) {
+                    }
                 }
                 $folders[] = ['name' => $folder->name ?: $folder->path, 'path' => $folder->path, 'total' => $messages, 'unseen' => $unread];
                 $total += $messages;
