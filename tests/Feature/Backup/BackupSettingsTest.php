@@ -1,0 +1,100 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Backup;
+
+use App\Jobs\RunBackupJob;
+use App\Models\BackupDestination;
+use App\Models\BackupJob;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
+use Tests\TestCase;
+
+class BackupSettingsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_the_page_loads(): void
+    {
+        $this->signIn();
+        $this->get(route('settings.backup.index'))->assertOk();
+    }
+
+    public function test_a_destination_is_created_with_an_encrypted_config(): void
+    {
+        $this->signIn();
+
+        $this->post(route('settings.backup.destinations.store'), [
+            'name' => 'Wasabi',
+            'driver' => 's3',
+            'bucket' => 'my-bucket',
+            'region' => 'eu-central-1',
+            'key' => 'AKIA',
+            'secret' => 'topsecret',
+            'endpoint' => 'https://s3.example.test',
+        ])->assertRedirect();
+
+        $dest = BackupDestination::firstOrFail();
+        $this->assertSame('my-bucket', $dest->config['bucket']);
+        $this->assertSame('topsecret', $dest->config['secret']);
+        // Not stored as plaintext.
+        $this->assertStringNotContainsString('topsecret', (string) \DB::table('backup_destinations')->value('config'));
+    }
+
+    public function test_a_job_is_created(): void
+    {
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+
+        $this->post(route('settings.backup.jobs.store'), [
+            'name' => 'DB every 3h',
+            'source' => 'database',
+            'backup_destination_id' => $dest->id,
+            'cron' => '0 */3 * * *',
+            'retention' => 5,
+            'notify' => 'none',
+            'enabled' => '1',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('backup_jobs', ['name' => 'DB every 3h', 'source' => 'database', 'retention' => 5]);
+    }
+
+    public function test_an_invalid_cron_is_rejected(): void
+    {
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+
+        $this->post(route('settings.backup.jobs.store'), [
+            'name' => 'Bad', 'source' => 'files', 'backup_destination_id' => $dest->id,
+            'cron' => 'not a cron', 'retention' => 3, 'notify' => 'none',
+        ])->assertSessionHasErrors('cron');
+    }
+
+    public function test_encryption_requires_a_passphrase_on_create(): void
+    {
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+
+        $this->post(route('settings.backup.jobs.store'), [
+            'name' => 'Enc', 'source' => 'files', 'backup_destination_id' => $dest->id,
+            'cron' => '0 3 * * *', 'retention' => 3, 'notify' => 'none',
+            'encrypt' => '1', 'passphrase' => '',
+        ])->assertSessionHasErrors('passphrase');
+    }
+
+    public function test_run_now_queues_a_backup(): void
+    {
+        Queue::fake();
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+        $job = BackupJob::create([
+            'name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id,
+            'cron' => '0 3 * * *', 'retention' => 3, 'notify' => 'none', 'enabled' => true,
+        ]);
+
+        $this->post(route('settings.backup.jobs.run', $job))->assertRedirect();
+
+        Queue::assertPushed(RunBackupJob::class, fn ($j) => $j->backupJobId === $job->id);
+    }
+}
