@@ -345,6 +345,17 @@ class GalleryController extends Controller
     }
 
     /**
+     * Forward-geocode an address / place query to candidate coordinates for the
+     * location picker's search box.
+     */
+    public function geocodeSearch(Request $request, ReverseGeocoder $geocoder): JsonResponse
+    {
+        $query = (string) $request->validate(['q' => ['required', 'string', 'max:200']])['q'];
+
+        return response()->json(['results' => $geocoder->search($query)]);
+    }
+
+    /**
      * Apply a non-destructive transform (rotate/flip) and re-generate the
      * renditions from the untouched original.
      */
