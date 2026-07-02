@@ -128,6 +128,30 @@ class VideoProcessor
     }
 
     /**
+     * Remux a video to $destPath, copying all streams (no re-encode) and writing
+     * the given container metadata (e.g. creation_time, location, model).
+     *
+     * @param  array<string, string>  $metadata
+     */
+    public function writeMetadata(string $srcPath, string $destPath, array $metadata): void
+    {
+        $args = [$this->ffmpeg(), '-y', '-i', $srcPath, '-map', '0', '-c', 'copy'];
+        foreach ($metadata as $key => $value) {
+            $args[] = '-metadata';
+            $args[] = $key.'='.$value;
+        }
+        $args[] = $destPath;
+
+        $process = new Process($args);
+        $process->setTimeout(600);
+        $process->run();
+
+        if (! $process->isSuccessful() || ! is_file($destPath) || filesize($destPath) === 0) {
+            throw new RuntimeException('ffmpeg could not write video metadata: '.$process->getErrorOutput());
+        }
+    }
+
+    /**
      * Whether ffmpeg appears to be available.
      */
     public function available(): bool

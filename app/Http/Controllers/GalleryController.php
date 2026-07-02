@@ -8,6 +8,7 @@ use App\Jobs\ProcessPhoto;
 use App\Models\CompanyProfile;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
+use App\Services\Gallery\PhotoExporter;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -440,14 +441,16 @@ class GalleryController extends Controller
      * one at a time to a temp file so memory stays bounded regardless of the
      * total size; the file is streamed and removed after sending.
      */
-    public function bulkDownload(Request $request): BinaryFileResponse
+    public function bulkDownload(Request $request, PhotoExporter $exporter): BinaryFileResponse
     {
-        $ids = $request->validate([
+        $validated = $request->validate([
             'photo_ids' => ['required', 'array', 'max:1000'],
             'photo_ids.*' => ['integer'],
-        ])['photo_ids'];
+            'variant' => ['nullable', 'in:original,edited'],
+        ]);
+        $edited = ($validated['variant'] ?? 'original') === 'edited';
 
-        $photos = Photo::query()->whereIn('id', $ids)->get();
+        $photos = Photo::query()->whereIn('id', $validated['photo_ids'])->get();
         abort_if($photos->isEmpty(), 404);
 
         $disk = Storage::disk(config('files.disk'));
@@ -457,15 +460,43 @@ class GalleryController extends Controller
         $zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE);
 
         $used = [];
+        $temps = [];
         foreach ($photos as $photo) {
             if (! $disk->exists($photo->disk_path)) {
                 continue;
             }
-            $zip->addFromString($this->uniqueZipName($photo->name ?: ('photo-'.$photo->id), $used), (string) $disk->get($photo->disk_path));
+            $entry = $this->uniqueZipName($photo->name ?: ('photo-'.$photo->id), $used);
+            if ($edited) {
+                // Add from a temp file so large edited videos never sit in memory.
+                $path = $exporter->editedFile($photo);
+                $temps[] = $path;
+                $zip->addFile($path, $entry);
+            } else {
+                $zip->addFromString($entry, (string) $disk->get($photo->disk_path));
+            }
         }
         $zip->close();
 
+        foreach ($temps as $path) {
+            @unlink($path);
+        }
+
         return response()->download($tmp, 'photos.zip', ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Download one photo with its edits baked in (rotation/flip) and the current
+     * metadata written into EXIF. The unedited original is served by the normal
+     * image route with size=original.
+     */
+    public function downloadEdited(Photo $photo, PhotoExporter $exporter): BinaryFileResponse
+    {
+        $path = $exporter->editedFile($photo);
+
+        return response()->download($path, $photo->name ?: ('photo-'.$photo->id), [
+            'Content-Type' => $photo->mime_type,
+            'X-Content-Type-Options' => 'nosniff',
+        ])->deleteFileAfterSend(true);
     }
 
     /**
