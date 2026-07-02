@@ -33,8 +33,8 @@
         </div>
     </div>
 
-    {{-- Floating upload button on mobile (the header button is hidden there). --}}
-    <label class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-800 text-3xl text-white shadow-lg hover:bg-gray-700 sm:hidden" aria-label="{{ __('gallery.upload') }}">
+    {{-- Floating upload button on mobile (hidden while selecting, to clear the bulk bar). --}}
+    <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-800 text-3xl text-white shadow-lg hover:bg-gray-700 sm:hidden" aria-label="{{ __('gallery.upload') }}">
         +
         <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
     </label>
