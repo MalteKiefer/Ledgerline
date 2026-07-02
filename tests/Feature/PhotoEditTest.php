@@ -70,6 +70,56 @@ class PhotoEditTest extends TestCase
         $this->assertSame("\xFF\xD8", substr($res->getFile()->getContent(), 0, 2)); // JPEG SOI marker
     }
 
+    public function test_edited_png_download_embeds_an_exif_chunk(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $img = imagecreatetruecolor(5, 5);
+        ob_start();
+        imagepng($img);
+        $png = (string) ob_get_clean();
+        imagedestroy($img);
+
+        $photo = Photo::factory()->create([
+            'disk_path' => 'photos/x.png', 'mime_type' => 'image/png', 'name' => 'x.png',
+            'rotation' => 0, 'taken_at' => now(), 'camera' => 'PngCam',
+        ]);
+        Storage::disk('files')->put('photos/x.png', $png);
+
+        $res = $this->get(route('gallery.download.edited', $photo));
+
+        $res->assertOk()->assertDownload('x.png');
+        $content = $res->getFile()->getContent();
+        $this->assertSame("\x89PNG\r\n\x1a\n", substr($content, 0, 8)); // PNG signature
+        $this->assertStringContainsString('eXIf', $content); // EXIF chunk present
+    }
+
+    public function test_edited_motion_photo_downloads_still_and_clip_as_a_zip(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+
+        $img = imagecreatetruecolor(4, 4);
+        ob_start();
+        imagejpeg($img);
+        $jpeg = (string) ob_get_clean();
+        imagedestroy($img);
+
+        $photo = Photo::factory()->create([
+            'disk_path' => 'photos/m.jpg', 'motion_path' => 'photos/m.mov',
+            'mime_type' => 'image/jpeg', 'media_type' => 'image', 'name' => 'm.jpg',
+            'taken_at' => now(), 'camera' => 'MotionCam',
+        ]);
+        Storage::disk('files')->put('photos/m.jpg', $jpeg);
+        Storage::disk('files')->put('photos/m.mov', 'video-bytes');
+
+        // A motion photo bundles still + clip into a zip.
+        $res = $this->get(route('gallery.download.edited', $photo));
+        $res->assertOk();
+        $this->assertSame('application/zip', $res->headers->get('Content-Type'));
+    }
+
     public function test_bulk_download_zips_the_selected_photos(): void
     {
         Storage::fake('files');
