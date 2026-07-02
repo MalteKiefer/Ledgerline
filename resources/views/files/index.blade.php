@@ -76,7 +76,7 @@
                 class="w-64 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
             <span x-show="activeTag" x-cloak class="ml-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-800">
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
-                <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700">✕</button>
+                <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
             </span>
         </div>
 
@@ -117,7 +117,7 @@
                                     <input type="text" x-model="renameValue" x-ref="rename"
                                         class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                                     <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
-                                    <button type="button" @click="renaming = null" class="text-sm text-gray-500">✕</button>
+                                    <button type="button" @click="renaming = null" class="text-gray-500 hover:text-gray-700"><x-icon name="x-mark" /></button>
                                 </form>
                             </td>
                             <td class="hidden px-4 py-3 text-gray-600 sm:table-cell" x-text="row.kind === 'folder' ? @js(__('files.folder')) : typeLabel(row)"></td>
@@ -132,7 +132,7 @@
                             </td>
                             <td class="px-4 py-3 text-right" @click.stop>
                                 <div class="relative inline-block text-left">
-                                    <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
+                                    <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
                                     <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                         <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.download') }}</button>
                                         <button type="button" @click="startRename(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
@@ -212,7 +212,7 @@
                     <h3 class="truncate text-base font-semibold text-gray-900" x-text="viewer.row?.name"></h3>
                     <div class="flex shrink-0 items-center gap-3">
                         <button type="button" @click="download(viewer.row)" class="text-sm text-gray-600 hover:text-gray-900">{{ __('files.download') }}</button>
-                        <button type="button" @click="closeViewer()" class="text-xl leading-none text-gray-400 hover:text-gray-600" aria-label="{{ __('common.cancel') }}">✕</button>
+                        <button type="button" @click="closeViewer()" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('common.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
                     </div>
                 </div>
                 <div class="min-h-0 flex-1 overflow-auto p-4">

@@ -52,7 +52,7 @@
                                 class="h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-90">
                             @if ($photo->isVideo())
                                 <span class="pointer-events-none absolute inset-0 flex items-center justify-center">
-                                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white">▶</span>
+                                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white"><x-icon name="play" class="h-5 w-5" /></span>
                                 </span>
                                 @if ($photo->duration)
                                     <span class="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-xs font-medium text-white">{{ $fmtDuration($photo->duration) }}</span>
@@ -72,7 +72,7 @@
                                     'text-lg drop-shadow',
                                     'text-red-500' => $photo->isFavorite(),
                                     'text-white/80 opacity-0 hover:text-white group-hover:opacity-100' => ! $photo->isFavorite(),
-                                ])>{{ $photo->isFavorite() ? '♥' : '♡' }}</button>
+                                ])>@if ($photo->isFavorite())<x-icon name="heart-solid" />@else<x-icon name="heart" />@endif</button>
                         </form>
                     @elseif ($photo->status === 'failed')
                         <div class="flex h-full w-full items-center justify-center bg-red-50 text-center text-xs text-red-500">{{ __('gallery.failed') }}</div>

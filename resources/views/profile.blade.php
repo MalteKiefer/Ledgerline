@@ -13,7 +13,7 @@
                 @if ($user->avatar_url)
                     <form method="POST" action="{{ route('profile.avatar.refresh') }}" class="mt-2">
                         @csrf
-                        <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">↻ {{ __('pages.profile.refresh_avatar') }}</button>
+                        <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1.5"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</span></button>
                     </form>
                 @endif
             </div>
