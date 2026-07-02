@@ -13,6 +13,7 @@
         uploadFailed: @js(__('files.upload_failed')),
         downloadFailed: @js(__('files.download_failed')),
         largeZip: @js(__('files.large_zip_confirm')),
+        rootFolder: @js(__('files.all_files')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -60,11 +61,13 @@
                 <form class="flex items-center gap-1" @submit.prevent="mkdir($refs.newFolder.value); $refs.newFolder.value = ''">
                     <input type="text" x-ref="newFolder" required placeholder="{{ __('files.new_folder') }}"
                         class="w-40 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <button type="submit" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">+</button>
+                    <button type="submit" title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
+                        class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="folder-plus" class="h-5 w-5" /></button>
                 </form>
                 {{-- Upload --}}
-                <label class="cursor-pointer rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
-                    {{ __('files.upload') }}
+                <label title="{{ __('files.upload') }}" aria-label="{{ __('files.upload') }}"
+                    class="cursor-pointer rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700">
+                    <x-icon name="arrow-up-tray" class="h-5 w-5" />
                     <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
                 </label>
             </div>
@@ -133,12 +136,13 @@
                             <td class="px-4 py-3 text-right" @click.stop>
                                 <div class="relative inline-block text-left">
                                     <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
-                                    <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
-                                        <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.download') }}</button>
-                                        <button type="button" @click="startRename(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
-                                        <button type="button" @click="openMove(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
-                                        <button type="button" @click="openTags(row); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.edit_tags') }}</button>
-                                        <button type="button" @click="confirmDelete(row); menu = false" class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50">{{ __('common.delete') }}</button>
+                                    <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-44 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
+                                        <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('files.download') }}</button>
+                                        <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="pencil" />{{ __('files.rename') }}</button>
+                                        <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
+                                        <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                        <button type="button" @click="openInfo(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="info" />{{ __('files.info') }}</button>
+                                        <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('common.delete') }}</button>
                                     </div>
                                 </div>
                             </td>
@@ -155,9 +159,9 @@
         :class="(up.active || dl.active) ? 'bottom-72' : 'bottom-5'"
         class="fixed inset-x-0 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
-        <button type="button" @click="bulkDownload()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.download_zip') }}</button>
-        <button type="button" @click="openMove(null)" class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move') }}</button>
-        <button type="button" @click="confirmDelete(null)" class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('common.delete') }}</button>
+        <button type="button" @click="bulkDownload()" title="{{ __('files.download_zip') }}" aria-label="{{ __('files.download_zip') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="document-arrow-down" class="h-5 w-5" /></button>
+        <button type="button" @click="openMove(null)" title="{{ __('files.move') }}" aria-label="{{ __('files.move') }}" class="rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="arrows-right-left" class="h-5 w-5" /></button>
+        <button type="button" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
     </div>
 
     {{-- Upload progress --}}
@@ -259,6 +263,53 @@
                 <div class="mt-5 flex justify-end gap-3">
                     <button type="button" @click="tagsOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyTags()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Information modal --}}
+    <template x-teleport="body">
+        <div x-show="infoOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="infoOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="infoOpen = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl" x-show="infoRow">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('files.info_title') }}</h3>
+                <dl class="mt-4 divide-y divide-gray-100 text-sm">
+                    <div class="flex justify-between gap-4 py-2">
+                        <dt class="text-gray-500">{{ __('files.info_name') }}</dt>
+                        <dd class="min-w-0 break-all text-right font-medium text-gray-900" x-text="infoRow?.name"></dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2">
+                        <dt class="text-gray-500">{{ __('files.info_type') }}</dt>
+                        <dd class="text-right text-gray-900" x-text="infoRow?.kind === 'folder' ? @js(__('files.folder')) : typeLabel(infoRow)"></dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2" x-show="infoRow?.kind === 'file'">
+                        <dt class="text-gray-500">{{ __('files.info_mime') }}</dt>
+                        <dd class="min-w-0 break-all text-right text-gray-900" x-text="infoRow?.mime"></dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2" x-show="infoRow?.kind === 'file'">
+                        <dt class="text-gray-500">{{ __('files.info_size') }}</dt>
+                        <dd class="text-right text-gray-900" x-text="fmtSize(infoRow?.size)"></dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2" x-show="infoRow?.kind === 'folder'">
+                        <dt class="text-gray-500">{{ __('files.info_items') }}</dt>
+                        <dd class="text-right text-gray-900" x-text="folderItemCount(infoRow)"></dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2" x-show="infoRow?.created">
+                        <dt class="text-gray-500">{{ __('files.info_uploaded') }}</dt>
+                        <dd class="text-right text-gray-900" x-text="fmtDate(infoRow?.created)"></dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2">
+                        <dt class="text-gray-500">{{ __('files.info_folder') }}</dt>
+                        <dd class="text-right text-gray-900" x-text="infoFolderPath(infoRow)"></dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2" x-show="(infoRow?.tags ?? []).length">
+                        <dt class="text-gray-500">{{ __('files.info_tags') }}</dt>
+                        <dd class="text-right text-gray-900" x-text="(infoRow?.tags ?? []).join(', ')"></dd>
+                    </div>
+                </dl>
+                <div class="mt-5 flex justify-end">
+                    <button type="button" @click="infoOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.close') }}</button>
                 </div>
             </div>
         </div>
