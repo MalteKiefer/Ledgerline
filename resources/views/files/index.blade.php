@@ -19,9 +19,16 @@
         <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
     </div>
 
-    {{-- Encrypting existing items --}}
-    <div x-show="busy" x-cloak class="fixed bottom-5 right-5 z-[950] rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-xl">
-        🔒 {{ __('files.encrypting') }}
+    {{-- Encrypting existing items: progress + keep-open warning --}}
+    <div x-show="enc.active" x-cloak class="fixed bottom-5 right-5 z-[950] w-80 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl">
+        <div class="flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700">
+            <span>🔒 {{ __('files.encrypting') }}</span>
+            <span class="text-gray-500"><span x-text="enc.done"></span>/<span x-text="enc.total"></span></span>
+        </div>
+        <div class="h-2 bg-gray-100">
+            <div class="h-2 bg-gray-800 transition-all" :style="`width: ${enc.total ? Math.round(enc.done / enc.total * 100) : 0}%`"></div>
+        </div>
+        <p class="px-4 py-2 text-xs text-amber-700">{{ __('files.encrypting_keep_open') }}</p>
     </div>
 
     {{-- Upload tray (Google/Immich style) --}}

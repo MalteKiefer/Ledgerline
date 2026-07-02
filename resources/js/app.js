@@ -387,7 +387,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     target: '',
     deleteOpen: false,
     renaming: null,
-    busy: false,
+    enc: { active: false, done: 0, total: 0 },
 
     get selectionCount() {
         return this.selected.length + this.selectedFolders.length;
@@ -684,40 +684,53 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
         });
     },
 
-    // Encrypt a whole folder subtree: every plaintext file, then every plaintext
-    // folder name (files first so a folder is only renamed once its files are done).
-    async encryptFolderTree(id) {
+    // Build the work list for a folder subtree: every plaintext file, then every
+    // plaintext folder name (files first so a folder is renamed once done).
+    async folderWork(id) {
         const tree = await (await fetch(`${config.folderBase}/${id}/descendants`, {
             headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         })).json();
-        for (const f of tree.files) {
-            await this.encryptOneFile(f.id, f.name, f.mime_type);
+        return [
+            ...tree.files.map((f) => ({ kind: 'file', id: f.id, name: f.name, mime: f.mime_type })),
+            ...tree.folders.map((d) => ({ kind: 'folder', id: d.id, name: d.name })),
+        ];
+    },
+
+    // Run an encryption work list with a visible progress bar, then reload.
+    async runEncryption(items) {
+        if (! items.length) {
+            return;
         }
-        for (const d of tree.folders) {
-            await this.encryptOneFolderName(d.id, d.name);
+        this.enc = { active: true, done: 0, total: items.length };
+        for (const it of items) {
+            if (it.kind === 'file') {
+                await this.encryptOneFile(it.id, it.name, it.mime);
+            } else {
+                await this.encryptOneFolderName(it.id, it.name);
+            }
+            this.enc.done++;
         }
+        window.location.reload();
     },
 
     async encryptFolder(id) {
         if (! await this.requireVault()) return;
-        this.busy = true;
-        await this.encryptFolderTree(id);
-        window.location.reload();
+        await this.runEncryption(await this.folderWork(id));
     },
 
     async bulkEncrypt() {
         if (! await this.requireVault()) return;
-        this.busy = true;
+        const work = [];
         for (const id of this.selected) {
             const row = document.querySelector(`tr[data-kind="file"] input[value="${id}"]`)?.closest('tr');
             if (row && row.dataset.fname !== undefined) {
-                await this.encryptOneFile(id, row.dataset.fname, row.dataset.fmime);
+                work.push({ kind: 'file', id, name: row.dataset.fname, mime: row.dataset.fmime });
             }
         }
         for (const id of this.selectedFolders) {
-            await this.encryptFolderTree(id);
+            work.push(...await this.folderWork(id));
         }
-        window.location.reload();
+        await this.runEncryption(work);
     },
 
     // Bulk bar rename is only shown for a single selection.

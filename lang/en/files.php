@@ -47,6 +47,7 @@ return [
     'decrypting' => 'Decrypting…',
     'encrypt_file' => 'Encrypt',
     'encrypting' => 'Encrypting…',
+    'encrypting_keep_open' => 'Keep this page open until encryption is finished.',
     'encrypted' => 'Encrypted',
     'encrypted_locked' => 'Unlock the vault to view this file.',
     'encrypted_no_preview' => 'No inline preview for this file type.',
