@@ -794,6 +794,45 @@ class FileController extends Controller
     }
 
     /**
+     * List every file a bulk download would include — the selected files plus
+     * all files under the selected folders (recursively) — with the fields the
+     * browser needs to build paths and decrypt. Zero-knowledge: the server never
+     * assembles the archive; the browser fetches, decrypts and zips.
+     */
+    public function downloadManifest(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', File::class);
+
+        $validated = $request->validate([
+            'file_ids' => ['array', 'max:1000'],
+            'file_ids.*' => ['integer'],
+            'folder_ids' => ['array', 'max:1000'],
+            'folder_ids.*' => ['integer', Rule::exists('folders', 'id')],
+        ]);
+
+        // Expand selected folders to all their descendant folder ids.
+        $folderIds = $validated['folder_ids'] ?? [];
+        $frontier = $folderIds;
+        while ($frontier !== []) {
+            $frontier = Folder::query()->whereIn('parent_id', $frontier)->pluck('id')->all();
+            $folderIds = array_merge($folderIds, $frontier);
+        }
+
+        $files = File::query()
+            ->where(function ($q) use ($validated, $folderIds): void {
+                $q->whereIn('id', $validated['file_ids'] ?? []);
+                if ($folderIds !== []) {
+                    $q->orWhereIn('folder_id', $folderIds);
+                }
+            })
+            ->get(['id', 'folder_id', 'name', 'mime_type', 'size', 'is_encrypted', 'enc_metadata', 'enc_file_key'])
+            ->unique('id')
+            ->values();
+
+        return response()->json(['files' => $files]);
+    }
+
+    /**
      * Move several files into a folder (or to the root).
      */
     public function bulkMove(Request $request): RedirectResponse
