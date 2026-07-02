@@ -55,26 +55,18 @@ class MailReaderTest extends TestCase
                 return ['name' => 'file.txt', 'mime' => 'text/plain', 'content' => 'bytes'];
             }
 
-            public function deleteMessage(ImapCredentials $c, string $folder, int $uid, bool $permanent): array
+            public function actOnMessages(ImapCredentials $c, string $folder, array $uids, string $action, ?string $target): array
             {
-                $this->calls[] = ['delete', $uid, $permanent];
+                $this->calls[] = ['act', $uids, $action, $target];
 
-                return ['deleted' => true, 'trashed' => ! $permanent];
+                return ['count' => count($uids)];
             }
 
-            public function moveMessage(ImapCredentials $c, string $folder, int $uid, string $targetFolder): void
+            public function transferMessages(ImapCredentials $source, string $folder, array $uids, ImapCredentials $target, string $targetFolder): array
             {
-                $this->calls[] = ['move', $uid, $targetFolder];
-            }
+                $this->calls[] = ['transfer', $uids, $target->host, $targetFolder];
 
-            public function flagMessage(ImapCredentials $c, string $folder, int $uid, bool $seen): void
-            {
-                $this->calls[] = ['flag', $uid, $seen];
-            }
-
-            public function transferMessage(ImapCredentials $source, string $folder, int $uid, ImapCredentials $target, string $targetFolder): void
-            {
-                $this->calls[] = ['transfer', $uid, $target->host, $targetFolder];
+                return ['count' => count($uids)];
             }
         };
 
@@ -157,7 +149,7 @@ class MailReaderTest extends TestCase
         $this->signIn();
         $this->fakeReader();
 
-        $this->from(route('mail.index'))->post(route('mail.message.action'), $this->creds(['folder' => 'INBOX', 'uid' => 5, 'action' => 'move']))
+        $this->from(route('mail.index'))->post(route('mail.message.action'), $this->creds(['folder' => 'INBOX', 'uids' => [5], 'action' => 'move']))
             ->assertRedirect()->assertSessionHasErrors('target');
     }
 
@@ -166,10 +158,11 @@ class MailReaderTest extends TestCase
         $this->signIn();
         $fake = $this->fakeReader();
 
-        $this->postJson(route('mail.message.action'), $this->creds(['folder' => 'INBOX', 'uid' => 5, 'action' => 'delete']))
-            ->assertOk();
+        $this->postJson(route('mail.message.action'), $this->creds(['folder' => 'INBOX', 'uids' => [5, 6], 'action' => 'delete']))
+            ->assertOk()
+            ->assertJson(['count' => 2]);
 
-        $this->assertSame(['delete', 5, true], $fake->calls[0]);
+        $this->assertSame(['act', [5, 6], 'delete', null], $fake->calls[0]);
     }
 
     public function test_transfer_passes_both_accounts(): void
@@ -178,11 +171,11 @@ class MailReaderTest extends TestCase
         $fake = $this->fakeReader();
 
         $this->postJson(route('mail.message.transfer'), $this->creds([
-            'folder' => 'INBOX', 'uid' => 5, 'target_folder' => 'INBOX',
+            'folder' => 'INBOX', 'uids' => [5], 'target_folder' => 'INBOX',
             'target' => $this->creds(['host' => 'imap.other.test']),
         ]))->assertOk();
 
-        $this->assertSame(['transfer', 5, 'imap.other.test', 'INBOX'], $fake->calls[0]);
+        $this->assertSame(['transfer', [5], 'imap.other.test', 'INBOX'], $fake->calls[0]);
     }
 
     public function test_a_connection_failure_is_generic_422(): void
@@ -214,16 +207,15 @@ class MailReaderTest extends TestCase
                 return [];
             }
 
-            public function deleteMessage(ImapCredentials $c, string $folder, int $uid, bool $permanent): array
+            public function actOnMessages(ImapCredentials $c, string $folder, array $uids, string $action, ?string $target): array
             {
-                return [];
+                return ['count' => 0];
             }
 
-            public function moveMessage(ImapCredentials $c, string $folder, int $uid, string $targetFolder): void {}
-
-            public function flagMessage(ImapCredentials $c, string $folder, int $uid, bool $seen): void {}
-
-            public function transferMessage(ImapCredentials $source, string $folder, int $uid, ImapCredentials $target, string $targetFolder): void {}
+            public function transferMessages(ImapCredentials $source, string $folder, array $uids, ImapCredentials $target, string $targetFolder): array
+            {
+                return ['count' => 0];
+            }
         });
 
         $response = $this->postJson(route('mail.messages'), $this->creds(['folder' => 'INBOX']))

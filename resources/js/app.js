@@ -2636,15 +2636,22 @@ Alpine.data('vaultMail', (labels = {}) => ({
         if (! this.reader.selected.length || this.reader.busy) return;
         this.reader.busy = true;
         this.reader.error = '';
-        const done = [];
+        const uids = [...this.reader.selected];
         try {
-            for (const uid of [...this.reader.selected]) {
-                const res = await this.mailPost('/mail/message/action', { uid, action, target });
-                if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; break; }
-                done.push(uid);
+            // One request for the whole selection — the server applies the
+            // action to every UID over a single IMAP connection.
+            const res = await this.mailPost('/mail/message/action', { uids, action, target });
+            if (! res.ok) {
+                const b = await res.json().catch(() => ({}));
+                this.reader.error = b.detail || labels.connectFailed;
+                this.loadMessages(true); // server may have applied some — resync
+                return;
             }
+            this.applyActionLocal(action, uids, target);
+        } catch (e) {
+            this.reader.error = labels.connectFailed;
+            this.loadMessages(true);
         } finally {
-            if (done.length) this.applyActionLocal(action, done, target);
             this.reader.selected = [];
             this.reader.busy = false;
         }
@@ -2818,7 +2825,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.busy = true;
         this.reader.error = '';
         try {
-            const res = await this.mailPost('/mail/message/action', { uid, action, target });
+            const res = await this.mailPost('/mail/message/action', { uids: [uid], action, target });
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             if (action === 'seen' || action === 'unseen') {
                 this.reader.current.seen = action === 'seen';
@@ -2865,29 +2872,29 @@ Alpine.data('vaultMail', (labels = {}) => ({
         if (! uids.length) return;
         this.reader.busy = true;
         this.reader.error = '';
-        const done = [];
+        let ok = false;
         try {
-            for (const uid of uids) {
-                const res = await fetch('/mail/message/transfer', {
-                    method: 'POST',
-                    headers: {
-                        Accept: 'application/json', 'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
-                    },
-                    body: JSON.stringify({
-                        ...this.credsBody(this.reader.account), folder: this.reader.folderPath, uid,
-                        target: this.credsBody(a), target_folder: this.reader.transferFolder,
-                    }),
-                });
-                if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; break; }
-                done.push(uid);
-            }
+            // One request for the whole selection — the server copies each to
+            // the target account and trashes the source over shared connections.
+            const res = await fetch('/mail/message/transfer', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json', 'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    ...this.credsBody(this.reader.account), folder: this.reader.folderPath, uids,
+                    target: this.credsBody(a), target_folder: this.reader.transferFolder,
+                }),
+            });
+            if (res.ok) { ok = true; } else { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; }
         } catch (e) {
             this.reader.error = labels.connectFailed;
         } finally {
             // Transferred messages leave this account's folder (target is another
-            // account, not in this sidebar) — remove them locally, no reload.
-            if (done.length) this.removeMessages(done);
+            // account, not in this sidebar). On success remove them locally; on
+            // error resync since some may have been transferred before it failed.
+            if (ok) this.removeMessages(uids); else this.loadMessages(true);
             this.reader.transferOpen = false;
             this.reader.current = null;
             this.reader.selected = [];
