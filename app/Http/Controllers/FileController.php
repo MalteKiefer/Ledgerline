@@ -497,6 +497,46 @@ class FileController extends Controller
     }
 
     /**
+     * Encrypt an existing plaintext file. The browser fetches the plaintext,
+     * encrypts it, and posts the ciphertext blob + wrapped key/metadata here;
+     * the server overwrites the bytes and flips the file to encrypted, dropping
+     * its plaintext name, mime, checksum and extracted text.
+     */
+    public function encrypt(Request $request, File $file): RedirectResponse
+    {
+        $this->authorize('update', $file);
+
+        abort_if($file->is_encrypted, 409);
+
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'max:51200'],
+            'enc_metadata' => ['required', 'string'],
+            'enc_file_key' => ['required', 'string'],
+        ]);
+
+        $blob = $validated['file'];
+        Storage::disk(config('files.disk'))->put(
+            $file->disk_path,
+            (string) file_get_contents($blob->getRealPath()),
+        );
+
+        $file->forceFill([
+            'name' => '',
+            'title' => null,
+            'mime_type' => 'application/octet-stream',
+            'type' => FileType::ENCRYPTED,
+            'size' => $blob->getSize(),
+            'checksum' => null,
+            'is_encrypted' => true,
+            'extracted_text' => null,
+            'enc_metadata' => $validated['enc_metadata'],
+            'enc_file_key' => $validated['enc_file_key'],
+        ])->save();
+
+        return back()->with('status', __('flash.file_updated'));
+    }
+
+    /**
      * Rename a file (its display title) inline.
      */
     public function rename(Request $request, File $file): RedirectResponse

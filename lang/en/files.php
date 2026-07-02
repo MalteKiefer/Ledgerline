@@ -45,6 +45,7 @@ return [
     'details' => 'Details',
     'download' => 'Download',
     'decrypting' => 'Decrypting…',
+    'encrypt_file' => 'Encrypt',
     'encrypted' => 'Encrypted',
     'encrypted_locked' => 'Unlock the vault to view this file.',
     'encrypted_no_preview' => 'No inline preview for this file type.',
