@@ -1097,10 +1097,12 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     sortDir: 'asc',
     renaming: null,   // item id currently renamed inline
     renameValue: '',
-    moveItemRef: null, // {kind, id} for the move modal
+    moveRefs: [],     // [{kind, id}] for the move modal
     moveTarget: '',
     moveOpen: false,
-    deleteRef: null,  // {kind, id, name}
+    deleteRefs: [],   // [{kind, id, name}]
+    deleteOpen: false,
+    selected: [],     // ['kind:id', …]
     up: { active: false, done: 0, total: 0 },
     dl: { active: false, done: 0, total: 0 },
     error: '',
@@ -1263,32 +1265,56 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
-    openMove(row) {
-        this.moveItemRef = { kind: row.kind, id: row.id };
-        this.moveTarget = '';
-        this.moveOpen = true;
+    /* ---- Selection ---- */
+
+    rowKey: (row) => `${row.kind}:${row.id}`,
+
+    toggleAll(event) {
+        this.selected = event.target.checked ? this.rows.map(this.rowKey) : [];
     },
 
-    // Folders eligible as a move target (never a folder's own subtree).
-    get moveOptions() {
-        const ref = this.moveItemRef;
-        const excluded = new Set();
-        if (ref?.kind === 'folder') {
-            excluded.add(ref.id);
-            let grew = true;
-            while (grew) {
-                grew = false;
-                for (const f of this.manifest.folders) {
-                    if (f.parent != null && excluded.has(f.parent) && ! excluded.has(f.id)) {
-                        excluded.add(f.id);
-                        grew = true;
-                    }
+    get selectionRefs() {
+        return this.selected.map((key) => {
+            const [kind, id] = key.split(':');
+            const list = kind === 'folder' ? this.manifest.folders : this.manifest.files;
+            const item = list.find((x) => x.id === id);
+            return item ? { kind, id, name: item.name } : null;
+        }).filter(Boolean);
+    },
+
+    // Expand a folder id to its whole subtree of folder ids.
+    subtree(id) {
+        const set = new Set([id]);
+        let grew = true;
+        while (grew) {
+            grew = false;
+            for (const f of this.manifest.folders) {
+                if (f.parent != null && set.has(f.parent) && ! set.has(f.id)) {
+                    set.add(f.id);
+                    grew = true;
                 }
             }
         }
+        return set;
+    },
+
+    openMove(row) {
+        this.moveRefs = row ? [{ kind: row.kind, id: row.id }] : this.selectionRefs;
+        this.moveTarget = '';
+        this.moveOpen = this.moveRefs.length > 0;
+    },
+
+    // Folders eligible as a move target (never a selected folder's own subtree).
+    get moveOptions() {
+        const excluded = new Set();
+        for (const ref of this.moveRefs) {
+            if (ref.kind === 'folder') {
+                for (const id of this.subtree(ref.id)) excluded.add(id);
+            }
+        }
+        const byId = new Map(this.manifest.folders.map((x) => [x.id, x]));
         const path = (f) => {
             const parts = [f.name];
-            const byId = new Map(this.manifest.folders.map((x) => [x.id, x]));
             let cur = f.parent;
             while (cur != null && byId.has(cur)) { parts.unshift(byId.get(cur).name); cur = byId.get(cur).parent; }
             return parts.join(' / ');
@@ -1300,54 +1326,56 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     async applyMove() {
-        const ref = this.moveItemRef;
+        const refs = this.moveRefs;
         this.moveOpen = false;
-        if (! ref) return;
+        this.moveRefs = [];
+        if (! refs.length) return;
         const target = this.moveTarget === '' ? null : this.moveTarget;
-        if (ref.kind === 'folder') {
-            const f = this.manifest.folders.find((x) => x.id === ref.id);
-            if (f) f.parent = target;
-        } else {
-            const f = this.manifest.files.find((x) => x.id === ref.id);
-            if (f) f.folder = target;
+        for (const ref of refs) {
+            if (ref.kind === 'folder') {
+                if (target !== null && this.subtree(ref.id).has(target)) continue; // never into own subtree
+                const f = this.manifest.folders.find((x) => x.id === ref.id);
+                if (f) f.parent = target;
+            } else {
+                const f = this.manifest.files.find((x) => x.id === ref.id);
+                if (f) f.folder = target;
+            }
         }
+        this.selected = [];
         await this.persist().catch(() => {});
     },
 
     confirmDelete(row) {
-        this.deleteRef = { kind: row.kind, id: row.id, name: row.name };
+        this.deleteRefs = row ? [{ kind: row.kind, id: row.id, name: row.name }] : this.selectionRefs;
+        this.deleteOpen = this.deleteRefs.length > 0;
     },
 
     async applyDelete() {
-        const ref = this.deleteRef;
-        this.deleteRef = null;
-        if (! ref) return;
+        const refs = this.deleteRefs;
+        this.deleteOpen = false;
+        this.deleteRefs = [];
+        if (! refs.length) return;
 
         const blobIds = [];
-        if (ref.kind === 'file') {
-            const f = this.manifest.files.find((x) => x.id === ref.id);
-            if (f) blobIds.push(f.blob);
-            this.manifest.files = this.manifest.files.filter((x) => x.id !== ref.id);
-        } else {
-            // Collect the whole subtree, remove its files and folders.
-            const doomed = new Set([ref.id]);
-            let grew = true;
-            while (grew) {
-                grew = false;
-                for (const f of this.manifest.folders) {
-                    if (f.parent != null && doomed.has(f.parent) && ! doomed.has(f.id)) {
-                        doomed.add(f.id);
-                        grew = true;
-                    }
-                }
+        const doomedFolders = new Set();
+        for (const ref of refs) {
+            if (ref.kind === 'file') {
+                const f = this.manifest.files.find((x) => x.id === ref.id);
+                if (f) blobIds.push(f.blob);
+                this.manifest.files = this.manifest.files.filter((x) => x.id !== ref.id);
+            } else {
+                for (const id of this.subtree(ref.id)) doomedFolders.add(id);
             }
+        }
+        if (doomedFolders.size) {
             for (const f of this.manifest.files) {
-                if (f.folder != null && doomed.has(f.folder)) blobIds.push(f.blob);
+                if (f.folder != null && doomedFolders.has(f.folder)) blobIds.push(f.blob);
             }
-            this.manifest.files = this.manifest.files.filter((f) => ! (f.folder != null && doomed.has(f.folder)));
-            this.manifest.folders = this.manifest.folders.filter((f) => ! doomed.has(f.id));
+            this.manifest.files = this.manifest.files.filter((f) => ! (f.folder != null && doomedFolders.has(f.folder)));
+            this.manifest.folders = this.manifest.folders.filter((f) => ! doomedFolders.has(f.id));
         }
 
+        this.selected = [];
         try {
             await this.persist();
         } catch (e) {
@@ -1360,6 +1388,64 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
             }).catch(() => {});
         }
+    },
+
+    // Download the selection (files + folders, recursively) as one zip built in
+    // the browser, folder structure preserved. Large sets build in memory, so
+    // confirm above 2 GiB.
+    async bulkDownload() {
+        const refs = this.selectionRefs;
+        if (! refs.length) return;
+
+        const jobs = [];
+        const byId = new Map(this.manifest.folders.map((x) => [x.id, x]));
+        const folderPath = (id) => {
+            const parts = [];
+            let cur = id;
+            while (cur != null && byId.has(cur)) { parts.unshift(byId.get(cur).name); cur = byId.get(cur).parent; }
+            return parts;
+        };
+        for (const ref of refs) {
+            if (ref.kind === 'file') {
+                const f = this.manifest.files.find((x) => x.id === ref.id);
+                if (f) jobs.push({ file: f, path: f.name });
+            } else {
+                const tree = this.subtree(ref.id);
+                const base = folderPath(byId.get(ref.id)?.parent ?? null);
+                for (const f of this.manifest.files) {
+                    if (f.folder != null && tree.has(f.folder)) {
+                        const rel = folderPath(f.folder).slice(base.length);
+                        jobs.push({ file: f, path: [...rel, f.name].join('/') });
+                    }
+                }
+            }
+        }
+        if (! jobs.length) return;
+
+        const total = jobs.reduce((n, j) => n + (j.file.size || 0), 0);
+        if (total > 2 * 1024 * 1024 * 1024 && ! window.confirm(labels.largeZip)) return;
+
+        const zip = new JSZip();
+        const used = new Set();
+        this.dl = { active: true, done: 0, total: jobs.length };
+        for (const job of jobs) {
+            try {
+                let candidate = job.path;
+                let i = 1;
+                while (used.has(candidate)) {
+                    const dot = job.path.lastIndexOf('.');
+                    candidate = dot > 0 ? `${job.path.slice(0, dot)} (${++i})${job.path.slice(dot)}` : `${job.path} (${++i})`;
+                }
+                used.add(candidate);
+                zip.file(candidate, await this.fetchPlain(job.file));
+            } catch (e) { /* skip an unfetchable file */ }
+            this.dl.done++;
+        }
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        saveBlobAs(new Uint8Array(await blob.arrayBuffer()), 'files.zip', 'application/zip');
+        this.dl.active = false;
+        this.selected = [];
     },
 
     /* ---- Content operations ---- */
