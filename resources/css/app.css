@@ -13,6 +13,20 @@
 }
 
 /*
+ | github-markdown-css relies on the browser's default list markers, but
+ | Tailwind's Preflight resets `ul, ol { list-style: none }`, which strips the
+ | bullets/numbers from rendered notes (preview, split, PDF and shared notes).
+ | Re-assert markers for rendered markdown; github's own nested rules
+ | (roman/alpha) keep their higher specificity.
+ */
+.markdown-body ul {
+    list-style-type: disc;
+}
+.markdown-body ol {
+    list-style-type: decimal;
+}
+
+/*
  | Use the operating system's native font stack only. No web fonts are
  | loaded from any external CDN (Google Fonts, bunny.net, etc.), keeping the
  | application fully self-hosted and free of third-party requests.
