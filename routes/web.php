@@ -11,7 +11,9 @@ use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
+use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
@@ -59,6 +61,21 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
     Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
     Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
+
+    // Notification channels (mail / NTFY / webhook).
+    Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
+    Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
+
+    // Backup destinations, jobs and run history.
+    Route::get('/settings/backup', [SettingsBackupController::class, 'index'])->name('settings.backup.index');
+    Route::post('/settings/backup/destinations', [SettingsBackupController::class, 'storeDestination'])->name('settings.backup.destinations.store');
+    Route::put('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'updateDestination'])->name('settings.backup.destinations.update');
+    Route::delete('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'destroyDestination'])->name('settings.backup.destinations.destroy');
+    Route::post('/settings/backup/jobs', [SettingsBackupController::class, 'storeJob'])->name('settings.backup.jobs.store');
+    Route::put('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'updateJob'])->name('settings.backup.jobs.update');
+    Route::delete('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'destroyJob'])->name('settings.backup.jobs.destroy');
+    Route::post('/settings/backup/jobs/{job}/run', [SettingsBackupController::class, 'runNow'])->name('settings.backup.jobs.run');
+
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
     // Gallery: a photo timeline with drag-and-drop upload and a trash.
