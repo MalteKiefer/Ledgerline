@@ -465,14 +465,16 @@ class GalleryController extends Controller
             if (! $disk->exists($photo->disk_path)) {
                 continue;
             }
-            $entry = $this->uniqueZipName($photo->name ?: ('photo-'.$photo->id), $used);
             if ($edited) {
-                // Add from a temp file so large edited videos never sit in memory.
-                $path = $exporter->editedFile($photo);
-                $temps[] = $path;
-                $zip->addFile($path, $entry);
+                // Each photo may yield more than one file (a motion photo exports
+                // its still and its clip). Add from temp files so large edited
+                // videos never sit in memory.
+                foreach ($exporter->editedFiles($photo) as $file) {
+                    $temps[] = $file['path'];
+                    $zip->addFile($file['path'], $this->uniqueZipName($file['name'], $used));
+                }
             } else {
-                $zip->addFromString($entry, (string) $disk->get($photo->disk_path));
+                $zip->addFromString($this->uniqueZipName($photo->name ?: ('photo-'.$photo->id), $used), (string) $disk->get($photo->disk_path));
             }
         }
         $zip->close();
@@ -491,9 +493,29 @@ class GalleryController extends Controller
      */
     public function downloadEdited(Photo $photo, PhotoExporter $exporter): BinaryFileResponse
     {
-        $path = $exporter->editedFile($photo);
+        $files = $exporter->editedFiles($photo);
 
-        return response()->download($path, $photo->name ?: ('photo-'.$photo->id), [
+        // A motion photo exports as still + clip, bundled into one zip so both
+        // come down together; a plain photo/video downloads as a single file.
+        if (count($files) > 1) {
+            $tmp = tempnam(sys_get_temp_dir(), 'edited-zip').'.zip';
+            $zip = new ZipArchive;
+            $zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+            $used = [];
+            foreach ($files as $file) {
+                $zip->addFile($file['path'], $this->uniqueZipName($file['name'], $used));
+            }
+            $zip->close();
+            foreach ($files as $file) {
+                @unlink($file['path']);
+            }
+
+            $zipName = pathinfo($photo->name ?: 'photo', PATHINFO_FILENAME).'.zip';
+
+            return response()->download($tmp, $zipName, ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+        }
+
+        return response()->download($files[0]['path'], $files[0]['name'], [
             'Content-Type' => $photo->mime_type,
             'X-Content-Type-Options' => 'nosniff',
         ])->deleteFileAfterSend(true);
