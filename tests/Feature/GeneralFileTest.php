@@ -60,6 +60,41 @@ class GeneralFileTest extends TestCase
         $this->assertSame('ciphertext-bytes', Storage::disk('files')->get($file->disk_path));
     }
 
+    public function test_an_existing_plaintext_file_can_be_encrypted_in_place(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $file = File::factory()->create([
+            'name' => 'notes.txt', 'title' => 'Notes', 'type' => FileType::DOCUMENT,
+            'is_encrypted' => false, 'disk_path' => 'files/notes.txt', 'mime_type' => 'text/plain',
+            'checksum' => hash('sha256', 'plain'), 'extracted_text' => 'plain', 'size' => 5,
+            'attachable_type' => null, 'attachable_id' => null,
+        ]);
+        Storage::disk('files')->put('files/notes.txt', 'plain');
+
+        $this->put(route('files.encrypt', $file), [
+            'file' => UploadedFile::fake()->createWithContent('blob', 'sealed-bytes'),
+            'enc_metadata' => '{"c":"m","n":"n"}',
+            'enc_file_key' => '{"c":"k","n":"n"}',
+        ])->assertRedirect();
+
+        $file->refresh();
+        $this->assertTrue($file->is_encrypted);
+        $this->assertSame(FileType::ENCRYPTED, $file->type);
+        $this->assertSame('', $file->name);
+        $this->assertNull($file->title);
+        $this->assertNull($file->checksum);
+        $this->assertNull($file->extracted_text);
+        $this->assertSame('{"c":"m","n":"n"}', $file->enc_metadata);
+        $this->assertSame('sealed-bytes', Storage::disk('files')->get('files/notes.txt'));
+
+        // Re-encrypting an already-encrypted file is refused.
+        $this->put(route('files.encrypt', $file), [
+            'file' => UploadedFile::fake()->createWithContent('blob', 'x'),
+            'enc_metadata' => '{}', 'enc_file_key' => '{}',
+        ])->assertStatus(409);
+    }
+
     public function test_an_encrypted_file_is_not_read_server_side_for_editing(): void
     {
         Storage::fake('files');
