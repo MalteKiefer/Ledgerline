@@ -209,6 +209,10 @@
                                                     <button type="button" @click="startRename({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
                                                 @endunless
                                                 <button type="button" @click="openMove({{ $file->id }}); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.move') }}</button>
+                                                @unless ($file->is_encrypted)
+                                                    <button type="button" x-show="$store.vault.configured" @click="window.vaultEncrypt(@js(route('files.download', $file)), @js(route('files.encrypt', $file)), @js($file->name), @js($file->mime_type), @js(csrf_token())); menu = false"
+                                                        class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('files.encrypt_file') }}</button>
+                                                @endunless
                                                 @if ($file->type === \App\Enums\FileType::ARCHIVE)
                                                     <form method="POST" action="{{ route('files.extract', $file) }}">
                                                         @csrf

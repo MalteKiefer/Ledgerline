@@ -1193,6 +1193,35 @@ window.vaultDownload = async (url, encMeta, encFileKey) => {
     saveDecrypted(Vault.decryptFile(cipher, encFileKey), meta.name, meta.mime);
 };
 
+// Encrypt an existing plaintext file in place: fetch its bytes, seal them with
+// the vault key, and PUT the ciphertext + wrapped key/metadata. Prompts to set
+// up / unlock the vault if needed.
+window.vaultEncrypt = async (downloadUrl, encryptUrl, name, mime, token) => {
+    await Alpine.store('vault').boot();
+    if (! Alpine.store('vault').configured || ! Alpine.store('vault').unlocked) {
+        window.dispatchEvent(new CustomEvent('vault-panel'));
+        return;
+    }
+    const bytes = await fetchCipher(downloadUrl); // plaintext bytes for a plaintext file
+    const sealed = Vault.encryptContent(bytes, { name, mime });
+
+    const data = new FormData();
+    data.append('_token', token);
+    data.append('_method', 'PUT');
+    data.append('file', sealed.blob, 'blob');
+    data.append('enc_metadata', sealed.encMeta);
+    data.append('enc_file_key', sealed.encFileKey);
+
+    const r = await fetch(encryptUrl, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
+        body: data,
+    });
+    if (r.ok) {
+        window.location.reload();
+    }
+};
+
 // Name label for an encrypted file (list row / detail heading): decrypts the
 // real name once the vault is unlocked, otherwise shows a lock placeholder.
 Alpine.data('encName', (encMeta, lockedLabel = '🔒') => ({
