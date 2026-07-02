@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 return [
     'already_configured' => 'Der Tresor ist bereits eingerichtet.',
+    'change' => 'Passwort ändern',
+    'change_current' => 'Aktuelles Passwort',
+    'change_hint' => 'Aktuelles und neues Passwort eingeben. Deine Dateien werden nicht neu verschlüsselt; nur das Passwort zum Entsperren ändert sich.',
+    'change_new' => 'Neues Passwort',
+    'change_title' => 'Passwort ändern',
+    'changed' => 'Passwort geändert.',
     'create' => 'Einrichten',
+    'err_change' => 'Passwort konnte nicht geändert werden. Prüfe dein aktuelles Passwort.',
     'err_generic' => 'Etwas ist schiefgelaufen. Bitte erneut versuchen.',
     'err_mismatch' => 'Die Passwörter stimmen nicht überein.',
     'err_recover' => 'Ungültiger Wiederherstellungscode.',
