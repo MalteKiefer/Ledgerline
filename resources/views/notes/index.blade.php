@@ -42,7 +42,7 @@
                     class="ml-auto text-red-600 hover:text-red-700">{{ __('notes.empty_trash') }}</button>
                 <span x-show="activeTag" x-cloak class="ml-auto inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-800">
                     {{ __('notes.filtered_by') }}: <span x-text="activeTag"></span>
-                    <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700">✕</button>
+                    <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
                 </span>
             </div>
             <p x-show="error" x-cloak class="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" x-text="error"></p>
@@ -65,7 +65,7 @@
                             </template>
                         </span>
                         <span class="absolute right-2 top-2" @click.stop>
-                            <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">⋯</button>
+                            <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><x-icon name="ellipsis" /></button>
                             <span x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 block w-44 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                 <template x-if="view === 'active'">
                                     <span>
@@ -96,7 +96,7 @@
             <template x-if="current">
                 <div class="flex min-h-0 flex-1 flex-col">
                     <div class="flex flex-wrap items-center gap-2 border-b border-gray-100 p-3">
-                        <button type="button" @click="closeNote()" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 md:hidden">‹ {{ __('notes.back') }}</button>
+                        <button type="button" @click="closeNote()" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 md:hidden"><span class="inline-flex items-center gap-1"><x-icon name="chevron-left" class="h-3.5 w-3.5" />{{ __('notes.back') }}</span></button>
                         <input type="text" x-model="current.title" @input="markDirty()" placeholder="{{ __('notes.title_placeholder') }}"
                             class="min-w-0 flex-1 rounded-md border-gray-300 text-sm font-semibold shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <div class="flex shrink-0 items-center gap-2">
@@ -104,12 +104,12 @@
                                 x-text="saveState === 'saving' ? @js(__('notes.saving')) : (saveState === 'saved' ? @js(__('notes.saved')) : (saveState === 'dirty' ? '●' : ''))"></span>
                             <button type="button" @click="togglePin(current)" :title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"
                                 class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
-                                :class="current.pinned ? 'text-gray-900' : 'text-gray-400'">📌</button>
+                                :class="current.pinned ? 'text-gray-900' : 'text-gray-400'"><x-icon name="bookmark-solid" x-show="current.pinned" /><x-icon name="bookmark" x-show="! current.pinned" /></button>
                             <button type="button" @click="togglePreview()"
                                 class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                                 x-text="previewing ? @js(__('notes.edit')) : @js(__('notes.preview'))"></button>
                             <button type="button" @click="toTrash(current)" title="{{ __('notes.to_trash') }}"
-                                class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">🗑</button>
+                                class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"><x-icon name="trash" /></button>
                         </div>
                     </div>
                     <div class="min-h-0 flex-1 overflow-auto">
