@@ -47,7 +47,7 @@ final class WebklexImapStats implements ImapStats
                 } catch (\Throwable) {
                     // Some folders are not selectable (\Noselect); skip counts.
                 }
-                $folders[] = ['name' => $folder->name ?: $folder->path, 'total' => $messages, 'unseen' => $unread];
+                $folders[] = ['name' => $folder->name ?: $folder->path, 'path' => $folder->path, 'total' => $messages, 'unseen' => $unread];
                 $total += $messages;
                 $unseen += $unread;
             }

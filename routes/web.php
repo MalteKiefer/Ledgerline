@@ -7,6 +7,7 @@ use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
@@ -97,6 +98,11 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::view('/mail', 'mail.index')->name('mail.index');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
+    Route::post('/mail/messages', [MailReaderController::class, 'messages'])->name('mail.messages');
+    Route::post('/mail/message', [MailReaderController::class, 'message'])->name('mail.message');
+    Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->name('mail.message.attachment');
+    Route::post('/mail/message/action', [MailReaderController::class, 'action'])->name('mail.message.action');
+    Route::post('/mail/message/transfer', [MailReaderController::class, 'transfer'])->name('mail.message.transfer');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
         ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
