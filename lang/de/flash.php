@@ -33,6 +33,7 @@ return [
     'folder_deleted' => 'Ordner gelöscht; sein Inhalt wurde eine Ebene nach oben verschoben.',
     'folder_renamed' => 'Ordner umbenannt.',
     'gallery_settings_saved' => 'Galerie-Einstellungen gespeichert.',
+    'security_saved' => 'Sicherheitseinstellungen gespeichert.',
     'import_batch_done' => 'Alle Rechnungen geprüft.',
     'income_added' => 'Einnahme hinzugefügt.',
     'income_deleted' => 'Einnahme gelöscht.',

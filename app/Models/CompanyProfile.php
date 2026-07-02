@@ -45,6 +45,7 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_ffmpeg_path',
     'gallery_video_frame',
     'gallery_geocode_grid_km',
+    'vault_idle_minutes',
     'invoice_number_prefix',
     'invoice_number_next',
     'invoice_number_pad',
@@ -70,6 +71,7 @@ class CompanyProfile extends Model
             'gallery_max_upload_mb' => 'integer',
             'gallery_video_frame' => 'integer',
             'gallery_geocode_grid_km' => 'float',
+            'vault_idle_minutes' => 'integer',
         ];
     }
 
