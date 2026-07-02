@@ -1133,6 +1133,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     tagsOpen: false,
     tagsValue: '',
     activeTag: '',
+    infoOpen: false,
+    infoRow: null,
     up: { active: false, done: 0, total: 0 },
     dl: { active: false, done: 0, total: 0 },
     error: '',
@@ -1280,10 +1282,48 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     typeLabel(file) {
-        return labels.types?.[classifyMime(file.mime)] ?? file.mime ?? '';
+        return labels.types?.[classifyMime(file?.mime)] ?? file?.mime ?? '';
     },
 
     fmtSize: formatBytes,
+
+    fmtDate(iso) {
+        return iso ? new Date(iso).toLocaleString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        }) : '';
+    },
+
+    /* ---- Information ---- */
+
+    openInfo(row) {
+        this.infoRow = row;
+        this.infoOpen = true;
+    },
+
+    // Direct children of a folder (files + subfolders), counted client-side —
+    // the count lives only in the decrypted manifest, never on the server.
+    folderItemCount(row) {
+        if (! row) return 0;
+        const files = this.manifest.files.filter((f) => (f.folder ?? null) === row.id).length;
+        const folders = this.manifest.folders.filter((f) => (f.parent ?? null) === row.id).length;
+        return files + folders;
+    },
+
+    // Human-readable path of the folder an item lives in ("All files / A / B").
+    infoFolderPath(row) {
+        const root = labels.rootFolder ?? '';
+        if (! row) return root;
+        const parentId = row.kind === 'folder' ? (row.parent ?? null) : (row.folder ?? null);
+        if (parentId == null) return root;
+        const byId = new Map(this.manifest.folders.map((f) => [f.id, f]));
+        const chain = [];
+        let cur = parentId;
+        while (cur != null && byId.has(cur)) {
+            chain.unshift(byId.get(cur).name);
+            cur = byId.get(cur).parent;
+        }
+        return [root, ...chain].join(' / ');
+    },
 
     /* ---- Structure operations ---- */
 
