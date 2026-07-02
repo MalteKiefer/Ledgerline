@@ -72,6 +72,11 @@ class PocketIdController extends Controller
         // Prevent session fixation by issuing a fresh session identifier.
         $request->session()->regenerate();
 
+        // A fresh per-login token the browser binds the cached vault key to, so a
+        // key cached in sessionStorage cannot survive a logout + new login (the
+        // token changes every login, invalidating any stale cached key).
+        $request->session()->put('vault_owner', bin2hex(random_bytes(16)));
+
         return redirect()->intended(route('dashboard'));
     }
 

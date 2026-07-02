@@ -14,12 +14,20 @@ import _sodium from 'libsodium-wrappers-sumo';
 let sodium = null;
 const CACHE_KEY = 'vault.vk';
 const CACHE_EXPIRES = 'vault.vk.expires';
+const CACHE_OWNER = 'vault.vk.owner';
 
 // Idle timeout (minutes) is configurable in Security settings; default 10.
 function idleMs() {
     const meta = document.querySelector('meta[name="vault-idle-minutes"]')?.getAttribute('content');
     const minutes = Number(meta) > 0 ? Number(meta) : 10;
     return minutes * 60 * 1000;
+}
+
+// Per-login token the cached vault key is bound to. Empty when signed out. A
+// cached key only counts if its stored owner matches the current login, so the
+// key cannot survive a logout + new login (nor be reused by a different login).
+function currentOwner() {
+    return document.querySelector('meta[name="vault-owner"]')?.getAttribute('content') || '';
 }
 
 const b64 = (bytes) => sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
@@ -112,14 +120,19 @@ export const Vault = {
 
     async boot() {
         await ready();
-        // Restore a cached, non-expired vault key for this tab session.
+
+        const owner = currentOwner();
         const expires = Number(sessionStorage.getItem(CACHE_EXPIRES) || 0);
         const cached = sessionStorage.getItem(CACHE_KEY);
-        if (cached && expires > Date.now()) {
+        const cachedOwner = sessionStorage.getItem(CACHE_OWNER) || '';
+
+        // Only restore the key if it belongs to the current login and has not
+        // expired. A signed-out page (empty owner) or a different/new login
+        // (owner mismatch) drops the key — it can never outlive its login.
+        if (cached && owner !== '' && cachedOwner === owner && expires > Date.now()) {
             this.vk = unb64(cached);
             this.touch();
         } else if (cached) {
-            // The key expired (idle timeout): drop it and any decrypted names.
             this.lock();
         }
     },
@@ -130,6 +143,7 @@ export const Vault = {
 
     cache() {
         sessionStorage.setItem(CACHE_KEY, b64(this.vk));
+        sessionStorage.setItem(CACHE_OWNER, currentOwner());
         this.touch();
     },
 
@@ -144,6 +158,7 @@ export const Vault = {
         metaMemo.clear();
         sessionStorage.removeItem(CACHE_KEY);
         sessionStorage.removeItem(CACHE_EXPIRES);
+        sessionStorage.removeItem(CACHE_OWNER);
     },
 
     async status() {
