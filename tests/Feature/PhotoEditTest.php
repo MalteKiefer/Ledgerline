@@ -46,6 +46,21 @@ class PhotoEditTest extends TestCase
         $this->assertSame('Las Vegas, NV, USA', $photo->place);
     }
 
+    public function test_editing_sets_the_camera(): void
+    {
+        $this->signIn();
+        $photo = Photo::factory()->create(['camera' => 'Old Cam']);
+
+        $this->put(route('gallery.meta', $photo), [
+            'name' => 'shot.jpg',
+            'date' => '2026-05-01',
+            'time' => '10:00',
+            'camera' => 'Canon EOS R5',
+        ])->assertRedirect();
+
+        $this->assertSame('Canon EOS R5', $photo->fresh()->camera);
+    }
+
     public function test_removing_coordinates_clears_the_place(): void
     {
         $this->signIn();

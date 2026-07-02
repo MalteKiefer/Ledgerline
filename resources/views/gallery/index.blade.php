@@ -297,6 +297,12 @@
                 <form method="POST" :action="`/gallery/${current.id}/meta`" class="mt-4 space-y-2 border-t border-gray-100 pt-4">
                     @csrf @method('PUT')
                     <input type="text" name="name" x-model="current.name" placeholder="{{ __('gallery.meta_name') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" name="camera" x-model="current.camera" list="known-cameras" placeholder="{{ __('gallery.meta_camera') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <datalist id="known-cameras">
+                        @foreach ($cameras as $camera)
+                            <option value="{{ $camera }}"></option>
+                        @endforeach
+                    </datalist>
                     <div class="grid grid-cols-2 gap-2">
                         <input type="date" name="date" :value="current.dateiso" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <input type="time" name="time" :value="current.time" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
