@@ -118,6 +118,58 @@ function open(cipherB64, nonceB64, key) {
 export const Vault = {
     vk: null,
 
+    /** Ensure libsodium is initialised (used by pages without an unlocked vault). */
+    async ensureReady() {
+        await ready();
+    },
+
+    // ---- Note sharing (independent of the vault key) ----
+
+    /**
+     * Encrypt a snapshot object under a fresh random share key.
+     *
+     * @returns {{cipher: string, nonce: string, key: string}} key is base64.
+     */
+    shareEncrypt(obj) {
+        const key = sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES);
+        const sealed = seal(sodium.from_string(JSON.stringify(obj)), key);
+        return { cipher: sealed.cipher, nonce: sealed.nonce, key: b64(key) };
+    },
+
+    /**
+     * Decrypt a share snapshot with its base64 share key. Throws if the key or
+     * ciphertext is wrong.
+     */
+    shareDecrypt(cipherB64, nonceB64, keyB64) {
+        return JSON.parse(sodium.to_string(open(cipherB64, nonceB64, unb64(keyB64))));
+    },
+
+    /**
+     * Wrap a base64 share key with a key derived from a password (Argon2id).
+     * Returns the fields the server stores so a recipient can re-derive it.
+     */
+    sharePasswordWrap(keyB64, password) {
+        const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
+        const ops = sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE;
+        const mem = sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE;
+        const wrapped = seal(unb64(keyB64), deriveKek(password, salt, ops, mem));
+        return {
+            wrapped_key: wrapped.cipher,
+            wrap_nonce: wrapped.nonce,
+            wrap_salt: b64(salt),
+            wrap_ops: ops,
+            wrap_mem: mem,
+        };
+    },
+
+    /**
+     * Recover the base64 share key from a password wrap. Throws on wrong password.
+     */
+    sharePasswordUnwrap(fields, password) {
+        const kek = deriveKek(password, unb64(fields.wrap_salt), fields.wrap_ops, fields.wrap_mem);
+        return b64(open(fields.wrapped_key, fields.wrap_nonce, kek));
+    },
+
     async boot() {
         await ready();
 
