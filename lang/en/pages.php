@@ -63,6 +63,9 @@ return [
         'notes' => 'Notes',
         'notes_ready' => 'Vault set up — open your encrypted notes.',
         'notes_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
+        'bookmarks' => 'Bookmarks',
+        'bookmarks_ready' => 'Vault set up — open your encrypted bookmarks.',
+        'bookmarks_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
     ],
     'profile' => [
         'title' => 'Profile',
