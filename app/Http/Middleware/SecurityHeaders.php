@@ -39,7 +39,10 @@ final class SecurityHeaders
             $response->headers->set('Content-Security-Policy', implode('; ', [
                 "default-src 'self'",
                 "base-uri 'none'",
-                "object-src 'none'",
+                // 'self' + blob: so the in-app PDF viewer can render a decrypted
+                // file (an <object> pointing at a client-generated blob: URL); no
+                // remote plugin content is allowed.
+                "object-src 'self' blob:",
                 "frame-ancestors 'none'",
                 "form-action 'self'",
                 "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
