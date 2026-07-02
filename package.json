@@ -21,6 +21,7 @@
         "@codemirror/view": "^6.43.4",
         "alpinejs": "^3.15.12",
         "codemirror": "^6.0.2",
+        "jszip": "^3.10.1",
         "leaflet": "^1.9.4",
         "leaflet.markercluster": "^1.5.3",
         "libsodium-wrappers-sumo": "^0.8.4"
