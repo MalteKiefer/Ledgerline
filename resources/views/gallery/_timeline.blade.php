@@ -9,7 +9,11 @@
 
 @foreach ($grouped as $day => $dayPhotos)
     <section data-day="{{ $day }}" data-month="{{ \Illuminate\Support\Carbon::parse($day)->format('Y-m') }}">
-        <h2 class="mb-3 text-sm font-semibold text-gray-700">{{ \Illuminate\Support\Carbon::parse($day)->isoFormat('LL') }}</h2>
+        <label class="mb-3 flex w-max cursor-pointer items-center gap-2">
+            <input type="checkbox" @click="toggleDay('{{ $day }}')" :checked="dayFullySelected('{{ $day }}')"
+                class="rounded border-gray-300 text-gray-800 focus:ring-gray-500" aria-label="{{ __('gallery.select_day') }}">
+            <span class="text-sm font-semibold text-gray-700">{{ \Illuminate\Support\Carbon::parse($day)->isoFormat('LL') }}</span>
+        </label>
         <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6" data-day-grid>
             @foreach ($dayPhotos as $photo)
                 <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100">

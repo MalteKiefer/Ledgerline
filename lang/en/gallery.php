@@ -59,6 +59,8 @@ return [
     'search_placeholder' => 'Search date, place, device, filename…',
     'select_all' => 'Select all',
     'selected' => ':count selected',
+    'select_day' => 'Select all photos of this day',
+    'selection_capped' => 'You can select at most :max at once — only the first :max were selected.',
     'set_location' => 'Set location',
     'set_location_hint' => 'Apply these coordinates to all selected items.',
     'pick_location' => 'Pick a location',

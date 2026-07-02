@@ -46,6 +46,17 @@ class PhotoEditTest extends TestCase
         $this->assertSame('Las Vegas, NV, USA', $photo->place);
     }
 
+    public function test_bulk_location_rejects_more_than_1000_photos(): void
+    {
+        $this->signIn();
+
+        $this->post(route('gallery.location'), [
+            'photo_ids' => range(1, 1001),
+            'latitude' => 1.0,
+            'longitude' => 2.0,
+        ])->assertSessionHasErrors('photo_ids');
+    }
+
     public function test_editing_sets_the_camera(): void
     {
         $this->signIn();
