@@ -7,26 +7,38 @@ import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
-import L from 'leaflet';
-import 'leaflet.markercluster';
-import 'leaflet/dist/leaflet.css';
-import 'leaflet.markercluster/dist/MarkerCluster.css';
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-// Leaflet's default marker resolves its images by a relative URL that 404s
-// under a bundler; point it at the bundled assets so pins render.
-L.Icon.Default.mergeOptions({
-    iconUrl: markerIcon,
-    iconRetinaUrl: markerIcon2x,
-    shadowUrl: markerShadow,
-});
 
 // Heavy, feature-specific libraries are code-split and loaded on first use so
 // they stay out of the initial bundle (pages that never open an editor / export
-// a PDF / bulk-download never download them). Each loader is memoised.
+// a PDF / bulk-download / view a map never download them). Each loader is
+// memoised.
+let leafletModule = null;
+async function loadLeaflet() {
+    if (! leafletModule) {
+        const L = (await import('leaflet')).default;
+        await import('leaflet.markercluster'); // augments L with markerClusterGroup
+        await Promise.all([
+            import('leaflet/dist/leaflet.css'),
+            import('leaflet.markercluster/dist/MarkerCluster.css'),
+            import('leaflet.markercluster/dist/MarkerCluster.Default.css'),
+        ]);
+        const [icon, icon2x, shadow] = await Promise.all([
+            import('leaflet/dist/images/marker-icon.png'),
+            import('leaflet/dist/images/marker-icon-2x.png'),
+            import('leaflet/dist/images/marker-shadow.png'),
+        ]);
+        // Leaflet's default marker resolves its images by a relative URL that
+        // 404s under a bundler; point it at the bundled assets so pins render.
+        L.Icon.Default.mergeOptions({
+            iconUrl: icon.default,
+            iconRetinaUrl: icon2x.default,
+            shadowUrl: shadow.default,
+        });
+        leafletModule = L;
+    }
+    return leafletModule;
+}
+
 let cmModule = null;
 async function loadCodeMirror() {
     if (! cmModule) {
@@ -343,7 +355,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         this.$nextTick(() => this.renderMiniMap());
     },
 
-    renderMiniMap() {
+    async renderMiniMap() {
         this.destroyMiniMap();
 
         const el = this.$refs.miniMap;
@@ -353,6 +365,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
             return;
         }
 
+        const L = await loadLeaflet();
         this.miniMap = L.map(el, {
             attributionControl: false,
             zoomControl: false,
@@ -620,7 +633,8 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
 Alpine.data('photoMap', (pointsUrl, mapZoom = 13) => ({
     lightbox: null,
 
-    init() {
+    async init() {
+        const L = await loadLeaflet();
         const map = L.map(this.$refs.map, { scrollWheelZoom: true }).setView([20, 0], 2);
         this.mapZoom = mapZoom;
 
@@ -686,12 +700,13 @@ Alpine.data('locationPicker', (searchUrl) => ({
         });
     },
 
-    mountMap() {
+    async mountMap() {
         if (this.map) {
             this.map.remove();
             this.map = null;
             this.marker = null;
         }
+        const L = await loadLeaflet();
         const hasPin = this.lat != null && this.lng != null;
         this.map = L.map(this.$refs.pickerMap).setView(hasPin ? [this.lat, this.lng] : [20, 0], hasPin ? 13 : 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
@@ -708,7 +723,8 @@ Alpine.data('locationPicker', (searchUrl) => ({
         if (this.marker) {
             this.marker.setLatLng([lat, lng]);
         } else {
-            this.marker = L.marker([lat, lng]).addTo(this.map);
+            // Leaflet is already loaded here (the map exists).
+            this.marker = leafletModule.marker([lat, lng]).addTo(this.map);
         }
         if (recenter) {
             this.map.setView([lat, lng], Math.max(this.map.getZoom(), 13));
