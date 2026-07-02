@@ -216,10 +216,24 @@ export const Vault = {
      * @returns {Promise<{blob: Blob, encMeta: string, encFileKey: string}>}
      */
     async encryptFile(file) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        return this.encryptContent(bytes, {
+            name: file.name,
+            mime: file.type || 'application/octet-stream',
+        });
+    },
+
+    /**
+     * Seal raw bytes with a fresh per-file key (secretstream, chunked) and wrap
+     * that key + the given metadata (name/mime + the byte length) with the vault
+     * key. Shared by upload and by re-encrypting an edited file.
+     *
+     * @returns {{blob: Blob, encMeta: string, encFileKey: string}}
+     */
+    encryptContent(bytes, { name, mime }) {
         const fk = sodium.crypto_secretstream_xchacha20poly1305_keygen();
         const { state, header } = sodium.crypto_secretstream_xchacha20poly1305_init_push(fk);
 
-        const bytes = new Uint8Array(await file.arrayBuffer());
         const parts = [header];
         const total = bytes.length;
         // 4 MiB messages; a zero-length file still emits one final chunk.
@@ -241,11 +255,7 @@ export const Vault = {
         }
 
         const encFileKey = seal(fk, this.vk);
-        const encMeta = this.encryptMeta({
-            name: file.name,
-            mime: file.type || 'application/octet-stream',
-            size: file.size,
-        });
+        const encMeta = this.encryptMeta({ name, mime: mime || 'application/octet-stream', size: total });
 
         return {
             blob: new Blob(parts, { type: 'application/octet-stream' }),
