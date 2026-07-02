@@ -85,4 +85,9 @@ return [
     'folder_flagged' => 'Markiert',
     'empty_folder' => 'Ordner leeren',
     'empty_folder_confirm' => 'Alle Nachrichten in diesem Ordner endgültig löschen? Kann nicht rückgängig gemacht werden.',
+    'save_to_files' => 'In Dateien speichern',
+    'save_to_files_title' => 'Anhang in Dateien speichern',
+    'dest_folder' => 'Zielordner',
+    'root_folder' => 'Dateien (oberste Ebene)',
+    'saved_to_files' => 'In Dateien gespeichert.',
 ];
