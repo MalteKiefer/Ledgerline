@@ -205,14 +205,20 @@ final class WebklexImapReader implements ImapReader
 
             $dst = $this->connect($target);
             try {
+                // appendMessage throws on a protocol error, so reaching the next
+                // line means the target server accepted the message.
                 $dst->getFolderByPath($targetFolder)->appendMessage($raw);
             } finally {
                 $this->close($dst);
             }
 
-            // Only remove from the source once the append succeeded.
+            // Remove from the source only into its Trash (recoverable) — never
+            // expunge on a transfer. If no Trash folder is detected, keep the
+            // source copy so a message can never be permanently lost here.
             $trash = $this->trashPath($src);
-            $trash !== null && $trash !== $folder ? $message->delete(true, $trash, true) : $message->delete(true);
+            if ($trash !== null && $trash !== $folder) {
+                $message->delete(true, $trash, true);
+            }
         } finally {
             $this->close($src);
         }
@@ -233,6 +239,13 @@ final class WebklexImapReader implements ImapReader
             'timeout' => self::TIMEOUT,
         ]);
         $client->connect();
+
+        // Some providers (notably iCloud) return empty responses to later
+        // commands unless the client sends an IMAP ID first. Best-effort.
+        try {
+            $client->getConnection()->ID(['name' => 'Ledgerline']);
+        } catch (\Throwable) {
+        }
 
         return $client;
     }
