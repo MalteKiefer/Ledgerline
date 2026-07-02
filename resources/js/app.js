@@ -2492,6 +2492,15 @@ Alpine.data('vaultMail', (labels = {}) => ({
     quotaPct(s) {
         return s && s.quotaLimit ? Math.min(100, Math.round((s.quotaUsed / s.quotaLimit) * 100)) : 0;
     },
+
+    // Accounts and each account's IMAP folders are shown alphabetically.
+    get sortedAccounts() {
+        return [...this.manifest.accounts].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+    },
+
+    sortedFolders(list) {
+        return [...(list ?? [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
+    },
 }));
 
 Alpine.data('vaultNotes', (labels = {}) => ({
