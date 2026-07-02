@@ -62,6 +62,20 @@ class PhotoEditTest extends TestCase
         $this->assertNull($photo->place);
     }
 
+    public function test_forward_geocode_search_returns_candidates(): void
+    {
+        Http::fake(['nominatim.openstreetmap.org/search*' => Http::response([
+            ['display_name' => 'Paris, France', 'lat' => '48.8566', 'lon' => '2.3522'],
+            ['display_name' => 'Paris, Texas, USA', 'lat' => '33.6609', 'lon' => '-95.5555'],
+        ])]);
+        $this->signIn();
+
+        $this->getJson(route('gallery.geocode.search', ['q' => 'Paris']))
+            ->assertOk()
+            ->assertJsonPath('results.0.display', 'Paris, France')
+            ->assertJsonPath('results.0.lat', 48.8566);
+    }
+
     public function test_reverse_geocode_endpoint_returns_place_and_lines(): void
     {
         Http::fake(['nominatim.openstreetmap.org/*' => Http::response([

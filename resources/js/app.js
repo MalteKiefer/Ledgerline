@@ -805,6 +805,14 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         this.$watch('current.lat', () => { if (this.viewerOpen) { this.renderMiniMap(); this.queuePlaceRefresh(); } });
         this.$watch('current.lng', () => { if (this.viewerOpen) { this.renderMiniMap(); this.queuePlaceRefresh(); } });
 
+        // Apply a location chosen in the map picker to the photo being edited.
+        window.addEventListener('location-picked', (e) => {
+            if (e.detail?.context === 'single') {
+                this.current.lat = e.detail.lat;
+                this.current.lng = e.detail.lng;
+            }
+        });
+
         this.loadMonths();
     },
 
@@ -1318,6 +1326,115 @@ Alpine.data('encCodeEditor', (downloadUrl, saveUrl, token, encMeta, encFileKey) 
         } catch (e) {
             this.state = 'ready';
             this.error = 'save';
+        }
+    },
+}));
+
+/**
+ * Interactive location picker: an OSM map where you drop a pin by clicking, or
+ * search an address (forward geocode) and pick a result. Opened via an
+ * `open-location-picker` window event ({context, lat, lng}); on apply it emits
+ * `location-picked` ({context, lat, lng}) for the opener to consume.
+ */
+Alpine.data('locationPicker', (searchUrl) => ({
+    open: false,
+    context: null,
+    lat: null,
+    lng: null,
+    query: '',
+    results: [],
+    searching: false,
+    map: null,
+    marker: null,
+    searchTimer: null,
+
+    initPicker() {
+        window.addEventListener('open-location-picker', (e) => {
+            this.context = e.detail?.context ?? null;
+            const lat = parseFloat(e.detail?.lat);
+            const lng = parseFloat(e.detail?.lng);
+            this.lat = Number.isFinite(lat) ? lat : null;
+            this.lng = Number.isFinite(lng) ? lng : null;
+            this.query = '';
+            this.results = [];
+            this.open = true;
+            this.$nextTick(() => this.mountMap());
+        });
+    },
+
+    mountMap() {
+        if (this.map) {
+            this.map.remove();
+            this.map = null;
+            this.marker = null;
+        }
+        const hasPin = this.lat != null && this.lng != null;
+        this.map = L.map(this.$refs.pickerMap).setView(hasPin ? [this.lat, this.lng] : [20, 0], hasPin ? 13 : 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
+        if (hasPin) {
+            this.setMarker(this.lat, this.lng, false);
+        }
+        this.map.on('click', (e) => this.setMarker(e.latlng.lat, e.latlng.lng, false));
+        this.$nextTick(() => this.map && this.map.invalidateSize());
+    },
+
+    setMarker(lat, lng, recenter = true) {
+        this.lat = lat;
+        this.lng = lng;
+        if (this.marker) {
+            this.marker.setLatLng([lat, lng]);
+        } else {
+            this.marker = L.marker([lat, lng]).addTo(this.map);
+        }
+        if (recenter) {
+            this.map.setView([lat, lng], Math.max(this.map.getZoom(), 13));
+        }
+    },
+
+    queueSearch() {
+        clearTimeout(this.searchTimer);
+        if (! this.query.trim()) {
+            this.results = [];
+            return;
+        }
+        this.searchTimer = setTimeout(() => this.runSearch(), 500);
+    },
+
+    async runSearch() {
+        this.searching = true;
+        try {
+            const r = await fetch(`${searchUrl}?q=${encodeURIComponent(this.query.trim())}`, { headers: { Accept: 'application/json' } });
+            this.results = (await r.json()).results || [];
+        } catch (e) {
+            this.results = [];
+        } finally {
+            this.searching = false;
+        }
+    },
+
+    choose(res) {
+        this.results = [];
+        this.query = res.display;
+        this.setMarker(res.lat, res.lon, true);
+    },
+
+    apply() {
+        if (this.lat == null || this.lng == null) {
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('location-picked', {
+            detail: { context: this.context, lat: this.lat, lng: this.lng },
+        }));
+        this.close();
+    },
+
+    close() {
+        this.open = false;
+        this.results = [];
+        if (this.map) {
+            this.map.remove();
+            this.map = null;
+            this.marker = null;
         }
     },
 }));
