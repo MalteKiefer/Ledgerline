@@ -33,6 +33,7 @@ use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\TagController as SettingsTagController;
 use App\Http\Controllers\Settings\UnitController as SettingsUnitController;
 use App\Http\Controllers\TimeEntryController;
+use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -138,6 +139,11 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/gallery/trash', [GalleryController::class, 'forceDestroy'])->name('gallery.force-destroy');
     Route::get('/gallery/{photo}/{size}', [GalleryController::class, 'image'])
         ->whereIn('size', ['thumb', 'medium', 'original'])->name('gallery.image');
+
+    // Encryption vault (zero-knowledge): the server only stores ciphertext.
+    Route::get('/vault', [VaultController::class, 'show'])->name('vault.show');
+    Route::post('/vault', [VaultController::class, 'store'])->name('vault.store');
+    Route::put('/vault', [VaultController::class, 'rotate'])->name('vault.rotate');
 
     // Files: attached to a customer or project; a team-wide overview; download
     // and delete by id.

@@ -69,6 +69,7 @@
             @endif
         </div>
         <div class="flex flex-wrap items-center gap-2">
+            @include('vault._panel')
             {{-- New folder --}}
             <form method="POST" action="{{ route('folders.store') }}" class="flex items-center gap-1">
                 @csrf
