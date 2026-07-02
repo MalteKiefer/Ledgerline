@@ -1,5 +1,6 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
+import { Vault } from './vault';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState, Compartment } from '@codemirror/state';
 import { LanguageDescription } from '@codemirror/language';
@@ -977,6 +978,46 @@ Alpine.data('codeEditor', (initial = '', filename = '') => ({
         this.$refs.content.value = this.view.state.doc.toString();
     },
 }));
+
+/**
+ * Zero-knowledge encryption vault store. Wraps the crypto module so views can
+ * check state and drive setup / unlock / recover / lock.
+ */
+Alpine.store('vault', {
+    configured: false,
+    unlocked: false,
+    busy: false,
+
+    async boot() {
+        await Vault.boot();
+        this.unlocked = Vault.unlocked();
+        try {
+            this.configured = (await Vault.status()).configured;
+        } catch (e) { /* offline: leave defaults */ }
+    },
+
+    async setup(passphrase) {
+        const code = await Vault.setup(passphrase);
+        this.configured = true;
+        this.unlocked = true;
+        return code;
+    },
+
+    async unlock(passphrase) {
+        await Vault.unlock(passphrase);
+        this.unlocked = true;
+    },
+
+    async recover(code) {
+        await Vault.recover(code);
+        this.unlocked = true;
+    },
+
+    lock() {
+        Vault.lock();
+        this.unlocked = false;
+    },
+});
 
 Alpine.plugin(intersect);
 
