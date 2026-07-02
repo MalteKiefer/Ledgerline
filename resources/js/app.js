@@ -378,12 +378,20 @@ Alpine.data('invoiceLines', (initial = []) => ({
  */
 Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     allIds,
+    folderIds: config.folderIds ?? [],
     selected: [],
+    selectedFolders: [],
     moveOpen: false,
     moveIds: [],
+    moveFolderIds: [],
     target: '',
     deleteOpen: false,
     renaming: null,
+    busy: false,
+
+    get selectionCount() {
+        return this.selected.length + this.selectedFolders.length;
+    },
 
     // Drag-and-drop upload (whole-window dropzone, folders included).
     dragging: false,
@@ -611,17 +619,27 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
 
     toggleAll(event) {
         this.selected = event.target.checked ? [...this.allIds] : [];
+        this.selectedFolders = event.target.checked ? [...this.folderIds] : [];
     },
 
-    /** Open the move modal for a single file or, with no argument, the selection. */
+    /** Open the move modal for a single file, or with no argument the selection. */
     openMove(id = null) {
         this.moveIds = id === null ? [...this.selected] : [id];
+        this.moveFolderIds = id === null ? [...this.selectedFolders] : [];
+        this.target = '';
+        this.moveOpen = true;
+    },
+
+    /** Open the move modal for a single folder. */
+    openMoveFolder(id) {
+        this.moveIds = [];
+        this.moveFolderIds = [id];
         this.target = '';
         this.moveOpen = true;
     },
 
     openBulkDelete() {
-        if (this.selected.length) {
+        if (this.selectionCount) {
             this.deleteOpen = true;
         }
     },
@@ -629,6 +647,86 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     startRename(id) {
         this.renaming = id;
         this.$nextTick(() => this.$refs['rename-' + id]?.focus());
+    },
+
+    // --- Encrypting existing files and folders (zero-knowledge, in place) ---
+
+    async requireVault() {
+        await this.$store.vault.boot();
+        if (! this.$store.vault.configured || ! this.$store.vault.unlocked) {
+            window.dispatchEvent(new CustomEvent('vault-panel'));
+            return false;
+        }
+        return true;
+    },
+
+    async encryptOneFile(id, name, mime) {
+        const bytes = await fetchCipher(`${config.fileBase}/${id}/download`);
+        const sealed = Vault.encryptContent(bytes, { name, mime: mime || 'application/octet-stream' });
+        const data = new FormData();
+        data.append('_token', config.token);
+        data.append('_method', 'PUT');
+        data.append('file', sealed.blob, 'blob');
+        data.append('enc_metadata', sealed.encMeta);
+        data.append('enc_file_key', sealed.encFileKey);
+        await fetch(`${config.fileBase}/${id}/encrypt`, {
+            method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data,
+        });
+    },
+
+    async encryptOneFolderName(id, name) {
+        const data = new FormData();
+        data.append('_token', config.token);
+        data.append('_method', 'PUT');
+        data.append('enc_name', Vault.sealName(name));
+        await fetch(`${config.folderBase}/${id}`, {
+            method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data,
+        });
+    },
+
+    // Encrypt a whole folder subtree: every plaintext file, then every plaintext
+    // folder name (files first so a folder is only renamed once its files are done).
+    async encryptFolderTree(id) {
+        const tree = await (await fetch(`${config.folderBase}/${id}/descendants`, {
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })).json();
+        for (const f of tree.files) {
+            await this.encryptOneFile(f.id, f.name, f.mime_type);
+        }
+        for (const d of tree.folders) {
+            await this.encryptOneFolderName(d.id, d.name);
+        }
+    },
+
+    async encryptFolder(id) {
+        if (! await this.requireVault()) return;
+        this.busy = true;
+        await this.encryptFolderTree(id);
+        window.location.reload();
+    },
+
+    async bulkEncrypt() {
+        if (! await this.requireVault()) return;
+        this.busy = true;
+        for (const id of this.selected) {
+            const row = document.querySelector(`tr[data-kind="file"] input[value="${id}"]`)?.closest('tr');
+            if (row && row.dataset.fname !== undefined) {
+                await this.encryptOneFile(id, row.dataset.fname, row.dataset.fmime);
+            }
+        }
+        for (const id of this.selectedFolders) {
+            await this.encryptFolderTree(id);
+        }
+        window.location.reload();
+    },
+
+    // Bulk bar rename is only shown for a single selection.
+    bulkRename() {
+        if (this.selected.length === 1) {
+            this.startRename(this.selected[0]);
+        } else if (this.selectedFolders.length === 1) {
+            window.dispatchEvent(new CustomEvent('rename-folder', { detail: this.selectedFolders[0] }));
+        }
     },
 }));
 

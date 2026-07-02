@@ -61,4 +61,64 @@ class BulkFileTest extends TestCase
         $this->signIn();
         $this->post(route('files.bulk.move'), ['folder_id' => ''])->assertSessionHasErrors('file_ids');
     }
+
+    public function test_bulk_move_reparents_selected_folders(): void
+    {
+        $this->signIn();
+        $target = Folder::create(['name' => 'Target']);
+        $a = Folder::create(['name' => 'A']);
+        $b = Folder::create(['name' => 'B']);
+
+        $this->post(route('files.bulk.move'), ['folder_ids' => [$a->id, $b->id], 'folder_id' => $target->id])
+            ->assertRedirect();
+
+        $this->assertSame($target->id, $a->fresh()->parent_id);
+        $this->assertSame($target->id, $b->fresh()->parent_id);
+    }
+
+    public function test_bulk_move_refuses_to_move_a_folder_into_its_own_descendant(): void
+    {
+        $this->signIn();
+        $parent = Folder::create(['name' => 'Parent']);
+        $child = Folder::create(['name' => 'Child', 'parent_id' => $parent->id]);
+
+        // Moving Parent into Child would create a cycle; it must be skipped.
+        $this->post(route('files.bulk.move'), ['folder_ids' => [$parent->id], 'folder_id' => $child->id])
+            ->assertRedirect();
+
+        $this->assertNull($parent->fresh()->parent_id);
+    }
+
+    public function test_bulk_delete_removes_folders_and_lifts_their_contents_up(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $folder = Folder::create(['name' => 'Doomed']);
+        $file = File::factory()->create(['folder_id' => $folder->id, 'attachable_type' => null, 'attachable_id' => null]);
+
+        $this->post(route('files.bulk.delete'), ['folder_ids' => [$folder->id]])->assertRedirect();
+
+        $this->assertDatabaseMissing('folders', ['id' => $folder->id]);
+        // The file survives, moved up to the (root) parent.
+        $this->assertNull($file->fresh()->folder_id);
+    }
+
+    public function test_descendants_lists_plaintext_items_in_the_subtree(): void
+    {
+        $this->signIn();
+        $root = Folder::create(['name' => 'Root']);
+        $sub = Folder::create(['name' => 'Sub', 'parent_id' => $root->id]);
+        $enc = Folder::create(['name' => '', 'enc_name' => '{"c":"c","n":"n"}', 'parent_id' => $root->id]);
+        $plain = File::factory()->create(['name' => 'a.txt', 'folder_id' => $sub->id, 'is_encrypted' => false, 'attachable_type' => null, 'attachable_id' => null]);
+        File::factory()->create(['name' => '', 'folder_id' => $sub->id, 'is_encrypted' => true, 'attachable_type' => null, 'attachable_id' => null]);
+
+        $res = $this->getJson(route('folders.descendants', $root))->assertOk();
+
+        // Plaintext folders (root + sub) listed; the already-encrypted one omitted.
+        $res->assertJsonFragment(['id' => $root->id, 'name' => 'Root'])
+            ->assertJsonFragment(['id' => $sub->id, 'name' => 'Sub'])
+            ->assertJsonMissing(['id' => $enc->id]);
+        // Only the plaintext file is listed.
+        $res->assertJsonFragment(['id' => $plain->id, 'name' => 'a.txt']);
+    }
 }
