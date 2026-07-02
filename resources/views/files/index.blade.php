@@ -14,6 +14,7 @@
         downloadFailed: @js(__('files.download_failed')),
         largeZip: @js(__('files.large_zip_confirm')),
         rootFolder: @js(__('files.all_files')),
+        migrateFailed: @js(__('files.migrate_failed')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -141,6 +142,7 @@
                                         <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                         <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                         <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                        <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
                                         <button type="button" @click="openInfo(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="info" />{{ __('files.info') }}</button>
                                         <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('common.delete') }}</button>
                                     </div>
@@ -310,6 +312,27 @@
                 </dl>
                 <div class="mt-5 flex justify-end">
                     <button type="button" @click="infoOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.close') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Migrate a Markdown file to a note --}}
+    <template x-teleport="body">
+        <div x-show="migrateOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="migrateOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="migrateOpen = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('files.migrate_title') }}</h3>
+                <p class="mt-2 text-sm text-gray-600">
+                    <span x-text="migrateRow?.name"></span> — {{ __('files.migrate_intro') }}
+                </p>
+                <label class="mt-4 flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" x-model="migrateDelete" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                    {{ __('files.migrate_delete_after') }}
+                </label>
+                <div class="mt-5 flex justify-end gap-3">
+                    <button type="button" @click="migrateOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="applyMigrate()" :disabled="migrateBusy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('files.migrate_confirm') }}</button>
                 </div>
             </div>
         </div>

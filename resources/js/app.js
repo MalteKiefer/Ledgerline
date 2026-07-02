@@ -1131,6 +1131,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     activeTag: '',
     infoOpen: false,
     infoRow: null,
+    migrateOpen: false,
+    migrateRow: null,
+    migrateDelete: true,
+    migrateBusy: false,
     up: { active: false, done: 0, total: 0 },
     uploadBatches: 0, // concurrent uploadItems() runs still in flight
     dl: { active: false, done: 0, total: 0 },
@@ -1304,6 +1308,84 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const files = this.manifest.files.filter((f) => (f.folder ?? null) === row.id).length;
         const folders = this.manifest.folders.filter((f) => (f.parent ?? null) === row.id).length;
         return files + folders;
+    },
+
+    /* ---- Migrate a Markdown file into a note ---- */
+
+    isMarkdown(row) {
+        if (! row || row.kind !== 'file') return false;
+        return /\.(md|markdown)$/i.test(row.name || '') || (row.mime || '').includes('markdown');
+    },
+
+    openMigrate(row) {
+        this.migrateRow = row;
+        this.migrateDelete = true;
+        this.migrateOpen = true;
+    },
+
+    // Append a note to the (independent) notes manifest, reloading once if
+    // another tab saved in between (optimistic version).
+    async migrateAddNote(note) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const { data, version } = await Vault.loadManifest('notes');
+            const manifest = data.notes ? data : { v: 1, notes: [] };
+            manifest.notes.push(note);
+            try {
+                await Vault.saveManifest('notes', manifest, version);
+                window.dispatchEvent(new CustomEvent('notes-changed'));
+                return true;
+            } catch (e) {
+                if (! e.stale) throw e;
+                // stale: loop reloads the current manifest and retries once
+            }
+        }
+        return false;
+    },
+
+    // Decrypt a Markdown file in the browser, create a note from it (title =
+    // filename without extension), then optionally delete the source file.
+    async applyMigrate() {
+        const row = this.migrateRow;
+        const del = this.migrateDelete;
+        if (! row || this.migrateBusy) return;
+        this.migrateBusy = true;
+        this.error = '';
+        try {
+            const plain = await this.fetchPlain(row);
+            const text = new TextDecoder('utf-8').decode(plain);
+            const now = new Date().toISOString();
+            const ok = await this.migrateAddNote({
+                id: crypto.randomUUID(),
+                title: (row.name || '').replace(/\.(md|markdown)$/i, ''),
+                content: text,
+                tags: [],
+                pinned: false,
+                created: now,
+                updated: now,
+                trashed: null,
+            });
+            if (! ok) {
+                this.error = labels.migrateFailed;
+                return;
+            }
+
+            if (del) {
+                const blobId = row.blob;
+                this.manifest.files = this.manifest.files.filter((x) => x.id !== row.id);
+                try {
+                    await this.persist();
+                    fetch(`${config.blobBase}/${blobId}`, {
+                        method: 'DELETE',
+                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                    }).catch(() => {});
+                } catch (e) { /* note already created; keep the file on save failure */ }
+            }
+            this.migrateOpen = false;
+        } catch (e) {
+            this.error = labels.migrateFailed;
+        } finally {
+            this.migrateBusy = false;
+        }
     },
 
     // Human-readable path of the folder an item lives in ("All files / A / B").
