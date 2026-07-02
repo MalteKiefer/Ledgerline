@@ -74,8 +74,36 @@ class GeneralFileTest extends TestCase
 
         $this->get(route('files.edit', $file))
             ->assertOk()
-            ->assertSee(__('files.encrypted_edit_hint'))
+            ->assertSee(__('files.decrypting'))
+            ->assertSee('encCodeEditor', false)
             ->assertDontSee('ciphertext');
+    }
+
+    public function test_an_encrypted_files_content_update_stores_new_ciphertext(): void
+    {
+        Storage::fake('files');
+        $this->signIn();
+        $file = File::factory()->create([
+            'name' => '', 'type' => FileType::ENCRYPTED, 'is_encrypted' => true,
+            'disk_path' => 'files/enc.bin', 'mime_type' => 'application/octet-stream', 'size' => 3,
+            'enc_metadata' => '{"c":"old","n":"n"}', 'enc_file_key' => '{"c":"oldk","n":"n"}',
+            'attachable_type' => null, 'attachable_id' => null,
+        ]);
+        Storage::disk('files')->put('files/enc.bin', 'old');
+
+        $this->put(route('files.content', $file), [
+            'encrypted' => '1',
+            'file' => UploadedFile::fake()->createWithContent('blob', 'new-ciphertext'),
+            'enc_metadata' => '{"c":"new","n":"n2"}',
+            'enc_file_key' => '{"c":"newk","n":"n2"}',
+        ])->assertRedirect(route('files.edit', $file));
+
+        $file->refresh();
+        $this->assertSame('new-ciphertext', Storage::disk('files')->get('files/enc.bin'));
+        $this->assertSame('{"c":"new","n":"n2"}', $file->enc_metadata);
+        $this->assertSame('{"c":"newk","n":"n2"}', $file->enc_file_key);
+        $this->assertSame(14, $file->size);
+        $this->assertTrue($file->is_encrypted);
     }
 
     public function test_download_returns_encrypted_bytes_untouched(): void

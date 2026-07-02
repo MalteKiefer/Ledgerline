@@ -552,6 +552,30 @@ class FileController extends Controller
     {
         $this->authorize('update', $file);
 
+        // An encrypted file is re-encrypted in the browser: the server just
+        // overwrites the ciphertext blob and the wrapped key/metadata.
+        if ($file->is_encrypted) {
+            $validated = $request->validate([
+                'file' => ['required', 'file', 'max:'.((int) (self::EDIT_MAX_BYTES / 1024) + 64)],
+                'enc_metadata' => ['required', 'string'],
+                'enc_file_key' => ['required', 'string'],
+            ]);
+
+            $blob = $validated['file'];
+            Storage::disk(config('files.disk'))->put(
+                $file->disk_path,
+                (string) file_get_contents($blob->getRealPath()),
+            );
+
+            $file->forceFill([
+                'size' => $blob->getSize(),
+                'enc_metadata' => $validated['enc_metadata'],
+                'enc_file_key' => $validated['enc_file_key'],
+            ])->save();
+
+            return redirect()->route('files.edit', $file)->with('status', __('flash.file_saved'));
+        }
+
         $content = (string) $request->validate([
             'content' => ['present', 'string', 'max:'.self::EDIT_MAX_BYTES],
         ])['content'];

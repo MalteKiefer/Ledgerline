@@ -1005,6 +1005,106 @@ Alpine.data('codeEditor', (initial = '', filename = '') => ({
 }));
 
 /**
+ * Editor for an encrypted file: fetches the ciphertext, decrypts it to text in
+ * the browser, edits it in CodeMirror, and on save re-encrypts and PUTs the new
+ * ciphertext. The server never sees the plaintext. Binary content is refused.
+ */
+Alpine.data('encCodeEditor', (downloadUrl, saveUrl, token, encMeta, encFileKey) => ({
+    state: 'loading', // loading | locked | binary | ready | saving | error
+    error: '',
+    view: null,
+    langComp: new Compartment(),
+    language: '',
+    languageOptions: languages.map((l) => l.name).sort((a, b) => a.localeCompare(b)),
+    meta: null,
+
+    async init() {
+        await this.$store.vault.boot();
+        if (! this.$store.vault.unlocked) {
+            this.state = 'locked';
+            return;
+        }
+        try {
+            this.meta = Vault.decryptFileMeta(encMeta);
+            const cipher = await fetchCipher(downloadUrl);
+            const plain = Vault.decryptFile(cipher, encFileKey);
+            let text;
+            try {
+                text = new TextDecoder('utf-8', { fatal: true }).decode(plain);
+            } catch (e) {
+                this.state = 'binary';
+                return;
+            }
+            this.state = 'ready';
+            this.$nextTick(() => this.mount(text));
+        } catch (e) {
+            this.state = 'error';
+        }
+    },
+
+    mount(text) {
+        this.view = new EditorView({
+            parent: this.$refs.editor,
+            state: EditorState.create({
+                doc: text,
+                extensions: [
+                    basicSetup,
+                    this.langComp.of([]),
+                    EditorView.theme({ '&': { height: '60vh' }, '.cm-scroller': { overflow: 'auto' } }),
+                ],
+            }),
+        });
+        const detected = this.meta?.name ? LanguageDescription.matchFilename(languages, this.meta.name) : null;
+        if (detected) {
+            this.applyLanguage(detected);
+        }
+    },
+
+    onLanguageChange() {
+        const desc = languages.find((l) => l.name === this.language);
+        desc ? this.applyLanguage(desc) : this.view.dispatch({ effects: this.langComp.reconfigure([]) });
+    },
+
+    applyLanguage(desc) {
+        this.language = desc.name;
+        desc.load().then((support) => this.view.dispatch({ effects: this.langComp.reconfigure(support) }));
+    },
+
+    async save() {
+        if (! this.view) {
+            return;
+        }
+        this.state = 'saving';
+        this.error = '';
+        const bytes = new TextEncoder().encode(this.view.state.doc.toString());
+        const sealed = Vault.encryptContent(bytes, { name: this.meta.name, mime: this.meta.mime });
+
+        const data = new FormData();
+        data.append('_token', token);
+        data.append('_method', 'PUT');
+        data.append('encrypted', '1');
+        data.append('file', sealed.blob, 'blob');
+        data.append('enc_metadata', sealed.encMeta);
+        data.append('enc_file_key', sealed.encFileKey);
+
+        try {
+            const r = await fetch(saveUrl, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
+                body: data,
+            });
+            if (! r.ok) {
+                throw new Error('save failed');
+            }
+            window.location.reload();
+        } catch (e) {
+            this.state = 'ready';
+            this.error = 'save';
+        }
+    },
+}));
+
+/**
  * Zero-knowledge encryption vault store. Wraps the crypto module so views can
  * check state and drive setup / unlock / recover / lock.
  */

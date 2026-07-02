@@ -10,12 +10,41 @@
     @endif
 
     @if ($file->is_encrypted)
-        <p class="mt-6 rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">
-            {{ __('files.encrypted_edit_hint') }}
-        </p>
-        <div class="mt-4">
-            <button type="button" @click="window.vaultDownload(@js(route('files.download', $file)), @js($file->enc_metadata), @js($file->enc_file_key))"
-                class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</button>
+        <div class="mt-6" x-data="encCodeEditor(@js(route('files.download', $file)), @js(route('files.content', $file)), @js(csrf_token()), @js($file->enc_metadata), @js($file->enc_file_key))">
+            <p x-show="state === 'loading'" class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">{{ __('files.decrypting') }}</p>
+            <p x-show="state === 'locked'" x-cloak class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">{{ __('files.encrypted_locked') }}</p>
+            <p x-show="state === 'error'" x-cloak class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-red-600 shadow-sm">{{ __('files.encrypted_locked') }}</p>
+
+            <div x-show="state === 'binary'" x-cloak>
+                <p class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">{{ __('files.not_text_editable') }}</p>
+                <div class="mt-4">
+                    <button type="button" @click="window.vaultDownload(@js(route('files.download', $file)), @js($file->enc_metadata), @js($file->enc_file_key))"
+                        class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.download') }}</button>
+                </div>
+            </div>
+
+            <div x-show="state === 'ready' || state === 'saving'" x-cloak>
+                <div class="mb-2 flex items-center gap-2">
+                    <label class="text-xs font-medium text-gray-500">{{ __('files.language') }}</label>
+                    <select x-model="language" @change="onLanguageChange()"
+                        class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <option value="">{{ __('files.plain_text') }}</option>
+                        <template x-for="name in languageOptions" :key="name">
+                            <option :value="name" x-text="name"></option>
+                        </template>
+                    </select>
+                    <span class="text-xs text-gray-400">{{ __('files.search_hint') }}</span>
+                </div>
+
+                <div x-ref="editor" class="overflow-hidden rounded-lg border border-gray-300"></div>
+                <p x-show="error === 'save'" x-cloak class="mt-1 text-sm text-red-600">{{ __('files.save_failed') }}</p>
+
+                <div class="mt-4 flex gap-3">
+                    <button type="button" @click="save()" :disabled="state === 'saving'"
+                        class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('files.save') }}</button>
+                    <a href="{{ route('files.show', $file) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</a>
+                </div>
+            </div>
         </div>
     @elseif ($editable)
         <form method="POST" action="{{ route('files.content', $file) }}" class="mt-6"
