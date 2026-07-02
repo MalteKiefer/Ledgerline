@@ -62,6 +62,20 @@ class VaultManifestTest extends TestCase
             ->assertJson(['cipher' => 'b3BhcXVl', 'nonce' => 'bm9uY2U=', 'version' => 1]);
     }
 
+    public function test_bookmarks_manifest_is_accepted(): void
+    {
+        $this->signIn();
+        $this->makeVault();
+
+        $this->getJson(route('vault.manifest.show', 'bookmarks'))
+            ->assertOk()
+            ->assertJson(['cipher' => null, 'version' => 0]);
+
+        $this->putJson(route('vault.manifest.update', 'bookmarks'), [
+            'cipher' => 'Yg==', 'nonce' => 'bg==', 'version' => 0,
+        ])->assertOk()->assertJson(['version' => 1]);
+    }
+
     public function test_files_and_notes_manifests_are_independent(): void
     {
         $this->signIn();

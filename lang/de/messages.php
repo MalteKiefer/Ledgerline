@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
     'nav' => [
         'notes' => 'Notizen',
+        'bookmarks' => 'Lesezeichen',
         'dashboard' => 'Übersicht',
         'customers' => 'Kunden',
         'projects' => 'Projekte',

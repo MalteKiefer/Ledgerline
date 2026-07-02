@@ -63,6 +63,9 @@ return [
         'notes' => 'Notizen',
         'notes_ready' => 'Tresor eingerichtet — verschlüsselte Notizen öffnen.',
         'notes_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
+        'bookmarks' => 'Lesezeichen',
+        'bookmarks_ready' => 'Tresor eingerichtet — verschlüsselte Lesezeichen öffnen.',
+        'bookmarks_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
     ],
     'profile' => [
         'title' => 'Profil',
