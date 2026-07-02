@@ -199,46 +199,65 @@
             <div class="flex items-center gap-3 border-b border-gray-200 px-4 py-2">
                 <button type="button" @click="closeReader()" title="{{ __('mail.close') }}" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="x-mark" class="h-5 w-5" /></button>
                 <span class="truncate text-sm font-semibold text-gray-900" x-text="reader.account?.name"></span>
-                <select x-model="reader.folderPath" @change="openFolder(reader.folderPath)" class="ml-2 max-w-[45%] rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <template x-if="readerFolders().length === 0"><option value="INBOX">INBOX</option></template>
-                    <template x-for="f in readerFolders()" :key="f.path">
-                        <option :value="f.path" x-text="`${f.name} (${f.unseen})`"></option>
-                    </template>
-                </select>
-                <span class="ml-auto text-xs text-gray-500" x-show="! reader.current" x-text="`${reader.messages.length} / ${reader.total}`"></span>
-                <button type="button" x-show="reader.current" @click="reader.current = null" class="ml-auto rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1"><x-icon name="chevron-left" class="h-3.5 w-3.5" />{{ __('mail.back_to_list') }}</span></button>
             </div>
 
             <p x-show="reader.error" x-cloak class="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700" x-text="reader.error"></p>
 
-            {{-- Message list --}}
-            <div x-show="! reader.current" class="min-h-0 flex-1 overflow-y-auto">
-                <p x-show="reader.loading" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.loading') }}</p>
-                <p x-show="! reader.loading && reader.messages.length === 0" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.list_empty') }}</p>
-                <ul class="divide-y divide-gray-100">
-                    <template x-for="m in reader.messages" :key="m.uid">
-                        <li class="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-gray-50" @click="openMsg(m.uid)">
-                            <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-blue-500'"></span>
-                            <span class="min-w-0 flex-1">
-                                <span class="flex items-center gap-2">
-                                    <span class="truncate text-sm" :class="m.seen ? 'text-gray-700' : 'font-semibold text-gray-900'" x-text="fmtAddress(m.from) || '—'"></span>
-                                    <x-icon name="arrow-down-tray" x-show="m.hasAttachments" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                                </span>
-                                <span class="block truncate text-sm" :class="m.seen ? 'text-gray-600' : 'text-gray-900'" x-text="m.subject || @js(__('mail.no_subject'))"></span>
+            {{-- Two-column: folders left, messages/message right --}}
+            <div class="flex min-h-0 flex-1">
+                {{-- Folder sidebar --}}
+                <aside class="w-44 shrink-0 overflow-y-auto border-r border-gray-200 md:w-64">
+                    <p x-show="readerFolders().length === 0 && ! reader.loading" class="px-3 py-4 text-xs text-gray-400">INBOX</p>
+                    <template x-for="f in readerFolders()" :key="f.path">
+                        <button type="button" @click="openFolder(f.path)"
+                            class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                            :class="f.path === reader.folderPath ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700'">
+                            <span class="truncate" x-text="f.name"></span>
+                            <span class="flex shrink-0 items-center gap-1 text-xs text-gray-400">
+                                <span x-show="f.unseen" class="rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white" x-text="f.unseen"></span>
+                                <span x-text="f.total"></span>
                             </span>
-                            <span class="shrink-0 text-xs text-gray-400" x-text="fmtDateTime(m.date)"></span>
-                        </li>
+                        </button>
                     </template>
-                </ul>
-                {{-- Infinite scroll: load the next page when the sentinel comes into view. --}}
-                <div x-show="hasMoreMessages" x-intersect.margin.600px="loadMore()" class="h-10"></div>
-                <p x-show="reader.loadingMore" x-cloak class="py-3 text-center text-xs text-gray-400">{{ __('mail.loading') }}</p>
+                </aside>
+
+                {{-- Right pane --}}
+                <div class="flex min-h-0 flex-1 flex-col">
+            {{-- Message list --}}
+            <div x-show="! reader.current" class="flex min-h-0 flex-1 flex-col">
+                <div class="flex items-center justify-between border-b border-gray-100 px-4 py-1.5 text-xs text-gray-500">
+                    <span class="truncate font-medium text-gray-700" x-text="reader.folderPath"></span>
+                    <span x-text="`${reader.messages.length} / ${reader.total}`"></span>
+                </div>
+                <div class="min-h-0 flex-1 overflow-y-auto">
+                    <p x-show="reader.loading" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.loading') }}</p>
+                    <p x-show="! reader.loading && reader.messages.length === 0" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.list_empty') }}</p>
+                    <ul class="divide-y divide-gray-100">
+                        <template x-for="m in reader.messages" :key="m.uid">
+                            <li class="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-gray-50" @click="openMsg(m.uid)">
+                                <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-blue-500'"></span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="flex items-center gap-2">
+                                        <span class="truncate text-sm" :class="m.seen ? 'text-gray-700' : 'font-semibold text-gray-900'" x-text="fmtAddress(m.from) || '—'"></span>
+                                        <x-icon name="arrow-down-tray" x-show="m.hasAttachments" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                                    </span>
+                                    <span class="block truncate text-sm" :class="m.seen ? 'text-gray-600' : 'text-gray-900'" x-text="m.subject || @js(__('mail.no_subject'))"></span>
+                                </span>
+                                <span class="shrink-0 text-xs text-gray-400" x-text="fmtDateTime(m.date)"></span>
+                            </li>
+                        </template>
+                    </ul>
+                    {{-- Infinite scroll: load the next page when the sentinel comes into view. --}}
+                    <div x-show="hasMoreMessages" x-intersect.margin.600px="loadMore()" class="h-10"></div>
+                    <p x-show="reader.loadingMore" x-cloak class="py-3 text-center text-xs text-gray-400">{{ __('mail.loading') }}</p>
+                </div>
             </div>
 
             {{-- Message view --}}
             <div x-show="reader.current" x-cloak class="flex min-h-0 flex-1 flex-col">
                 {{-- Actions --}}
                 <div class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
+                    <button type="button" @click="reader.current = null" title="{{ __('mail.back_to_list') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="chevron-left" class="h-4 w-4" /></button>
                     <button type="button" @click="msgAction('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="trash" class="h-4 w-4" /></button>
                     <button type="button" @click="msgAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
                     <select @change="if ($event.target.value) { msgAction('move', $event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
@@ -279,6 +298,8 @@
                     <iframe :srcdoc="messageSrcdoc()" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="h-full w-full rounded border border-gray-200 bg-white"></iframe>
                 </div>
             </div>
+                </div>{{-- /right pane --}}
+            </div>{{-- /two-column --}}
 
             {{-- Transfer to another account: pick account + target folder --}}
             <div x-show="reader.transferOpen" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="reader.transferOpen = false">
