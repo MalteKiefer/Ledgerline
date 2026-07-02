@@ -53,6 +53,17 @@ class FolderTest extends TestCase
         $this->assertSame('{"c":"cipher","n":"nonce"}', $folder->enc_name);
     }
 
+    public function test_creating_an_encrypted_folder_over_ajax_returns_its_id(): void
+    {
+        $this->signIn();
+
+        $res = $this->postJson(route('folders.store'), ['enc_name' => '{"c":"c","n":"n"}'])
+            ->assertCreated();
+
+        $res->assertJsonStructure(['id', 'parent_id']);
+        $this->assertSame(Folder::sole()->id, $res->json('id'));
+    }
+
     public function test_renaming_to_an_encrypted_name_clears_the_plaintext_name(): void
     {
         $this->signIn();

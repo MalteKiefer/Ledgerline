@@ -106,6 +106,10 @@ class FileController extends Controller
             'enc_metadata.*' => ['string'],
             'enc_file_key' => ['array'],
             'enc_file_key.*' => ['string'],
+            // Per-file target folder, resolved client-side (the encrypted folder
+            // tree is created in the browser before the files are sent).
+            'folder_ids' => ['array'],
+            'folder_ids.*' => ['nullable', 'integer', Rule::exists('folders', 'id')],
         ]);
 
         $strategy = $validated['on_conflict'] ?? 'rename';
@@ -122,6 +126,7 @@ class FileController extends Controller
         // bytes are ciphertext and the real name/mime live in enc_metadata. No
         // name conflict resolution or folder recreation (names are opaque here).
         if (! empty($validated['encrypted'])) {
+            $encFolderIds = $validated['folder_ids'] ?? [];
             $stored = 0;
             foreach ($validated['files'] as $i => $upload) {
                 $this->persistEncrypted(
@@ -130,7 +135,7 @@ class FileController extends Controller
                     $validated['enc_file_key'][$i] ?? '',
                     $attachable,
                     $request->user(),
-                    $folderId,
+                    $encFolderIds[$i] ?? $folderId,
                 );
                 $stored++;
             }

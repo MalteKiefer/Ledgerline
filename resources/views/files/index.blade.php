@@ -2,6 +2,7 @@
   <div x-data="filesExplorer({{ $files->pluck('id')->toJson() }}, {
         uploadUrl: '{{ route('files.store.general') }}',
         conflictsUrl: '{{ route('files.conflicts') }}',
+        foldersUrl: '{{ route('folders.store') }}',
         token: '{{ csrf_token() }}',
         folderId: {{ $folder?->id ?? 'null' }},
         customerId: {{ (int) request('customer') ?: 'null' }},
