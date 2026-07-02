@@ -753,7 +753,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
  * @param {string} feedUrl   The infinite-scroll feed endpoint.
  * @param {boolean} hasMore  Whether a second page exists.
  */
-Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13, monthsUrl = '') => ({
+Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13, monthsUrl = '', reverseUrl = '') => ({
     dragging: false,
     queue: [],
     selected: [],
@@ -779,6 +779,7 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     motionPlaying: false,
     showDetails: false,
     miniMap: null,
+    placeTimer: null,
     mapZoom,
 
     initGallery() {
@@ -799,9 +800,10 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
             }
         });
 
-        // Live-update the mini-map as the coordinates are edited.
-        this.$watch('current.lat', () => { if (this.viewerOpen) this.renderMiniMap(); });
-        this.$watch('current.lng', () => { if (this.viewerOpen) this.renderMiniMap(); });
+        // Live-update the mini-map and, while editing, the reverse-geocoded place
+        // as the coordinates change.
+        this.$watch('current.lat', () => { if (this.viewerOpen) { this.renderMiniMap(); this.queuePlaceRefresh(); } });
+        this.$watch('current.lng', () => { if (this.viewerOpen) { this.renderMiniMap(); this.queuePlaceRefresh(); } });
 
         this.loadMonths();
     },
@@ -944,6 +946,31 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
             this.miniMap.remove();
             this.miniMap = null;
         }
+    },
+
+    // While editing coordinates, reverse-geocode the new spot (debounced) and
+    // update the shown place so the user sees the new location immediately.
+    queuePlaceRefresh() {
+        if (! this.editing || ! reverseUrl) {
+            return;
+        }
+        const lat = parseFloat(this.current.lat);
+        const lng = parseFloat(this.current.lng);
+        if (! Number.isFinite(lat) || ! Number.isFinite(lng)) {
+            this.current.placeLines = '';
+            this.current.place = '';
+            return;
+        }
+        clearTimeout(this.placeTimer);
+        this.placeTimer = setTimeout(async () => {
+            try {
+                const r = await fetch(`${reverseUrl}?lat=${lat}&lon=${lng}`, { headers: { Accept: 'application/json' } });
+                if (! r.ok) return;
+                const data = await r.json();
+                this.current.place = data.place || '';
+                this.current.placeLines = (data.lines || []).join('|');
+            } catch (e) { /* leave the previous place shown */ }
+        }, 600);
     },
 
     next() {

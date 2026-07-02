@@ -20,10 +20,14 @@ class PhotoEditTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_editing_name_date_and_location_locks_the_metadata(): void
+    public function test_editing_name_date_and_location_locks_the_metadata_and_regeocodes(): void
     {
+        Http::fake(['nominatim.openstreetmap.org/*' => Http::response([
+            'display_name' => 'Las Vegas, NV, USA',
+            'address' => ['city' => 'Las Vegas', 'state' => 'Nevada', 'country' => 'USA'],
+        ])]);
         $this->signIn();
-        $photo = Photo::factory()->create(['meta_locked' => false]);
+        $photo = Photo::factory()->create(['meta_locked' => false, 'latitude' => 1.0, 'longitude' => 2.0, 'place' => 'Old place']);
 
         $this->put(route('gallery.meta', $photo), [
             'name' => 'Vegas trip.jpg',
@@ -38,6 +42,38 @@ class PhotoEditTest extends TestCase
         $this->assertSame('2026-05-01 14:30', $photo->taken_at->format('Y-m-d H:i'));
         $this->assertSame(36.1699, $photo->latitude);
         $this->assertTrue($photo->meta_locked);
+        // The place was re-geocoded for the new coordinates.
+        $this->assertSame('Las Vegas, NV, USA', $photo->place);
+    }
+
+    public function test_removing_coordinates_clears_the_place(): void
+    {
+        $this->signIn();
+        $photo = Photo::factory()->create(['latitude' => 10.0, 'longitude' => 20.0, 'place' => 'Somewhere']);
+
+        $this->put(route('gallery.meta', $photo), [
+            'name' => 'No location.jpg',
+            'date' => '2026-05-01',
+            'time' => '09:00',
+        ])->assertRedirect();
+
+        $photo->refresh();
+        $this->assertNull($photo->latitude);
+        $this->assertNull($photo->place);
+    }
+
+    public function test_reverse_geocode_endpoint_returns_place_and_lines(): void
+    {
+        Http::fake(['nominatim.openstreetmap.org/*' => Http::response([
+            'display_name' => 'Berlin, Germany',
+            'address' => ['city' => 'Berlin', 'country' => 'Germany'],
+        ])]);
+        $this->signIn();
+
+        $this->getJson(route('gallery.geocode.reverse', ['lat' => 52.52, 'lon' => 13.405]))
+            ->assertOk()
+            ->assertJson(['place' => 'Berlin, Germany'])
+            ->assertJsonStructure(['place', 'lines']);
     }
 
     public function test_rotating_stores_the_angle_and_requeues_processing(): void

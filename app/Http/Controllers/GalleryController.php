@@ -285,7 +285,7 @@ class GalleryController extends Controller
      * file is not touched). Marks the metadata as user-locked so a re-scan will
      * not overwrite it from EXIF.
      */
-    public function editMeta(Request $request, Photo $photo): RedirectResponse
+    public function editMeta(Request $request, Photo $photo, ReverseGeocoder $geocoder): RedirectResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -295,15 +295,53 @@ class GalleryController extends Controller
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
 
-        $photo->forceFill([
+        $lat = $validated['latitude'] ?? null;
+        $lng = $validated['longitude'] ?? null;
+
+        $attributes = [
             'name' => $validated['name'],
             'taken_at' => Carbon::parse($validated['date'].' '.$validated['time']),
-            'latitude' => $validated['latitude'] ?? null,
-            'longitude' => $validated['longitude'] ?? null,
+            'latitude' => $lat,
+            'longitude' => $lng,
             'meta_locked' => true,
-        ])->save();
+        ];
+
+        // Re-geocode when the coordinates were set or changed so the place name
+        // reflects the new spot; clear the place when coordinates are removed.
+        if ($lat !== null && $lng !== null) {
+            $changed = (float) $lat !== (float) $photo->latitude
+                || (float) $lng !== (float) $photo->longitude
+                || $photo->place === null;
+            if ($changed) {
+                $geo = $geocoder->lookupDetailed((float) $lat, (float) $lng);
+                $attributes['place'] = $geo['display'];
+                $attributes['place_details'] = $geo['address'] ?: null;
+            }
+        } else {
+            $attributes['place'] = null;
+            $attributes['place_details'] = null;
+        }
+
+        $photo->forceFill($attributes)->save();
 
         return back()->with('status', __('flash.photo_updated'));
+    }
+
+    /**
+     * Reverse-geocode coordinates to a place for a live preview while editing,
+     * returning both the display name and the structured lines the viewer shows.
+     */
+    public function geocodeReverse(Request $request, ReverseGeocoder $geocoder): JsonResponse
+    {
+        $validated = $request->validate([
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lon' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        $geo = $geocoder->lookupDetailed((float) $validated['lat'], (float) $validated['lon']);
+        $preview = (new Photo)->forceFill(['place' => $geo['display'], 'place_details' => $geo['address'] ?: null]);
+
+        return response()->json(['place' => $geo['display'], 'lines' => $preview->placeLines()]);
     }
 
     /**
