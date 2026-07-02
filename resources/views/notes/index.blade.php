@@ -2,6 +2,7 @@
   <div x-data="vaultNotes({
         stale: @js(__('notes.stale')),
         saveFailed: @js(__('notes.save_failed')),
+        shareFailed: @js(__('notes.share_failed')),
      })" @keydown.window.prevent.cmd.s="saveNow()" @keydown.window.prevent.ctrl.s="saveNow()">
 
     {{-- Vault not set up / locked: only the gate. --}}
@@ -111,6 +112,7 @@
                                 <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                     <button type="button" @click="togglePin(current); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50" x-text="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"></button>
                                     <button type="button" @click="openTags(current); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.edit_tags') }}</button>
+                                    <button type="button" @click="openShare(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.share') }}</button>
                                     <div class="my-1 border-t border-gray-100"></div>
                                     <button type="button" @click="exportMarkdown(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.export_markdown') }}</button>
                                     <button type="button" @click="exportPdf(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.export_pdf') }}</button>
@@ -143,6 +145,76 @@
                 <div class="mt-5 flex justify-end gap-3">
                     <button type="button" @click="tagsOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyTags()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+    {{-- Share modal --}}
+    <template x-teleport="body">
+        <div x-show="shareDialog" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="shareDialog = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="shareDialog = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('notes.share_title') }}</h3>
+                <p class="mt-1 text-xs text-gray-500">{{ __('notes.share_intro') }}</p>
+
+                <div class="mt-4 space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700">{{ __('notes.share_expiry') }}</label>
+                        <select x-model="shareExpiry" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            <option value="3600">{{ __('notes.share_expiry_1h') }}</option>
+                            <option value="86400">{{ __('notes.share_expiry_24h') }}</option>
+                            <option value="604800">{{ __('notes.share_expiry_7d') }}</option>
+                            <option value="2592000">{{ __('notes.share_expiry_30d') }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700">{{ __('notes.share_password') }}</label>
+                        <input type="password" x-model="sharePassword" autocomplete="new-password"
+                            class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700">{{ __('notes.share_max_views') }}</label>
+                        <input type="number" min="1" x-model="shareMaxViews"
+                            class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </div>
+                    <p x-show="! sharePassword" x-cloak class="text-xs text-amber-700">{{ __('notes.share_no_password_hint') }}</p>
+                    <p x-show="shareError" x-cloak class="text-xs text-red-600" x-text="shareError"></p>
+                </div>
+
+                {{-- Generated link --}}
+                <div x-show="shareLink" x-cloak class="mt-4">
+                    <label class="block text-xs font-medium text-gray-700">{{ __('notes.share_your_link') }}</label>
+                    <div class="mt-1 flex gap-2">
+                        <input type="text" :value="shareLink" readonly @focus="$event.target.select()"
+                            class="min-w-0 flex-1 rounded-md border-gray-300 bg-gray-50 text-xs shadow-sm">
+                        <button type="button" @click="copyShareLink()" class="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            x-text="shareCopied ? @js(__('notes.share_copied')) : @js(__('notes.share_copy'))"></button>
+                    </div>
+                </div>
+
+                {{-- Active shares for this note --}}
+                <div class="mt-5 border-t border-gray-100 pt-4">
+                    <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('notes.share_active') }}</h4>
+                    <p x-show="activeShares.length === 0" class="mt-2 text-xs text-gray-500">{{ __('notes.share_none') }}</p>
+                    <ul class="mt-2 space-y-2">
+                        <template x-for="s in activeShares" :key="s.id">
+                            <li class="flex items-center justify-between gap-2 rounded-md border border-gray-100 px-3 py-2 text-xs">
+                                <span class="min-w-0">
+                                    <span class="block text-gray-700">{{ __('notes.share_expires') }}: <span x-text="fmtDateTime(s.expires)"></span></span>
+                                    <span class="text-gray-400">
+                                        <span x-show="s.hasPassword">{{ __('notes.share_password_badge') }} · </span>
+                                        <span x-show="s.maxViews">{{ __('notes.share_views') }}: <span x-text="s.maxViews"></span></span>
+                                    </span>
+                                </span>
+                                <button type="button" @click="revokeShare(s)" class="shrink-0 text-red-600 hover:text-red-700">{{ __('notes.share_revoke') }}</button>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
+                <div class="mt-5 flex justify-end gap-3">
+                    <button type="button" @click="shareDialog = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('notes.done') }}</button>
+                    <button type="button" @click="createShare()" :disabled="shareBusy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('notes.share_create') }}</button>
                 </div>
             </div>
         </div>
