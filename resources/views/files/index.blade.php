@@ -164,16 +164,17 @@
                         <tbody class="divide-y divide-gray-100" x-data="folderSort(@js($sort), @js($dir))" x-init="run()">
                             {{-- Folders first --}}
                             @foreach ($subfolders as $sub)
-                                <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false }' }}" class="hover:bg-gray-50"
+                                <tr x-data="{{ $sub->enc_name ? 'encFolderRow('.\Illuminate\Support\Js::from($sub->enc_name).')' : '{ rename: false, menu: false }' }}" class="cursor-pointer hover:bg-gray-50"
                                     @rename-folder.window="if ($event.detail === {{ $sub->id }}) rename = true"
+                                    @click="if (! rename) window.location.href = @js(route('files.index', ['folder' => $sub->id]))"
                                     data-kind="folder" data-name="{{ $sub->enc_name ? '' : $sub->name }}" @if ($sub->enc_name) data-enc="{{ $sub->enc_name }}" @endif>
-                                    <td class="px-4 py-3"><input type="checkbox" value="{{ $sub->id }}" x-model.number="selectedFolders" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
+                                    <td class="px-4 py-3" @click.stop><input type="checkbox" value="{{ $sub->id }}" x-model.number="selectedFolders" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
                                         <a x-show="! rename" href="{{ route('files.index', ['folder' => $sub->id]) }}" class="flex items-center gap-2 hover:underline">
                                             <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
                                             @if ($sub->enc_name)<span x-text="folderName"></span>@else{{ $sub->name }}@endif
                                         </a>
-                                        <form x-show="rename" x-cloak method="POST" action="{{ route('folders.update', $sub) }}" class="flex gap-2" @submit="window.encryptFolderSubmit($event)">
+                                        <form x-show="rename" x-cloak method="POST" action="{{ route('folders.update', $sub) }}" class="flex gap-2" @click.stop @submit="window.encryptFolderSubmit($event)">
                                             @csrf @method('PUT')
                                             <input type="text" name="name" @if ($sub->enc_name) :value="folderName" @else value="{{ $sub->name }}" @endif class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                                             <button type="submit" class="rounded-md bg-gray-800 px-3 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
@@ -181,9 +182,9 @@
                                         </form>
                                     </td>
                                     <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ __('files.folder') }}</td>
-                                    <td class="hidden px-4 py-3 text-right text-gray-400 sm:table-cell">{{ $sub->files_count }}</td>
+                                    <td class="hidden px-4 py-3 text-right text-gray-400 sm:table-cell">—</td>
                                     <td class="hidden px-4 py-3 md:table-cell"></td>
-                                    <td class="px-4 py-3 text-right">
+                                    <td class="px-4 py-3 text-right" @click.stop>
                                         <div class="relative inline-block text-left">
                                             <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
                                             <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
@@ -200,16 +201,18 @@
                             @endforeach
                             @foreach ($files as $file)
                                 <tr x-data="{ menu: false }" :class="selected.includes({{ $file->id }}) ? 'bg-gray-50' : ''"
+                                    class="cursor-pointer hover:bg-gray-50"
+                                    @click="if (renaming !== {{ $file->id }}) window.location.href = @js(route('files.show', $file))"
                                     data-kind="file" data-name="{{ $file->is_encrypted ? '' : $file->displayTitle }}"
                                     @if ($file->is_encrypted) data-enc="{{ $file->enc_metadata }}" @else data-fname="{{ $file->name }}" data-fmime="{{ $file->mime_type }}" @endif>
-                                    <td class="px-4 py-3"><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
+                                    <td class="px-4 py-3" @click.stop><input type="checkbox" value="{{ $file->id }}" x-model.number="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900">
                                         @if ($file->is_encrypted)
                                             <a href="{{ route('files.show', $file) }}" class="flex items-center gap-1 hover:underline"
                                                 x-data="encName(@js($file->enc_metadata), @js('🔒 '.__('files.encrypted')))" x-text="label"></a>
                                         @else
                                             <a x-show="renaming !== {{ $file->id }}" href="{{ route('files.show', $file) }}" class="hover:underline">{{ $file->displayTitle }}</a>
-                                            <form x-show="renaming === {{ $file->id }}" x-cloak method="POST" action="{{ route('files.rename', $file) }}" class="flex gap-2">
+                                            <form x-show="renaming === {{ $file->id }}" x-cloak method="POST" action="{{ route('files.rename', $file) }}" class="flex gap-2" @click.stop>
                                                 @csrf @method('PUT')
                                                 <input type="text" name="title" value="{{ $file->displayTitle }}" x-ref="rename-{{ $file->id }}"
                                                     class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
@@ -220,7 +223,7 @@
                                     </td>
                                     <td class="hidden px-4 py-3 text-gray-600 sm:table-cell">{{ $file->type->label() }}</td>
                                     <td class="hidden px-4 py-3 text-right text-gray-600 sm:table-cell"><x-file-size :bytes="$file->size" /></td>
-                                    <td class="hidden px-4 py-3 text-gray-600 md:table-cell">
+                                    <td class="hidden px-4 py-3 text-gray-600 md:table-cell" @click.stop>
                                         @if ($file->attachable instanceof \App\Models\Customer)
                                             <a href="{{ route('files.index', ['customer' => $file->attachable->id]) }}" class="hover:underline">{{ __('files.location_customer', ['name' => $file->attachable->name]) }}</a>
                                         @elseif ($file->attachable instanceof \App\Models\Project)
@@ -231,7 +234,7 @@
                                             {{ __('files.location_general') }}
                                         @endif
                                     </td>
-                                    <td class="px-4 py-3 text-right">
+                                    <td class="px-4 py-3 text-right" @click.stop>
                                         <div class="relative inline-block text-left">
                                             <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}">⋯</button>
                                             <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
