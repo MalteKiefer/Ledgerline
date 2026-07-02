@@ -33,25 +33,56 @@
                 <button type="button" @click="create()" title="{{ __('notes.new_note') }}"
                     class="shrink-0 rounded-md bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700">+</button>
             </div>
+            <div class="flex items-center gap-2 border-b border-gray-100 px-3 py-2 text-xs">
+                <button type="button" @click="view = 'active'" :class="view === 'active' ? 'font-semibold text-gray-900' : 'text-gray-500 hover:text-gray-700'">{{ __('notes.active') }}</button>
+                <button type="button" @click="view = 'trash'" :class="view === 'trash' ? 'font-semibold text-gray-900' : 'text-gray-500 hover:text-gray-700'">
+                    {{ __('notes.trash') }} (<span x-text="trashCount"></span>)
+                </button>
+                <button type="button" x-show="view === 'trash' && trashCount" x-cloak @click="emptyTrash()"
+                    class="ml-auto text-red-600 hover:text-red-700">{{ __('notes.empty_trash') }}</button>
+                <span x-show="activeTag" x-cloak class="ml-auto inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-blue-800">
+                    {{ __('notes.filtered_by') }}: <span x-text="activeTag"></span>
+                    <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700">✕</button>
+                </span>
+            </div>
             <p x-show="error" x-cloak class="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" x-text="error"></p>
             <div class="min-h-0 flex-1 overflow-y-auto">
                 <p x-show="notes.length === 0" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('notes.empty') }}</p>
                 <template x-for="note in notes" :key="note.id">
-                    <button type="button" @click="open(note.id)"
-                        class="block w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50"
+                    <div class="relative cursor-pointer border-b border-gray-100 px-4 py-3 hover:bg-gray-50"
+                        x-data="{ menu: false }" @click="view === 'active' ? open(note.id) : null"
                         :class="currentId === note.id ? 'bg-gray-50' : ''">
-                        <span class="flex items-center gap-2">
+                        <span class="flex items-center gap-2 pr-6">
                             <svg x-show="note.pinned" class="h-3.5 w-3.5 shrink-0 text-gray-500" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 3a1 1 0 011 1v1.586l2.707 2.707a1 1 0 01-.29 1.626L15 12l-.5 6-2.5 3-2.5-3-.5-6-4.417-2.081a1 1 0 01-.29-1.626L7 5.586V4a1 1 0 011-1h8z"/></svg>
                             <span class="truncate text-sm font-medium text-gray-900" x-text="note.title || @js(__('notes.untitled'))"></span>
                         </span>
                         <span class="mt-0.5 block truncate text-xs text-gray-500" x-text="excerpt(note)"></span>
-                        <span class="mt-1 flex items-center gap-2">
+                        <span class="mt-1 flex flex-wrap items-center gap-2">
                             <span class="text-xs text-gray-400" x-text="fmtDate(note.updated)"></span>
                             <template x-for="tag in (note.tags ?? [])" :key="tag">
-                                <span class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700" x-text="tag"></span>
+                                <button type="button" @click.stop="activeTag = tag"
+                                    class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 hover:bg-gray-200" x-text="tag"></button>
                             </template>
                         </span>
-                    </button>
+                        <span class="absolute right-2 top-2" @click.stop>
+                            <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">⋯</button>
+                            <span x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 block w-44 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
+                                <template x-if="view === 'active'">
+                                    <span>
+                                        <button type="button" @click="togglePin(note); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50" x-text="note.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"></button>
+                                        <button type="button" @click="openTags(note); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.edit_tags') }}</button>
+                                        <button type="button" @click="toTrash(note); menu = false" class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50">{{ __('notes.to_trash') }}</button>
+                                    </span>
+                                </template>
+                                <template x-if="view === 'trash'">
+                                    <span>
+                                        <button type="button" @click="restore(note); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.restore') }}</button>
+                                        <button type="button" @click="destroyForever(note); menu = false" class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50">{{ __('notes.delete_forever') }}</button>
+                                    </span>
+                                </template>
+                            </span>
+                        </span>
+                    </div>
                 </template>
             </div>
         </aside>
@@ -71,6 +102,9 @@
                         <div class="flex shrink-0 items-center gap-2">
                             <span class="text-xs text-gray-400"
                                 x-text="saveState === 'saving' ? @js(__('notes.saving')) : (saveState === 'saved' ? @js(__('notes.saved')) : (saveState === 'dirty' ? '●' : ''))"></span>
+                            <button type="button" @click="togglePin(current)" :title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"
+                                class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                                :class="current.pinned ? 'text-gray-900' : 'text-gray-400'">📌</button>
                             <button type="button" @click="togglePreview()"
                                 class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
                                 x-text="previewing ? @js(__('notes.edit')) : @js(__('notes.preview'))"></button>
@@ -80,12 +114,30 @@
                     </div>
                     <div class="min-h-0 flex-1 overflow-auto">
                         <div x-show="! previewing" x-ref="noteEditor" class="h-full"></div>
-                        <div x-show="previewing" x-cloak class="markdown-body p-6" x-html="previewHtml"></div>
+                        <div x-show="previewing" x-cloak x-ref="notePreview" @click="togglePreviewTask($event)" class="markdown-body p-6" x-html="previewHtml"></div>
                     </div>
                 </div>
             </template>
         </section>
       </div>
+    </template>
+    {{-- Tags modal --}}
+    <template x-teleport="body">
+        <div x-show="tagsOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="tagsOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="tagsOpen = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('notes.edit_tags') }}</h3>
+                <input type="text" x-model="tagsValue" list="note-tags" placeholder="tag1, tag2"
+                    class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                <datalist id="note-tags">
+                    <template x-for="tag in allTags" :key="tag"><option :value="tag"></option></template>
+                </datalist>
+                <div class="mt-5 flex justify-end gap-3">
+                    <button type="button" @click="tagsOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="applyTags()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                </div>
+            </div>
+        </div>
     </template>
   </div>
 </x-layouts.app>
