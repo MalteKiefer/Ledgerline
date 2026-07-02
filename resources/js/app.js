@@ -1754,6 +1754,7 @@ window.encryptFolderSubmit = async (e) => {
 Alpine.data('encFolderRow', (encName, lockedLabel = '…') => ({
     rename: false,
     menu: false,
+    tagsOpen: false,
     folderName: lockedLabel,
     async init() {
         await this.$store.vault.boot();

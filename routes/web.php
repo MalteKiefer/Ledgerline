@@ -167,6 +167,7 @@ Route::middleware('auth')->group(function (): void {
     // Virtual folders for organising files.
     Route::post('/folders', [FolderController::class, 'store'])->name('folders.store');
     Route::put('/folders/{folder}', [FolderController::class, 'update'])->name('folders.update');
+    Route::put('/folders/{folder}/tags', [FolderController::class, 'updateTags'])->name('folders.tags');
     Route::delete('/folders/{folder}', [FolderController::class, 'destroy'])->name('folders.destroy');
     Route::post('/customers/{customer}/files', [FileController::class, 'storeForCustomer'])->name('customers.files.store');
     Route::post('/projects/{project}/files', [FileController::class, 'storeForProject'])->name('projects.files.store');
