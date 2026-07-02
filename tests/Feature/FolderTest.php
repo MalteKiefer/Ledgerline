@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\Customer;
 use App\Models\File;
 use App\Models\Folder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -105,8 +104,7 @@ class FolderTest extends TestCase
         $this->signIn();
         $parent = Folder::create(['name' => 'Parent']);
         $child = Folder::create(['name' => 'Child', 'parent_id' => $parent->id]);
-        $customer = Customer::factory()->create();
-        $file = File::factory()->forCustomer($customer)->create(['folder_id' => $parent->id]);
+        $file = File::factory()->create(['folder_id' => $parent->id]);
 
         $this->delete(route('folders.destroy', $parent))->assertRedirect();
 

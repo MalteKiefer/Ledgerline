@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\Project;
+use App\Models\File;
 use App\Models\Tag;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SettingsTagTest extends TestCase
@@ -67,15 +68,16 @@ class SettingsTagTest extends TestCase
 
     public function test_can_delete_a_tag_and_detach_it(): void
     {
+        Storage::fake('files');
         $this->signIn();
-        $project = Project::factory()->create();
+        $file = File::factory()->create();
         $tag = Tag::findOrCreateByName('Removable');
-        $project->tags()->attach($tag->id);
+        $file->tags()->attach($tag->id);
 
         $this->delete(route('settings.tags.destroy', $tag))
             ->assertRedirect(route('settings.tags.index'));
 
         $this->assertDatabaseMissing('tags', ['id' => $tag->id]);
-        $this->assertSame(0, $project->tags()->count());
+        $this->assertSame(0, $file->tags()->count());
     }
 }
