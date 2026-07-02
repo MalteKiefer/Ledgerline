@@ -453,8 +453,8 @@ export const Vault = {
      * Fetch and decrypt the directory manifest. An empty vault yields a fresh
      * structure. Returns {data, version} for optimistic-locked saves.
      */
-    async loadManifest() {
-        const res = await fetch('/vault/manifest', {
+    async loadManifest(name) {
+        const res = await fetch(`/vault/manifest/${name}`, {
             headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         });
         if (! res.ok) {
@@ -472,9 +472,9 @@ export const Vault = {
      * Seal and store the manifest. Throws {stale: true, version} when another
      * tab saved first — reload, reapply, retry.
      */
-    async saveManifest(data, version) {
+    async saveManifest(name, data, version) {
         const sealed = seal(sodium.from_string(JSON.stringify(data)), this.vk);
-        const res = await fetch('/vault/manifest', {
+        const res = await fetch(`/vault/manifest/${name}`, {
             method: 'PUT',
             headers: {
                 Accept: 'application/json',
