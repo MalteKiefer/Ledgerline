@@ -5,6 +5,7 @@ import { EditorView, basicSetup } from 'codemirror';
 import { EditorState, Compartment } from '@codemirror/state';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
+import JSZip from 'jszip';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
@@ -399,6 +400,7 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
     deleteOpen: false,
     renaming: null,
     enc: { active: false, done: 0, total: 0 },
+    dl: { active: false, done: 0, total: 0 },
 
     get selectionCount() {
         return this.selected.length + this.selectedFolders.length;
@@ -742,6 +744,101 @@ Alpine.data('filesExplorer', (allIds = [], config = {}) => ({
             work.push(...await this.folderWork(id));
         }
         await this.runEncryption(work);
+    },
+
+    // Download the selection (files + folders, recursively) as a single zip,
+    // built entirely in the browser so encrypted files come out decrypted and
+    // no plaintext ever reaches the server.
+    async bulkDownload() {
+        if (! this.selectionCount) {
+            return;
+        }
+        await this.$store.vault.boot();
+
+        // Manifest: every file in scope with the fields to build paths + decrypt.
+        const body = new FormData();
+        body.append('_token', config.token);
+        this.selected.forEach((id) => body.append('file_ids[]', id));
+        this.selectedFolders.forEach((id) => body.append('folder_ids[]', id));
+
+        let files;
+        try {
+            files = (await (await fetch(config.manifestUrl, {
+                method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body,
+            })).json()).files;
+        } catch (e) {
+            return;
+        }
+        if (! files || ! files.length) {
+            return;
+        }
+
+        if (files.some((f) => f.is_encrypted) && ! this.$store.vault.unlocked) {
+            window.dispatchEvent(new CustomEvent('vault-panel'));
+            return;
+        }
+
+        // Folder names, to rebuild each file's relative path (decrypt as needed).
+        let folders = [];
+        try {
+            folders = await (await fetch(config.foldersListUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })).json();
+        } catch (e) { /* no folders: files land at the root */ }
+        const fmap = new Map(folders.map((f) => [f.id, f]));
+        const folderName = (f) => {
+            if (f.enc_name) {
+                try { return Vault.decryptFileMeta(f.enc_name).name; } catch (e) { return 'folder'; }
+            }
+            return f.name || 'folder';
+        };
+        const folderPath = (id) => {
+            const parts = [];
+            let cur = id;
+            while (cur != null && fmap.has(cur)) {
+                const f = fmap.get(cur);
+                parts.unshift(folderName(f));
+                cur = f.parent_id;
+            }
+            return parts;
+        };
+
+        const total = files.reduce((n, f) => n + (f.size || 0), 0);
+        if (total > 2 * 1024 * 1024 * 1024 && ! window.confirm(config.largeZipConfirm)) {
+            return;
+        }
+
+        const zip = new JSZip();
+        const used = new Set();
+        this.dl = { active: true, done: 0, total: files.length };
+        for (const f of files) {
+            try {
+                const fileName = f.is_encrypted
+                    ? (Vault.decryptFileMeta(f.enc_metadata).name || `file-${f.id}`)
+                    : (f.name || `file-${f.id}`);
+                let path = [...folderPath(f.folder_id), fileName].join('/');
+                let candidate = path;
+                let i = 1;
+                while (used.has(candidate)) {
+                    const dot = path.lastIndexOf('.');
+                    candidate = dot > 0 ? `${path.slice(0, dot)} (${++i})${path.slice(dot)}` : `${path} (${++i})`;
+                }
+                used.add(candidate);
+
+                const bytes = await fetchCipher(`${config.fileBase}/${f.id}/download`);
+                zip.file(candidate, f.is_encrypted ? Vault.decryptFile(bytes, f.enc_file_key) : bytes);
+            } catch (e) { /* skip a file that cannot be fetched/decrypted */ }
+            this.dl.done++;
+        }
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'files.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        this.dl.active = false;
     },
 
     // Bulk bar rename is only shown for a single selection.

@@ -103,6 +103,26 @@ class BulkFileTest extends TestCase
         $this->assertNull($file->fresh()->folder_id);
     }
 
+    public function test_download_manifest_includes_selected_files_and_folder_descendants(): void
+    {
+        $this->signIn();
+        $folder = Folder::create(['name' => 'Trip']);
+        $sub = Folder::create(['name' => 'Day1', 'parent_id' => $folder->id]);
+        $loose = File::factory()->create(['name' => 'loose.txt', 'attachable_type' => null, 'attachable_id' => null]);
+        $inSub = File::factory()->create(['name' => 'deep.txt', 'folder_id' => $sub->id, 'attachable_type' => null, 'attachable_id' => null]);
+        $other = File::factory()->create(['name' => 'other.txt', 'attachable_type' => null, 'attachable_id' => null]);
+
+        $res = $this->postJson(route('files.bulk.manifest'), [
+            'file_ids' => [$loose->id],
+            'folder_ids' => [$folder->id],
+        ])->assertOk();
+
+        $ids = collect($res->json('files'))->pluck('id')->all();
+        $this->assertContains($loose->id, $ids);   // selected file
+        $this->assertContains($inSub->id, $ids);    // descendant of a selected folder
+        $this->assertNotContains($other->id, $ids); // unrelated
+    }
+
     public function test_descendants_lists_plaintext_items_in_the_subtree(): void
     {
         $this->signIn();

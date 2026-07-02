@@ -5,8 +5,10 @@
         conflictsUrl: '{{ route('files.conflicts') }}',
         foldersUrl: '{{ route('folders.store') }}',
         foldersListUrl: '{{ route('folders.list') }}',
+        manifestUrl: '{{ route('files.bulk.manifest') }}',
         fileBase: '{{ url('/files') }}',
         folderBase: '{{ url('/folders') }}',
+        largeZipConfirm: @js(__('files.large_zip_confirm')),
         token: '{{ csrf_token() }}',
         folderId: {{ $folder?->id ?? 'null' }},
         customerId: {{ (int) request('customer') ?: 'null' }},
@@ -17,6 +19,18 @@
     <div x-show="dragging" x-cloak @drop.prevent="drop($event)" @dragover.prevent
         class="fixed inset-0 z-[900] flex items-center justify-center bg-gray-900/50 p-8">
         <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
+    </div>
+
+    {{-- Preparing a zip download (fetch + decrypt in the browser) --}}
+    <div x-show="dl.active" x-cloak class="fixed bottom-5 right-5 z-[950] w-80 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl">
+        <div class="flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700">
+            <span>⬇ {{ __('files.zipping') }}</span>
+            <span class="text-gray-500"><span x-text="dl.done"></span>/<span x-text="dl.total"></span></span>
+        </div>
+        <div class="h-2 bg-gray-100">
+            <div class="h-2 bg-gray-800 transition-all" :style="`width: ${dl.total ? Math.round(dl.done / dl.total * 100) : 0}%`"></div>
+        </div>
+        <p class="px-4 py-2 text-xs text-amber-700">{{ __('files.encrypting_keep_open') }}</p>
     </div>
 
     {{-- Encrypting existing items: progress + keep-open warning --}}
@@ -138,9 +152,10 @@
 
             {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling up. --}}
             <div x-show="selectionCount" x-cloak x-transition
-                :class="(uploading || enc.active) ? 'bottom-72' : 'bottom-5'"
+                :class="(uploading || enc.active || dl.active) ? 'bottom-72' : 'bottom-5'"
                 class="fixed inset-x-0 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl">
                 <span class="text-sm font-medium text-gray-700"><span x-text="selectionCount"></span> {{ __('files.selected_word') }}</span>
+                <button type="button" @click="bulkDownload()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.download_zip') }}</button>
                 <button type="button" @click="openMove()" class="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move') }}</button>
                 <button type="button" x-show="$store.vault.configured" @click="bulkEncrypt()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.encrypt_file') }}</button>
                 <button type="button" x-show="selectionCount === 1" x-cloak @click="bulkRename()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.rename') }}</button>
