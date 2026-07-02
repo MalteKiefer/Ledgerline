@@ -226,7 +226,10 @@
             {{-- Message list --}}
             <div x-show="! reader.current" class="flex min-h-0 flex-1 flex-col">
                 <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-1.5 text-xs text-gray-500">
-                    <span class="truncate font-medium text-gray-700" x-text="reader.folderPath"></span>
+                    <span class="flex min-w-0 items-center gap-2">
+                        <input type="checkbox" @change="toggleSelectAll()" :checked="allSelected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500" aria-label="{{ __('mail.select_all') }}">
+                        <span class="truncate font-medium text-gray-700" x-text="reader.folderPath"></span>
+                    </span>
                     <span class="flex shrink-0 items-center gap-3">
                         <span x-text="`${reader.messages.length} / ${reader.total}`"></span>
                         <button type="button" @click="toggleSort()" class="inline-flex items-center gap-1 hover:text-gray-700" title="{{ __('mail.msg_date') }}">
@@ -236,12 +239,29 @@
                         </button>
                     </span>
                 </div>
+
+                {{-- Bulk action bar --}}
+                <div x-show="reader.selected.length" x-cloak class="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs">
+                    <span class="font-medium text-gray-700"><span x-text="reader.selected.length"></span> {{ __('mail.selected') }}</span>
+                    <button type="button" @click="bulkAction('trash')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.action_trash') }}</button>
+                    <button type="button" @click="bulkAction('delete')" :disabled="reader.busy" class="rounded-md border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50">{{ __('mail.action_delete') }}</button>
+                    <select @change="if ($event.target.value) { bulkAction('move', $event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <option value="">{{ __('mail.move_to_folder') }}</option>
+                        <template x-for="f in readerFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
+                    </select>
+                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.move_to_account') }}</button>
+                    <button type="button" @click="bulkAction('seen')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.mark_read') }}</button>
+                    <button type="button" @click="bulkAction('unseen')" :disabled="reader.busy" class="rounded-md border border-gray-300 px-2 py-1 text-gray-700 hover:bg-gray-100">{{ __('mail.mark_unread') }}</button>
+                    <button type="button" @click="reader.selected = []" class="ml-auto text-gray-500 hover:text-gray-700">{{ __('mail.clear_selection') }}</button>
+                </div>
+
                 <div class="min-h-0 flex-1 overflow-y-auto">
                     <p x-show="reader.loading" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.loading') }}</p>
                     <p x-show="! reader.loading && reader.messages.length === 0" class="px-4 py-10 text-center text-sm text-gray-500">{{ __('mail.list_empty') }}</p>
                     <ul class="divide-y divide-gray-100">
                         <template x-for="m in sortedMessages()" :key="m.uid">
                             <li class="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-gray-50" @click="openMsg(m.uid)">
+                                <input type="checkbox" :value="m.uid" x-model.number="reader.selected" @click.stop class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                                 <span class="h-2 w-2 shrink-0 rounded-full" :class="m.seen ? 'bg-transparent' : 'bg-blue-500'"></span>
                                 <span class="min-w-0 flex-1">
                                     <span class="truncate text-sm" :class="m.seen ? 'text-gray-700' : 'font-semibold text-gray-900'" x-text="fmtAddress(m.from) || '—'"></span>

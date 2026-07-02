@@ -2374,7 +2374,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50,
         messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
-        folders: [], sortDir: 'desc', deleteChoiceOpen: false, headersOpen: false,
+        folders: [], sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
     },
 
@@ -2558,6 +2558,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.loading = true;
         this.reader.folders = [];
         this.reader.messages = [];
+        this.reader.selected = [];
         this.reader.folders = this.sortedFolders(await this.loadFolders(this.credsBody(a)));
         const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
         this.reader.folderPath = inbox?.path ?? 'INBOX';
@@ -2576,7 +2577,36 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.folderPath = path;
         this.reader.page = 1;
         this.reader.current = null;
+        this.reader.selected = [];
         this.loadMessages();
+    },
+
+    /* ---- Multi-select ---- */
+
+    toggleSelectAll() {
+        const uids = this.reader.messages.map((m) => m.uid);
+        this.reader.selected = uids.every((u) => this.reader.selected.includes(u)) ? [] : uids;
+    },
+
+    get allSelected() {
+        return this.reader.messages.length > 0 && this.reader.messages.every((m) => this.reader.selected.includes(m.uid));
+    },
+
+    // Run an action over every selected message, then reload the folder.
+    async bulkAction(action, target = null) {
+        if (! this.reader.selected.length || this.reader.busy) return;
+        this.reader.busy = true;
+        try {
+            for (const uid of [...this.reader.selected]) {
+                const res = await this.mailPost('/mail/message/action', { uid, action, target });
+                if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; break; }
+            }
+        } finally {
+            this.reader.busy = false;
+        }
+        this.reader.selected = [];
+        this.reader.current = null;
+        await this.loadMessages();
     },
 
     async mailPost(url, extra) {
@@ -2743,23 +2773,29 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     async confirmTransfer() {
         const a = this.manifest.accounts.find((x) => x.id === this.reader.transferAccount);
-        if (! a || ! this.reader.current || ! this.reader.transferFolder) return;
+        if (! a || ! this.reader.transferFolder) return;
+        const uids = this.reader.selected.length ? [...this.reader.selected] : (this.reader.current ? [this.reader.current.uid] : []);
+        if (! uids.length) return;
         this.reader.busy = true;
+        this.reader.error = '';
         try {
-            const res = await fetch('/mail/message/transfer', {
-                method: 'POST',
-                headers: {
-                    Accept: 'application/json', 'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
-                },
-                body: JSON.stringify({
-                    ...this.credsBody(this.reader.account), folder: this.reader.folderPath, uid: this.reader.current.uid,
-                    target: this.credsBody(a), target_folder: this.reader.transferFolder,
-                }),
-            });
-            if (! res.ok) { this.reader.error = labels.connectFailed; return; }
+            for (const uid of uids) {
+                const res = await fetch('/mail/message/transfer', {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json', 'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
+                    },
+                    body: JSON.stringify({
+                        ...this.credsBody(this.reader.account), folder: this.reader.folderPath, uid,
+                        target: this.credsBody(a), target_folder: this.reader.transferFolder,
+                    }),
+                });
+                if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; break; }
+            }
             this.reader.transferOpen = false;
             this.reader.current = null;
+            this.reader.selected = [];
             await this.loadMessages();
         } catch (e) {
             this.reader.error = labels.connectFailed;
