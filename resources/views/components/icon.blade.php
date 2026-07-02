@@ -1,4 +1,4 @@
-@props(['name'])
+@props(['name' => ''])
 
 @php
     // Heroicons (24, outline) path data — one monochrome icon set for the whole
@@ -42,5 +42,5 @@
 <svg {{ $attributes->merge(['class' => 'h-4 w-4 shrink-0']) }}
     fill="{{ $solid ? 'currentColor' : 'none' }}" viewBox="0 0 24 24"
     @unless ($solid) stroke-width="1.7" stroke="currentColor" @endunless aria-hidden="true">
-    <path @unless ($solid) stroke-linecap="round" stroke-linejoin="round" @endunless d="{{ $paths[$name] }}" />
+    <path @unless ($solid) stroke-linecap="round" stroke-linejoin="round" @endunless d="{{ $paths[$name] ?? '' }}" />
 </svg>
