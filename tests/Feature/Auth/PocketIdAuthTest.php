@@ -63,7 +63,7 @@ class PocketIdAuthTest extends TestCase
     public function test_callback_provisions_and_authenticates_a_new_user(): void
     {
         config(['services.pocketid.base_url' => 'https://id.example.com']);
-        Storage::fake('local');
+        Storage::fake('files');
         Http::fake([
             '*' => Http::response('fake-image-bytes', 200, ['Content-Type' => 'image/png']),
         ]);
@@ -85,17 +85,41 @@ class PocketIdAuthTest extends TestCase
             'name' => 'Grace Hopper',
         ]);
 
-        // The avatar is downloaded and stored locally, never the remote URL.
+        // The avatar is downloaded to object storage; the source URL is kept for
+        // a later refresh, and the stored value is a path, never the remote URL.
         $user = User::firstWhere('oidc_sub', 'sub-123');
         $this->assertTrue(Str::startsWith($user->avatar, 'avatars/'));
         $this->assertNotSame('https://id.example.com/avatars/grace.png', $user->avatar);
-        Storage::disk('local')->assertExists($user->avatar);
+        $this->assertSame('https://id.example.com/avatars/grace.png', $user->avatar_url);
+        Storage::disk('files')->assertExists($user->avatar);
+    }
+
+    public function test_callback_does_not_redownload_the_avatar_on_a_later_login(): void
+    {
+        config(['services.pocketid.base_url' => 'https://id.example.com']);
+        Storage::fake('files');
+        Http::fake(['*' => Http::response('bytes', 200, ['Content-Type' => 'image/png'])]);
+
+        User::factory()->create([
+            'oidc_sub' => 'sub-existing',
+            'avatar' => 'avatars/9.png',
+            'avatar_url' => 'https://id.example.com/avatars/old.png',
+        ]);
+
+        $this->fakeSocialiteUser(id: 'sub-existing', raw: ['picture' => 'https://id.example.com/avatars/new.png']);
+        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
+
+        // Existing image untouched (no download), but the source URL is refreshed.
+        Http::assertNothingSent();
+        $user = User::firstWhere('oidc_sub', 'sub-existing');
+        $this->assertSame('avatars/9.png', $user->avatar);
+        $this->assertSame('https://id.example.com/avatars/new.png', $user->avatar_url);
     }
 
     public function test_callback_succeeds_when_avatar_download_fails(): void
     {
         config(['services.pocketid.base_url' => 'https://id.example.com']);
-        Storage::fake('local');
+        Storage::fake('files');
         Http::fake(['*' => Http::response('nope', 500)]);
 
         $this->fakeSocialiteUser(
@@ -109,11 +133,25 @@ class PocketIdAuthTest extends TestCase
         $this->assertNull(User::firstWhere('oidc_sub', 'sub-err')->avatar);
     }
 
+    public function test_avatar_can_be_refreshed_from_the_profile(): void
+    {
+        config(['services.pocketid.base_url' => 'https://id.example.com']);
+        Storage::fake('files');
+        Http::fake(['*' => Http::response('new-bytes', 200, ['Content-Type' => 'image/png'])]);
+        $user = User::factory()->create(['avatar' => null, 'avatar_url' => 'https://id.example.com/avatars/me.png']);
+
+        $this->actingAs($user)->post(route('profile.avatar.refresh'))->assertRedirect();
+
+        $user->refresh();
+        $this->assertTrue(Str::startsWith($user->avatar, 'avatars/'));
+        Storage::disk('files')->assertExists($user->avatar);
+    }
+
     public function test_avatar_route_streams_the_stored_avatar(): void
     {
-        Storage::fake('local');
+        Storage::fake('files');
         $user = User::factory()->create(['avatar' => 'avatars/7.png']);
-        Storage::disk('local')->put('avatars/7.png', 'image-bytes');
+        Storage::disk('files')->put('avatars/7.png', 'image-bytes');
 
         $this->actingAs($user)
             ->get(route('profile.avatar'))

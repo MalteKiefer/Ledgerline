@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'avatar_refreshed' => 'Avatar refreshed.',
+    'avatar_refresh_failed' => 'Could not refresh the avatar.',
     'branch_created' => 'Branch created.',
     'branch_deleted' => 'Branch deleted.',
     'branch_updated' => 'Branch updated.',

@@ -10,6 +10,12 @@
             <div>
                 <p class="text-lg font-semibold text-gray-900">{{ $user->name }}</p>
                 <p class="text-sm text-gray-600">{{ $user->email }}</p>
+                @if ($user->avatar_url)
+                    <form method="POST" action="{{ route('profile.avatar.refresh') }}" class="mt-2">
+                        @csrf
+                        <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">↻ {{ __('pages.profile.refresh_avatar') }}</button>
+                    </form>
+                @endif
             </div>
         </div>
 

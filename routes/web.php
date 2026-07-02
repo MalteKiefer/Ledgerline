@@ -56,6 +56,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
+    Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->name('profile.avatar.refresh');
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
