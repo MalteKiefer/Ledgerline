@@ -1,15 +1,5 @@
 <x-layouts.app :title="$file->displayTitle">
     @php
-        $formatBytes = static function (int $bytes): string {
-            $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-            $i = 0;
-            $value = (float) $bytes;
-            while ($value >= 1024 && $i < count($units) - 1) {
-                $value /= 1024;
-                $i++;
-            }
-            return number_format($value, $i > 0 ? 1 : 0).' '.$units[$i];
-        };
         $attached = $file->attachable;
     @endphp
 
@@ -127,7 +117,7 @@
                     </div>
                     <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.size') }}</dt>
-                        <dd class="mt-1 text-sm text-gray-900">{{ $formatBytes($file->size) }}</dd>
+                        <dd class="mt-1 text-sm text-gray-900"><x-file-size :bytes="$file->size" /></dd>
                     </div>
                     <div>
                         <dt class="text-sm font-medium text-gray-500">{{ __('files.uploaded_by') }}</dt>
