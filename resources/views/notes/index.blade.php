@@ -89,8 +89,9 @@
         </aside>
 
         {{-- Editor pane --}}
-        <section class="min-w-0 flex-1 flex-col rounded-lg border border-gray-200 bg-white shadow-sm"
-            :class="mobilePane === 'list' ? 'hidden md:flex' : 'flex'">
+        <section class="min-w-0 flex-1 flex-col border border-gray-200 bg-white shadow-sm"
+            @keydown.escape.window="fullscreen = false"
+            :class="fullscreen ? 'fixed inset-0 z-[60] flex rounded-none' : ('rounded-lg ' + (mobilePane === 'list' ? 'hidden md:flex' : 'flex'))">
             <template x-if="! current">
                 <p class="flex h-full items-center justify-center p-10 text-center text-sm text-gray-500">{{ __('notes.no_selection') }}</p>
             </template>
@@ -100,31 +101,54 @@
                         <button type="button" @click="closeNote()" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 md:hidden"><span class="inline-flex items-center gap-1"><x-icon name="chevron-left" class="h-3.5 w-3.5" />{{ __('notes.back') }}</span></button>
                         <input type="text" x-model="current.title" @input="markDirty()" placeholder="{{ __('notes.title_placeholder') }}"
                             class="min-w-0 flex-1 rounded-md border-gray-300 text-sm font-semibold shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <div class="flex shrink-0 items-center gap-2" x-data="{ menu: false }">
+                        <div class="flex shrink-0 items-center gap-2" x-data="{ menu: false, sub: null }">
                             <span class="text-xs text-gray-400"
                                 x-text="saveState === 'saving' ? @js(__('notes.saving')) : (saveState === 'saved' ? @js(__('notes.saved')) : (saveState === 'dirty' ? '●' : ''))"></span>
-                            <button type="button" @click="togglePreview()"
-                                class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                                x-text="previewing ? @js(__('notes.edit')) : @js(__('notes.preview'))"></button>
+                            <button type="button" @click="toggleFullscreen()"
+                                :title="fullscreen ? @js(__('notes.exit_fullscreen')) : @js(__('notes.fullscreen'))"
+                                :aria-label="fullscreen ? @js(__('notes.exit_fullscreen')) : @js(__('notes.fullscreen'))"
+                                class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50">
+                                <x-icon name="arrows-pointing-out" x-show="! fullscreen" />
+                                <x-icon name="arrows-pointing-in" x-show="fullscreen" x-cloak />
+                            </button>
                             <div class="relative">
-                                <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" title="{{ __('notes.menu') }}"
-                                    class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="ellipsis" /></button>
-                                <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-52 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
-                                    <button type="button" @click="togglePin(current); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50" x-text="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"></button>
-                                    <button type="button" @click="openTags(current); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.edit_tags') }}</button>
-                                    <button type="button" @click="openShare(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.share') }}</button>
+                                <button type="button" @click="menu = ! menu; sub = null" @keydown.escape="menu = false" title="{{ __('notes.menu') }}" aria-label="{{ __('notes.menu') }}"
+                                    class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="ellipsis" /></button>
+                                <div x-show="menu" x-cloak @click.outside="menu = false; sub = null" class="absolute right-0 z-20 mt-1 w-56 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
+                                    <button type="button" @click="togglePin(current); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon ::name="current.pinned ? 'bookmark-solid' : 'bookmark'" /><span x-text="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))"></span></button>
+                                    <button type="button" @click="openTags(current); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="tag" />{{ __('notes.edit_tags') }}</button>
+                                    <button type="button" @click="openShare(); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="share" />{{ __('notes.share') }}</button>
                                     <div class="my-1 border-t border-gray-100"></div>
-                                    <button type="button" @click="exportMarkdown(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.export_markdown') }}</button>
-                                    <button type="button" @click="exportPdf(); menu = false" class="block w-full px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">{{ __('notes.export_pdf') }}</button>
+                                    {{-- View submenu --}}
+                                    <div class="relative">
+                                        <button type="button" @click="sub = (sub === 'view' ? null : 'view')" class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">
+                                            <span class="flex items-center gap-2"><x-icon name="eye" />{{ __('notes.view') }}</span><x-icon name="chevron-right" class="h-3.5 w-3.5" />
+                                        </button>
+                                        <div x-show="sub === 'view'" x-cloak class="absolute right-full top-0 mr-1 w-44 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                            <button type="button" @click="setMode('edit'); menu = false; sub = null" class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-50" :class="mode === 'edit' ? 'text-gray-900 font-medium' : 'text-gray-700'"><x-icon name="pencil" />{{ __('notes.mode_edit') }}</button>
+                                            <button type="button" @click="setMode('split'); menu = false; sub = null" class="hidden w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-50 md:flex" :class="mode === 'split' ? 'text-gray-900 font-medium' : 'text-gray-700'"><x-icon name="view-columns" />{{ __('notes.mode_split') }}</button>
+                                            <button type="button" @click="setMode('preview'); menu = false; sub = null" class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-50" :class="mode === 'preview' ? 'text-gray-900 font-medium' : 'text-gray-700'"><x-icon name="eye" />{{ __('notes.mode_preview') }}</button>
+                                        </div>
+                                    </div>
+                                    {{-- Export submenu --}}
+                                    <div class="relative">
+                                        <button type="button" @click="sub = (sub === 'export' ? null : 'export')" class="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50">
+                                            <span class="flex items-center gap-2"><x-icon name="document-arrow-down" />{{ __('notes.export') }}</span><x-icon name="chevron-right" class="h-3.5 w-3.5" />
+                                        </button>
+                                        <div x-show="sub === 'export'" x-cloak class="absolute right-full top-0 mr-1 w-52 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                            <button type="button" @click="exportMarkdown(); menu = false; sub = null" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('notes.export_markdown') }}</button>
+                                            <button type="button" @click="exportPdf(); menu = false; sub = null" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="document-arrow-down" />{{ __('notes.export_pdf') }}</button>
+                                        </div>
+                                    </div>
                                     <div class="my-1 border-t border-gray-100"></div>
-                                    <button type="button" @click="toTrash(current); menu = false" class="block w-full px-3 py-1.5 text-left text-red-600 hover:bg-gray-50">{{ __('notes.to_trash') }}</button>
+                                    <button type="button" @click="toTrash(current); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('notes.to_trash') }}</button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="min-h-0 flex-1 overflow-auto">
-                        <div x-show="! previewing" x-ref="noteEditor" class="h-full"></div>
-                        <div x-show="previewing" x-cloak x-ref="notePreview" @click="togglePreviewTask($event)" class="markdown-body p-6" x-html="previewHtml"></div>
+                    <div class="flex min-h-0 flex-1">
+                        <div x-show="mode !== 'preview'" x-ref="noteEditor" class="h-full min-w-0 overflow-hidden" :class="mode === 'split' ? 'w-1/2 border-r border-gray-200' : 'w-full'"></div>
+                        <div x-show="mode !== 'edit'" x-cloak x-ref="notePreview" @click="togglePreviewTask($event)" class="markdown-body h-full min-w-0 overflow-auto p-6" :class="mode === 'split' ? 'w-1/2' : 'w-full'" x-html="previewHtml"></div>
                     </div>
                 </div>
             </template>

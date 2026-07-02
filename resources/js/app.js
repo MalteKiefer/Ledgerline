@@ -10,6 +10,7 @@ import { marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
+import html2pdf from 'html2pdf.js';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
 import L from 'leaflet';
@@ -1094,11 +1095,6 @@ function formatBytes(n) {
     return `${num} ${units[i]}`;
 }
 
-function escapeHtml(text) {
-    return String(text ?? '').replace(/[&<>"']/g, (c) =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
@@ -1839,7 +1835,8 @@ Alpine.data('vaultNotes', (labels = {}) => ({
     currentId: null,
     query: '',
     mobilePane: 'list', // list | editor (small screens)
-    previewing: false,
+    mode: 'edit', // edit | split | preview
+    fullscreen: false,
     previewHtml: '',
     saveState: 'idle', // idle | dirty | saving | saved
     error: '',
@@ -1973,7 +1970,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         if (this.currentId === id) return;
         if (this.saveState === 'dirty') this.saveNow();
         this.currentId = id;
-        this.previewing = false;
+        this.mode = 'edit';
         this.saveState = 'idle';
         this.mobilePane = 'editor';
         this.$nextTick(() => this.mountEditor(this.current?.content ?? ''));
@@ -2022,6 +2019,10 @@ Alpine.data('vaultNotes', (labels = {}) => ({
 
     markDirty() {
         this.saveState = 'dirty';
+        // Split view shows a live preview beside the editor.
+        if (this.mode === 'split' && this.editorView) {
+            this.previewHtml = renderMarkdown(this.editorView.state.doc.toString());
+        }
         clearTimeout(this.saveTimer);
         this.saveTimer = setTimeout(() => this.saveNow(), 3000);
     },
@@ -2043,16 +2044,22 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         }
     },
 
-    togglePreview() {
-        if (! this.previewing && this.editorView && this.current) {
+    // Switch the editor view. The CodeMirror instance stays mounted for edit
+    // and split; preview just hides it. Split needs the wider layout, so on a
+    // narrow screen it falls back to preview.
+    setMode(m) {
+        if (m === 'split' && window.innerWidth < 768) m = 'preview';
+        if (this.editorView && this.current) {
             this.current.content = this.editorView.state.doc.toString();
         }
-        this.previewing = ! this.previewing;
-        if (this.previewing) {
+        this.mode = m;
+        if (m !== 'edit') {
             this.previewHtml = renderMarkdown(this.current?.content ?? '');
-        } else {
-            this.$nextTick(() => this.mountEditor(this.current?.content ?? ''));
         }
+    },
+
+    toggleFullscreen() {
+        this.fullscreen = ! this.fullscreen;
     },
 
     async toTrash(note) {
@@ -2216,7 +2223,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
     // Sync the CodeMirror buffer into the note before reading its content, so
     // an unsaved edit still exports.
     exportContent() {
-        if (! this.previewing && this.editorView && this.current) {
+        if (this.mode !== 'preview' && this.editorView && this.current) {
             this.current.content = this.editorView.state.doc.toString();
         }
         return this.current?.content ?? '';
@@ -2227,25 +2234,24 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         saveBlobAs(this.exportContent(), this.exportName('md'), 'text/markdown;charset=utf-8');
     },
 
-    // Zero-knowledge PDF: render the markdown in an isolated window with the
-    // app's own stylesheets and trigger the browser's print dialog ("Save as
-    // PDF"). Nothing leaves the browser.
+    // Zero-knowledge PDF: render the markdown into an offscreen element styled
+    // with the app's github-markdown-css and let html2pdf build a finished PDF
+    // that downloads directly — no print dialog, nothing leaves the browser.
     exportPdf() {
         if (! this.current) return;
-        const title = (this.current.title ?? '').trim() || '…';
-        const body = renderMarkdown(this.exportContent());
-        const styles = [...document.querySelectorAll('link[rel="stylesheet"]')]
-            .map((l) => `<link rel="stylesheet" href="${l.href}">`).join('');
-        const win = window.open('', '_blank');
-        if (! win) return;
-        win.document.write(
-            `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>${styles}`
-            + '<style>body{margin:0}.markdown-body{max-width:48rem;margin:0 auto;padding:2rem}'
-            + '@media print{@page{margin:1.5cm}.markdown-body{max-width:none;padding:0}}</style>'
-            + `</head><body><article class="markdown-body">${body}</article>`
-            + '<script>window.onload=function(){window.focus();window.print();};<\/script>'
-            + '</body></html>');
-        win.document.close();
+        const el = document.createElement('div');
+        el.className = 'markdown-body';
+        el.style.cssText = 'max-width:46rem;margin:0 auto;padding:24px;background:#fff;';
+        el.innerHTML = renderMarkdown(this.exportContent());
+        document.body.appendChild(el);
+        html2pdf().set({
+            filename: this.exportName('pdf'),
+            margin: [10, 10, 10, 10],
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        }).from(el).save().finally(() => el.remove());
     },
 
     async applyTags() {
