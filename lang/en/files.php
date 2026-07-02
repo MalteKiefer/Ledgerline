@@ -31,7 +31,6 @@ return [
     'col_name' => 'Name',
     'col_size' => 'Size',
     'col_tags' => 'Tags',
-    'col_tags' => 'Tags',
     'col_type' => 'Type',
     'edit_tags' => 'Edit tags',
     'create' => 'Create',
