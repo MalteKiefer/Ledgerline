@@ -147,4 +147,5 @@ return [
     'backup_stat_next_run' => 'Next run',
     'backup_log' => 'Log',
     'backup_no_log' => 'No log for this run.',
+    'backup_path_hint' => 'Relative to the login directory. Leave blank to use it directly (many SFTP hosts do not allow writing to the server root).',
 ];

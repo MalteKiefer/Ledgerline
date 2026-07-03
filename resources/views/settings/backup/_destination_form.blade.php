@@ -83,7 +83,8 @@
             <input type="password" name="password" value="" class="{{ $input }}" autocomplete="off" placeholder="••••••••">
             @if ($d)<p class="mt-1 text-xs text-gray-500">{{ __('settings.notify_secret_keep_hint') }}</p>@endif</div>
         <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_path') }}</label>
-            <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}"></div>
+            <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}">
+            <p class="mt-1 text-xs text-gray-500">{{ __('settings.backup_path_hint') }}</p></div>
     </div>
     </template>
 
@@ -98,7 +99,8 @@
             <input type="password" name="password" value="" class="{{ $input }}" autocomplete="off" placeholder="••••••••">
             @if ($d)<p class="mt-1 text-xs text-gray-500">{{ __('settings.notify_secret_keep_hint') }}</p>@endif</div>
         <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_path') }}</label>
-            <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}"></div>
+            <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}">
+            <p class="mt-1 text-xs text-gray-500">{{ __('settings.backup_path_hint') }}</p></div>
     </div>
     </template>
 

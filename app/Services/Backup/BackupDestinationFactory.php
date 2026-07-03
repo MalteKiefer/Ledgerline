@@ -51,7 +51,8 @@ class BackupDestinationFactory
     public function test(string $driver, array $config): void
     {
         $fs = $this->makeFromParts($driver, $config);
-        $probe = '.ledgerline-connftest-'.bin2hex(random_bytes(6));
+        // Plain (non-dot) filename so no host hides/rejects it; written + deleted.
+        $probe = 'ledgerline-connection-test-'.bin2hex(random_bytes(6)).'.txt';
         $fs->write($probe, "ok\n");
         $fs->delete($probe);
     }
@@ -77,15 +78,20 @@ class BackupDestinationFactory
 
     private function sftp(array $c): SftpAdapter
     {
+        // Root defaults to the login directory (empty), NOT '/': on many SFTP
+        // hosts (e.g. Hetzner Storage Box) the absolute server root is not
+        // writable, but the home dir is. A configured path is used as-is.
+        $root = trim((string) ($c['path'] ?? ''));
+
         return new SftpAdapter(
             new SftpConnectionProvider(
                 host: $c['host'] ?? '',
                 username: $c['username'] ?? '',
-                password: $c['password'] ?? null,
-                privateKey: $c['private_key'] ?? null,
+                password: ($c['password'] ?? '') !== '' ? $c['password'] : null,
+                privateKey: ($c['private_key'] ?? '') !== '' ? $c['private_key'] : null,
                 port: (int) ($c['port'] ?? 22),
             ),
-            $c['path'] ?? '/',
+            $root,
         );
     }
 
