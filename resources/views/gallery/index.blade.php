@@ -184,7 +184,7 @@
                 {{-- Floating controls for mobile, where the sidebar is a bottom sheet.
                      Large, tappable circular buttons. --}}
                 <div class="absolute right-3 top-3 z-10 flex items-center gap-3 sm:hidden">
-                    <form method="POST" :action="`/gallery/${current.id}/favorite`">
+                    <form method="POST" :action="`/gallery/${current.id}/favorite`" @submit.prevent="favoriteCurrent($event)">
                         @csrf
                         <button type="submit" aria-label="{{ __('gallery.favorite') }}"
                             :class="current.favorite === '1' ? 'text-red-500' : 'text-white'"
@@ -227,7 +227,7 @@
                     <div class="hidden shrink-0 items-center gap-2 sm:flex">
                         <button type="button" @click="editing = ! editing" :title="'{{ __('gallery.edit') }}'"
                             :class="editing ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'"><x-icon name="pencil" class="h-[18px] w-[18px]" /></button>
-                        <form method="POST" :action="`/gallery/${current.id}/favorite`">
+                        <form method="POST" :action="`/gallery/${current.id}/favorite`" @submit.prevent="favoriteCurrent($event)">
                             @csrf
                             <button type="submit" :title="current.favorite === '1' ? '{{ __('gallery.unfavorite') }}' : '{{ __('gallery.favorite') }}'"
                                 :class="current.favorite === '1' ? 'text-red-500' : 'text-gray-400 hover:text-red-500'" class="text-xl">
@@ -309,7 +309,7 @@
                 </div>
 
                 {{-- Edit name / date / time / location --}}
-                <form method="POST" :action="`/gallery/${current.id}/meta`" class="mt-4 space-y-2 border-t border-gray-100 pt-4">
+                <form method="POST" :action="`/gallery/${current.id}/meta`" @submit.prevent="saveMeta($event)" class="mt-4 space-y-2 border-t border-gray-100 pt-4">
                     @csrf @method('PUT')
                     <input type="text" name="name" x-model="current.name" placeholder="{{ __('gallery.meta_name') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="text" name="camera" x-model="current.camera" list="known-cameras" placeholder="{{ __('gallery.meta_camera') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">

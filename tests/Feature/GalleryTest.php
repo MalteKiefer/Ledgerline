@@ -388,6 +388,16 @@ class GalleryTest extends TestCase
         $this->assertNull($photo->fresh()->favorited_at);
     }
 
+    public function test_favorite_returns_json_for_the_reload_free_lightbox(): void
+    {
+        $this->signIn();
+        $photo = Photo::factory()->create();
+
+        $this->postJson(route('gallery.favorite', $photo))
+            ->assertOk()->assertJson(['favorite' => true]);
+        $this->assertNotNull($photo->fresh()->favorited_at);
+    }
+
     public function test_index_can_filter_to_favorites_only(): void
     {
         $this->signIn();
