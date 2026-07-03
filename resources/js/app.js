@@ -190,14 +190,23 @@ Alpine.data('spotlight', () => ({
 Alpine.data('backupRuns', (labels = {}) => ({
     runs: [],
     expanded: {},
+    pollUntil: 0, // keep polling until this timestamp (covers queue lag + run time)
     _timer: null,
 
     init() {
         this.load();
-        // Refresh when a job is triggered from the jobs section.
-        window.addEventListener('backup-ran', () => setTimeout(() => this.load(), 800));
-        // Poll while something is running so status/size update on their own.
-        this._timer = setInterval(() => { if (! document.hidden && this.anyRunning()) this.load(); }, 5000);
+        // A job was triggered (here or elsewhere): poll for a window so the new
+        // run appears and updates even if the queue is slow to pick it up.
+        window.addEventListener('backup-ran', () => {
+            this.pollUntil = Date.now() + 180000; // 3 min
+            this.load();
+        });
+        // Poll while something is running, or within a post-trigger window.
+        this._timer = setInterval(() => {
+            if (! document.hidden && (this.anyRunning() || Date.now() < this.pollUntil)) {
+                this.load();
+            }
+        }, 5000);
     },
 
     anyRunning() {
@@ -276,10 +285,16 @@ Alpine.data('notificationBell', (labels = {}) => ({
 
             // Fire a desktop notification for items newer than the last seen id
             // (but not on the very first load, which would replay history).
-            if (this.primed && this.desktop === 'granted') {
-                items.filter((n) => n.id > this.maxSeenId && ! n.read)
-                    .sort((a, b) => a.id - b.id)
-                    .forEach((n) => this.popDesktop(n));
+            if (this.primed) {
+                const fresh = items.filter((n) => n.id > this.maxSeenId && ! n.read);
+                if (this.desktop === 'granted') {
+                    fresh.slice().sort((a, b) => a.id - b.id).forEach((n) => this.popDesktop(n));
+                }
+                // A backup notification means a run just finished elsewhere — tell
+                // the backup run list to refresh (it may not be actively polling).
+                if (fresh.some((n) => n.category === 'backup')) {
+                    window.dispatchEvent(new CustomEvent('backup-ran'));
+                }
             }
             if (items.length) this.maxSeenId = Math.max(this.maxSeenId, ...items.map((n) => n.id));
             this.items = items;
