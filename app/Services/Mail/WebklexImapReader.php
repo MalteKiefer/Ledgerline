@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Mail;
 
+use Carbon\Carbon;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\IMAP;
@@ -397,15 +398,22 @@ final class WebklexImapReader implements ImapReader
         return array_values(array_unique($out));
     }
 
-    /** The server's INTERNALDATE for a message, or null (server then uses now). */
-    private function internalDate(Client $client, string $folder, int $uid): ?string
+    /**
+     * The message's INTERNALDATE as a Carbon (or null → server uses "now").
+     *
+     * Returning a Carbon lets webklex emit the exact RFC 3501 APPEND date-time
+     * ("d-M-Y H:i:s O"); passing the raw FETCH string through unchanged made
+     * strict servers (e.g. iCloud) reject the APPEND with "BAD Invalid date
+     * format".
+     */
+    private function internalDate(Client $client, string $folder, int $uid): ?Carbon
     {
         try {
             $client->openFolder($folder);
             $data = $client->getConnection()->fetch(['INTERNALDATE'], [$uid], null, IMAP::ST_UID)->validatedData();
-            $date = trim($this->unwrapFetch($data[$uid] ?? null));
-            if ($date !== '') {
-                return $date;
+            $raw = trim($this->unwrapFetch($data[$uid] ?? null), " \t\n\r\0\x0B\"");
+            if ($raw !== '') {
+                return Carbon::parse($raw);
             }
         } catch (\Throwable) {
         }
