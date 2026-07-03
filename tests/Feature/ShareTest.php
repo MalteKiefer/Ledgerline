@@ -57,6 +57,20 @@ class ShareTest extends TestCase
         $this->get(route('shares.show', $share))->assertOk()->assertSee('top secret body');
     }
 
+    public function test_a_short_share_password_is_rejected(): void
+    {
+        $this->signIn();
+        $note = Note::create(['title' => 'x', 'content' => 'y']);
+
+        $this->post(route('notes.share', $note), ['expires_in' => 86400, 'password' => 'short'])
+            ->assertSessionHasErrors('password');
+        $this->assertSame(0, NoteShare::count());
+
+        $this->postJson(route('notes.share', $note), ['expires_in' => 86400, 'password' => 'longenough'])
+            ->assertOk();
+        $this->assertTrue(NoteShare::first()->has_password);
+    }
+
     public function test_view_limit_is_enforced(): void
     {
         $share = NoteShare::create(['title' => 'x', 'content' => 'once only', 'max_views' => 1, 'expires_at' => now()->addDay()]);
