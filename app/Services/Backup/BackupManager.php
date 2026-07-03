@@ -42,13 +42,28 @@ final class BackupManager
         $workDir = storage_path('app/backup-tmp/'.Str::uuid()->toString());
         File::ensureDirectoryExists($workDir, 0700);
 
+        // Stop at the next checkpoint if the operator requested cancellation
+        // (a fresh read, since the flag is set from another process).
+        $checkCancel = function () use ($run): void {
+            if (BackupRun::whereKey($run->id)->value('cancel_requested')) {
+                throw new BackupCancelled('Backup cancelled.');
+            }
+        };
+
         // Step-by-step log persisted to the run so the operator can see exactly
         // what happened. Flushed after each step so a crash still leaves a trail.
+        // Each step is also a cancellation checkpoint.
         $log = [];
-        $step = function (string $msg) use (&$log, $run): void {
+        $step = function (string $msg) use (&$log, $run, $checkCancel): void {
             $log[] = Carbon::now()->format('H:i:s').'  '.$msg;
             $run->update(['log' => implode("\n", $log)]);
+            $checkCancel();
         };
+
+        // Archive uploaded to the destination this run — removed on cancel so a
+        // cancelled run leaves nothing behind. (Mirror uploads clean themselves.)
+        $uploadedArchive = null;
+        $fs = null;
 
         try {
             $step(sprintf('Backup "%s" started (source: %s).', $job->name, $job->source));
@@ -64,7 +79,7 @@ final class BackupManager
                 // Files/Gallery: the objects are immutable, already-encrypted blobs
                 // — mirror them directly (no archive, no gzip, no local staging).
                 $step('Mirroring '.$job->source.' to '.$prefix.'…');
-                $r = $this->mirror->mirror($fs, self::MIRROR_PREFIX[$job->source], $prefix, $step);
+                $r = $this->mirror->mirror($fs, self::MIRROR_PREFIX[$job->source], $prefix, $step, $checkCancel);
                 $bytes = $r['bytes'];
                 $filename = $prefix.'/'; // a folder mirror, not a single archive
                 $summary = sprintf('%s → %s (%s, %d new, %d removed)', $job->source, $prefix, $this->human($bytes), $r['uploaded'], $r['removed']);
@@ -101,6 +116,7 @@ final class BackupManager
                         fclose($stream);
                     }
                 }
+                $uploadedArchive = $filename;
                 $step('Upload complete.');
 
                 $bytes = (int) (filesize($uploadPath) ?: 0);
@@ -112,19 +128,35 @@ final class BackupManager
                 $summary = sprintf('%s → %s (%s)', $job->source, $filename, $this->human($bytes));
             }
 
+            // Log the completion directly (not via $step) so a cancel requested
+            // at the very end can't flip an already-finished run to cancelled.
+            $log[] = Carbon::now()->format('H:i:s').'  Done: '.$summary;
             $run->update([
                 'status' => 'success',
                 'finished_at' => Carbon::now(),
                 'bytes' => $bytes,
                 'filename' => $filename,
+                'log' => implode("\n", $log),
             ]);
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'success']);
-            $step('Done: '.$summary);
             $this->notifier->notify($job, true, $summary);
+        } catch (BackupCancelled $e) {
+            // Remove any complete archive already pushed this run. (Mirror runs
+            // roll back their own partial uploads inside DiskMirror.)
+            if ($uploadedArchive !== null && $fs !== null) {
+                try {
+                    $fs->delete($uploadedArchive);
+                    $log[] = Carbon::now()->format('H:i:s').'  Removed uploaded archive.';
+                } catch (\Throwable) { /* best effort */
+                }
+            }
+            $log[] = Carbon::now()->format('H:i:s').'  Cancelled by request.';
+            $run->update(['status' => 'cancelled', 'finished_at' => Carbon::now(), 'message' => 'Cancelled.', 'log' => implode("\n", $log)]);
+            $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'cancelled']);
         } catch (\Throwable $e) {
             $detail = $this->describe($e);
-            $step('FAILED: '.$detail);
-            $run->update(['status' => 'failed', 'finished_at' => Carbon::now(), 'message' => Str::limit($detail, 1000)]);
+            $log[] = Carbon::now()->format('H:i:s').'  FAILED: '.$detail;
+            $run->update(['status' => 'failed', 'finished_at' => Carbon::now(), 'message' => Str::limit($detail, 1000), 'log' => implode("\n", $log)]);
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'failed']);
             $this->notifier->notify($job, false, Str::limit($detail, 300));
         } finally {

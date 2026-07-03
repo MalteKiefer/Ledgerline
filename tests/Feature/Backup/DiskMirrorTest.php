@@ -50,4 +50,31 @@ class DiskMirrorTest extends TestCase
 
         (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($dir);
     }
+
+    public function test_a_cancel_rolls_back_objects_uploaded_so_far(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        // More than the 50-object checkpoint interval so the cancel check fires.
+        for ($i = 0; $i < 60; $i++) {
+            Storage::disk('files')->put('vault/blob-'.$i, str_repeat('x', 8));
+        }
+
+        [$dest, $dir] = $this->destFs();
+        $mirror = new DiskMirror;
+        $cancel = fn () => throw new \App\Services\Backup\BackupCancelled('stop');
+
+        $this->expectException(\App\Services\Backup\BackupCancelled::class);
+        try {
+            $mirror->mirror($dest, 'vault', 'job-1', fn (string $m) => null, $cancel);
+        } finally {
+            // Every object written before the cancel must be gone again.
+            $left = array_filter(
+                iterator_to_array($dest->listContents('job-1', true)),
+                fn ($item) => $item->isFile(),
+            );
+            $this->assertCount(0, $left);
+            (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($dir);
+        }
+    }
 }

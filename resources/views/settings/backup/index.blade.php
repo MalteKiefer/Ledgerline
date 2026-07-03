@@ -166,7 +166,7 @@
 
     {{-- Recent runs — live-updating (no page reload) --}}
     <section class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
-        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}' })">
+        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.backup_runs_heading') }}</h2>
         <p x-show="runs.length === 0" class="mt-3 text-sm text-gray-500">{{ __('settings.backup_no_runs') }}</p>
         <table x-show="runs.length > 0" x-cloak class="mt-3 w-full text-left text-sm">
@@ -199,6 +199,8 @@
                         <td class="py-1.5 pr-3 align-top text-gray-500" x-text="r.size ?? '—'"></td>
                         <td class="py-1.5 pr-3 align-top">
                             <a x-show="r.downloadable" :href="downloadUrl(r.id)" title="{{ __('settings.backup_download') }}" :aria-label="'{{ __('settings.backup_download') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
+                            <button x-show="r.cancellable" type="button" @click="cancel(r.id)" title="{{ __('settings.backup_cancel') }}" :aria-label="'{{ __('settings.backup_cancel') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                            <span x-show="r.cancelling" class="text-xs text-gray-400">{{ __('settings.backup_cancelling') }}</span>
                         </td>
                     </tr>
                     <tr x-show="expanded[r.id]" x-cloak>

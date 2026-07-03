@@ -19,9 +19,10 @@ class DiskMirror
 {
     /**
      * @param  callable(string):void  $step  progress logger
+     * @param  (callable():void)|null  $checkCancel  throws to abort mid-mirror
      * @return array{source:int, uploaded:int, removed:int, bytes:int}
      */
-    public function mirror(Filesystem $dest, string $sourcePrefix, string $destPrefix, callable $step): array
+    public function mirror(Filesystem $dest, string $sourcePrefix, string $destPrefix, callable $step, ?callable $checkCancel = null): array
     {
         $disk = Storage::disk(config('files.disk'));
 
@@ -40,23 +41,39 @@ class DiskMirror
 
         $uploaded = 0;
         $bytes = 0;
-        foreach ($sourceFiles as $key) {
-            $bytes += (int) $disk->size($key);
-            if (isset($existing[$key])) {
-                continue; // immutable blob already mirrored → skip
+        // Objects this run wrote — removed again if the run is cancelled, so a
+        // half-finished mirror leaves no orphaned blobs at the destination.
+        $written = [];
+        try {
+            foreach ($sourceFiles as $key) {
+                $bytes += (int) $disk->size($key);
+                if (isset($existing[$key])) {
+                    continue; // immutable blob already mirrored → skip
+                }
+                $read = $disk->readStream($key);
+                if ($read === null) {
+                    continue;
+                }
+                $dest->writeStream($destPrefix.'/'.$key, $read);
+                if (is_resource($read)) {
+                    fclose($read);
+                }
+                $written[] = $destPrefix.'/'.$key;
+                $uploaded++;
+                if ($uploaded % 50 === 0) {
+                    $step("Uploaded {$uploaded} new object(s)…");
+                    if ($checkCancel) {
+                        $checkCancel();
+                    }
+                }
             }
-            $read = $disk->readStream($key);
-            if ($read === null) {
-                continue;
+        } catch (BackupCancelled $e) {
+            // Roll back this run's uploads. Don't call $step here — it re-checks
+            // the cancel flag and would re-throw before the cleanup completes.
+            foreach ($written as $path) {
+                $dest->delete($path);
             }
-            $dest->writeStream($destPrefix.'/'.$key, $read);
-            if (is_resource($read)) {
-                fclose($read);
-            }
-            $uploaded++;
-            if ($uploaded % 50 === 0) {
-                $step("Uploaded {$uploaded} new object(s)…");
-            }
+            throw $e;
         }
 
         // Remove destination objects whose source is gone.
