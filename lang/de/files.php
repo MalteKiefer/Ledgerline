@@ -34,6 +34,7 @@ return [
     'filtered_by' => 'Gefiltert nach',
     'folder' => 'Ordner',
     'info' => 'Informationen',
+    'preview' => 'Vorschau',
     'info_title' => 'Informationen',
     'info_name' => 'Name',
     'info_type' => 'Typ',

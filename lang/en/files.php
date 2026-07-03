@@ -34,6 +34,7 @@ return [
     'filtered_by' => 'Filtered by',
     'folder' => 'Folder',
     'info' => 'Information',
+    'preview' => 'Preview',
     'info_title' => 'Information',
     'info_name' => 'Name',
     'info_type' => 'Type',

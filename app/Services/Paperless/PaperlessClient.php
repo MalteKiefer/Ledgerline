@@ -102,7 +102,9 @@ class PaperlessClient
     }
 
     /**
-     * Create a term and return its new Paperless id + name.
+     * Create a term and return its new Paperless id + name. Idempotent: if the
+     * name already exists (Paperless answers 400 on the unique constraint), the
+     * existing term is looked up and returned instead of failing.
      *
      * @return array{paperless_id:int, name:string, color:?string}
      */
@@ -110,14 +112,45 @@ class PaperlessClient
     {
         $endpoint = self::ENDPOINTS[$kind] ?? throw new RuntimeException("Unknown Paperless term kind: {$kind}");
         $res = $this->http()->post("/api/{$endpoint}/", ['name' => $name]);
-        if (! $res->successful()) {
-            throw new RuntimeException("Creating {$kind} failed: HTTP ".$res->status().'.');
-        }
-        $r = $res->json();
 
+        if ($res->successful()) {
+            return $this->shape($res->json(), $name);
+        }
+
+        // A 400 is usually "already exists" — reuse the existing term so the
+        // caller can just pick it. Anything else is a genuine error.
+        if ($res->status() === 400) {
+            $existing = $this->findByName($endpoint, $name);
+            if ($existing !== null) {
+                return $existing;
+            }
+        }
+
+        throw new RuntimeException("Creating {$kind} failed: HTTP ".$res->status().' '.trim($res->body()));
+    }
+
+    /** Find a term by exact (case-insensitive) name, or null. */
+    private function findByName(string $endpoint, string $name): ?array
+    {
+        $res = $this->http()->get("/api/{$endpoint}/", ['name__iexact' => $name]);
+        if (! $res->successful()) {
+            return null;
+        }
+        foreach ($res->json('results') ?? [] as $r) {
+            if (strcasecmp((string) ($r['name'] ?? ''), $name) === 0) {
+                return $this->shape($r, $name);
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array{paperless_id:int, name:string, color:?string} */
+    private function shape(array $r, string $fallbackName): array
+    {
         return [
             'paperless_id' => (int) $r['id'],
-            'name' => (string) ($r['name'] ?? $name),
+            'name' => (string) ($r['name'] ?? $fallbackName),
             'color' => $r['color'] ?? $r['colour'] ?? null,
         ];
     }
