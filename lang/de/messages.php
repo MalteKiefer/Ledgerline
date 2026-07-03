@@ -9,6 +9,7 @@ return [
         'mail' => 'Mail',
         'files' => 'Dateien',
         'gallery' => 'Galerie',
+        'todos' => 'Aufgaben',
     ],
     'menu' => [
         'profile' => 'Profil',

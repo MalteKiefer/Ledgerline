@@ -34,6 +34,8 @@
                             'icon' => 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125'],
                         ['label' => __('messages.nav.bookmarks'), 'url' => route('bookmarks.index'), 'active' => request()->routeIs('bookmarks.*'),
                             'icon' => 'M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z'],
+                        ['label' => __('messages.nav.todos'), 'url' => route('todos.index'), 'active' => request()->routeIs('todos.*'),
+                            'icon' => 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
                         ['label' => __('messages.nav.mail'), 'url' => route('mail.index'), 'active' => request()->routeIs('mail.*'),
                             'icon' => 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75'],
                         ['label' => __('messages.nav.gallery'), 'url' => route('gallery.index'), 'active' => request()->routeIs('gallery.*'),
