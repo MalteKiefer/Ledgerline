@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The single, global workspace settings row: gallery, vault and mail options.
+ * The single, global workspace settings row: gallery, mail and integration options.
  *
  * There is only ever one row; use current() to fetch (or lazily create) it.
  */

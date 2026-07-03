@@ -12,7 +12,7 @@ use Spatie\DbDumper\Databases\PostgreSql;
 
 /**
  * Dumps the application database to a gzipped SQL file (or, for SQLite, a
- * gzipped copy of the database file). The dump contains the encrypted vault
+ * gzipped copy of the database file). The dump contains all application data
  * manifests as-is — it is ciphertext, not decrypted content.
  */
 final class DatabaseSource implements BackupSource

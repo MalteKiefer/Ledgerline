@@ -1190,7 +1190,7 @@ async function apiRequest(method, url, body) {
 }
 
 /* Plain localStorage cache for the mail reader (stats/folders/message lists).
- * Mail is no longer encrypted, so this needs no vault key. Best-effort — any
+ * Mail is no longer encrypted, so this is a plain cache. Best-effort — any
  * failure (quota, private mode) is swallowed and treated as a cache miss. */
 const mailCache = {
     put(key, value) { try { localStorage.setItem('mailcache:' + key, JSON.stringify({ v: value, t: Date.now() })); } catch (e) { /* ignore */ } },
@@ -1241,7 +1241,7 @@ Alpine.store('paperless', {
     // Autocomplete query text per picker (also the name used when the typed
     // value has no match and a new term is created on the fly).
     corrQuery: '', typeQuery: '', tagQuery: '',
-    // Set when opened from the file browser: offer to delete the vault file
+    // Set when opened from the file browser: offer to delete the stored file
     // after a successful upload (like the Markdown-to-note migration).
     allowDelete: false,
     deleteAfter: true,
@@ -1519,7 +1519,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const cmp = (a, b) => factor * a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
 
         // A text search or an active tag filter switches from folder browsing to
-        // a flat, vault-wide result set.
+        // a flat, tree-wide result set.
         const inScope = (list) => {
             let scoped = (q === '' && tag === '')
                 ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
@@ -2032,7 +2032,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     // Open the Paperless modal immediately, then decrypt the PDF in the
     // background so the dialog never blocks. allowDelete lets the modal offer
-    // to remove the vault file after upload.
+    // to remove the stored file after upload.
     async openPaperless(row) {
         const store = Alpine.store('paperless');
         store.begin(row.name, {}, {
@@ -3197,7 +3197,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
             : `<pre style="white-space:pre-wrap;word-break:break-word">${escapeHtml(c.text || '')}</pre>`;
         // Print via a sandboxed, script-less iframe with a strict CSP — never a
         // same-origin window with an injected <script>. Email HTML must never run
-        // in the app origin (a DOMPurify bypass could otherwise read the vault key
+        // in the app origin (a DOMPurify bypass could otherwise read session data
         // from sessionStorage). No allow-scripts → nothing in the body executes.
         const csp = "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data:";
         const srcdoc = '<!doctype html><html><head><meta charset="utf-8">'

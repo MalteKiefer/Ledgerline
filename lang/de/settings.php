@@ -51,7 +51,7 @@ return [
     'rescan' => 'Metadaten neu einlesen',
     'save' => 'Speichern',
     'mail_sync_minutes' => 'Mails im Hintergrund aktualisieren alle (Minuten)',
-    'mail_sync_minutes_hint' => 'Mindestens 5 Minuten und nicht länger als die Sperrzeit. Läuft nur bei entsperrtem Tresor.',
+    'mail_sync_minutes_hint' => 'Wie oft die Hintergrund-Synchronisation Mails aktualisiert (5 Minuten bis 24 Stunden).',
     'subheading' => 'Verwalten Sie die Konfiguration Ihres Arbeitsbereichs.',
     'trip_gap_days' => 'Reise-Abstand (Tage)',
     'trip_radius_km' => 'Reise-Radius (km)',

@@ -14,9 +14,8 @@ use RuntimeException;
  * (XChaCha20-Poly1305) so arbitrarily large archives never sit fully in memory.
  * The output is: magic | salt | stream-header | framed(ciphertext-chunks).
  *
- * This protects the archive at rest on the remote destination. It is unrelated
- * to the zero-knowledge vault key (which the server never has); it exists so a
- * backup passphrase alone can decrypt a downloaded archive with `backups:decrypt`.
+ * This protects the archive at rest on the remote destination so a backup
+ * passphrase alone can decrypt a downloaded archive with `backups:decrypt`.
  */
 final class ArchiveCipher
 {

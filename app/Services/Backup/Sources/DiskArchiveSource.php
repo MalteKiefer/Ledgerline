@@ -18,7 +18,7 @@ use RuntimeException;
  */
 abstract class DiskArchiveSource implements BackupSource
 {
-    /** Disk path prefix to archive (e.g. "vault", "photos"). */
+    /** Disk path prefix to archive (e.g. "files", "photos"). */
     abstract protected function prefix(): string;
 
     /** Base name for the produced archive (e.g. "files", "gallery"). */
@@ -59,7 +59,7 @@ abstract class DiskArchiveSource implements BackupSource
         }
 
         // PharData refuses to build from an empty directory, so an empty source
-        // (e.g. a vault with no files yet) would throw. Stage a marker so the
+        // (e.g. a files disk with nothing yet) would throw. Stage a marker so the
         // archive is always valid — restore just ignores it.
         if ($staged === 0) {
             file_put_contents($staging.'/.ledgerline-empty', "This backup source was empty at backup time.\n");

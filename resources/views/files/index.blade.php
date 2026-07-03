@@ -302,9 +302,9 @@
             <div class="absolute inset-0 bg-gray-900/40" @click="tagsOpen = false"></div>
             <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900">{{ __('files.edit_tags') }}</h3>
-                <input type="text" x-model="tagsValue" list="vault-tags" placeholder="tag1, tag2"
+                <input type="text" x-model="tagsValue" list="file-tags" placeholder="tag1, tag2"
                     class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                <datalist id="vault-tags">
+                <datalist id="file-tags">
                     <template x-for="tag in allTags" :key="tag"><option :value="tag"></option></template>
                 </datalist>
                 <div class="mt-5 flex justify-end gap-3">

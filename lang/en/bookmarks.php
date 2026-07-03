@@ -19,8 +19,6 @@ return [
     'save' => 'Save',
     'cancel' => 'Cancel',
     'empty' => 'No bookmarks yet — add your first one.',
-    'locked_notice' => 'Your bookmarks are locked. Unlock the vault to see them — nothing about them is stored readable on the server.',
-    'unconfigured_notice' => 'No vault yet. Set an encryption passphrase to create your zero-knowledge bookmarks.',
     'stale' => 'The bookmarks were changed somewhere else at the same time and were reloaded. Please repeat your last change.',
     'save_failed' => 'Could not save. Please try again.',
     'active' => 'Bookmarks',

@@ -5,7 +5,7 @@ declare(strict_types=1);
 return [
     'download_failed' => 'The download failed.',
     'upload_failed' => 'An upload failed.',
-    'vault_stale' => 'Someone else changed the vault at the same time; it was reloaded. Please repeat your last change.',
+    'vault_stale' => 'The files changed elsewhere at the same time and were reloaded. Please repeat your last change.',
     'actions' => 'Actions',
     'all_files' => 'All files',
     'drop_hint' => 'Drop files or folders here to upload',

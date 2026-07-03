@@ -69,7 +69,7 @@ class PaperlessController extends Controller
         return response()->json(['ok' => true, 'id' => $term['paperless_id'], 'name' => $term['name']]);
     }
 
-    /** Upload a document (from a mail attachment or a vault file) to Paperless. */
+    /** Upload a document (from a mail attachment or a stored file) to Paperless. */
     public function submit(Request $request): JsonResponse
     {
         $data = $request->validate([

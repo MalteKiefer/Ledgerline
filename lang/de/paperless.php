@@ -18,7 +18,7 @@ return [
     'send' => 'Senden',
     'sending' => 'Sende…',
     'cancel' => 'Abbrechen',
-    'delete_after' => 'Datei nach dem Senden aus dem Vault löschen',
+    'delete_after' => 'Datei nach dem Senden aus den Dateien löschen',
     'sent' => 'Dokument an Paperless gesendet.',
     'failed' => 'Senden an Paperless fehlgeschlagen.',
     'request_failed' => 'Die Paperless-Anfrage ist fehlgeschlagen. Prüfe die Verbindungseinstellungen.',
