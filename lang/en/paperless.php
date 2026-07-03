@@ -12,6 +12,8 @@ return [
     'date' => 'Date',
     'none' => '— none —',
     'new_placeholder' => 'New name…',
+    'search_or_create' => 'Search or create…',
+    'create' => 'Create',
     'add' => 'Add',
     'send' => 'Send',
     'sending' => 'Sending…',
