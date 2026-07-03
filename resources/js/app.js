@@ -1,6 +1,5 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
-import { Vault } from './vault';
 import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
@@ -1073,111 +1072,6 @@ Alpine.data('locationPicker', (searchUrl) => ({
         }
     },
 }));
-
-/**
- * Zero-knowledge encryption vault store. Wraps the crypto module so views can
- * check state and drive setup / unlock / recover / lock.
- */
-Alpine.store('vault', {
-    configured: false,
-    unlocked: false,
-    busy: false,
-    ready: null,
-
-    // Idempotent: repeated calls return the same in-flight/settled promise, so
-    // components can `await boot()` to be sure the cached key was restored.
-    boot() {
-        if (! this.ready) {
-            this.ready = (async () => {
-                await Vault.boot();
-                this.unlocked = Vault.unlocked();
-                this.startIdleWatch();
-                try {
-                    this.configured = (await Vault.status()).configured;
-                } catch (e) { /* offline: leave defaults */ }
-            })();
-        }
-        return this.ready;
-    },
-
-    // Callbacks run — while the key is still present — right before an idle
-    // lock, so components can flush unsaved work (e.g. the notes editor).
-    _beforeLock: [],
-    onBeforeLock(fn) {
-        this._beforeLock.push(fn);
-    },
-    async flushBeforeLock() {
-        for (const fn of this._beforeLock) {
-            try {
-                await fn();
-            } catch (e) { /* a failed flush must not block the lock */ }
-        }
-    },
-
-    // Enforce the idle timeout on an open page, not just on reload: user
-    // activity extends the window, and a poll locks + re-gates the moment it
-    // elapses so decrypted content never outlives the idle limit.
-    //
-    // Data-loss safety: before locking we flush pending saves while the vault
-    // key is still available, so an idle lock can never drop unsaved edits.
-    startIdleWatch() {
-        if (this._idleWatch) return;
-        let lastBump = 0;
-        const bump = () => {
-            const now = Date.now();
-            if (now - lastBump < 15000) return;   // throttle sessionStorage writes
-            lastBump = now;
-            Vault.touch();
-        };
-        ['mousemove', 'keydown', 'pointerdown', 'scroll', 'touchstart'].forEach(
-            (ev) => window.addEventListener(ev, bump, { passive: true }),
-        );
-        this._idleWatch = setInterval(async () => {
-            if (this._locking || ! Vault.expired()) return;
-            this._locking = true;
-            await this.flushBeforeLock();   // persist dirty edits while the key still exists
-            this.lock();
-            window.location.reload();       // drop all in-memory decrypted state, show the gate
-        }, 10000);
-    },
-
-    async setup(passphrase) {
-        const code = await Vault.setup(passphrase);
-        this.configured = true;
-        this.unlocked = true;
-        this.announceUnlocked();
-        return code;
-    },
-
-    async unlock(passphrase) {
-        await Vault.unlock(passphrase);
-        this.unlocked = true;
-        this.announceUnlocked();
-    },
-
-    async recover(code) {
-        await Vault.recover(code);
-        this.unlocked = true;
-        this.announceUnlocked();
-    },
-
-    async changePassphrase(currentPass, newPass) {
-        await Vault.changePassphrase(currentPass, newPass);
-        this.unlocked = true;
-        this.announceUnlocked();
-    },
-
-    lock() {
-        Vault.lock();
-        this.unlocked = false;
-    },
-
-    // Let the encrypted-name/type/preview components on the page re-decrypt
-    // themselves once the key is available, without a manual page reload.
-    announceUnlocked() {
-        window.dispatchEvent(new CustomEvent('vault-unlocked'));
-    },
-});
 
 /* ---- Zero-knowledge file browser (manifest model) ----
  *
@@ -3355,15 +3249,10 @@ Alpine.plugin(intersect);
 
 window.Alpine = Alpine;
 
-// Boot the vault store on every page: it restores a cached (unlocked) vault key
-// from sessionStorage so encrypted files decrypt on the detail/edit pages too,
-// not only on the files browser where the unlock panel lives.
-document.addEventListener('alpine:init', () => Alpine.store('vault').boot());
-
-// Background mail sync: while the vault is unlocked, refresh each account's
-// stats and INBOX headers into the encrypted client cache so the overview and
-// reader show instantly. Runs only client-side (the server never stores the
-// IMAP credentials) at the configured interval and on tab focus.
+// Background mail sync: refresh each account's
+// stats and INBOX headers into the client cache so the overview and reader show
+// instantly. Runs only client-side (the server never stores the IMAP
+// credentials) at the configured interval and on tab focus.
 function mailPostRaw(url, body) {
     return fetch(url, {
         method: 'POST',
@@ -3382,7 +3271,7 @@ document.addEventListener('alpine:init', () => {
         lastSync: 0,
 
         init() {
-            window.addEventListener('vault-unlocked', () => setTimeout(() => this.tick(), 1500));
+            setTimeout(() => this.maybeTick(), 1500);
             document.addEventListener('visibilitychange', () => { if (! document.hidden) this.maybeTick(); });
             this.timer = setInterval(() => this.maybeTick(), this.intervalMs());
         },
