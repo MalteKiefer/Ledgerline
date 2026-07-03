@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\Reminder;
 use App\Models\Todo;
 use App\Models\TodoList;
+use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -117,9 +118,8 @@ class TodoController extends Controller
             'url' => ['nullable', 'string', 'max:2048'],
             'priority' => ['required', Rule::in(['low', 'normal', 'high'])],
             'marked' => ['sometimes', 'boolean'],
-            'tags' => ['array'],
-            'tags.*' => ['string', 'max:64'],
             'due' => ['nullable', 'date'],
+            ...Tags::rules(),
             'reminder_channels' => ['array'],
             'reminder_channels.*' => [Rule::in(Reminder::CHANNELS)],
             'done' => ['sometimes', 'boolean'],
@@ -132,7 +132,7 @@ class TodoController extends Controller
             'url' => $v['url'] ?? null,
             'priority' => $v['priority'],
             'marked' => (bool) ($v['marked'] ?? false),
-            'tags' => array_values($v['tags'] ?? []),
+            'tags' => Tags::normalize($v['tags'] ?? null),
             'due_at' => ! empty($v['due']) ? Carbon::parse($v['due'], config('app.timezone')) : null,
             'reminder_channels' => array_values($v['reminder_channels'] ?? []),
             'done' => (bool) ($v['done'] ?? false),

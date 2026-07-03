@@ -35,6 +35,18 @@ class BookmarksTest extends TestCase
         $this->assertSame(1, Bookmark::count());
     }
 
+    public function test_a_javascript_url_is_rejected(): void
+    {
+        $this->signIn();
+
+        $this->post(route('bookmarks.store'), ['title' => 'x', 'url' => 'javascript:alert(1)'])
+            ->assertSessionHasErrors('url');
+        $this->post(route('bookmarks.store'), ['title' => 'x', 'url' => 'data:text/html,<script>alert(1)</script>'])
+            ->assertSessionHasErrors('url');
+
+        $this->assertSame(0, Bookmark::count());
+    }
+
     public function test_patch_favorite_and_trash(): void
     {
         $this->signIn();

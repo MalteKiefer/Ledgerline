@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Bookmark;
 use App\Models\BookmarkFolder;
+use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -90,11 +91,12 @@ class BookmarkController extends Controller
         $v = $request->validate([
             'bookmark_folder_id' => ['nullable', 'exists:bookmark_folders,id'],
             'title' => ['required', 'string', 'max:255'],
-            'url' => ['required', 'string', 'max:2048'],
+            // Only http(s): a javascript:/data:/vbscript: URL would execute on
+            // click via the :href binding (stored XSS).
+            'url' => ['required', 'string', 'max:2048', 'regex:#^https?://#i'],
             'description' => ['nullable', 'string', 'max:20000'],
-            'tags' => ['array'],
-            'tags.*' => ['string', 'max:64'],
             'favorite' => ['sometimes', 'boolean'],
+            ...Tags::rules(),
         ]);
 
         return [
@@ -102,7 +104,7 @@ class BookmarkController extends Controller
             'title' => $v['title'],
             'url' => $v['url'],
             'description' => $v['description'] ?? null,
-            'tags' => array_values($v['tags'] ?? []),
+            'tags' => Tags::normalize($v['tags'] ?? null),
             'favorite' => (bool) ($v['favorite'] ?? false),
         ];
     }
