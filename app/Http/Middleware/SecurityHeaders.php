@@ -31,35 +31,85 @@ final class SecurityHeaders
     {
         $response = $next($request);
 
+        // Public share pages carry untrusted note content, so they get the
+        // strictest treatment (no-referrer, script-less CSP).
+        $isShare = $request->routeIs('shares.*');
+
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
-        $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        $response->headers->set(
+            'Referrer-Policy',
+            $isShare ? 'no-referrer' : 'strict-origin-when-cross-origin'
+        );
+
+        // Pin HTTPS only when the deployment is actually served over TLS
+        // (secure session cookies configured); never on a plaintext local box.
+        if (config('session.secure')) {
+            $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
 
         if (! app()->environment('local')) {
-            $response->headers->set('Content-Security-Policy', implode('; ', [
-                "default-src 'self'",
-                "base-uri 'none'",
-                // 'self' + blob: so the in-app PDF viewer can render a decrypted
-                // file (an <object> pointing at a client-generated blob: URL); no
-                // remote plugin content is allowed.
-                "object-src 'self' blob:",
-                "frame-ancestors 'none'",
-                "form-action 'self'",
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-                "style-src 'self' 'unsafe-inline'",
-                "img-src 'self' data: blob: https:",
-                "font-src 'self' data:",
-                // blob: so the file viewer can play decrypted video/audio from a
-                // client-generated blob: URL.
-                "media-src 'self' blob:",
-                "connect-src 'self'",
-                // blob: so the in-app PDF viewer works: some browsers render an
-                // <object>/<embed> PDF through an internal frame from a
-                // client-generated blob: URL.
-                "frame-src 'self' blob:",
-            ]));
+            $response->headers->set(
+                'Content-Security-Policy',
+                implode('; ', $isShare ? $this->sharePolicy() : $this->appPolicy())
+            );
         }
 
         return $response;
+    }
+
+    /**
+     * Defence-in-depth CSP for the authenticated application shell.
+     *
+     * @return list<string>
+     */
+    private function appPolicy(): array
+    {
+        return [
+            "default-src 'self'",
+            "base-uri 'none'",
+            // 'self' + blob: so the in-app PDF viewer can render a file (an
+            // <object> pointing at a client-generated blob: URL); no remote
+            // plugin content is allowed.
+            "object-src 'self' blob:",
+            "frame-ancestors 'none'",
+            "form-action 'self'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data: blob: https:",
+            "font-src 'self' data:",
+            // blob: so the file viewer can play video/audio from a
+            // client-generated blob: URL.
+            "media-src 'self' blob:",
+            "connect-src 'self'",
+            // blob: so the in-app PDF viewer works: some browsers render an
+            // <object>/<embed> PDF through an internal frame from a
+            // client-generated blob: URL.
+            "frame-src 'self' blob:",
+        ];
+    }
+
+    /**
+     * Hard, script-less CSP for public note-share pages. They run no
+     * application JS, so any script — including one smuggled past the markdown
+     * renderer — is refused with no exceptions.
+     *
+     * @return list<string>
+     */
+    private function sharePolicy(): array
+    {
+        return [
+            "default-src 'none'",
+            "base-uri 'none'",
+            "script-src 'none'",
+            "object-src 'none'",
+            "frame-ancestors 'none'",
+            "form-action 'self'",
+            "style-src 'self'",
+            // Shared notes may embed images via markdown; allow same-origin,
+            // data: and remote https: images but nothing executable.
+            "img-src 'self' data: https:",
+            "font-src 'self' data:",
+        ];
     }
 }

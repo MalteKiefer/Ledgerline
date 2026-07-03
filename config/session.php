@@ -169,7 +169,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // Default to secure cookies in production so a deployment served over
+    // HTTPS never emits the session cookie over a plaintext hop. Local/dev
+    // (typically http://) leaves it off unless explicitly overridden.
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV') === 'production'),
 
     /*
     |--------------------------------------------------------------------------
