@@ -25,4 +25,5 @@ return [
     'photos_restored' => ':count photo(s) restored.',
     'photos_trashed' => ':count photo(s) moved to trash.',
     'mail_settings_saved' => 'Mail settings saved.',
+    'paperless_settings_saved' => 'Paperless settings saved.',
 ];
