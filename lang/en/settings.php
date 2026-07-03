@@ -169,6 +169,7 @@ return [
     'paperless_test' => 'Test connection',
     'paperless_testing' => 'Testing…',
     'paperless_test_ok' => 'Connection OK.',
+    'paperless_test_ok_detail' => 'Connection OK — :tags tag(s), :types document type(s), :correspondents correspondent(s).',
     'paperless_test_failed' => 'Connection test failed.',
     'paperless_test_missing' => 'Enter the URL and API token first.',
     'paperless_cache_heading' => 'Cached quick-pick terms',

@@ -1256,6 +1256,11 @@ Alpine.store('paperless', {
     error: '',
     file: null, filename: '',
     newTag: '', newType: '', newCorrespondent: '',
+    // Set when opened from the file browser: offer to delete the vault file
+    // after a successful upload (like the Markdown-to-note migration).
+    allowDelete: false,
+    deleteAfter: true,
+    context: null,
     form: { title: '', correspondent: '', documentType: '', tags: [], created: '' },
 
     async init() {
@@ -1277,11 +1282,14 @@ Alpine.store('paperless', {
 
     // Open the modal for a document (a decrypted Blob). defaults may prefill the
     // title and created date (mail passes the subject and message date).
-    openFor(blob, filename, defaults = {}) {
+    openFor(blob, filename, defaults = {}, opts = {}) {
         this.file = blob;
         this.filename = filename || 'document.pdf';
         this.error = '';
         this.newTag = this.newType = this.newCorrespondent = '';
+        this.allowDelete = !! opts.allowDelete;
+        this.deleteAfter = this.allowDelete; // default to deleting, like the note migration
+        this.context = opts.context ?? null;
         this.form = {
             title: defaults.title ?? this.filename.replace(/\.[^.]+$/, ''),
             correspondent: '', documentType: '', tags: [],
@@ -1330,7 +1338,9 @@ Alpine.store('paperless', {
             const b = await res.json();
             if (b.ok) {
                 this.open = false; this.file = null;
-                window.dispatchEvent(new CustomEvent('paperless-sent'));
+                window.dispatchEvent(new CustomEvent('paperless-sent', {
+                    detail: { deleteAfter: this.allowDelete && this.deleteAfter, context: this.context },
+                }));
             } else {
                 this.error = b.detail || this.labels.failed;
             }
@@ -1379,6 +1389,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     async init() {
         await this.$store.vault.boot();
         window.addEventListener('vault-unlocked', () => this.load());
+        window.addEventListener('paperless-sent', (e) => this.onPaperlessSent(e.detail));
         this.initDropzone();
         if (! this.$store.vault.configured) {
             this.state = 'unconfigured';
@@ -2016,16 +2027,39 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     // Decrypt a PDF in the browser, then hand it to the shared Paperless modal.
+    // allowDelete lets the modal offer to remove the vault file after upload.
     async openPaperless(row) {
         this.dl = { active: true, done: 0, total: 1 };
         try {
             const plain = await this.fetchPlain(row);
             const blob = new Blob([plain], { type: 'application/pdf' });
-            Alpine.store('paperless').openFor(blob, row.name);
+            Alpine.store('paperless').openFor(blob, row.name, {}, {
+                allowDelete: true,
+                context: { source: 'files', rowId: row.id, blob: row.blob },
+            });
         } catch (e) {
             this.error = labels.downloadFailed;
         }
         this.dl.active = false;
+    },
+
+    // After a file-browser upload the user may choose to delete the original;
+    // remove it from the manifest and drop its blob (best effort).
+    async onPaperlessSent(detail) {
+        const ctx = detail?.context;
+        if (! detail?.deleteAfter || ctx?.source !== 'files') return;
+        const row = this.manifest.files.find((x) => x.id === ctx.rowId);
+        if (! row) return;
+        // If the deleted file is the one open in the viewer, close it.
+        if (this.viewer.open && this.viewer.row?.id === row.id) this.closeViewer();
+        this.manifest.files = this.manifest.files.filter((x) => x.id !== row.id);
+        try {
+            await this.persist();
+            fetch(`${config.blobBase}/${ctx.blob}`, {
+                method: 'DELETE',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+            }).catch(() => {});
+        } catch (e) { /* keep the file on save failure */ }
     },
 
     /* ---- Preview & editor (all in the browser, nothing readable leaves it) ---- */

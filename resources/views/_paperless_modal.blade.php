@@ -73,6 +73,12 @@
                     </div>
                 </div>
 
+                {{-- File browser only: keep or delete the vault file after upload. --}}
+                <label x-show="s.allowDelete" class="flex items-center gap-2 border-t border-gray-100 pt-3">
+                    <input type="checkbox" x-model="s.deleteAfter" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                    <span class="text-sm text-gray-700">{{ __('paperless.delete_after') }}</span>
+                </label>
+
                 <p x-show="s.error" x-cloak class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" x-text="s.error"></p>
             </div>
 

@@ -63,9 +63,22 @@ class PaperlessController extends Controller
         }
 
         try {
-            (new PaperlessClient($url, $token))->ping();
+            // A real end-to-end check: authenticate, then confirm read access on
+            // each collection the transfer modal relies on, reporting the counts.
+            $client = new PaperlessClient($url, $token);
+            $client->ping();
+            $tags = $client->count('tag');
+            $types = $client->count('document_type');
+            $correspondents = $client->count('correspondent');
 
-            return response()->json(['ok' => true, 'detail' => __('settings.paperless_test_ok')]);
+            return response()->json([
+                'ok' => true,
+                'detail' => __('settings.paperless_test_ok_detail', [
+                    'tags' => $tags,
+                    'types' => $types,
+                    'correspondents' => $correspondents,
+                ]),
+            ]);
         } catch (\Throwable $e) {
             return response()->json(['ok' => false, 'detail' => $e->getMessage()]);
         }
