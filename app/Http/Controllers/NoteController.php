@@ -7,116 +7,82 @@ namespace App\Http\Controllers;
 use App\Models\Note;
 use App\Models\NoteShare;
 use Carbon\Carbon;
-use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
- * Plain (non-encrypted) markdown notes, rendered server-side. Listing, search
- * and markdown rendering happen in PHP; the page uses plain form posts. Notes
- * can be shared as a frozen, server-rendered public snapshot.
+ * Plain (non-encrypted) markdown notes, exposed as a JSON API so the browser
+ * renders and mutates them without page reloads. Markdown rendering is done
+ * SERVER-SIDE (a security-sensitive step: HTML is escaped and links sanitised),
+ * as is share creation (password hashing) — everything else is client-side.
  */
 class NoteController extends Controller
 {
-    /** Public-share lifetimes in seconds: 1h, 1d, 1w, 30d. */
     private const LIFETIMES = [3600, 86400, 604800, 2592000];
 
-    public function index(Request $request): View
+    public function index(): JsonResponse
     {
-        $view = (string) $request->query('view', 'active');
-        $tag = (string) $request->query('tag', '');
-        $q = trim((string) $request->query('q', ''));
-
-        $query = Note::query();
-        $view === 'trash' ? $query->whereNotNull('trashed_at') : $query->whereNull('trashed_at');
-        if ($tag !== '') {
-            $query->whereJsonContains('tags', $tag);
-        }
-        if ($q !== '') {
-            $query->where(fn ($w) => $w->where('title', 'like', "%{$q}%")->orWhere('content', 'like', "%{$q}%"));
-        }
-
-        $notes = $query->orderByDesc('pinned')->orderByDesc('updated_at')->get();
-
-        $current = $request->filled('open') ? Note::find($request->integer('open')) : null;
-        if ($current === null && $request->boolean('new')) {
-            $current = new Note(['title' => '', 'pinned' => false]);
-        }
-
-        return view('notes.index', [
-            'notes' => $notes,
-            'allTags' => $this->allTags(),
-            'trashCount' => Note::whereNotNull('trashed_at')->count(),
-            'view' => $view,
-            'activeTag' => $tag,
-            'q' => $q,
-            'current' => $current,
-            'currentHtml' => $current ? $this->render($current->content) : null,
-            'lifetimes' => self::LIFETIMES,
+        return response()->json([
+            'notes' => Note::orderByDesc('pinned')->orderByDesc('updated_at')->get()->map(fn (Note $n) => $this->toArray($n)),
         ]);
     }
 
-    public function store(Request $request): RedirectResponse|JsonResponse
+    public function store(Request $request): JsonResponse
     {
         $note = Note::create($this->validated($request));
 
-        // JSON caller (the file browser's "migrate markdown to note").
-        if ($request->expectsJson()) {
-            return response()->json(['id' => $note->id], 201);
-        }
-
-        return redirect()->route('notes.index', ['open' => $note->id]);
+        return response()->json($this->toArray($note), 201);
     }
 
-    public function update(Request $request, Note $note): RedirectResponse
+    public function update(Request $request, Note $note): JsonResponse
     {
         $note->update($this->validated($request));
 
-        return redirect()->route('notes.index', ['open' => $note->id]);
+        return response()->json($this->toArray($note->refresh()));
     }
 
-    public function togglePin(Note $note): RedirectResponse
+    public function patch(Request $request, Note $note): JsonResponse
     {
-        $note->update(['pinned' => ! $note->pinned]);
+        $request->validate(['pinned' => ['sometimes', 'boolean'], 'trashed' => ['sometimes', 'boolean']]);
+        if ($request->has('pinned')) {
+            $note->pinned = $request->boolean('pinned');
+        }
+        if ($request->has('trashed')) {
+            $note->trashed_at = $request->boolean('trashed') ? Carbon::now() : null;
+        }
+        $note->save();
 
-        return back();
+        return response()->json($this->toArray($note->refresh()));
     }
 
-    public function trash(Note $note): RedirectResponse
-    {
-        $note->update(['trashed_at' => Carbon::now()]);
-
-        return redirect()->route('notes.index');
-    }
-
-    public function restore(Note $note): RedirectResponse
-    {
-        $note->update(['trashed_at' => null]);
-
-        return back();
-    }
-
-    public function destroy(Note $note): RedirectResponse
+    public function destroy(Note $note): JsonResponse
     {
         $note->delete();
 
-        return redirect()->route('notes.index');
+        return response()->json(['ok' => true]);
     }
 
-    public function emptyTrash(): RedirectResponse
+    public function emptyTrash(): JsonResponse
     {
         Note::whereNotNull('trashed_at')->delete();
 
-        return redirect()->route('notes.index', ['view' => 'trash']);
+        return response()->json(['ok' => true]);
     }
 
-    /* ---- Sharing (frozen server-side snapshot) ---- */
+    /** Server-side markdown render (escaped + sanitised). */
+    public function preview(Request $request): JsonResponse
+    {
+        $data = $request->validate(['content' => ['nullable', 'string', 'max:200000']]);
 
-    public function share(Request $request, Note $note): RedirectResponse
+        return response()->json(['html' => self::render($data['content'] ?? '')]);
+    }
+
+    /* ---- Sharing (server-side: frozen snapshot + hashed password) ---- */
+
+    public function share(Request $request, Note $note): JsonResponse
     {
         $data = $request->validate([
             'expires_in' => ['required', 'integer', Rule::in(self::LIFETIMES)],
@@ -135,15 +101,7 @@ class NoteController extends Controller
             'expires_at' => Carbon::now()->addSeconds($data['expires_in']),
         ]);
 
-        return redirect()->route('notes.index', ['open' => $note->id])
-            ->with('share_url', route('shares.show', $share));
-    }
-
-    public function unshare(NoteShare $share): RedirectResponse
-    {
-        $share->delete();
-
-        return back();
+        return response()->json(['url' => route('shares.show', $share)]);
     }
 
     /* ---- Helpers ---- */
@@ -154,34 +112,31 @@ class NoteController extends Controller
         $v = $request->validate([
             'title' => ['nullable', 'string', 'max:255'],
             'content' => ['nullable', 'string', 'max:200000'],
-            'tags' => ['nullable', 'string', 'max:500'],
+            'tags' => ['array'],
+            'tags.*' => ['string', 'max:64'],
             'pinned' => ['sometimes', 'boolean'],
         ]);
 
         return [
             'title' => trim((string) ($v['title'] ?? '')) ?: __('notes.untitled'),
             'content' => $v['content'] ?? null,
-            'tags' => $this->parseTags($v['tags'] ?? null),
-            'pinned' => $request->boolean('pinned'),
+            'tags' => array_values($v['tags'] ?? []),
+            'pinned' => (bool) ($v['pinned'] ?? false),
         ];
     }
 
-    /** @return list<string> */
-    private function parseTags(?string $raw): array
+    /** @return array<string,mixed> */
+    private function toArray(Note $n): array
     {
-        if ($raw === null || trim($raw) === '') {
-            return [];
-        }
-
-        return array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)))));
-    }
-
-    /** @return list<string> */
-    private function allTags(): array
-    {
-        return Note::whereNotNull('tags')->pluck('tags')
-            ->flatMap(fn ($t) => is_array($t) ? $t : [])
-            ->unique()->sort()->values()->all();
+        return [
+            'id' => $n->id,
+            'title' => $n->title,
+            'content' => $n->content,
+            'tags' => $n->tags ?? [],
+            'pinned' => (bool) $n->pinned,
+            'trashed' => $n->trashed_at !== null,
+            'updated' => $n->updated_at?->toIso8601String(),
+        ];
     }
 
     /** Render markdown to sanitised HTML (safe mode strips raw HTML). */

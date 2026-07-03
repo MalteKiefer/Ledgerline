@@ -143,17 +143,17 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/upload', [FileController::class, 'upload'])->name('files.upload');
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
-    // Notes: plain database rows (not zero-knowledge), rendered server-side.
-    Route::get('/notes', [NoteController::class, 'index'])->name('notes.index');
+    // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
+    // Markdown rendering + share creation stay server-side (security-sensitive).
+    Route::view('/notes', 'notes.index')->name('notes.index');
+    Route::get('/notes/data', [NoteController::class, 'index'])->name('notes.data');
     Route::post('/notes', [NoteController::class, 'store'])->name('notes.store');
+    Route::post('/notes/preview', [NoteController::class, 'preview'])->name('notes.preview');
     Route::put('/notes/{note}', [NoteController::class, 'update'])->name('notes.update');
-    Route::post('/notes/{note}/pin', [NoteController::class, 'togglePin'])->name('notes.pin');
-    Route::post('/notes/{note}/trash', [NoteController::class, 'trash'])->name('notes.trash');
-    Route::post('/notes/{note}/restore', [NoteController::class, 'restore'])->name('notes.restore');
+    Route::patch('/notes/{note}', [NoteController::class, 'patch'])->name('notes.patch');
     Route::delete('/notes/{note}', [NoteController::class, 'destroy'])->name('notes.destroy');
     Route::delete('/notes/trash/all', [NoteController::class, 'emptyTrash'])->name('notes.trash.empty');
     Route::post('/notes/{note}/share', [NoteController::class, 'share'])->name('notes.share');
-    Route::delete('/notes/shares/{share}', [NoteController::class, 'unshare'])->name('notes.unshare');
     // To-dos: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/todos', 'todos.index')->name('todos.index');
     Route::get('/todos/data', [TodoController::class, 'index'])->name('todos.data');

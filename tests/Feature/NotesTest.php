@@ -17,43 +17,41 @@ class NotesTest extends TestCase
         $this->get(route('notes.index'))->assertRedirect(route('login'));
     }
 
-    public function test_the_page_loads_without_a_vault(): void
+    public function test_the_page_and_data_load(): void
     {
         $this->signIn();
         $this->get(route('notes.index'))->assertOk();
+        $this->getJson(route('notes.data'))->assertOk()->assertJson(['notes' => []]);
     }
 
     public function test_it_creates_a_note_with_tags(): void
     {
         $this->signIn();
 
-        $this->post(route('notes.store'), [
-            'title' => 'Shopping', 'content' => '- milk', 'tags' => 'home, food',
-        ])->assertRedirect();
+        $this->postJson(route('notes.store'), ['title' => 'Shopping', 'content' => '- milk', 'tags' => ['home', 'food']])
+            ->assertCreated()->assertJson(['title' => 'Shopping', 'tags' => ['home', 'food']]);
 
-        $note = Note::firstWhere('title', 'Shopping');
-        $this->assertSame(['home', 'food'], $note->tags);
+        $this->assertSame(1, Note::count());
     }
 
-    public function test_json_create_for_file_migration(): void
+    public function test_preview_renders_sanitised_markdown(): void
     {
         $this->signIn();
 
-        $this->postJson(route('notes.store'), ['title' => 'Migrated', 'content' => '# hi'])
-            ->assertCreated()->assertJsonStructure(['id']);
-
-        $this->assertSame(1, Note::where('title', 'Migrated')->count());
+        $this->postJson(route('notes.preview'), ['content' => "# Hi\n<script>alert(1)</script>"])
+            ->assertOk()
+            ->assertJsonFragment([])
+            ->assertSee('<h1', false)
+            ->assertDontSee('<script>alert(1)</script>', false);
     }
 
-    public function test_trash_and_empty_trash(): void
+    public function test_patch_trashes_and_empty_trash(): void
     {
         $this->signIn();
         $note = Note::create(['title' => 'Temp', 'content' => 'x']);
 
-        $this->post(route('notes.trash', $note))->assertRedirect();
-        $this->assertNotNull($note->refresh()->trashed_at);
-
-        $this->delete(route('notes.trash.empty'))->assertRedirect();
+        $this->patchJson(route('notes.patch', $note), ['trashed' => true])->assertOk()->assertJson(['trashed' => true]);
+        $this->deleteJson(route('notes.trash.empty'))->assertOk();
         $this->assertSame(0, Note::count());
     }
 
@@ -62,7 +60,6 @@ class NotesTest extends TestCase
         $this->signIn();
         Note::create(['title' => 'Uniquenote', 'content' => 'searchable body text']);
 
-        $this->getJson(route('search.suggest', ['q' => 'searchable']))
-            ->assertOk()->assertSee('Uniquenote');
+        $this->getJson(route('search.suggest', ['q' => 'searchable']))->assertOk()->assertSee('Uniquenote');
     }
 }

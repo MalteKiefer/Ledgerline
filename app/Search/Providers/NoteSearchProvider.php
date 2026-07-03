@@ -38,7 +38,7 @@ class NoteSearchProvider extends AbstractSearchProvider
                 group: $this->group(),
                 title: $note->title ?: __('notes.untitled'),
                 subtitle: (string) Str::of((string) $note->content)->stripTags()->limit(80) ?: null,
-                url: route('notes.index', ['open' => $note->id]),
+                url: route('notes.index'),
             ))
             ->all();
     }
