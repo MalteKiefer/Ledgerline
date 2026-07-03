@@ -52,7 +52,33 @@ class NotesTest extends TestCase
 
         $this->patchJson(route('notes.patch', $note), ['trashed' => true])->assertOk()->assertJson(['trashed' => true]);
         $this->deleteJson(route('notes.trash.empty'))->assertOk();
-        $this->assertSame(0, Note::count());
+        $this->assertSame(0, Note::withTrashed()->count());
+    }
+
+    public function test_a_trashed_note_can_be_restored_and_stays_listed(): void
+    {
+        $this->signIn();
+        $note = Note::create(['title' => 'Temp', 'content' => 'x']);
+
+        // Trash it: soft-deleted, but still returned by the data endpoint so the
+        // client can show the trash view.
+        $this->patchJson(route('notes.patch', $note), ['trashed' => true])->assertOk();
+        $this->assertTrue($note->fresh()->trashed());
+        $this->getJson(route('notes.data'))->assertOk()->assertJsonFragment(['id' => $note->id, 'trashed' => true]);
+
+        // Restore it via the same toggle (route must resolve the trashed model).
+        $this->patchJson(route('notes.patch', $note), ['trashed' => false])->assertOk()->assertJson(['trashed' => false]);
+        $this->assertFalse($note->fresh()->trashed());
+    }
+
+    public function test_destroy_permanently_deletes_a_note(): void
+    {
+        $this->signIn();
+        $note = Note::create(['title' => 'Temp', 'content' => 'x']);
+        $note->delete();
+
+        $this->deleteJson(route('notes.destroy', $note))->assertOk();
+        $this->assertSame(0, Note::withTrashed()->count());
     }
 
     public function test_notes_appear_in_global_search(): void

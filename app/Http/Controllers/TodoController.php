@@ -26,7 +26,7 @@ class TodoController extends Controller
     {
         return response()->json([
             'lists' => TodoList::orderBy('name')->get(['id', 'name']),
-            'tasks' => Todo::orderByDesc('created_at')->get()->map(fn (Todo $t) => $this->toArray($t)),
+            'tasks' => Todo::withTrashed()->orderByDesc('created_at')->get()->map(fn (Todo $t) => $this->toArray($t)),
         ]);
     }
 
@@ -85,25 +85,27 @@ class TodoController extends Controller
         if ($request->has('marked')) {
             $todo->marked = $request->boolean('marked');
         }
-        if ($request->has('trashed')) {
-            $todo->trashed_at = $request->boolean('trashed') ? Carbon::now() : null;
+        if ($todo->isDirty()) {
+            $todo->save();
         }
-        $todo->save();
+        if ($request->has('trashed')) {
+            $request->boolean('trashed') ? $todo->delete() : $todo->restore();
+        }
         $this->syncReminder($todo);
 
-        return response()->json($this->toArray($todo->refresh()));
+        return response()->json($this->toArray($todo));
     }
 
     public function destroy(Todo $todo): JsonResponse
     {
-        $todo->delete();
+        $todo->forceDelete();
 
         return response()->json(['ok' => true]);
     }
 
     public function emptyTrash(): JsonResponse
     {
-        Todo::whereNotNull('trashed_at')->get()->each->delete();
+        Todo::onlyTrashed()->get()->each->forceDelete();
 
         return response()->json(['ok' => true]);
     }
@@ -142,7 +144,7 @@ class TodoController extends Controller
     private function syncReminder(Todo $todo): void
     {
         $channels = $todo->reminder_channels ?? [];
-        $wants = $todo->due_at !== null && $channels !== [] && ! $todo->done && $todo->trashed_at === null;
+        $wants = $todo->due_at !== null && $channels !== [] && ! $todo->done && ! $todo->trashed();
 
         if (! $wants) {
             Reminder::where('todo_id', $todo->id)->delete();
@@ -186,7 +188,7 @@ class TodoController extends Controller
             'due' => $t->due_at?->timezone(config('app.timezone'))->format('Y-m-d\TH:i'),
             'reminderChannels' => $t->reminder_channels ?? [],
             'done' => (bool) $t->done,
-            'trashed' => $t->trashed_at !== null,
+            'trashed' => $t->trashed(),
         ];
     }
 }

@@ -21,7 +21,7 @@ class TodoSearchProvider extends AbstractSearchProvider
 
     public function search(string $term, int $limit): array
     {
-        $query = Todo::query()->whereNull('trashed_at');
+        $query = Todo::query();
         $this->matchAny($query, ['title', 'description'], $this->wildcard($term), $term);
 
         return $query

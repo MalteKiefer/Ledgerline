@@ -49,10 +49,10 @@ class TodosTest extends TestCase
     public function test_empty_trash(): void
     {
         $this->signIn();
-        Todo::create(['title' => 'T', 'priority' => 'normal', 'trashed_at' => now()]);
+        Todo::create(['title' => 'T', 'priority' => 'normal'])->delete();
 
         $this->deleteJson(route('todos.trash.empty'))->assertOk();
-        $this->assertSame(0, Todo::count());
+        $this->assertSame(0, Todo::withTrashed()->count());
     }
 
     public function test_deleting_a_list_keeps_its_tasks(): void

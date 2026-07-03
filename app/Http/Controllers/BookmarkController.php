@@ -7,7 +7,6 @@ namespace App\Http\Controllers;
 use App\Models\Bookmark;
 use App\Models\BookmarkFolder;
 use App\Support\Tags;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -62,25 +61,25 @@ class BookmarkController extends Controller
         $request->validate(['favorite' => ['sometimes', 'boolean'], 'trashed' => ['sometimes', 'boolean']]);
         if ($request->has('favorite')) {
             $bookmark->favorite = $request->boolean('favorite');
+            $bookmark->save();
         }
         if ($request->has('trashed')) {
-            $bookmark->trashed_at = $request->boolean('trashed') ? Carbon::now() : null;
+            $request->boolean('trashed') ? $bookmark->delete() : $bookmark->restore();
         }
-        $bookmark->save();
 
-        return response()->json($this->toArray($bookmark->refresh()));
+        return response()->json($this->toArray($bookmark));
     }
 
     public function destroy(Bookmark $bookmark): JsonResponse
     {
-        $bookmark->delete();
+        $bookmark->forceDelete();
 
         return response()->json(['ok' => true]);
     }
 
     public function emptyTrash(): JsonResponse
     {
-        Bookmark::whereNotNull('trashed_at')->delete();
+        Bookmark::onlyTrashed()->forceDelete();
 
         return response()->json(['ok' => true]);
     }
@@ -120,7 +119,7 @@ class BookmarkController extends Controller
             'description' => $b->description,
             'tags' => $b->tags ?? [],
             'favorite' => (bool) $b->favorite,
-            'trashed' => $b->trashed_at !== null,
+            'trashed' => $b->trashed(),
         ];
     }
 }

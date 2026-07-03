@@ -22,7 +22,7 @@ class NoteSearchProvider extends AbstractSearchProvider
 
     public function search(string $term, int $limit): array
     {
-        $query = Note::query()->whereNull('trashed_at');
+        $query = Note::query();
         $this->matchAny($query, ['title', 'content'], $this->wildcard($term), $term);
 
         return $query
