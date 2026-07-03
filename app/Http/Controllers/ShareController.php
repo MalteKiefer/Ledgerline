@@ -9,6 +9,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -34,7 +35,24 @@ class ShareController extends Controller
                 ->header('Referrer-Policy', 'no-referrer');
         }
 
-        $share->increment('views');
+        // Count the view atomically so a burst of concurrent requests to a
+        // burn-after-read share (max_views) cannot all render before any
+        // increment lands. A conditional UPDATE that matches zero rows means
+        // the limit was reached first, so this request is gone too.
+        if ($share->max_views !== null) {
+            $counted = NoteShare::whereKey($share->getKey())
+                ->whereColumn('views', '<', 'max_views')
+                ->update(['views' => DB::raw('views + 1')]);
+
+            if ($counted === 0) {
+                $share->delete();
+
+                return response()->view('share.gone', [], Response::HTTP_GONE)
+                    ->header('Referrer-Policy', 'no-referrer');
+            }
+        } else {
+            $share->increment('views');
+        }
 
         return response()->view('share.show', [
             'share' => $share,

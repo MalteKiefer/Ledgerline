@@ -38,8 +38,15 @@ Route::get('/', static fn () => redirect()->route('dashboard'));
 // Public note share links: no auth and no guest middleware, so a recipient
 // without an account can open them and a signed-in user is not redirected
 // away. The server renders a frozen snapshot, gated by an optional password.
-Route::get('/s/{share}', [ShareController::class, 'show'])->name('shares.show');
-Route::post('/s/{share}/unlock', [ShareController::class, 'unlock'])->name('shares.unlock');
+// Throttled: both endpoints are unauthenticated and do real work (markdown
+// render + DB write on show, a bcrypt check on unlock), so a leaked share URL
+// must not allow password brute-force or CPU-exhaustion via floods.
+Route::get('/s/{share}', [ShareController::class, 'show'])
+    ->middleware('throttle:60,1')
+    ->name('shares.show');
+Route::post('/s/{share}/unlock', [ShareController::class, 'unlock'])
+    ->middleware('throttle:10,1')
+    ->name('shares.unlock');
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake.
 Route::middleware('guest')->group(function (): void {
