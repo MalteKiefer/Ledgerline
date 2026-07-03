@@ -106,6 +106,19 @@ class MailReaderTest extends TestCase
             ->assertJsonPath('folders.0.path', 'INBOX');
     }
 
+    public function test_a_folder_name_with_control_characters_is_rejected(): void
+    {
+        $this->signIn();
+        $fake = $this->fakeReader();
+
+        $this->from(route('mail.index'))
+            ->post(route('mail.messages'), $this->creds(['folder' => "INBOX\r\nX LOGOUT", 'page' => 1]))
+            ->assertSessionHasErrors('folder');
+
+        // The reader was never touched with the smuggled command.
+        $this->assertSame([], $fake->calls);
+    }
+
     public function test_create_and_empty_folder(): void
     {
         $this->signIn();
