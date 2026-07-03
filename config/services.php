@@ -53,6 +53,20 @@ return [
         'client_secret' => env('POCKETID_CLIENT_SECRET'),
         'redirect' => env('POCKETID_REDIRECT_URI'),
         'use_pkce' => env('POCKETID_USE_PKCE', true),
+
+        // This is a single-tenant application. If neither allow-list is set, the
+        // first identity to sign in claims the account and every other subject
+        // is rejected ("first user wins"). Set either list to pin sign-in to
+        // explicit OIDC subject IDs and/or verified e-mail addresses
+        // (comma-separated) regardless of who authenticates first.
+        'allowed_subs' => array_filter(array_map(
+            'trim',
+            explode(',', (string) env('POCKETID_ALLOWED_SUBS', ''))
+        )),
+        'allowed_emails' => array_filter(array_map(
+            'trim',
+            explode(',', (string) env('POCKETID_ALLOWED_EMAILS', ''))
+        )),
     ],
 
 ];

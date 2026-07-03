@@ -30,6 +30,10 @@ class PocketIdAuthTest extends TestCase
         ?string $avatar = null,
         array $raw = [],
     ): void {
+        // Treat the address as provider-verified by default so existing tests
+        // exercise the happy path; individual tests override email_verified.
+        $raw = array_merge(['email_verified' => true], $raw);
+
         $user = Mockery::mock(SocialiteUser::class);
         $user->shouldReceive('getId')->andReturn($id);
         $user->shouldReceive('getName')->andReturn($name);
@@ -196,6 +200,63 @@ class PocketIdAuthTest extends TestCase
             'name' => 'New Name',
             'email' => 'new@example.com',
         ]);
+    }
+
+    public function test_a_second_subject_is_rejected_once_an_account_exists(): void
+    {
+        // First user wins: an already-provisioned single-tenant account must
+        // not be joined by any other OIDC subject.
+        User::factory()->create(['oidc_sub' => 'sub-owner']);
+
+        $this->fakeSocialiteUser(id: 'sub-intruder', email: 'intruder@example.com');
+
+        $this->get(route('auth.callback'))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('pocketid');
+
+        $this->assertGuest();
+        $this->assertSame(1, User::count());
+        $this->assertDatabaseMissing('users', ['oidc_sub' => 'sub-intruder']);
+    }
+
+    public function test_allow_list_pins_sign_in_to_configured_subjects(): void
+    {
+        config(['services.pocketid.allowed_subs' => ['sub-allowed']]);
+
+        // A subject not on the list is rejected even on a fresh install.
+        $this->fakeSocialiteUser(id: 'sub-other');
+        $this->get(route('auth.callback'))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('pocketid');
+        $this->assertGuest();
+        $this->assertSame(0, User::count());
+    }
+
+    public function test_allow_listed_subject_can_sign_in(): void
+    {
+        config(['services.pocketid.allowed_subs' => ['sub-allowed']]);
+
+        $this->fakeSocialiteUser(id: 'sub-allowed');
+        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
+
+        $this->assertAuthenticated();
+        $this->assertDatabaseHas('users', ['oidc_sub' => 'sub-allowed']);
+    }
+
+    public function test_an_unverified_email_is_not_trusted(): void
+    {
+        $this->fakeSocialiteUser(
+            id: 'sub-unverified',
+            email: 'maybe@example.com',
+            raw: ['email_verified' => false],
+        );
+
+        $this->get(route('auth.callback'))->assertRedirect(route('dashboard'));
+
+        $this->assertAuthenticated();
+        $user = User::firstWhere('oidc_sub', 'sub-unverified');
+        $this->assertNull($user->email);
+        $this->assertNull($user->email_verified_at);
     }
 
     public function test_failed_callback_redirects_to_login_with_error(): void
