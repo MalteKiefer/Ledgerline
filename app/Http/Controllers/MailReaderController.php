@@ -13,6 +13,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 
 /**
  * Read IMAP messages and act on them (delete, move, flag, transfer).
@@ -23,6 +24,13 @@ use Illuminate\Validation\Rule;
  */
 class MailReaderController extends Controller
 {
+    /**
+     * Validation for an IMAP folder/mailbox name. Rejects CR, LF and NUL:
+     * these could otherwise smuggle a second IMAP command past the client
+     * library's quoting into the command stream (IMAP command injection).
+     */
+    private const FOLDER_RULES = ['required', 'string', 'max:255', 'regex:/\A[^\x00\r\n]+\z/'];
+
     /** Load an account's IMAP credentials by request field (default account_id). */
     private function creds(Request $request, string $field = 'account_id'): ImapCredentials
     {
@@ -38,7 +46,7 @@ class MailReaderController extends Controller
 
     public function createFolder(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate(['account_id' => ['required', 'exists:mail_accounts,id'], 'folder' => ['required', 'string', 'max:255']]);
+        $v = $request->validate(['account_id' => ['required', 'exists:mail_accounts,id'], 'folder' => self::FOLDER_RULES]);
 
         return $this->guard(function () use ($reader, $request, $v) {
             $reader->createFolder($this->creds($request), $v['folder']);
@@ -49,7 +57,7 @@ class MailReaderController extends Controller
 
     public function emptyFolder(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate(['account_id' => ['required', 'exists:mail_accounts,id'], 'folder' => ['required', 'string', 'max:255']]);
+        $v = $request->validate(['account_id' => ['required', 'exists:mail_accounts,id'], 'folder' => self::FOLDER_RULES]);
 
         return $this->guard(function () use ($reader, $request, $v) {
             $reader->emptyFolder($this->creds($request), $v['folder']);
@@ -62,7 +70,7 @@ class MailReaderController extends Controller
     {
         $v = $request->validate([
             'account_id' => ['required', 'exists:mail_accounts,id'],
-            'folder' => ['required', 'string', 'max:255'],
+            'folder' => self::FOLDER_RULES,
             'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
@@ -75,7 +83,7 @@ class MailReaderController extends Controller
     {
         $v = $request->validate([
             'account_id' => ['required', 'exists:mail_accounts,id'],
-            'folder' => ['required', 'string', 'max:255'],
+            'folder' => self::FOLDER_RULES,
             'uid' => ['required', 'integer', 'min:1'],
             'mark_seen' => ['sometimes', 'boolean'],
         ]);
@@ -89,7 +97,7 @@ class MailReaderController extends Controller
     {
         $v = $request->validate([
             'account_id' => ['required', 'exists:mail_accounts,id'],
-            'folder' => ['required', 'string', 'max:255'],
+            'folder' => self::FOLDER_RULES,
             'uid' => ['required', 'integer', 'min:1'],
             'attachment' => ['required', 'integer', 'min:0'],
         ]);
@@ -99,7 +107,11 @@ class MailReaderController extends Controller
 
             return response($a['content'], 200, [
                 'Content-Type' => 'application/octet-stream',
-                'Content-Disposition' => 'attachment; filename="'.addslashes($a['name']).'"',
+                'Content-Disposition' => HeaderUtils::makeDisposition(
+                    HeaderUtils::DISPOSITION_ATTACHMENT,
+                    $a['name'],
+                    'attachment'
+                ),
                 'X-Content-Type-Options' => 'nosniff',
                 'Content-Security-Policy' => "default-src 'none'; sandbox",
                 'Cache-Control' => 'private, no-store',
@@ -111,11 +123,11 @@ class MailReaderController extends Controller
     {
         $v = $request->validate([
             'account_id' => ['required', 'exists:mail_accounts,id'],
-            'folder' => ['required', 'string', 'max:255'],
+            'folder' => self::FOLDER_RULES,
             'uids' => ['required', 'array', 'min:1', 'max:500'],
             'uids.*' => ['integer', 'min:1'],
             'action' => ['required', Rule::in(['trash', 'delete', 'move', 'seen', 'unseen'])],
-            'target' => ['required_if:action,move', 'nullable', 'string', 'max:255'],
+            'target' => ['required_if:action,move', 'nullable', 'string', 'max:255', 'regex:/\A[^\x00\r\n]+\z/'],
         ]);
 
         return $this->guard(function () use ($reader, $request, $v) {
@@ -132,10 +144,10 @@ class MailReaderController extends Controller
         $v = $request->validate([
             'account_id' => ['required', 'exists:mail_accounts,id'],
             'target_account_id' => ['required', 'exists:mail_accounts,id'],
-            'folder' => ['required', 'string', 'max:255'],
+            'folder' => self::FOLDER_RULES,
             'uids' => ['required', 'array', 'min:1', 'max:500'],
             'uids.*' => ['integer', 'min:1'],
-            'target_folder' => ['required', 'string', 'max:255'],
+            'target_folder' => self::FOLDER_RULES,
         ]);
 
         return $this->guard(function () use ($reader, $request, $v) {
@@ -151,11 +163,14 @@ class MailReaderController extends Controller
     }
 
     /**
-     * Run an IMAP operation, converting any failure into a 422. Only the
-     * exception class (e.g. "AuthFailedException", "ConnectionFailedException")
-     * is surfaced as "detail" so the account owner can tell auth from
-     * connection problems — the raw message is withheld, as it can echo server
-     * banners, folder names or attempted commands.
+     * Run an IMAP operation, converting any failure into a 422.
+     *
+     * "detail" carries the full exception chain (class + IMAP server message,
+     * root cause included) so the single-tenant operator can diagnose failures
+     * directly in the browser; it is rendered as plain text (x-text), never as
+     * HTML, so a hostile server's banner cannot become script. It never contains
+     * credentials — the mail services do not expose them. The same detail is
+     * also logged server-side.
      */
     private function guard(\Closure $operation): Response|JsonResponse
     {
