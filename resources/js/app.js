@@ -228,6 +228,21 @@ Alpine.data('backupRuns', (labels = {}) => ({
     downloadUrl(id) {
         return labels.downloadBase.replace('__id__', id);
     },
+
+    async cancel(id) {
+        // Flip the flag optimistically so the button turns into "cancelling…"
+        // right away; the manager stops at its next checkpoint.
+        const run = this.runs.find((r) => r.id === id);
+        if (run) { run.cancellable = false; run.cancelling = true; }
+        try {
+            await fetch(labels.cancelBase.replace('__id__', id), {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
+            });
+        } catch (e) { /* poll will reconcile */ }
+        this.pollUntil = Date.now() + 60000;
+        this.load();
+    },
 }));
 
 /**

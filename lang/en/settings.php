@@ -150,6 +150,8 @@ return [
     'backup_notify_desktop' => 'Desktop / browser',
     'backup_queued_short' => 'Queued…',
     'backup_download' => 'Download',
+    'backup_cancel' => 'Cancel',
+    'backup_cancelling' => 'Cancelling…',
     'backup_cron_tz' => 'Times are in the :tz timezone.',
     'mail_section' => 'Mail',
     'mail_desc' => 'Mail accounts and background-sync interval.',
