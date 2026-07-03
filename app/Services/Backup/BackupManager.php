@@ -75,9 +75,13 @@ final class BackupManager
             $prefix = (Str::slug($job->name) ?: 'backup').'-'.$job->id;
             $fs = $this->destinations->make($job->destination);
 
-            if (in_array($job->source, self::MIRROR_SOURCES, true)) {
-                // Files/Gallery: the objects are immutable, already-encrypted blobs
-                // — mirror them directly (no archive, no gzip, no local staging).
+            // Files/Gallery can be either an incremental mirror (default) or a
+            // full archive; the database is always a full archive.
+            $useMirror = in_array($job->source, self::MIRROR_SOURCES, true) && ($job->mode ?? 'mirror') !== 'archive';
+
+            if ($useMirror) {
+                // Incremental mirror: upload only new objects, remove vanished
+                // ones (no archive, no gzip, no local staging).
                 $step('Mirroring '.$job->source.' to '.$prefix.'…');
                 $r = $this->mirror->mirror($fs, self::MIRROR_PREFIX[$job->source], $prefix, $step, $checkCancel);
                 $bytes = $r['bytes'];

@@ -16,12 +16,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * versions to keep, optional archive encryption and a notification channel.
  */
 #[Fillable([
-    'name', 'source', 'backup_destination_id', 'cron', 'retention',
+    'name', 'source', 'mode', 'backup_destination_id', 'cron', 'retention',
     'encrypt', 'passphrase', 'notify_channels', 'enabled',
 ])]
 class BackupJob extends Model
 {
     public const SOURCES = ['database', 'files', 'gallery'];
+
+    /** Backup mode for the file-based sources (database is always a full dump). */
+    public const MODES = ['mirror', 'archive'];
 
     /** Notification channels a job may fire on completion (any combination). */
     public const NOTIFY_CHANNELS = ['desktop', 'mail', 'ntfy', 'webhook'];
