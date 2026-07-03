@@ -22,15 +22,10 @@ class NoteSearchProvider extends AbstractSearchProvider
 
     public function search(string $term, int $limit): array
     {
-        $like = $this->wildcard($term);
+        $query = Note::query()->whereNull('trashed_at');
+        $this->matchAny($query, ['title', 'content'], $this->wildcard($term), $term);
 
-        return Note::query()
-            ->whereNull('trashed_at')
-            ->where(function ($query) use ($like, $term): void {
-                $query->whereRaw('LOWER(title) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(content) LIKE ?', [$like])
-                    ->orWhereJsonContains('tags', $term);
-            })
+        return $query
             ->orderByDesc('updated_at')
             ->limit($limit)
             ->get()
