@@ -17,13 +17,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable([
     'name', 'source', 'backup_destination_id', 'cron', 'retention',
-    'encrypt', 'passphrase', 'notify', 'enabled',
+    'encrypt', 'passphrase', 'notify_channels', 'enabled',
 ])]
 class BackupJob extends Model
 {
     public const SOURCES = ['database', 'files', 'gallery'];
 
-    public const NOTIFY_CHANNELS = ['none', 'ntfy', 'webhook', 'mail'];
+    /** Notification channels a job may fire on completion (any combination). */
+    public const NOTIFY_CHANNELS = ['desktop', 'mail', 'ntfy', 'webhook'];
 
     protected function casts(): array
     {
@@ -32,6 +33,7 @@ class BackupJob extends Model
             'encrypt' => 'boolean',
             'passphrase' => 'encrypted',
             'enabled' => 'boolean',
+            'notify_channels' => 'array',
             'last_run_at' => 'datetime',
         ];
     }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Backup;
 
-use App\Models\AppNotification;
 use App\Models\BackupJob;
 use App\Models\BackupRun;
 use App\Services\Backup\Sources\BackupSource;
@@ -108,14 +107,12 @@ final class BackupManager
             $summary = sprintf('%s → %s (%s)', $job->source, $filename, $this->human($bytes));
             $step('Done: '.$summary);
             $this->notifier->notify($job, true, $summary);
-            AppNotification::record('success', __('notifications.backup_ok', ['name' => $job->name]), $summary, 'backup');
         } catch (\Throwable $e) {
             $detail = $this->describe($e);
             $step('FAILED: '.$detail);
             $run->update(['status' => 'failed', 'finished_at' => Carbon::now(), 'message' => Str::limit($detail, 1000)]);
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'failed']);
-            $this->notifier->notify($job, false, $detail);
-            AppNotification::record('error', __('notifications.backup_failed', ['name' => $job->name]), Str::limit($detail, 300), 'backup');
+            $this->notifier->notify($job, false, Str::limit($detail, 300));
         } finally {
             File::deleteDirectory($workDir);
         }

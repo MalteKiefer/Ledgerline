@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Backup;
 
+use App\Models\AppNotification;
 use App\Models\AppSettings;
 use App\Models\BackupJob;
 use Illuminate\Support\Facades\Http;
@@ -14,31 +15,44 @@ use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
 
 /**
- * Sends a backup success/failure notification over the channel chosen for the
- * job (NTFY, generic webhook or e-mail), using the global settings for that
- * channel. Notification failures never fail the backup — they are logged only.
+ * Sends a backup success/failure notification over every channel selected for
+ * the job (desktop/in-app bell, e-mail, NTFY, generic webhook), using the global
+ * settings for each. One channel failing never fails the backup or the others —
+ * failures are logged only.
  */
 class BackupNotifier
 {
     public function notify(BackupJob $job, bool $success, string $summary): void
     {
-        if ($job->notify === 'none') {
+        $channels = $job->notify_channels ?? [];
+        if ($channels === []) {
             return;
         }
 
         $settings = AppSettings::current();
         $title = sprintf('[Ledgerline] Backup %s: %s', $success ? 'OK' : 'FAILED', $job->name);
 
-        try {
-            match ($job->notify) {
-                'ntfy' => $this->ntfy($settings, $title, $summary, $success),
-                'webhook' => $this->webhook($settings, $job, $success, $summary),
-                'mail' => $this->mail($settings, $title, $summary),
-                default => null,
-            };
-        } catch (\Throwable $e) {
-            Log::warning('Backup notification failed', ['job' => $job->id, 'channel' => $job->notify, 'error' => $e->getMessage()]);
+        foreach ($channels as $channel) {
+            try {
+                match ($channel) {
+                    'desktop' => $this->desktop($job, $success, $summary),
+                    'ntfy' => $this->ntfy($settings, $title, $summary, $success),
+                    'webhook' => $this->webhook($settings, $job, $success, $summary),
+                    'mail' => $this->mail($settings, $title, $summary),
+                    default => null,
+                };
+            } catch (\Throwable $e) {
+                Log::warning('Backup notification failed', ['job' => $job->id, 'channel' => $channel, 'error' => $e->getMessage()]);
+            }
         }
+    }
+
+    /** In-app bell + browser/desktop notification (via the notifications table). */
+    private function desktop(BackupJob $job, bool $success, string $summary): void
+    {
+        $success
+            ? AppNotification::record('success', __('notifications.backup_ok', ['name' => $job->name]), $summary, 'backup')
+            : AppNotification::record('error', __('notifications.backup_failed', ['name' => $job->name]), $summary, 'backup');
     }
 
     /**
