@@ -3484,4 +3484,137 @@ Alpine.data('todos', (labels = {}) => ({
     isOverdue(t) { return t.due && ! t.done && new Date(t.due).getTime() < Date.now(); },
 }));
 
+/**
+ * Notes: client-side over a JSON API (no reloads). Markdown is rendered on the
+ * server (security-sensitive sanitising) via /notes/preview; share creation is
+ * server-side too. Everything else happens in the browser.
+ */
+Alpine.data('notes', (labels = {}) => ({
+    state: 'boot',
+    notes: [],
+    currentId: null,
+    query: '',
+    activeTag: '',
+    view: 'active', // active | trash
+    error: '',
+    tagsValue: '',
+    previewHtml: '',
+    previewTimer: null,
+    shareOpen: false,
+    shareUrl: '',
+    shareBusy: false,
+
+    async init() { await this.load(); },
+
+    async load() {
+        try {
+            const res = await fetch('/notes/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) { this.state = 'error'; return; }
+            this.notes = (await res.json()).notes ?? [];
+            this.state = 'ready';
+        } catch (e) { this.state = 'error'; }
+    },
+
+    _headers() {
+        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+    },
+    async _api(method, url, body) {
+        const res = await fetch(url, { method, headers: this._headers(), body: body ? JSON.stringify(body) : undefined });
+        if (! res.ok) throw new Error('request failed');
+        return res.json().catch(() => ({}));
+    },
+
+    get allTags() {
+        const set = new Set();
+        for (const n of this.notes) for (const t of n.tags ?? []) set.add(t);
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    get trashCount() { return this.notes.filter((n) => n.trashed).length; },
+    get current() { return this.notes.find((n) => n.id === this.currentId) ?? null; },
+
+    get filtered() {
+        const q = this.query.trim().toLowerCase();
+        let list = this.notes.filter((n) => this.view === 'trash' ? n.trashed : ! n.trashed);
+        if (this.activeTag !== '') list = list.filter((n) => (n.tags ?? []).includes(this.activeTag));
+        if (q !== '') {
+            list = list.filter((n) => (n.title ?? '').toLowerCase().includes(q)
+                || (n.content ?? '').toLowerCase().includes(q)
+                || (n.tags ?? []).some((t) => t.toLowerCase().includes(q)));
+        }
+        return [...list].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (b.updated ?? '').localeCompare(a.updated ?? ''));
+    },
+
+    excerpt(n) { return (n.content ?? '').replace(/[#*_`>\[\]()-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80); },
+
+    async open(n) {
+        this.currentId = n.id;
+        this.tagsValue = (n.tags ?? []).join(', ');
+        this.shareOpen = false; this.shareUrl = '';
+        await this.refreshPreview();
+    },
+
+    async newNote() {
+        try {
+            const note = await this._api('POST', '/notes', { title: '', content: '', tags: [] });
+            this.notes.unshift(note);
+            await this.open(note);
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    schedulePreview() {
+        clearTimeout(this.previewTimer);
+        this.previewTimer = setTimeout(() => this.refreshPreview(), 400);
+    },
+    async refreshPreview() {
+        if (! this.current) { this.previewHtml = ''; return; }
+        try {
+            const r = await this._api('POST', '/notes/preview', { content: this.current.content || '' });
+            this.previewHtml = r.html || '';
+        } catch (e) { /* keep last preview */ }
+    },
+
+    async save() {
+        const n = this.current;
+        if (! n) return;
+        n.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
+        try {
+            const saved = await this._api('PUT', `/notes/${n.id}`, { title: n.title, content: n.content, tags: n.tags, pinned: n.pinned });
+            Object.assign(n, saved);
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    async togglePin(n) {
+        try { Object.assign(n, await this._api('PATCH', `/notes/${n.id}`, { pinned: ! n.pinned })); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async trash(n) {
+        try { Object.assign(n, await this._api('PATCH', `/notes/${n.id}`, { trashed: true })); if (this.currentId === n.id) this.currentId = null; }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async restore(n) {
+        try { Object.assign(n, await this._api('PATCH', `/notes/${n.id}`, { trashed: false })); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async remove(n) {
+        if (! confirm(labels.deleteConfirm)) return;
+        try { await this._api('DELETE', `/notes/${n.id}`); this.notes = this.notes.filter((x) => x.id !== n.id); if (this.currentId === n.id) this.currentId = null; }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async emptyTrash() {
+        if (! confirm(labels.emptyTrashConfirm)) return;
+        try { await this._api('DELETE', '/notes/trash/all'); this.notes = this.notes.filter((n) => ! n.trashed); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+
+    async createShare(form) {
+        if (! this.current) return;
+        this.shareBusy = true; this.shareUrl = '';
+        try {
+            const r = await this._api('POST', `/notes/${this.current.id}/share`, form);
+            this.shareUrl = r.url || '';
+        } catch (e) { this.error = labels.shareFailed; }
+        this.shareBusy = false;
+    },
+}));
+
 Alpine.start();
