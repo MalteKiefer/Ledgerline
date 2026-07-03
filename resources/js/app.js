@@ -2912,6 +2912,39 @@ Alpine.data('vaultMail', (labels = {}) => ({
         } catch (e) { /* ignore */ }
     },
 
+    // ---- Inline preview for browser-displayable attachments (images / PDF) ----
+
+    // True for attachments a browser can render inline. SVG is deliberately
+    // excluded: it can carry scripts and would render in the app origin.
+    attachmentPreviewable(att) {
+        const mime = (att?.mime || '').toLowerCase();
+        return /^image\/(png|jpe?g|gif|webp|bmp|avif|x-icon)$/.test(mime) || mime === 'application/pdf';
+    },
+
+    // Fetch the bytes, wrap them in a blob URL and show them in a modal. The
+    // bytes come from the stateless endpoint; nothing is stored.
+    async openAttachment(att) {
+        if (! this.attachmentPreviewable(att)) { this.downloadAttachment(att); return; }
+        this.closeAttachment(); // revoke any previous blob URL
+        const kind = (att.mime || '').toLowerCase() === 'application/pdf' ? 'pdf' : 'image';
+        this.reader.attView = { open: true, name: att.name || '', kind, url: '', loading: true, error: '' };
+        try {
+            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
+            if (! res.ok) { this.reader.attView.error = labels.connectFailed; this.reader.attView.loading = false; return; }
+            const blob = new Blob([await res.arrayBuffer()], { type: att.mime || 'application/octet-stream' });
+            this.reader.attView.url = URL.createObjectURL(blob);
+            this.reader.attView.loading = false;
+        } catch (e) {
+            this.reader.attView.error = labels.connectFailed;
+            this.reader.attView.loading = false;
+        }
+    },
+
+    closeAttachment() {
+        if (this.reader.attView.url) URL.revokeObjectURL(this.reader.attView.url);
+        this.reader.attView = { open: false, name: '', kind: '', url: '', loading: false, error: '' };
+    },
+
     // ---- Save an attachment into the Files vault (encrypted blob + manifest) ----
 
     async openSaveAttachment(att) {
