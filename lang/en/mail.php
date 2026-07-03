@@ -5,8 +5,6 @@ declare(strict_types=1);
 return [
     'title' => 'Mail accounts',
     'subtitle' => 'Read-only overview of your IMAP accounts.',
-    'locked_notice' => 'Your mail accounts are locked. Unlock the vault to see them — credentials are stored only encrypted and never readable on the server.',
-    'unconfigured_notice' => 'No vault yet. Set an encryption passphrase to store your IMAP accounts zero-knowledge.',
     'stale' => 'The accounts were changed somewhere else at the same time and were reloaded. Please repeat your last change.',
     'save_failed' => 'Could not save. Please try again.',
     'connect_failed' => 'Could not connect. Check the host, port, encryption and credentials.',

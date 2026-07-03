@@ -26,9 +26,6 @@
         "html2pdf.js": "^0.14.0",
         "jszip": "^3.10.1",
         "leaflet": "^1.9.4",
-        "leaflet.markercluster": "^1.5.3",
-        "libsodium-wrappers-sumo": "^0.8.4",
-        "marked": "^18.0.5",
-        "marked-highlight": "^2.2.4"
+        "leaflet.markercluster": "^1.5.3"
     }
 }

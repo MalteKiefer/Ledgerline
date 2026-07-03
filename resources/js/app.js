@@ -2223,42 +2223,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
  * GitHub-flavored markdown, sanitised before it touches the DOM.
  */
 
-// marked + highlight.js are only needed to render markdown (notes / shared
-// notes). They are code-split and loaded on first render so the login, gallery,
-// files, bookmarks and mail pages don't ship highlight.js. DOMPurify stays eager
-// because the mail viewer sanitizes synchronously in its render path.
-let mdModule = null;
-async function loadMarkdown() {
-    if (! mdModule) {
-        const [markedMod, mhMod, hljsMod] = await Promise.all([
-            import('marked'),
-            import('marked-highlight'),
-            import('highlight.js/lib/common'),
-        ]);
-        const { marked } = markedMod;
-        const hljs = hljsMod.default;
-        marked.use({ gfm: true, breaks: true });
-        // hljs output is plain spans and survives the DOMPurify pass.
-        marked.use(mhMod.markedHighlight({
-            langPrefix: 'hljs language-',
-            highlight(code, lang) {
-                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-                return hljs.highlight(code, { language }).value;
-            },
-        }));
-        mdModule = { marked };
-    }
-    return mdModule;
-}
-
-async function renderMarkdown(text) {
-    const { marked } = await loadMarkdown();
-    // marked renders GFM task checkboxes disabled; strip that so they stay
-    // clickable in the preview (the click handler writes back to the source).
-    return DOMPurify.sanitize(marked.parse(text ?? '')).replace(/<input disabled(="")?\s/g, '<input ');
-}
-
-
 
 Alpine.data('vaultMail', (labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error

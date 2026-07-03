@@ -215,10 +215,6 @@ class WebklexMailSource implements MailSource
     private function close(Client $client): void
     {
         restore_error_handler();
-        if (function_exists('imap_errors')) {
-            @imap_errors();
-            @imap_alerts();
-        }
         try {
             $client->disconnect();
         } catch (\Throwable) {

@@ -5,8 +5,6 @@ declare(strict_types=1);
 return [
     'title' => 'Mailkonten',
     'subtitle' => 'Schreibgeschützter Überblick über deine IMAP-Konten.',
-    'locked_notice' => 'Deine Mailkonten sind gesperrt. Entsperre den Tresor, um sie zu sehen — Zugangsdaten liegen nur verschlüsselt vor und sind auf dem Server nie lesbar.',
-    'unconfigured_notice' => 'Noch kein Tresor. Lege ein Verschlüsselungs-Passwort fest, um deine IMAP-Konten zero-knowledge zu speichern.',
     'stale' => 'Die Konten wurden zeitgleich woanders geändert und neu geladen. Bitte letzte Änderung wiederholen.',
     'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
     'connect_failed' => 'Verbindung fehlgeschlagen. Prüfe Host, Port, Verschlüsselung und Zugangsdaten.',
