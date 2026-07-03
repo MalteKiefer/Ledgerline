@@ -87,4 +87,7 @@ return [
     'dest_folder' => 'Destination folder',
     'root_folder' => 'Files (top level)',
     'saved_to_files' => 'Saved to Files.',
+    'manage_accounts' => 'Manage accounts',
+    'pick_account' => 'Choose a mailbox to open.',
+    'switch_account' => 'Switch mailbox',
 ];

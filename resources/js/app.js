@@ -2465,6 +2465,8 @@ Alpine.data('vaultBookmarks', (labels = {}) => ({
 
 Alpine.data('vaultMail', (labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
+    standalone: labels.standalone === true, // /mail reader page (auto-open + switcher)
+    accountMenuOpen: false,
     manifest: { v: 1, accounts: [] },
     version: 0,
     error: '',
@@ -2504,15 +2506,35 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return Vault.cacheGet(`stats:${a.id}`) ?? a.stats;
     },
 
+    // Unread count for an account id (from synced stats), for the switcher badge.
+    accountUnread(id) {
+        if (! id) return 0;
+        const a = this.manifest.accounts.find((x) => x.id === id);
+        return a ? (this.accountStats(a)?.unseen ?? 0) : 0;
+    },
+
     async load() {
         try {
             const { data, version } = await Vault.loadManifest('mail');
             this.manifest = data.accounts ? data : { v: 1, accounts: [] };
             this.version = version;
             this.state = 'ready';
+            // On the standalone reader page (/mail), open an account straight
+            // away: the last one used in this browser, else the first.
+            if (labels.standalone && ! this.reader.open && this.manifest.accounts.length) {
+                const lastId = (() => { try { return localStorage.getItem('mail:last-account'); } catch (e) { return null; } })();
+                const acc = this.manifest.accounts.find((a) => a.id === lastId) ?? this.sortedAccounts[0];
+                if (acc) this.openReader(acc);
+            }
         } catch (e) {
             this.state = 'error';
         }
+    },
+
+    // Switch the reader to another account (from the sidebar account menu).
+    switchAccount(id) {
+        const acc = this.manifest.accounts.find((a) => a.id === id);
+        if (acc && acc.id !== this.reader.account?.id) this.openReader(acc);
     },
 
     async persist() {
@@ -2677,6 +2699,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     // folders-first-then-messages). Both show cached data at once, or a
     // spinner, and fill in when their fetch resolves.
     openReader(a) {
+        try { localStorage.setItem('mail:last-account', a.id); } catch (e) { /* ignore */ }
         this.reader.open = true;
         this.reader.account = a;
         this.reader.current = null;
