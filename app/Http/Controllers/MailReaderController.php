@@ -178,8 +178,8 @@ class MailReaderController extends Controller
             return $operation();
         } catch (\Throwable $e) {
             // Log the exception detail server-side for diagnostics. This is the
-            // IMAP server's own error (class + message + origin) — never vault
-            // content or credentials, which the mail services do not expose.
+            // IMAP server's own error (class + message + origin) — never
+            // credentials, which the mail services do not expose.
             Log::warning('Mail operation failed', [
                 'exception' => $e::class,
                 'message' => $e->getMessage(),
@@ -190,8 +190,8 @@ class MailReaderController extends Controller
                 'message' => __('mail.connect_failed'),
                 // Surfaces the full exception chain (class + IMAP server message,
                 // root cause included) so a single-tenant operator can diagnose
-                // failures directly in the browser. Never includes vault content
-                // or credentials (the mail services do not expose them).
+                // failures directly in the browser. Never includes credentials
+                // (the mail services do not expose them).
                 'detail' => $this->describeChain($e),
             ], 422);
         }

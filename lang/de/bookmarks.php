@@ -19,8 +19,6 @@ return [
     'save' => 'Speichern',
     'cancel' => 'Abbrechen',
     'empty' => 'Noch keine Lesezeichen — lege das erste an.',
-    'locked_notice' => 'Deine Lesezeichen sind gesperrt. Entsperre den Tresor, um sie zu sehen — auf dem Server ist nichts davon lesbar gespeichert.',
-    'unconfigured_notice' => 'Noch kein Tresor. Lege ein Verschlüsselungs-Passwort fest, um deine Zero-Knowledge-Lesezeichen zu erstellen.',
     'stale' => 'Die Lesezeichen wurden zeitgleich woanders geändert und neu geladen. Bitte letzte Änderung wiederholen.',
     'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
     'active' => 'Lesezeichen',

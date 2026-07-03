@@ -10,7 +10,7 @@ use League\Flysystem\Filesystem;
 /**
  * Incrementally mirrors a prefix of the files disk to a backup destination.
  *
- * The vault's content blobs are immutable (their name is content-addressed) and
+ * Stored file blobs are immutable (their name is content-addressed) and
  * already client-side encrypted, so there is nothing to archive or compress:
  * this uploads only objects the destination is missing and removes objects that
  * no longer exist at the source. Server-to-server streaming, no local staging.
