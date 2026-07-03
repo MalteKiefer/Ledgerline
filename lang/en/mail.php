@@ -55,6 +55,8 @@ return [
     'transfer_account' => 'Target account',
     'transfer_folder' => 'Target folder',
     'transfer_move' => 'Move',
+    'transferring' => 'Moving…',
+    'transfer_failed' => 'Could not move the message(s):',
     'mark_read' => 'Mark as read',
     'mark_unread' => 'Mark as unread',
     'print' => 'Print',

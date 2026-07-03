@@ -55,6 +55,8 @@ return [
     'transfer_account' => 'Zielkonto',
     'transfer_folder' => 'Zielordner',
     'transfer_move' => 'Verschieben',
+    'transferring' => 'Verschiebe…',
+    'transfer_failed' => 'Nachricht(en) konnten nicht verschoben werden:',
     'mark_read' => 'Als gelesen markieren',
     'mark_unread' => 'Als ungelesen markieren',
     'print' => 'Drucken',

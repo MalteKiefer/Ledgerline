@@ -185,12 +185,23 @@ class MailReaderController extends Controller
 
             return response()->json([
                 'message' => __('mail.connect_failed'),
-                // Surfaces the class and the IMAP server's own error message so a
-                // single-tenant operator can diagnose failures directly from the
-                // browser. Never includes vault content or credentials (the mail
-                // services do not expose them).
-                'detail' => class_basename($e).': '.Str::limit($e->getMessage(), 500),
+                // Surfaces the full exception chain (class + IMAP server message,
+                // root cause included) so a single-tenant operator can diagnose
+                // failures directly in the browser. Never includes vault content
+                // or credentials (the mail services do not expose them).
+                'detail' => $this->describeChain($e),
             ], 422);
         }
+    }
+
+    /** Full exception chain, newest → root cause, one capped line each. */
+    private function describeChain(\Throwable $e): string
+    {
+        $lines = [];
+        for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
+            $lines[] = class_basename($cur).': '.Str::limit($cur->getMessage(), 300);
+        }
+
+        return implode("\n", array_unique($lines));
     }
 }

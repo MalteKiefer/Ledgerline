@@ -448,9 +448,19 @@
                             </select>
                         </div>
                     </div>
+
+                    {{-- Failure detail (why the move failed) — stays visible; modal doesn't close on error --}}
+                    <div x-show="reader.transferError" x-cloak class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        <p class="font-medium">{{ __('mail.transfer_failed') }}</p>
+                        <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-red-800" x-text="reader.transferError"></pre>
+                    </div>
+
                     <div class="mt-5 flex justify-end gap-3">
-                        <button type="button" @click="reader.transferOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
-                        <button type="button" @click="confirmTransfer()" :disabled="reader.busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('mail.transfer_move') }}</button>
+                        <button type="button" @click="reader.transferOpen = false" :disabled="reader.busy" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('common.cancel') }}</button>
+                        <button type="button" @click="confirmTransfer()" :disabled="reader.busy" class="inline-flex items-center gap-2 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">
+                            <x-icon name="arrow-path" x-show="reader.busy" x-cloak class="h-4 w-4 animate-spin" />
+                            <span x-text="reader.busy ? @js(__('mail.transferring')) : @js(__('mail.transfer_move'))"></span>
+                        </button>
                     </div>
                 </div>
             </div>
