@@ -8,162 +8,117 @@ use App\Models\Reminder;
 use App\Models\Todo;
 use App\Models\TodoList;
 use Carbon\Carbon;
-use Illuminate\Contracts\View\View;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * Plain (non-encrypted) to-do lists and tasks, rendered server-side. Filtering,
- * sorting and search all happen in PHP; the page uses plain form posts, so the
- * client ships almost no JavaScript. Reminders are managed here: a task with a
- * due date and channels upserts a reminder row, otherwise it is removed.
+ * Plain (non-encrypted) to-do lists and tasks, exposed as a JSON API so the
+ * browser can render and mutate everything without page reloads. Only the
+ * security/performance-sensitive bits stay on the server: reminder rows are
+ * managed here (a task with a due date + channels upserts a reminder), and
+ * outbound reminder URLs are restricted to http(s).
  */
 class TodoController extends Controller
 {
-    private const PRIORITY_ORDER = ['high' => 0, 'normal' => 1, 'low' => 2];
-
-    public function index(Request $request): View
+    public function index(): JsonResponse
     {
-        $view = (string) $request->query('view', 'all');
-        $tag = (string) $request->query('tag', '');
-        $q = trim((string) $request->query('q', ''));
-
-        $query = Todo::query();
-        $view === 'trash' ? $query->whereNotNull('trashed_at') : $query->whereNull('trashed_at');
-        if ($view === 'marked') {
-            $query->where('marked', true);
-        } elseif (str_starts_with($view, 'list:')) {
-            $query->where('todo_list_id', (int) substr($view, 5));
-        }
-        if ($tag !== '') {
-            $query->whereJsonContains('tags', $tag);
-        }
-        if ($q !== '') {
-            $query->where(fn ($w) => $w->where('title', 'like', "%{$q}%")->orWhere('description', 'like', "%{$q}%"));
-        }
-
-        $tasks = $query->get()
-            ->sort(fn (Todo $a, Todo $b) => [(int) $a->done, -(int) $a->marked, self::PRIORITY_ORDER[$a->priority] ?? 1, $a->due_at?->timestamp ?? PHP_INT_MAX]
-                <=> [(int) $b->done, -(int) $b->marked, self::PRIORITY_ORDER[$b->priority] ?? 1, $b->due_at?->timestamp ?? PHP_INT_MAX])
-            ->values();
-
-        $editing = null;
-        if ($request->filled('edit')) {
-            $editing = Todo::find($request->integer('edit'));
-        } elseif ($request->boolean('new')) {
-            $editing = new Todo(['priority' => 'normal']);
-        }
-
-        return view('todos.index', [
-            'lists' => TodoList::orderBy('name')->get(),
-            'tasks' => $tasks,
-            'allTags' => $this->allTags(),
-            'trashCount' => Todo::whereNotNull('trashed_at')->count(),
-            'view' => $view,
-            'activeTag' => $tag,
-            'q' => $q,
-            'editing' => $editing,
+        return response()->json([
+            'lists' => TodoList::orderBy('name')->get(['id', 'name']),
+            'tasks' => Todo::orderByDesc('created_at')->get()->map(fn (Todo $t) => $this->toArray($t)),
         ]);
     }
 
     /* ---- Lists ---- */
 
-    public function storeList(Request $request): RedirectResponse
+    public function storeList(Request $request): JsonResponse
     {
-        TodoList::create($request->validate(['name' => ['required', 'string', 'max:120']]));
+        $list = TodoList::create($request->validate(['name' => ['required', 'string', 'max:120']]));
 
-        return back();
+        return response()->json(['id' => $list->id, 'name' => $list->name]);
     }
 
-    public function updateList(Request $request, TodoList $list): RedirectResponse
+    public function updateList(Request $request, TodoList $list): JsonResponse
     {
         $list->update($request->validate(['name' => ['required', 'string', 'max:120']]));
 
-        return back();
+        return response()->json(['ok' => true]);
     }
 
-    public function destroyList(TodoList $list): RedirectResponse
+    public function destroyList(TodoList $list): JsonResponse
     {
         $list->delete(); // tasks fall back to "no list" (FK nulls out)
 
-        return redirect()->route('todos.index');
+        return response()->json(['ok' => true]);
     }
 
     /* ---- Tasks ---- */
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): JsonResponse
     {
         $todo = Todo::create($this->validated($request));
         $this->syncReminder($todo);
 
-        return redirect()->route('todos.index');
+        return response()->json($this->toArray($todo->refresh()));
     }
 
-    public function update(Request $request, Todo $todo): RedirectResponse
+    public function update(Request $request, Todo $todo): JsonResponse
     {
         $todo->update($this->validated($request));
         $this->syncReminder($todo);
 
-        return redirect()->route('todos.index');
+        return response()->json($this->toArray($todo->refresh()));
     }
 
-    public function toggleDone(Todo $todo): RedirectResponse
+    public function patch(Request $request, Todo $todo): JsonResponse
     {
-        $todo->update(['done' => ! $todo->done]);
+        // Lightweight toggles (done/marked/trashed) without the full payload.
+        $data = $request->validate([
+            'done' => ['sometimes', 'boolean'],
+            'marked' => ['sometimes', 'boolean'],
+            'trashed' => ['sometimes', 'boolean'],
+        ]);
+        if ($request->has('done')) {
+            $todo->done = $request->boolean('done');
+        }
+        if ($request->has('marked')) {
+            $todo->marked = $request->boolean('marked');
+        }
+        if ($request->has('trashed')) {
+            $todo->trashed_at = $request->boolean('trashed') ? Carbon::now() : null;
+        }
+        $todo->save();
         $this->syncReminder($todo);
 
-        return back();
+        return response()->json($this->toArray($todo->refresh()));
     }
 
-    public function toggleMark(Todo $todo): RedirectResponse
+    public function destroy(Todo $todo): JsonResponse
     {
-        $todo->update(['marked' => ! $todo->marked]);
+        $todo->delete();
 
-        return back();
+        return response()->json(['ok' => true]);
     }
 
-    public function trash(Todo $todo): RedirectResponse
-    {
-        $todo->update(['trashed_at' => Carbon::now()]);
-        $this->syncReminder($todo);
-
-        return back();
-    }
-
-    public function restore(Todo $todo): RedirectResponse
-    {
-        $todo->update(['trashed_at' => null]);
-        $this->syncReminder($todo);
-
-        return back();
-    }
-
-    public function destroy(Todo $todo): RedirectResponse
-    {
-        $todo->delete(); // cascade drops its reminder
-
-        return back();
-    }
-
-    public function emptyTrash(): RedirectResponse
+    public function emptyTrash(): JsonResponse
     {
         Todo::whereNotNull('trashed_at')->get()->each->delete();
 
-        return redirect()->route('todos.index');
+        return response()->json(['ok' => true]);
     }
 
     /** @return array<string,mixed> */
     private function validated(Request $request): array
     {
         $v = $request->validate([
-            'todo_list_id' => ['nullable', 'integer', 'exists:todo_lists,id'],
+            'todo_list_id' => ['nullable', 'exists:todo_lists,id'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:20000'],
             'url' => ['nullable', 'string', 'max:2048'],
             'priority' => ['required', Rule::in(['low', 'normal', 'high'])],
             'marked' => ['sometimes', 'boolean'],
-            'tags' => ['nullable', 'string', 'max:500'],
+            'tags' => ['array'],
+            'tags.*' => ['string', 'max:64'],
             'due' => ['nullable', 'date'],
             'reminder_channels' => ['array'],
             'reminder_channels.*' => [Rule::in(Reminder::CHANNELS)],
@@ -176,30 +131,12 @@ class TodoController extends Controller
             'description' => $v['description'] ?? null,
             'url' => $v['url'] ?? null,
             'priority' => $v['priority'],
-            'marked' => $request->boolean('marked'),
-            'tags' => $this->parseTags($v['tags'] ?? null),
+            'marked' => (bool) ($v['marked'] ?? false),
+            'tags' => array_values($v['tags'] ?? []),
             'due_at' => ! empty($v['due']) ? Carbon::parse($v['due'], config('app.timezone')) : null,
             'reminder_channels' => array_values($v['reminder_channels'] ?? []),
-            'done' => $request->boolean('done'),
+            'done' => (bool) ($v['done'] ?? false),
         ];
-    }
-
-    /** @return list<string> */
-    private function parseTags(?string $raw): array
-    {
-        if ($raw === null || trim($raw) === '') {
-            return [];
-        }
-
-        return array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)))));
-    }
-
-    /** @return list<string> */
-    private function allTags(): array
-    {
-        return Todo::whereNotNull('tags')->pluck('tags')
-            ->flatMap(fn ($t) => is_array($t) ? $t : [])
-            ->unique()->sort()->values()->all();
     }
 
     private function syncReminder(Todo $todo): void
@@ -225,7 +162,6 @@ class TodoController extends Controller
         );
     }
 
-    /** Only http(s) links reach outbound notifications. */
     private function safeUrl(?string $url): ?string
     {
         if ($url === null || $url === '') {
@@ -233,5 +169,24 @@ class TodoController extends Controller
         }
 
         return preg_match('#^https?://#i', $url) === 1 ? $url : null;
+    }
+
+    /** @return array<string,mixed> */
+    private function toArray(Todo $t): array
+    {
+        return [
+            'id' => $t->id,
+            'listId' => $t->todo_list_id,
+            'title' => $t->title,
+            'description' => $t->description,
+            'url' => $t->url,
+            'priority' => $t->priority,
+            'marked' => (bool) $t->marked,
+            'tags' => $t->tags ?? [],
+            'due' => $t->due_at?->timezone(config('app.timezone'))->format('Y-m-d\TH:i'),
+            'reminderChannels' => $t->reminder_channels ?? [],
+            'done' => (bool) $t->done,
+            'trashed' => $t->trashed_at !== null,
+        ];
     }
 }

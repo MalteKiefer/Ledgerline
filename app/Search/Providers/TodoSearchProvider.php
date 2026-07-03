@@ -37,7 +37,7 @@ class TodoSearchProvider extends AbstractSearchProvider
                 group: $this->group(),
                 title: $todo->title,
                 subtitle: $todo->done ? __('todos.done') : ($todo->due_at?->timezone(config('app.timezone'))->format('Y-m-d H:i') ?: null),
-                url: route('todos.index', ['edit' => $todo->id]),
+                url: route('todos.index'),
             ))
             ->all();
     }

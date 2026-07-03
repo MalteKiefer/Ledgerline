@@ -154,18 +154,15 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/notes/trash/all', [NoteController::class, 'emptyTrash'])->name('notes.trash.empty');
     Route::post('/notes/{note}/share', [NoteController::class, 'share'])->name('notes.share');
     Route::delete('/notes/shares/{share}', [NoteController::class, 'unshare'])->name('notes.unshare');
-    // To-dos: plain database rows (not zero-knowledge), rendered server-side
-    // with plain form posts. Reminders are managed by the controller.
-    Route::get('/todos', [TodoController::class, 'index'])->name('todos.index');
+    // To-dos: plain DB rows, driven client-side over a JSON API (no reloads).
+    Route::view('/todos', 'todos.index')->name('todos.index');
+    Route::get('/todos/data', [TodoController::class, 'index'])->name('todos.data');
     Route::post('/todos/lists', [TodoController::class, 'storeList'])->name('todos.lists.store');
     Route::put('/todos/lists/{list}', [TodoController::class, 'updateList'])->name('todos.lists.update');
     Route::delete('/todos/lists/{list}', [TodoController::class, 'destroyList'])->name('todos.lists.destroy');
     Route::post('/todos/tasks', [TodoController::class, 'store'])->name('todos.store');
     Route::put('/todos/tasks/{todo}', [TodoController::class, 'update'])->name('todos.update');
-    Route::post('/todos/tasks/{todo}/done', [TodoController::class, 'toggleDone'])->name('todos.done');
-    Route::post('/todos/tasks/{todo}/mark', [TodoController::class, 'toggleMark'])->name('todos.mark');
-    Route::post('/todos/tasks/{todo}/trash', [TodoController::class, 'trash'])->name('todos.trash');
-    Route::post('/todos/tasks/{todo}/restore', [TodoController::class, 'restore'])->name('todos.restore');
+    Route::patch('/todos/tasks/{todo}', [TodoController::class, 'patch'])->name('todos.patch');
     Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->name('todos.destroy');
     Route::delete('/todos/trash', [TodoController::class, 'emptyTrash'])->name('todos.trash.empty');
     // Bookmarks: plain database rows (not zero-knowledge), rendered server-side.
