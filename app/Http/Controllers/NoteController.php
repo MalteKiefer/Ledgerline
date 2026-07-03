@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Note;
 use App\Models\NoteShare;
+use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -116,15 +117,14 @@ class NoteController extends Controller
         $v = $request->validate([
             'title' => ['nullable', 'string', 'max:255'],
             'content' => ['nullable', 'string', 'max:200000'],
-            'tags' => ['array'],
-            'tags.*' => ['string', 'max:64'],
             'pinned' => ['sometimes', 'boolean'],
+            ...Tags::rules(),
         ]);
 
         return [
             'title' => trim((string) ($v['title'] ?? '')) ?: __('notes.untitled'),
             'content' => $v['content'] ?? null,
-            'tags' => array_values($v['tags'] ?? []),
+            'tags' => Tags::normalize($v['tags'] ?? null),
             'pinned' => (bool) ($v['pinned'] ?? false),
         ];
     }

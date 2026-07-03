@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FileFolder;
 use App\Models\StoredFile;
+use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -94,7 +95,7 @@ class FileController extends Controller
                     'mime' => $f['mime'] ?? 'application/octet-stream',
                     'size' => (int) ($f['size'] ?? 0),
                     'blob' => $f['blob'],
-                    'tags' => array_values($f['tags'] ?? []),
+                    'tags' => Tags::normalize($f['tags'] ?? null),
                     'trashed_at' => ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null,
                 ]);
                 $fileIds[] = $f['id'];
