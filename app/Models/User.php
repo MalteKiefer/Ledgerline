@@ -18,7 +18,7 @@ use Illuminate\Notifications\Notifiable;
  * stable OIDC subject identifier ("oidc_sub"). All authenticated users share a
  * single workspace.
  */
-#[Fillable(['oidc_sub', 'name', 'email', 'avatar', 'avatar_url', 'locale'])]
+#[Fillable(['oidc_sub', 'name', 'email', 'email_verified_at', 'avatar', 'avatar_url', 'locale'])]
 #[Hidden(['remember_token'])]
 class User extends Authenticatable
 {

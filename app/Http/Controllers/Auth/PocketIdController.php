@@ -49,11 +49,28 @@ class PocketIdController extends Controller
                 ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
         }
 
+        $sub = (string) $oidcUser->getId();
+        $raw = $oidcUser->getRaw();
+
+        // Only trust the e-mail address once the provider has verified it; an
+        // unverified address must never be persisted or used for matching.
+        $emailVerified = ($raw['email_verified'] ?? false) === true;
+        $email = $emailVerified ? $oidcUser->getEmail() : null;
+
+        if (! $this->mayProvision($sub, $email)) {
+            // Deliberately generic: never reveal whether the account exists or
+            // why a subject was rejected.
+            return redirect()
+                ->route('login')
+                ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
+        }
+
         $user = User::updateOrCreate(
-            ['oidc_sub' => $oidcUser->getId()],
+            ['oidc_sub' => $sub],
             [
                 'name' => $oidcUser->getName() ?? $oidcUser->getNickname() ?? 'Unknown',
-                'email' => $oidcUser->getEmail(),
+                'email' => $email,
+                'email_verified_at' => $emailVerified ? now() : null,
             ],
         );
 
@@ -78,6 +95,30 @@ class PocketIdController extends Controller
         $request->session()->put('vault_owner', bin2hex(random_bytes(16)));
 
         return redirect()->intended(route('dashboard'));
+    }
+
+    /**
+     * Decide whether the given OIDC subject is allowed to sign in.
+     *
+     * Single-tenant policy: an explicit allow-list (subjects and/or verified
+     * e-mails) wins when configured; otherwise the first identity to sign in
+     * claims the sole account and every later subject is rejected.
+     */
+    private function mayProvision(string $sub, ?string $email): bool
+    {
+        $allowedSubs = (array) config('services.pocketid.allowed_subs', []);
+        $allowedEmails = (array) config('services.pocketid.allowed_emails', []);
+
+        if ($allowedSubs !== [] || $allowedEmails !== []) {
+            return in_array($sub, $allowedSubs, true)
+                || ($email !== null && in_array($email, $allowedEmails, true));
+        }
+
+        // No allow-list: first user wins. A provisioned account only accepts its
+        // own subject; a brand-new install accepts the first caller.
+        $existing = User::query()->first();
+
+        return $existing === null || $existing->oidc_sub === $sub;
     }
 
     /**
