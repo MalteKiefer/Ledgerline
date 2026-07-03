@@ -1,4 +1,20 @@
 <x-layouts.app :title="__('settings.backup_heading')">
+    @php
+        // Human-readable duration: "45s", "3m 12s", "1h 4m".
+        $fmtDur = function (?int $s): string {
+            if ($s === null) {
+                return '—';
+            }
+            if ($s < 60) {
+                return $s.'s';
+            }
+            if ($s < 3600) {
+                return intdiv($s, 60).'m '.($s % 60).'s';
+            }
+
+            return intdiv($s, 3600).'h '.intdiv($s % 3600, 60).'m';
+        };
+    @endphp
     <p class="text-sm text-gray-500">
         <a href="{{ route('settings') }}" class="hover:underline">{{ __('messages.menu.settings') }}</a>
         <span aria-hidden="true">/</span> {{ __('settings.backup_section') }}
@@ -85,6 +101,46 @@
                         </form>
                     </div>
                 </div>
+
+                {{-- Per-job statistics --}}
+                @php $s = $job->statistics(); @endphp
+                @if ($s['runs'] > 0)
+                    <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-gray-50 p-3 text-xs sm:grid-cols-4">
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_runs') }}</dt>
+                            <dd class="font-medium text-gray-900">{{ $s['runs'] }} <span class="text-green-600">{{ $s['ok'] }}✓</span>@if ($s['failed']) <span class="text-red-600">{{ $s['failed'] }}✕</span>@endif</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_success_rate') }}</dt>
+                            <dd class="font-medium text-gray-900">{{ $s['successRate'] !== null ? $s['successRate'].'%' : '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_last_duration') }}</dt>
+                            <dd class="font-medium text-gray-900">{{ $fmtDur($s['lastDuration']) }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_avg_duration') }}</dt>
+                            <dd class="font-medium text-gray-900">{{ $fmtDur($s['avgDuration']) }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_last_size') }}</dt>
+                            <dd class="font-medium text-gray-900">{{ $s['lastBytes'] ? \Illuminate\Support\Number::fileSize($s['lastBytes']) : '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_total_size') }}</dt>
+                            <dd class="font-medium text-gray-900">{{ $s['totalBytes'] ? \Illuminate\Support\Number::fileSize($s['totalBytes']) : '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_last_run') }}</dt>
+                            <dd class="font-medium text-gray-900" title="{{ $s['lastRun']?->toDateTimeString() }}">{{ $s['lastRun']?->diffForHumans() ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-gray-500">{{ __('settings.backup_stat_next_run') }}</dt>
+                            <dd class="font-medium text-gray-900" title="{{ $s['nextRun']?->toDateTimeString() }}">{{ $job->enabled ? ($s['nextRun']?->diffForHumans() ?? '—') : '—' }}</dd>
+                        </div>
+                    </dl>
+                @endif
+
                 <div x-show="editing === {{ $job->id }}" x-cloak class="mt-3 rounded-md border border-gray-200 bg-gray-50 p-4">
                     @include('settings.backup._job_form', ['job' => $job, 'action' => route('settings.backup.jobs.update', $job)])
                 </div>
