@@ -60,9 +60,10 @@
     {{-- Reader — inline in the page (fills the content column, keeps the app nav
          visible), not a fullscreen overlay. --}}
     <div x-show="reader.open" x-cloak class="relative mt-4 flex h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm" @keydown.escape.window="reader.current && (reader.current = null)">
-            {{-- Non-blocking activity indicator: a background action is running but
-                 the UI stays interactive (actions apply optimistically). --}}
-            <div x-show="reader.busy" x-cloak class="pointer-events-none absolute right-3 top-3 z-[68] flex items-center gap-1.5 rounded-full bg-gray-900/80 px-2.5 py-1 text-xs text-white shadow" title="{{ __('mail.working') }}">
+            {{-- Non-blocking activity indicator (bottom-right): a background action
+                 is running but the UI stays interactive — actions apply
+                 optimistically, so more operations can start while this finishes. --}}
+            <div x-show="reader.busy || reader.working > 0" x-cloak class="pointer-events-none absolute bottom-3 right-3 z-[68] flex items-center gap-1.5 rounded-full bg-gray-900/80 px-2.5 py-1 text-xs text-white shadow" title="{{ __('mail.working') }}">
                 <x-icon name="arrow-path" class="h-3.5 w-3.5 animate-spin" />{{ __('mail.working') }}
             </div>
             {{-- Top bar: close (only when opened as an overlay from elsewhere) --}}

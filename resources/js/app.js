@@ -2481,7 +2481,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     cacheVersion: 0, // bumped on background sync to re-read cached stats
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50, uidValidity: 0,
-        messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
+        messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false, working: 0,
         folders: [], foldersLoading: false, sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [], transferError: '',
         saveAtt: { open: false, att: null, folder: '', busy: false, error: '', done: false }, filesFolders: [],
@@ -2934,29 +2934,33 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     // Run an action over every selected message, updating locally as each
     // succeeds — no full folder reload.
-    async bulkAction(action, target = null) {
-        if (! this.reader.selected.length || this.reader.busy) return;
-        this.reader.busy = true;
-        this.reader.error = '';
-        const uids = [...this.reader.selected];
-        try {
-            // One request for the whole selection — the server applies the
-            // action to every UID over a single IMAP connection.
-            const res = await this.mailPost('/mail/message/action', { uids, action, target });
-            if (! res.ok) {
+    // Run a mail action in the background: apply the effect optimistically now
+    // (so the UI updates instantly and stays usable for more operations), and
+    // fire the request without blocking. A small "working" indicator shows while
+    // any request is in flight; on failure the folder is resynced.
+    runBg(promise) {
+        this.reader.working++;
+        Promise.resolve(promise).then(async (res) => {
+            if (res && ! res.ok) {
                 const b = await res.json().catch(() => ({}));
                 this.reader.error = b.detail || labels.connectFailed;
-                this.loadMessages(true); // server may have applied some — resync
-                return;
+                this.loadMessages(true, true);
             }
-            this.applyActionLocal(action, uids, target);
-        } catch (e) {
+        }).catch(() => {
             this.reader.error = labels.connectFailed;
-            this.loadMessages(true);
-        } finally {
-            this.reader.selected = [];
-            this.reader.busy = false;
-        }
+            this.loadMessages(true, true);
+        }).finally(() => {
+            this.reader.working = Math.max(0, this.reader.working - 1);
+        });
+    },
+
+    bulkAction(action, target = null) {
+        if (! this.reader.selected.length) return;
+        const uids = [...this.reader.selected];
+        this.reader.selected = [];
+        this.reader.error = '';
+        this.applyActionLocal(action, uids, target); // optimistic, instant
+        this.runBg(this.mailPost('/mail/message/action', { uids, action, target }));
     },
 
     async mailPost(url, extra) {
@@ -3121,26 +3125,21 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return !! (c && c.html && /<img[^>]+src=["']https?:/i.test(c.html));
     },
 
-    async msgAction(action, target = null) {
+    msgAction(action, target = null) {
         if (! this.reader.current) return;
         const uid = this.reader.current.uid;
-        this.reader.busy = true;
         this.reader.error = '';
-        try {
-            const res = await this.mailPost('/mail/message/action', { uids: [uid], action, target });
-            if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
-            if (action === 'seen' || action === 'unseen') {
-                this.reader.current.seen = action === 'seen';
-                this.markSeenLocal([uid], action === 'seen');
-            } else {
-                this.applyActionLocal(action, [uid], target);
-                this.reader.current = null;
-            }
-        } catch (e) {
-            this.reader.error = labels.connectFailed;
-        } finally {
-            this.reader.busy = false;
+        if (action === 'seen' || action === 'unseen') {
+            this.reader.current.seen = action === 'seen';
+            this.markSeenLocal([uid], action === 'seen');
+        } else {
+            // Delete / move: apply optimistically and close the open message
+            // right away → back to the list, ready for the next operation while
+            // this one finishes in the background.
+            this.applyActionLocal(action, [uid], target);
+            this.reader.current = null;
         }
+        this.runBg(this.mailPost('/mail/message/action', { uids: [uid], action, target }));
     },
 
     // Folders of the selected transfer-target account, fetched live; INBOX
