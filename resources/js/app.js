@@ -1,9 +1,6 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { Vault } from './vault';
-import { marked } from 'marked';
-import { markedHighlight } from 'marked-highlight';
-import hljs from 'highlight.js/lib/common';
 import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
@@ -1947,18 +1944,36 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
  * GitHub-flavored markdown, sanitised before it touches the DOM.
  */
 
-marked.use({ gfm: true, breaks: true });
-// GitHub-style syntax highlighting for fenced code blocks; the hljs output is
-// plain spans and survives the DOMPurify pass.
-marked.use(markedHighlight({
-    langPrefix: 'hljs language-',
-    highlight(code, lang) {
-        const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-        return hljs.highlight(code, { language }).value;
-    },
-}));
+// marked + highlight.js are only needed to render markdown (notes / shared
+// notes). They are code-split and loaded on first render so the login, gallery,
+// files, bookmarks and mail pages don't ship highlight.js. DOMPurify stays eager
+// because the mail viewer sanitizes synchronously in its render path.
+let mdModule = null;
+async function loadMarkdown() {
+    if (! mdModule) {
+        const [markedMod, mhMod, hljsMod] = await Promise.all([
+            import('marked'),
+            import('marked-highlight'),
+            import('highlight.js/lib/common'),
+        ]);
+        const { marked } = markedMod;
+        const hljs = hljsMod.default;
+        marked.use({ gfm: true, breaks: true });
+        // hljs output is plain spans and survives the DOMPurify pass.
+        marked.use(mhMod.markedHighlight({
+            langPrefix: 'hljs language-',
+            highlight(code, lang) {
+                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                return hljs.highlight(code, { language }).value;
+            },
+        }));
+        mdModule = { marked };
+    }
+    return mdModule;
+}
 
-function renderMarkdown(text) {
+async function renderMarkdown(text) {
+    const { marked } = await loadMarkdown();
     // marked renders GFM task checkboxes disabled; strip that so they stay
     // clickable in the preview (the click handler writes back to the source).
     return DOMPurify.sanitize(marked.parse(text ?? '')).replace(/<input disabled(="")?\s/g, '<input ');
@@ -3477,7 +3492,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         this.saveState = 'dirty';
         // Split view shows a live preview beside the editor.
         if (this.mode === 'split' && this.editorView) {
-            this.previewHtml = renderMarkdown(this.editorView.state.doc.toString());
+            renderMarkdown(this.editorView.state.doc.toString()).then((h) => { this.previewHtml = h; });
         }
         clearTimeout(this.saveTimer);
         this.saveTimer = setTimeout(() => this.saveNow(), 3000);
@@ -3510,7 +3525,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         }
         this.mode = m;
         if (m !== 'edit') {
-            this.previewHtml = renderMarkdown(this.current?.content ?? '');
+            renderMarkdown(this.current?.content ?? '').then((h) => { this.previewHtml = h; });
         }
     },
 
@@ -3702,7 +3717,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
         const el = document.createElement('div');
         el.className = 'markdown-body';
         el.style.cssText = 'max-width:46rem;margin:0 auto;padding:24px;background:#fff;';
-        el.innerHTML = renderMarkdown(this.exportContent());
+        el.innerHTML = await renderMarkdown(this.exportContent());
         document.body.appendChild(el);
         html2pdf().set({
             filename: this.exportName('pdf'),
@@ -3741,7 +3756,7 @@ Alpine.data('vaultNotes', (labels = {}) => ({
             if (i !== index) return m;
             return a + (mark === ' ' ? 'x' : ' ') + c;
         });
-        this.previewHtml = renderMarkdown(this.current.content);
+        this.previewHtml = await renderMarkdown(this.current.content);
         this.current.updated = new Date().toISOString();
         await this.persist().catch(() => {});
     },
@@ -3806,10 +3821,10 @@ Alpine.data('sharedNote', (config = {}, labels = {}) => ({
         }
     },
 
-    render(snapshot) {
+    async render(snapshot) {
         this.title = snapshot.title || labels.untitled;
         this.content = snapshot.content || '';
-        this.html = renderMarkdown(this.content);
+        this.html = await renderMarkdown(this.content);
         document.title = `${this.title} — Ledgerline`;
         this.state = 'ready';
     },

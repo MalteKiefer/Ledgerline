@@ -15,7 +15,7 @@ class LocaleController extends Controller
 {
     public function update(Request $request): RedirectResponse
     {
-        $supported = array_keys(config('finance.languages'));
+        $supported = array_keys(config('locales.languages'));
 
         $validated = $request->validate([
             'locale' => ['required', 'string', 'in:'.implode(',', $supported)],

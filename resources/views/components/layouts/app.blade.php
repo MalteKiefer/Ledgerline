@@ -130,7 +130,7 @@
                                 <a href="{{ route('profile') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __("messages.menu.profile") }}</a>
                                 <a href="{{ route('settings') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __("messages.menu.settings") }}</a>
                                 <div class="flex gap-1 border-t border-gray-100 px-4 py-2">
-                                    @foreach (config('finance.languages') as $code => $label)
+                                    @foreach (config('locales.languages') as $code => $label)
                                         <form method="POST" action="{{ route('locale.update') }}">
                                             @csrf
                                             <input type="hidden" name="locale" value="{{ $code }}">
