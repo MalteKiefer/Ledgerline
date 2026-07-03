@@ -17,12 +17,6 @@
             <input type="number" min="1" max="120" id="vault_idle_minutes" name="vault_idle_minutes" value="{{ old('vault_idle_minutes', $company->vault_idle_minutes ?? 10) }}" class="{{ $input }}">
             @error('vault_idle_minutes')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
         </div>
-        <div class="mt-4 sm:max-w-xs">
-            <label for="mail_sync_minutes" class="block text-sm font-medium text-gray-700">{{ __('settings.mail_sync_minutes') }}</label>
-            <input type="number" min="5" max="120" id="mail_sync_minutes" name="mail_sync_minutes" value="{{ old('mail_sync_minutes', $company->mail_sync_minutes ?? 5) }}" class="{{ $input }}">
-            <p class="mt-1 text-xs text-gray-500">{{ __('settings.mail_sync_minutes_hint') }}</p>
-            @error('mail_sync_minutes')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
-        </div>
         <div class="mt-4">
             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button>
         </div>

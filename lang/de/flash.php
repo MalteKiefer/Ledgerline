@@ -24,4 +24,5 @@ return [
     'photos_rescan_queued' => ':count Foto(s) zum Metadaten-Neueinlesen eingereiht.',
     'photos_restored' => ':count Foto(s) wiederhergestellt.',
     'photos_trashed' => ':count Foto(s) in den Papierkorb verschoben.',
+    'mail_settings_saved' => 'Mail-Einstellungen gespeichert.',
 ];

@@ -151,4 +151,9 @@ return [
     'backup_queued_short' => 'Queued…',
     'backup_download' => 'Download',
     'backup_cron_tz' => 'Times are in the :tz timezone.',
+    'mail_section' => 'Mail',
+    'mail_desc' => 'Mail accounts and background-sync interval.',
+    'mail_heading' => 'Mail',
+    'mail_sync_heading' => 'Background sync',
+    'mail_accounts_heading' => 'Accounts',
 ];

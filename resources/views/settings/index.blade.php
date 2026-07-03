@@ -9,6 +9,7 @@
             ['url' => route('settings.security.edit'), 'title' => __('settings.security_section'), 'desc' => __('settings.security_desc')],
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc')],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc')],
+            ['url' => route('settings.mail.edit'), 'title' => __('settings.mail_section'), 'desc' => __('settings.mail_desc')],
         ])->sortBy('title', SORT_NATURAL | SORT_FLAG_CASE)->values();
     @endphp
 

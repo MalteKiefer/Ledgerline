@@ -24,9 +24,6 @@ class SecurityController extends Controller
     {
         $validated = $request->validate([
             'vault_idle_minutes' => ['required', 'integer', 'min:1', 'max:120'],
-            // Background mail sync: at least 5 minutes and never longer than the
-            // vault idle timeout (otherwise the vault locks before it can sync).
-            'mail_sync_minutes' => ['required', 'integer', 'min:5', 'lte:vault_idle_minutes'],
         ]);
 
         AppSettings::current()->update($validated);
