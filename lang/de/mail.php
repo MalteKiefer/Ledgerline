@@ -90,4 +90,5 @@ return [
     'manage_accounts' => 'Konten verwalten',
     'pick_account' => 'Postfach zum Öffnen wählen.',
     'switch_account' => 'Postfach wechseln',
+    'working' => 'Arbeite…',
 ];

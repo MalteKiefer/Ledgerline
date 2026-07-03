@@ -57,12 +57,13 @@
       </div>
     </template>
 
-    {{-- Reader overlay --}}
-    <template x-teleport="body">
-        <div x-show="reader.open" x-cloak class="fixed inset-0 z-[60] flex flex-col bg-white" @keydown.escape.window="reader.current ? (reader.current = null) : (standalone || closeReader())">
-            {{-- Busy overlay: blocks interaction while a message loads or an action runs --}}
-            <div x-show="reader.busy" x-cloak class="absolute inset-0 z-[68] flex items-center justify-center bg-white/60">
-                <x-icon name="arrow-path" class="h-8 w-8 animate-spin text-gray-500" />
+    {{-- Reader — inline in the page (fills the content column, keeps the app nav
+         visible), not a fullscreen overlay. --}}
+    <div x-show="reader.open" x-cloak class="relative mt-4 flex h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm" @keydown.escape.window="reader.current && (reader.current = null)">
+            {{-- Non-blocking activity indicator: a background action is running but
+                 the UI stays interactive (actions apply optimistically). --}}
+            <div x-show="reader.busy" x-cloak class="pointer-events-none absolute right-3 top-3 z-[68] flex items-center gap-1.5 rounded-full bg-gray-900/80 px-2.5 py-1 text-xs text-white shadow" title="{{ __('mail.working') }}">
+                <x-icon name="arrow-path" class="h-3.5 w-3.5 animate-spin" />{{ __('mail.working') }}
             </div>
             {{-- Top bar: close (only when opened as an overlay from elsewhere) --}}
             <div x-show="! standalone" class="flex items-center gap-3 border-b border-gray-200 px-4 py-2">
@@ -113,11 +114,13 @@
                         </div>
                         <template x-for="f in orderedFolders()" :key="f.path">
                             <div>
-                                {{-- Non-selectable container (e.g. Gmail "[Gmail]"): just a label --}}
-                                <div x-show="! f.selectable" class="truncate px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
+                                {{-- Non-selectable container (e.g. Gmail "[Gmail]"): just a label.
+                                     Only an explicit false counts — a missing flag must not turn
+                                     every reloaded folder into its own section header. --}}
+                                <div x-show="f.selectable === false" class="truncate px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
                                     :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`" x-text="folderLabel(f)"></div>
                                 {{-- Selectable folder — standard folders get a role icon; custom none --}}
-                                <button type="button" x-show="f.selectable" @click="openFolder(f.path)"
+                                <button type="button" x-show="f.selectable !== false" @click="openFolder(f.path)"
                                     class="flex w-full items-center justify-between gap-2 py-2 pr-3 text-left text-sm hover:bg-gray-50"
                                     :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`"
                                     :class="f.path === reader.folderPath ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700'">
@@ -321,7 +324,7 @@
                         <div>
                             <label class="block text-xs font-medium text-gray-700">{{ __('mail.transfer_folder') }}</label>
                             <select x-model="reader.transferFolder" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                                <template x-for="f in transferFolders()" :key="f.path"><option :value="f.path" x-text="f.name"></option></template>
+                                <template x-for="f in transferFolders()" :key="f.path"><option :value="f.path" x-text="folderLabel(f)"></option></template>
                             </select>
                         </div>
                     </div>
@@ -392,6 +395,5 @@
                 </div>
             </div>
         </div>
-    </template>
   </div>
 </x-layouts.app>

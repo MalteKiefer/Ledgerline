@@ -90,4 +90,5 @@ return [
     'manage_accounts' => 'Manage accounts',
     'pick_account' => 'Choose a mailbox to open.',
     'switch_account' => 'Switch mailbox',
+    'working' => 'Working…',
 ];
