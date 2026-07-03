@@ -68,18 +68,35 @@ final class ArchiveCipher
             $key = $this->deriveKey($passphrase, $salt);
             $state = sodium_crypto_secretstream_xchacha20poly1305_init_pull($header, $key);
 
+            $sawFinal = false;
             while (! feof($in)) {
                 $lenRaw = fread($in, 4);
                 if ($lenRaw === '' || $lenRaw === false) {
                     break;
                 }
+                if (strlen($lenRaw) !== 4) {
+                    throw new RuntimeException('Truncated archive (chunk length).');
+                }
                 $len = unpack('N', $lenRaw)[1];
                 $cipher = fread($in, $len);
+                if ($cipher === false || strlen($cipher) !== $len) {
+                    throw new RuntimeException('Truncated archive (chunk body).');
+                }
                 $result = sodium_crypto_secretstream_xchacha20poly1305_pull($state, $cipher);
                 if ($result === false) {
                     throw new RuntimeException('Wrong passphrase or corrupted archive.');
                 }
-                fwrite($out, $result[0]);
+                [$plain, $tag] = $result;
+                fwrite($out, $plain);
+                if ($tag === SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_FINAL) {
+                    $sawFinal = true;
+                    break;
+                }
+            }
+            // The stream must end with the FINAL tag; otherwise it was truncated
+            // and the surviving prefix must not be accepted as a complete restore.
+            if (! $sawFinal) {
+                throw new RuntimeException('Archive is incomplete (missing final marker).');
             }
         } finally {
             fclose($in);

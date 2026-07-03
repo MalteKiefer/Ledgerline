@@ -112,8 +112,15 @@ class BackupNotifier
         if (! $s->mail_enabled || ! $s->smtp_host || ! $s->smtp_from_address) {
             throw new \RuntimeException('Mail is not enabled or has no host / from address.');
         }
-        $tls = $s->smtp_encryption === 'ssl';
-        $transport = new EsmtpTransport((string) $s->smtp_host, (int) ($s->smtp_port ?: ($tls ? 465 : 587)), $tls);
+        // 'ssl' = implicit TLS (SMTPS, port 465). 'tls' = STARTTLS (port 587):
+        // enforce it via setRequireTls so credentials never go out in cleartext
+        // if the server fails to advertise STARTTLS.
+        $implicitTls = $s->smtp_encryption === 'ssl';
+        $port = (int) ($s->smtp_port ?: ($implicitTls ? 465 : 587));
+        $transport = new EsmtpTransport((string) $s->smtp_host, $port, $implicitTls);
+        if ($s->smtp_encryption === 'tls') {
+            $transport->setRequireTls(true);
+        }
         if ($s->smtp_username) {
             $transport->setUsername((string) $s->smtp_username);
         }
