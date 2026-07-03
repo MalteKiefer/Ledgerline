@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Photo;
-use App\Models\Vault;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -29,19 +28,15 @@ class DashboardTest extends TestCase
             ->assertViewHas('gallery', fn (array $gallery): bool => $gallery['total'] === 2);
     }
 
-    public function test_dashboard_reports_the_vault_state_without_file_details(): void
+    public function test_dashboard_links_to_every_module(): void
     {
         $this->signIn();
 
-        // No vault yet.
-        $this->get(route('dashboard'))->assertOk()->assertViewHas('vaultConfigured', false);
-
-        Vault::create([
-            'salt' => 'c2FsdA==', 'kdf_ops' => 3, 'kdf_mem' => 67108864,
-            'wrapped_vault_key' => 'd3JhcHBlZA==', 'wrap_nonce' => 'bm9uY2U=',
-            'wrapped_vault_key_recovery' => 'cg==', 'recovery_nonce' => 'cm4=',
-        ]);
-
-        $this->get(route('dashboard'))->assertOk()->assertViewHas('vaultConfigured', true);
+        $this->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee(route('files.index'))
+            ->assertSee(route('notes.index'))
+            ->assertSee(route('bookmarks.index'))
+            ->assertSee(route('mail.index'));
     }
 }
