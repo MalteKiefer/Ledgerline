@@ -19,7 +19,7 @@ class SetLocale
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $supported = array_keys(config('finance.languages'));
+        $supported = array_keys(config('locales.languages'));
 
         $locale = $request->user()?->locale
             ?? $request->session()->get('locale')

@@ -8,7 +8,6 @@ use Database\Factories\PhotoFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -224,11 +223,6 @@ class Photo extends Model
         return is_numeric($value) ? (float) $value : null;
     }
 
-    public function hasLocation(): bool
-    {
-        return $this->latitude !== null && $this->longitude !== null;
-    }
-
     /**
      * The reverse-geocoded address as ordered, readable lines: street, postcode
      * with locality, county/state, and country. Falls back to splitting the
@@ -269,14 +263,6 @@ class Photo extends Model
     public function isFavorite(): bool
     {
         return $this->favorited_at !== null;
-    }
-
-    /**
-     * @return BelongsTo<User, $this>
-     */
-    public function uploader(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'uploaded_by');
     }
 
     /**
