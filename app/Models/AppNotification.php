@@ -6,7 +6,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A local, in-app notification shown in the bell menu (and mirrored to a browser
@@ -43,11 +42,5 @@ class AppNotification extends Model
         } catch (\Throwable) {
             // Notifications are best-effort; never propagate.
         }
-    }
-
-    /** @return BelongsTo<User, $this> */
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
     }
 }
