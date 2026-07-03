@@ -235,6 +235,8 @@
                                     class="border-l border-gray-300 p-1.5 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /></button>
                                 <button type="button" @click="openSaveAttachment(att)" title="{{ __('mail.save_to_files') }}" aria-label="{{ __('mail.save_to_files') }}"
                                     class="border-l border-gray-300 p-1.5 hover:bg-gray-50"><x-icon name="arrow-up-tray" class="h-3.5 w-3.5" /></button>
+                                <button type="button" x-show="isPdfAttachment(att) && $store.paperless.configured" @click="attachmentToPaperless(att)" title="{{ __('paperless.send_to_paperless') }}" aria-label="{{ __('paperless.send_to_paperless') }}"
+                                    class="border-l border-gray-300 p-1.5 hover:bg-gray-50"><x-icon name="share" class="h-3.5 w-3.5" /></button>
                             </span>
                         </template>
                     </div>
@@ -380,5 +382,7 @@
                 </div>
             </div>
         </div>
+
+    @include('_paperless_modal')
   </div>
 </x-layouts.app>

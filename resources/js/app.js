@@ -1240,6 +1240,105 @@ function saveBlobAs(bytes, name, mime) {
     setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+/**
+ * Shared Paperless transfer state. One store drives a single modal reused by
+ * both the mail attachment list and the file browser: it holds the cached
+ * quick-pick terms, the document being sent, and the metadata form.
+ */
+Alpine.store('paperless', {
+    configured: false,
+    loaded: false,
+    tags: [], documentTypes: [], correspondents: [],
+    labels: {},
+
+    open: false,
+    submitting: false,
+    error: '',
+    file: null, filename: '',
+    newTag: '', newType: '', newCorrespondent: '',
+    form: { title: '', correspondent: '', documentType: '', tags: [], created: '' },
+
+    async init() {
+        await this.load();
+    },
+
+    async load() {
+        try {
+            const res = await fetch('/paperless/terms', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            const b = await res.json();
+            this.configured = !! b.configured;
+            this.tags = b.tags ?? [];
+            this.documentTypes = b.document_types ?? [];
+            this.correspondents = b.correspondents ?? [];
+            this.loaded = true;
+        } catch (e) { /* stay unconfigured */ }
+    },
+
+    // Open the modal for a document (a decrypted Blob). defaults may prefill the
+    // title and created date (mail passes the subject and message date).
+    openFor(blob, filename, defaults = {}) {
+        this.file = blob;
+        this.filename = filename || 'document.pdf';
+        this.error = '';
+        this.newTag = this.newType = this.newCorrespondent = '';
+        this.form = {
+            title: defaults.title ?? this.filename.replace(/\.[^.]+$/, ''),
+            correspondent: '', documentType: '', tags: [],
+            created: defaults.created ?? new Date().toISOString().slice(0, 10),
+        };
+        this.open = true;
+        if (! this.loaded) this.load();
+    },
+
+    close() { this.open = false; this.file = null; },
+
+    async createTerm(kind, name) {
+        name = (name || '').trim();
+        if (! name) return;
+        try {
+            const res = await fetch('/paperless/terms', {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
+                body: JSON.stringify({ kind, name }),
+            });
+            const b = await res.json();
+            if (! b.ok) { this.error = b.detail || this.labels.failed; return; }
+            const item = { id: b.id, name: b.name };
+            if (kind === 'tag') { this.tags.push(item); this.form.tags.push(b.id); this.newTag = ''; }
+            if (kind === 'document_type') { this.documentTypes.push(item); this.form.documentType = b.id; this.newType = ''; }
+            if (kind === 'correspondent') { this.correspondents.push(item); this.form.correspondent = b.id; this.newCorrespondent = ''; }
+        } catch (e) { this.error = this.labels.failed; }
+    },
+
+    async submit() {
+        if (! this.file || this.submitting) return;
+        this.submitting = true; this.error = '';
+        try {
+            const fd = new FormData();
+            fd.append('file', this.file, this.filename);
+            if (this.form.title) fd.append('title', this.form.title);
+            if (this.form.created) fd.append('created', this.form.created);
+            if (this.form.correspondent) fd.append('correspondent', this.form.correspondent);
+            if (this.form.documentType) fd.append('document_type', this.form.documentType);
+            (this.form.tags || []).forEach((t) => fd.append('tags[]', t));
+            const res = await fetch('/paperless/documents', {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
+                body: fd,
+            });
+            const b = await res.json();
+            if (b.ok) {
+                this.open = false; this.file = null;
+                window.dispatchEvent(new CustomEvent('paperless-sent'));
+            } else {
+                this.error = b.detail || this.labels.failed;
+            }
+        } catch (e) { this.error = this.labels.failed; }
+        this.submitting = false;
+    },
+});
+
 Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
     manifest: { v: 1, folders: [], files: [] },
@@ -1906,6 +2005,23 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.dl = { active: true, done: 0, total: 1 };
         try {
             saveBlobAs(await this.fetchPlain(row), row.name, row.mime);
+        } catch (e) {
+            this.error = labels.downloadFailed;
+        }
+        this.dl.active = false;
+    },
+
+    isPdf(row) {
+        return row?.kind === 'file' && (row.mime === 'application/pdf' || /\.pdf$/i.test(row.name || ''));
+    },
+
+    // Decrypt a PDF in the browser, then hand it to the shared Paperless modal.
+    async openPaperless(row) {
+        this.dl = { active: true, done: 0, total: 1 };
+        try {
+            const plain = await this.fetchPlain(row);
+            const blob = new Blob([plain], { type: 'application/pdf' });
+            Alpine.store('paperless').openFor(blob, row.name);
         } catch (e) {
             this.error = labels.downloadFailed;
         }
@@ -3321,6 +3437,25 @@ Alpine.data('vaultMail', (labels = {}) => ({
             const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
             if (! res.ok) return;
             saveBlobAs(new Uint8Array(await res.arrayBuffer()), att.name, att.mime);
+        } catch (e) { /* ignore */ }
+    },
+
+    isPdfAttachment(att) {
+        return (att?.mime || '').toLowerCase() === 'application/pdf' || /\.pdf$/i.test(att?.name || '');
+    },
+
+    // Fetch a PDF attachment's bytes and open the shared Paperless modal,
+    // prefilling the title from the subject and the date from the message.
+    async attachmentToPaperless(att) {
+        try {
+            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
+            if (! res.ok) return;
+            const blob = new Blob([await res.arrayBuffer()], { type: 'application/pdf' });
+            const created = this.reader.current?.date ? String(this.reader.current.date).slice(0, 10) : null;
+            Alpine.store('paperless').openFor(blob, att.name || 'document.pdf', {
+                title: this.reader.current?.subject || (att.name || '').replace(/\.[^.]+$/, ''),
+                created,
+            });
         } catch (e) { /* ignore */ }
     },
 

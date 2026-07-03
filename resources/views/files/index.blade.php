@@ -166,6 +166,7 @@
                                         <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                         <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
                                         <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
+                                        <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
                                         <button type="button" @click="openInfo(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="info" />{{ __('files.info') }}</button>
                                         <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('common.delete') }}</button>
                                     </div>
@@ -242,6 +243,7 @@
                     <h3 class="truncate text-base font-semibold text-gray-900" x-text="viewer.row?.name"></h3>
                     <div class="flex shrink-0 items-center gap-3">
                         <span x-show="viewerHasGallery" x-cloak class="text-xs tabular-nums text-gray-400" x-text="`${viewerIndex + 1} / ${viewerImages.length}`"></span>
+                        <button type="button" x-show="viewer.kind === 'pdf' && $store.paperless.configured" @click="openPaperless(viewer.row)" class="text-sm text-gray-600 hover:text-gray-900">{{ __('paperless.send_to_paperless') }}</button>
                         <button type="button" @click="download(viewer.row)" class="text-sm text-gray-600 hover:text-gray-900">{{ __('files.download') }}</button>
                         <button type="button" @click="closeViewer()" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('common.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
                     </div>
@@ -405,5 +407,7 @@
             </div>
         </div>
     </template>
+
+    @include('_paperless_modal')
   </div>
 </x-layouts.app>
