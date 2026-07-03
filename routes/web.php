@@ -136,6 +136,7 @@ Route::middleware('auth')->group(function (): void {
     // opaque uuid-keyed blobs; it cannot see names, sizes, structure or counts.
     Route::view('/files', 'files.index')->name('files.index');
     Route::view('/notes', 'notes.index')->name('notes.index');
+    Route::view('/todos', 'todos.index')->name('todos.index');
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::view('/mail', 'mail.index')->name('mail.index');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
@@ -154,9 +155,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.show');
+        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail', 'todos'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.update');
+        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail', 'todos'])->name('vault.manifest.update');
     Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
     Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
     Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
