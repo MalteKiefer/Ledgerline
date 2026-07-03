@@ -152,6 +152,7 @@ return [
     'backup_download' => 'Herunterladen',
     'backup_cancel' => 'Abbrechen',
     'backup_cancelling' => 'Wird abgebrochen…',
+    'backup_force_stop' => 'Sofort stoppen',
     'backup_cron_tz' => 'Zeiten gelten in der Zeitzone :tz.',
     'mail_section' => 'Mail',
     'mail_desc' => 'Mailkonten und Hintergrund-Sync-Intervall.',

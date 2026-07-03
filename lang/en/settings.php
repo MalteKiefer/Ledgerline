@@ -152,6 +152,7 @@ return [
     'backup_download' => 'Download',
     'backup_cancel' => 'Cancel',
     'backup_cancelling' => 'Cancelling…',
+    'backup_force_stop' => 'Force stop',
     'backup_cron_tz' => 'Times are in the :tz timezone.',
     'mail_section' => 'Mail',
     'mail_desc' => 'Mail accounts and background-sync interval.',
