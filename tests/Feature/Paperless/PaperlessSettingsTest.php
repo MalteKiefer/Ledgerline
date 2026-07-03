@@ -66,7 +66,12 @@ class PaperlessSettingsTest extends TestCase
     public function test_the_connection_test_reports_success(): void
     {
         $this->signIn();
-        Http::fake(['*/api/documents/*' => Http::response(['count' => 0, 'results' => []], 200)]);
+        Http::fake([
+            '*/api/documents/*' => Http::response(['count' => 3, 'results' => []], 200),
+            '*/api/tags/*' => Http::response(['count' => 12, 'results' => []], 200),
+            '*/api/document_types/*' => Http::response(['count' => 4, 'results' => []], 200),
+            '*/api/correspondents/*' => Http::response(['count' => 8, 'results' => []], 200),
+        ]);
 
         $this->postJson(route('settings.paperless.test'), [
             'paperless_url' => 'https://p.example.com',

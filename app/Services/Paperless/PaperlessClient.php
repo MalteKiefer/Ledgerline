@@ -55,6 +55,24 @@ class PaperlessClient
     }
 
     /**
+     * Total number of terms of a kind, read from the collection's `count`
+     * field (a single request — no pagination walk).
+     */
+    public function count(string $kind): int
+    {
+        $endpoint = self::ENDPOINTS[$kind] ?? throw new RuntimeException("Unknown Paperless term kind: {$kind}");
+        $res = $this->http()->get("/api/{$endpoint}/", ['page_size' => 1]);
+        if ($res->status() === 401 || $res->status() === 403) {
+            throw new RuntimeException('Authentication failed (check the API token).');
+        }
+        if (! $res->successful()) {
+            throw new RuntimeException("Reading {$endpoint} failed: HTTP ".$res->status().'.');
+        }
+
+        return (int) ($res->json('count') ?? 0);
+    }
+
+    /**
      * All terms of a kind, following pagination.
      *
      * @return list<array{paperless_id:int, name:string, color:?string}>

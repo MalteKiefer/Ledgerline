@@ -169,6 +169,7 @@ return [
     'paperless_test' => 'Verbindung testen',
     'paperless_testing' => 'Teste…',
     'paperless_test_ok' => 'Verbindung OK.',
+    'paperless_test_ok_detail' => 'Verbindung OK — :tags Tag(s), :types Dokumenttyp(en), :correspondents Korrespondent(en).',
     'paperless_test_failed' => 'Verbindungstest fehlgeschlagen.',
     'paperless_test_missing' => 'Zuerst URL und API-Token eingeben.',
     'paperless_cache_heading' => 'Zwischengespeicherte Schnellauswahl',

@@ -16,6 +16,7 @@ return [
     'send' => 'Send',
     'sending' => 'Sending…',
     'cancel' => 'Cancel',
+    'delete_after' => 'Delete the file from the vault after sending',
     'sent' => 'Document sent to Paperless.',
     'failed' => 'Sending to Paperless failed.',
 ];
