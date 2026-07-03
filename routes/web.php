@@ -149,8 +149,12 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/files', 'files.index')->name('files.index');
     Route::get('/files/data', [FileController::class, 'data'])->name('files.data');
     Route::put('/files/data', [FileController::class, 'sync'])->name('files.sync');
-    Route::post('/files/upload', [FileController::class, 'upload'])->name('files.upload');
-    Route::post('/files/import', [FileController::class, 'import'])->name('files.import');
+    // Throttled to blunt a large-body upload flood (disk-fill / worker-hold),
+    // while staying generous enough for a normal batch upload.
+    Route::post('/files/upload', [FileController::class, 'upload'])
+        ->middleware('throttle:300,1')->name('files.upload');
+    Route::post('/files/import', [FileController::class, 'import'])
+        ->middleware('throttle:300,1')->name('files.import');
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
     // Notes: plain DB rows, driven client-side over a JSON API (no reloads).

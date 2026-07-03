@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\FileFolder;
 use App\Models\StoredFile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -60,6 +61,89 @@ class FilesTest extends TestCase
         $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertOk();
 
         $this->assertSame(0, StoredFile::count());
+    }
+
+    public function test_sync_reclaims_the_blob_of_a_removed_file(): void
+    {
+        $this->signIn();
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+
+        $blob = (string) Str::uuid();
+        Storage::disk('files')->put('files/'.$blob, 'bytes');
+        $id = (string) Str::uuid();
+        $this->putJson(route('files.sync'), [
+            'folders' => [],
+            'files' => [['id' => $id, 'blob' => $blob, 'name' => 'x', 'mime' => 'text/plain', 'size' => 5, 'folder' => null, 'tags' => []]],
+        ])->assertOk();
+
+        // Dropping the file from the manifest removes both the row and its bytes.
+        $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertOk();
+        Storage::disk('files')->assertMissing('files/'.$blob);
+    }
+
+    public function test_sync_rejects_a_folder_cycle(): void
+    {
+        $this->signIn();
+        $a = (string) Str::uuid();
+        $b = (string) Str::uuid();
+
+        $this->putJson(route('files.sync'), [
+            'folders' => [
+                ['id' => $a, 'name' => 'A', 'parent' => $b],
+                ['id' => $b, 'name' => 'B', 'parent' => $a],
+            ],
+            'files' => [],
+        ])->assertStatus(422);
+
+        $this->assertSame(0, FileFolder::count());
+    }
+
+    public function test_sync_rejects_a_file_in_an_unknown_folder(): void
+    {
+        $this->signIn();
+
+        $this->putJson(route('files.sync'), [
+            'folders' => [],
+            'files' => [[
+                'id' => (string) Str::uuid(), 'blob' => (string) Str::uuid(), 'name' => 'x',
+                'mime' => 'text/plain', 'size' => 1, 'folder' => (string) Str::uuid(), 'tags' => [],
+            ]],
+        ])->assertStatus(422);
+
+        $this->assertSame(0, StoredFile::count());
+    }
+
+    public function test_delete_blob_refuses_while_a_row_still_references_it(): void
+    {
+        $this->signIn();
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+
+        $blob = (string) Str::uuid();
+        Storage::disk('files')->put('files/'.$blob, 'bytes');
+        StoredFile::create(['id' => (string) Str::uuid(), 'name' => 'x', 'blob' => $blob, 'mime' => 'text/plain', 'size' => 5]);
+
+        $this->deleteJson(route('files.blob.destroy', $blob))->assertStatus(409);
+        Storage::disk('files')->assertExists('files/'.$blob);
+    }
+
+    public function test_import_sniffs_the_mime_from_content(): void
+    {
+        $this->signIn();
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+
+        // PNG bytes behind a .txt name and a lying client mime: the stored mime
+        // is derived from the content (image/png) via finfo, never the header.
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+        $path = tempnam(sys_get_temp_dir(), 'imp');
+        file_put_contents($path, $png);
+        $file = new UploadedFile($path, 'evil.txt', 'text/plain', null, true);
+
+        $this->post(route('files.import'), ['file' => $file])->assertCreated();
+
+        $this->assertSame('image/png', StoredFile::first()->mime);
     }
 
     public function test_files_appear_in_global_search(): void
