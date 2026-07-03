@@ -65,10 +65,12 @@ Route::middleware('auth')->group(function (): void {
     // Notification channels (mail / NTFY / webhook).
     Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
     Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
+    Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->name('settings.notifications.test');
 
     // Backup destinations, jobs and run history.
     Route::get('/settings/backup', [SettingsBackupController::class, 'index'])->name('settings.backup.index');
     Route::post('/settings/backup/destinations', [SettingsBackupController::class, 'storeDestination'])->name('settings.backup.destinations.store');
+    Route::match(['post', 'put'], '/settings/backup/destinations/test', [SettingsBackupController::class, 'testDestination'])->name('settings.backup.destinations.test');
     Route::put('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'updateDestination'])->name('settings.backup.destinations.update');
     Route::delete('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'destroyDestination'])->name('settings.backup.destinations.destroy');
     Route::post('/settings/backup/jobs', [SettingsBackupController::class, 'storeJob'])->name('settings.backup.jobs.store');

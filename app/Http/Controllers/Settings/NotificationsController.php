@@ -6,9 +6,11 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
+use App\Services\Backup\BackupNotifier;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -60,5 +62,24 @@ class NotificationsController extends Controller
         $settings->update($data);
 
         return redirect()->route('settings.notifications.edit')->with('status', __('flash.notifications_saved'));
+    }
+
+    /**
+     * Send a test message over one channel using the saved settings, so the
+     * operator can confirm delivery before relying on it for backups.
+     */
+    public function test(Request $request, BackupNotifier $notifier): RedirectResponse
+    {
+        $channel = $request->validate([
+            'channel' => ['required', Rule::in(['mail', 'ntfy', 'webhook'])],
+        ])['channel'];
+
+        try {
+            $notifier->test($channel);
+        } catch (\Throwable $e) {
+            return back()->with('error', __('flash.notify_test_failed', ['error' => Str::limit($e->getMessage(), 200)]));
+        }
+
+        return back()->with('status', __('flash.notify_test_sent'));
     }
 }
