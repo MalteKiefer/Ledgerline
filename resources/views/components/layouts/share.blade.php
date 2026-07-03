@@ -7,7 +7,9 @@
     <meta name="referrer" content="no-referrer">
     <meta name="robots" content="noindex, nofollow">
     <title>{{ $title }} — Ledgerline</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    {{-- Public share pages are static: styles only, no application JS, so the
+         page can run under a strict script-less Content-Security-Policy. --}}
+    @vite(['resources/css/app.css'])
 </head>
 <body class="h-full bg-gray-100 text-gray-900 antialiased">
     <main class="min-h-full">
