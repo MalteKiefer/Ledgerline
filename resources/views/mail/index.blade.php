@@ -146,7 +146,7 @@
                 <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-1.5 text-xs text-gray-500">
                     <span class="flex min-w-0 items-center gap-2">
                         <input type="checkbox" @change="toggleSelectAll()" :checked="allSelected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500" aria-label="{{ __('mail.select_all') }}">
-                        <span class="truncate font-medium text-gray-700" x-text="reader.folderPath"></span>
+                        <span class="truncate font-medium text-gray-700" x-text="currentFolderLabel()"></span>
                     </span>
                     <span class="flex shrink-0 items-center gap-3">
                         <button type="button" x-show="isTrashFolder() && reader.total" @click="reader.emptyChoiceOpen = true" :disabled="reader.busy"
