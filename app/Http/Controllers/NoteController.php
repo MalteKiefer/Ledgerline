@@ -87,7 +87,7 @@ class NoteController extends Controller
         $data = $request->validate([
             'expires_in' => ['required', 'integer', Rule::in(self::LIFETIMES)],
             'max_views' => ['nullable', 'integer', 'min:1', 'max:100000'],
-            'password' => ['nullable', 'string', 'max:255'],
+            'password' => ['nullable', 'string', 'min:8', 'max:255'],
             'allow_download' => ['sometimes', 'boolean'],
         ]);
 
