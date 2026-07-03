@@ -39,6 +39,7 @@ return [
     'tags' => 'Tags',
     'tags_placeholder' => 'komma, getrennte, tags',
     'overdue' => 'Überfällig',
+    'done' => 'Erledigt',
 
     'notify_heading' => 'Erinnerung',
     'notify_hint' => 'Zur Fälligkeit benachrichtigen. Kanäle unter Einstellungen → Benachrichtigungen konfigurieren.',

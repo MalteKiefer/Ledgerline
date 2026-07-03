@@ -39,6 +39,7 @@ return [
     'tags' => 'Tags',
     'tags_placeholder' => 'comma, separated, tags',
     'overdue' => 'Overdue',
+    'done' => 'Done',
 
     'notify_heading' => 'Reminder',
     'notify_hint' => 'Get notified at the due time. Configure the channels in Settings → Notifications.',
