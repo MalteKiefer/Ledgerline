@@ -12,6 +12,7 @@ use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReminderController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
@@ -137,6 +138,10 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/files', 'files.index')->name('files.index');
     Route::view('/notes', 'notes.index')->name('notes.index');
     Route::view('/todos', 'todos.index')->name('todos.index');
+    // Server-side reminders for to-do due dates (the to-do stays zero-knowledge).
+    Route::post('/reminders', [ReminderController::class, 'store'])->name('reminders.store');
+    Route::put('/reminders/{reminder}', [ReminderController::class, 'update'])->name('reminders.update');
+    Route::delete('/reminders/{reminder}', [ReminderController::class, 'destroy'])->name('reminders.destroy');
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::view('/mail', 'mail.index')->name('mail.index');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
