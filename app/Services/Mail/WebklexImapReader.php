@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Webklex\PHPIMAP\Client;
 use Webklex\PHPIMAP\ClientManager;
 use Webklex\PHPIMAP\IMAP;
+use Webklex\PHPIMAP\Message;
 
 /**
  * IMAP reading and message actions via webklex/php-imap (pure PHP).
@@ -141,29 +142,36 @@ final class WebklexImapReader implements ImapReader
             // whereAll() → "SEARCH ALL": without an explicit criterion webklex
             // sends an empty SEARCH, which some servers reject with
             // "BAD Could not parse command".
-            $messages = $mailbox->query()
-                ->whereAll()
-                ->setFetchBody(false)
-                ->setFetchFlags(true)
-                ->setFetchOrderDesc()
-                ->limit($perPage, max(1, $page))
-                ->get();
+            try {
+                $messages = $mailbox->query()
+                    ->whereAll()
+                    ->setFetchBody(false)
+                    ->setFetchFlags(true)
+                    ->setFetchOrderDesc()
+                    ->limit($perPage, max(1, $page))
+                    ->get();
 
-            $out = [];
-            foreach ($messages as $m) {
-                $out[] = [
-                    'uid' => $this->uid($m),
-                    'subject' => $this->str($m->getSubject()),
-                    'from' => $this->firstAddress($m->getFrom()),
-                    'date' => $this->date($m),
-                    'seen' => $this->flag($m, 'Seen'),
-                    'flagged' => $this->flag($m, 'Flagged'),
-                    'answered' => $this->flag($m, 'Answered'),
-                    // Attachment detection is intentionally omitted here: probing
-                    // it per message forces an extra body/structure fetch and made
-                    // large folders take tens of seconds. It is shown when the
-                    // message is opened (its parts are fetched then anyway).
-                ];
+                $out = [];
+                foreach ($messages as $m) {
+                    $out[] = [
+                        'uid' => $this->uid($m),
+                        'subject' => $this->str($m->getSubject()),
+                        'from' => $this->firstAddress($m->getFrom()),
+                        'date' => $this->date($m),
+                        'seen' => $this->flag($m, 'Seen'),
+                        'flagged' => $this->flag($m, 'Flagged'),
+                        'answered' => $this->flag($m, 'Answered'),
+                        // Attachment detection is intentionally omitted here: probing
+                        // it per message forces an extra body/structure fetch and made
+                        // large folders take tens of seconds. It is shown when the
+                        // message is opened (its parts are fetched then anyway).
+                    ];
+                }
+            } catch (\Throwable $e) {
+                // Some servers (notably iCloud) answer "SEARCH ALL" with an empty
+                // response, breaking the query above. Fall back to fetching the
+                // newest window by message-sequence number — no SEARCH involved.
+                $out = $this->listBySequence($client, $folder, max(1, $page), $perPage, $total);
             }
 
             return [
@@ -176,6 +184,60 @@ final class WebklexImapReader implements ImapReader
         } finally {
             $this->close($client);
         }
+    }
+
+    /**
+     * List a page of envelopes by message-sequence number, without SEARCH.
+     *
+     * Fallback for servers (iCloud) that return an empty response to "SEARCH
+     * ALL". Highest sequence number = newest message, so the page window is the
+     * top slice of [1..total]. Flags + headers are fetched in one round-trip and
+     * turned into Message objects to reuse webklex's header decoding.
+     *
+     * @return list<array{uid:int, subject:string, from:array{name:string,email:string}|null, date:string|null, seen:bool, flagged:bool, answered:bool}>
+     */
+    private function listBySequence(Client $client, string $folder, int $page, int $perPage, int $total): array
+    {
+        if ($total < 1) {
+            return [];
+        }
+        $client->openFolder($folder);
+        $conn = $client->getConnection();
+
+        $high = $total - ($page - 1) * $perPage;
+        if ($high < 1) {
+            return [];
+        }
+        $low = max(1, $high - $perPage + 1);
+        $msgns = range($high, $low); // newest first
+
+        $uids = $conn->fetch(['UID'], $msgns, null, IMAP::ST_MSGN)->validatedData();
+        $flags = $conn->flags($msgns, IMAP::ST_MSGN)->validatedData();
+        $headers = $conn->headers($msgns, 'RFC822', IMAP::ST_MSGN)->validatedData();
+
+        $out = [];
+        foreach ($msgns as $n) {
+            $uid = (int) trim($this->unwrapFetch($uids[$n] ?? null));
+            if ($uid < 1) {
+                continue;
+            }
+            $m = Message::make(
+                $uid, null, $client,
+                (string) ($headers[$n] ?? ''), '', (array) ($flags[$n] ?? []),
+                null, IMAP::ST_UID,
+            );
+            $out[] = [
+                'uid' => $uid,
+                'subject' => $this->str($m->getSubject()),
+                'from' => $this->firstAddress($m->getFrom()),
+                'date' => $this->date($m),
+                'seen' => $this->flag($m, 'Seen'),
+                'flagged' => $this->flag($m, 'Flagged'),
+                'answered' => $this->flag($m, 'Answered'),
+            ];
+        }
+
+        return $out;
     }
 
     /**
