@@ -26,8 +26,6 @@ return [
     'move' => 'Move',
     'edit_tags' => 'Edit tags',
     'filtered_by' => 'Filtered by',
-    'folder' => 'Folder',
-    'untitled' => 'Untitled',
     'add_title' => 'Add bookmark',
     'edit_title' => 'Edit bookmark',
     'url' => 'URL',
@@ -45,5 +43,4 @@ return [
     'root_folder' => 'All bookmarks',
     'move_title' => 'Move to folder',
     'move_here' => 'Move here',
-    'no_selection' => 'Add a bookmark or pick a folder.',
 ];

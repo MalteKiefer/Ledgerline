@@ -7,8 +7,6 @@ return [
     'new_note' => 'Neue Notiz',
     'untitled' => 'Ohne Titel',
     'search' => 'Notizen durchsuchen…',
-    'edit' => 'Bearbeiten',
-    'preview' => 'Vorschau',
     'saving' => 'Speichern…',
     'saved' => 'Gespeichert',
     'to_trash' => 'In den Papierkorb',
