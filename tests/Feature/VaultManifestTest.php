@@ -62,20 +62,6 @@ class VaultManifestTest extends TestCase
             ->assertJson(['cipher' => 'b3BhcXVl', 'nonce' => 'bm9uY2U=', 'version' => 1]);
     }
 
-    public function test_bookmarks_manifest_is_accepted(): void
-    {
-        $this->signIn();
-        $this->makeVault();
-
-        $this->getJson(route('vault.manifest.show', 'bookmarks'))
-            ->assertOk()
-            ->assertJson(['cipher' => null, 'version' => 0]);
-
-        $this->putJson(route('vault.manifest.update', 'bookmarks'), [
-            'cipher' => 'Yg==', 'nonce' => 'bg==', 'version' => 0,
-        ])->assertOk()->assertJson(['version' => 1]);
-    }
-
     public function test_mail_manifest_is_accepted(): void
     {
         $this->signIn();
@@ -86,7 +72,7 @@ class VaultManifestTest extends TestCase
             ->assertJson(['cipher' => null, 'version' => 0]);
     }
 
-    public function test_files_and_bookmarks_manifests_are_independent(): void
+    public function test_files_and_mail_manifests_are_independent(): void
     {
         $this->signIn();
         $this->makeVault();
@@ -95,15 +81,15 @@ class VaultManifestTest extends TestCase
             'cipher' => 'ZmlsZXM=', 'nonce' => 'bg==', 'version' => 0,
         ])->assertOk();
 
-        // Bookmarks is still empty at version 0 and can be written independently.
-        $this->getJson(route('vault.manifest.show', 'bookmarks'))
+        // Mail is still empty at version 0 and can be written independently.
+        $this->getJson(route('vault.manifest.show', 'mail'))
             ->assertOk()->assertJson(['cipher' => null, 'version' => 0]);
-        $this->putJson(route('vault.manifest.update', 'bookmarks'), [
-            'cipher' => 'Ym9va21hcmtz', 'nonce' => 'bg==', 'version' => 0,
+        $this->putJson(route('vault.manifest.update', 'mail'), [
+            'cipher' => 'bWFpbA==', 'nonce' => 'bg==', 'version' => 0,
         ])->assertOk()->assertJson(['version' => 1]);
 
         $this->assertSame('ZmlsZXM=', VaultManifest::named('files')->cipher);
-        $this->assertSame('Ym9va21hcmtz', VaultManifest::named('bookmarks')->cipher);
+        $this->assertSame('bWFpbA==', VaultManifest::named('mail')->cipher);
     }
 
     public function test_a_stale_writer_is_rejected_with_the_current_version(): void

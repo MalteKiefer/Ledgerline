@@ -6,4 +6,5 @@ return [
     'photos' => 'Fotos',
     'notes' => 'Notizen',
     'todos' => 'Aufgaben',
+    'bookmarks' => 'Lesezeichen',
 ];
