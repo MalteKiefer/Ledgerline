@@ -361,7 +361,11 @@
                     <div x-show="(reader.current.attachments ?? []).length" x-cloak class="mt-3 flex flex-wrap gap-2">
                         <template x-for="att in reader.current.attachments" :key="att.id">
                             <span class="inline-flex items-center overflow-hidden rounded-md border border-gray-300 text-xs text-gray-700">
-                                <span class="max-w-[16rem] truncate px-2 py-1" x-text="att.name"></span>
+                                <button type="button" x-show="attachmentPreviewable(att)" @click="openAttachment(att)" title="{{ __('mail.view_attachment') }}" aria-label="{{ __('mail.view_attachment') }}"
+                                    class="max-w-[16rem] truncate px-2 py-1 hover:bg-gray-50" x-text="att.name"></button>
+                                <span x-show="! attachmentPreviewable(att)" class="max-w-[16rem] truncate px-2 py-1" x-text="att.name"></span>
+                                <button type="button" x-show="attachmentPreviewable(att)" @click="openAttachment(att)" title="{{ __('mail.view_attachment') }}" aria-label="{{ __('mail.view_attachment') }}"
+                                    class="border-l border-gray-300 p-1.5 hover:bg-gray-50"><x-icon name="eye" class="h-3.5 w-3.5" /></button>
                                 <button type="button" @click="downloadAttachment(att)" title="{{ __('mail.download') }}" aria-label="{{ __('mail.download') }}"
                                     class="border-l border-gray-300 p-1.5 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /></button>
                                 <button type="button" @click="openSaveAttachment(att)" title="{{ __('mail.save_to_files') }}" aria-label="{{ __('mail.save_to_files') }}"
@@ -469,6 +473,34 @@
                     <div class="mt-5 flex justify-end gap-3">
                         <button type="button" @click="reader.saveAtt.open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                         <button type="button" @click="saveAttachmentToFiles()" :disabled="reader.saveAtt.busy || reader.saveAtt.done" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('mail.save') }}</button>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Inline attachment preview (image / PDF) --}}
+            <div x-show="reader.attView.open" x-cloak class="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeAttachment()">
+                <div class="absolute inset-0 bg-gray-900/60" @click="closeAttachment()"></div>
+                <div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl">
+                    <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-2">
+                        <span class="truncate text-sm font-medium text-gray-900" x-text="reader.attView.name"></span>
+                        <div class="flex shrink-0 items-center gap-1">
+                            <a :href="reader.attView.url" :download="reader.attView.name" title="{{ __('mail.download') }}" aria-label="{{ __('mail.download') }}"
+                                class="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
+                            <button type="button" @click="closeAttachment()" title="{{ __('mail.close') }}" aria-label="{{ __('mail.close') }}"
+                                class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                        </div>
+                    </div>
+                    <div class="min-h-0 flex-1 overflow-auto bg-gray-50 p-3">
+                        <div x-show="reader.attView.loading" class="flex items-center justify-center gap-2 py-16 text-sm text-gray-400">
+                            <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}
+                        </div>
+                        <p x-show="reader.attView.error" x-cloak class="py-16 text-center text-sm text-red-600" x-text="reader.attView.error"></p>
+                        <template x-if="reader.attView.url && reader.attView.kind === 'image'">
+                            <img :src="reader.attView.url" :alt="reader.attView.name" class="mx-auto max-h-[75vh] rounded object-contain">
+                        </template>
+                        <template x-if="reader.attView.url && reader.attView.kind === 'pdf'">
+                            <object :data="reader.attView.url" type="application/pdf" class="h-[75vh] w-full rounded"></object>
+                        </template>
                     </div>
                 </div>
             </div>
