@@ -234,18 +234,32 @@
 
     {{-- Viewer / editor: image, PDF or editable text, decrypted in the browser --}}
     <template x-teleport="body">
-        <div x-show="viewer.open" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeViewer()">
+        <div x-show="viewer.open" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeViewer()"
+            @keydown.arrow-left.window="viewerHasGallery && viewerStep(-1)" @keydown.arrow-right.window="viewerHasGallery && viewerStep(1)">
             <div class="absolute inset-0 bg-gray-900/60" @click="closeViewer()"></div>
             <div class="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl">
                 <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
                     <h3 class="truncate text-base font-semibold text-gray-900" x-text="viewer.row?.name"></h3>
                     <div class="flex shrink-0 items-center gap-3">
+                        <span x-show="viewerHasGallery" x-cloak class="text-xs tabular-nums text-gray-400" x-text="`${viewerIndex + 1} / ${viewerImages.length}`"></span>
                         <button type="button" @click="download(viewer.row)" class="text-sm text-gray-600 hover:text-gray-900">{{ __('files.download') }}</button>
                         <button type="button" @click="closeViewer()" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('common.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
                     </div>
                 </div>
                 <div class="min-h-0 flex-1 overflow-auto p-4">
-                    <img x-show="viewer.kind === 'image'" x-cloak :src="viewer.src" :alt="viewer.row?.name" class="mx-auto max-h-[75vh] rounded object-contain">
+                    <div x-show="viewer.kind === 'image'" x-cloak class="relative">
+                        {{-- Click the image to advance to the next one (slideshow). --}}
+                        <img :src="viewer.src" :alt="viewer.row?.name"
+                            :class="viewerHasGallery ? 'cursor-pointer' : ''"
+                            @click="viewerHasGallery && viewerStep(1)"
+                            class="mx-auto max-h-[75vh] rounded object-contain">
+                        <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(-1)"
+                            title="{{ __('files.prev_image') }}" aria-label="{{ __('files.prev_image') }}"
+                            class="absolute left-1 top-1/2 -translate-y-1/2 rounded-full bg-gray-900/50 p-2 text-white hover:bg-gray-900/70"><x-icon name="chevron-left" class="h-5 w-5" /></button>
+                        <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(1)"
+                            title="{{ __('files.next_image') }}" aria-label="{{ __('files.next_image') }}"
+                            class="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-gray-900/50 p-2 text-white hover:bg-gray-900/70"><x-icon name="chevron-right" class="h-5 w-5" /></button>
+                    </div>
                     <template x-if="viewer.kind === 'pdf'">
                         <object :data="viewer.src" type="application/pdf" class="h-[75vh] w-full rounded"></object>
                     </template>
