@@ -2159,7 +2159,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             this.dl.active = false;
             const mime = row.mime || 'application/octet-stream';
 
-            if (mime.startsWith('image/')) {
+            // SVG is the one "image" type that can carry markup/external refs;
+            // never render it inline — let it fall through to download.
+            if (mime.startsWith('image/') && ! mime.includes('svg')) {
                 this.viewer = { open: true, kind: 'image', src: URL.createObjectURL(new Blob([plain], { type: mime })), row, saving: false, saved: false };
                 return;
             }
