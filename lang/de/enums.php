@@ -19,6 +19,5 @@ return [
         'TEXT' => 'Text',
         'FONT' => 'Schriftart',
         'OTHER' => 'Sonstiges',
-        'ENCRYPTED' => 'Verschlüsselt',
     ],
 ];

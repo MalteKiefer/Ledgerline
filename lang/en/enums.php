@@ -19,6 +19,5 @@ return [
         'TEXT' => 'Text',
         'FONT' => 'Font',
         'OTHER' => 'Other',
-        'ENCRYPTED' => 'Encrypted',
     ],
 ];

@@ -18,13 +18,26 @@ class NotificationController extends Controller
     {
         $userId = $request->user()->id;
 
+        // Cheap change-signature from aggregates: newest id, unread count and the
+        // latest change time (read_at bumps updated_at). If it matches the
+        // client's ETag nothing changed → 304, skipping the row fetch + payload.
+        $agg = AppNotification::where('user_id', $userId)
+            ->selectRaw('MAX(id) as max_id, MAX(updated_at) as max_updated, COUNT(*) as total')
+            ->first();
+        $unread = AppNotification::where('user_id', $userId)->whereNull('read_at')->count();
+        $etag = '"'.md5(($agg->max_id ?? 0).':'.($agg->total ?? 0).':'.($agg->max_updated ?? '').':'.$unread).'"';
+
+        if (trim((string) $request->header('If-None-Match')) === $etag) {
+            return response()->json(null, 304)->header('ETag', $etag);
+        }
+
         $items = AppNotification::where('user_id', $userId)
             ->latest()
             ->limit(30)
             ->get(['id', 'level', 'category', 'title', 'body', 'read_at', 'created_at']);
 
         return response()->json([
-            'unread' => AppNotification::where('user_id', $userId)->whereNull('read_at')->count(),
+            'unread' => $unread,
             'items' => $items->map(fn (AppNotification $n): array => [
                 'id' => $n->id,
                 'level' => $n->level,
@@ -34,7 +47,7 @@ class NotificationController extends Controller
                 'read' => $n->read_at !== null,
                 'at' => $n->created_at?->toIso8601String(),
             ]),
-        ]);
+        ])->header('ETag', $etag);
     }
 
     public function markRead(Request $request, AppNotification $notification): JsonResponse
