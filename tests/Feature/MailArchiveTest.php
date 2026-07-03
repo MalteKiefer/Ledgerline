@@ -40,6 +40,13 @@ class FakeMailSource implements MailSource
             'has_attachments' => false, 'size' => 100, 'preview' => "Body {$uid}",
         ];
     }
+
+    public array $appended = [];
+
+    public function appendMessage(ImapCredentials $c, string $folder, string $raw): void
+    {
+        $this->appended[] = [$folder, $raw];
+    }
 }
 
 class MailArchiveTest extends TestCase

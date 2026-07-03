@@ -10,6 +10,7 @@ use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAccountController;
+use App\Http\Controllers\MailArchiveController;
 use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NoteController;
@@ -192,6 +193,13 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->name('mail.message.attachment');
     Route::post('/mail/message/action', [MailReaderController::class, 'action'])->name('mail.message.action');
     Route::post('/mail/message/transfer', [MailReaderController::class, 'transfer'])->name('mail.message.transfer');
+
+    // Local mail archive: browse, view, restore (re-append to server), delete.
+    Route::get('/mail/archive/{account}', [MailArchiveController::class, 'index'])->name('mail.archive');
+    Route::get('/mail/archive/message/{message}', [MailArchiveController::class, 'show'])->name('mail.archive.show');
+    Route::get('/mail/archive/message/{message}/attachment/{index}', [MailArchiveController::class, 'attachment'])->whereNumber('index')->name('mail.archive.attachment');
+    Route::post('/mail/archive/message/{message}/restore', [MailArchiveController::class, 'restore'])->name('mail.archive.restore');
+    Route::delete('/mail/archive/message/{message}', [MailArchiveController::class, 'destroy'])->name('mail.archive.destroy');
 
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
