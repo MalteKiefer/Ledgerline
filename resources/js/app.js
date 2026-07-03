@@ -2444,6 +2444,39 @@ Alpine.data('vaultMail', (labels = {}) => ({
         } catch (e) { this.archive.error = labels.connectFailed; }
     },
 
+    /* ---- Mail search (over the whole local archive) ---- */
+    search: { open: false, loading: false, ran: false, q: '', dateFrom: '', dateTo: '', hasAttachment: false, results: [], viewing: null, viewLoading: false, error: '' },
+
+    openSearch(a) {
+        this.search = { open: true, loading: false, ran: false, q: '', dateFrom: '', dateTo: '', hasAttachment: false, results: [], viewing: null, viewLoading: false, error: '' };
+        this.searchAccountId = a.id;
+    },
+    closeSearch() { this.search.open = false; this.search.viewing = null; },
+
+    async runSearch() {
+        this.search.loading = true; this.search.ran = true; this.search.error = ''; this.search.viewing = null;
+        const p = new URLSearchParams();
+        if (this.search.q) p.set('q', this.search.q);
+        if (this.search.dateFrom) p.set('date_from', this.search.dateFrom);
+        if (this.search.dateTo) p.set('date_to', this.search.dateTo);
+        if (this.search.hasAttachment) p.set('has_attachment', '1');
+        try {
+            const res = await fetch(`/mail/archive/${this.searchAccountId}/search?${p.toString()}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            this.search.results = res.ok ? (await res.json()).messages : [];
+        } catch (e) { this.search.error = labels.connectFailed; }
+        this.search.loading = false;
+    },
+
+    async viewSearchResult(m) {
+        this.search.viewLoading = true; this.search.viewing = { id: m.id, subject: m.subject, from: m.from };
+        try {
+            const res = await fetch(`/mail/archive/message/${m.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (res.ok) this.search.viewing = { id: m.id, ...(await res.json()) };
+        } catch (e) { /* keep header */ }
+        this.search.viewLoading = false;
+    },
+    searchAttachmentUrl(i) { return this.search.viewing ? `/mail/archive/message/${this.search.viewing.id}/attachment/${i}` : '#'; },
+
     fmtBytes(n) { return formatBytes(n); },
 
     fmtDateTime(iso) {
@@ -2973,8 +3006,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     // Archived message body, rendered through the SAME safe pipeline as the live
     // reader (DOMPurify + sandboxed iframe + strict CSP) — never raw x-html, as
     // email HTML is attacker-controlled. Remote images are blocked.
-    archiveSrcdoc() {
-        const v = this.archive.viewing;
+    archiveSrcdoc(v = this.archive.viewing) {
         if (! v) return '';
         const body = v.html
             ? this.sanitizeEmail(v.html, false)

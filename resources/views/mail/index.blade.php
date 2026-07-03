@@ -434,6 +434,81 @@
         </div>
     </template>
 
+    {{-- Mail search over the whole local archive --}}
+    <template x-teleport="body">
+        <div x-show="search.open" x-cloak class="fixed inset-0 z-[1090] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeSearch()">
+            <div class="absolute inset-0 bg-gray-900/60" @click="closeSearch()"></div>
+            <div class="relative flex max-h-[92vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl">
+                <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">{{ __('mail.search_title') }}</h3>
+                        <p class="text-xs text-gray-500">{{ __('mail.search_hint') }}</p>
+                    </div>
+                    <button type="button" @click="closeSearch()" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('common.close') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                </div>
+
+                <form @submit.prevent="runSearch()" class="border-b border-gray-100 p-4">
+                    <input type="search" x-model="search.q" placeholder="{{ __('mail.search_placeholder') }}" class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <div class="mt-3 flex flex-wrap items-end gap-3">
+                        <label class="text-xs text-gray-600">{{ __('mail.search_from_date') }}
+                            <input type="datetime-local" x-model="search.dateFrom" class="mt-1 block rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        </label>
+                        <label class="text-xs text-gray-600">{{ __('mail.search_to_date') }}
+                            <input type="datetime-local" x-model="search.dateTo" class="mt-1 block rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        </label>
+                        <label class="flex items-center gap-2 text-sm text-gray-700">
+                            <input type="checkbox" x-model="search.hasAttachment" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                            {{ __('mail.search_has_attachment') }}
+                        </label>
+                        <button type="submit" class="ml-auto rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('mail.search_run') }}</button>
+                    </div>
+                </form>
+
+                <div class="min-h-0 flex-1 overflow-auto">
+                    <p x-show="search.error" x-cloak class="px-5 py-2 text-sm text-red-600" x-text="search.error"></p>
+                    <div x-show="search.loading" class="flex items-center justify-center gap-2 py-10 text-sm text-gray-500"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}</div>
+                    <p x-show="! search.loading && ! search.ran" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('mail.search_prompt') }}</p>
+                    <p x-show="! search.loading && search.ran && ! search.results.length && ! search.viewing" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('mail.search_empty') }}</p>
+
+                    {{-- Result view (reuses the sandboxed archive renderer) --}}
+                    <template x-if="search.viewing">
+                        <div class="border-b border-gray-100 p-5">
+                            <button type="button" @click="search.viewing = null" class="mb-3 text-xs text-gray-500 hover:text-gray-700">&larr; {{ __('mail.back_to_list') }}</button>
+                            <h4 class="text-base font-semibold text-gray-900" x-text="search.viewing.subject || '—'"></h4>
+                            <p class="mt-1 text-xs text-gray-500"><span x-text="search.viewing.from?.name || search.viewing.from?.email || search.viewing.from"></span></p>
+                            <div x-show="search.viewLoading" class="py-6 text-sm text-gray-500">{{ __('mail.loading') }}</div>
+                            <template x-if="(search.viewing.attachments ?? []).length">
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <template x-for="att in search.viewing.attachments" :key="att.id">
+                                        <a :href="searchAttachmentUrl(att.id)" class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /><span x-text="att.name"></span></a>
+                                    </template>
+                                </div>
+                            </template>
+                            <iframe x-show="! search.viewLoading" :srcdoc="archiveSrcdoc(search.viewing)" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="mt-4 h-[50vh] w-full rounded border border-gray-200 bg-white"></iframe>
+                        </div>
+                    </template>
+
+                    {{-- Result list --}}
+                    <ul x-show="! search.viewing" class="divide-y divide-gray-100">
+                        <template x-for="m in search.results" :key="m.id">
+                            <li class="px-5 py-3 hover:bg-gray-50">
+                                <button type="button" @click="viewSearchResult(m)" class="block w-full min-w-0 text-left">
+                                    <div class="flex items-center gap-2">
+                                        <p class="min-w-0 flex-1 truncate text-sm font-medium text-gray-900" x-text="m.subject || '—'"></p>
+                                        <span x-show="m.hasAttachments" class="shrink-0 text-gray-400"><x-icon name="paperclip" class="h-4 w-4" /></span>
+                                        <span class="shrink-0 text-xs text-gray-400" x-text="fmtDateTime(m.date)"></span>
+                                    </div>
+                                    <p class="truncate text-xs text-gray-500"><span x-text="m.from"></span> · <span x-text="m.folder"></span></p>
+                                    <p class="truncate text-xs text-gray-400" x-text="m.preview"></p>
+                                </button>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </template>
+
     @include('_paperless_modal')
   </div>
 </x-layouts.app>
