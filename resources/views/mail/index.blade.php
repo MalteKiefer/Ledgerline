@@ -141,6 +141,25 @@
 
                 {{-- Right pane --}}
                 <div class="flex min-h-0 flex-1 flex-col">
+            {{-- Unified action toolbar: one layout for both the open message and
+                 a multi-selection. Single-only actions (back, headers, print) are
+                 hidden in multi; multi-only (count, clear) hidden in single. --}}
+            <div x-show="reader.current || reader.selected.length" x-cloak class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
+                <button type="button" x-show="reader.current" @click="reader.current = null" title="{{ __('mail.back_to_list') }}" aria-label="{{ __('mail.back_to_list') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="chevron-left" class="h-4 w-4" /></button>
+                <span x-show="! reader.current" class="text-sm font-medium text-gray-700"><span x-text="reader.selected.length"></span> {{ __('mail.selected') }}</span>
+                <button type="button" @click="act('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" aria-label="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                <button type="button" @click="reader.current ? (reader.deleteChoiceOpen = true) : bulkAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" aria-label="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                <select @change="if ($event.target.value) { act('move', $event.target.value); $event.target.value = '' }" title="{{ __('mail.move_to_folder') }}" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <option value="">{{ __('mail.move_to_folder') }}</option>
+                    <template x-for="f in moveFolders()" :key="f.path"><option :value="f.path" x-text="folderLabel(f)"></option></template>
+                </select>
+                <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="share" class="h-4 w-4" /></button>
+                <button type="button" @click="act('seen')" :disabled="reader.busy" title="{{ __('mail.mark_read') }}" aria-label="{{ __('mail.mark_read') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="envelope-open" class="h-4 w-4" /></button>
+                <button type="button" @click="act('unseen')" :disabled="reader.busy" title="{{ __('mail.mark_unread') }}" aria-label="{{ __('mail.mark_unread') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="envelope" class="h-4 w-4" /></button>
+                <button type="button" x-show="reader.current" @click="reader.headersOpen = true" title="{{ __('mail.show_headers') }}" aria-label="{{ __('mail.show_headers') }}" class="ml-auto rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="bars-3" class="h-4 w-4" /></button>
+                <button type="button" x-show="reader.current" @click="printMsg()" title="{{ __('mail.print') }}" aria-label="{{ __('mail.print') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="printer" class="h-4 w-4" /></button>
+                <button type="button" x-show="! reader.current" @click="reader.selected = []" title="{{ __('mail.clear_selection') }}" aria-label="{{ __('mail.clear_selection') }}" class="ml-auto rounded-md border border-gray-300 p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="x-mark" class="h-4 w-4" /></button>
+            </div>
             {{-- Message list --}}
             <div x-show="! reader.current" class="flex min-h-0 flex-1 flex-col">
                 <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-1.5 text-xs text-gray-500">
@@ -161,21 +180,6 @@
                             <x-icon name="chevron-up" x-show="reader.sortDir === 'asc'" x-cloak class="h-3.5 w-3.5" />
                         </button>
                     </span>
-                </div>
-
-                {{-- Bulk action bar (icon-only, tooltips) --}}
-                <div x-show="reader.selected.length" x-cloak class="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs">
-                    <span class="font-medium text-gray-700"><span x-text="reader.selected.length"></span> {{ __('mail.selected') }}</span>
-                    <button type="button" @click="bulkAction('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" aria-label="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="trash" class="h-4 w-4" /></button>
-                    <button type="button" @click="bulkAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" aria-label="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-1.5 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
-                    <select @change="if ($event.target.value) { bulkAction('move', $event.target.value); $event.target.value = '' }" title="{{ __('mail.move_to_folder') }}" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <option value="">{{ __('mail.move_to_folder') }}</option>
-                        <template x-for="f in moveFolders()" :key="f.path"><option :value="f.path" x-text="folderLabel(f)"></option></template>
-                    </select>
-                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="share" class="h-4 w-4" /></button>
-                    <button type="button" @click="bulkAction('seen')" :disabled="reader.busy" title="{{ __('mail.mark_read') }}" aria-label="{{ __('mail.mark_read') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="envelope-open" class="h-4 w-4" /></button>
-                    <button type="button" @click="bulkAction('unseen')" :disabled="reader.busy" title="{{ __('mail.mark_unread') }}" aria-label="{{ __('mail.mark_unread') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-100"><x-icon name="envelope" class="h-4 w-4" /></button>
-                    <button type="button" @click="reader.selected = []" title="{{ __('mail.clear_selection') }}" aria-label="{{ __('mail.clear_selection') }}" class="ml-auto rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
 
                 <div class="min-h-0 flex-1 overflow-y-auto">
@@ -207,26 +211,6 @@
             {{-- Message view (x-if so children aren't evaluated when current is null) --}}
             <template x-if="reader.current">
               <div class="flex min-h-0 flex-1 flex-col">
-                {{-- Actions --}}
-                <div class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
-                    <button type="button" @click="reader.current = null" title="{{ __('mail.back_to_list') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="chevron-left" class="h-4 w-4" /></button>
-                    <button type="button" @click="reader.deleteChoiceOpen = true" :disabled="reader.busy" title="{{ __('mail.delete') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="trash" class="h-4 w-4" /></button>
-                    <button type="button" @click="reader.headersOpen = true" title="{{ __('mail.show_headers') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="bars-3" class="h-4 w-4" /></button>
-                    <select @change="if ($event.target.value) { msgAction('move', $event.target.value); $event.target.value = '' }" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <option value="">{{ __('mail.move_to_folder') }}</option>
-                        <template x-for="f in moveFolders()" :key="f.path"><option :value="f.path" x-text="folderLabel(f)"></option></template>
-                    </select>
-                    <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="share" class="h-4 w-4" /></button>
-                    <button type="button" @click="msgAction(reader.current.seen ? 'unseen' : 'seen')" :disabled="reader.busy"
-                        :title="reader.current.seen ? @js(__('mail.mark_unread')) : @js(__('mail.mark_read'))"
-                        :aria-label="reader.current.seen ? @js(__('mail.mark_unread')) : @js(__('mail.mark_read'))"
-                        class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50">
-                        <x-icon name="envelope" x-show="reader.current.seen" />
-                        <x-icon name="envelope-open" x-show="! reader.current.seen" x-cloak />
-                    </button>
-                    <button type="button" @click="printMsg()" title="{{ __('mail.print') }}" aria-label="{{ __('mail.print') }}" class="ml-auto rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="printer" class="h-4 w-4" /></button>
-                </div>
-
                 {{-- Headers --}}
                 <div class="border-b border-gray-100 px-6 py-4">
                     <div class="flex items-center gap-2">

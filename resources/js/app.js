@@ -2983,6 +2983,13 @@ Alpine.data('vaultMail', (labels = {}) => ({
         });
     },
 
+    // Route a toolbar action to the right handler: the open message in
+    // single-view, otherwise the current multi-selection. Lets one toolbar
+    // serve both modes.
+    act(action, target = null) {
+        return this.reader.current ? this.msgAction(action, target) : this.bulkAction(action, target);
+    },
+
     bulkAction(action, target = null) {
         if (! this.reader.selected.length) return;
         const uids = [...this.reader.selected];
