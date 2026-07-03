@@ -16,6 +16,7 @@ use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\MailController as SettingsMailController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
+use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
@@ -72,6 +73,12 @@ Route::middleware('auth')->group(function (): void {
     // Mail settings (accounts + background-sync interval).
     Route::get('/settings/mail', [SettingsMailController::class, 'edit'])->name('settings.mail.edit');
     Route::put('/settings/mail', [SettingsMailController::class, 'update'])->name('settings.mail.update');
+
+    // Paperless-ngx integration (instance URL + API token, cached terms).
+    Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
+    Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
+    Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->name('settings.paperless.test');
+    Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->name('settings.paperless.sync');
 
     // Notification channels (mail / NTFY / webhook).
     Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
