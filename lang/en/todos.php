@@ -5,8 +5,6 @@ declare(strict_types=1);
 return [
     'heading' => 'To-dos',
     'subheading' => 'Encrypted to-do lists, readable only by you.',
-    'locked_notice' => 'Unlock your vault to see your to-dos.',
-    'unconfigured_notice' => 'Set up your encryption vault to use to-dos.',
 
     'lists' => 'Lists',
     'all' => 'All tasks',
@@ -56,5 +54,4 @@ return [
     'open_link' => 'Open link',
 
     'save_failed' => 'Could not save. Please try again.',
-    'stale' => 'Updated elsewhere — reloaded the latest version.',
 ];

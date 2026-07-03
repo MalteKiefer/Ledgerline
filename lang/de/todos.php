@@ -5,8 +5,6 @@ declare(strict_types=1);
 return [
     'heading' => 'Aufgaben',
     'subheading' => 'Verschlüsselte Aufgabenlisten, nur von dir lesbar.',
-    'locked_notice' => 'Entsperre deinen Vault, um deine Aufgaben zu sehen.',
-    'unconfigured_notice' => 'Richte deinen Verschlüsselungs-Vault ein, um Aufgaben zu nutzen.',
 
     'lists' => 'Listen',
     'all' => 'Alle Aufgaben',
@@ -56,5 +54,4 @@ return [
     'open_link' => 'Link öffnen',
 
     'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
-    'stale' => 'Anderswo geändert — neueste Version geladen.',
 ];

@@ -11,9 +11,9 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * A time-limited public share of a single note.
  *
- * Holds only the client-encrypted snapshot ciphertext and the metadata the
- * server needs to enforce expiry and view limits. The plaintext note, its
- * title and the decryption key never reach the server.
+ * Holds a frozen server-rendered snapshot (plaintext title + markdown content)
+ * plus the metadata needed to enforce expiry, a view limit and an optional
+ * password. The password is stored only as a bcrypt hash.
  */
 #[Fillable([
     'title',

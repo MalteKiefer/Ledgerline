@@ -532,12 +532,6 @@ final class WebklexImapReader implements ImapReader
     private function close(Client $client): void
     {
         restore_error_handler();
-        // Drain the c-client error queue so ext-imap does not dump accumulated
-        // "Unterminated mailbox" / address-parse warnings at request shutdown.
-        if (function_exists('imap_errors')) {
-            @imap_errors();
-            @imap_alerts();
-        }
         try {
             $client->disconnect();
         } catch (\Throwable) {

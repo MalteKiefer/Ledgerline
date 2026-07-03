@@ -24,16 +24,4 @@ return [
 
     'max_upload_mb' => (int) env('FILES_MAX_UPLOAD_MB', 512),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Text extraction cap
-    |--------------------------------------------------------------------------
-    |
-    | For unencrypted, text-extractable files we store up to this many bytes of
-    | extracted text for full-text search.
-    |
-    */
-
-    'extract_text_max_bytes' => 200 * 1024,
-
 ];
