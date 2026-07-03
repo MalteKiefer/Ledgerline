@@ -79,6 +79,39 @@
 
                         <x-spotlight-search />
 
+                        {{-- Local notifications bell --}}
+                        <div class="relative" x-data="notificationBell({ now: @js(__('common.now')) })" @click.outside="open = false">
+                            <button type="button" @click="toggle()" class="relative rounded-md p-2 text-gray-600 hover:bg-gray-50" :aria-label="'{{ __('notifications.title') }}'" title="{{ __('notifications.title') }}">
+                                <x-icon name="bell" class="h-5 w-5" />
+                                <span x-show="unread > 0" x-cloak x-text="unread > 99 ? '99+' : unread"
+                                    class="absolute -right-0.5 -top-0.5 min-w-[1.1rem] rounded-full bg-red-500 px-1 text-center text-[10px] font-semibold leading-4 text-white"></span>
+                            </button>
+                            <div x-show="open" x-cloak class="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg">
+                                <div class="flex items-center justify-between border-b border-gray-100 px-3 py-2">
+                                    <span class="text-sm font-semibold text-gray-900">{{ __('notifications.title') }}</span>
+                                    <button type="button" x-show="unread > 0" @click="markAllRead()" class="text-xs text-gray-500 hover:text-gray-700">{{ __('notifications.mark_all_read') }}</button>
+                                </div>
+                                <div x-show="desktop !== 'granted' && desktop !== 'unsupported'" x-cloak class="border-b border-gray-100 px-3 py-2">
+                                    <button type="button" @click="enableDesktop()" class="text-xs font-medium text-blue-600 hover:text-blue-700">{{ __('notifications.enable_desktop') }}</button>
+                                </div>
+                                <div class="max-h-96 overflow-y-auto">
+                                    <template x-if="items.length === 0">
+                                        <p class="px-3 py-6 text-center text-sm text-gray-400">{{ __('notifications.empty') }}</p>
+                                    </template>
+                                    <template x-for="n in items" :key="n.id">
+                                        <button type="button" @click="activate(n)" class="flex w-full items-start gap-2 border-b border-gray-50 px-3 py-2 text-left hover:bg-gray-50" :class="[! n.read ? 'bg-blue-50/40' : '', hrefFor(n) ? 'cursor-pointer' : '']">
+                                            <span class="mt-1 h-2 w-2 shrink-0 rounded-full" :class="n.level === 'error' ? 'bg-red-500' : (n.level === 'success' ? 'bg-green-500' : 'bg-gray-300')"></span>
+                                            <span class="min-w-0 flex-1">
+                                                <span class="block text-sm font-medium text-gray-900" x-text="n.title"></span>
+                                                <span x-show="n.body" class="block truncate text-xs text-gray-500" x-text="n.body"></span>
+                                                <span class="mt-0.5 block text-[10px] uppercase tracking-wide text-gray-400" x-text="fmt(n.at)"></span>
+                                            </span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
                         {{-- Encryption vault: status trigger + setup/unlock modal (global) --}}
                         @include('vault._panel', ['serverConfigured' => $vaultConfigured])
 
