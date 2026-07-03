@@ -37,8 +37,13 @@ class ChannelNotifier
             try {
                 match ($channel) {
                     'desktop' => AppNotification::record($opts['level'] ?? 'info', $title, $body ?: ($opts['url'] ?? null), $opts['category'] ?? 'reminder'),
-                    'ntfy' => $this->ntfy($settings, $title, $body, $opts),
-                    'webhook' => $this->webhook($settings, $title, $body, $opts),
+                    'ntfy' => $this->ntfy($settings, $title, $body, ['priority' => $opts['priority'] ?? 'default', 'click' => $opts['url'] ?? null]),
+                    'webhook' => $this->webhook($settings, [
+                        'event' => $opts['event'] ?? 'reminder',
+                        'title' => $title,
+                        'message' => $body,
+                        'url' => $opts['url'] ?? null,
+                    ]),
                     'mail' => $this->mail($settings, $title, $body),
                     default => null,
                 };
@@ -48,8 +53,13 @@ class ChannelNotifier
         }
     }
 
-    /** @param array<string,mixed> $opts */
-    private function ntfy(AppSettings $s, string $title, string $body, array $opts): void
+    /**
+     * Low-level NTFY publish. Public so other notifiers (e.g. backups) reuse the
+     * single hardened transport instead of duplicating it.
+     *
+     * @param  array{priority?:string, tags?:string, click?:?string}  $opts
+     */
+    public function ntfy(AppSettings $s, string $title, string $body, array $opts = []): void
     {
         if (! $s->ntfy_enabled || ! $s->ntfy_url || ! $s->ntfy_topic) {
             throw new \RuntimeException('NTFY is not enabled or not fully configured.');
@@ -63,10 +73,10 @@ class ChannelNotifier
         $headers = [
             'Title' => $this->headerSafe($title),
             'Priority' => $this->headerSafe((string) ($opts['priority'] ?? 'default')),
-            'Tags' => 'bell',
+            'Tags' => $this->headerSafe((string) ($opts['tags'] ?? 'bell')),
         ];
-        if (! empty($opts['url'])) {
-            $headers['Click'] = $this->headerSafe((string) $opts['url']);
+        if (! empty($opts['click'])) {
+            $headers['Click'] = $this->headerSafe((string) $opts['click']);
         }
         $request = Http::withHeaders($headers)->withOptions(['allow_redirects' => false]);
         if ($s->ntfy_token) {
@@ -75,8 +85,13 @@ class ChannelNotifier
         $request->withBody($body ?: $title, 'text/plain')->post($url)->throw();
     }
 
-    /** @param array<string,mixed> $opts */
-    private function webhook(AppSettings $s, string $title, string $body, array $opts): void
+    /**
+     * Low-level webhook POST of an arbitrary JSON payload (HMAC-signed when a
+     * secret is set). Public so other notifiers reuse the single transport.
+     *
+     * @param  array<string,mixed>  $payload
+     */
+    public function webhook(AppSettings $s, array $payload): void
     {
         if (! $s->webhook_enabled || ! $s->webhook_url) {
             throw new \RuntimeException('Webhook is not enabled or has no URL.');
@@ -84,20 +99,15 @@ class ChannelNotifier
         if (! OutboundUrl::safe((string) $s->webhook_url)) {
             throw new \RuntimeException('The webhook URL is not an allowed outbound target.');
         }
-        $payload = json_encode([
-            'event' => $opts['event'] ?? 'reminder',
-            'title' => $title,
-            'message' => $body,
-            'url' => $opts['url'] ?? null,
-        ], JSON_THROW_ON_ERROR);
+        $body = json_encode($payload, JSON_THROW_ON_ERROR);
 
         $headers = ['Content-Type' => 'application/json'];
         if ($s->webhook_secret) {
-            $headers['X-Ledgerline-Signature'] = 'sha256='.hash_hmac('sha256', $payload, (string) $s->webhook_secret);
+            $headers['X-Ledgerline-Signature'] = 'sha256='.hash_hmac('sha256', $body, (string) $s->webhook_secret);
         }
         Http::withHeaders($headers)
             ->withOptions(['allow_redirects' => false])
-            ->withBody($payload, 'application/json')
+            ->withBody($body, 'application/json')
             ->post((string) $s->webhook_url)
             ->throw();
     }
@@ -108,7 +118,8 @@ class ChannelNotifier
         return str_replace(["\r", "\n", "\0"], '', $value);
     }
 
-    private function mail(AppSettings $s, string $subject, string $body): void
+    /** Low-level SMTP send. Public so other notifiers reuse the single transport. */
+    public function mail(AppSettings $s, string $subject, string $body): void
     {
         if (! $s->mail_enabled || ! $s->smtp_host || ! $s->smtp_from_address) {
             throw new \RuntimeException('Mail is not enabled or has no host / from address.');
