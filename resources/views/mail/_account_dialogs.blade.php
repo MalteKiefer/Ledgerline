@@ -34,7 +34,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700">{{ __('mail.field_password') }}</label>
-                        <input type="password" x-model="form.password" autocomplete="new-password" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="password" x-model="form.password" autocomplete="new-password" :placeholder="editingId ? '••••••••' : ''" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
                 </div>
                 <label class="flex items-center gap-2 text-sm text-gray-700">
