@@ -3088,6 +3088,21 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return !! (c && c.html && /<img[^>]+src=["']https?:/i.test(c.html));
     },
 
+    // Archived message body, rendered through the SAME safe pipeline as the live
+    // reader (DOMPurify + sandboxed iframe + strict CSP) — never raw x-html, as
+    // email HTML is attacker-controlled. Remote images are blocked.
+    archiveSrcdoc() {
+        const v = this.archive.viewing;
+        if (! v) return '';
+        const body = v.html
+            ? this.sanitizeEmail(v.html, false)
+            : `<div style="white-space:pre-wrap">${escapeHtml(v.text || '')}</div>`;
+        const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:";
+        return `<!doctype html><html><head><meta charset="utf-8">`
+            + `<meta http-equiv="Content-Security-Policy" content="${csp}">`
+            + `</head><body style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;margin:0;padding:16px;color:#111;word-break:break-word">${body}</body></html>`;
+    },
+
     msgAction(action, target = null) {
         if (! this.reader.current) return;
         const uid = this.reader.current.uid;
