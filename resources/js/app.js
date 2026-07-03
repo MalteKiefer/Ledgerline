@@ -1253,6 +1253,7 @@ Alpine.store('paperless', {
 
     open: false,
     submitting: false,
+    preparing: false, // fetching/decrypting the document while the modal is open
     error: '',
     file: null, filename: '',
     // Autocomplete query text per picker (also the name used when the typed
@@ -1309,10 +1310,7 @@ Alpine.store('paperless', {
         } catch (e) { /* stay unconfigured */ }
     },
 
-    // Open the modal for a document (a decrypted Blob). defaults may prefill the
-    // title and created date (mail passes the subject and message date).
-    openFor(blob, filename, defaults = {}, opts = {}) {
-        this.file = blob;
+    _reset(filename, defaults = {}, opts = {}) {
         this.filename = filename || 'document.pdf';
         this.error = '';
         this.corrQuery = this.typeQuery = this.tagQuery = '';
@@ -1328,7 +1326,25 @@ Alpine.store('paperless', {
         if (! this.loaded) this.load();
     },
 
-    close() { this.open = false; this.file = null; },
+    // Open the modal immediately with the document already in hand.
+    openFor(blob, filename, defaults = {}, opts = {}) {
+        this._reset(filename, defaults, opts);
+        this.file = blob;
+        this.preparing = false;
+    },
+
+    // Open the modal right away while the document is still being fetched /
+    // decrypted (IMAP round-trip or client-side decryption can take seconds);
+    // setFile() fills it in when ready, so the UI never blocks.
+    begin(filename, defaults = {}, opts = {}) {
+        this._reset(filename, defaults, opts);
+        this.file = null;
+        this.preparing = true;
+    },
+    setFile(blob) { this.file = blob; this.preparing = false; },
+    fail(msg) { this.error = msg || this.labels.failed; this.preparing = false; },
+
+    close() { this.open = false; this.file = null; this.preparing = false; },
 
     async createTerm(kind, name) {
         name = (name || '').trim();
@@ -1352,7 +1368,7 @@ Alpine.store('paperless', {
     },
 
     async submit() {
-        if (! this.file || this.submitting) return;
+        if (! this.file || this.submitting || this.preparing) return;
         this.submitting = true; this.error = '';
         try {
             const fd = new FormData();
@@ -2058,21 +2074,21 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         return row?.kind === 'file' && (row.mime === 'application/pdf' || /\.pdf$/i.test(row.name || ''));
     },
 
-    // Decrypt a PDF in the browser, then hand it to the shared Paperless modal.
-    // allowDelete lets the modal offer to remove the vault file after upload.
+    // Open the Paperless modal immediately, then decrypt the PDF in the
+    // background so the dialog never blocks. allowDelete lets the modal offer
+    // to remove the vault file after upload.
     async openPaperless(row) {
-        this.dl = { active: true, done: 0, total: 1 };
+        const store = Alpine.store('paperless');
+        store.begin(row.name, {}, {
+            allowDelete: true,
+            context: { source: 'files', rowId: row.id, blob: row.blob },
+        });
         try {
             const plain = await this.fetchPlain(row);
-            const blob = new Blob([plain], { type: 'application/pdf' });
-            Alpine.store('paperless').openFor(blob, row.name, {}, {
-                allowDelete: true,
-                context: { source: 'files', rowId: row.id, blob: row.blob },
-            });
+            store.setFile(new Blob([plain], { type: 'application/pdf' }));
         } catch (e) {
-            this.error = labels.downloadFailed;
+            store.fail(labels.downloadFailed);
         }
-        this.dl.active = false;
     },
 
     // After a file-browser upload the user may choose to delete the original;
@@ -3510,19 +3526,21 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return (att?.mime || '').toLowerCase() === 'application/pdf' || /\.pdf$/i.test(att?.name || '');
     },
 
-    // Fetch a PDF attachment's bytes and open the shared Paperless modal,
-    // prefilling the title from the subject and the date from the message.
+    // Open the Paperless modal immediately, then fetch the attachment bytes in
+    // the background (the IMAP round-trip can take a few seconds). The title is
+    // prefilled from the subject and the date from the message.
     async attachmentToPaperless(att) {
+        const store = Alpine.store('paperless');
+        const created = this.reader.current?.date ? String(this.reader.current.date).slice(0, 10) : null;
+        store.begin(att.name || 'document.pdf', {
+            title: this.reader.current?.subject || (att.name || '').replace(/\.[^.]+$/, ''),
+            created,
+        });
         try {
             const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
-            if (! res.ok) return;
-            const blob = new Blob([await res.arrayBuffer()], { type: 'application/pdf' });
-            const created = this.reader.current?.date ? String(this.reader.current.date).slice(0, 10) : null;
-            Alpine.store('paperless').openFor(blob, att.name || 'document.pdf', {
-                title: this.reader.current?.subject || (att.name || '').replace(/\.[^.]+$/, ''),
-                created,
-            });
-        } catch (e) { /* ignore */ }
+            if (! res.ok) { store.fail(labels.connectFailed); return; }
+            store.setFile(new Blob([await res.arrayBuffer()], { type: 'application/pdf' }));
+        } catch (e) { store.fail(labels.connectFailed); }
     },
 
     // ---- Inline preview for browser-displayable attachments (images / PDF) ----

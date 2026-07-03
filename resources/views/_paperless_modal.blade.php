@@ -12,7 +12,10 @@
             </div>
 
             <div class="min-h-0 flex-1 space-y-4 overflow-auto p-5" x-data="{ s: $store.paperless }">
-                <p class="truncate text-xs text-gray-500" x-text="s.filename"></p>
+                <p class="flex items-center gap-2 truncate text-xs text-gray-500">
+                    <x-icon x-show="s.preparing" x-cloak name="arrow-path" class="h-3.5 w-3.5 shrink-0 animate-spin" />
+                    <span class="truncate" x-text="s.filename"></span>
+                </p>
 
                 {{-- Title --}}
                 <div>
@@ -35,7 +38,7 @@
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
                             class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                         <button type="button" x-show="s.corrQuery" @click="s.clearCorrespondent(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
-                        <div x-show="show" x-cloak class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                        <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
                             <template x-for="c in s.filteredCorrespondents" :key="c.id">
                                 <button type="button" @click="s.selectCorrespondent(c); show = false" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="c.name"></button>
                             </template>
@@ -54,7 +57,7 @@
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
                             class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                         <button type="button" x-show="s.typeQuery" @click="s.clearDocumentType(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
-                        <div x-show="show" x-cloak class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                        <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
                             <template x-for="t in s.filteredDocumentTypes" :key="t.id">
                                 <button type="button" @click="s.selectDocumentType(t); show = false" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="t.name"></button>
                             </template>
@@ -80,7 +83,9 @@
                         <input type="text" x-model="s.tagQuery" @focus="show = true" @input="show = true"
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
                             class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                        <div x-show="show" x-cloak class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                        {{-- Opens upward: this is the last field, so a downward list is
+                             clipped by the scroll area and hidden behind the footer. --}}
+                        <div x-show="show" x-cloak class="absolute bottom-full z-30 mb-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
                             <template x-for="t in s.filteredTags" :key="t.id">
                                 <button type="button" @click="s.addTag(t)" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="t.name"></button>
                             </template>
@@ -102,7 +107,7 @@
 
             <div class="flex items-center justify-end gap-3 border-t border-gray-100 px-5 py-3">
                 <button type="button" @click="$store.paperless.close()" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('paperless.cancel') }}</button>
-                <button type="button" @click="$store.paperless.submit()" :disabled="$store.paperless.submitting"
+                <button type="button" @click="$store.paperless.submit()" :disabled="$store.paperless.submitting || $store.paperless.preparing || ! $store.paperless.file"
                     class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
                     x-text="$store.paperless.submitting ? @js(__('paperless.sending')) : @js(__('paperless.send'))"></button>
             </div>
