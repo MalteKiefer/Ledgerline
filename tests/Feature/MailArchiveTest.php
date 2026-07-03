@@ -16,8 +16,11 @@ use Tests\TestCase;
 /** In-memory fake IMAP source: folders + per-folder uid=>flags, raw+meta on fetch. */
 class FakeMailSource implements MailSource
 {
-    /** @param array<string,array<int,array>> $data folder => [uid => flags] */
-    public function __construct(public array $data, public int $validity = 1) {}
+    /**
+     * @param  array<string,array<int,array>>  $data  folder => [uid => flags]
+     * @param  list<string>  $throwOn  folders whose uids() throws (simulate a quirky server folder)
+     */
+    public function __construct(public array $data, public int $validity = 1, public array $throwOn = []) {}
 
     public function folders(ImapCredentials $c): array
     {
@@ -28,6 +31,10 @@ class FakeMailSource implements MailSource
 
     public function uids(ImapCredentials $c, string $folder): array
     {
+        if (in_array($folder, $this->throwOn, true)) {
+            throw new \RuntimeException('Command failed to process: Empty response');
+        }
+
         return $this->data[$folder] ?? [];
     }
 
@@ -72,6 +79,27 @@ class MailArchiveTest extends TestCase
         $m = MailMessage::where('uid', 1)->first();
         $this->assertTrue($m->seen);
         Storage::disk('files')->assertExists('mail/'.$m->blob);
+    }
+
+    public function test_a_failing_folder_is_skipped_and_the_rest_still_sync(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $a = $this->account();
+        // "Bad" answers with an empty response (iCloud quirk); it must not abort
+        // the whole account — INBOX still archives.
+        $source = new FakeMailSource(
+            ['INBOX' => [1 => ['seen' => true]], 'Bad' => [2 => ['seen' => false]]],
+            validity: 1,
+            throwOn: ['Bad'],
+        );
+
+        $r = (new MailArchiver($source))->syncAccount($a);
+
+        $this->assertSame(1, $r['new']);
+        $this->assertSame(2, $r['folders']);
+        $this->assertSame(1, MailMessage::count());
+        $this->assertNotNull($a->fresh()->last_synced_at);
     }
 
     public function test_server_deleted_mail_is_kept_and_archived(): void
