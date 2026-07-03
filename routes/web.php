@@ -27,8 +27,6 @@ use App\Http\Controllers\Settings\SecurityController as SettingsSecurityControll
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\TodoController;
-use App\Http\Controllers\VaultController;
-use App\Http\Controllers\VaultManifestController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -139,11 +137,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/gallery/{photo}/{size}', [GalleryController::class, 'image'])
         ->whereIn('size', ['thumb', 'medium', 'original'])->name('gallery.image');
 
-    // Encryption vault (zero-knowledge): the server only stores ciphertext.
-    Route::get('/vault', [VaultController::class, 'show'])->name('vault.show');
-    Route::post('/vault', [VaultController::class, 'store'])->name('vault.store');
-    Route::put('/vault', [VaultController::class, 'rotate'])->name('vault.rotate');
-
     // Files: plain metadata rows + unencrypted bytes on the files disk. The
     // rich client reads/writes the whole tree as a manifest that syncs to rows.
     Route::view('/files', 'files.index')->name('files.index');
@@ -217,8 +210,4 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
-    Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['mail'])->name('vault.manifest.show');
-    Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['mail'])->name('vault.manifest.update');
 });

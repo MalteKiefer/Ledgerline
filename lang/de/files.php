@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 return [
     'download_failed' => 'Der Download ist fehlgeschlagen.',
-    'locked_notice' => 'Der Datei-Tresor ist gesperrt. Entsperre ihn mit deinem Passwort, um deine Dateien zu sehen — auf dem Server ist nichts davon lesbar gespeichert.',
-    'unconfigured_notice' => 'Noch kein Tresor. Lege ein Verschlüsselungs-Passwort fest, um deinen Zero-Knowledge-Datei-Tresor zu erstellen.',
     'upload_failed' => 'Ein Upload ist fehlgeschlagen.',
     'vault_stale' => 'Der Tresor wurde zeitgleich woanders geändert und neu geladen. Bitte letzte Änderung wiederholen.',
     'actions' => 'Aktionen',

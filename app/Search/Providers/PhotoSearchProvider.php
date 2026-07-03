@@ -10,10 +10,6 @@ use App\Search\SearchResult;
 
 /**
  * Finds gallery photos by name, original filename, place or camera.
- *
- * Files are absent from global search on purpose: the file vault is
- * zero-knowledge, so the server has nothing to search — the file browser
- * searches the decrypted manifest in the browser instead.
  */
 class PhotoSearchProvider extends AbstractSearchProvider
 {

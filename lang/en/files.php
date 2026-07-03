@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 return [
     'download_failed' => 'The download failed.',
-    'locked_notice' => 'The file vault is locked. Unlock it with your passphrase to see your files — nothing about them is stored readable on the server.',
-    'unconfigured_notice' => 'No vault yet. Set an encryption passphrase to create your zero-knowledge file vault.',
     'upload_failed' => 'An upload failed.',
     'vault_stale' => 'Someone else changed the vault at the same time; it was reloaded. Please repeat your last change.',
     'actions' => 'Actions',
