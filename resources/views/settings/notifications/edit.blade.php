@@ -78,4 +78,21 @@
 
         <div><button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button></div>
     </form>
+
+    {{-- Send a test message over each channel (uses the saved settings above). --}}
+    <div class="mt-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.notify_test_heading') }}</h2>
+        <p class="mt-1 text-xs text-gray-500">{{ __('settings.notify_test_hint') }}</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+            @foreach (['mail' => __('settings.notify_mail_heading'), 'ntfy' => 'NTFY', 'webhook' => 'Webhook'] as $channel => $label)
+                <form method="POST" action="{{ route('settings.notifications.test') }}">
+                    @csrf
+                    <input type="hidden" name="channel" value="{{ $channel }}">
+                    <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                        {{ __('settings.notify_test_send', ['channel' => $label]) }}
+                    </button>
+                </form>
+            @endforeach
+        </div>
+    </div>
 </x-layouts.app>

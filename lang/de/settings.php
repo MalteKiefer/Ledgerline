@@ -165,6 +165,9 @@ return [
     'notify_webhook_heading' => 'Webhook',
     'webhook_url' => 'URL',
     'webhook_secret' => 'Signatur-Secret (optional)',
+    'notify_test_heading' => 'Test senden',
+    'notify_test_hint' => 'Sendet eine Testnachricht mit den oben gespeicherten Einstellungen — bitte erst speichern.',
+    'notify_test_send' => ':channel testen',
 
     // Backup
     'backup_section' => 'Backup',
@@ -215,4 +218,5 @@ return [
     'backup_source_files' => 'Dateien',
     'backup_source_gallery' => 'Galerie',
     'backup_notify_none' => 'Keine Benachrichtigung',
+    'backup_test' => 'Verbindung testen',
 ];
