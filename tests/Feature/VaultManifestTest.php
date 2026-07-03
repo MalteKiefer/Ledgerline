@@ -24,14 +24,14 @@ class VaultManifestTest extends TestCase
 
     public function test_guests_cannot_touch_the_manifest(): void
     {
-        $this->get(route('vault.manifest.show', 'files'))->assertRedirect(route('login'));
+        $this->get(route('vault.manifest.show', 'mail'))->assertRedirect(route('login'));
     }
 
     public function test_manifest_404s_without_a_vault(): void
     {
         $this->signIn();
 
-        $this->getJson(route('vault.manifest.show', 'files'))->assertNotFound();
+        $this->getJson(route('vault.manifest.show', 'mail'))->assertNotFound();
     }
 
     public function test_unknown_manifest_names_are_rejected(): void
@@ -48,16 +48,16 @@ class VaultManifestTest extends TestCase
         $this->makeVault();
 
         // Empty at first.
-        $this->getJson(route('vault.manifest.show', 'files'))
+        $this->getJson(route('vault.manifest.show', 'mail'))
             ->assertOk()
             ->assertJson(['cipher' => null, 'version' => 0]);
 
         // Store a ciphertext; the server bumps the version and returns it as-is.
-        $this->putJson(route('vault.manifest.update', 'files'), [
+        $this->putJson(route('vault.manifest.update', 'mail'), [
             'cipher' => 'b3BhcXVl', 'nonce' => 'bm9uY2U=', 'version' => 0,
         ])->assertOk()->assertJson(['version' => 1]);
 
-        $this->getJson(route('vault.manifest.show', 'files'))
+        $this->getJson(route('vault.manifest.show', 'mail'))
             ->assertOk()
             ->assertJson(['cipher' => 'b3BhcXVl', 'nonce' => 'bm9uY2U=', 'version' => 1]);
     }
@@ -72,37 +72,17 @@ class VaultManifestTest extends TestCase
             ->assertJson(['cipher' => null, 'version' => 0]);
     }
 
-    public function test_files_and_mail_manifests_are_independent(): void
-    {
-        $this->signIn();
-        $this->makeVault();
-
-        $this->putJson(route('vault.manifest.update', 'files'), [
-            'cipher' => 'ZmlsZXM=', 'nonce' => 'bg==', 'version' => 0,
-        ])->assertOk();
-
-        // Mail is still empty at version 0 and can be written independently.
-        $this->getJson(route('vault.manifest.show', 'mail'))
-            ->assertOk()->assertJson(['cipher' => null, 'version' => 0]);
-        $this->putJson(route('vault.manifest.update', 'mail'), [
-            'cipher' => 'bWFpbA==', 'nonce' => 'bg==', 'version' => 0,
-        ])->assertOk()->assertJson(['version' => 1]);
-
-        $this->assertSame('ZmlsZXM=', VaultManifest::named('files')->cipher);
-        $this->assertSame('bWFpbA==', VaultManifest::named('mail')->cipher);
-    }
-
     public function test_a_stale_writer_is_rejected_with_the_current_version(): void
     {
         $this->signIn();
         $this->makeVault();
-        VaultManifest::named('files')->update(['cipher' => 'YQ==', 'nonce' => 'bg==', 'version' => 5]);
+        VaultManifest::named('mail')->update(['cipher' => 'YQ==', 'nonce' => 'bg==', 'version' => 5]);
 
-        $this->putJson(route('vault.manifest.update', 'files'), [
+        $this->putJson(route('vault.manifest.update', 'mail'), [
             'cipher' => 'Yg==', 'nonce' => 'bg==', 'version' => 4,
         ])->assertStatus(409)->assertJson(['version' => 5]);
 
         // Nothing changed.
-        $this->assertSame('YQ==', VaultManifest::named('files')->cipher);
+        $this->assertSame('YQ==', VaultManifest::named('mail')->cipher);
     }
 }

@@ -1418,18 +1418,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     languageOptions: [], // populated when the editor (CodeMirror) is loaded on first open
 
     async init() {
-        await this.$store.vault.boot();
-        window.addEventListener('vault-unlocked', () => this.load());
         window.addEventListener('paperless-sent', (e) => this.onPaperlessSent(e.detail));
         this.initDropzone();
-        if (! this.$store.vault.configured) {
-            this.state = 'unconfigured';
-            return;
-        }
-        if (! this.$store.vault.unlocked) {
-            this.state = 'locked';
-            return;
-        }
         await this.load();
     },
 
@@ -1480,27 +1470,28 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     async load() {
         try {
-            const { data, version } = await Vault.loadManifest('files');
-            this.manifest = data;
-            this.version = version;
+            const res = await fetch(config.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) { this.state = 'error'; return; }
+            const data = await res.json();
+            this.manifest = data.files ? data : { v: 1, folders: [], files: [] };
             this.state = 'ready';
         } catch (e) {
             this.state = 'error';
         }
     },
 
-    // Persist the manifest; on a concurrent save, reload and surface it.
+    // Persist the whole tree; the server syncs it to clean rows.
     async persist() {
         try {
-            this.version = await Vault.saveManifest('files', this.manifest, this.version);
+            const res = await fetch(config.dataUrl, {
+                method: 'PUT',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ folders: this.manifest.folders, files: this.manifest.files }),
+            });
+            if (! res.ok) throw new Error('save failed');
             this.error = '';
         } catch (e) {
-            if (e.stale) {
-                await this.load();
-                this.error = labels.stale;
-            } else {
-                this.error = labels.saveFailed;
-            }
+            this.error = labels.saveFailed;
             throw e;
         }
     },
@@ -1986,13 +1977,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
         for (const item of items) {
             try {
-                const bytes = new Uint8Array(await item.file.arrayBuffer());
-                const { blob, key } = Vault.encryptBlob(bytes);
-
                 const data = new FormData();
                 data.append('_token', config.token);
-                data.append('blob', blob, 'blob');
-                const res = await fetch(config.blobBase, {
+                data.append('file', item.file, item.file.name);
+                const res = await fetch(config.uploadUrl, {
                     method: 'POST',
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     body: data,
@@ -2007,7 +1995,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                     mime: item.file.type || 'application/octet-stream',
                     size: item.file.size,
                     folder: folderFor(item.path),
-                    key,
                     created: new Date().toISOString(),
                 });
             } catch (e) {
@@ -2023,12 +2010,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     async fetchPlain(row) {
-        const res = await fetch(`${config.blobBase}/${row.blob}`, {
+        const res = await fetch(`${config.rawBase}/${row.blob}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         });
         if (! res.ok) throw new Error('fetch failed');
-        const cipher = new Uint8Array(await res.arrayBuffer());
-        return Vault.decryptBlob(cipher, row.key, row.size);
+        return new Uint8Array(await res.arrayBuffer());
     },
 
     async download(row) {
@@ -2183,21 +2169,21 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         desc.load().then((support) => this.editorView.dispatch({ effects: this.langComp.reconfigure(support) }));
     },
 
-    // Save the edited text: encrypt into a NEW blob, point the manifest at it,
-    // then discard the old blob — an atomic swap from the manifest's viewpoint.
+    // Save the edited text: upload a NEW file blob, point the row at it, then
+    // discard the old blob — an atomic swap from the manifest's viewpoint.
     async saveText() {
         const row = this.viewer.row;
         if (! this.editorView || ! row) return;
         this.viewer.saving = true;
         this.viewer.saved = false;
         try {
-            const bytes = new TextEncoder().encode(this.editorView.state.doc.toString());
-            const { blob, key } = Vault.encryptBlob(bytes);
+            const text = this.editorView.state.doc.toString();
+            const bytes = new TextEncoder().encode(text);
 
             const data = new FormData();
             data.append('_token', config.token);
-            data.append('blob', blob, 'blob');
-            const res = await fetch(config.blobBase, {
+            data.append('file', new Blob([bytes], { type: row.mime || 'text/plain' }), row.name || 'file.txt');
+            const res = await fetch(config.uploadUrl, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: data,
@@ -2209,13 +2195,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const oldBlob = entry?.blob;
             if (entry) {
                 entry.blob = id;
-                entry.key = key;
                 entry.size = bytes.length;
             }
             await this.persist();
 
             row.blob = id;
-            row.key = key;
             row.size = bytes.length;
             if (oldBlob && oldBlob !== id) {
                 fetch(`${config.blobBase}/${oldBlob}`, {
