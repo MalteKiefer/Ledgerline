@@ -191,7 +191,7 @@
                         <td class="py-1.5 pr-3 align-top text-gray-500" x-text="r.startedHuman"></td>
                         <td class="py-1.5 pr-3 align-top text-gray-500" x-text="r.size ?? '—'"></td>
                         <td class="py-1.5 pr-3 align-top">
-                            <a x-show="r.downloadable" :href="downloadUrl(r.id)" class="text-xs font-medium text-blue-600 hover:text-blue-700">{{ __('settings.backup_download') }}</a>
+                            <a x-show="r.downloadable" :href="downloadUrl(r.id)" title="{{ __('settings.backup_download') }}" :aria-label="'{{ __('settings.backup_download') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
                         </td>
                     </tr>
                     <tr x-show="expanded[r.id]" x-cloak>

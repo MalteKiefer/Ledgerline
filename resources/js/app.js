@@ -2466,7 +2466,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50, uidValidity: 0,
         messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false,
         folders: [], foldersLoading: false, sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
-        transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
+        transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [], transferError: '',
         saveAtt: { open: false, att: null, folder: '', busy: false, error: '', done: false }, filesFolders: [],
         attView: { open: false, name: '', kind: '', url: '', loading: false, error: '' },
     },
@@ -3135,7 +3135,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         const uids = this.reader.selected.length ? [...this.reader.selected] : (this.reader.current ? [this.reader.current.uid] : []);
         if (! uids.length) return;
         this.reader.busy = true;
-        this.reader.error = '';
+        this.reader.transferError = '';
         let ok = false;
         try {
             // One request for the whole selection — the server copies each to
@@ -3151,19 +3151,23 @@ Alpine.data('vaultMail', (labels = {}) => ({
                     target: this.credsBody(a), target_folder: this.reader.transferFolder,
                 }),
             });
-            if (res.ok) { ok = true; } else { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; }
+            if (res.ok) { ok = true; } else { const b = await res.json().catch(() => ({})); this.reader.transferError = b.detail || labels.connectFailed; }
         } catch (e) {
-            this.reader.error = labels.connectFailed;
+            this.reader.transferError = labels.connectFailed;
         } finally {
+            this.reader.busy = false;
+        }
+
+        if (ok) {
             // Transferred messages leave this account's folder (target is another
-            // account, not in this sidebar). On success remove them locally; on
-            // error resync since some may have been transferred before it failed.
-            if (ok) this.removeMessages(uids); else this.loadMessages(true);
+            // account, not in this sidebar) — remove them locally, no reload.
+            this.removeMessages(uids);
             this.reader.transferOpen = false;
             this.reader.current = null;
             this.reader.selected = [];
-            this.reader.busy = false;
         }
+        // On failure keep the modal open so the error/log stays visible; the
+        // list is left as-is (nothing was removed).
     },
 
     async downloadAttachment(att) {
