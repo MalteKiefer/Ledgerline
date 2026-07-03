@@ -27,7 +27,6 @@ enum FileType: string
     case TEXT = 'TEXT';
     case FONT = 'FONT';
     case OTHER = 'OTHER';
-    case ENCRYPTED = 'ENCRYPTED';
 
     /**
      * Human-readable, English label.
@@ -50,6 +49,10 @@ enum FileType: string
 
     /**
      * Detect the category from a MIME type.
+     *
+     * MIME-only (server has no filename here). The client's richer counterpart
+     * is fileCategory() in resources/js/app.js, which also uses the file
+     * extension — keep the two category sets in sync.
      */
     public static function fromMime(string $mime): self
     {

@@ -194,20 +194,45 @@ Alpine.data('notificationBell', (labels = {}) => ({
     items: [],
     unread: 0,
     maxSeenId: 0,
+    etag: null,
     primed: false, // skip desktop popups for the first (historical) load
     desktop: (typeof Notification !== 'undefined') ? Notification.permission : 'unsupported',
 
     init() {
         this.load();
-        // Poll while the tab is visible; refresh immediately when it regains focus.
-        this._timer = setInterval(() => { if (! document.hidden) this.load(); }, 30000);
+        // Poll while the tab is visible and only from the "leader" tab, so many
+        // open tabs don't each hammer the endpoint. A conditional request (ETag)
+        // makes the unchanged case a cheap 304.
+        this._timer = setInterval(() => { if (! document.hidden && this.isLeader()) this.load(); }, 30000);
         document.addEventListener('visibilitychange', () => { if (! document.hidden) this.load(); });
+    },
+
+    // One tab per browser polls: claim leadership via a short-lived localStorage
+    // lease refreshed on each poll; any tab may still load on focus/open.
+    isLeader() {
+        try {
+            const now = Date.now();
+            const raw = localStorage.getItem('lln:poll-leader');
+            const lease = raw ? JSON.parse(raw) : null;
+            if (! this._tabId) this._tabId = String(now) + Math.round(now % 100000);
+            if (! lease || lease.id === this._tabId || now - lease.at > 70000) {
+                localStorage.setItem('lln:poll-leader', JSON.stringify({ id: this._tabId, at: now }));
+                return true;
+            }
+            return false;
+        } catch (e) {
+            return true; // no localStorage → just poll
+        }
     },
 
     async load() {
         try {
-            const res = await fetch('/notifications', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            const headers = { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+            if (this.etag) headers['If-None-Match'] = this.etag;
+            const res = await fetch('/notifications', { headers });
+            if (res.status === 304) return; // nothing changed
             if (! res.ok) return;
+            this.etag = res.headers.get('ETag') || this.etag;
             const data = await res.json();
             this.unread = data.unread ?? 0;
             const items = data.items ?? [];
@@ -1039,6 +1064,8 @@ function extOf(name) {
 }
 
 // Category from a filename + MIME. Extension wins; MIME is the fallback.
+// Client-side counterpart of PHP App\Enums\FileType::fromMime() — keep the two
+// category sets in sync (this one is richer: it also uses the extension).
 function fileCategory(name, mime) {
     const byExt = EXT_CATEGORY[extOf(name)];
     if (byExt) return byExt;
@@ -1048,6 +1075,8 @@ function fileCategory(name, mime) {
     if (mime.startsWith('audio/')) return 'AUDIO';
     if (mime.startsWith('text/')) return 'TEXT';
     if (mime === 'application/pdf') return 'PDF';
+    if (/(epub|mobipocket)/.test(mime)) return 'EBOOK';
+    if (/(iso9660|diskimage|apple-disk)/.test(mime)) return 'DISK';
     if (/(zip|tar|gzip|compressed|7z|rar|zstd)/.test(mime)) return 'ARCHIVE';
     if (/(word|opendocument.text|rtf)/.test(mime)) return 'DOCUMENT';
     if (/(excel|spreadsheet|csv)/.test(mime)) return 'SPREADSHEET';
