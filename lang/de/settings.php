@@ -150,4 +150,5 @@ return [
     'backup_notify_desktop' => 'Desktop / Browser',
     'backup_queued_short' => 'Eingereiht…',
     'backup_download' => 'Herunterladen',
+    'backup_cron_tz' => 'Zeiten gelten in der Zeitzone :tz.',
 ];

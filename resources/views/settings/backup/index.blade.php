@@ -74,6 +74,9 @@
         </div>
 
         @forelse ($jobs as $job)
+            {{-- Single source of truth for both the summary and the stats grid,
+                 derived from the runs (avoids the summary and stats disagreeing). --}}
+            @php $s = $job->statistics(); @endphp
             <div class="mt-3 border-t border-gray-100 pt-3">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">
@@ -81,9 +84,9 @@
                         @unless ($job->enabled)<span class="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">✕</span>@endunless
                         <p class="text-xs text-gray-500">
                             {{ __('settings.backup_source_'.$job->source) }} → {{ $job->destination?->name }} · <code>{{ $job->cron }}</code> ·
-                            @if ($job->last_status)
-                                <span class="{{ $job->last_status === 'success' ? 'text-green-600' : 'text-red-600' }}">{{ $job->last_status }}</span>
-                                {{ $job->last_run_at?->diffForHumans() }}
+                            @if ($s['lastStatus'])
+                                <span class="{{ $s['lastStatus'] === 'success' ? 'text-green-600' : 'text-red-600' }}">{{ $s['lastStatus'] }}</span>
+                                {{ $s['lastRun']?->diffForHumans() }}
                             @else
                                 {{ __('settings.backup_never_run') }}
                             @endif
@@ -110,7 +113,6 @@
                 </div>
 
                 {{-- Per-job statistics --}}
-                @php $s = $job->statistics(); @endphp
                 @if ($s['runs'] > 0)
                     <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-gray-50 p-3 text-xs sm:grid-cols-4">
                         <div>
@@ -143,7 +145,12 @@
                         </div>
                         <div>
                             <dt class="text-gray-500">{{ __('settings.backup_stat_next_run') }}</dt>
-                            <dd class="font-medium text-gray-900" title="{{ $s['nextRun']?->toDateTimeString() }}">{{ $job->enabled ? ($s['nextRun']?->diffForHumans() ?? '—') : '—' }}</dd>
+                            <dd class="font-medium text-gray-900">
+                                {{ $job->enabled ? ($s['nextRun']?->diffForHumans() ?? '—') : '—' }}
+                                @if ($job->enabled && $s['nextRun'])
+                                    <span class="block font-normal text-gray-400">{{ $s['nextRun']->format('d.m.Y H:i') }} {{ config('app.timezone') }}</span>
+                                @endif
+                            </dd>
                         </div>
                     </dl>
                 @endif

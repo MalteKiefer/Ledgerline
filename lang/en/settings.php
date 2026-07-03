@@ -150,4 +150,5 @@ return [
     'backup_notify_desktop' => 'Desktop / browser',
     'backup_queued_short' => 'Queued…',
     'backup_download' => 'Download',
+    'backup_cron_tz' => 'Times are in the :tz timezone.',
 ];

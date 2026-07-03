@@ -23,7 +23,7 @@
             </select></div>
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_cron') }}</label>
             <input type="text" name="cron" value="{{ old('cron', $j->cron ?? '0 3 * * *') }}" class="{{ $input }}">
-            <p class="mt-1 text-xs text-gray-500">{{ __('settings.backup_cron_hint') }}</p>
+            <p class="mt-1 text-xs text-gray-500">{{ __('settings.backup_cron_hint') }} {{ __('settings.backup_cron_tz', ['tz' => config('app.timezone')]) }}</p>
             @error('cron')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror</div>
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_retention') }}</label>
             <input type="number" name="retention" min="1" value="{{ old('retention', $j->retention ?? 7) }}" class="{{ $input }}"></div>
