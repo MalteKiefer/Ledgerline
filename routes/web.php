@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
@@ -162,7 +163,17 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/todos/tasks/{todo}/restore', [TodoController::class, 'restore'])->name('todos.restore');
     Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->name('todos.destroy');
     Route::delete('/todos/trash', [TodoController::class, 'emptyTrash'])->name('todos.trash.empty');
-    Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
+    // Bookmarks: plain database rows (not zero-knowledge), rendered server-side.
+    Route::get('/bookmarks', [BookmarkController::class, 'index'])->name('bookmarks.index');
+    Route::post('/bookmarks/folders', [BookmarkController::class, 'storeFolder'])->name('bookmarks.folders.store');
+    Route::delete('/bookmarks/folders/{folder}', [BookmarkController::class, 'destroyFolder'])->name('bookmarks.folders.destroy');
+    Route::post('/bookmarks', [BookmarkController::class, 'store'])->name('bookmarks.store');
+    Route::put('/bookmarks/{bookmark}', [BookmarkController::class, 'update'])->name('bookmarks.update');
+    Route::post('/bookmarks/{bookmark}/favorite', [BookmarkController::class, 'toggleFavorite'])->name('bookmarks.favorite');
+    Route::post('/bookmarks/{bookmark}/trash', [BookmarkController::class, 'trash'])->name('bookmarks.trash');
+    Route::post('/bookmarks/{bookmark}/restore', [BookmarkController::class, 'restore'])->name('bookmarks.restore');
+    Route::delete('/bookmarks/{bookmark}', [BookmarkController::class, 'destroy'])->name('bookmarks.destroy');
+    Route::delete('/bookmarks/trash/all', [BookmarkController::class, 'emptyTrash'])->name('bookmarks.trash.empty');
     Route::view('/mail', 'mail.index')->name('mail.index');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
     Route::post('/mail/folders', [MailReaderController::class, 'folders'])->name('mail.folders');
@@ -180,9 +191,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['files', 'bookmarks', 'mail'])->name('vault.manifest.show');
+        ->whereIn('name', ['files', 'mail'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['files', 'bookmarks', 'mail'])->name('vault.manifest.update');
+        ->whereIn('name', ['files', 'mail'])->name('vault.manifest.update');
     Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
     Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
     Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
