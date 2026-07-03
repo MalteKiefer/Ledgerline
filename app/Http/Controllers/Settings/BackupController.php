@@ -158,6 +158,8 @@ class BackupController extends Controller
                 // Downloadable once finished successfully and the object still exists.
                 // A trailing "/" marks a folder mirror (files/gallery) — no single archive to download.
                 'downloadable' => $r->status === 'success' && $r->filename !== null && ! str_ends_with((string) $r->filename, '/'),
+                'cancellable' => $r->status === 'running' && ! $r->cancel_requested,
+                'cancelling' => $r->status === 'running' && $r->cancel_requested,
             ]),
         ]);
     }
@@ -181,6 +183,16 @@ class BackupController extends Controller
                 fclose($stream);
             }
         }, $name, ['Content-Type' => 'application/octet-stream']);
+    }
+
+    /** Ask a running backup to stop at its next checkpoint. */
+    public function cancelRun(BackupRun $run): JsonResponse
+    {
+        if ($run->status === 'running') {
+            $run->update(['cancel_requested' => true]);
+        }
+
+        return response()->json(['ok' => true]);
     }
 
     private function validateDestination(Request $request, ?BackupDestination $existing = null): array

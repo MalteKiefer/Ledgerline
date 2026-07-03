@@ -150,6 +150,8 @@ return [
     'backup_notify_desktop' => 'Desktop / Browser',
     'backup_queued_short' => 'Eingereiht…',
     'backup_download' => 'Herunterladen',
+    'backup_cancel' => 'Abbrechen',
+    'backup_cancelling' => 'Wird abgebrochen…',
     'backup_cron_tz' => 'Zeiten gelten in der Zeitzone :tz.',
     'mail_section' => 'Mail',
     'mail_desc' => 'Mailkonten und Hintergrund-Sync-Intervall.',
