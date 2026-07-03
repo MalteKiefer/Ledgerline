@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Search\Providers\NoteSearchProvider;
 use App\Search\Providers\PhotoSearchProvider;
 use App\Search\Providers\TodoSearchProvider;
 
@@ -12,6 +13,7 @@ return [
     */
     'providers' => [
         PhotoSearchProvider::class,
+        NoteSearchProvider::class,
         TodoSearchProvider::class,
     ],
 
