@@ -24,22 +24,12 @@
         </div>
     </form>
 
-    {{-- Account management (client-side, in the encrypted vault) --}}
+    {{-- Account management (plain rows; password encrypted at rest) --}}
     <div class="mt-6" x-data="vaultMail({
             stale: @js(__('mail.stale')),
             saveFailed: @js(__('mail.save_failed')),
             connectFailed: @js(__('mail.connect_failed')),
         })">
-        <template x-if="state === 'unconfigured' || state === 'locked'">
-            <div class="rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-                <x-icon name="lock-closed" class="mx-auto h-10 w-10 text-gray-400" />
-                <p class="mt-4 text-sm text-gray-600" x-text="state === 'locked' ? @js(__('mail.locked_notice')) : @js(__('mail.unconfigured_notice'))"></p>
-                <button type="button" @click="window.dispatchEvent(new CustomEvent('vault-panel'))"
-                    class="mt-5 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-                    x-text="state === 'locked' ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></button>
-            </div>
-        </template>
-
         <template x-if="state === 'ready'">
           <div>
             <div class="flex items-center justify-between gap-3">

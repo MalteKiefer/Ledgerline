@@ -9,6 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NoteController;
@@ -141,6 +142,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/files/data', [FileController::class, 'data'])->name('files.data');
     Route::put('/files/data', [FileController::class, 'sync'])->name('files.sync');
     Route::post('/files/upload', [FileController::class, 'upload'])->name('files.upload');
+    Route::post('/files/import', [FileController::class, 'import'])->name('files.import');
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
     // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
@@ -176,6 +178,11 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/bookmarks/{bookmark}', [BookmarkController::class, 'destroy'])->name('bookmarks.destroy');
     Route::delete('/bookmarks/trash/all', [BookmarkController::class, 'emptyTrash'])->name('bookmarks.trash.empty');
     Route::view('/mail', 'mail.index')->name('mail.index');
+    // Mail accounts: plain rows (password encrypted at rest), JSON API.
+    Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts');
+    Route::post('/mail/accounts', [MailAccountController::class, 'store'])->name('mail.accounts.store');
+    Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->name('mail.accounts.update');
+    Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->name('mail.accounts.destroy');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
     Route::post('/mail/folders', [MailReaderController::class, 'folders'])->name('mail.folders');
     Route::post('/mail/folder/create', [MailReaderController::class, 'createFolder'])->name('mail.folder.create');

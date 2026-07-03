@@ -4,7 +4,6 @@
         stale: @js(__('mail.stale')),
         saveFailed: @js(__('mail.save_failed')),
         connectFailed: @js(__('mail.connect_failed')),
-        blobBase: '{{ url('/vault/blobs') }}',
         folderNames: @js([
             'inbox' => __('mail.folder_inbox'),
             'all' => __('mail.folder_all'),
@@ -18,16 +17,6 @@
         ]),
      })">
 
-    {{-- Vault not set up / locked: only the gate. --}}
-    <template x-if="state === 'unconfigured' || state === 'locked'">
-        <div class="mx-auto mt-16 max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-            <x-icon name="lock-closed" class="mx-auto h-10 w-10 text-gray-400" />
-            <p class="mt-4 text-sm text-gray-600" x-text="state === 'locked' ? @js(__('mail.locked_notice')) : @js(__('mail.unconfigured_notice'))"></p>
-            <button type="button" @click="window.dispatchEvent(new CustomEvent('vault-panel'))"
-                class="mt-5 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-                x-text="state === 'locked' ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></button>
-        </div>
-    </template>
 
     <template x-if="state === 'error'">
         <p class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">{{ __('mail.save_failed') }}</p>
