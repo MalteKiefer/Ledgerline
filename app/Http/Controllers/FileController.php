@@ -68,16 +68,26 @@ class FileController extends Controller
             'files.*.trashed' => ['nullable'],
         ]);
 
-        DB::transaction(function () use ($data): void {
+        $folders = $data['folders'] ?? [];
+        $files = $data['files'] ?? [];
+
+        // Referential integrity: every folder parent and file folder must point
+        // at a folder present in this same manifest (or be null = root), and the
+        // folder graph must be acyclic. Reject the whole write otherwise so a
+        // malformed manifest cannot create dangling references or a parent loop
+        // that would make the tree walker recurse forever.
+        $this->assertManifestConsistent($folders, $files);
+
+        $removedBlobs = DB::transaction(function () use ($folders, $files): array {
             $folderIds = [];
-            foreach ($data['folders'] ?? [] as $f) {
+            foreach ($folders as $f) {
                 FileFolder::updateOrCreate(['id' => $f['id']], ['parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
                 $folderIds[] = $f['id'];
             }
             FileFolder::when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->delete();
 
             $fileIds = [];
-            foreach ($data['files'] ?? [] as $f) {
+            foreach ($files as $f) {
                 StoredFile::updateOrCreate(['id' => $f['id']], [
                     'file_folder_id' => $f['folder'] ?? null,
                     'name' => $f['name'],
@@ -89,8 +99,21 @@ class FileController extends Controller
                 ]);
                 $fileIds[] = $f['id'];
             }
+
+            // Reclaim the bytes of rows the manifest dropped in the same write,
+            // so a deleted file never leaves an orphaned blob on the disk.
+            $removed = StoredFile::when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))
+                ->pluck('blob')->all();
             StoredFile::when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->delete();
+
+            return $removed;
         });
+
+        foreach ($removedBlobs as $blob) {
+            if (is_string($blob) && Str::isUuid($blob)) {
+                $this->disk()->delete('files/'.$blob);
+            }
+        }
 
         return response()->json(['ok' => true]);
     }
@@ -124,7 +147,10 @@ class FileController extends Controller
             'id' => (string) Str::uuid(),
             'file_folder_id' => $data['folder_id'] ?? null,
             'name' => $file->getClientOriginalName() ?: 'attachment',
-            'mime' => $file->getClientMimeType() ?: 'application/octet-stream',
+            // Sniff the real type from the bytes (finfo), never the client-sent
+            // header: this row is created from an untrusted mail attachment and
+            // the stored mime later drives how the client previews the file.
+            'mime' => $file->getMimeType() ?: 'application/octet-stream',
             'size' => $file->getSize(),
             'blob' => $blob,
             'tags' => [],
@@ -150,9 +176,51 @@ class FileController extends Controller
     /** Delete a stored file's bytes (after its row was removed via sync). */
     public function deleteBlob(string $blob): JsonResponse
     {
-        $this->disk()->delete($this->path($blob));
+        $path = $this->path($blob);
+
+        // Never destroy bytes still owned by a live row: a racing or forged
+        // delete could otherwise leave a dangling file that 404s on open.
+        abort_if(StoredFile::where('blob', $blob)->exists(), 409);
+
+        $this->disk()->delete($path);
 
         return response()->json(['deleted' => true]);
+    }
+
+    /**
+     * Validate that the manifest's folder graph is internally consistent:
+     * parents/file-folders resolve to a folder in the payload (or null) and the
+     * parent relation contains no cycle. Aborts 422 on any violation.
+     *
+     * @param  array<int,array<string,mixed>>  $folders
+     * @param  array<int,array<string,mixed>>  $files
+     */
+    private function assertManifestConsistent(array $folders, array $files): void
+    {
+        $parent = [];
+        foreach ($folders as $f) {
+            $parent[$f['id']] = $f['parent'] ?? null;
+        }
+        $known = array_fill_keys(array_keys($parent), true);
+
+        foreach ($folders as $f) {
+            $p = $f['parent'] ?? null;
+            abort_if($p !== null && ! isset($known[$p]), 422, 'Folder parent does not resolve within the manifest.');
+        }
+        foreach ($files as $f) {
+            $folder = $f['folder'] ?? null;
+            abort_if($folder !== null && ! isset($known[$folder]), 422, 'File folder does not resolve within the manifest.');
+        }
+
+        // Walk each folder to the root; a chain longer than the folder count
+        // means a cycle.
+        $count = count($parent);
+        foreach (array_keys($parent) as $start) {
+            $steps = 0;
+            for ($cur = $parent[$start]; $cur !== null; $cur = $parent[$cur] ?? null) {
+                abort_if(++$steps > $count, 422, 'Folder hierarchy contains a cycle.');
+            }
+        }
     }
 
     /** Only plain UUIDs, so the id can never traverse outside the prefix. */
