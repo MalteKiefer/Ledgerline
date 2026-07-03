@@ -2206,6 +2206,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         folders: [], foldersLoading: false, sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [],
         saveAtt: { open: false, att: null, folder: '', busy: false, error: '', done: false }, filesFolders: [],
+        attView: { open: false, name: '', kind: '', url: '', loading: false, error: '' },
     },
 
     async init() {
