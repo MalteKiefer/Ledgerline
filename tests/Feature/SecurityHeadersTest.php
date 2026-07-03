@@ -31,9 +31,12 @@ final class SecurityHeadersTest extends TestCase
         $this->assertStringContainsString("frame-ancestors 'none'", $csp);
         // object-src allows blob: (in-app PDF viewer) but no remote plugins.
         $this->assertStringContainsString("object-src 'self' blob:", $csp);
-        // Alpine needs 'unsafe-eval'; the Vite/platform bootstrap needs
-        // 'unsafe-inline'. Cross-origin scripts stay forbidden ('self' only).
-        $this->assertStringContainsString("script-src 'self' 'unsafe-inline' 'unsafe-eval'", $csp);
+        // Alpine needs 'unsafe-eval'; there are no inline scripts so
+        // 'unsafe-inline' is gone from script-src. Cross-origin scripts stay
+        // forbidden ('self' only).
+        $this->assertStringContainsString("script-src 'self' 'unsafe-eval'", $csp);
+        $scriptSrc = collect(explode('; ', $csp))->first(fn ($d) => str_starts_with($d, 'script-src'));
+        $this->assertStringNotContainsString("'unsafe-inline'", (string) $scriptSrc);
         $this->assertStringNotContainsString('script-src https:', $csp);
     }
 
