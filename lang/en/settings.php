@@ -51,7 +51,7 @@ return [
     'rescan' => 'Re-read metadata',
     'save' => 'Save',
     'mail_sync_minutes' => 'Refresh mail in background every (minutes)',
-    'mail_sync_minutes_hint' => 'At least 5 minutes and not longer than the auto-lock time. Runs only while the vault is unlocked.',
+    'mail_sync_minutes_hint' => 'How often the background sync refreshes mail (5 minutes to 24 hours).',
     'subheading' => 'Manage your workspace configuration.',
     'trip_gap_days' => 'Trip gap (days)',
     'trip_radius_km' => 'Trip radius (km)',

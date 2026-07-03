@@ -325,7 +325,7 @@
                 </div>
             </div>
 
-            {{-- Save attachment into the Files vault --}}
+            {{-- Save attachment into Files --}}
             <div x-show="reader.saveAtt.open" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="reader.saveAtt.open = false">
                 <div class="absolute inset-0 bg-gray-900/40" @click="reader.saveAtt.open = false"></div>
                 <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
