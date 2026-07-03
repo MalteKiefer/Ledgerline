@@ -182,6 +182,46 @@ Alpine.data('spotlight', () => ({
 }));
 
 /**
+/**
+ * Live backup run list: loads recent runs as JSON, refreshes after "back up
+ * now" (no page reload) and polls while any run is still running. Each finished
+ * run can be expanded to its log or downloaded.
+ */
+Alpine.data('backupRuns', (labels = {}) => ({
+    runs: [],
+    expanded: {},
+    _timer: null,
+
+    init() {
+        this.load();
+        // Refresh when a job is triggered from the jobs section.
+        window.addEventListener('backup-ran', () => setTimeout(() => this.load(), 800));
+        // Poll while something is running so status/size update on their own.
+        this._timer = setInterval(() => { if (! document.hidden && this.anyRunning()) this.load(); }, 5000);
+    },
+
+    anyRunning() {
+        return this.runs.some((r) => r.status === 'running');
+    },
+
+    async load() {
+        try {
+            const res = await fetch(labels.runsUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            this.runs = (await res.json()).runs ?? [];
+        } catch (e) { /* keep current on error */ }
+    },
+
+    toggle(id) {
+        this.expanded[id] = ! this.expanded[id];
+    },
+
+    downloadUrl(id) {
+        return labels.downloadBase.replace('__id__', id);
+    },
+}));
+
+/**
  * Bell menu: local in-app notifications with an unread badge, plus browser /
  * desktop notifications (Web Notifications API) while the app is open. Polls the
  * server and mirrors newly-arrived items to a desktop notification.

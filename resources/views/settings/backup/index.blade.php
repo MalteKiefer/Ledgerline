@@ -89,11 +89,18 @@
                             @endif
                         </p>
                     </div>
-                    <div class="flex shrink-0 items-center gap-2">
-                        <form method="POST" action="{{ route('settings.backup.jobs.run', $job) }}">
-                            @csrf
-                            <button type="submit" class="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">{{ __('settings.backup_run_now') }}</button>
-                        </form>
+                    <div class="flex shrink-0 items-center gap-2" x-data="{ queued: false }">
+                        <button type="button" :disabled="queued"
+                            @click="queued = true;
+                                fetch('{{ route('settings.backup.jobs.run', $job) }}', {
+                                    method: 'POST',
+                                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
+                                }).then(() => window.dispatchEvent(new CustomEvent('backup-ran')))
+                                  .finally(() => setTimeout(() => queued = false, 2000))"
+                            class="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                            <span x-show="! queued">{{ __('settings.backup_run_now') }}</span>
+                            <span x-show="queued" x-cloak>{{ __('settings.backup_queued_short') }}</span>
+                        </button>
                         <button type="button" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="pencil" /></button>
                         <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" onsubmit="return confirm('{{ __('settings.backup_delete_confirm') }}')">
                             @csrf @method('DELETE')
@@ -150,53 +157,52 @@
         @endforelse
     </section>
 
-    {{-- Recent runs --}}
-    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+    {{-- Recent runs — live-updating (no page reload) --}}
+    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}' })">
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.backup_runs_heading') }}</h2>
-        @if ($runs->isEmpty())
-            <p class="mt-3 text-sm text-gray-500">{{ __('settings.backup_no_runs') }}</p>
-        @else
-            <table class="mt-3 w-full text-left text-sm">
-                <thead class="text-xs uppercase text-gray-400">
-                    <tr>
-                        <th class="w-6 py-1"></th>
-                        <th class="py-1 pr-3">{{ __('settings.backup_name') }}</th>
-                        <th class="py-1 pr-3">{{ __('settings.backup_status') }}</th>
-                        <th class="py-1 pr-3">{{ __('settings.backup_started') }}</th>
-                        <th class="py-1 pr-3">{{ __('settings.backup_size') }}</th>
-                    </tr>
-                </thead>
+        <p x-show="runs.length === 0" class="mt-3 text-sm text-gray-500">{{ __('settings.backup_no_runs') }}</p>
+        <table x-show="runs.length > 0" x-cloak class="mt-3 w-full text-left text-sm">
+            <thead class="text-xs uppercase text-gray-400">
+                <tr>
+                    <th class="w-6 py-1"></th>
+                    <th class="py-1 pr-3">{{ __('settings.backup_name') }}</th>
+                    <th class="py-1 pr-3">{{ __('settings.backup_status') }}</th>
+                    <th class="py-1 pr-3">{{ __('settings.backup_started') }}</th>
+                    <th class="py-1 pr-3">{{ __('settings.backup_size') }}</th>
+                    <th class="py-1 pr-3"></th>
+                </tr>
+            </thead>
+            {{-- One <tbody> per run (valid HTML) so x-for has a single root and
+                 can hold both the row and its expandable log row. --}}
+            <template x-for="r in runs" :key="r.id">
                 <tbody>
-                    @foreach ($runs as $run)
-                        <tr class="border-t border-gray-100" x-data="{ open: false }">
-                            <td class="py-1.5 align-top">
-                                <button type="button" @click="open = ! open" class="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" :aria-expanded="open" title="{{ __('settings.backup_log') }}">
-                                    <x-icon name="chevron-down" class="h-4 w-4 transition-transform" ::class="open ? 'rotate-180' : ''" />
-                                </button>
-                            </td>
-                            <td class="py-1.5 pr-3 align-top text-gray-700">{{ $run->job?->name ?? '—' }}</td>
-                            <td class="py-1.5 pr-3 align-top">
-                                <span class="{{ $run->status === 'success' ? 'text-green-600' : ($run->status === 'failed' ? 'text-red-600' : 'text-gray-500') }}">{{ $run->status }}</span>
-                                @if ($run->status === 'failed' && $run->message)
-                                    <span class="block max-w-md truncate text-xs text-gray-400" title="{{ $run->message }}">{{ $run->message }}</span>
-                                @endif
-                            </td>
-                            <td class="py-1.5 pr-3 align-top text-gray-500" title="{{ $run->started_at?->toDateTimeString() }}">{{ $run->started_at?->diffForHumans() }}</td>
-                            <td class="py-1.5 pr-3 align-top text-gray-500">{{ $run->bytes ? \Illuminate\Support\Number::fileSize($run->bytes) : '—' }}</td>
-                        </tr>
-                        <tr x-show="open" x-cloak>
-                            <td></td>
-                            <td colspan="4" class="pb-3 pr-3">
-                                @if ($run->log)
-                                    <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-gray-900 p-3 font-mono text-[11px] leading-relaxed text-gray-100">{{ $run->log }}</pre>
-                                @else
-                                    <p class="text-xs text-gray-400">{{ __('settings.backup_no_log') }}</p>
-                                @endif
-                            </td>
-                        </tr>
-                    @endforeach
+                    <tr class="border-t border-gray-100">
+                        <td class="py-1.5 align-top">
+                            <button type="button" @click="toggle(r.id)" class="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+                                <x-icon name="chevron-down" class="h-4 w-4 transition-transform" ::class="expanded[r.id] ? 'rotate-180' : ''" />
+                            </button>
+                        </td>
+                        <td class="py-1.5 pr-3 align-top text-gray-700" x-text="r.job ?? '—'"></td>
+                        <td class="py-1.5 pr-3 align-top">
+                            <span :class="r.status === 'success' ? 'text-green-600' : (r.status === 'failed' ? 'text-red-600' : 'text-gray-500')" x-text="r.status"></span>
+                            <span x-show="r.status === 'failed' && r.message" class="block max-w-md truncate text-xs text-gray-400" :title="r.message" x-text="r.message"></span>
+                        </td>
+                        <td class="py-1.5 pr-3 align-top text-gray-500" x-text="r.startedHuman"></td>
+                        <td class="py-1.5 pr-3 align-top text-gray-500" x-text="r.size ?? '—'"></td>
+                        <td class="py-1.5 pr-3 align-top">
+                            <a x-show="r.downloadable" :href="downloadUrl(r.id)" class="text-xs font-medium text-blue-600 hover:text-blue-700">{{ __('settings.backup_download') }}</a>
+                        </td>
+                    </tr>
+                    <tr x-show="expanded[r.id]" x-cloak>
+                        <td></td>
+                        <td colspan="5" class="pb-3 pr-3">
+                            <pre x-show="r.log" class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-gray-900 p-3 font-mono text-[11px] leading-relaxed text-gray-100" x-text="r.log"></pre>
+                            <p x-show="! r.log" class="text-xs text-gray-400">{{ __('settings.backup_no_log') }}</p>
+                        </td>
+                    </tr>
                 </tbody>
-            </table>
-        @endif
+            </template>
+        </table>
     </section>
 </x-layouts.app>
