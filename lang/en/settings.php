@@ -156,4 +156,5 @@ return [
     'mail_heading' => 'Mail',
     'mail_sync_heading' => 'Background sync',
     'mail_accounts_heading' => 'Accounts',
+    'backup_mirror_hint' => 'Files/Gallery are mirrored object-by-object (already encrypted); versions, retention and archive encryption do not apply.',
 ];
