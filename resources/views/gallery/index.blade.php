@@ -108,7 +108,7 @@
                 <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
                     <h3 class="text-base font-semibold text-gray-900">{{ __('gallery.set_location') }}</h3>
                     <p class="mt-1 text-sm text-gray-600">{{ __('gallery.set_location_hint') }}</p>
-                    <form method="POST" action="{{ route('gallery.location') }}" class="mt-4">
+                    <form method="POST" action="{{ route('gallery.location') }}" @submit.prevent="bulkLocation($event).then(ok => { if (ok) locationOpen = false })" class="mt-4">
                         @csrf
                         <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
                         <div class="grid grid-cols-2 gap-2">
@@ -132,7 +132,7 @@
                 <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
                     <h3 class="text-base font-semibold text-gray-900">{{ __('common.confirm_title') }}</h3>
                     <p class="mt-2 text-sm text-gray-600">{{ __('gallery.delete_confirm') }}</p>
-                    <form method="POST" action="{{ route('gallery.destroy') }}" class="mt-5 flex justify-end gap-3">
+                    <form method="POST" action="{{ route('gallery.destroy') }}" @submit.prevent="bulkDelete($event).then(() => deleteOpen = false)" class="mt-5 flex justify-end gap-3">
                         @csrf @method('DELETE')
                         <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
                         <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>

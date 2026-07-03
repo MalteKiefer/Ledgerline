@@ -591,6 +591,32 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         } catch (e) { /* leave state unchanged on failure */ }
     },
 
+    // Bulk soft-delete without a reload: remove the deleted cards from the grid
+    // and clear the selection. Returns success so the modal can close.
+    async bulkDelete(event) {
+        const res = await fetch(event.target.action, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(event.target),
+        });
+        if (! res.ok) return false;
+        const b = await res.json();
+        (b.ids ?? []).forEach((id) => document.querySelector(`[data-photo-id="${id}"]`)?.remove());
+        if (this.viewerOpen && (b.ids ?? []).includes(Number(this.current.id))) this.viewerOpen = false;
+        this.applySelection([]);
+        return true;
+    },
+
+    // Bulk set location without a reload; returns success so the modal can close.
+    async bulkLocation(event) {
+        const res = await fetch(event.target.action, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(event.target),
+        });
+        return res.ok;
+    },
+
     // Save the name/date/location edits without a reload (the form carries its
     // own _token + _method=PUT); refresh the shown metadata from the response.
     async saveMeta(event) {
