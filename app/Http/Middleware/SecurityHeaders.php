@@ -49,6 +49,9 @@ final class SecurityHeaders
                 "style-src 'self' 'unsafe-inline'",
                 "img-src 'self' data: blob: https:",
                 "font-src 'self' data:",
+                // blob: so the file viewer can play decrypted video/audio from a
+                // client-generated blob: URL.
+                "media-src 'self' blob:",
                 "connect-src 'self'",
                 // blob: so the in-app PDF viewer works: some browsers render an
                 // <object>/<embed> PDF through an internal frame from a

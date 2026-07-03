@@ -12,9 +12,16 @@ class FileTypeTest extends TestCase
     public function test_it_detects_categories_from_mime(): void
     {
         $this->assertSame(FileType::IMAGE, FileType::fromMime('image/png'));
+        $this->assertSame(FileType::VECTOR, FileType::fromMime('image/svg+xml'));
+        $this->assertSame(FileType::VIDEO, FileType::fromMime('video/mp4'));
+        $this->assertSame(FileType::AUDIO, FileType::fromMime('audio/mpeg'));
         $this->assertSame(FileType::PDF, FileType::fromMime('application/pdf'));
         $this->assertSame(FileType::SPREADSHEET, FileType::fromMime('text/csv'));
-        $this->assertSame(FileType::DOCUMENT, FileType::fromMime('text/plain'));
+        $this->assertSame(FileType::PRESENTATION, FileType::fromMime('application/vnd.ms-powerpoint'));
+        $this->assertSame(FileType::TEXT, FileType::fromMime('text/plain'));
+        $this->assertSame(FileType::CODE, FileType::fromMime('application/json'));
+        $this->assertSame(FileType::FONT, FileType::fromMime('font/woff2'));
+        $this->assertSame(FileType::EBOOK, FileType::fromMime('application/epub+zip'));
         $this->assertSame(FileType::ARCHIVE, FileType::fromMime('application/zip'));
         $this->assertSame(FileType::OTHER, FileType::fromMime('application/octet-stream'));
     }
