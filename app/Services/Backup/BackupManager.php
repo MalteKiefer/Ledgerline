@@ -65,6 +65,9 @@ final class BackupManager
 
             $fs = $this->destinations->make($job->destination);
             $stream = fopen($uploadPath, 'rb');
+            if ($stream === false) {
+                throw new RuntimeException('Could not open the staged archive for upload.');
+            }
             try {
                 $fs->writeStream($filename, $stream);
             } finally {
@@ -117,13 +120,14 @@ final class BackupManager
         $files = [];
         foreach ($fs->listContents($prefix, false) as $item) {
             if ($item->isFile()) {
-                $files[] = $item->path();
+                // Sort by the object's actual mtime (newest first), not by the
+                // filename — robust even if the naming scheme changes.
+                $files[] = ['path' => $item->path(), 'ts' => (int) $item->lastModified()];
             }
         }
-        // Object names are timestamped, so a plain descending sort is newest-first.
-        rsort($files);
+        usort($files, fn (array $a, array $b): int => $b['ts'] <=> $a['ts']);
         foreach (array_slice($files, $retention) as $old) {
-            $fs->delete($old);
+            $fs->delete($old['path']);
         }
     }
 

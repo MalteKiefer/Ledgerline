@@ -28,24 +28,45 @@ abstract class DiskArchiveSource implements BackupSource
     {
         $disk = Storage::disk(config('files.disk'));
         $staging = $workDir.'/'.$this->name();
-        @mkdir($staging, 0700, true);
+        $this->makeDir($staging);
 
+        $staged = 0;
         foreach ($disk->allFiles($this->prefix()) as $file) {
+            // Object keys come from the disk; refuse any that would escape the
+            // staging directory (defence-in-depth against a crafted key).
             $target = $staging.'/'.$file;
-            @mkdir(dirname($target), 0700, true);
+            $real = $this->safeJoin($staging, $file);
+            if ($real === null) {
+                throw new RuntimeException('Unsafe object path in archive: '.$file);
+            }
+            $this->makeDir(dirname($target));
             $read = $disk->readStream($file);
             if ($read === null) {
-                continue;
+                throw new RuntimeException('Could not read '.$file.' for backup.');
             }
             $write = fopen($target, 'wb');
-            stream_copy_to_stream($read, $write);
+            if ($write === false) {
+                fclose($read);
+                throw new RuntimeException('Could not stage '.$file.' for backup.');
+            }
+            $copied = stream_copy_to_stream($read, $write);
             fclose($write);
             fclose($read);
+            if ($copied === false) {
+                throw new RuntimeException('Failed to copy '.$file.' into the archive.');
+            }
+            $staged++;
+        }
+
+        // PharData refuses to build from an empty directory, so an empty source
+        // (e.g. a vault with no files yet) would throw. Stage a marker so the
+        // archive is always valid — restore just ignores it.
+        if ($staged === 0) {
+            file_put_contents($staging.'/.ledgerline-empty', "This backup source was empty at backup time.\n");
         }
 
         $tarPath = $workDir.'/'.$this->name().'.tar';
         $archive = new PharData($tarPath);
-        // buildFromDirectory keeps the prefix-relative layout; empty dir → empty tar.
         $archive->buildFromDirectory($staging);
         $archive->compress(\Phar::GZ);
         unset($archive);
@@ -57,5 +78,22 @@ abstract class DiskArchiveSource implements BackupSource
         @unlink($tarPath);
 
         return new BackupArtifact($gzPath, 'tar.gz');
+    }
+
+    private function makeDir(string $dir): void
+    {
+        if (! is_dir($dir) && ! mkdir($dir, 0700, true) && ! is_dir($dir)) {
+            throw new RuntimeException('Could not create staging directory: '.$dir);
+        }
+    }
+
+    /** Resolve $rel under $base, returning null if it would escape $base. */
+    private function safeJoin(string $base, string $rel): ?string
+    {
+        if (str_contains($rel, "\0") || preg_match('#(^|/)\.\.(/|$)#', $rel)) {
+            return null;
+        }
+
+        return $base.'/'.$rel;
     }
 }
