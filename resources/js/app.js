@@ -2786,11 +2786,16 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return Vault.cacheGet(`stats:${a.id}`) ?? a.stats;
     },
 
-    // Unread count for an account id (from synced stats), for the switcher badge.
+    // "New mail" count for the switcher badge: unread in the INBOX only. The
+    // stats.unseen field sums every folder (Junk, Trash, Sent…), which badly
+    // overstates new mail — so read the INBOX folder's own unseen instead.
     accountUnread(id) {
         if (! id) return 0;
         const a = this.manifest.accounts.find((x) => x.id === id);
-        return a ? (this.accountStats(a)?.unseen ?? 0) : 0;
+        const s = a ? this.accountStats(a) : null;
+        if (! s) return 0;
+        const inbox = (s.folders ?? []).find((f) => /^inbox$/i.test(f.path) || /^inbox$/i.test(f.name));
+        return inbox ? (inbox.unseen ?? 0) : (s.unseen ?? 0);
     },
 
     async load() {
@@ -3000,17 +3005,30 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     loadFoldersAsync(a) {
         const gen = this.reader.gen;
-        this.reader.foldersLoading = true;
+        // Show the cached folder tree instantly; only spin when there is none.
+        const cached = Vault.cacheGet(`folders:${a.id}`, 86400000);
+        if (cached && cached.length) {
+            this.reader.folders = this.sortedFolders(cached);
+            this.adoptInboxPath();
+        } else {
+            this.reader.foldersLoading = true;
+        }
         this.loadFolders(this.credsBody(a)).then((folders) => {
             if (this.reader.gen !== gen) return; // switched account mid-flight → drop
+            if (! folders.length) return;        // keep the cached tree on a failed refresh
             this.reader.folders = this.sortedFolders(folders);
-            // Adopt the server's real INBOX path only if still on the default.
-            const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
-            if (inbox && this.reader.folderPath === 'INBOX' && inbox.path !== 'INBOX') {
-                this.reader.folderPath = inbox.path;
-                this.hydrateFolder();
-            }
+            Vault.cachePut(`folders:${a.id}`, folders);
+            this.adoptInboxPath();
         }).finally(() => { if (this.reader.gen === gen) this.reader.foldersLoading = false; });
+    },
+
+    // Adopt the server's real INBOX path if we are still on the default guess.
+    adoptInboxPath() {
+        const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
+        if (inbox && this.reader.folderPath === 'INBOX' && inbox.path !== 'INBOX') {
+            this.reader.folderPath = inbox.path;
+            this.hydrateFolder();
+        }
     },
 
     // Manual "check for new mail": reload the current folder and refresh counts.
@@ -4337,6 +4355,12 @@ document.addEventListener('alpine:init', () => {
                     try {
                         const m = await mailPostRaw('/mail/messages', { ...creds, folder: 'INBOX', page: 1 });
                         if (m.ok) { const d = await m.json(); Vault.cachePut(`msgs:${a.id}:INBOX`, { messages: d.messages ?? [], total: d.total ?? 0, ts: Date.now() }); }
+                    } catch (e) { /* skip */ }
+                    try {
+                        // Cache the folder tree too, so opening the mailbox shows the
+                        // sidebar instantly instead of spinning on an IMAP round-trip.
+                        const f = await mailPostRaw('/mail/folders', creds);
+                        if (f.ok) { const d = await f.json(); if ((d.folders ?? []).length) Vault.cachePut(`folders:${a.id}`, d.folders); }
                     } catch (e) { /* skip */ }
                 }
                 this.lastSync = Date.now();
