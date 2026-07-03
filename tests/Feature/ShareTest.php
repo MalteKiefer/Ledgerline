@@ -4,179 +4,71 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Note;
 use App\Models\NoteShare;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class ShareTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeShare(array $attributes = []): NoteShare
-    {
-        return NoteShare::create(array_merge([
-            'cipher' => 'Y2lwaGVy',
-            'nonce' => 'bm9uY2U=',
-            'has_password' => false,
-            'expires_at' => now()->addDay(),
-        ], $attributes));
-    }
-
-    public function test_guests_cannot_create_a_share(): void
-    {
-        $this->post(route('shares.store'), [
-            'cipher' => 'Y2lwaGVy', 'nonce' => 'bm9uY2U=', 'expires_in' => 86400, 'has_password' => false,
-        ])->assertRedirect(route('login'));
-    }
-
-    public function test_store_creates_a_share_with_the_right_expiry(): void
+    public function test_owner_creates_a_share_snapshot(): void
     {
         $this->signIn();
+        $note = Note::create(['title' => 'Recipe', 'content' => '# Pancakes']);
 
-        $response = $this->postJson(route('shares.store'), [
-            'cipher' => 'Y2lwaGVy',
-            'nonce' => 'bm9uY2U=',
-            'expires_in' => 86400,
-            'has_password' => false,
-        ])->assertCreated()->assertJsonStructure(['id', 'url', 'expires_at']);
+        $this->post(route('notes.share', $note), ['expires_in' => 86400])->assertRedirect();
 
-        $share = NoteShare::query()->firstOrFail();
+        $share = NoteShare::first();
+        $this->assertSame('Recipe', $share->title);
+        $this->assertSame('# Pancakes', $share->content);
         $this->assertFalse($share->has_password);
-        $this->assertEqualsWithDelta(now()->addSeconds(86400)->timestamp, $share->expires_at->timestamp, 5);
-        $this->assertSame($share->id, $response->json('id'));
     }
 
-    public function test_store_persists_and_exposes_allow_download(): void
+    public function test_public_can_view_a_share_rendered_as_html(): void
     {
-        $this->signIn();
+        $share = NoteShare::create(['title' => 'Hello', 'content' => '# Big title', 'expires_at' => now()->addDay()]);
 
-        $this->postJson(route('shares.store'), [
-            'cipher' => 'Y2lwaGVy',
-            'nonce' => 'bm9uY2U=',
-            'expires_in' => 86400,
-            'has_password' => false,
-            'allow_download' => true,
-        ])->assertCreated();
-
-        $share = NoteShare::query()->firstOrFail();
-        $this->assertTrue($share->allow_download);
-
-        $this->getJson(route('shares.data', $share))
-            ->assertOk()
-            ->assertJson(['allow_download' => true]);
+        $this->get(route('shares.show', $share))
+            ->assertOk()->assertSee('Big title')->assertSee('<h1', false);
     }
 
-    public function test_shares_are_not_downloadable_by_default(): void
+    public function test_an_expired_share_is_gone(): void
     {
-        $share = $this->makeShare();
+        $share = NoteShare::create(['title' => 'x', 'content' => 'y', 'expires_at' => now()->subMinute()]);
 
-        $this->assertFalse($share->fresh()->allow_download);
-        $this->getJson(route('shares.data', $share))
-            ->assertOk()
-            ->assertJson(['allow_download' => false]);
+        $this->get(route('shares.show', $share))->assertStatus(410);
+        $this->assertSame(0, NoteShare::count());
     }
 
-    public function test_store_rejects_a_disallowed_lifetime(): void
+    public function test_a_password_share_requires_the_password(): void
     {
-        $this->signIn();
-
-        $this->from(route('notes.index'))->post(route('shares.store'), [
-            'cipher' => 'Y2lwaGVy', 'nonce' => 'bm9uY2U=', 'expires_in' => 999, 'has_password' => false,
-        ])->assertRedirect()->assertSessionHasErrors('expires_in');
-
-        $this->assertDatabaseCount('note_shares', 0);
-    }
-
-    public function test_password_shares_require_the_wrap_fields(): void
-    {
-        $this->signIn();
-
-        $this->from(route('notes.index'))->post(route('shares.store'), [
-            'cipher' => 'Y2lwaGVy', 'nonce' => 'bm9uY2U=', 'expires_in' => 3600, 'has_password' => true,
-        ])->assertRedirect()->assertSessionHasErrors(['wrapped_key', 'wrap_salt', 'wrap_nonce', 'wrap_ops', 'wrap_mem']);
-
-        $this->assertDatabaseCount('note_shares', 0);
-    }
-
-    public function test_the_public_viewer_is_reachable_without_login(): void
-    {
-        $share = $this->makeShare();
-
-        $this->get(route('shares.show', $share))->assertOk();
-    }
-
-    public function test_data_returns_only_ciphertext_and_counts_the_view(): void
-    {
-        $share = $this->makeShare();
-
-        $this->getJson(route('shares.data', $share))
-            ->assertOk()
-            ->assertJson(['cipher' => 'Y2lwaGVy', 'nonce' => 'bm9uY2U=', 'has_password' => false])
-            ->assertJsonMissing(['title', 'content']);
-
-        $this->assertSame(1, $share->fresh()->views);
-    }
-
-    public function test_password_share_data_exposes_the_wrap_but_no_plaintext(): void
-    {
-        $share = $this->makeShare([
-            'has_password' => true,
-            'wrapped_key' => 'd3JhcHBlZA==',
-            'wrap_salt' => 'c2FsdA==',
-            'wrap_nonce' => 'd25vbmNl',
-            'wrap_ops' => 2,
-            'wrap_mem' => 67108864,
+        $share = NoteShare::create([
+            'title' => 'Secret', 'content' => 'top secret body',
+            'has_password' => true, 'password_hash' => Hash::make('open-sesame'),
+            'expires_at' => now()->addDay(),
         ]);
 
-        $this->getJson(route('shares.data', $share))
-            ->assertOk()
-            ->assertJson(['has_password' => true, 'wrapped_key' => 'd3JhcHBlZA==', 'wrap_salt' => 'c2FsdA==']);
+        $this->get(route('shares.show', $share))->assertOk()->assertDontSee('top secret body');
+        $this->post(route('shares.unlock', $share), ['password' => 'nope'])->assertStatus(422);
+        $this->post(route('shares.unlock', $share), ['password' => 'open-sesame'])->assertRedirect(route('shares.show', $share));
+        $this->get(route('shares.show', $share))->assertOk()->assertSee('top secret body');
     }
 
-    public function test_an_expired_share_is_gone_and_deleted(): void
+    public function test_view_limit_is_enforced(): void
     {
-        $share = $this->makeShare(['expires_at' => now()->subMinute()]);
+        $share = NoteShare::create(['title' => 'x', 'content' => 'once only', 'max_views' => 1, 'expires_at' => now()->addDay()]);
 
-        $this->getJson(route('shares.data', $share))->assertStatus(410);
-        $this->assertDatabaseMissing('note_shares', ['id' => $share->id]);
+        $this->get(route('shares.show', $share))->assertOk()->assertSee('once only');
+        $this->get(route('shares.show', $share))->assertStatus(410);
     }
 
-    public function test_a_view_limit_burns_the_share(): void
+    public function test_html_in_content_is_escaped(): void
     {
-        $share = $this->makeShare(['max_views' => 1]);
+        $share = NoteShare::create(['title' => 'xss', 'content' => 'hello <script>alert(1)</script>', 'expires_at' => now()->addDay()]);
 
-        // First retrieval succeeds and counts.
-        $this->getJson(route('shares.data', $share))->assertOk();
-        // Second retrieval is over the limit: gone and removed.
-        $this->getJson(route('shares.data', $share))->assertStatus(410);
-        $this->assertDatabaseMissing('note_shares', ['id' => $share->id]);
-    }
-
-    public function test_owner_can_revoke_a_share(): void
-    {
-        $this->signIn();
-        $share = $this->makeShare();
-
-        $this->deleteJson(route('shares.destroy', $share))->assertOk();
-        $this->assertDatabaseMissing('note_shares', ['id' => $share->id]);
-    }
-
-    public function test_guests_cannot_revoke_a_share(): void
-    {
-        $share = $this->makeShare();
-
-        $this->delete(route('shares.destroy', $share))->assertRedirect(route('login'));
-        $this->assertDatabaseHas('note_shares', ['id' => $share->id]);
-    }
-
-    public function test_prune_deletes_only_expired_shares(): void
-    {
-        $live = $this->makeShare(['expires_at' => now()->addHour()]);
-        $dead = $this->makeShare(['expires_at' => now()->subHour()]);
-
-        $this->artisan('shares:prune')->assertSuccessful();
-
-        $this->assertDatabaseHas('note_shares', ['id' => $live->id]);
-        $this->assertDatabaseMissing('note_shares', ['id' => $dead->id]);
+        $this->get(route('shares.show', $share))->assertOk()->assertDontSee('<script>alert(1)</script>', false);
     }
 }

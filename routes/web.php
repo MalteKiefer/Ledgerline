@@ -9,6 +9,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
+use App\Http\Controllers\NoteController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
@@ -33,9 +34,9 @@ Route::get('/', static fn () => redirect()->route('dashboard'));
 
 // Public note share links: no auth and no guest middleware, so a recipient
 // without an account can open them and a signed-in user is not redirected
-// away. The server only serves ciphertext; the key lives in the fragment.
+// away. The server renders a frozen snapshot, gated by an optional password.
 Route::get('/s/{share}', [ShareController::class, 'show'])->name('shares.show');
-Route::get('/s/{share}/data', [ShareController::class, 'data'])->name('shares.data');
+Route::post('/s/{share}/unlock', [ShareController::class, 'unlock'])->name('shares.unlock');
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake.
 Route::middleware('guest')->group(function (): void {
@@ -136,7 +137,17 @@ Route::middleware('auth')->group(function (): void {
     // Zero-knowledge file vault: the server stores one encrypted manifest and
     // opaque uuid-keyed blobs; it cannot see names, sizes, structure or counts.
     Route::view('/files', 'files.index')->name('files.index');
-    Route::view('/notes', 'notes.index')->name('notes.index');
+    // Notes: plain database rows (not zero-knowledge), rendered server-side.
+    Route::get('/notes', [NoteController::class, 'index'])->name('notes.index');
+    Route::post('/notes', [NoteController::class, 'store'])->name('notes.store');
+    Route::put('/notes/{note}', [NoteController::class, 'update'])->name('notes.update');
+    Route::post('/notes/{note}/pin', [NoteController::class, 'togglePin'])->name('notes.pin');
+    Route::post('/notes/{note}/trash', [NoteController::class, 'trash'])->name('notes.trash');
+    Route::post('/notes/{note}/restore', [NoteController::class, 'restore'])->name('notes.restore');
+    Route::delete('/notes/{note}', [NoteController::class, 'destroy'])->name('notes.destroy');
+    Route::delete('/notes/trash/all', [NoteController::class, 'emptyTrash'])->name('notes.trash.empty');
+    Route::post('/notes/{note}/share', [NoteController::class, 'share'])->name('notes.share');
+    Route::delete('/notes/shares/{share}', [NoteController::class, 'unshare'])->name('notes.unshare');
     // To-dos: plain database rows (not zero-knowledge), rendered server-side
     // with plain form posts. Reminders are managed by the controller.
     Route::get('/todos', [TodoController::class, 'index'])->name('todos.index');
@@ -169,15 +180,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.show');
+        ->whereIn('name', ['files', 'bookmarks', 'mail'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.update');
+        ->whereIn('name', ['files', 'bookmarks', 'mail'])->name('vault.manifest.update');
     Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
     Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
     Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
-
-    // Note sharing: create and revoke time-limited public links (the public
-    // show/data endpoints live outside this auth group).
-    Route::post('/shares', [ShareController::class, 'store'])->name('shares.store');
-    Route::delete('/shares/{share}', [ShareController::class, 'destroy'])->name('shares.destroy');
 });

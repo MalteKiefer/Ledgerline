@@ -16,21 +16,19 @@ use Illuminate\Database\Eloquent\Model;
  * title and the decryption key never reach the server.
  */
 #[Fillable([
-    'cipher',
-    'nonce',
+    'title',
+    'content',
+    'password_hash',
     'has_password',
     'allow_download',
-    'wrapped_key',
-    'wrap_salt',
-    'wrap_nonce',
-    'wrap_ops',
-    'wrap_mem',
     'max_views',
     'expires_at',
 ])]
 class NoteShare extends Model
 {
     use HasUuids;
+
+    protected $hidden = ['password_hash'];
 
     protected $casts = [
         'has_password' => 'boolean',
