@@ -22,7 +22,7 @@ class FileSearchProvider extends AbstractSearchProvider
 
     public function search(string $term, int $limit): array
     {
-        $query = StoredFile::query()->whereNull('trashed_at');
+        $query = StoredFile::query();
         $this->matchAny($query, ['name'], $this->wildcard($term), $term);
 
         return $query

@@ -27,7 +27,7 @@ class NoteController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'notes' => Note::orderByDesc('pinned')->orderByDesc('updated_at')->get()->map(fn (Note $n) => $this->toArray($n)),
+            'notes' => Note::withTrashed()->orderByDesc('pinned')->orderByDesc('updated_at')->get()->map(fn (Note $n) => $this->toArray($n)),
         ]);
     }
 
@@ -50,25 +50,25 @@ class NoteController extends Controller
         $request->validate(['pinned' => ['sometimes', 'boolean'], 'trashed' => ['sometimes', 'boolean']]);
         if ($request->has('pinned')) {
             $note->pinned = $request->boolean('pinned');
+            $note->save();
         }
         if ($request->has('trashed')) {
-            $note->trashed_at = $request->boolean('trashed') ? Carbon::now() : null;
+            $request->boolean('trashed') ? $note->delete() : $note->restore();
         }
-        $note->save();
 
-        return response()->json($this->toArray($note->refresh()));
+        return response()->json($this->toArray($note));
     }
 
     public function destroy(Note $note): JsonResponse
     {
-        $note->delete();
+        $note->forceDelete();
 
         return response()->json(['ok' => true]);
     }
 
     public function emptyTrash(): JsonResponse
     {
-        Note::whereNotNull('trashed_at')->delete();
+        Note::onlyTrashed()->forceDelete();
 
         return response()->json(['ok' => true]);
     }
@@ -138,7 +138,7 @@ class NoteController extends Controller
             'content' => $n->content,
             'tags' => $n->tags ?? [],
             'pinned' => (bool) $n->pinned,
-            'trashed' => $n->trashed_at !== null,
+            'trashed' => $n->trashed(),
             'updated' => $n->updated_at?->toIso8601String(),
         ];
     }

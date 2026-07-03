@@ -8,14 +8,17 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
-/** A to-do task. Plain database row (not zero-knowledge). */
+/** A to-do task. Plain database row; trashing is Laravel soft-deletion. */
 #[Fillable([
     'todo_list_id', 'title', 'description', 'url', 'priority',
-    'marked', 'tags', 'due_at', 'reminder_channels', 'done', 'trashed_at',
+    'marked', 'tags', 'due_at', 'reminder_channels', 'done',
 ])]
 class Todo extends Model
 {
+    use SoftDeletes;
+
     protected function casts(): array
     {
         return [
@@ -24,7 +27,6 @@ class Todo extends Model
             'tags' => 'array',
             'reminder_channels' => 'array',
             'due_at' => 'datetime',
-            'trashed_at' => 'datetime',
         ];
     }
 
