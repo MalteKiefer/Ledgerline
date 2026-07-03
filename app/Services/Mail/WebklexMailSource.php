@@ -27,12 +27,20 @@ class WebklexMailSource implements MailSource
                 if ($folder->no_select) {
                     continue;
                 }
+                // Reading UIDVALIDITY selects the folder; a server that answers
+                // with an empty response for a quirky folder (seen on iCloud)
+                // must not abort enumeration of the others — skip it.
+                try {
+                    $uidValidity = $this->uidValidity($client, $folder->path);
+                } catch (\Throwable) {
+                    continue;
+                }
                 $out[] = [
                     'path' => $folder->path,
                     'name' => $folder->name ?: $folder->path,
                     'delimiter' => (string) ($folder->delimiter ?: '/'),
                     'role' => $this->role($folder->name, $folder->path),
-                    'uidvalidity' => $this->uidValidity($client, $folder->path),
+                    'uidvalidity' => $uidValidity,
                 ];
             }
 
