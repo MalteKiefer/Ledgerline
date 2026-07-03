@@ -18,6 +18,9 @@ class WebklexMailSource implements MailSource
 {
     private const TIMEOUT = 30;
 
+    /** Largest plain-text body stored for content search (bytes/chars). */
+    private const BODY_TEXT_CAP = 100000;
+
     public function folders(ImapCredentials $c): array
     {
         $client = $this->connect($c);
@@ -70,11 +73,13 @@ class WebklexMailSource implements MailSource
             $m = $client->getFolderByPath($folder)->query()->getMessageByUid($uid);
 
             $from = $m->getFrom()[0] ?? null;
-            $to = [];
-            foreach ($m->getTo() as $addr) {
-                $to[] = ['name' => $this->str($addr->personal ?? ''), 'email' => $this->str($addr->mail ?? '')];
-            }
+            $to = $this->addresses($m->getTo());
+            $cc = $this->addresses($m->getCc());
             $text = $this->str($m->getTextBody());
+            $attachmentNames = [];
+            foreach ($m->getAttachments() as $a) {
+                $attachmentNames[] = $this->str($a->getName()) ?: 'attachment';
+            }
 
             return [
                 'raw' => $this->raw($client, $folder, $uid, $m),
@@ -83,10 +88,14 @@ class WebklexMailSource implements MailSource
                 'from_name' => $from ? ($this->str($from->personal ?? '') ?: null) : null,
                 'from_email' => $from ? ($this->str($from->mail ?? '') ?: null) : null,
                 'to' => $to,
+                'cc' => $cc,
                 'date' => $this->date($m),
-                'has_attachments' => $m->getAttachments()->count() > 0,
+                'has_attachments' => $attachmentNames !== [],
+                'attachment_names' => $attachmentNames,
                 'size' => (int) ($m->getSize() ?: 0),
                 'preview' => $text !== '' ? mb_substr(trim(preg_replace('/\s+/', ' ', $text)), 0, 200) : null,
+                // Capped plain-text body for content search.
+                'body_text' => $text !== '' ? mb_substr($text, 0, self::BODY_TEXT_CAP) : null,
             ];
         } finally {
             $this->close($client);
@@ -187,6 +196,20 @@ class WebklexMailSource implements MailSource
     private function str($v): string
     {
         return trim((string) ($v ?? ''));
+    }
+
+    /**
+     * @param  iterable<object>|null  $list
+     * @return list<array{name:?string, email:string}>
+     */
+    private function addresses($list): array
+    {
+        $out = [];
+        foreach ($list ?? [] as $addr) {
+            $out[] = ['name' => $this->str($addr->personal ?? '') ?: null, 'email' => $this->str($addr->mail ?? '')];
+        }
+
+        return $out;
     }
 
     private function connect(ImapCredentials $c): Client

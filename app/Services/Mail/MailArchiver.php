@@ -86,14 +86,17 @@ class MailArchiver
                     'from_name' => $m['from_name'] ?? null,
                     'from_email' => $m['from_email'] ?? null,
                     'to' => $m['to'] ?? [],
+                    'cc' => $m['cc'] ?? [],
                     'date_at' => ! empty($m['date']) ? Carbon::parse($m['date']) : null,
                     'seen' => (bool) ($flags['seen'] ?? false),
                     'flagged' => (bool) ($flags['flagged'] ?? false),
                     'answered' => (bool) ($flags['answered'] ?? false),
                     'has_attachments' => (bool) ($m['has_attachments'] ?? false),
+                    'attachment_names' => $m['attachment_names'] ?? [],
                     'size' => (int) ($m['size'] ?? strlen($m['raw'])),
                     'blob' => $blob,
                     'preview' => $m['preview'] ?? null,
+                    'body_text' => $m['body_text'] ?? null,
                     'synced_at' => Carbon::now(),
                 ]);
                 $newCount++;

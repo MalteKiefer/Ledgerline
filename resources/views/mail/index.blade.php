@@ -99,6 +99,9 @@
                         <button type="submit" title="{{ __('mail.new_folder') }}" aria-label="{{ __('mail.new_folder') }}" :disabled="reader.busy"
                             class="shrink-0 rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-50"><x-icon name="folder-plus" class="h-4 w-4" /></button>
                     </form>
+                    <button type="button" @click="openSearch(reader.account)" class="flex w-full items-center gap-2 border-b border-gray-100 px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-50">
+                        <x-icon name="magnifying-glass" class="h-4 w-4" />{{ __('mail.search_title') }}
+                    </button>
                     <button type="button" @click="openArchive(reader.account)" class="flex w-full items-center gap-2 border-b border-gray-100 px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-50">
                         <x-icon name="archive" class="h-4 w-4" />{{ __('mail.archive_title') }}
                     </button>

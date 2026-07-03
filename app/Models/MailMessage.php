@@ -15,8 +15,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'mail_account_id', 'mail_folder_id', 'uid', 'uidvalidity', 'message_id', 'subject',
-    'from_name', 'from_email', 'to', 'date_at', 'seen', 'flagged', 'answered',
-    'has_attachments', 'size', 'blob', 'preview', 'deleted_on_server_at', 'synced_at',
+    'from_name', 'from_email', 'to', 'cc', 'date_at', 'seen', 'flagged', 'answered',
+    'has_attachments', 'attachment_names', 'size', 'blob', 'preview', 'body_text',
+    'deleted_on_server_at', 'synced_at',
 ])]
 class MailMessage extends Model
 {
@@ -26,11 +27,13 @@ class MailMessage extends Model
             'uid' => 'integer',
             'uidvalidity' => 'integer',
             'to' => 'array',
+            'cc' => 'array',
             'date_at' => 'datetime',
             'seen' => 'boolean',
             'flagged' => 'boolean',
             'answered' => 'boolean',
             'has_attachments' => 'boolean',
+            'attachment_names' => 'array',
             'size' => 'integer',
             'deleted_on_server_at' => 'datetime',
             'synced_at' => 'datetime',
