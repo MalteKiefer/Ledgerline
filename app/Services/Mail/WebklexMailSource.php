@@ -21,6 +21,9 @@ class WebklexMailSource implements MailSource
     /** Largest plain-text body stored for content search (bytes/chars). */
     private const BODY_TEXT_CAP = 100000;
 
+    /** Message-sequence enumeration batch size (iCloud SEARCH-ALL fallback). */
+    private const SEQ_CHUNK = 1000;
+
     public function folders(ImapCredentials $c): array
     {
         $client = $this->connect($c);
@@ -57,21 +60,86 @@ class WebklexMailSource implements MailSource
     {
         $client = $this->connect($c);
         try {
-            $out = [];
-            $messages = $client->getFolderByPath($folder)->query()
-                ->whereAll()->setFetchBody(false)->setFetchFlags(true)->get();
-            foreach ($messages as $m) {
-                $out[(int) $m->getUid()] = [
-                    'seen' => $this->flag($m, 'Seen'),
-                    'flagged' => $this->flag($m, 'Flagged'),
-                    'answered' => $this->flag($m, 'Answered'),
-                ];
-            }
+            try {
+                $out = [];
+                $messages = $client->getFolderByPath($folder)->query()
+                    ->whereAll()->setFetchBody(false)->setFetchFlags(true)->get();
+                foreach ($messages as $m) {
+                    $out[(int) $m->getUid()] = [
+                        'seen' => $this->flag($m, 'Seen'),
+                        'flagged' => $this->flag($m, 'Flagged'),
+                        'answered' => $this->flag($m, 'Answered'),
+                    ];
+                }
 
-            return $out;
+                return $out;
+            } catch (\Throwable) {
+                // Some servers (notably iCloud, e.g. its "Archive" folder) answer
+                // "SEARCH ALL" with an empty response. Enumerate by message-
+                // sequence number instead — no SEARCH — in bounded chunks so a
+                // huge folder also never loads all messages into memory at once.
+                return $this->uidsBySequence($client, $folder);
+            }
         } finally {
             $this->close($client);
         }
+    }
+
+    /**
+     * Enumerate a folder's UIDs + flags by message-sequence number, chunked.
+     * Fallback for servers that reject "SEARCH ALL"; also caps memory use.
+     *
+     * @return array<int, array{seen:bool, flagged:bool, answered:bool}>
+     */
+    private function uidsBySequence(Client $client, string $folder): array
+    {
+        $mailbox = $client->getFolderByPath($folder);
+        $total = 0;
+        try {
+            $total = (int) ($mailbox->status()['messages'] ?? 0);
+        } catch (\Throwable) {
+        }
+        if ($total < 1) {
+            return [];
+        }
+
+        $client->openFolder($folder);
+        $conn = $client->getConnection();
+
+        $out = [];
+        for ($low = 1; $low <= $total; $low += self::SEQ_CHUNK) {
+            $high = min($low + self::SEQ_CHUNK - 1, $total);
+            $msgns = range($low, $high);
+            $uids = $conn->fetch(['UID'], $msgns, null, IMAP::ST_MSGN)->validatedData();
+            $flags = $conn->flags($msgns, IMAP::ST_MSGN)->validatedData();
+            foreach ($msgns as $n) {
+                $uid = (int) trim($this->unwrapFetch($uids[$n] ?? null));
+                if ($uid < 1) {
+                    continue;
+                }
+                $out[$uid] = $this->flagsFrom($flags[$n] ?? []);
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return array{seen:bool, flagged:bool, answered:bool} */
+    private function flagsFrom(mixed $raw): array
+    {
+        $flags = array_map(static fn ($f): string => strtolower((string) $f), (array) $raw);
+        $has = static fn (string $name): bool => in_array('\\'.$name, $flags, true) || in_array($name, $flags, true);
+
+        return ['seen' => $has('seen'), 'flagged' => $has('flagged'), 'answered' => $has('answered')];
+    }
+
+    private function unwrapFetch(mixed $value): string
+    {
+        if (is_array($value)) {
+            $value = reset($value);
+        }
+
+        return is_string($value) ? $value : '';
     }
 
     public function fetch(ImapCredentials $c, string $folder, int $uid): array
