@@ -22,6 +22,8 @@ return [
     'plain_text' => 'Plain text',
     'search_hint' => 'Press Ctrl/Cmd+F to search',
     'download' => 'Download',
+    'prev_image' => 'Previous image',
+    'next_image' => 'Next image',
     'download_zip' => 'Download',
     'large_zip_confirm' => 'This download is over 2 GB and is built in your browser — it may use a lot of memory. Continue?',
     'decrypting' => 'Decrypting…',

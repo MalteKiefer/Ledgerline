@@ -22,6 +22,8 @@ return [
     'plain_text' => 'Nur Text',
     'search_hint' => 'Strg/Cmd+F zum Suchen',
     'download' => 'Herunterladen',
+    'prev_image' => 'Vorheriges Bild',
+    'next_image' => 'Nächstes Bild',
     'download_zip' => 'Herunterladen',
     'large_zip_confirm' => 'Dieser Download ist über 2 GB und wird im Browser erstellt — das kann viel Speicher brauchen. Fortfahren?',
     'decrypting' => 'Entschlüsseln…',
