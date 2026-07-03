@@ -50,7 +50,10 @@ final class SecurityHeaders
                 "img-src 'self' data: blob: https:",
                 "font-src 'self' data:",
                 "connect-src 'self'",
-                "frame-src 'self'",
+                // blob: so the in-app PDF viewer works: some browsers render an
+                // <object>/<embed> PDF through an internal frame from a
+                // client-generated blob: URL.
+                "frame-src 'self' blob:",
             ]));
         }
 
