@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Backup;
 
 use App\Models\BackupJob;
-use App\Services\Backup\ArchiveCipher;
-use App\Services\Backup\BackupDestinationFactory;
 use App\Services\Backup\BackupManager;
-use App\Services\Backup\BackupNotifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -24,12 +21,7 @@ class BackupRunLogTest extends TestCase
             'cron' => '0 3 * * *', 'retention' => 3, 'notify_channels' => [], 'enabled' => true,
         ]);
 
-        $manager = new BackupManager(
-            app(BackupDestinationFactory::class),
-            app(ArchiveCipher::class),
-            app(BackupNotifier::class),
-        );
-        $run = $manager->run($job);
+        $run = app(BackupManager::class)->run($job);
 
         $this->assertSame('failed', $run->status);
         $this->assertNotNull($run->log);

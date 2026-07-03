@@ -24,10 +24,16 @@ use RuntimeException;
  */
 final class BackupManager
 {
+    /** Sources mirrored object-by-object (already-encrypted blobs), not archived. */
+    private const MIRROR_SOURCES = ['files', 'gallery'];
+
+    private const MIRROR_PREFIX = ['files' => 'vault', 'gallery' => 'photos'];
+
     public function __construct(
         private readonly BackupDestinationFactory $destinations,
         private readonly ArchiveCipher $cipher,
         private readonly BackupNotifier $notifier,
+        private readonly DiskMirror $mirror,
     ) {}
 
     public function run(BackupJob $job): BackupRun
@@ -51,51 +57,60 @@ final class BackupManager
             }
             $step('Destination: '.$job->destination->name.' ('.$job->destination->driver.').');
 
-            $step('Building '.$job->source.' archive…');
-            $artifact = $this->source($job->source)->build($workDir);
-            $uploadPath = $artifact->path;
-            $extension = $artifact->extension;
-            $step('Archive built: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
-
-            if ($job->encrypt) {
-                if (! $job->passphrase) {
-                    throw new RuntimeException('Encryption is enabled but no passphrase is set.');
-                }
-                $step('Encrypting archive…');
-                $encPath = $artifact->path.'.enc';
-                $this->cipher->encryptFile($artifact->path, $encPath, (string) $job->passphrase);
-                @unlink($artifact->path);
-                $uploadPath = $encPath;
-                $extension .= '.enc';
-                $step('Encrypted: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
-            }
-
-            // Unique per job (append the id) so two jobs whose names slug to the
-            // same value never share a directory — otherwise one job's retention
-            // prune would delete the other's archives.
             $prefix = (Str::slug($job->name) ?: 'backup').'-'.$job->id;
-            $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
-
-            $step('Uploading to '.$filename.'…');
             $fs = $this->destinations->make($job->destination);
-            $stream = fopen($uploadPath, 'rb');
-            if ($stream === false) {
-                throw new RuntimeException('Could not open the staged archive for upload.');
-            }
-            try {
-                $fs->writeStream($filename, $stream);
-            } finally {
-                if (is_resource($stream)) {
-                    fclose($stream);
-                }
-            }
-            $step('Upload complete.');
 
-            $bytes = (int) (filesize($uploadPath) ?: 0);
-            $deleted = $this->prune($fs, $prefix, $job->retention);
-            $step($deleted > 0
-                ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
-                : sprintf('Retention: keeping up to %d version(s).', $job->retention));
+            if (in_array($job->source, self::MIRROR_SOURCES, true)) {
+                // Files/Gallery: the objects are immutable, already-encrypted blobs
+                // — mirror them directly (no archive, no gzip, no local staging).
+                $step('Mirroring '.$job->source.' to '.$prefix.'…');
+                $r = $this->mirror->mirror($fs, self::MIRROR_PREFIX[$job->source], $prefix, $step);
+                $bytes = $r['bytes'];
+                $filename = $prefix.'/'; // a folder mirror, not a single archive
+                $summary = sprintf('%s → %s (%s, %d new, %d removed)', $job->source, $prefix, $this->human($bytes), $r['uploaded'], $r['removed']);
+            } else {
+                $step('Building '.$job->source.' archive…');
+                $artifact = $this->source($job->source)->build($workDir);
+                $uploadPath = $artifact->path;
+                $extension = $artifact->extension;
+                $step('Archive built: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
+
+                if ($job->encrypt) {
+                    if (! $job->passphrase) {
+                        throw new RuntimeException('Encryption is enabled but no passphrase is set.');
+                    }
+                    $step('Encrypting archive…');
+                    $encPath = $artifact->path.'.enc';
+                    $this->cipher->encryptFile($artifact->path, $encPath, (string) $job->passphrase);
+                    @unlink($artifact->path);
+                    $uploadPath = $encPath;
+                    $extension .= '.enc';
+                    $step('Encrypted: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
+                }
+
+                $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
+                $step('Uploading to '.$filename.'…');
+                $stream = fopen($uploadPath, 'rb');
+                if ($stream === false) {
+                    throw new RuntimeException('Could not open the staged archive for upload.');
+                }
+                try {
+                    $fs->writeStream($filename, $stream);
+                } finally {
+                    if (is_resource($stream)) {
+                        fclose($stream);
+                    }
+                }
+                $step('Upload complete.');
+
+                $bytes = (int) (filesize($uploadPath) ?: 0);
+                $deleted = $this->prune($fs, $prefix, $job->retention);
+                $step($deleted > 0
+                    ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
+                    : sprintf('Retention: keeping up to %d version(s).', $job->retention));
+
+                $summary = sprintf('%s → %s (%s)', $job->source, $filename, $this->human($bytes));
+            }
 
             $run->update([
                 'status' => 'success',
@@ -104,7 +119,6 @@ final class BackupManager
                 'filename' => $filename,
             ]);
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'success']);
-            $summary = sprintf('%s → %s (%s)', $job->source, $filename, $this->human($bytes));
             $step('Done: '.$summary);
             $this->notifier->notify($job, true, $summary);
         } catch (\Throwable $e) {

@@ -156,4 +156,5 @@ return [
     'mail_heading' => 'Mail',
     'mail_sync_heading' => 'Hintergrund-Sync',
     'mail_accounts_heading' => 'Konten',
+    'backup_mirror_hint' => 'Dateien/Galerie werden objektweise gespiegelt (bereits verschlüsselt); Versionen, Aufbewahrung und Archiv-Verschlüsselung entfallen.',
 ];

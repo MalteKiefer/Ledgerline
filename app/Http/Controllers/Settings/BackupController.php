@@ -156,7 +156,8 @@ class BackupController extends Controller
                 'startedHuman' => $r->started_at?->diffForHumans(),
                 'size' => $r->bytes ? Number::fileSize($r->bytes) : null,
                 // Downloadable once finished successfully and the object still exists.
-                'downloadable' => $r->status === 'success' && $r->filename !== null,
+                // A trailing "/" marks a folder mirror (files/gallery) — no single archive to download.
+                'downloadable' => $r->status === 'success' && $r->filename !== null && ! str_ends_with((string) $r->filename, '/'),
             ]),
         ]);
     }
@@ -164,7 +165,7 @@ class BackupController extends Controller
     /** Stream a completed backup archive from its destination to the browser. */
     public function downloadRun(BackupRun $run): StreamedResponse
     {
-        abort_unless($run->status === 'success' && $run->filename, 404);
+        abort_unless($run->status === 'success' && $run->filename && ! str_ends_with((string) $run->filename, '/'), 404);
         $job = $run->job;
         abort_unless($job !== null && $job->destination !== null, 404);
 
