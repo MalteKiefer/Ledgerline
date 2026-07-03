@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * One execution of a backup job — its status, timing, size and any error.
  */
 #[Fillable([
-    'backup_job_id', 'status', 'started_at', 'finished_at', 'bytes', 'filename', 'message',
+    'backup_job_id', 'status', 'started_at', 'finished_at', 'bytes', 'filename', 'message', 'log',
 ])]
 class BackupRun extends Model
 {

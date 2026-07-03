@@ -159,6 +159,7 @@
             <table class="mt-3 w-full text-left text-sm">
                 <thead class="text-xs uppercase text-gray-400">
                     <tr>
+                        <th class="w-6 py-1"></th>
                         <th class="py-1 pr-3">{{ __('settings.backup_name') }}</th>
                         <th class="py-1 pr-3">{{ __('settings.backup_status') }}</th>
                         <th class="py-1 pr-3">{{ __('settings.backup_started') }}</th>
@@ -167,16 +168,31 @@
                 </thead>
                 <tbody>
                     @foreach ($runs as $run)
-                        <tr class="border-t border-gray-100">
-                            <td class="py-1.5 pr-3 text-gray-700">{{ $run->job?->name ?? '—' }}</td>
-                            <td class="py-1.5 pr-3">
+                        <tr class="border-t border-gray-100" x-data="{ open: false }">
+                            <td class="py-1.5 align-top">
+                                <button type="button" @click="open = ! open" class="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" :aria-expanded="open" title="{{ __('settings.backup_log') }}">
+                                    <x-icon name="chevron-down" class="h-4 w-4 transition-transform" ::class="open ? 'rotate-180' : ''" />
+                                </button>
+                            </td>
+                            <td class="py-1.5 pr-3 align-top text-gray-700">{{ $run->job?->name ?? '—' }}</td>
+                            <td class="py-1.5 pr-3 align-top">
                                 <span class="{{ $run->status === 'success' ? 'text-green-600' : ($run->status === 'failed' ? 'text-red-600' : 'text-gray-500') }}">{{ $run->status }}</span>
                                 @if ($run->status === 'failed' && $run->message)
                                     <span class="block max-w-md truncate text-xs text-gray-400" title="{{ $run->message }}">{{ $run->message }}</span>
                                 @endif
                             </td>
-                            <td class="py-1.5 pr-3 text-gray-500">{{ $run->started_at?->diffForHumans() }}</td>
-                            <td class="py-1.5 pr-3 text-gray-500">{{ $run->bytes ? \Illuminate\Support\Number::fileSize($run->bytes) : '—' }}</td>
+                            <td class="py-1.5 pr-3 align-top text-gray-500" title="{{ $run->started_at?->toDateTimeString() }}">{{ $run->started_at?->diffForHumans() }}</td>
+                            <td class="py-1.5 pr-3 align-top text-gray-500">{{ $run->bytes ? \Illuminate\Support\Number::fileSize($run->bytes) : '—' }}</td>
+                        </tr>
+                        <tr x-show="open" x-cloak>
+                            <td></td>
+                            <td colspan="4" class="pb-3 pr-3">
+                                @if ($run->log)
+                                    <pre class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-gray-900 p-3 font-mono text-[11px] leading-relaxed text-gray-100">{{ $run->log }}</pre>
+                                @else
+                                    <p class="text-xs text-gray-400">{{ __('settings.backup_no_log') }}</p>
+                                @endif
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>

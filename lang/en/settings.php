@@ -145,4 +145,6 @@ return [
     'backup_stat_total_size' => 'Total stored',
     'backup_stat_last_run' => 'Last run',
     'backup_stat_next_run' => 'Next run',
+    'backup_log' => 'Log',
+    'backup_no_log' => 'No log for this run.',
 ];
