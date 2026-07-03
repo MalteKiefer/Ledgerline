@@ -1914,6 +1914,34 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
+    // Images in the current view, in display order — the slideshow set.
+    get viewerImages() {
+        return this.rows.filter((r) => r.kind === 'file' && (r.mime || '').startsWith('image/'));
+    },
+
+    // Position of the open image within that set (-1 if not an image view).
+    get viewerIndex() {
+        if (this.viewer.kind !== 'image' || ! this.viewer.row) return -1;
+        const key = this.rowKey(this.viewer.row);
+        return this.viewerImages.findIndex((r) => this.rowKey(r) === key);
+    },
+
+    // More than one image ⇒ offer prev/next navigation.
+    get viewerHasGallery() {
+        return this.viewer.kind === 'image' && this.viewerImages.length > 1;
+    },
+
+    // Step to another image, wrapping around so every image is reachable.
+    viewerStep(dir) {
+        const imgs = this.viewerImages;
+        if (imgs.length < 2) return;
+        const i = this.viewerIndex;
+        if (i < 0) return;
+        const next = imgs[(i + dir + imgs.length) % imgs.length];
+        if (this.viewer.src) URL.revokeObjectURL(this.viewer.src);
+        this.openFile(next);
+    },
+
     async mountEditor(text, filename) {
         const { EditorView, EditorState, Compartment, LanguageDescription, languages, basicSetup } = await loadCodeMirror();
         if (! this.languageOptions.length) {
