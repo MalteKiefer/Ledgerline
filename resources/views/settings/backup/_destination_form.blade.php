@@ -47,8 +47,12 @@
             </select></div>
     </div>
 
-    {{-- S3 / B2 --}}
-    <div x-show="driver === 's3' || driver === 'b2'" class="grid gap-3 sm:grid-cols-2">
+    {{-- S3 / B2 — x-if (not x-show) so only the active driver's fields are in the
+         DOM: SFTP + WebDAV share name="password"/"username", and all three share
+         name="path", so leaving hidden sections in the form would submit
+         duplicate fields and the last (empty) one would win. --}}
+    <template x-if="driver === 's3' || driver === 'b2'">
+    <div class="grid gap-3 sm:grid-cols-2">
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_bucket') }}</label>
             <input type="text" name="bucket" value="{{ old('bucket', $cfg['bucket'] ?? '') }}" class="{{ $input }}"></div>
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_region') }}</label>
@@ -64,9 +68,11 @@
             <input type="checkbox" name="use_path_style" value="1" @checked(old('use_path_style', $cfg['use_path_style'] ?? false)) class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
             {{ __('settings.backup_use_path_style') }}</label>
     </div>
+    </template>
 
     {{-- SFTP --}}
-    <div x-show="driver === 'sftp'" class="grid gap-3 sm:grid-cols-2">
+    <template x-if="driver === 'sftp'">
+    <div class="grid gap-3 sm:grid-cols-2">
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_host') }}</label>
             <input type="text" name="host" value="{{ old('host', $cfg['host'] ?? '') }}" class="{{ $input }}"></div>
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_port') }}</label>
@@ -79,9 +85,11 @@
         <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_path') }}</label>
             <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}"></div>
     </div>
+    </template>
 
     {{-- WebDAV --}}
-    <div x-show="driver === 'webdav'" class="grid gap-3 sm:grid-cols-2">
+    <template x-if="driver === 'webdav'">
+    <div class="grid gap-3 sm:grid-cols-2">
         <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_base_uri') }}</label>
             <input type="text" name="base_uri" value="{{ old('base_uri', $cfg['base_uri'] ?? '') }}" class="{{ $input }}"></div>
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_username') }}</label>
@@ -92,6 +100,7 @@
         <div class="sm:col-span-2"><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_path') }}</label>
             <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}"></div>
     </div>
+    </template>
 
     {{-- Inline test result (no navigation, so the entered form is preserved) --}}
     <p x-show="testOk === true" x-cloak class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700" x-text="testMsg"></p>
