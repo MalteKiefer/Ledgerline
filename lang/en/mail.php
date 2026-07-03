@@ -85,6 +85,7 @@ return [
     'folder_flagged' => 'Starred',
     'empty_folder' => 'Empty folder',
     'empty_folder_confirm' => 'Permanently delete all messages in this folder? This cannot be undone.',
+    'view_attachment' => 'View',
     'save_to_files' => 'Save to Files',
     'save_to_files_title' => 'Save attachment to Files',
     'dest_folder' => 'Destination folder',
