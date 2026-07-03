@@ -50,9 +50,13 @@ class GalleryController extends Controller
     /**
      * Toggle a photo's favourite state.
      */
-    public function favorite(Photo $photo): RedirectResponse
+    public function favorite(Request $request, Photo $photo): RedirectResponse|JsonResponse
     {
         $photo->forceFill(['favorited_at' => $photo->isFavorite() ? null : now()])->save();
+
+        if ($request->expectsJson()) {
+            return response()->json(['favorite' => $photo->fresh()->isFavorite()]);
+        }
 
         return back();
     }
@@ -330,6 +334,21 @@ class GalleryController extends Controller
         }
 
         $photo->forceFill($attributes)->save();
+        $photo->refresh();
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'name' => $photo->name,
+                'date' => $photo->taken_at->isoFormat('LL'),
+                'dateiso' => $photo->taken_at->format('Y-m-d'),
+                'time' => $photo->taken_at->format('H:i'),
+                'camera' => $photo->camera,
+                'lat' => $photo->latitude,
+                'lng' => $photo->longitude,
+                'place' => $photo->place,
+                'placeLines' => $photo->placeLines(),
+            ]);
+        }
 
         return back()->with('status', __('flash.photo_updated'));
     }

@@ -574,6 +574,46 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         this.$nextTick(() => this.renderMiniMap());
     },
 
+    // Toggle the favourite without a reload (reusing the form's csrf token) so
+    // the lightbox stays open. The source card's dataset is kept in sync.
+    async favoriteCurrent(event) {
+        try {
+            const res = await fetch(event.target.action, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: new FormData(event.target),
+            });
+            if (! res.ok) return;
+            const b = await res.json();
+            this.current.favorite = b.favorite ? '1' : '';
+            const el = this.list[this.index];
+            if (el) el.dataset.favorite = this.current.favorite;
+        } catch (e) { /* leave state unchanged on failure */ }
+    },
+
+    // Save the name/date/location edits without a reload (the form carries its
+    // own _token + _method=PUT); refresh the shown metadata from the response.
+    async saveMeta(event) {
+        try {
+            const res = await fetch(event.target.action, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: new FormData(event.target),
+            });
+            if (! res.ok) return;
+            const b = await res.json();
+            Object.assign(this.current, {
+                name: b.name, date: b.date, dateiso: b.dateiso, time: b.time,
+                camera: b.camera, place: b.place, placeLines: b.placeLines,
+                lat: b.lat ?? '', lng: b.lng ?? '',
+            });
+            const el = this.list[this.index];
+            if (el) { el.dataset.name = b.name ?? ''; el.dataset.date = b.date ?? ''; el.dataset.dateiso = b.dateiso ?? ''; }
+            this.editing = false;
+            this.$nextTick(() => this.renderMiniMap());
+        } catch (e) { /* leave state unchanged on failure */ }
+    },
+
     async renderMiniMap() {
         this.destroyMiniMap();
 
