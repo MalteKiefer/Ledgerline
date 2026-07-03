@@ -135,7 +135,6 @@ return [
     'backup_source_database' => 'Datenbank',
     'backup_source_files' => 'Dateien',
     'backup_source_gallery' => 'Galerie',
-    'backup_notify_none' => 'Keine Benachrichtigung',
     'backup_test' => 'Verbindung testen',
     'backup_stat_runs' => 'Läufe',
     'backup_stat_success_rate' => 'Erfolgsquote',
@@ -148,4 +147,5 @@ return [
     'backup_log' => 'Protokoll',
     'backup_no_log' => 'Kein Protokoll für diesen Lauf.',
     'backup_path_hint' => 'Relativ zum Login-Verzeichnis. Leer lassen für Standard (viele SFTP-Hosts erlauben kein Schreiben im Server-Root).',
+    'backup_notify_desktop' => 'Desktop / Browser',
 ];

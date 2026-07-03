@@ -19,7 +19,7 @@ class BackupStatisticsTest extends TestCase
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
         $job = BackupJob::create([
             'name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id,
-            'cron' => '0 3 * * *', 'retention' => 5, 'notify' => 'none', 'enabled' => true,
+            'cron' => '0 3 * * *', 'retention' => 5, 'notify_channels' => [], 'enabled' => true,
         ]);
 
         // Two successes (10s / 20s, 100 / 300 bytes) and one failure.
@@ -46,7 +46,7 @@ class BackupStatisticsTest extends TestCase
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
         $job = BackupJob::create([
             'name' => 'J', 'source' => 'files', 'backup_destination_id' => $dest->id,
-            'cron' => '0 3 * * *', 'retention' => 5, 'notify' => 'none', 'enabled' => true,
+            'cron' => '0 3 * * *', 'retention' => 5, 'notify_channels' => [], 'enabled' => true,
         ]);
 
         $s = $job->statistics();

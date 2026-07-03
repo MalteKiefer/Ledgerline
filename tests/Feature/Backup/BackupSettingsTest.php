@@ -63,11 +63,14 @@ class BackupSettingsTest extends TestCase
             'backup_destination_id' => $dest->id,
             'cron' => '0 */3 * * *',
             'retention' => 5,
-            'notify' => 'none',
+            'notify_channels' => ['desktop', 'mail'],
             'enabled' => '1',
         ])->assertRedirect();
 
-        $this->assertDatabaseHas('backup_jobs', ['name' => 'DB every 3h', 'source' => 'database', 'retention' => 5]);
+        $job = BackupJob::firstWhere('name', 'DB every 3h');
+        $this->assertNotNull($job);
+        $this->assertSame(5, $job->retention);
+        $this->assertSame(['desktop', 'mail'], $job->notify_channels);
     }
 
     public function test_an_invalid_cron_is_rejected(): void
@@ -77,7 +80,7 @@ class BackupSettingsTest extends TestCase
 
         $this->post(route('settings.backup.jobs.store'), [
             'name' => 'Bad', 'source' => 'files', 'backup_destination_id' => $dest->id,
-            'cron' => 'not a cron', 'retention' => 3, 'notify' => 'none',
+            'cron' => 'not a cron', 'retention' => 3,
         ])->assertSessionHasErrors('cron');
     }
 
@@ -88,7 +91,7 @@ class BackupSettingsTest extends TestCase
 
         $this->post(route('settings.backup.jobs.store'), [
             'name' => 'Enc', 'source' => 'files', 'backup_destination_id' => $dest->id,
-            'cron' => '0 3 * * *', 'retention' => 3, 'notify' => 'none',
+            'cron' => '0 3 * * *', 'retention' => 3,
             'encrypt' => '1', 'passphrase' => '',
         ])->assertSessionHasErrors('passphrase');
     }
@@ -100,7 +103,7 @@ class BackupSettingsTest extends TestCase
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
         $job = BackupJob::create([
             'name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id,
-            'cron' => '0 3 * * *', 'retention' => 3, 'notify' => 'none', 'enabled' => true,
+            'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true,
         ]);
 
         $this->post(route('settings.backup.jobs.run', $job))->assertRedirect();

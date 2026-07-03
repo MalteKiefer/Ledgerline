@@ -205,7 +205,8 @@ class BackupController extends Controller
             'retention' => ['required', 'integer', 'min:1', 'max:9999'],
             'encrypt' => ['sometimes', 'boolean'],
             'passphrase' => ['nullable', 'string', 'max:255'],
-            'notify' => ['required', Rule::in(BackupJob::NOTIFY_CHANNELS)],
+            'notify_channels' => ['nullable', 'array'],
+            'notify_channels.*' => [Rule::in(BackupJob::NOTIFY_CHANNELS)],
             'enabled' => ['sometimes', 'boolean'],
         ]);
 
@@ -215,6 +216,7 @@ class BackupController extends Controller
 
         $data['encrypt'] = $request->boolean('encrypt');
         $data['enabled'] = $request->boolean('enabled');
+        $data['notify_channels'] = array_values($data['notify_channels'] ?? []);
         if ($requirePassphrase && $data['encrypt'] && ($data['passphrase'] ?? '') === '') {
             throw ValidationException::withMessages(['passphrase' => __('settings.backup_passphrase_required')]);
         }

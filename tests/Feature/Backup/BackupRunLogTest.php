@@ -21,7 +21,7 @@ class BackupRunLogTest extends TestCase
         // A job with no destination fails early; the run log should capture it.
         $job = BackupJob::create([
             'name' => 'No dest', 'source' => 'database', 'backup_destination_id' => null,
-            'cron' => '0 3 * * *', 'retention' => 3, 'notify' => 'none', 'enabled' => true,
+            'cron' => '0 3 * * *', 'retention' => 3, 'notify_channels' => [], 'enabled' => true,
         ]);
 
         $manager = new BackupManager(
