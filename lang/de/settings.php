@@ -219,4 +219,13 @@ return [
     'backup_source_gallery' => 'Galerie',
     'backup_notify_none' => 'Keine Benachrichtigung',
     'backup_test' => 'Verbindung testen',
+    'backup_stats' => 'Statistik',
+    'backup_stat_runs' => 'Läufe',
+    'backup_stat_success_rate' => 'Erfolgsquote',
+    'backup_stat_last_duration' => 'Letzte Dauer',
+    'backup_stat_avg_duration' => 'Ø Dauer',
+    'backup_stat_last_size' => 'Letzte Größe',
+    'backup_stat_total_size' => 'Gesamt gespeichert',
+    'backup_stat_last_run' => 'Letzter Lauf',
+    'backup_stat_next_run' => 'Nächster Lauf',
 ];
