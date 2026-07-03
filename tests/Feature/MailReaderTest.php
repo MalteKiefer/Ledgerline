@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\MailAccount;
 use App\Services\Mail\ImapCredentials;
 use App\Services\Mail\ImapReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -12,6 +13,16 @@ use Tests\TestCase;
 class MailReaderTest extends TestCase
 {
     use RefreshDatabase;
+
+    private ?int $accountId = null;
+
+    private function acct(): int
+    {
+        return $this->accountId ??= MailAccount::create([
+            'name' => 'Work', 'host' => 'imap.example.com', 'port' => 993,
+            'encryption' => 'ssl', 'username' => 'me', 'password' => 'secret',
+        ])->id;
+    }
 
     private function fakeReader(): object
     {
@@ -77,10 +88,7 @@ class MailReaderTest extends TestCase
 
     private function creds(array $extra = []): array
     {
-        return array_merge([
-            'host' => 'imap.example.com', 'port' => 993, 'encryption' => 'ssl',
-            'username' => 'me', 'password' => 'secret', 'validate_cert' => true,
-        ], $extra);
+        return array_merge(['account_id' => $this->acct()], $extra);
     }
 
     public function test_guests_are_blocked(): void
@@ -170,9 +178,14 @@ class MailReaderTest extends TestCase
         $this->signIn();
         $fake = $this->fakeReader();
 
+        $target = MailAccount::create([
+            'name' => 'Other', 'host' => 'imap.other.test', 'port' => 993,
+            'encryption' => 'ssl', 'username' => 'me2', 'password' => 'secret',
+        ]);
+
         $this->postJson(route('mail.message.transfer'), $this->creds([
             'folder' => 'INBOX', 'uids' => [5], 'target_folder' => 'INBOX',
-            'target' => $this->creds(['host' => 'imap.other.test']),
+            'target_account_id' => $target->id,
         ]))->assertOk();
 
         $this->assertSame(['transfer', [5], 'imap.other.test', 'INBOX'], $fake->calls[0]);

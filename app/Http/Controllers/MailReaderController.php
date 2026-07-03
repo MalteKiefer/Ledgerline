@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\MailAccount;
 use App\Services\Mail\ImapCredentials;
 use App\Services\Mail\ImapReader;
 use Illuminate\Http\JsonResponse;
@@ -16,50 +17,31 @@ use Illuminate\Validation\Rule;
 /**
  * Read IMAP messages and act on them (delete, move, flag, transfer).
  *
- * Stateless like MailStatsController: credentials are decrypted in the browser
- * and posted per request; the server connects, performs one operation and
- * forgets. Nothing is persisted or logged; TLS is required.
+ * The account is referenced by id; the (encrypted) credentials are loaded
+ * server-side and never travel to the browser. The server connects, performs
+ * one operation and forgets; TLS is required.
  */
 class MailReaderController extends Controller
 {
-    /** Credential validation rules, optionally namespaced (e.g. "target."). */
-    private function credRules(string $prefix = ''): array
+    /** Load an account's IMAP credentials by request field (default account_id). */
+    private function creds(Request $request, string $field = 'account_id'): ImapCredentials
     {
-        return [
-            "{$prefix}host" => ['required', 'string', 'max:255'],
-            "{$prefix}port" => ['required', 'integer', 'min:1', 'max:65535'],
-            "{$prefix}encryption" => ['required', Rule::in(['ssl', 'starttls'])],
-            "{$prefix}username" => ['required', 'string', 'max:255'],
-            "{$prefix}password" => ['required', 'string'],
-            "{$prefix}validate_cert" => ['sometimes', 'boolean'],
-        ];
-    }
-
-    private function creds(array $data, string $prefix = ''): ImapCredentials
-    {
-        return new ImapCredentials(
-            host: data_get($data, "{$prefix}host"),
-            port: (int) data_get($data, "{$prefix}port"),
-            encryption: data_get($data, "{$prefix}encryption"),
-            username: data_get($data, "{$prefix}username"),
-            password: data_get($data, "{$prefix}password"),
-            validateCert: (bool) (data_get($data, "{$prefix}validate_cert") ?? true),
-        );
+        return MailAccount::findOrFail($request->integer($field))->credentials();
     }
 
     public function folders(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate($this->credRules());
+        $request->validate(['account_id' => ['required', 'exists:mail_accounts,id']]);
 
-        return $this->guard(fn () => response()->json(['folders' => $reader->listFolders($this->creds($v))]));
+        return $this->guard(fn () => response()->json(['folders' => $reader->listFolders($this->creds($request))]));
     }
 
     public function createFolder(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate($this->credRules() + ['folder' => ['required', 'string', 'max:255']]);
+        $v = $request->validate(['account_id' => ['required', 'exists:mail_accounts,id'], 'folder' => ['required', 'string', 'max:255']]);
 
-        return $this->guard(function () use ($reader, $v) {
-            $reader->createFolder($this->creds($v), $v['folder']);
+        return $this->guard(function () use ($reader, $request, $v) {
+            $reader->createFolder($this->creds($request), $v['folder']);
 
             return response()->json(['created' => true]);
         });
@@ -67,10 +49,10 @@ class MailReaderController extends Controller
 
     public function emptyFolder(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate($this->credRules() + ['folder' => ['required', 'string', 'max:255']]);
+        $v = $request->validate(['account_id' => ['required', 'exists:mail_accounts,id'], 'folder' => ['required', 'string', 'max:255']]);
 
-        return $this->guard(function () use ($reader, $v) {
-            $reader->emptyFolder($this->creds($v), $v['folder']);
+        return $this->guard(function () use ($reader, $request, $v) {
+            $reader->emptyFolder($this->creds($request), $v['folder']);
 
             return response()->json(['emptied' => true]);
         });
@@ -78,39 +60,42 @@ class MailReaderController extends Controller
 
     public function messages(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate($this->credRules() + [
+        $v = $request->validate([
+            'account_id' => ['required', 'exists:mail_accounts,id'],
             'folder' => ['required', 'string', 'max:255'],
             'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
         return $this->guard(fn () => response()->json(
-            $reader->listMessages($this->creds($v), $v['folder'], (int) ($v['page'] ?? 1), 50)
+            $reader->listMessages($this->creds($request), $v['folder'], (int) ($v['page'] ?? 1), 50)
         ));
     }
 
     public function message(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate($this->credRules() + [
+        $v = $request->validate([
+            'account_id' => ['required', 'exists:mail_accounts,id'],
             'folder' => ['required', 'string', 'max:255'],
             'uid' => ['required', 'integer', 'min:1'],
             'mark_seen' => ['sometimes', 'boolean'],
         ]);
 
         return $this->guard(fn () => response()->json(
-            $reader->getMessage($this->creds($v), $v['folder'], (int) $v['uid'], (bool) ($v['mark_seen'] ?? true))
+            $reader->getMessage($this->creds($request), $v['folder'], (int) $v['uid'], (bool) ($v['mark_seen'] ?? true))
         ));
     }
 
     public function attachment(Request $request, ImapReader $reader): Response|JsonResponse
     {
-        $v = $request->validate($this->credRules() + [
+        $v = $request->validate([
+            'account_id' => ['required', 'exists:mail_accounts,id'],
             'folder' => ['required', 'string', 'max:255'],
             'uid' => ['required', 'integer', 'min:1'],
             'attachment' => ['required', 'integer', 'min:0'],
         ]);
 
-        return $this->guard(function () use ($reader, $v) {
-            $a = $reader->getAttachment($this->creds($v), $v['folder'], (int) $v['uid'], (int) $v['attachment']);
+        return $this->guard(function () use ($reader, $request, $v) {
+            $a = $reader->getAttachment($this->creds($request), $v['folder'], (int) $v['uid'], (int) $v['attachment']);
 
             return response($a['content'], 200, [
                 'Content-Type' => 'application/octet-stream',
@@ -124,7 +109,8 @@ class MailReaderController extends Controller
 
     public function action(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate($this->credRules() + [
+        $v = $request->validate([
+            'account_id' => ['required', 'exists:mail_accounts,id'],
             'folder' => ['required', 'string', 'max:255'],
             'uids' => ['required', 'array', 'min:1', 'max:500'],
             'uids.*' => ['integer', 'min:1'],
@@ -132,31 +118,33 @@ class MailReaderController extends Controller
             'target' => ['required_if:action,move', 'nullable', 'string', 'max:255'],
         ]);
 
-        return $this->guard(function () use ($reader, $v) {
+        return $this->guard(function () use ($reader, $request, $v) {
             $uids = array_map('intval', $v['uids']);
 
             return response()->json(
-                $reader->actOnMessages($this->creds($v), $v['folder'], $uids, $v['action'], $v['target'] ?? null),
+                $reader->actOnMessages($this->creds($request), $v['folder'], $uids, $v['action'], $v['target'] ?? null),
             );
         });
     }
 
     public function transfer(Request $request, ImapReader $reader): JsonResponse
     {
-        $v = $request->validate($this->credRules() + $this->credRules('target.') + [
+        $v = $request->validate([
+            'account_id' => ['required', 'exists:mail_accounts,id'],
+            'target_account_id' => ['required', 'exists:mail_accounts,id'],
             'folder' => ['required', 'string', 'max:255'],
             'uids' => ['required', 'array', 'min:1', 'max:500'],
             'uids.*' => ['integer', 'min:1'],
             'target_folder' => ['required', 'string', 'max:255'],
         ]);
 
-        return $this->guard(function () use ($reader, $v) {
+        return $this->guard(function () use ($reader, $request, $v) {
             $uids = array_map('intval', $v['uids']);
 
             return response()->json(
                 $reader->transferMessages(
-                    $this->creds($v), $v['folder'], $uids,
-                    $this->creds($v, 'target.'), $v['target_folder'],
+                    $this->creds($request), $v['folder'], $uids,
+                    $this->creds($request, 'target_account_id'), $v['target_folder'],
                 ),
             );
         });

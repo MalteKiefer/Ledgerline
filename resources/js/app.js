@@ -1273,6 +1273,23 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
+/* Plain localStorage cache for the mail reader (stats/folders/message lists).
+ * Mail is no longer encrypted, so this needs no vault key. Best-effort — any
+ * failure (quota, private mode) is swallowed and treated as a cache miss. */
+const mailCache = {
+    put(key, value) { try { localStorage.setItem('mailcache:' + key, JSON.stringify({ v: value, t: Date.now() })); } catch (e) { /* ignore */ } },
+    get(key, maxAgeMs = null) {
+        try {
+            const raw = localStorage.getItem('mailcache:' + key);
+            if (! raw) return null;
+            const r = JSON.parse(raw);
+            if (maxAgeMs && (Date.now() - r.t) > maxAgeMs) return null;
+            return r.v;
+        } catch (e) { return null; }
+    },
+    remove(key) { try { localStorage.removeItem('mailcache:' + key); } catch (e) { /* ignore */ } },
+};
+
 function escapeHtml(text) {
     return String(text ?? '').replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2363,21 +2380,17 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     async init() {
-        await this.$store.vault.boot();
-        window.addEventListener('vault-unlocked', () => this.load());
         // Re-read cached stats when the background sync refreshes them.
         window.addEventListener('mail-synced', () => { this.cacheVersion++; });
-        if (! this.$store.vault.configured) { this.state = 'unconfigured'; return; }
-        if (! this.$store.vault.unlocked) { this.state = 'locked'; return; }
         await this.load();
     },
 
-    // Prefer freshly background-synced stats from the cache, falling back to the
-    // last stats stored in the manifest. Reading cacheVersion makes the template
-    // re-evaluate after a sync.
+    // Prefer freshly-synced stats from the (plain) cache, falling back to the
+    // stats last fetched onto the in-memory account. Reading cacheVersion makes
+    // the template re-evaluate after a sync.
     accountStats(a) {
         void this.cacheVersion;
-        return Vault.cacheGet(`stats:${a.id}`) ?? a.stats;
+        return mailCache.get(`stats:${a.id}`) ?? a.stats;
     },
 
     // "New mail" count for the switcher badge: unread in the INBOX only. The
@@ -2394,14 +2407,14 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     async load() {
         try {
-            const { data, version } = await Vault.loadManifest('mail');
-            this.manifest = data.accounts ? data : { v: 1, accounts: [] };
-            this.version = version;
+            const res = await fetch('/mail/accounts', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) { this.state = 'error'; return; }
+            this.manifest = { v: 1, accounts: (await res.json()).accounts ?? [] };
             this.state = 'ready';
             // On the standalone reader page (/mail), open an account straight
             // away: the last one used in this browser, else the first.
             if (labels.standalone && ! this.reader.open && this.manifest.accounts.length) {
-                const lastId = (() => { try { return localStorage.getItem('mail:last-account'); } catch (e) { return null; } })();
+                const lastId = (() => { try { return Number(localStorage.getItem('mail:last-account')) || null; } catch (e) { return null; } })();
                 const acc = this.manifest.accounts.find((a) => a.id === lastId) ?? this.sortedAccounts[0];
                 if (acc) this.openReader(acc);
             }
@@ -2410,20 +2423,14 @@ Alpine.data('vaultMail', (labels = {}) => ({
         }
     },
 
+    _headers() {
+        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+    },
+
     // Switch the reader to another account (from the sidebar account menu).
     switchAccount(id) {
         const acc = this.manifest.accounts.find((a) => a.id === id);
         if (acc && acc.id !== this.reader.account?.id) this.openReader(acc);
-    },
-
-    async persist() {
-        try {
-            this.version = await Vault.saveManifest('mail', this.manifest, this.version);
-            this.error = '';
-        } catch (e) {
-            if (e.stale) { await this.load(); this.error = labels.stale; } else { this.error = labels.saveFailed; }
-            throw e;
-        }
     },
 
     openAdd() {
@@ -2435,9 +2442,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     openEdit(a) {
         this.editingId = a.id;
+        // Password left blank keeps the stored one (never sent to the browser).
         this.form = {
             name: a.name ?? '', host: a.host ?? '', port: a.port ?? 993, encryption: a.encryption ?? 'ssl',
-            username: a.username ?? '', password: a.password ?? '', validateCert: a.validateCert !== false,
+            username: a.username ?? '', password: '', validateCert: a.validateCert !== false,
         };
         this.error = '';
         this.dialogOpen = true;
@@ -2445,61 +2453,56 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     async saveAccount() {
         const f = this.form;
-        if (! f.host.trim() || ! f.username.trim() || ! f.password) { this.error = labels.saveFailed; return; }
-        const now = new Date().toISOString();
-        const fields = {
+        if (! f.host.trim() || ! f.username.trim() || (! this.editingId && ! f.password)) { this.error = labels.saveFailed; return; }
+        const body = {
             name: f.name.trim() || f.host.trim(), host: f.host.trim(), port: Number(f.port) || 993,
-            encryption: f.encryption, username: f.username.trim(), password: f.password, validateCert: !! f.validateCert,
+            encryption: f.encryption, username: f.username.trim(), password: f.password, validate_cert: !! f.validateCert,
         };
-        if (this.editingId) {
-            const a = this.manifest.accounts.find((x) => x.id === this.editingId);
-            if (a) Object.assign(a, fields, { updated: now });
-        } else {
-            this.manifest.accounts.push({ id: crypto.randomUUID(), ...fields, stats: null, created: now, updated: now });
-        }
-        this.dialogOpen = false;
-        await this.persist().catch(() => {});
+        try {
+            if (this.editingId) {
+                const saved = await (await fetch(`/mail/accounts/${this.editingId}`, { method: 'PUT', headers: this._headers(), body: JSON.stringify(body) })).json();
+                const a = this.manifest.accounts.find((x) => x.id === this.editingId);
+                if (a) Object.assign(a, saved);
+            } else {
+                const res = await fetch('/mail/accounts', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) });
+                if (! res.ok) { this.error = labels.saveFailed; return; }
+                this.manifest.accounts.push(await res.json());
+            }
+            this.dialogOpen = false;
+        } catch (e) { this.error = labels.saveFailed; }
     },
 
     confirmDelete(a) { this.deleteId = a.id; this.deleteOpen = true; },
 
     async applyDelete() {
+        const id = this.deleteId;
         this.deleteOpen = false;
-        this.manifest.accounts = this.manifest.accounts.filter((x) => x.id !== this.deleteId);
         this.deleteId = null;
-        await this.persist().catch(() => {});
+        try {
+            await fetch(`/mail/accounts/${id}`, { method: 'DELETE', headers: this._headers() });
+            this.manifest.accounts = this.manifest.accounts.filter((x) => x.id !== id);
+            mailCache.remove(`stats:${id}`);
+        } catch (e) { this.error = labels.saveFailed; }
     },
 
-    // Decrypted credentials are posted to the stateless stats endpoint only for
-    // this fetch; the server never stores them. The result is cached back into
-    // the encrypted manifest so it shows instantly next time.
+    // The server loads the (encrypted) credentials by id and connects; the
+    // result is cached locally so it shows instantly next time.
     async refresh(a) {
         if (this.busyId) return;
         this.busyId = a.id;
         this.errors = { ...this.errors, [a.id]: '' };
         try {
-            const res = await fetch('/mail/stats', {
-                method: 'POST',
-                headers: {
-                    Accept: 'application/json', 'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
-                },
-                body: JSON.stringify({
-                    host: a.host, port: a.port, encryption: a.encryption,
-                    username: a.username, password: a.password, validate_cert: a.validateCert,
-                }),
-            });
+            const res = await fetch('/mail/stats', { method: 'POST', headers: this._headers(), body: JSON.stringify({ account_id: a.id }) });
             if (! res.ok) {
                 const body = await res.json().catch(() => ({}));
                 this.errors = { ...this.errors, [a.id]: body.message || labels.connectFailed };
                 return;
             }
-            const stats = await res.json();
+            const stats = { ...(await res.json()), fetchedAt: new Date().toISOString() };
             const t = this.manifest.accounts.find((x) => x.id === a.id);
-            if (t) {
-                t.stats = { ...stats, fetchedAt: new Date().toISOString() };
-                await this.persist().catch(() => {});
-            }
+            if (t) t.stats = stats;
+            mailCache.put(`stats:${a.id}`, stats);
+            this.cacheVersion++;
         } catch (e) {
             this.errors = { ...this.errors, [a.id]: labels.connectFailed };
         } finally {
@@ -2541,10 +2544,9 @@ Alpine.data('vaultMail', (labels = {}) => ({
     /* ---- Reader ---- */
 
     credsBody(a) {
-        return {
-            host: a.host, port: a.port, encryption: a.encryption,
-            username: a.username, password: a.password, validate_cert: a.validateCert,
-        };
+        // The server resolves the (encrypted) credentials from the account id;
+        // the password never travels to the browser.
+        return { account_id: a.id };
     },
 
     // Folders available for navigation / move targets — fetched live from the
@@ -2600,7 +2602,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     loadFoldersAsync(a) {
         const gen = this.reader.gen;
         // Show the cached folder tree instantly; only spin when there is none.
-        const cached = Vault.cacheGet(`folders:${a.id}`, 86400000);
+        const cached = mailCache.get(`folders:${a.id}`, 86400000);
         if (cached && cached.length) {
             this.reader.folders = this.sortedFolders(cached);
             this.adoptInboxPath();
@@ -2611,7 +2613,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
             if (this.reader.gen !== gen) return; // switched account mid-flight → drop
             if (! folders.length) return;        // keep the cached tree on a failed refresh
             this.reader.folders = this.sortedFolders(folders);
-            Vault.cachePut(`folders:${a.id}`, folders);
+            mailCache.put(`folders:${a.id}`, folders);
             this.adoptInboxPath();
         }).finally(() => { if (this.reader.gen === gen) this.reader.foldersLoading = false; });
     },
@@ -2637,7 +2639,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.page = 1;
         // Show a cached list instantly only if it is at most a day old (a fresh
         // load runs right after anyway); older entries fall back to a spinner.
-        const cached = Vault.cacheGet(`msgs:${this.reader.account.id}:${this.reader.folderPath}`, 86400000);
+        const cached = mailCache.get(`msgs:${this.reader.account.id}:${this.reader.folderPath}`, 86400000);
         if (cached && (cached.messages ?? []).length) {
             this.reader.messages = cached.messages;
             this.reader.total = cached.total ?? cached.messages.length;
@@ -2738,7 +2740,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     async syncAccountStats(a) {
         try {
             const res = await mailPostRaw('/mail/stats', this.credsBody(a));
-            if (res.ok) { Vault.cachePut(`stats:${a.id}`, await res.json()); this.cacheVersion++; }
+            if (res.ok) { mailCache.put(`stats:${a.id}`, await res.json()); this.cacheVersion++; }
         } catch (e) { /* ignore */ }
     },
 
@@ -2936,7 +2938,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     cacheList(folder = null) {
         if (! this.reader.account) return;
-        Vault.cachePut(`msgs:${this.reader.account.id}:${folder ?? this.reader.folderPath}`, {
+        mailCache.put(`msgs:${this.reader.account.id}:${folder ?? this.reader.folderPath}`, {
             messages: this.reader.messages, total: this.reader.total, ts: Date.now(),
         });
     },
@@ -2982,7 +2984,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.imagesAllowed = false;
         // Served from the encrypted cache if this message was already read this
         // session — instant, no re-fetch. The cache is dropped on lock/logout.
-        const cached = Vault.cacheGet(this.msgCacheKey(folder, uid));
+        const cached = mailCache.get(this.msgCacheKey(folder, uid));
         if (cached) { this.reader.current = cached; return; }
 
         this.reader.busy = true;
@@ -2992,7 +2994,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
             if (this.reader.current.uidValidity != null) this.reader.uidValidity = this.reader.current.uidValidity;
-            Vault.cachePut(this.msgCacheKey(folder, uid), this.reader.current);
+            mailCache.put(this.msgCacheKey(folder, uid), this.reader.current);
             // Opening marks \Seen server-side — reflect it in the list and the
             // folder's unread count without a reload.
             const row = this.reader.messages.find((m) => m.uid === uid);
@@ -3103,8 +3105,8 @@ Alpine.data('vaultMail', (labels = {}) => ({
                     'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(),
                 },
                 body: JSON.stringify({
-                    ...this.credsBody(this.reader.account), folder: this.reader.folderPath, uids,
-                    target: this.credsBody(a), target_folder: this.reader.transferFolder,
+                    account_id: this.reader.account.id, folder: this.reader.folderPath, uids,
+                    target_account_id: a.id, target_folder: this.reader.transferFolder,
                 }),
             });
             if (res.ok) { ok = true; } else { const b = await res.json().catch(() => ({})); this.reader.transferError = b.detail || labels.connectFailed; }
@@ -3188,14 +3190,14 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.attView = { open: false, name: '', kind: '', url: '', loading: false, error: '' };
     },
 
-    // ---- Save an attachment into the Files vault (encrypted blob + manifest) ----
+    // ---- Save an attachment into Files (plain upload via the files API) ----
 
     async openSaveAttachment(att) {
         this.reader.saveAtt = { open: true, att, folder: '', busy: false, error: '', done: false };
-        // Load the Files manifest's folders for the destination picker.
+        // Load the Files folders for the destination picker.
         try {
-            const { data } = await Vault.loadManifest('files');
-            this.reader.filesFolders = this.buildFolderOptions((data && data.folders) ? data.folders : []);
+            const d = await (await fetch('/files/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })).json();
+            this.reader.filesFolders = this.buildFolderOptions(d.folders ?? []);
         } catch (e) {
             this.reader.filesFolders = [];
         }
@@ -3222,35 +3224,21 @@ Alpine.data('vaultMail', (labels = {}) => ({
         s.busy = true;
         s.error = '';
         try {
-            // Fetch the attachment bytes from the stateless endpoint.
+            // Fetch the attachment bytes, then upload them into Files (plain).
             const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: s.att.id });
             if (! res.ok) { s.error = labels.saveFailed; return; }
             const bytes = new Uint8Array(await res.arrayBuffer());
 
-            // Encrypt with a fresh per-blob key and upload the opaque blob.
-            const { blob, key } = Vault.encryptBlob(bytes);
             const fd = new FormData();
             fd.append('_token', csrfToken());
-            fd.append('blob', blob, 'blob');
-            const up = await fetch(labels.blobBase, {
+            fd.append('file', new Blob([bytes], { type: s.att.mime || 'application/octet-stream' }), s.att.name || 'attachment');
+            if (s.folder) fd.append('folder_id', s.folder);
+            const up = await fetch('/files/import', {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: fd,
             });
             if (! up.ok) { s.error = labels.saveFailed; return; }
-            const { id: blobId } = await up.json();
-
-            const ok = await this.appendFileEntry({
-                id: crypto.randomUUID(),
-                blob: blobId,
-                name: s.att.name || 'attachment',
-                mime: s.att.mime || 'application/octet-stream',
-                size: s.att.size || bytes.length,
-                folder: s.folder || null,
-                key,
-                created: new Date().toISOString(),
-            });
-            if (! ok) { s.error = labels.saveFailed; return; }
 
             s.done = true;
             window.dispatchEvent(new CustomEvent('files-changed'));
@@ -3260,25 +3248,6 @@ Alpine.data('vaultMail', (labels = {}) => ({
         } finally {
             s.busy = false;
         }
-    },
-
-    // Append one file entry to the Files manifest, reloading + retrying once if
-    // another tab saved in between (optimistic version, like the note migration).
-    async appendFileEntry(entry) {
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const { data, version } = await Vault.loadManifest('files');
-            const manifest = data.files ? data : { v: 1, folders: [], files: [] };
-            // Drop a destination folder that no longer exists → save at the root.
-            entry.folder = (entry.folder && manifest.folders.some((f) => f.id === entry.folder)) ? entry.folder : null;
-            manifest.files.push(entry);
-            try {
-                await Vault.saveManifest('files', manifest, version);
-                return true;
-            } catch (e) {
-                if (! e.stale) throw e;
-            }
-        }
-        return false;
     },
 
     printMsg() {
@@ -3361,34 +3330,31 @@ document.addEventListener('alpine:init', () => {
         },
 
         async tick() {
-            if (this.running || ! Vault.unlocked()) return;
+            if (this.running) return;
             this.running = true;
             try {
-                const { data } = await Vault.loadManifest('mail');
-                for (const a of data.accounts ?? []) {
-                    const creds = {
-                        host: a.host, port: a.port, encryption: a.encryption,
-                        username: a.username, password: a.password, validate_cert: a.validateCert,
-                    };
+                const accts = await (await fetch('/mail/accounts', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })).json();
+                for (const a of accts.accounts ?? []) {
+                    const creds = { account_id: a.id };
                     try {
                         const s = await mailPostRaw('/mail/stats', creds);
-                        if (s.ok) Vault.cachePut(`stats:${a.id}`, await s.json());
+                        if (s.ok) mailCache.put(`stats:${a.id}`, await s.json());
                     } catch (e) { /* skip */ }
                     try {
                         const m = await mailPostRaw('/mail/messages', { ...creds, folder: 'INBOX', page: 1 });
-                        if (m.ok) { const d = await m.json(); Vault.cachePut(`msgs:${a.id}:INBOX`, { messages: d.messages ?? [], total: d.total ?? 0, ts: Date.now() }); }
+                        if (m.ok) { const d = await m.json(); mailCache.put(`msgs:${a.id}:INBOX`, { messages: d.messages ?? [], total: d.total ?? 0, ts: Date.now() }); }
                     } catch (e) { /* skip */ }
                     try {
                         // Cache the folder tree too, so opening the mailbox shows the
                         // sidebar instantly instead of spinning on an IMAP round-trip.
                         const f = await mailPostRaw('/mail/folders', creds);
-                        if (f.ok) { const d = await f.json(); if ((d.folders ?? []).length) Vault.cachePut(`folders:${a.id}`, d.folders); }
+                        if (f.ok) { const d = await f.json(); if ((d.folders ?? []).length) mailCache.put(`folders:${a.id}`, d.folders); }
                     } catch (e) { /* skip */ }
                 }
                 this.lastSync = Date.now();
                 window.dispatchEvent(new CustomEvent('mail-synced'));
             } catch (e) {
-                /* vault locked or manifest unavailable */
+                /* accounts unavailable */
             } finally {
                 this.running = false;
             }

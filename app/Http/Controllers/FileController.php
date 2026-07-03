@@ -108,6 +108,31 @@ class FileController extends Controller
         return response()->json(['id' => $id], 201);
     }
 
+    /** Import an uploaded file straight into Files as a row (used by mail "save to Files"). */
+    public function import(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'max:'.((int) config('files.max_upload_mb', 2048) * 1024)],
+            'folder_id' => ['nullable', 'uuid', 'exists:file_folders,id'],
+        ]);
+
+        $file = $request->file('file');
+        $blob = (string) Str::uuid();
+        $this->disk()->putFileAs('files', $file, $blob);
+
+        $stored = StoredFile::create([
+            'id' => (string) Str::uuid(),
+            'file_folder_id' => $data['folder_id'] ?? null,
+            'name' => $file->getClientOriginalName() ?: 'attachment',
+            'mime' => $file->getClientMimeType() ?: 'application/octet-stream',
+            'size' => $file->getSize(),
+            'blob' => $blob,
+            'tags' => [],
+        ]);
+
+        return response()->json(['id' => $stored->id], 201);
+    }
+
     /** Stream a stored file's bytes back to the browser. */
     public function raw(string $blob): StreamedResponse
     {
