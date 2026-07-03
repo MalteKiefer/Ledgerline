@@ -5,6 +5,16 @@ import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
 
+// CSP-safe replacement for inline `onsubmit="return confirm(...)"`: any form
+// carrying data-confirm asks for confirmation before submitting. Lets the
+// Content-Security-Policy drop 'unsafe-inline' for scripts.
+document.addEventListener('submit', (e) => {
+    const message = e.target?.getAttribute?.('data-confirm');
+    if (message && ! window.confirm(message)) {
+        e.preventDefault();
+    }
+}, true);
+
 // Heavy, feature-specific libraries are code-split and loaded on first use so
 // they stay out of the initial bundle (pages that never open an editor / export
 // a PDF / bulk-download / view a map never download them). Each loader is

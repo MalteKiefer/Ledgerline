@@ -78,7 +78,7 @@
                             <input type="text" x-model="f.password" placeholder="{{ __('notes.share_password') }}" class="col-span-2 rounded-md border-gray-300 text-xs shadow-sm">
                         </div>
                         <button type="button" @click="createShare(f)" :disabled="shareBusy" class="mt-2 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">{{ __('notes.share_create') }}</button>
-                        <input x-show="shareUrl" x-cloak type="text" readonly :value="shareUrl" onclick="this.select()" class="mt-2 w-full rounded-md border-gray-300 bg-gray-50 text-xs shadow-sm">
+                        <input x-show="shareUrl" x-cloak type="text" readonly :value="shareUrl" x-on:click="$el.select()" class="mt-2 w-full rounded-md border-gray-300 bg-gray-50 text-xs shadow-sm">
                     </div>
                 </div>
 

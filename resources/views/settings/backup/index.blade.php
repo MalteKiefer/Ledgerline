@@ -47,7 +47,7 @@
                     </div>
                     <div class="flex shrink-0 items-center gap-2">
                         <button type="button" @click="editing = (editing === {{ $destination->id }} ? null : {{ $destination->id }})" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="pencil" /></button>
-                        <form method="POST" action="{{ route('settings.backup.destinations.destroy', $destination) }}" onsubmit="return confirm('{{ __('settings.backup_delete_confirm') }}')">
+                        <form method="POST" action="{{ route('settings.backup.destinations.destroy', $destination) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
                             <button type="submit" class="rounded p-1.5 text-red-600 hover:bg-red-50"><x-icon name="trash" /></button>
                         </form>
@@ -105,7 +105,7 @@
                             <span x-show="queued" x-cloak>{{ __('settings.backup_queued_short') }}</span>
                         </button>
                         <button type="button" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="pencil" /></button>
-                        <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" onsubmit="return confirm('{{ __('settings.backup_delete_confirm') }}')">
+                        <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
                             <button type="submit" class="rounded p-1.5 text-red-600 hover:bg-red-50"><x-icon name="trash" /></button>
                         </form>

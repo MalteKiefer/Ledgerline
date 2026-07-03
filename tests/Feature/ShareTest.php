@@ -45,7 +45,9 @@ class ShareTest extends TestCase
 
     public function test_a_password_share_requires_the_password(): void
     {
-        $share = NoteShare::create([
+        // password_hash / has_password are guarded (set via forceFill in the
+        // controller), so build the fixture with forceCreate.
+        $share = NoteShare::forceCreate([
             'title' => 'Secret', 'content' => 'top secret body',
             'has_password' => true, 'password_hash' => Hash::make('open-sesame'),
             'expires_at' => now()->addDay(),
