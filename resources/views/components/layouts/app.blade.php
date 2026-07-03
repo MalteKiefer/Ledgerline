@@ -66,7 +66,6 @@
                 @auth
                     @php
                         $currentUser = auth()->user();
-                        $vaultConfigured = \App\Models\Vault::current() !== null;
                     @endphp
                     <div class="flex items-center gap-3">
                         <button type="button" @click="mobileOpen = ! mobileOpen" aria-label="{{ __('pages.menu.toggle_menu') }}"
@@ -113,9 +112,6 @@
                                 </div>
                             </div>
                         </div>
-
-                        {{-- Encryption vault: status trigger + setup/unlock modal (global) --}}
-                        @include('vault._panel', ['serverConfigured' => $vaultConfigured])
 
                         {{-- User menu --}}
                         <div class="relative" x-data="{ open: false }">
@@ -193,22 +189,6 @@
                     {{ session('error') }}
                 </div>
             @endif
-
-            @auth
-                @if (! ($vaultConfigured ?? true))
-                    {{-- x-data so Alpine binds the @click (there is no ancestor scope in <main>). --}}
-                    <div x-data class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                        <span class="flex items-center gap-2">
-                            <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                            </svg>
-                            {{ __('vault.not_set_up_notice') }}
-                        </span>
-                        <button type="button" @click="window.dispatchEvent(new CustomEvent('vault-panel'))"
-                            class="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700">{{ __('vault.setup') }}</button>
-                    </div>
-                @endif
-            @endauth
 
             {{ $slot }}
         </main>
