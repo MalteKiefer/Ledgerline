@@ -34,7 +34,16 @@ final class DatabaseSource implements BackupSource
     private function dumpWithDumper(MySql|PostgreSql $dumper, string $workDir): BackupArtifact
     {
         $path = $workDir.'/database.sql.gz';
-        $dumper->useCompressor(new GzipCompressor)->dumpToFile($path);
+        try {
+            $dumper->useCompressor(new GzipCompressor)->dumpToFile($path);
+        } catch (\Throwable $e) {
+            // The dumper shells out to pg_dump/mysqldump (+ gzip). Turn the raw
+            // "command not found" into an actionable message.
+            throw new RuntimeException(
+                'Database dump failed. Ensure the client tools (pg_dump/mysqldump and gzip) are installed on the server. Detail: '.$e->getMessage(),
+                previous: $e,
+            );
+        }
 
         return new BackupArtifact($path, 'sql.gz');
     }
@@ -47,10 +56,23 @@ final class DatabaseSource implements BackupSource
         }
         $path = $workDir.'/database.sqlite.gz';
         $in = fopen($db, 'rb');
+        if ($in === false) {
+            throw new RuntimeException('Could not open the SQLite database for backup.');
+        }
         $out = gzopen($path, 'wb9');
+        if ($out === false) {
+            fclose($in);
+            throw new RuntimeException('Could not open the backup archive for writing.');
+        }
         try {
             while (! feof($in)) {
-                gzwrite($out, fread($in, 262144));
+                $chunk = fread($in, 262144);
+                if ($chunk === false) {
+                    throw new RuntimeException('Error reading the SQLite database during backup.');
+                }
+                if ($chunk !== '' && gzwrite($out, $chunk) === 0) {
+                    throw new RuntimeException('Error writing the SQLite backup (disk full?).');
+                }
             }
         } finally {
             fclose($in);
