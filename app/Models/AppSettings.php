@@ -38,6 +38,10 @@ use Illuminate\Database\Eloquent\Model;
     'webhook_enabled',
     'webhook_url',
     'webhook_secret',
+    'paperless_enabled',
+    'paperless_url',
+    'paperless_token',
+    'paperless_synced_at',
 ])]
 class AppSettings extends Model
 {
@@ -73,6 +77,10 @@ class AppSettings extends Model
             'webhook_enabled' => 'boolean',
             'webhook_url' => 'encrypted',
             'webhook_secret' => 'encrypted',
+            'paperless_enabled' => 'boolean',
+            'paperless_url' => 'encrypted',
+            'paperless_token' => 'encrypted',
+            'paperless_synced_at' => 'datetime',
         ];
     }
 

@@ -25,4 +25,5 @@ return [
     'photos_restored' => ':count Foto(s) wiederhergestellt.',
     'photos_trashed' => ':count Foto(s) in den Papierkorb verschoben.',
     'mail_settings_saved' => 'Mail-Einstellungen gespeichert.',
+    'paperless_settings_saved' => 'Paperless-Einstellungen gespeichert.',
 ];

@@ -11,3 +11,7 @@ Artisan::command('inspire', function () {
 // Check every minute which backup jobs are due (per their own cron) and
 // dispatch them. Requires the system scheduler (`php artisan schedule:run`).
 Schedule::command('backups:run-due')->everyMinute()->withoutOverlapping();
+
+// Refresh the cached Paperless tags / document types / correspondents hourly so
+// the transfer modal always has an up-to-date quick-pick list.
+Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
