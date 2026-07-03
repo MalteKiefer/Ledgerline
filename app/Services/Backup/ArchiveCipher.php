@@ -33,9 +33,9 @@ final class ArchiveCipher
             $key = $this->deriveKey($passphrase, $salt);
             [$state, $header] = $this->initPush($key);
 
-            fwrite($out, self::MAGIC);
-            fwrite($out, $salt);
-            fwrite($out, $header);
+            $this->write($out, self::MAGIC);
+            $this->write($out, $salt);
+            $this->write($out, $header);
 
             while (! feof($in)) {
                 $chunk = fread($in, self::CHUNK);
@@ -46,8 +46,8 @@ final class ArchiveCipher
                     ? SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_FINAL
                     : SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_MESSAGE;
                 $cipher = sodium_crypto_secretstream_xchacha20poly1305_push($state, $chunk, '', $tag);
-                fwrite($out, pack('N', strlen($cipher)));
-                fwrite($out, $cipher);
+                $this->write($out, pack('N', strlen($cipher)));
+                $this->write($out, $cipher);
             }
         } finally {
             fclose($in);
@@ -87,7 +87,7 @@ final class ArchiveCipher
                     throw new RuntimeException('Wrong passphrase or corrupted archive.');
                 }
                 [$plain, $tag] = $result;
-                fwrite($out, $plain);
+                $this->write($out, $plain);
                 if ($tag === SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_FINAL) {
                     $sawFinal = true;
                     break;
@@ -121,6 +121,24 @@ final class ArchiveCipher
         $state = sodium_crypto_secretstream_xchacha20poly1305_init_push($key);
 
         return [$state[0], $state[1]];
+    }
+
+    /**
+     * Write exactly $data or throw: a short/failed write would silently
+     * truncate the archive, only to be discovered as corruption at restore.
+     *
+     * @param  resource  $out
+     */
+    private function write($out, string $data): void
+    {
+        $expected = strlen($data);
+        if ($expected === 0) {
+            return;
+        }
+        $written = fwrite($out, $data);
+        if ($written === false || $written !== $expected) {
+            throw new RuntimeException('Short write while encrypting/decrypting the archive.');
+        }
     }
 
     /** @return resource */

@@ -175,10 +175,27 @@ final class BackupManager
     {
         $parts = [];
         for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
-            $parts[] = class_basename($cur).': '.$cur->getMessage();
+            $parts[] = class_basename($cur).': '.$this->redact($cur->getMessage());
         }
 
         return implode(' ← ', array_unique($parts));
+    }
+
+    /**
+     * Strip credentials a dumper/driver may have echoed into its error (e.g. a
+     * mysqldump command line or a connection URI), since this detail is stored
+     * on the run and shown in the UI.
+     */
+    private function redact(string $message): string
+    {
+        $patterns = [
+            '/(--password[=\s]+)\S+/i' => '$1***',
+            '/(\s-p)\S+/' => '$1***',
+            '/(password["\']?\s*[:=]\s*["\']?)[^"\'\s,&]+/i' => '$1***',
+            '/([a-z][a-z0-9+.\-]*:\/\/[^:\/\s@]+:)[^@\/\s]+@/i' => '$1***@',
+        ];
+
+        return (string) preg_replace(array_keys($patterns), array_values($patterns), $message);
     }
 
     private function source(string $source): BackupSource
