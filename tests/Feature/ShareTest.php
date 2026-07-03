@@ -19,7 +19,7 @@ class ShareTest extends TestCase
         $this->signIn();
         $note = Note::create(['title' => 'Recipe', 'content' => '# Pancakes']);
 
-        $this->post(route('notes.share', $note), ['expires_in' => 86400])->assertRedirect();
+        $this->postJson(route('notes.share', $note), ['expires_in' => 86400])->assertOk()->assertJsonStructure(['url']);
 
         $share = NoteShare::first();
         $this->assertSame('Recipe', $share->title);
