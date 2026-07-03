@@ -10,6 +10,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
@@ -146,6 +147,12 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->name('mail.message.attachment');
     Route::post('/mail/message/action', [MailReaderController::class, 'action'])->name('mail.message.action');
     Route::post('/mail/message/transfer', [MailReaderController::class, 'transfer'])->name('mail.message.transfer');
+
+    // Paperless transfer modal: cached quick-pick terms, term creation and
+    // document upload (shared by mail attachments and the file browser).
+    Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
+    Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
+    Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
         ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
