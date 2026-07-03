@@ -21,7 +21,7 @@ class BookmarkSearchProvider extends AbstractSearchProvider
 
     public function search(string $term, int $limit): array
     {
-        $query = Bookmark::query()->whereNull('trashed_at');
+        $query = Bookmark::query();
         $this->matchAny($query, ['title', 'url'], $this->wildcard($term), $term);
 
         return $query

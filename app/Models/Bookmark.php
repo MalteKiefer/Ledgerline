@@ -7,17 +7,19 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
-/** A bookmark. Plain database row (not zero-knowledge). */
-#[Fillable(['bookmark_folder_id', 'title', 'url', 'description', 'tags', 'favorite', 'trashed_at'])]
+/** A bookmark. Plain database row; trashing is Laravel soft-deletion. */
+#[Fillable(['bookmark_folder_id', 'title', 'url', 'description', 'tags', 'favorite'])]
 class Bookmark extends Model
 {
+    use SoftDeletes;
+
     protected function casts(): array
     {
         return [
             'tags' => 'array',
             'favorite' => 'boolean',
-            'trashed_at' => 'datetime',
         ];
     }
 

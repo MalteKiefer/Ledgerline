@@ -36,16 +36,16 @@ class FileController extends Controller
             'folders' => FileFolder::get(['id', 'parent_id', 'name'])
                 ->map(fn (FileFolder $f) => ['id' => $f->id, 'name' => $f->name, 'parent' => $f->parent_id])
                 ->all(),
-            'files' => StoredFile::get()->map(fn (StoredFile $f) => [
+            'files' => StoredFile::withTrashed()->get()->map(fn (StoredFile $f) => [
                 'id' => $f->id,
                 'blob' => $f->blob,
                 'name' => $f->name,
                 'mime' => $f->mime,
                 'size' => $f->size,
                 'folder' => $f->file_folder_id,
-                'tags' => $f->tags ?? [],
-                'trashed' => $f->trashed_at?->toIso8601String(),
+                'trashed' => $f->deleted_at?->toIso8601String(),
                 'created' => $f->created_at?->toIso8601String(),
+                'tags' => $f->tags ?? [],
             ])->all(),
         ]);
     }
@@ -89,23 +89,29 @@ class FileController extends Controller
 
             $fileIds = [];
             foreach ($files as $f) {
-                StoredFile::updateOrCreate(['id' => $f['id']], [
+                // withTrashed: the manifest keeps trashed files, so a matching
+                // row may be soft-deleted; find it (or build a new one) and let
+                // the manifest's `trashed` timestamp drive deleted_at directly.
+                $file = StoredFile::withTrashed()->firstOrNew(['id' => $f['id']]);
+                $file->fill([
                     'file_folder_id' => $f['folder'] ?? null,
                     'name' => $f['name'],
                     'mime' => $f['mime'] ?? 'application/octet-stream',
                     'size' => (int) ($f['size'] ?? 0),
                     'blob' => $f['blob'],
                     'tags' => Tags::normalize($f['tags'] ?? null),
-                    'trashed_at' => ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null,
                 ]);
+                $file->deleted_at = ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null;
+                $file->save();
                 $fileIds[] = $f['id'];
             }
 
-            // Reclaim the bytes of rows the manifest dropped in the same write,
-            // so a deleted file never leaves an orphaned blob on the disk.
-            $removed = StoredFile::when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))
+            // Reclaim the bytes of rows the manifest dropped in the same write
+            // (trashed rows included), so a deleted file never leaves an
+            // orphaned blob on the disk.
+            $removed = StoredFile::withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))
                 ->pluck('blob')->all();
-            StoredFile::when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->delete();
+            StoredFile::withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->forceDelete();
 
             return $removed;
         });

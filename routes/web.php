@@ -157,8 +157,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/notes', [NoteController::class, 'store'])->name('notes.store');
     Route::post('/notes/preview', [NoteController::class, 'preview'])->name('notes.preview');
     Route::put('/notes/{note}', [NoteController::class, 'update'])->name('notes.update');
-    Route::patch('/notes/{note}', [NoteController::class, 'patch'])->name('notes.patch');
-    Route::delete('/notes/{note}', [NoteController::class, 'destroy'])->name('notes.destroy');
+    Route::patch('/notes/{note}', [NoteController::class, 'patch'])->withTrashed()->name('notes.patch');
+    Route::delete('/notes/{note}', [NoteController::class, 'destroy'])->withTrashed()->name('notes.destroy');
     Route::delete('/notes/trash/all', [NoteController::class, 'emptyTrash'])->name('notes.trash.empty');
     Route::post('/notes/{note}/share', [NoteController::class, 'share'])->name('notes.share');
     // To-dos: plain DB rows, driven client-side over a JSON API (no reloads).
@@ -169,8 +169,8 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/todos/lists/{list}', [TodoController::class, 'destroyList'])->name('todos.lists.destroy');
     Route::post('/todos/tasks', [TodoController::class, 'store'])->name('todos.store');
     Route::put('/todos/tasks/{todo}', [TodoController::class, 'update'])->name('todos.update');
-    Route::patch('/todos/tasks/{todo}', [TodoController::class, 'patch'])->name('todos.patch');
-    Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->name('todos.destroy');
+    Route::patch('/todos/tasks/{todo}', [TodoController::class, 'patch'])->withTrashed()->name('todos.patch');
+    Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->withTrashed()->name('todos.destroy');
     Route::delete('/todos/trash', [TodoController::class, 'emptyTrash'])->name('todos.trash.empty');
     // Bookmarks: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
@@ -179,8 +179,8 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/bookmarks/folders/{folder}', [BookmarkController::class, 'destroyFolder'])->name('bookmarks.folders.destroy');
     Route::post('/bookmarks', [BookmarkController::class, 'store'])->name('bookmarks.store');
     Route::put('/bookmarks/{bookmark}', [BookmarkController::class, 'update'])->name('bookmarks.update');
-    Route::patch('/bookmarks/{bookmark}', [BookmarkController::class, 'patch'])->name('bookmarks.patch');
-    Route::delete('/bookmarks/{bookmark}', [BookmarkController::class, 'destroy'])->name('bookmarks.destroy');
+    Route::patch('/bookmarks/{bookmark}', [BookmarkController::class, 'patch'])->withTrashed()->name('bookmarks.patch');
+    Route::delete('/bookmarks/{bookmark}', [BookmarkController::class, 'destroy'])->withTrashed()->name('bookmarks.destroy');
     Route::delete('/bookmarks/trash/all', [BookmarkController::class, 'emptyTrash'])->name('bookmarks.trash.empty');
     Route::view('/mail', 'mail.index')->name('mail.index');
     // Mail accounts: plain rows (password encrypted at rest), JSON API.

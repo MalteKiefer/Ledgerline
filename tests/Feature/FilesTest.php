@@ -82,6 +82,29 @@ class FilesTest extends TestCase
         Storage::disk('files')->assertMissing('files/'.$blob);
     }
 
+    public function test_sync_round_trips_a_trashed_file(): void
+    {
+        $this->signIn();
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+
+        $id = (string) Str::uuid();
+        $blob = (string) Str::uuid();
+        Storage::disk('files')->put('files/'.$blob, 'x');
+
+        // A file the client marks trashed is stored soft-deleted and still comes
+        // back from the data endpoint (so it shows in the trash view).
+        $this->putJson(route('files.sync'), [
+            'folders' => [],
+            'files' => [['id' => $id, 'blob' => $blob, 'name' => 'x', 'mime' => 'text/plain', 'size' => 1, 'folder' => null, 'tags' => [], 'trashed' => now()->toIso8601String()]],
+        ])->assertOk();
+
+        $this->assertTrue(StoredFile::withTrashed()->find($id)->trashed());
+        $this->getJson(route('files.data'))->assertOk()
+            ->assertJsonPath('files.0.id', $id)
+            ->assertJsonPath('files.0.trashed', fn ($t) => $t !== null);
+    }
+
     public function test_sync_rejects_a_folder_cycle(): void
     {
         $this->signIn();
