@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailReaderController;
@@ -24,7 +25,6 @@ use App\Http\Controllers\Settings\SecurityController as SettingsSecurityControll
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\TodoController;
-use App\Http\Controllers\VaultBlobController;
 use App\Http\Controllers\VaultController;
 use App\Http\Controllers\VaultManifestController;
 use Illuminate\Support\Facades\Route;
@@ -135,9 +135,14 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/vault', [VaultController::class, 'store'])->name('vault.store');
     Route::put('/vault', [VaultController::class, 'rotate'])->name('vault.rotate');
 
-    // Zero-knowledge file vault: the server stores one encrypted manifest and
-    // opaque uuid-keyed blobs; it cannot see names, sizes, structure or counts.
+    // Files: plain metadata rows + unencrypted bytes on the files disk. The
+    // rich client reads/writes the whole tree as a manifest that syncs to rows.
     Route::view('/files', 'files.index')->name('files.index');
+    Route::get('/files/data', [FileController::class, 'data'])->name('files.data');
+    Route::put('/files/data', [FileController::class, 'sync'])->name('files.sync');
+    Route::post('/files/upload', [FileController::class, 'upload'])->name('files.upload');
+    Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
+    Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
     // Notes: plain database rows (not zero-knowledge), rendered server-side.
     Route::get('/notes', [NoteController::class, 'index'])->name('notes.index');
     Route::post('/notes', [NoteController::class, 'store'])->name('notes.store');
@@ -191,10 +196,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['files', 'mail'])->name('vault.manifest.show');
+        ->whereIn('name', ['mail'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['files', 'mail'])->name('vault.manifest.update');
-    Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
-    Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
-    Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
+        ->whereIn('name', ['mail'])->name('vault.manifest.update');
 });

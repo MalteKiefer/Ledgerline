@@ -27,7 +27,7 @@ final class BackupManager
     /** Sources mirrored object-by-object (already-encrypted blobs), not archived. */
     private const MIRROR_SOURCES = ['files', 'gallery'];
 
-    private const MIRROR_PREFIX = ['files' => 'vault', 'gallery' => 'photos'];
+    private const MIRROR_PREFIX = ['files' => 'files', 'gallery' => 'photos'];
 
     public function __construct(
         private readonly BackupDestinationFactory $destinations,

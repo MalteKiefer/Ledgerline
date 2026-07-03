@@ -4,7 +4,10 @@
           ->mapWithKeys(fn (\App\Enums\FileType $c): array => [$c->value => $c->label()]);
   @endphp
   <div x-data="vaultFiles({
-        blobBase: '{{ url('/vault/blobs') }}',
+        dataUrl: '{{ url('/files/data') }}',
+        uploadUrl: '{{ url('/files/upload') }}',
+        rawBase: '{{ url('/files/raw') }}',
+        blobBase: '{{ url('/files/blob') }}',
         token: '{{ csrf_token() }}',
      }, {
         types: @js($typeLabels),
@@ -22,20 +25,6 @@
         class="fixed inset-0 z-[900] flex items-center justify-center bg-gray-900/50 p-8">
         <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
     </div>
-
-    {{-- Vault not set up / locked: no browser, only the gate. The server holds
-         no readable file metadata, so there is nothing else to show. --}}
-    <template x-if="state === 'unconfigured' || state === 'locked'">
-        <div class="mx-auto mt-16 max-w-md rounded-lg border border-gray-200 bg-white p-8 text-center shadow-sm">
-            <svg class="mx-auto h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-            <p class="mt-4 text-sm text-gray-600" x-text="state === 'locked' ? @js(__('files.locked_notice')) : @js(__('files.unconfigured_notice'))"></p>
-            <button type="button" @click="window.dispatchEvent(new CustomEvent('vault-panel'))"
-                class="mt-5 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
-                x-text="state === 'locked' ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></button>
-        </div>
-    </template>
 
     <template x-if="state === 'error'">
         <p class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">{{ __('files.save_failed') }}</p>
