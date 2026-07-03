@@ -181,5 +181,8 @@ return [
     'paperless_correspondents' => 'Correspondents',
     'paperless_synced_at' => 'Last refreshed :time.',
     'paperless_never_synced' => 'Not refreshed yet.',
-    'backup_mirror_hint' => 'Files/Gallery are mirrored object-by-object (already encrypted); versions, retention and archive encryption do not apply.',
+    'backup_mirror_hint' => 'Incremental mirror: only changed files are transferred; versions, retention and archive encryption do not apply.',
+    'backup_mode' => 'Backup mode',
+    'backup_mode_mirror' => 'Incremental mirror (only changes)',
+    'backup_mode_archive' => 'Full archive (tar.gz)',
 ];

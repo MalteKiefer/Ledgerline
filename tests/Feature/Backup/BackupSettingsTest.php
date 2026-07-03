@@ -74,6 +74,30 @@ class BackupSettingsTest extends TestCase
         $this->assertSame(['desktop', 'mail'], $job->notify_channels);
     }
 
+    public function test_a_files_job_can_choose_full_archive_mode(): void
+    {
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+
+        $this->post(route('settings.backup.jobs.store'), [
+            'name' => 'Files full', 'source' => 'files', 'mode' => 'archive',
+            'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 4,
+        ])->assertRedirect();
+
+        $this->assertSame('archive', BackupJob::firstWhere('name', 'Files full')->mode);
+    }
+
+    public function test_an_invalid_backup_mode_is_rejected(): void
+    {
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+
+        $this->post(route('settings.backup.jobs.store'), [
+            'name' => 'Bad mode', 'source' => 'files', 'mode' => 'wat',
+            'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3,
+        ])->assertSessionHasErrors('mode');
+    }
+
     public function test_an_invalid_cron_is_rejected(): void
     {
         $this->signIn();

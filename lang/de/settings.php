@@ -181,5 +181,8 @@ return [
     'paperless_correspondents' => 'Korrespondenten',
     'paperless_synced_at' => 'Zuletzt aktualisiert :time.',
     'paperless_never_synced' => 'Noch nicht aktualisiert.',
-    'backup_mirror_hint' => 'Dateien/Galerie werden objektweise gespiegelt (bereits verschlüsselt); Versionen, Aufbewahrung und Archiv-Verschlüsselung entfallen.',
+    'backup_mirror_hint' => 'Inkrementeller Spiegel: nur geänderte Dateien werden übertragen; Versionen, Aufbewahrung und Archiv-Verschlüsselung entfallen.',
+    'backup_mode' => 'Backup-Modus',
+    'backup_mode_mirror' => 'Inkrementeller Spiegel (nur Änderungen)',
+    'backup_mode_archive' => 'Vollständiges Archiv (tar.gz)',
 ];
