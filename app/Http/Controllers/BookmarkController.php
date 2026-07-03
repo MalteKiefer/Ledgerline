@@ -7,137 +7,93 @@ namespace App\Http\Controllers;
 use App\Models\Bookmark;
 use App\Models\BookmarkFolder;
 use Carbon\Carbon;
-use Illuminate\Contracts\View\View;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Plain (non-encrypted) bookmarks and folders, rendered server-side with plain
- * form posts. Filtering, sorting and search run in PHP.
+ * Plain (non-encrypted) bookmarks and folders, exposed as a JSON API so the
+ * browser renders and mutates them without page reloads.
  */
 class BookmarkController extends Controller
 {
-    public function index(Request $request): View
+    public function index(): JsonResponse
     {
-        $view = (string) $request->query('view', 'all');
-        $tag = (string) $request->query('tag', '');
-        $q = trim((string) $request->query('q', ''));
-
-        $query = Bookmark::query();
-        $view === 'trash' ? $query->whereNotNull('trashed_at') : $query->whereNull('trashed_at');
-        if ($view === 'favorites') {
-            $query->where('favorite', true);
-        } elseif (str_starts_with($view, 'folder:')) {
-            $query->where('bookmark_folder_id', (int) substr($view, 7));
-        }
-        if ($tag !== '') {
-            $query->whereJsonContains('tags', $tag);
-        }
-        if ($q !== '') {
-            $query->where(fn ($w) => $w->where('title', 'like', "%{$q}%")
-                ->orWhere('url', 'like', "%{$q}%")
-                ->orWhere('description', 'like', "%{$q}%"));
-        }
-
-        $bookmarks = $query->orderByDesc('favorite')->orderByDesc('updated_at')->get();
-
-        $editing = null;
-        if ($request->filled('edit')) {
-            $editing = Bookmark::find($request->integer('edit'));
-        } elseif ($request->boolean('new')) {
-            $editing = new Bookmark;
-        }
-
-        return view('bookmarks.index', [
-            'folders' => BookmarkFolder::orderBy('name')->get(),
-            'bookmarks' => $bookmarks,
-            'allTags' => $this->allTags(),
-            'trashCount' => Bookmark::whereNotNull('trashed_at')->count(),
-            'view' => $view,
-            'activeTag' => $tag,
-            'q' => $q,
-            'editing' => $editing,
+        return response()->json([
+            'folders' => BookmarkFolder::orderBy('name')->get(['id', 'name']),
+            'bookmarks' => Bookmark::orderByDesc('favorite')->orderByDesc('updated_at')->get()->map(fn (Bookmark $b) => $this->toArray($b)),
         ]);
     }
 
     /* ---- Folders ---- */
 
-    public function storeFolder(Request $request): RedirectResponse
+    public function storeFolder(Request $request): JsonResponse
     {
-        BookmarkFolder::create($request->validate(['name' => ['required', 'string', 'max:120']]));
+        $folder = BookmarkFolder::create($request->validate(['name' => ['required', 'string', 'max:120']]));
 
-        return back();
+        return response()->json(['id' => $folder->id, 'name' => $folder->name]);
     }
 
-    public function destroyFolder(BookmarkFolder $folder): RedirectResponse
+    public function destroyFolder(BookmarkFolder $folder): JsonResponse
     {
         $folder->delete(); // bookmarks fall back to "no folder"
 
-        return redirect()->route('bookmarks.index');
+        return response()->json(['ok' => true]);
     }
 
     /* ---- Bookmarks ---- */
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): JsonResponse
     {
-        Bookmark::create($this->validated($request));
+        $bookmark = Bookmark::create($this->validated($request));
 
-        return redirect()->route('bookmarks.index');
+        return response()->json($this->toArray($bookmark), 201);
     }
 
-    public function update(Request $request, Bookmark $bookmark): RedirectResponse
+    public function update(Request $request, Bookmark $bookmark): JsonResponse
     {
         $bookmark->update($this->validated($request));
 
-        return redirect()->route('bookmarks.index');
+        return response()->json($this->toArray($bookmark->refresh()));
     }
 
-    public function toggleFavorite(Bookmark $bookmark): RedirectResponse
+    public function patch(Request $request, Bookmark $bookmark): JsonResponse
     {
-        $bookmark->update(['favorite' => ! $bookmark->favorite]);
+        $request->validate(['favorite' => ['sometimes', 'boolean'], 'trashed' => ['sometimes', 'boolean']]);
+        if ($request->has('favorite')) {
+            $bookmark->favorite = $request->boolean('favorite');
+        }
+        if ($request->has('trashed')) {
+            $bookmark->trashed_at = $request->boolean('trashed') ? Carbon::now() : null;
+        }
+        $bookmark->save();
 
-        return back();
+        return response()->json($this->toArray($bookmark->refresh()));
     }
 
-    public function trash(Bookmark $bookmark): RedirectResponse
-    {
-        $bookmark->update(['trashed_at' => Carbon::now()]);
-
-        return back();
-    }
-
-    public function restore(Bookmark $bookmark): RedirectResponse
-    {
-        $bookmark->update(['trashed_at' => null]);
-
-        return back();
-    }
-
-    public function destroy(Bookmark $bookmark): RedirectResponse
+    public function destroy(Bookmark $bookmark): JsonResponse
     {
         $bookmark->delete();
 
-        return back();
+        return response()->json(['ok' => true]);
     }
 
-    public function emptyTrash(): RedirectResponse
+    public function emptyTrash(): JsonResponse
     {
         Bookmark::whereNotNull('trashed_at')->delete();
 
-        return redirect()->route('bookmarks.index');
+        return response()->json(['ok' => true]);
     }
-
-    /* ---- Helpers ---- */
 
     /** @return array<string,mixed> */
     private function validated(Request $request): array
     {
         $v = $request->validate([
-            'bookmark_folder_id' => ['nullable', 'integer', 'exists:bookmark_folders,id'],
+            'bookmark_folder_id' => ['nullable', 'exists:bookmark_folders,id'],
             'title' => ['required', 'string', 'max:255'],
             'url' => ['required', 'string', 'max:2048'],
             'description' => ['nullable', 'string', 'max:20000'],
-            'tags' => ['nullable', 'string', 'max:500'],
+            'tags' => ['array'],
+            'tags.*' => ['string', 'max:64'],
             'favorite' => ['sometimes', 'boolean'],
         ]);
 
@@ -146,26 +102,23 @@ class BookmarkController extends Controller
             'title' => $v['title'],
             'url' => $v['url'],
             'description' => $v['description'] ?? null,
-            'tags' => $this->parseTags($v['tags'] ?? null),
-            'favorite' => $request->boolean('favorite'),
+            'tags' => array_values($v['tags'] ?? []),
+            'favorite' => (bool) ($v['favorite'] ?? false),
         ];
     }
 
-    /** @return list<string> */
-    private function parseTags(?string $raw): array
+    /** @return array<string,mixed> */
+    private function toArray(Bookmark $b): array
     {
-        if ($raw === null || trim($raw) === '') {
-            return [];
-        }
-
-        return array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)))));
-    }
-
-    /** @return list<string> */
-    private function allTags(): array
-    {
-        return Bookmark::whereNotNull('tags')->pluck('tags')
-            ->flatMap(fn ($t) => is_array($t) ? $t : [])
-            ->unique()->sort()->values()->all();
+        return [
+            'id' => $b->id,
+            'folderId' => $b->bookmark_folder_id,
+            'title' => $b->title,
+            'url' => $b->url,
+            'description' => $b->description,
+            'tags' => $b->tags ?? [],
+            'favorite' => (bool) $b->favorite,
+            'trashed' => $b->trashed_at !== null,
+        ];
     }
 }

@@ -3617,4 +3617,133 @@ Alpine.data('notes', (labels = {}) => ({
     },
 }));
 
+/**
+ * Bookmarks + folders, driven client-side over a JSON API (no reloads).
+ */
+Alpine.data('bookmarks', (labels = {}) => ({
+    state: 'boot',
+    folders: [],
+    bookmarks: [],
+    view: 'all', // all | favorites | trash | a folder id
+    query: '',
+    activeTag: '',
+    error: '',
+    newFolderName: '',
+    editorOpen: false,
+    editing: null,
+    tagsValue: '',
+
+    async init() { await this.load(); },
+
+    async load() {
+        try {
+            const res = await fetch('/bookmarks/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) { this.state = 'error'; return; }
+            const d = await res.json();
+            this.folders = d.folders ?? [];
+            this.bookmarks = d.bookmarks ?? [];
+            this.state = 'ready';
+        } catch (e) { this.state = 'error'; }
+    },
+
+    _headers() {
+        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+    },
+    async _api(method, url, body) {
+        const res = await fetch(url, { method, headers: this._headers(), body: body ? JSON.stringify(body) : undefined });
+        if (! res.ok) throw new Error('request failed');
+        return res.json().catch(() => ({}));
+    },
+    _replace(b) {
+        const i = this.bookmarks.findIndex((x) => x.id === b.id);
+        if (i >= 0) this.bookmarks[i] = b; else this.bookmarks.unshift(b);
+    },
+    host(url) { try { return new URL(url).host; } catch (e) { return ''; } },
+
+    async addFolder() {
+        const name = this.newFolderName.trim();
+        if (! name) return;
+        try {
+            const f = await this._api('POST', '/bookmarks/folders', { name });
+            this.folders.push({ id: f.id, name: f.name });
+            this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            this.newFolderName = '';
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+    async deleteFolder(f) {
+        if (! confirm(labels.deleteFolderConfirm)) return;
+        try {
+            await this._api('DELETE', `/bookmarks/folders/${f.id}`);
+            this.folders = this.folders.filter((x) => x.id !== f.id);
+            this.bookmarks.forEach((b) => { if (b.folderId === f.id) b.folderId = null; });
+            if (this.view === f.id) this.view = 'all';
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    get allTags() {
+        const set = new Set();
+        for (const b of this.bookmarks) for (const t of b.tags ?? []) set.add(t);
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    get trashCount() { return this.bookmarks.filter((b) => b.trashed).length; },
+
+    get filtered() {
+        const q = this.query.trim().toLowerCase();
+        let list = this.bookmarks.filter((b) => this.view === 'trash' ? b.trashed : ! b.trashed);
+        if (this.view === 'favorites') list = list.filter((b) => b.favorite);
+        else if (this.view !== 'all' && this.view !== 'trash') list = list.filter((b) => b.folderId === this.view);
+        if (this.activeTag !== '') list = list.filter((b) => (b.tags ?? []).includes(this.activeTag));
+        if (q !== '') {
+            list = list.filter((b) => (b.title ?? '').toLowerCase().includes(q)
+                || (b.url ?? '').toLowerCase().includes(q)
+                || (b.description ?? '').toLowerCase().includes(q)
+                || (b.tags ?? []).some((t) => t.toLowerCase().includes(q)));
+        }
+        return list;
+    },
+
+    newBookmark() {
+        const folderId = (this.view !== 'all' && this.view !== 'favorites' && this.view !== 'trash') ? this.view : null;
+        this.editing = { id: null, folderId, title: '', url: '', description: '', tags: [], favorite: false };
+        this.tagsValue = '';
+        this.editorOpen = true;
+    },
+    editBookmark(b) {
+        this.editing = { ...b, tags: [...(b.tags ?? [])] };
+        this.tagsValue = (this.editing.tags || []).join(', ');
+        this.editorOpen = true;
+    },
+    closeEditor() { this.editorOpen = false; this.editing = null; },
+
+    async saveBookmark() {
+        const e = this.editing;
+        if (! e || ! (e.title || '').trim() || ! (e.url || '').trim()) return;
+        e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
+        const body = { bookmark_folder_id: e.folderId ?? null, title: e.title, url: e.url, description: e.description, tags: e.tags, favorite: !! e.favorite };
+        try {
+            const b = e.id ? await this._api('PUT', `/bookmarks/${e.id}`, body) : await this._api('POST', '/bookmarks', body);
+            this._replace(b);
+            this.closeEditor();
+        } catch (err) { this.error = labels.saveFailed; }
+    },
+
+    async _patch(b, changes) {
+        try { this._replace(await this._api('PATCH', `/bookmarks/${b.id}`, changes)); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async toggleFavorite(b) { await this._patch(b, { favorite: ! b.favorite }); },
+    async trash(b) { await this._patch(b, { trashed: true }); },
+    async restore(b) { await this._patch(b, { trashed: false }); },
+    async remove(b) {
+        if (! confirm(labels.deleteConfirm)) return;
+        try { await this._api('DELETE', `/bookmarks/${b.id}`); this.bookmarks = this.bookmarks.filter((x) => x.id !== b.id); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async emptyTrash() {
+        if (! confirm(labels.emptyTrashConfirm)) return;
+        try { await this._api('DELETE', '/bookmarks/trash/all'); this.bookmarks = this.bookmarks.filter((b) => ! b.trashed); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+}));
+
 Alpine.start();

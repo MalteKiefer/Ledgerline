@@ -18,34 +18,30 @@ class BookmarksTest extends TestCase
         $this->get(route('bookmarks.index'))->assertRedirect(route('login'));
     }
 
-    public function test_the_page_loads_without_a_vault(): void
+    public function test_the_page_and_data_load(): void
     {
         $this->signIn();
         $this->get(route('bookmarks.index'))->assertOk();
+        $this->getJson(route('bookmarks.data'))->assertOk()->assertJson(['folders' => [], 'bookmarks' => []]);
     }
 
     public function test_it_creates_a_bookmark_with_tags(): void
     {
         $this->signIn();
 
-        $this->post(route('bookmarks.store'), [
-            'title' => 'Laravel', 'url' => 'https://laravel.com', 'tags' => 'php, framework',
-        ])->assertRedirect(route('bookmarks.index'));
+        $this->postJson(route('bookmarks.store'), ['title' => 'Laravel', 'url' => 'https://laravel.com', 'tags' => ['php', 'framework']])
+            ->assertCreated()->assertJson(['title' => 'Laravel', 'tags' => ['php', 'framework']]);
 
-        $b = Bookmark::firstWhere('url', 'https://laravel.com');
-        $this->assertSame(['php', 'framework'], $b->tags);
+        $this->assertSame(1, Bookmark::count());
     }
 
-    public function test_favorite_toggle_and_trash(): void
+    public function test_patch_favorite_and_trash(): void
     {
         $this->signIn();
         $b = Bookmark::create(['title' => 'X', 'url' => 'https://x.test']);
 
-        $this->post(route('bookmarks.favorite', $b))->assertRedirect();
-        $this->assertTrue($b->refresh()->favorite);
-
-        $this->post(route('bookmarks.trash', $b))->assertRedirect();
-        $this->assertNotNull($b->refresh()->trashed_at);
+        $this->patchJson(route('bookmarks.patch', $b), ['favorite' => true])->assertOk()->assertJson(['favorite' => true]);
+        $this->patchJson(route('bookmarks.patch', $b), ['trashed' => true])->assertOk()->assertJson(['trashed' => true]);
     }
 
     public function test_deleting_a_folder_keeps_its_bookmarks(): void
@@ -54,7 +50,7 @@ class BookmarksTest extends TestCase
         $folder = BookmarkFolder::create(['name' => 'Dev']);
         $b = Bookmark::create(['title' => 'X', 'url' => 'https://x.test', 'bookmark_folder_id' => $folder->id]);
 
-        $this->delete(route('bookmarks.folders.destroy', $folder))->assertRedirect(route('bookmarks.index'));
+        $this->deleteJson(route('bookmarks.folders.destroy', $folder))->assertOk();
 
         $this->assertNull($b->refresh()->bookmark_folder_id);
         $this->assertSame(1, Bookmark::count());
@@ -65,7 +61,6 @@ class BookmarksTest extends TestCase
         $this->signIn();
         Bookmark::create(['title' => 'Uniquemark', 'url' => 'https://searchable.test']);
 
-        $this->getJson(route('search.suggest', ['q' => 'searchable']))
-            ->assertOk()->assertSee('Uniquemark');
+        $this->getJson(route('search.suggest', ['q' => 'searchable']))->assertOk()->assertSee('Uniquemark');
     }
 }
