@@ -7,8 +7,10 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Models\PaperlessTerm;
+use App\Rules\SafeUrl;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessSync;
+use App\Support\OutboundUrl;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -33,7 +35,7 @@ class PaperlessController extends Controller
     {
         $validated = $request->validate([
             'paperless_enabled' => ['sometimes', 'boolean'],
-            'paperless_url' => ['nullable', 'url', 'max:255'],
+            'paperless_url' => ['nullable', 'url', 'max:255', new SafeUrl],
             'paperless_token' => ['nullable', 'string', 'max:255'],
         ], [], [
             'paperless_url' => __('settings.paperless_url'),
@@ -60,6 +62,12 @@ class PaperlessController extends Controller
 
         if ($url === '' || $token === '') {
             return response()->json(['ok' => false, 'detail' => __('settings.paperless_test_missing')]);
+        }
+
+        // Guard the raw posted URL before any request is issued (it may not have
+        // been persisted yet, so the update() rule has not necessarily run).
+        if (! OutboundUrl::safe($url)) {
+            return response()->json(['ok' => false, 'detail' => __('settings.safe_url', ['attribute' => __('settings.paperless_url')])]);
         }
 
         try {

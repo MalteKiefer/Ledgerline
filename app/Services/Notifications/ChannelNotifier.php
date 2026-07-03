@@ -6,6 +6,7 @@ namespace App\Services\Notifications;
 
 use App\Models\AppNotification;
 use App\Models\AppSettings;
+use App\Support\OutboundUrl;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Mailer\Mailer;
@@ -53,12 +54,21 @@ class ChannelNotifier
         if (! $s->ntfy_enabled || ! $s->ntfy_url || ! $s->ntfy_topic) {
             throw new \RuntimeException('NTFY is not enabled or not fully configured.');
         }
-        $url = rtrim((string) $s->ntfy_url, '/').'/'.ltrim((string) $s->ntfy_topic, '/');
-        $headers = ['Title' => $title, 'Priority' => $opts['priority'] ?? 'default', 'Tags' => 'bell'];
-        if (! empty($opts['url'])) {
-            $headers['Click'] = (string) $opts['url'];
+        if (! OutboundUrl::safe((string) $s->ntfy_url)) {
+            throw new \RuntimeException('The NTFY URL is not an allowed outbound target.');
         }
-        $request = Http::withHeaders($headers);
+        $url = rtrim((string) $s->ntfy_url, '/').'/'.ltrim((string) $s->ntfy_topic, '/');
+        // Strip CR/LF: header values are attacker-influenced (reminder title /
+        // click URL) and a newline would smuggle extra headers.
+        $headers = [
+            'Title' => $this->headerSafe($title),
+            'Priority' => $this->headerSafe((string) ($opts['priority'] ?? 'default')),
+            'Tags' => 'bell',
+        ];
+        if (! empty($opts['url'])) {
+            $headers['Click'] = $this->headerSafe((string) $opts['url']);
+        }
+        $request = Http::withHeaders($headers)->withOptions(['allow_redirects' => false]);
         if ($s->ntfy_token) {
             $request = $request->withToken((string) $s->ntfy_token);
         }
@@ -71,6 +81,9 @@ class ChannelNotifier
         if (! $s->webhook_enabled || ! $s->webhook_url) {
             throw new \RuntimeException('Webhook is not enabled or has no URL.');
         }
+        if (! OutboundUrl::safe((string) $s->webhook_url)) {
+            throw new \RuntimeException('The webhook URL is not an allowed outbound target.');
+        }
         $payload = json_encode([
             'event' => $opts['event'] ?? 'reminder',
             'title' => $title,
@@ -82,7 +95,17 @@ class ChannelNotifier
         if ($s->webhook_secret) {
             $headers['X-Ledgerline-Signature'] = 'sha256='.hash_hmac('sha256', $payload, (string) $s->webhook_secret);
         }
-        Http::withHeaders($headers)->withBody($payload, 'application/json')->post((string) $s->webhook_url)->throw();
+        Http::withHeaders($headers)
+            ->withOptions(['allow_redirects' => false])
+            ->withBody($payload, 'application/json')
+            ->post((string) $s->webhook_url)
+            ->throw();
+    }
+
+    /** Remove CR/LF (and NUL) so a value cannot be used to inject extra headers. */
+    private function headerSafe(string $value): string
+    {
+        return str_replace(["\r", "\n", "\0"], '', $value);
     }
 
     private function mail(AppSettings $s, string $subject, string $body): void
