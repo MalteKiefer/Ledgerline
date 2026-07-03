@@ -2481,7 +2481,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     cacheVersion: 0, // bumped on background sync to re-read cached stats
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50, uidValidity: 0,
-        messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false, working: 0,
+        messages: [], current: null, loading: false, loadingMore: false, error: '', imagesAllowed: false, busy: false, working: 0, gen: 0,
         folders: [], foldersLoading: false, sortDir: 'desc', selected: [], deleteChoiceOpen: false, headersOpen: false, emptyChoiceOpen: false,
         transferOpen: false, transferAccount: '', transferFolder: 'INBOX', transferFolderList: [], transferError: '',
         saveAtt: { open: false, att: null, folder: '', busy: false, error: '', done: false }, filesFolders: [],
@@ -2700,6 +2700,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
     // spinner, and fill in when their fetch resolves.
     openReader(a) {
         try { localStorage.setItem('mail:last-account', a.id); } catch (e) { /* ignore */ }
+        // Bump the generation so any in-flight loads from a previous account are
+        // dropped when they resolve (switching before loading finished must not
+        // apply the old account's folders/messages to the new one).
+        this.reader.gen = (this.reader.gen || 0) + 1;
         this.reader.open = true;
         this.reader.account = a;
         this.reader.current = null;
@@ -2707,6 +2711,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.error = '';
         this.reader.folders = [];
         this.reader.messages = [];
+        this.reader.total = 0;
         this.reader.selected = [];
         this.reader.folderPath = 'INBOX';
         this.hydrateFolder();       // messages: cache instantly + background/foreground
@@ -2714,8 +2719,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     loadFoldersAsync(a) {
+        const gen = this.reader.gen;
         this.reader.foldersLoading = true;
         this.loadFolders(this.credsBody(a)).then((folders) => {
+            if (this.reader.gen !== gen) return; // switched account mid-flight → drop
             this.reader.folders = this.sortedFolders(folders);
             // Adopt the server's real INBOX path only if still on the default.
             const inbox = this.reader.folders.find((f) => /^inbox$/i.test(f.name) || /^inbox$/i.test(f.path));
@@ -2723,7 +2730,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
                 this.reader.folderPath = inbox.path;
                 this.hydrateFolder();
             }
-        }).finally(() => { this.reader.foldersLoading = false; });
+        }).finally(() => { if (this.reader.gen === gen) this.reader.foldersLoading = false; });
     },
 
     // Manual "check for new mail": reload the current folder and refresh counts.
@@ -2984,6 +2991,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         // must not let a late response apply to (or cache under) another folder
         // — that mixed UIDs across folders and caused "no headers found".
         const folder = this.reader.folderPath;
+        const gen = this.reader.gen; // bound to the current account
         if (reset) {
             this.reader.page = 1;
             if (! background) { this.reader.messages = []; this.reader.total = 0; }
@@ -2993,14 +3001,14 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.error = '';
         try {
             const res = await this.mailPost('/mail/messages', { page: this.reader.page });
-            if (this.reader.folderPath !== folder) return; // folder changed mid-flight → drop
+            if (this.reader.gen !== gen || this.reader.folderPath !== folder) return; // account/folder changed → drop
             if (! res.ok) {
                 const body = await res.json().catch(() => ({}));
                 if (! background) this.reader.error = body.detail || labels.connectFailed;
                 return;
             }
             const data = await res.json();
-            if (this.reader.folderPath !== folder) return; // changed while parsing
+            if (this.reader.gen !== gen || this.reader.folderPath !== folder) return; // changed while parsing
             const rows = data.messages ?? [];
             this.reader.messages = reset ? rows : [...this.reader.messages, ...rows];
             this.reader.total = data.total ?? 0;
@@ -3010,10 +3018,13 @@ Alpine.data('vaultMail', (labels = {}) => ({
             if (data.uidValidity != null) this.reader.uidValidity = data.uidValidity;
             this.cacheList(folder);
         } catch (e) {
-            if (! background && this.reader.folderPath === folder) this.reader.error = labels.connectFailed;
+            if (! background && this.reader.gen === gen && this.reader.folderPath === folder) this.reader.error = labels.connectFailed;
         } finally {
-            this.reader.loading = false;
-            this.reader.loadingMore = false;
+            // Only clear the spinners if this load still owns the view.
+            if (this.reader.gen === gen && this.reader.folderPath === folder) {
+                this.reader.loading = false;
+                this.reader.loadingMore = false;
+            }
         }
     },
 
@@ -3057,9 +3068,11 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     async openMsg(uid) {
-        // Bind to the folder the click happened in — UIDs are per-folder, so a
-        // folder switch mid-fetch must not apply the wrong message.
+        // Bind to the folder + account the click happened in — UIDs are per
+        // folder, so a folder or account switch mid-fetch must not apply the
+        // wrong message.
         const folder = this.reader.folderPath;
+        const gen = this.reader.gen;
         this.reader.imagesAllowed = false;
         // Served from the encrypted cache if this message was already read this
         // session — instant, no re-fetch. The cache is dropped on lock/logout.
@@ -3069,7 +3082,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.busy = true;
         try {
             const res = await this.mailPost('/mail/message', { uid, mark_seen: true });
-            if (this.reader.folderPath !== folder) return; // folder changed → drop
+            if (this.reader.gen !== gen || this.reader.folderPath !== folder) return; // account/folder changed → drop
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
             if (this.reader.current.uidValidity != null) this.reader.uidValidity = this.reader.current.uidValidity;
