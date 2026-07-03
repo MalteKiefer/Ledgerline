@@ -407,8 +407,9 @@
                                     </template>
                                 </div>
                             </template>
-                            <div class="prose prose-sm mt-4 max-w-none text-gray-800" x-show="archive.viewing.html" x-html="archive.viewing.html"></div>
-                            <pre x-show="! archive.viewing.html && archive.viewing.text" x-cloak class="mt-4 whitespace-pre-wrap break-words text-sm text-gray-800" x-text="archive.viewing.text"></pre>
+                            {{-- Rendered in a sandboxed iframe (no scripts) with sanitised
+                                 HTML + strict CSP — email HTML is untrusted. --}}
+                            <iframe x-show="! archive.viewLoading" :srcdoc="archiveSrcdoc()" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="mt-4 h-[50vh] w-full rounded border border-gray-200 bg-white"></iframe>
                         </div>
                     </template>
 
