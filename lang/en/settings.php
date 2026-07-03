@@ -135,7 +135,6 @@ return [
     'backup_source_database' => 'Database',
     'backup_source_files' => 'Files',
     'backup_source_gallery' => 'Gallery',
-    'backup_notify_none' => 'No notification',
     'backup_test' => 'Test connection',
     'backup_stat_runs' => 'Runs',
     'backup_stat_success_rate' => 'Success rate',
@@ -148,4 +147,5 @@ return [
     'backup_log' => 'Log',
     'backup_no_log' => 'No log for this run.',
     'backup_path_hint' => 'Relative to the login directory. Leave blank to use it directly (many SFTP hosts do not allow writing to the server root).',
+    'backup_notify_desktop' => 'Desktop / browser',
 ];

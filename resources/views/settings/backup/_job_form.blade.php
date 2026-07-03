@@ -27,13 +27,20 @@
             @error('cron')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror</div>
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_retention') }}</label>
             <input type="number" name="retention" min="1" value="{{ old('retention', $j->retention ?? 7) }}" class="{{ $input }}"></div>
-        <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_notify') }}</label>
-            <select name="notify" class="{{ $input }}">
-                <option value="none" @selected(old('notify', $j->notify ?? 'none') === 'none')>{{ __('settings.backup_notify_none') }}</option>
-                <option value="ntfy" @selected(old('notify', $j->notify ?? '') === 'ntfy')>NTFY</option>
-                <option value="webhook" @selected(old('notify', $j->notify ?? '') === 'webhook')>Webhook</option>
-                <option value="mail" @selected(old('notify', $j->notify ?? '') === 'mail')>{{ __('settings.notify_mail_heading') }}</option>
-            </select></div>
+        @php $sel = (array) old('notify_channels', $j->notify_channels ?? []); @endphp
+        <div class="sm:col-span-2">
+            <span class="block text-sm font-medium text-gray-700">{{ __('settings.backup_notify') }}</span>
+            <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                @foreach (['desktop' => __('settings.backup_notify_desktop'), 'mail' => __('settings.notify_mail_heading'), 'ntfy' => 'NTFY', 'webhook' => 'Webhook'] as $ch => $label)
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" name="notify_channels[]" value="{{ $ch }}" @checked(in_array($ch, $sel, true))
+                            @if ($ch === 'desktop') @change="if ($event.target.checked && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission()" @endif
+                            class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                        {{ $label }}
+                    </label>
+                @endforeach
+            </div>
+        </div>
     </div>
     <div class="flex flex-wrap items-start gap-6">
         <label class="flex items-center gap-2 text-sm text-gray-700">
