@@ -14,7 +14,7 @@
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.mail_sync_heading') }}</h2>
         <div class="mt-3 sm:max-w-xs">
             <label for="mail_sync_minutes" class="block text-sm font-medium text-gray-700">{{ __('settings.mail_sync_minutes') }}</label>
-            <input type="number" min="5" max="{{ $settings->vault_idle_minutes ?? 120 }}" id="mail_sync_minutes" name="mail_sync_minutes"
+            <input type="number" min="5" max="{{ $maxSyncMinutes }}" id="mail_sync_minutes" name="mail_sync_minutes"
                 value="{{ old('mail_sync_minutes', $settings->mail_sync_minutes ?? 5) }}" class="{{ $input }}">
             <p class="mt-1 text-xs text-gray-500">{{ __('settings.mail_sync_minutes_hint') }}</p>
             @error('mail_sync_minutes')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror

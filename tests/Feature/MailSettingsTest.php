@@ -21,7 +21,6 @@ class MailSettingsTest extends TestCase
     public function test_the_sync_interval_can_be_configured(): void
     {
         $this->signIn();
-        AppSettings::current()->update(['vault_idle_minutes' => 30]);
 
         $this->put(route('settings.mail.update'), ['mail_sync_minutes' => 15])
             ->assertRedirect(route('settings.mail.edit'));
@@ -37,12 +36,11 @@ class MailSettingsTest extends TestCase
             ->assertSessionHasErrors('mail_sync_minutes');
     }
 
-    public function test_sync_cannot_exceed_the_idle_timeout(): void
+    public function test_sync_cannot_exceed_the_daily_maximum(): void
     {
         $this->signIn();
-        AppSettings::current()->update(['vault_idle_minutes' => 6]);
 
-        $this->put(route('settings.mail.update'), ['mail_sync_minutes' => 10])
+        $this->put(route('settings.mail.update'), ['mail_sync_minutes' => 1441])
             ->assertSessionHasErrors('mail_sync_minutes');
     }
 }

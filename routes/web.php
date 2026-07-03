@@ -23,7 +23,6 @@ use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController
 use App\Http\Controllers\Settings\MailController as SettingsMailController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
-use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\TodoController;
@@ -70,8 +69,6 @@ Route::middleware('auth')->group(function (): void {
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
-    Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
-    Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
     Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
     Route::put('/settings/gallery', [SettingsGalleryController::class, 'update'])->name('settings.gallery.update');
     Route::post('/settings/gallery/rescan', [SettingsGalleryController::class, 'rescan'])->name('settings.gallery.rescan');
