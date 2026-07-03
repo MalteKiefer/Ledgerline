@@ -9,6 +9,7 @@ use App\Models\PaperlessTerm;
 use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 /**
@@ -55,7 +56,9 @@ class PaperlessController extends Controller
         try {
             $term = $client->create($data['kind'], $data['name']);
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'detail' => $e->getMessage()], 422);
+            Log::warning('Paperless createTerm failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'detail' => __('paperless.request_failed')], 422);
         }
 
         PaperlessTerm::updateOrCreate(
@@ -98,7 +101,9 @@ class PaperlessController extends Controller
                 ],
             );
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'detail' => $e->getMessage()], 422);
+            Log::warning('Paperless submit failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['ok' => false, 'detail' => __('paperless.request_failed')], 422);
         }
 
         return response()->json(['ok' => true, 'task' => $task]);
