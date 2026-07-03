@@ -27,49 +27,67 @@
                 </div>
 
                 {{-- Correspondent --}}
-                <div>
+                {{-- Correspondent (single, autocomplete) --}}
+                <div x-data="{ show: false }" @click.outside="show = false">
                     <label class="block text-sm font-medium text-gray-700">{{ __('paperless.correspondent') }}</label>
-                    <select x-model.number="s.form.correspondent" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                        <option value="">{{ __('paperless.none') }}</option>
-                        <template x-for="c in s.correspondents" :key="c.id"><option :value="c.id" x-text="c.name"></option></template>
-                    </select>
-                    <div class="mt-2 flex items-center gap-2">
-                        <input type="text" x-model="s.newCorrespondent" placeholder="{{ __('paperless.new_placeholder') }}" @keydown.enter.prevent="s.createTerm('correspondent', s.newCorrespondent)"
-                            class="block w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <button type="button" @click="s.createTerm('correspondent', s.newCorrespondent)" class="shrink-0 rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('paperless.add') }}</button>
+                    <div class="relative mt-1">
+                        <input type="text" x-model="s.corrQuery" @focus="show = true" @input="show = true; s.form.correspondent = ''"
+                            placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
+                            class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <button type="button" x-show="s.corrQuery" @click="s.clearCorrespondent(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                        <div x-show="show" x-cloak class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                            <template x-for="c in s.filteredCorrespondents" :key="c.id">
+                                <button type="button" @click="s.selectCorrespondent(c); show = false" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="c.name"></button>
+                            </template>
+                            <button type="button" x-show="s.canCreate(s.correspondents, s.corrQuery)" @click="s.createTerm('correspondent', s.corrQuery); show = false"
+                                class="block w-full truncate px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.corrQuery"></span>»</button>
+                            <p x-show="! s.filteredCorrespondents.length && ! s.canCreate(s.correspondents, s.corrQuery)" class="px-3 py-1.5 text-gray-400">{{ __('paperless.none') }}</p>
+                        </div>
                     </div>
                 </div>
 
-                {{-- Document type --}}
-                <div>
+                {{-- Document type (single, autocomplete) --}}
+                <div x-data="{ show: false }" @click.outside="show = false">
                     <label class="block text-sm font-medium text-gray-700">{{ __('paperless.document_type') }}</label>
-                    <select x-model.number="s.form.documentType" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                        <option value="">{{ __('paperless.none') }}</option>
-                        <template x-for="t in s.documentTypes" :key="t.id"><option :value="t.id" x-text="t.name"></option></template>
-                    </select>
-                    <div class="mt-2 flex items-center gap-2">
-                        <input type="text" x-model="s.newType" placeholder="{{ __('paperless.new_placeholder') }}" @keydown.enter.prevent="s.createTerm('document_type', s.newType)"
-                            class="block w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <button type="button" @click="s.createTerm('document_type', s.newType)" class="shrink-0 rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('paperless.add') }}</button>
+                    <div class="relative mt-1">
+                        <input type="text" x-model="s.typeQuery" @focus="show = true" @input="show = true; s.form.documentType = ''"
+                            placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
+                            class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <button type="button" x-show="s.typeQuery" @click="s.clearDocumentType(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                        <div x-show="show" x-cloak class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                            <template x-for="t in s.filteredDocumentTypes" :key="t.id">
+                                <button type="button" @click="s.selectDocumentType(t); show = false" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="t.name"></button>
+                            </template>
+                            <button type="button" x-show="s.canCreate(s.documentTypes, s.typeQuery)" @click="s.createTerm('document_type', s.typeQuery); show = false"
+                                class="block w-full truncate px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.typeQuery"></span>»</button>
+                            <p x-show="! s.filteredDocumentTypes.length && ! s.canCreate(s.documentTypes, s.typeQuery)" class="px-3 py-1.5 text-gray-400">{{ __('paperless.none') }}</p>
+                        </div>
                     </div>
                 </div>
 
-                {{-- Tags (multi-select) --}}
-                <div>
+                {{-- Tags (multi, autocomplete with chips) --}}
+                <div x-data="{ show: false }" @click.outside="show = false">
                     <label class="block text-sm font-medium text-gray-700">{{ __('paperless.tags') }}</label>
-                    <div class="mt-1 max-h-32 overflow-auto rounded-md border border-gray-200 p-2">
-                        <template x-if="! s.tags.length"><p class="text-xs text-gray-400">{{ __('paperless.none') }}</p></template>
-                        <template x-for="t in s.tags" :key="t.id">
-                            <label class="flex items-center gap-2 py-0.5 text-sm text-gray-700">
-                                <input type="checkbox" :value="t.id" x-model.number="s.form.tags" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
-                                <span x-text="t.name"></span>
-                            </label>
+                    <div class="mt-1 flex flex-wrap gap-1" x-show="s.form.tags.length">
+                        <template x-for="id in s.form.tags" :key="id">
+                            <span class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                                <span x-text="s.tagName(id)"></span>
+                                <button type="button" @click="s.removeTag(id)" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-3 w-3" /></button>
+                            </span>
                         </template>
                     </div>
-                    <div class="mt-2 flex items-center gap-2">
-                        <input type="text" x-model="s.newTag" placeholder="{{ __('paperless.new_placeholder') }}" @keydown.enter.prevent="s.createTerm('tag', s.newTag)"
-                            class="block w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <button type="button" @click="s.createTerm('tag', s.newTag)" class="shrink-0 rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50">{{ __('paperless.add') }}</button>
+                    <div class="relative mt-1">
+                        <input type="text" x-model="s.tagQuery" @focus="show = true" @input="show = true"
+                            placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <div x-show="show" x-cloak class="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
+                            <template x-for="t in s.filteredTags" :key="t.id">
+                                <button type="button" @click="s.addTag(t)" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="t.name"></button>
+                            </template>
+                            <button type="button" x-show="s.canCreate(s.tags, s.tagQuery)" @click="s.createTerm('tag', s.tagQuery)"
+                                class="block w-full truncate px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.tagQuery"></span>»</button>
+                            <p x-show="! s.filteredTags.length && ! s.canCreate(s.tags, s.tagQuery)" class="px-3 py-1.5 text-gray-400">{{ __('paperless.none') }}</p>
+                        </div>
                     </div>
                 </div>
 

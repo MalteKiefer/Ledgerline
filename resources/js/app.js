@@ -1255,13 +1255,42 @@ Alpine.store('paperless', {
     submitting: false,
     error: '',
     file: null, filename: '',
-    newTag: '', newType: '', newCorrespondent: '',
+    // Autocomplete query text per picker (also the name used when the typed
+    // value has no match and a new term is created on the fly).
+    corrQuery: '', typeQuery: '', tagQuery: '',
     // Set when opened from the file browser: offer to delete the vault file
     // after a successful upload (like the Markdown-to-note migration).
     allowDelete: false,
     deleteAfter: true,
     context: null,
     form: { title: '', correspondent: '', documentType: '', tags: [], created: '' },
+
+    // ---- Autocomplete filtering + selection ----
+    matches(list, query, exclude = []) {
+        const q = (query || '').trim().toLowerCase();
+        return list
+            .filter((x) => ! exclude.includes(x.id))
+            .filter((x) => q === '' || x.name.toLowerCase().includes(q))
+            .slice(0, 50);
+    },
+    get filteredCorrespondents() { return this.matches(this.correspondents, this.corrQuery); },
+    get filteredDocumentTypes() { return this.matches(this.documentTypes, this.typeQuery); },
+    get filteredTags() { return this.matches(this.tags, this.tagQuery, this.form.tags); },
+
+    // Offer "Create «x»" only when the typed name has no exact match.
+    canCreate(list, query) {
+        const q = (query || '').trim();
+        return q !== '' && ! list.some((x) => x.name.toLowerCase() === q.toLowerCase());
+    },
+
+    tagName(id) { return (this.tags.find((t) => t.id === id) || {}).name || ''; },
+
+    selectCorrespondent(c) { this.form.correspondent = c.id; this.corrQuery = c.name; },
+    clearCorrespondent() { this.form.correspondent = ''; this.corrQuery = ''; },
+    selectDocumentType(t) { this.form.documentType = t.id; this.typeQuery = t.name; },
+    clearDocumentType() { this.form.documentType = ''; this.typeQuery = ''; },
+    addTag(t) { if (! this.form.tags.includes(t.id)) this.form.tags.push(t.id); this.tagQuery = ''; },
+    removeTag(id) { this.form.tags = this.form.tags.filter((x) => x !== id); },
 
     async init() {
         await this.load();
@@ -1286,7 +1315,7 @@ Alpine.store('paperless', {
         this.file = blob;
         this.filename = filename || 'document.pdf';
         this.error = '';
-        this.newTag = this.newType = this.newCorrespondent = '';
+        this.corrQuery = this.typeQuery = this.tagQuery = '';
         this.allowDelete = !! opts.allowDelete;
         this.deleteAfter = this.allowDelete; // default to deleting, like the note migration
         this.context = opts.context ?? null;
@@ -1313,9 +1342,12 @@ Alpine.store('paperless', {
             const b = await res.json();
             if (! b.ok) { this.error = b.detail || this.labels.failed; return; }
             const item = { id: b.id, name: b.name };
-            if (kind === 'tag') { this.tags.push(item); this.form.tags.push(b.id); this.newTag = ''; }
-            if (kind === 'document_type') { this.documentTypes.push(item); this.form.documentType = b.id; this.newType = ''; }
-            if (kind === 'correspondent') { this.correspondents.push(item); this.form.correspondent = b.id; this.newCorrespondent = ''; }
+            // create() is idempotent server-side, so avoid duplicating a term
+            // that already sits in the cached list.
+            const upsert = (list) => { if (! list.some((x) => x.id === b.id)) list.push(item); };
+            if (kind === 'tag') { upsert(this.tags); this.addTag(item); }
+            if (kind === 'document_type') { upsert(this.documentTypes); this.selectDocumentType(item); }
+            if (kind === 'correspondent') { upsert(this.correspondents); this.selectCorrespondent(item); }
         } catch (e) { this.error = this.labels.failed; }
     },
 

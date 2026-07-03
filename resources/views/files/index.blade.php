@@ -158,17 +158,21 @@
                                 </div>
                             </td>
                             <td class="px-4 py-3 text-right" @click.stop>
-                                <div class="relative inline-block text-left">
-                                    <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
-                                    <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-44 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
-                                        <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('files.download') }}</button>
-                                        <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="pencil" />{{ __('files.rename') }}</button>
-                                        <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
-                                        <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
-                                        <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
-                                        <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
-                                        <button type="button" @click="openInfo(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="info" />{{ __('files.info') }}</button>
-                                        <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('common.delete') }}</button>
+                                <div class="flex items-center justify-end gap-1">
+                                    {{-- Quick actions (icon-only): preview, info, download. --}}
+                                    <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="eye" class="h-4 w-4" /></button>
+                                    <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="info" class="h-4 w-4" /></button>
+                                    <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
+                                    <div class="relative inline-block text-left">
+                                        <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
+                                        <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-44 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
+                                            <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="pencil" />{{ __('files.rename') }}</button>
+                                            <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
+                                            <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                            <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
+                                            <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
+                                            <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('common.delete') }}</button>
+                                        </div>
                                     </div>
                                 </div>
                             </td>
@@ -243,9 +247,9 @@
                     <h3 class="truncate text-base font-semibold text-gray-900" x-text="viewer.row?.name"></h3>
                     <div class="flex shrink-0 items-center gap-3">
                         <span x-show="viewerHasGallery" x-cloak class="text-xs tabular-nums text-gray-400" x-text="`${viewerIndex + 1} / ${viewerImages.length}`"></span>
-                        <button type="button" x-show="viewer.kind === 'pdf' && $store.paperless.configured" @click="openPaperless(viewer.row)" class="text-sm text-gray-600 hover:text-gray-900">{{ __('paperless.send_to_paperless') }}</button>
-                        <button type="button" @click="download(viewer.row)" class="text-sm text-gray-600 hover:text-gray-900">{{ __('files.download') }}</button>
-                        <button type="button" @click="closeViewer()" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('common.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                        <button type="button" x-show="viewer.kind === 'pdf' && $store.paperless.configured" @click="openPaperless(viewer.row)" title="{{ __('paperless.send_to_paperless') }}" aria-label="{{ __('paperless.send_to_paperless') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="share" class="h-5 w-5" /></button>
+                        <button type="button" @click="download(viewer.row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-5 w-5" /></button>
+                        <button type="button" @click="closeViewer()" title="{{ __('common.close') }}" aria-label="{{ __('common.close') }}" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
                     </div>
                 </div>
                 <div class="min-h-0 flex-1 overflow-auto p-4">
