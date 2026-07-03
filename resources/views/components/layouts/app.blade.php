@@ -4,21 +4,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    @php
-        // Per-login token the browser binds the cached vault key to. Seed it for
-        // sessions that predate this so the key stays valid within one login.
-        $vaultOwner = '';
-        if (auth()->check()) {
-            if (empty(session('vault_owner'))) {
-                session(['vault_owner' => bin2hex(random_bytes(16))]);
-            }
-            $vaultOwner = (string) session('vault_owner');
-        }
-    @endphp
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\AppSettings::current()->vault_idle_minutes ?? 10) }}">
     <meta name="mail-sync-minutes" content="{{ (int) (\App\Models\AppSettings::current()->mail_sync_minutes ?? 5) }}">
-    <meta name="vault-owner" content="{{ $vaultOwner }}">
     <title>{{ $title }} — Ledgerline</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
