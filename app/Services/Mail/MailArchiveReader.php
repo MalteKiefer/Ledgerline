@@ -37,6 +37,7 @@ class MailArchiveReader
             'subject' => $this->str($m->getSubject()),
             'from' => $from ? ['name' => $this->str($from->personal ?? ''), 'email' => $this->str($from->mail ?? '')] : null,
             'to' => $this->addresses($m->getTo()),
+            'cc' => $this->addresses($m->getCc()),
             'date' => $this->date($m),
             'html' => $html !== '' ? $html : null,
             'text' => $text !== '' ? $text : null,

@@ -197,6 +197,7 @@ Route::middleware('auth')->group(function (): void {
 
     // Local mail archive: browse, view, restore (re-append to server), delete.
     Route::get('/mail/archive/{account}', [MailArchiveController::class, 'index'])->name('mail.archive');
+    Route::get('/mail/archive/{account}/search', [MailArchiveController::class, 'search'])->name('mail.archive.search');
     Route::get('/mail/archive/message/{message}', [MailArchiveController::class, 'show'])->name('mail.archive.show');
     Route::get('/mail/archive/message/{message}/attachment/{index}', [MailArchiveController::class, 'attachment'])->whereNumber('index')->name('mail.archive.attachment');
     Route::post('/mail/archive/message/{message}/restore', [MailArchiveController::class, 'restore'])->name('mail.archive.restore');
