@@ -83,6 +83,11 @@ class BackupDestinationFactory
         // writable, but the home dir is. A configured path is used as-is.
         $root = trim((string) ($c['path'] ?? ''));
 
+        // Pin the server's host key when a fingerprint is configured, so a
+        // MITM / DNS-spoof of the SFTP host cannot capture the credentials and
+        // backup. Without a fingerprint the connection is trust-on-first-use.
+        $fingerprint = trim((string) ($c['host_fingerprint'] ?? ''));
+
         return new SftpAdapter(
             new SftpConnectionProvider(
                 host: $c['host'] ?? '',
@@ -90,6 +95,7 @@ class BackupDestinationFactory
                 password: ($c['password'] ?? '') !== '' ? $c['password'] : null,
                 privateKey: ($c['private_key'] ?? '') !== '' ? $c['private_key'] : null,
                 port: (int) ($c['port'] ?? 22),
+                hostFingerprint: $fingerprint !== '' ? $fingerprint : null,
             ),
             $root,
         );

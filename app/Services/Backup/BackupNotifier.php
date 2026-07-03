@@ -7,6 +7,7 @@ namespace App\Services\Backup;
 use App\Models\AppNotification;
 use App\Models\AppSettings;
 use App\Models\BackupJob;
+use App\Support\OutboundUrl;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Mailer\Mailer;
@@ -83,12 +84,15 @@ class BackupNotifier
         if (! $s->ntfy_enabled || ! $s->ntfy_url || ! $s->ntfy_topic) {
             throw new \RuntimeException('NTFY is not enabled or not fully configured.');
         }
+        if (! OutboundUrl::safe((string) $s->ntfy_url)) {
+            throw new \RuntimeException('The NTFY URL is not an allowed outbound target.');
+        }
         $url = rtrim((string) $s->ntfy_url, '/').'/'.ltrim((string) $s->ntfy_topic, '/');
         $request = Http::withHeaders([
-            'Title' => $title,
+            'Title' => str_replace(["\r", "\n", "\0"], '', $title),
             'Priority' => $success ? 'default' : 'high',
             'Tags' => $success ? 'white_check_mark' : 'rotating_light',
-        ]);
+        ])->withOptions(['allow_redirects' => false]);
         if ($s->ntfy_token) {
             $request = $request->withToken((string) $s->ntfy_token);
         }
@@ -112,13 +116,20 @@ class BackupNotifier
         if (! $s->webhook_enabled || ! $s->webhook_url) {
             throw new \RuntimeException('Webhook is not enabled or has no URL.');
         }
+        if (! OutboundUrl::safe((string) $s->webhook_url)) {
+            throw new \RuntimeException('The webhook URL is not an allowed outbound target.');
+        }
         $payload = json_encode($data, JSON_THROW_ON_ERROR);
 
         $headers = ['Content-Type' => 'application/json'];
         if ($s->webhook_secret) {
             $headers['X-Ledgerline-Signature'] = 'sha256='.hash_hmac('sha256', $payload, (string) $s->webhook_secret);
         }
-        Http::withHeaders($headers)->withBody($payload, 'application/json')->post((string) $s->webhook_url)->throw();
+        Http::withHeaders($headers)
+            ->withOptions(['allow_redirects' => false])
+            ->withBody($payload, 'application/json')
+            ->post((string) $s->webhook_url)
+            ->throw();
     }
 
     private function mail(AppSettings $s, string $subject, string $body): void
