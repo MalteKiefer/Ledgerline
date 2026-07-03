@@ -14,6 +14,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
+use App\Http\Controllers\Settings\MailController as SettingsMailController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
@@ -67,6 +68,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
     Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
     Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
+
+    // Mail settings (accounts + background-sync interval).
+    Route::get('/settings/mail', [SettingsMailController::class, 'edit'])->name('settings.mail.edit');
+    Route::put('/settings/mail', [SettingsMailController::class, 'update'])->name('settings.mail.update');
 
     // Notification channels (mail / NTFY / webhook).
     Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');

@@ -87,4 +87,7 @@ return [
     'dest_folder' => 'Zielordner',
     'root_folder' => 'Dateien (oberste Ebene)',
     'saved_to_files' => 'In Dateien gespeichert.',
+    'manage_accounts' => 'Konten verwalten',
+    'pick_account' => 'Postfach zum Öffnen wählen.',
+    'switch_account' => 'Postfach wechseln',
 ];

@@ -24,4 +24,5 @@ return [
     'photos_rescan_queued' => 'Queued :count photo(s) for metadata re-reading.',
     'photos_restored' => ':count photo(s) restored.',
     'photos_trashed' => ':count photo(s) moved to trash.',
+    'mail_settings_saved' => 'Mail settings saved.',
 ];
