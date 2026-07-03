@@ -153,6 +153,17 @@
                         <label class="block text-sm font-medium text-gray-700">{{ __('todos.due') }}</label>
                         <input type="datetime-local" x-model="editing.due" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                     </div>
+                    {{-- Reminder channels — only meaningful when a due date is set. --}}
+                    <div x-show="editing.due" x-cloak>
+                        <label class="block text-sm font-medium text-gray-700">{{ __('todos.notify_heading') }}</label>
+                        <div class="mt-1 flex flex-wrap gap-3 text-sm text-gray-700">
+                            <label class="flex items-center gap-1.5"><input type="checkbox" value="desktop" x-model="editing.reminderChannels" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">{{ __('todos.channel_browser') }}</label>
+                            <label class="flex items-center gap-1.5"><input type="checkbox" value="ntfy" x-model="editing.reminderChannels" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">{{ __('todos.channel_ntfy') }}</label>
+                            <label class="flex items-center gap-1.5"><input type="checkbox" value="mail" x-model="editing.reminderChannels" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">{{ __('todos.channel_mail') }}</label>
+                            <label class="flex items-center gap-1.5"><input type="checkbox" value="webhook" x-model="editing.reminderChannels" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">{{ __('todos.channel_webhook') }}</label>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">{{ __('todos.notify_hint') }}</p>
+                    </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700">{{ __('todos.tags') }}</label>
                         <input type="text" x-model="tagsValue" placeholder="{{ __('todos.tags_placeholder') }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">

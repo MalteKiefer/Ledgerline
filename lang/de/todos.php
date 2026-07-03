@@ -40,6 +40,13 @@ return [
     'tags_placeholder' => 'komma, getrennte, tags',
     'overdue' => 'Überfällig',
 
+    'notify_heading' => 'Erinnerung',
+    'notify_hint' => 'Zur Fälligkeit benachrichtigen. Kanäle unter Einstellungen → Benachrichtigungen konfigurieren.',
+    'channel_browser' => 'Browser',
+    'channel_ntfy' => 'NTFY',
+    'channel_mail' => 'E-Mail',
+    'channel_webhook' => 'Webhook',
+
     'save' => 'Speichern',
     'cancel' => 'Abbrechen',
     'delete' => 'Löschen',

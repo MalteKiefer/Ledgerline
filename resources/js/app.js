@@ -4484,12 +4484,12 @@ Alpine.data('vaultTodos', (labels = {}) => ({
     /* ---- Task editing ---- */
     newTask() {
         const listId = (this.view !== 'all' && this.view !== 'marked' && this.view !== 'trash') ? this.view : null;
-        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false };
+        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false, reminderId: null, reminderChannels: [] };
         this.tagsValue = '';
         this.editorOpen = true;
     },
     editTask(t) {
-        this.editing = { ...t, tags: [...(t.tags ?? [])] };
+        this.editing = { ...t, tags: [...(t.tags ?? [])], reminderChannels: [...(t.reminderChannels ?? [])] };
         this.tagsValue = (this.editing.tags || []).join(', ');
         this.editorOpen = true;
     },
@@ -4500,22 +4500,53 @@ Alpine.data('vaultTodos', (labels = {}) => ({
         if (! e || ! (e.title || '').trim()) return;
         e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
         const now = new Date().toISOString();
+        let task;
         if (e.id) {
             const i = this.manifest.tasks.findIndex((t) => t.id === e.id);
-            if (i >= 0) this.manifest.tasks[i] = { ...this.manifest.tasks[i], ...e, updated: now };
+            if (i >= 0) { this.manifest.tasks[i] = { ...this.manifest.tasks[i], ...e, updated: now }; task = this.manifest.tasks[i]; }
         } else {
-            this.manifest.tasks.push({ ...e, id: crypto.randomUUID(), trashed: null, created: now, updated: now });
+            task = { ...e, id: crypto.randomUUID(), trashed: null, created: now, updated: now };
+            this.manifest.tasks.push(task);
         }
+        if (task) await this.syncReminder(task);
         await this.persist();
         this.closeEditor();
     },
 
-    async toggleDone(t) { t.done = ! t.done; t.updated = new Date().toISOString(); await this.persist(); },
+    // Reconcile the server-side reminder with the task's state. A reminder
+    // exists only while the task has a due date, at least one channel, and is
+    // neither done nor trashed; otherwise it is removed. The to-do itself stays
+    // zero-knowledge — only the due time, channels and title/link are sent.
+    async syncReminder(t) {
+        const wants = t.due && (t.reminderChannels ?? []).length && ! t.done && ! t.trashed;
+        try {
+            if (wants) {
+                const body = { due_at: t.due, channels: t.reminderChannels, title: t.title, url: t.url || null };
+                if (t.reminderId) {
+                    await fetch(`/reminders/${t.reminderId}`, { method: 'PUT', headers: this._jsonHeaders(), body: JSON.stringify(body) });
+                } else {
+                    const res = await fetch('/reminders', { method: 'POST', headers: this._jsonHeaders(), body: JSON.stringify(body) });
+                    if (res.ok) t.reminderId = (await res.json()).id;
+                }
+            } else if (t.reminderId) {
+                await fetch(`/reminders/${t.reminderId}`, { method: 'DELETE', headers: this._jsonHeaders() });
+                t.reminderId = null;
+            }
+        } catch (e) { /* reminder is best-effort; the task itself still saves */ }
+    },
+
+    _jsonHeaders() {
+        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+    },
+
+    async toggleDone(t) { t.done = ! t.done; t.updated = new Date().toISOString(); await this.syncReminder(t); await this.persist(); },
     async toggleMark(t) { t.marked = ! t.marked; t.updated = new Date().toISOString(); await this.persist(); },
-    async trashTask(t) { t.trashed = new Date().toISOString(); await this.persist(); },
-    async restoreTask(t) { t.trashed = null; await this.persist(); },
+    async trashTask(t) { t.trashed = new Date().toISOString(); await this.syncReminder(t); await this.persist(); },
+    async restoreTask(t) { t.trashed = null; await this.syncReminder(t); await this.persist(); },
     async deleteForever(t) {
         if (! confirm(labels.deleteConfirm)) return;
+        t.trashed = new Date().toISOString();
+        await this.syncReminder(t); // drop any server reminder before removing
         this.manifest.tasks = this.manifest.tasks.filter((x) => x.id !== t.id);
         await this.persist();
     },

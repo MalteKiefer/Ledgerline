@@ -15,3 +15,6 @@ Schedule::command('backups:run-due')->everyMinute()->withoutOverlapping();
 // Refresh the cached Paperless tags / document types / correspondents hourly so
 // the transfer modal always has an up-to-date quick-pick list.
 Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
+
+// Fire to-do reminders that have come due.
+Schedule::command('reminders:send')->everyMinute()->withoutOverlapping();

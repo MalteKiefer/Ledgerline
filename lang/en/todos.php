@@ -40,6 +40,13 @@ return [
     'tags_placeholder' => 'comma, separated, tags',
     'overdue' => 'Overdue',
 
+    'notify_heading' => 'Reminder',
+    'notify_hint' => 'Get notified at the due time. Configure the channels in Settings → Notifications.',
+    'channel_browser' => 'Browser',
+    'channel_ntfy' => 'NTFY',
+    'channel_mail' => 'E-mail',
+    'channel_webhook' => 'Webhook',
+
     'save' => 'Save',
     'cancel' => 'Cancel',
     'delete' => 'Delete',
