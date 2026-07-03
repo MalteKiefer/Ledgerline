@@ -68,13 +68,27 @@ class BackupController extends Controller
         try {
             $this->factory->test($data['driver'], $data['config']);
         } catch (\Throwable $e) {
+            // Surface the full exception chain (root cause) so the operator can
+            // see why the connection failed — auth, host, port, TLS, permissions.
             return response()->json([
                 'ok' => false,
-                'message' => __('flash.backup_test_failed', ['error' => Str::limit($e->getMessage(), 200)]),
+                'message' => __('flash.backup_test_failed', ['error' => '']),
+                'detail' => $this->describeChain($e),
             ]);
         }
 
         return response()->json(['ok' => true, 'message' => __('flash.backup_test_ok')]);
+    }
+
+    /** Full exception chain, newest → root cause, one line each. */
+    private function describeChain(\Throwable $e): string
+    {
+        $lines = [];
+        for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
+            $lines[] = class_basename($cur).': '.$cur->getMessage();
+        }
+
+        return implode("\n", array_unique($lines));
     }
 
     public function destroyDestination(BackupDestination $destination): RedirectResponse

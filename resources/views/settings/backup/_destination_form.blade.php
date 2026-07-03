@@ -9,8 +9,9 @@
         testing: false,
         testOk: null,
         testMsg: '',
+        testDetail: '',
         async testConn(e) {
-            this.testing = true; this.testOk = null; this.testMsg = '';
+            this.testing = true; this.testOk = null; this.testMsg = ''; this.testDetail = '';
             try {
                 const res = await fetch('{{ route('settings.backup.destinations.test') }}', {
                     method: 'POST',
@@ -18,8 +19,15 @@
                     body: new FormData(e.target.closest('form')),
                 });
                 const data = await res.json().catch(() => ({}));
-                if (res.ok) { this.testOk = !! data.ok; this.testMsg = data.message || ''; }
-                else { this.testOk = false; this.testMsg = @js(__('flash.backup_test_failed', ['error' => ''])); }
+                if (res.ok) {
+                    this.testOk = !! data.ok;
+                    this.testMsg = data.message || '';
+                    this.testDetail = data.detail || '';
+                } else {
+                    this.testOk = false;
+                    this.testMsg = @js(__('flash.backup_test_failed', ['error' => '']));
+                    this.testDetail = (data && data.errors) ? Object.values(data.errors).flat().join('\n') : '';
+                }
             } catch (err) {
                 this.testOk = false; this.testMsg = @js(__('mail.connect_failed'));
             } finally { this.testing = false; }
@@ -87,7 +95,10 @@
 
     {{-- Inline test result (no navigation, so the entered form is preserved) --}}
     <p x-show="testOk === true" x-cloak class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700" x-text="testMsg"></p>
-    <p x-show="testOk === false" x-cloak class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" x-text="testMsg"></p>
+    <div x-show="testOk === false" x-cloak class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p x-text="testMsg"></p>
+        <pre x-show="testDetail" class="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] text-red-800" x-text="testDetail"></pre>
+    </div>
 
     <div class="flex flex-wrap gap-2">
         <button type="button" @click="testConn($event)" :disabled="testing" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">

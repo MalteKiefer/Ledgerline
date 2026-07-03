@@ -37,24 +37,38 @@ final class BackupManager
         $workDir = storage_path('app/backup-tmp/'.Str::uuid()->toString());
         File::ensureDirectoryExists($workDir, 0700);
 
+        // Step-by-step log persisted to the run so the operator can see exactly
+        // what happened. Flushed after each step so a crash still leaves a trail.
+        $log = [];
+        $step = function (string $msg) use (&$log, $run): void {
+            $log[] = Carbon::now()->format('H:i:s').'  '.$msg;
+            $run->update(['log' => implode("\n", $log)]);
+        };
+
         try {
+            $step(sprintf('Backup "%s" started (source: %s).', $job->name, $job->source));
             if ($job->destination === null) {
                 throw new RuntimeException('No destination configured for this backup job.');
             }
+            $step('Destination: '.$job->destination->name.' ('.$job->destination->driver.').');
 
+            $step('Building '.$job->source.' archive…');
             $artifact = $this->source($job->source)->build($workDir);
             $uploadPath = $artifact->path;
             $extension = $artifact->extension;
+            $step('Archive built: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
 
             if ($job->encrypt) {
                 if (! $job->passphrase) {
                     throw new RuntimeException('Encryption is enabled but no passphrase is set.');
                 }
+                $step('Encrypting archive…');
                 $encPath = $artifact->path.'.enc';
                 $this->cipher->encryptFile($artifact->path, $encPath, (string) $job->passphrase);
                 @unlink($artifact->path);
                 $uploadPath = $encPath;
                 $extension .= '.enc';
+                $step('Encrypted: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
             }
 
             // Unique per job (append the id) so two jobs whose names slug to the
@@ -63,6 +77,7 @@ final class BackupManager
             $prefix = (Str::slug($job->name) ?: 'backup').'-'.$job->id;
             $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
 
+            $step('Uploading to '.$filename.'…');
             $fs = $this->destinations->make($job->destination);
             $stream = fopen($uploadPath, 'rb');
             if ($stream === false) {
@@ -75,9 +90,13 @@ final class BackupManager
                     fclose($stream);
                 }
             }
+            $step('Upload complete.');
 
             $bytes = (int) (filesize($uploadPath) ?: 0);
-            $this->prune($fs, $prefix, $job->retention);
+            $deleted = $this->prune($fs, $prefix, $job->retention);
+            $step($deleted > 0
+                ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
+                : sprintf('Retention: keeping up to %d version(s).', $job->retention));
 
             $run->update([
                 'status' => 'success',
@@ -87,18 +106,32 @@ final class BackupManager
             ]);
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'success']);
             $summary = sprintf('%s → %s (%s)', $job->source, $filename, $this->human($bytes));
+            $step('Done: '.$summary);
             $this->notifier->notify($job, true, $summary);
             AppNotification::record('success', __('notifications.backup_ok', ['name' => $job->name]), $summary, 'backup');
         } catch (\Throwable $e) {
-            $run->update(['status' => 'failed', 'finished_at' => Carbon::now(), 'message' => Str::limit($e->getMessage(), 1000)]);
+            $detail = $this->describe($e);
+            $step('FAILED: '.$detail);
+            $run->update(['status' => 'failed', 'finished_at' => Carbon::now(), 'message' => Str::limit($detail, 1000)]);
             $job->update(['last_run_at' => Carbon::now(), 'last_status' => 'failed']);
-            $this->notifier->notify($job, false, $e->getMessage());
-            AppNotification::record('error', __('notifications.backup_failed', ['name' => $job->name]), Str::limit($e->getMessage(), 300), 'backup');
+            $this->notifier->notify($job, false, $detail);
+            AppNotification::record('error', __('notifications.backup_failed', ['name' => $job->name]), Str::limit($detail, 300), 'backup');
         } finally {
             File::deleteDirectory($workDir);
         }
 
         return $run->refresh();
+    }
+
+    /** Full exception chain as a readable one-liner (root cause included). */
+    private function describe(\Throwable $e): string
+    {
+        $parts = [];
+        for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
+            $parts[] = class_basename($cur).': '.$cur->getMessage();
+        }
+
+        return implode(' ← ', array_unique($parts));
     }
 
     private function source(string $source): BackupSource
@@ -111,11 +144,11 @@ final class BackupManager
         };
     }
 
-    /** Keep only the newest $retention objects under the job's prefix. */
-    private function prune(Filesystem $fs, string $prefix, int $retention): void
+    /** Keep only the newest $retention objects under the job's prefix; returns how many were deleted. */
+    private function prune(Filesystem $fs, string $prefix, int $retention): int
     {
         if ($retention < 1) {
-            return;
+            return 0;
         }
         $files = [];
         foreach ($fs->listContents($prefix, false) as $item) {
@@ -126,9 +159,12 @@ final class BackupManager
             }
         }
         usort($files, fn (array $a, array $b): int => $b['ts'] <=> $a['ts']);
-        foreach (array_slice($files, $retention) as $old) {
-            $fs->delete($old['path']);
+        $old = array_slice($files, $retention);
+        foreach ($old as $f) {
+            $fs->delete($f['path']);
         }
+
+        return count($old);
     }
 
     private function human(int $bytes): string

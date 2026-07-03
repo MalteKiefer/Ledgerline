@@ -145,4 +145,6 @@ return [
     'backup_stat_total_size' => 'Gesamt gespeichert',
     'backup_stat_last_run' => 'Letzter Lauf',
     'backup_stat_next_run' => 'Nächster Lauf',
+    'backup_log' => 'Protokoll',
+    'backup_no_log' => 'Kein Protokoll für diesen Lauf.',
 ];
