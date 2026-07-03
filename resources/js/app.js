@@ -1177,6 +1177,18 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
+// Shared JSON request headers + fetch wrapper for the reload-free module clients
+// (notes / todos / bookmarks / files / mail). One definition so a change to the
+// CSRF/accept handling or error behaviour applies everywhere.
+function jsonHeaders() {
+    return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+}
+async function apiRequest(method, url, body) {
+    const res = await fetch(url, { method, headers: jsonHeaders(), body: body ? JSON.stringify(body) : undefined });
+    if (! res.ok) throw new Error('request failed');
+    return res.json().catch(() => ({}));
+}
+
 /* Plain localStorage cache for the mail reader (stats/folders/message lists).
  * Mail is no longer encrypted, so this needs no vault key. Best-effort — any
  * failure (quota, private mode) is swallowed and treated as a cache miss. */
@@ -2294,7 +2306,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     _headers() {
-        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+        return jsonHeaders();
     },
 
     // Switch the reader to another account (from the sidebar account menu).
@@ -3315,12 +3327,10 @@ Alpine.data('todos', (labels = {}) => ({
     },
 
     _headers() {
-        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+        return jsonHeaders();
     },
     async _api(method, url, body) {
-        const res = await fetch(url, { method, headers: this._headers(), body: body ? JSON.stringify(body) : undefined });
-        if (! res.ok) throw new Error('request failed');
-        return res.json().catch(() => ({}));
+        return apiRequest(method, url, body);
     },
     _payload(t) {
         return {
@@ -3470,12 +3480,10 @@ Alpine.data('notes', (labels = {}) => ({
     },
 
     _headers() {
-        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+        return jsonHeaders();
     },
     async _api(method, url, body) {
-        const res = await fetch(url, { method, headers: this._headers(), body: body ? JSON.stringify(body) : undefined });
-        if (! res.ok) throw new Error('request failed');
-        return res.json().catch(() => ({}));
+        return apiRequest(method, url, body);
     },
 
     get allTags() {
@@ -3601,12 +3609,10 @@ Alpine.data('bookmarks', (labels = {}) => ({
     },
 
     _headers() {
-        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+        return jsonHeaders();
     },
     async _api(method, url, body) {
-        const res = await fetch(url, { method, headers: this._headers(), body: body ? JSON.stringify(body) : undefined });
-        if (! res.ok) throw new Error('request failed');
-        return res.json().catch(() => ({}));
+        return apiRequest(method, url, body);
     },
     _replace(b) {
         const i = this.bookmarks.findIndex((x) => x.id === b.id);
