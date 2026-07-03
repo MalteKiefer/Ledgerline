@@ -8,6 +8,7 @@ use App\Models\MailAccount;
 use App\Models\MailMessage;
 use App\Services\Mail\MailArchiveReader;
 use App\Services\Mail\MailSource;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -39,18 +40,62 @@ class MailArchiveController extends Controller
             ->orderByDesc('date_at')
             ->limit(500)
             ->get()
-            ->map(fn (MailMessage $m) => [
-                'id' => $m->id,
-                'folder' => $m->folder?->name,
-                'subject' => $m->subject,
-                'from' => trim(($m->from_name ?: '').' <'.($m->from_email ?: '').'>', ' <>'),
-                'date' => $m->date_at?->toIso8601String(),
-                'preview' => $m->preview,
-                'hasAttachments' => $m->has_attachments,
-                'deletedAt' => $m->deleted_on_server_at?->toIso8601String(),
-            ]);
+            ->map(fn (MailMessage $m) => $this->summary($m));
 
         return response()->json(['messages' => $messages, 'count' => $messages->count()]);
+    }
+
+    /**
+     * Full-text search across the whole local archive (all folders, not only
+     * server-deleted mail). Matches the free-text term against subject, from,
+     * to, cc, body and attachment names, and filters by a date/time range and
+     * an attachments-only flag. Note: % and _ in the term act as wildcards.
+     */
+    public function search(Request $request, MailAccount $account): JsonResponse
+    {
+        $v = $request->validate([
+            'q' => ['nullable', 'string', 'max:255'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'has_attachment' => ['sometimes', 'boolean'],
+        ]);
+
+        $term = trim((string) ($v['q'] ?? ''));
+
+        $messages = MailMessage::with('folder:id,name,path')
+            ->where('mail_account_id', $account->id)
+            ->when($term !== '', function ($qb) use ($term): void {
+                $like = '%'.$term.'%';
+                $qb->where(function ($w) use ($like): void {
+                    foreach (['subject', 'from_name', 'from_email', 'to', 'cc', 'preview', 'body_text', 'attachment_names'] as $col) {
+                        $w->orWhere($col, 'like', $like);
+                    }
+                });
+            })
+            ->when($v['date_from'] ?? null, fn ($qb, $d) => $qb->where('date_at', '>=', Carbon::parse($d)))
+            ->when($v['date_to'] ?? null, fn ($qb, $d) => $qb->where('date_at', '<=', Carbon::parse($d)))
+            ->when($request->boolean('has_attachment'), fn ($qb) => $qb->where('has_attachments', true))
+            ->orderByDesc('date_at')
+            ->limit(500)
+            ->get()
+            ->map(fn (MailMessage $m) => $this->summary($m));
+
+        return response()->json(['messages' => $messages, 'count' => $messages->count()]);
+    }
+
+    /** @return array<string,mixed> */
+    private function summary(MailMessage $m): array
+    {
+        return [
+            'id' => $m->id,
+            'folder' => $m->folder?->name,
+            'subject' => $m->subject,
+            'from' => trim(($m->from_name ?: '').' <'.($m->from_email ?: '').'>', ' <>'),
+            'date' => $m->date_at?->toIso8601String(),
+            'preview' => $m->preview,
+            'hasAttachments' => $m->has_attachments,
+            'deletedAt' => $m->deleted_on_server_at?->toIso8601String(),
+        ];
     }
 
     /** Render one archived message from its stored .eml. */

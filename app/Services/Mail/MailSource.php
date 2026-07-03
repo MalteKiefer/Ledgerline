@@ -28,8 +28,9 @@ interface MailSource
      * One message's raw RFC822 bytes plus parsed metadata.
      *
      * @return array{raw:string, message_id:?string, subject:?string, from_name:?string,
-     *     from_email:?string, to:list<array{name:?string,email:string}>, date:?string,
-     *     has_attachments:bool, size:int, preview:?string}
+     *     from_email:?string, to:list<array{name:?string,email:string}>,
+     *     cc:list<array{name:?string,email:string}>, date:?string, has_attachments:bool,
+     *     attachment_names:list<string>, size:int, preview:?string, body_text:?string}
      */
     public function fetch(ImapCredentials $c, string $folder, int $uid): array;
 
