@@ -91,15 +91,19 @@ class NoteController extends Controller
             'allow_download' => ['sometimes', 'boolean'],
         ]);
 
-        $share = NoteShare::create([
+        $share = new NoteShare([
             'title' => $note->title,
             'content' => (string) $note->content,
-            'password_hash' => ! empty($data['password']) ? Hash::make($data['password']) : null,
-            'has_password' => ! empty($data['password']),
             'allow_download' => $request->boolean('allow_download'),
             'max_views' => $data['max_views'] ?? null,
             'expires_at' => Carbon::now()->addSeconds($data['expires_in']),
         ]);
+        // The password fields are guarded (never mass-assignable) so a client
+        // can never set has_password=false to bypass the gate; set them here.
+        $share->forceFill([
+            'password_hash' => ! empty($data['password']) ? Hash::make($data['password']) : null,
+            'has_password' => ! empty($data['password']),
+        ])->save();
 
         return response()->json(['url' => route('shares.show', $share)]);
     }

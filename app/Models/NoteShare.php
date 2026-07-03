@@ -18,8 +18,6 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable([
     'title',
     'content',
-    'password_hash',
-    'has_password',
     'allow_download',
     'max_views',
     'expires_at',
