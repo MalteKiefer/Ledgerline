@@ -296,6 +296,7 @@ class BackupController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'source' => ['required', Rule::in(BackupJob::SOURCES)],
+            'mode' => ['sometimes', Rule::in(BackupJob::MODES)],
             'backup_destination_id' => ['required', 'exists:backup_destinations,id'],
             'cron' => ['required', 'string', 'max:64'],
             'retention' => ['required', 'integer', 'min:1', 'max:9999'],
@@ -310,6 +311,7 @@ class BackupController extends Controller
             throw ValidationException::withMessages(['cron' => __('settings.backup_cron_invalid')]);
         }
 
+        $data['mode'] = $data['mode'] ?? 'mirror';
         $data['encrypt'] = $request->boolean('encrypt');
         $data['enabled'] = $request->boolean('enabled');
         $data['notify_channels'] = array_values($data['notify_channels'] ?? []);
