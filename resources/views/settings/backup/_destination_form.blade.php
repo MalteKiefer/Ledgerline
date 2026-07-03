@@ -3,7 +3,28 @@
     $cfg = $d?->config ?? [];
     $input = 'mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm';
 @endphp
-<form method="POST" action="{{ $action }}" x-data="{ driver: '{{ old('driver', $d->driver ?? 's3') }}' }" class="space-y-3">
+<form method="POST" action="{{ $action }}"
+    x-data="{
+        driver: '{{ old('driver', $d->driver ?? 's3') }}',
+        testing: false,
+        testOk: null,
+        testMsg: '',
+        async testConn(e) {
+            this.testing = true; this.testOk = null; this.testMsg = '';
+            try {
+                const res = await fetch('{{ route('settings.backup.destinations.test') }}', {
+                    method: 'POST',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: new FormData(e.target.closest('form')),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) { this.testOk = !! data.ok; this.testMsg = data.message || ''; }
+                else { this.testOk = false; this.testMsg = @js(__('flash.backup_test_failed', ['error' => ''])); }
+            } catch (err) {
+                this.testOk = false; this.testMsg = @js(__('mail.connect_failed'));
+            } finally { this.testing = false; }
+        },
+    }" class="space-y-3">
     @csrf
     @if ($d) @method('PUT') <input type="hidden" name="destination_id" value="{{ $d->id }}"> @endif
     <div class="grid gap-3 sm:grid-cols-2">
@@ -64,8 +85,15 @@
             <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}"></div>
     </div>
 
+    {{-- Inline test result (no navigation, so the entered form is preserved) --}}
+    <p x-show="testOk === true" x-cloak class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700" x-text="testMsg"></p>
+    <p x-show="testOk === false" x-cloak class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" x-text="testMsg"></p>
+
     <div class="flex flex-wrap gap-2">
-        <button type="submit" formaction="{{ route('settings.backup.destinations.test') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('settings.backup_test') }}</button>
+        <button type="button" @click="testConn($event)" :disabled="testing" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            <span x-show="! testing">{{ __('settings.backup_test') }}</span>
+            <span x-show="testing" x-cloak>…</span>
+        </button>
         <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.backup_save') }}</button>
     </div>
 </form>
