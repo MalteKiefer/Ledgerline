@@ -8,4 +8,5 @@ return [
     'close' => 'Schließen',
     'confirm_title' => 'Sind Sie sicher?',
     'confirm_message' => 'Diese Aktion kann nicht rückgängig gemacht werden.',
+    'now' => 'jetzt',
 ];

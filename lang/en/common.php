@@ -8,4 +8,5 @@ return [
     'close' => 'Close',
     'confirm_title' => 'Are you sure?',
     'confirm_message' => 'This action cannot be undone.',
+    'now' => 'now',
 ];
