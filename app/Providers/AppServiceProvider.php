@@ -7,8 +7,10 @@ namespace App\Providers;
 use App\Search\SearchManager;
 use App\Services\Mail\ImapReader;
 use App\Services\Mail\ImapStats;
+use App\Services\Mail\MailSource;
 use App\Services\Mail\WebklexImapReader;
 use App\Services\Mail\WebklexImapStats;
+use App\Services\Mail\WebklexMailSource;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -35,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
         // Read-only IMAP statistics provider (pure-PHP, no ext-imap).
         $this->app->bind(ImapStats::class, WebklexImapStats::class);
         $this->app->bind(ImapReader::class, WebklexImapReader::class);
+        $this->app->bind(MailSource::class, WebklexMailSource::class);
     }
 
     /**

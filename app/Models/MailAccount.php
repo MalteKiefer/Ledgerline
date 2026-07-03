@@ -34,7 +34,7 @@ class MailAccount extends Model
             encryption: $this->encryption,
             username: $this->username,
             password: (string) $this->password,
-            validateCert: $this->validate_cert,
+            validateCert: (bool) ($this->validate_cert ?? true),
         );
     }
 }
