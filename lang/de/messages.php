@@ -7,7 +7,6 @@ return [
         'notes' => 'Notizen',
         'bookmarks' => 'Lesezeichen',
         'mail' => 'Mail',
-        'dashboard' => 'Übersicht',
         'files' => 'Dateien',
         'gallery' => 'Galerie',
     ],

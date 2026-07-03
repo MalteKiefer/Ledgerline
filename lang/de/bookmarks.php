@@ -26,8 +26,6 @@ return [
     'move' => 'Verschieben',
     'edit_tags' => 'Tags bearbeiten',
     'filtered_by' => 'Gefiltert nach',
-    'folder' => 'Ordner',
-    'untitled' => 'Ohne Titel',
     'add_title' => 'Lesezeichen hinzufügen',
     'edit_title' => 'Lesezeichen bearbeiten',
     'url' => 'URL',
@@ -45,5 +43,4 @@ return [
     'root_folder' => 'Alle Lesezeichen',
     'move_title' => 'In Ordner verschieben',
     'move_here' => 'Hierher verschieben',
-    'no_selection' => 'Lesezeichen hinzufügen oder Ordner wählen.',
 ];

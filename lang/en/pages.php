@@ -3,12 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'common' => [
-        'search' => 'Search',
-        'no_results' => 'No results.',
-        'see_all_results' => 'See all results',
-        'search_placeholder' => 'Search customers, contacts, branches, projects…',
-    ],
     'spotlight' => [
         'search_button_label' => 'Search (⌘K)',
         'placeholder' => 'Search customers, contacts, branches, projects…',
@@ -18,29 +12,8 @@ return [
     'menu' => [
         'toggle_menu' => 'Toggle menu',
     ],
-    'tag_input' => [
-        'label' => 'Tags',
-        'remove_tag' => 'Remove tag',
-        'placeholder' => 'Add a tag…',
-        'help' => 'Press Enter or comma to add. Existing tags are suggested.',
-    ],
-    'dropzone' => [
-        'drag_prompt' => 'Drag a file here or',
-        'browse' => 'browse',
-    ],
-    'country' => [
-        'label' => 'Country',
-        'placeholder' => 'Type to search a country…',
-        'no_match' => 'No matching country.',
-    ],
-    'customer' => [
-        'label' => 'Customer',
-        'placeholder' => 'Type to search a customer…',
-        'no_match' => 'No matching customer.',
-    ],
     'login' => [
         'title' => 'Sign in',
-        'heading' => 'Ledgerline',
         'subtitle' => 'Sign in with your Pocket-ID account to continue.',
         'continue' => 'Continue with Pocket-ID',
     ],
@@ -48,16 +21,10 @@ return [
         'title' => 'Dashboard',
         'heading' => 'Dashboard',
         'subtitle' => 'Overview of your ERP records.',
-        'customers' => 'Customers',
-        'projects' => 'Projects',
         'files' => 'Files',
         'gallery_images' => 'Photos',
         'gallery_motion' => 'Motion photos',
         'gallery_videos' => 'Videos',
-        'storage_used' => 'Storage used',
-        'recent_files' => 'Recent files',
-        'view_all' => 'View all',
-        'no_files' => 'No files yet.',
         'vault_ready' => 'Vault set up — open the encrypted file browser.',
         'vault_unconfigured' => 'No vault yet — set an encryption passphrase to start.',
         'notes' => 'Notes',

@@ -7,8 +7,6 @@ return [
     'new_note' => 'New note',
     'untitled' => 'Untitled',
     'search' => 'Search notes…',
-    'edit' => 'Edit',
-    'preview' => 'Preview',
     'saving' => 'Saving…',
     'saved' => 'Saved',
     'to_trash' => 'Move to trash',

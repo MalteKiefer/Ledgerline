@@ -3,12 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'common' => [
-        'search' => 'Suchen',
-        'no_results' => 'Keine Ergebnisse.',
-        'see_all_results' => 'Alle Ergebnisse anzeigen',
-        'search_placeholder' => 'Kunden, Kontakte, Filialen, Projekte durchsuchen…',
-    ],
     'spotlight' => [
         'search_button_label' => 'Suchen (⌘K)',
         'placeholder' => 'Kunden, Kontakte, Filialen, Projekte durchsuchen…',
@@ -18,29 +12,8 @@ return [
     'menu' => [
         'toggle_menu' => 'Menü umschalten',
     ],
-    'tag_input' => [
-        'label' => 'Schlagwörter',
-        'remove_tag' => 'Schlagwort entfernen',
-        'placeholder' => 'Schlagwort hinzufügen…',
-        'help' => 'Zum Hinzufügen Enter oder Komma drücken. Vorhandene Schlagwörter werden vorgeschlagen.',
-    ],
-    'dropzone' => [
-        'drag_prompt' => 'Datei hierher ziehen oder',
-        'browse' => 'durchsuchen',
-    ],
-    'country' => [
-        'label' => 'Land',
-        'placeholder' => 'Zum Suchen eines Landes tippen…',
-        'no_match' => 'Kein passendes Land.',
-    ],
-    'customer' => [
-        'label' => 'Kunde',
-        'placeholder' => 'Zum Suchen eines Kunden tippen…',
-        'no_match' => 'Kein passender Kunde.',
-    ],
     'login' => [
         'title' => 'Anmelden',
-        'heading' => 'Ledgerline',
         'subtitle' => 'Melden Sie sich mit Ihrem Pocket-ID-Konto an, um fortzufahren.',
         'continue' => 'Mit Pocket-ID fortfahren',
     ],
@@ -48,16 +21,10 @@ return [
         'title' => 'Übersicht',
         'heading' => 'Übersicht',
         'subtitle' => 'Überblick über Ihre ERP-Datensätze.',
-        'customers' => 'Kunden',
-        'projects' => 'Projekte',
         'files' => 'Dateien',
         'gallery_images' => 'Fotos',
         'gallery_motion' => 'Motion-Fotos',
         'gallery_videos' => 'Videos',
-        'storage_used' => 'Belegter Speicher',
-        'recent_files' => 'Letzte Dateien',
-        'view_all' => 'Alle anzeigen',
-        'no_files' => 'Noch keine Dateien.',
         'vault_ready' => 'Tresor eingerichtet — verschlüsselten Datei-Browser öffnen.',
         'vault_unconfigured' => 'Noch kein Tresor — Verschlüsselungs-Passwort festlegen, um zu starten.',
         'notes' => 'Notizen',
