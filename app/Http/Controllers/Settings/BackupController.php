@@ -12,6 +12,7 @@ use App\Models\BackupRun;
 use App\Services\Backup\BackupDestinationFactory;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -56,17 +57,24 @@ class BackupController extends Controller
         return redirect()->route('settings.backup.index')->with('status', __('flash.backup_saved'));
     }
 
-    /** Test a destination's config (from the form) without saving it. */
-    public function testDestination(Request $request): RedirectResponse
+    /**
+     * Test a destination's config (from the form) without saving it. Returns
+     * JSON so the form can report the result inline — no navigation, so the
+     * operator's unsaved input is preserved.
+     */
+    public function testDestination(Request $request): JsonResponse
     {
         $data = $this->validateDestination($request, $this->existingForTest($request));
         try {
             $this->factory->test($data['driver'], $data['config']);
         } catch (\Throwable $e) {
-            return back()->with('error', __('flash.backup_test_failed', ['error' => Str::limit($e->getMessage(), 200)]));
+            return response()->json([
+                'ok' => false,
+                'message' => __('flash.backup_test_failed', ['error' => Str::limit($e->getMessage(), 200)]),
+            ]);
         }
 
-        return back()->with('status', __('flash.backup_test_ok'));
+        return response()->json(['ok' => true, 'message' => __('flash.backup_test_ok')]);
     }
 
     public function destroyDestination(BackupDestination $destination): RedirectResponse

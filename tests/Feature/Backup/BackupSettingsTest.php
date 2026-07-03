@@ -130,8 +130,20 @@ class BackupSettingsTest extends TestCase
             $mock->shouldReceive('test')->once()->andReturnNull();
         });
 
-        $this->post(route('settings.backup.destinations.test'), [
+        $this->postJson(route('settings.backup.destinations.test'), [
             'name' => 'X', 'driver' => 's3', 'bucket' => 'b', 'region' => 'r', 'key' => 'k', 'secret' => 's',
-        ])->assertRedirect()->assertSessionHas('status');
+        ])->assertOk()->assertJson(['ok' => true]);
+    }
+
+    public function test_the_test_endpoint_reports_a_failure_as_json(): void
+    {
+        $this->signIn();
+        $this->mock(BackupDestinationFactory::class, function ($mock): void {
+            $mock->shouldReceive('test')->andThrow(new \RuntimeException('connection refused'));
+        });
+
+        $this->postJson(route('settings.backup.destinations.test'), [
+            'name' => 'X', 'driver' => 'sftp', 'host' => 'nope.test', 'port' => 22, 'username' => 'u', 'password' => 'p',
+        ])->assertOk()->assertJson(['ok' => false]);
     }
 }
