@@ -32,7 +32,7 @@ class BackupRun extends Model
             return null;
         }
 
-        return (int) $this->started_at->diffInSeconds($this->finished_at);
+        return (int) $this->started_at->diffInSeconds($this->finished_at, absolute: true);
     }
 
     /** @return BelongsTo<BackupJob, $this> */

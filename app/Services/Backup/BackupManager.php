@@ -57,7 +57,10 @@ final class BackupManager
                 $extension .= '.enc';
             }
 
-            $prefix = Str::slug($job->name) ?: 'backup';
+            // Unique per job (append the id) so two jobs whose names slug to the
+            // same value never share a directory — otherwise one job's retention
+            // prune would delete the other's archives.
+            $prefix = (Str::slug($job->name) ?: 'backup').'-'.$job->id;
             $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
 
             $fs = $this->destinations->make($job->destination);

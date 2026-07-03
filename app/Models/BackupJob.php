@@ -59,7 +59,8 @@ class BackupJob extends Model
      */
     public function statistics(): array
     {
-        $runs = $this->runs()->get(['status', 'started_at', 'finished_at', 'bytes']);
+        // Use the loaded relation when eager-loaded (index page), else load once.
+        $runs = $this->runs;
         $ok = $runs->where('status', 'success');
         $failed = $runs->where('status', 'failed');
         $last = $runs->sortByDesc('started_at')->first();
@@ -69,7 +70,9 @@ class BackupJob extends Model
 
         $nextRun = null;
         try {
-            $nextRun = Carbon::instance(CronExpression::factory($this->cron)->getNextRunDate());
+            // Match the scheduler: compute the next run in the app timezone.
+            $tz = config('app.timezone');
+            $nextRun = Carbon::instance(CronExpression::factory($this->cron)->getNextRunDate(now($tz), 0, false, $tz));
         } catch (\Throwable) {
         }
 

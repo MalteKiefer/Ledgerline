@@ -27,7 +27,8 @@ class BackupController extends Controller
     {
         return view('settings.backup.index', [
             'destinations' => BackupDestination::orderBy('name')->get(),
-            'jobs' => BackupJob::with('destination')->orderBy('name')->get(),
+            // Eager-load runs so each job's statistics() works in memory (no N+1).
+            'jobs' => BackupJob::with(['destination', 'runs'])->orderBy('name')->get(),
             'runs' => BackupRun::with('job')->latest('started_at')->limit(20)->get(),
         ]);
     }

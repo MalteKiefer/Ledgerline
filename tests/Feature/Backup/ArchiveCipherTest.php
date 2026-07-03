@@ -53,4 +53,28 @@ class ArchiveCipherTest extends TestCase
             }
         }
     }
+
+    public function test_a_truncated_archive_is_rejected(): void
+    {
+        $cipher = new ArchiveCipher;
+        $plain = $this->tmp('plain');
+        $enc = $this->tmp('enc');
+        $out = $this->tmp('out');
+        // Multi-chunk payload so lopping off the tail removes the FINAL marker.
+        file_put_contents($plain, random_bytes(200_000));
+        $cipher->encryptFile($plain, $enc, 'pw');
+
+        // Drop the last 4 KiB — a truncated-but-otherwise-valid prefix.
+        $full = file_get_contents($enc);
+        file_put_contents($enc, substr($full, 0, strlen($full) - 4096));
+
+        try {
+            $this->expectException(\RuntimeException::class);
+            $cipher->decryptFile($enc, $out, 'pw');
+        } finally {
+            foreach ([$plain, $enc, $out] as $f) {
+                @unlink($f);
+            }
+        }
+    }
 }
