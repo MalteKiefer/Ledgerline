@@ -9,6 +9,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
@@ -48,6 +49,11 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
     Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->name('profile.avatar.refresh');
+
+    // Local in-app notifications (bell menu).
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
