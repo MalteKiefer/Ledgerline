@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  * A scheduled reminder for a to-do's due date. The title and link are encrypted
  * at rest; a scheduled command fires the selected channels once due_at passes.
  */
-#[Fillable(['due_at', 'channels', 'title', 'url', 'fired_at'])]
+#[Fillable(['todo_id', 'due_at', 'channels', 'title', 'url', 'fired_at'])]
 class Reminder extends Model
 {
     /** Channels a reminder may fire on (mirrors the notification settings). */

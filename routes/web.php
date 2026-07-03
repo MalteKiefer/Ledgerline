@@ -12,7 +12,6 @@ use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\ReminderController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
@@ -22,6 +21,7 @@ use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessContro
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
+use App\Http\Controllers\TodoController;
 use App\Http\Controllers\VaultBlobController;
 use App\Http\Controllers\VaultController;
 use App\Http\Controllers\VaultManifestController;
@@ -137,11 +137,20 @@ Route::middleware('auth')->group(function (): void {
     // opaque uuid-keyed blobs; it cannot see names, sizes, structure or counts.
     Route::view('/files', 'files.index')->name('files.index');
     Route::view('/notes', 'notes.index')->name('notes.index');
-    Route::view('/todos', 'todos.index')->name('todos.index');
-    // Server-side reminders for to-do due dates (the to-do stays zero-knowledge).
-    Route::post('/reminders', [ReminderController::class, 'store'])->name('reminders.store');
-    Route::put('/reminders/{reminder}', [ReminderController::class, 'update'])->name('reminders.update');
-    Route::delete('/reminders/{reminder}', [ReminderController::class, 'destroy'])->name('reminders.destroy');
+    // To-dos: plain database rows (not zero-knowledge), rendered server-side
+    // with plain form posts. Reminders are managed by the controller.
+    Route::get('/todos', [TodoController::class, 'index'])->name('todos.index');
+    Route::post('/todos/lists', [TodoController::class, 'storeList'])->name('todos.lists.store');
+    Route::put('/todos/lists/{list}', [TodoController::class, 'updateList'])->name('todos.lists.update');
+    Route::delete('/todos/lists/{list}', [TodoController::class, 'destroyList'])->name('todos.lists.destroy');
+    Route::post('/todos/tasks', [TodoController::class, 'store'])->name('todos.store');
+    Route::put('/todos/tasks/{todo}', [TodoController::class, 'update'])->name('todos.update');
+    Route::post('/todos/tasks/{todo}/done', [TodoController::class, 'toggleDone'])->name('todos.done');
+    Route::post('/todos/tasks/{todo}/mark', [TodoController::class, 'toggleMark'])->name('todos.mark');
+    Route::post('/todos/tasks/{todo}/trash', [TodoController::class, 'trash'])->name('todos.trash');
+    Route::post('/todos/tasks/{todo}/restore', [TodoController::class, 'restore'])->name('todos.restore');
+    Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->name('todos.destroy');
+    Route::delete('/todos/trash', [TodoController::class, 'emptyTrash'])->name('todos.trash.empty');
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::view('/mail', 'mail.index')->name('mail.index');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
@@ -160,9 +169,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
     Route::get('/vault/manifest/{name}', [VaultManifestController::class, 'show'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail', 'todos'])->name('vault.manifest.show');
+        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.show');
     Route::put('/vault/manifest/{name}', [VaultManifestController::class, 'update'])
-        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail', 'todos'])->name('vault.manifest.update');
+        ->whereIn('name', ['files', 'notes', 'bookmarks', 'mail'])->name('vault.manifest.update');
     Route::post('/vault/blobs', [VaultBlobController::class, 'store'])->name('vault.blobs.store');
     Route::get('/vault/blobs/{blob}', [VaultBlobController::class, 'show'])->name('vault.blobs.show');
     Route::delete('/vault/blobs/{blob}', [VaultBlobController::class, 'destroy'])->name('vault.blobs.destroy');
