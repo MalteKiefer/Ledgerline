@@ -2520,6 +2520,48 @@ Alpine.data('vaultMail', (labels = {}) => ({
         }
     },
 
+    /* ---- Local archive (server-deleted mail kept locally) ---- */
+    archive: { open: false, loading: false, messages: [], viewing: null, viewLoading: false, error: '' },
+
+    async openArchive(a) {
+        this.archive = { open: true, loading: true, messages: [], viewing: null, viewLoading: false, error: '' };
+        this.archiveAccountId = a.id;
+        try {
+            const res = await fetch(`/mail/archive/${a.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            this.archive.messages = res.ok ? (await res.json()).messages : [];
+        } catch (e) { this.archive.error = labels.connectFailed; }
+        this.archive.loading = false;
+    },
+    closeArchive() { this.archive.open = false; this.archive.viewing = null; },
+
+    async viewArchived(m) {
+        this.archive.viewLoading = true; this.archive.viewing = { id: m.id, subject: m.subject, from: m.from };
+        try {
+            const res = await fetch(`/mail/archive/message/${m.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (res.ok) this.archive.viewing = { id: m.id, ...(await res.json()) };
+        } catch (e) { /* keep header */ }
+        this.archive.viewLoading = false;
+    },
+    archivedAttachmentUrl(i) { return this.archive.viewing ? `/mail/archive/message/${this.archive.viewing.id}/attachment/${i}` : '#'; },
+
+    async restoreArchived(m) {
+        try {
+            const res = await fetch(`/mail/archive/message/${m.id}/restore`, { method: 'POST', headers: this._headers() });
+            if (! res.ok) { this.archive.error = labels.connectFailed; return; }
+            this.archive.messages = this.archive.messages.filter((x) => x.id !== m.id);
+            if (this.archive.viewing?.id === m.id) this.archive.viewing = null;
+        } catch (e) { this.archive.error = labels.connectFailed; }
+    },
+
+    async deleteArchived(m) {
+        if (! confirm(labels.archiveDeleteConfirm)) return;
+        try {
+            await fetch(`/mail/archive/message/${m.id}`, { method: 'DELETE', headers: this._headers() });
+            this.archive.messages = this.archive.messages.filter((x) => x.id !== m.id);
+            if (this.archive.viewing?.id === m.id) this.archive.viewing = null;
+        } catch (e) { this.archive.error = labels.connectFailed; }
+    },
+
     fmtBytes(n) { return formatBytes(n); },
 
     fmtDateTime(iso) {
