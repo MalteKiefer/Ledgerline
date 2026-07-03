@@ -148,4 +148,6 @@ return [
     'backup_no_log' => 'Kein Protokoll für diesen Lauf.',
     'backup_path_hint' => 'Relativ zum Login-Verzeichnis. Leer lassen für Standard (viele SFTP-Hosts erlauben kein Schreiben im Server-Root).',
     'backup_notify_desktop' => 'Desktop / Browser',
+    'backup_queued_short' => 'Eingereiht…',
+    'backup_download' => 'Herunterladen',
 ];

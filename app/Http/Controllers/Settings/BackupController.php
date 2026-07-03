@@ -15,9 +15,11 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Number;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Backup configuration: remote destinations, scheduled jobs and run history.
@@ -30,7 +32,7 @@ class BackupController extends Controller
             'destinations' => BackupDestination::orderBy('name')->get(),
             // Eager-load runs so each job's statistics() works in memory (no N+1).
             'jobs' => BackupJob::with(['destination', 'runs'])->orderBy('name')->get(),
-            'runs' => BackupRun::with('job')->latest('started_at')->limit(20)->get(),
+            // The run history is loaded live via the runs() JSON endpoint.
         ]);
     }
 
@@ -127,11 +129,57 @@ class BackupController extends Controller
         return back()->with('status', __('flash.backup_deleted'));
     }
 
-    public function runNow(BackupJob $job): RedirectResponse
+    public function runNow(Request $request, BackupJob $job): RedirectResponse|JsonResponse
     {
         RunBackupJob::dispatch($job->id);
 
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
         return back()->with('status', __('flash.backup_queued'));
+    }
+
+    /** Recent runs as JSON, for the live-updating run list. */
+    public function runs(): JsonResponse
+    {
+        $runs = BackupRun::with('job')->latest('started_at')->limit(20)->get();
+
+        return response()->json([
+            'runs' => $runs->map(fn (BackupRun $r): array => [
+                'id' => $r->id,
+                'job' => $r->job?->name,
+                'status' => $r->status,
+                'message' => $r->message,
+                'log' => $r->log,
+                'startedIso' => $r->started_at?->toIso8601String(),
+                'startedHuman' => $r->started_at?->diffForHumans(),
+                'size' => $r->bytes ? Number::fileSize($r->bytes) : null,
+                // Downloadable once finished successfully and the object still exists.
+                'downloadable' => $r->status === 'success' && $r->filename !== null,
+            ]),
+        ]);
+    }
+
+    /** Stream a completed backup archive from its destination to the browser. */
+    public function downloadRun(BackupRun $run): StreamedResponse
+    {
+        abort_unless($run->status === 'success' && $run->filename, 404);
+        $job = $run->job;
+        abort_unless($job !== null && $job->destination !== null, 404);
+
+        $fs = $this->factory->make($job->destination);
+        abort_unless($fs->fileExists($run->filename), 404);
+
+        $name = basename($run->filename);
+
+        return response()->streamDownload(function () use ($fs, $run): void {
+            $stream = $fs->readStream($run->filename);
+            if ($stream !== null) {
+                fpassthru($stream);
+                fclose($stream);
+            }
+        }, $name, ['Content-Type' => 'application/octet-stream']);
     }
 
     private function validateDestination(Request $request, ?BackupDestination $existing = null): array

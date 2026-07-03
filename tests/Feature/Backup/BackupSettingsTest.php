@@ -7,6 +7,7 @@ namespace Tests\Feature\Backup;
 use App\Jobs\RunBackupJob;
 use App\Models\BackupDestination;
 use App\Models\BackupJob;
+use App\Models\BackupRun;
 use App\Services\Backup\BackupDestinationFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -109,6 +110,40 @@ class BackupSettingsTest extends TestCase
         $this->post(route('settings.backup.jobs.run', $job))->assertRedirect();
 
         Queue::assertPushed(RunBackupJob::class, fn ($j) => $j->backupJobId === $job->id);
+    }
+
+    public function test_run_now_returns_json_for_ajax(): void
+    {
+        Queue::fake();
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+        $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
+
+        $this->postJson(route('settings.backup.jobs.run', $job))->assertOk()->assertJson(['ok' => true]);
+        Queue::assertPushed(RunBackupJob::class);
+    }
+
+    public function test_runs_endpoint_lists_runs_as_json(): void
+    {
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+        $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
+        BackupRun::create(['backup_job_id' => $job->id, 'status' => 'success', 'started_at' => now(), 'finished_at' => now(), 'bytes' => 1024, 'filename' => 'j-1/x.sql.gz']);
+
+        $this->getJson(route('settings.backup.runs'))
+            ->assertOk()
+            ->assertJsonPath('runs.0.status', 'success')
+            ->assertJsonPath('runs.0.downloadable', true);
+    }
+
+    public function test_download_of_an_unfinished_run_is_404(): void
+    {
+        $this->signIn();
+        $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
+        $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
+        $run = BackupRun::create(['backup_job_id' => $job->id, 'status' => 'failed', 'started_at' => now(), 'finished_at' => now()]);
+
+        $this->get(route('settings.backup.runs.download', $run))->assertNotFound();
     }
 
     public function test_an_unreachable_destination_is_not_saved(): void

@@ -148,4 +148,6 @@ return [
     'backup_no_log' => 'No log for this run.',
     'backup_path_hint' => 'Relative to the login directory. Leave blank to use it directly (many SFTP hosts do not allow writing to the server root).',
     'backup_notify_desktop' => 'Desktop / browser',
+    'backup_queued_short' => 'Queued…',
+    'backup_download' => 'Download',
 ];
