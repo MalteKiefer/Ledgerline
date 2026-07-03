@@ -13,10 +13,19 @@ use Illuminate\Support\Str;
 enum FileType: string
 {
     case IMAGE = 'IMAGE';
+    case VECTOR = 'VECTOR';
+    case VIDEO = 'VIDEO';
+    case AUDIO = 'AUDIO';
     case PDF = 'PDF';
     case DOCUMENT = 'DOCUMENT';
+    case EBOOK = 'EBOOK';
     case SPREADSHEET = 'SPREADSHEET';
+    case PRESENTATION = 'PRESENTATION';
     case ARCHIVE = 'ARCHIVE';
+    case DISK = 'DISK';
+    case CODE = 'CODE';
+    case TEXT = 'TEXT';
+    case FONT = 'FONT';
     case OTHER = 'OTHER';
     case ENCRYPTED = 'ENCRYPTED';
 
@@ -47,8 +56,13 @@ enum FileType: string
         $mime = strtolower($mime);
 
         return match (true) {
+            $mime === 'image/svg+xml' => self::VECTOR,
             Str::startsWith($mime, 'image/') => self::IMAGE,
+            Str::startsWith($mime, 'video/') => self::VIDEO,
+            Str::startsWith($mime, 'audio/') => self::AUDIO,
+            Str::startsWith($mime, 'font/') => self::FONT,
             $mime === 'application/pdf' => self::PDF,
+            in_array($mime, ['application/epub+zip', 'application/x-mobipocket-ebook'], true) => self::EBOOK,
             in_array($mime, [
                 'application/vnd.ms-excel',
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -57,13 +71,29 @@ enum FileType: string
                 'application/csv',
             ], true) => self::SPREADSHEET,
             in_array($mime, [
+                'application/vnd.ms-powerpoint',
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'application/vnd.oasis.opendocument.presentation',
+            ], true) => self::PRESENTATION,
+            in_array($mime, [
                 'application/msword',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 'application/vnd.oasis.opendocument.text',
                 'application/rtf',
-                'text/plain',
-                'text/markdown',
             ], true) => self::DOCUMENT,
+            in_array($mime, [
+                'application/json',
+                'application/xml',
+                'text/html',
+                'text/css',
+                'application/javascript',
+                'text/javascript',
+                'application/x-sh',
+                'application/x-httpd-php',
+                'application/x-python',
+            ], true) => self::CODE,
+            in_array($mime, ['text/plain', 'text/markdown'], true) => self::TEXT,
+            in_array($mime, ['application/x-iso9660-image', 'application/x-apple-diskimage'], true) => self::DISK,
             in_array($mime, [
                 'application/zip',
                 'application/x-tar',
