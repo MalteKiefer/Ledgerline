@@ -408,7 +408,7 @@ class GalleryController extends Controller
      * are geocoded a single time and applied to every selected photo, marking
      * their metadata as user-locked.
      */
-    public function bulkLocation(Request $request, ReverseGeocoder $geocoder): RedirectResponse
+    public function bulkLocation(Request $request, ReverseGeocoder $geocoder): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'photo_ids' => ['required', 'array', 'max:1000'],
@@ -428,6 +428,10 @@ class GalleryController extends Controller
                 'meta_locked' => true,
             ])->save())
             ->count();
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'count' => $count]);
+        }
 
         return back()->with('status', __('flash.photos_location_set', ['count' => $count]));
     }
@@ -618,7 +622,7 @@ class GalleryController extends Controller
     /**
      * Soft-delete a selection of photos (move to trash).
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'photo_ids' => ['required', 'array', 'max:1000'],
@@ -626,6 +630,10 @@ class GalleryController extends Controller
         ]);
 
         $count = Photo::query()->whereIn('id', $validated['photo_ids'])->get()->each->delete()->count();
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'ids' => $validated['photo_ids'], 'count' => $count]);
+        }
 
         return back()->with('status', __('flash.photos_trashed', ['count' => $count]));
     }
@@ -640,9 +648,13 @@ class GalleryController extends Controller
     /**
      * Restore trashed photos: a selection (photo_ids) or all (all=1).
      */
-    public function restore(Request $request): RedirectResponse
+    public function restore(Request $request): RedirectResponse|JsonResponse
     {
         $count = $this->trashedQuery($request)->restore();
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'count' => $count]);
+        }
 
         return back()->with('status', __('flash.photos_restored', ['count' => $count]));
     }
@@ -650,7 +662,7 @@ class GalleryController extends Controller
     /**
      * Permanently delete trashed photos (selection or all), with their bytes.
      */
-    public function forceDestroy(Request $request): RedirectResponse
+    public function forceDestroy(Request $request): RedirectResponse|JsonResponse
     {
         $disk = Storage::disk(config('files.disk'));
         $count = 0;
@@ -660,6 +672,10 @@ class GalleryController extends Controller
             $photo->forceDelete();
             $count++;
         });
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'count' => $count]);
+        }
 
         return back()->with('status', __('flash.photos_deleted', ['count' => $count]));
     }

@@ -331,6 +331,17 @@ class GalleryTest extends TestCase
             ->assertViewHas('grouped', fn ($grouped): bool => $grouped->has('2026-06-01') && $grouped->has('2026-06-03'));
     }
 
+    public function test_bulk_delete_returns_json_for_the_reload_free_grid(): void
+    {
+        $this->signIn();
+        $a = Photo::factory()->create();
+        $b = Photo::factory()->create();
+
+        $this->deleteJson(route('gallery.destroy'), ['photo_ids' => [$a->id, $b->id]])
+            ->assertOk()->assertJson(['ok' => true, 'ids' => [$a->id, $b->id]]);
+        $this->assertSoftDeleted('photos', ['id' => $a->id]);
+    }
+
     public function test_photos_can_be_trashed_restored_and_force_deleted(): void
     {
         Storage::fake('files');
