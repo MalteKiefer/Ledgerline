@@ -32,4 +32,7 @@ interface MailSource
      *     has_attachments:bool, size:int, preview:?string}
      */
     public function fetch(ImapCredentials $c, string $folder, int $uid): array;
+
+    /** Append a raw RFC822 message back into a folder (used to restore archived mail). */
+    public function appendMessage(ImapCredentials $c, string $folder, string $raw): void;
 }

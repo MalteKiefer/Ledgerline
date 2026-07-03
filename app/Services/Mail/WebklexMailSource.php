@@ -93,6 +93,16 @@ class WebklexMailSource implements MailSource
         }
     }
 
+    public function appendMessage(ImapCredentials $c, string $folder, string $raw): void
+    {
+        $client = $this->connect($c);
+        try {
+            $client->getFolderByPath($folder)->appendMessage($raw, null, null);
+        } finally {
+            $this->close($client);
+        }
+    }
+
     /* ---- helpers ---- */
 
     private function raw(Client $client, string $folder, int $uid, $message): string

@@ -4,6 +4,7 @@
         stale: @js(__('mail.stale')),
         saveFailed: @js(__('mail.save_failed')),
         connectFailed: @js(__('mail.connect_failed')),
+        archiveDeleteConfirm: @js(__('mail.archive_delete_confirm')),
         folderNames: @js([
             'inbox' => __('mail.folder_inbox'),
             'all' => __('mail.folder_all'),
@@ -98,6 +99,9 @@
                         <button type="submit" title="{{ __('mail.new_folder') }}" aria-label="{{ __('mail.new_folder') }}" :disabled="reader.busy"
                             class="shrink-0 rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-50"><x-icon name="folder-plus" class="h-4 w-4" /></button>
                     </form>
+                    <button type="button" @click="openArchive(reader.account)" class="flex w-full items-center gap-2 border-b border-gray-100 px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-50">
+                        <x-icon name="archive" class="h-4 w-4" />{{ __('mail.archive_title') }}
+                    </button>
                     <div class="min-h-0 flex-1 overflow-y-auto">
                         <div x-show="reader.foldersLoading && readerFolders().length === 0" class="flex items-center gap-2 px-3 py-4 text-xs text-gray-400">
                             <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}
@@ -371,6 +375,60 @@
                 </div>
             </div>
         </div>
+
+    {{-- Local archive: server-deleted mail, restore / delete permanently --}}
+    <template x-teleport="body">
+        <div x-show="archive.open" x-cloak class="fixed inset-0 z-[1090] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeArchive()">
+            <div class="absolute inset-0 bg-gray-900/60" @click="closeArchive()"></div>
+            <div class="relative flex max-h-[92vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl">
+                <div class="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">{{ __('mail.archive_title') }}</h3>
+                        <p class="text-xs text-gray-500">{{ __('mail.archive_hint') }}</p>
+                    </div>
+                    <button type="button" @click="closeArchive()" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('common.close') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                </div>
+
+                <div class="min-h-0 flex-1 overflow-auto">
+                    <div x-show="archive.loading" class="flex items-center justify-center gap-2 py-10 text-sm text-gray-500"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}</div>
+                    <p x-show="! archive.loading && ! archive.messages.length" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('mail.archive_empty') }}</p>
+
+                    {{-- Message view --}}
+                    <template x-if="archive.viewing">
+                        <div class="border-b border-gray-100 p-5">
+                            <button type="button" @click="archive.viewing = null" class="mb-3 text-xs text-gray-500 hover:text-gray-700">&larr; {{ __('mail.back_to_list') }}</button>
+                            <h4 class="text-base font-semibold text-gray-900" x-text="archive.viewing.subject || '—'"></h4>
+                            <p class="mt-1 text-xs text-gray-500"><span x-text="archive.viewing.from?.name || archive.viewing.from?.email || archive.viewing.from"></span></p>
+                            <div x-show="archive.viewLoading" class="py-6 text-sm text-gray-500">{{ __('mail.loading') }}</div>
+                            <template x-if="(archive.viewing.attachments ?? []).length">
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <template x-for="att in archive.viewing.attachments" :key="att.id">
+                                        <a :href="archivedAttachmentUrl(att.id)" class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /><span x-text="att.name"></span></a>
+                                    </template>
+                                </div>
+                            </template>
+                            <div class="prose prose-sm mt-4 max-w-none text-gray-800" x-show="archive.viewing.html" x-html="archive.viewing.html"></div>
+                            <pre x-show="! archive.viewing.html && archive.viewing.text" x-cloak class="mt-4 whitespace-pre-wrap break-words text-sm text-gray-800" x-text="archive.viewing.text"></pre>
+                        </div>
+                    </template>
+
+                    {{-- List --}}
+                    <ul x-show="! archive.viewing" class="divide-y divide-gray-100">
+                        <template x-for="m in archive.messages" :key="m.id">
+                            <li class="flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
+                                <button type="button" @click="viewArchived(m)" class="min-w-0 flex-1 text-left">
+                                    <p class="truncate text-sm font-medium text-gray-900" x-text="m.subject || '—'"></p>
+                                    <p class="truncate text-xs text-gray-500"><span x-text="m.from"></span> · <span x-text="m.folder"></span></p>
+                                </button>
+                                <button type="button" @click="restoreArchived(m)" title="{{ __('mail.archive_restore') }}" class="rounded-md border border-gray-300 p-1.5 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                                <button type="button" @click="deleteArchived(m)" title="{{ __('mail.archive_delete') }}" class="rounded-md border border-red-300 p-1.5 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </template>
 
     @include('_paperless_modal')
   </div>
