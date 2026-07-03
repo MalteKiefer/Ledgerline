@@ -25,6 +25,26 @@ class NotificationBellTest extends TestCase
             ->assertJsonCount(2, 'items');
     }
 
+    public function test_an_unchanged_poll_returns_304_via_etag(): void
+    {
+        $user = $this->signIn();
+        AppNotification::create(['user_id' => $user->id, 'level' => 'success', 'title' => 'A']);
+
+        $first = $this->getJson(route('notifications.index'))->assertOk();
+        $etag = $first->headers->get('ETag');
+        $this->assertNotNull($etag);
+
+        // Same state + matching ETag → 304 Not Modified.
+        $this->getJson(route('notifications.index'), ['If-None-Match' => $etag])
+            ->assertStatus(304);
+
+        // A new notification changes the signature → 200 again.
+        AppNotification::create(['user_id' => $user->id, 'level' => 'info', 'title' => 'B']);
+        $this->getJson(route('notifications.index'), ['If-None-Match' => $etag])
+            ->assertOk()
+            ->assertJsonCount(2, 'items');
+    }
+
     public function test_a_notification_can_be_marked_read(): void
     {
         $user = $this->signIn();
