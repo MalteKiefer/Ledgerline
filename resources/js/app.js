@@ -2833,6 +2833,13 @@ Alpine.data('vaultMail', (labels = {}) => ({
         return (f.role && labels.folderNames && labels.folderNames[f.role]) ? labels.folderNames[f.role] : f.name;
     },
 
+    // Translated name of the folder currently open in the reader (falls back to
+    // the raw path before the folder list has loaded).
+    currentFolderLabel() {
+        const f = this.reader.folders.find((x) => x.path === this.reader.folderPath);
+        return f ? this.folderLabel(f) : this.reader.folderPath;
+    },
+
     // Heroicon path for a standard folder's role, or '' for custom folders.
     folderIconPath(f) {
         const icons = {
