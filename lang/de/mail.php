@@ -25,6 +25,7 @@ return [
     'field_username' => 'Benutzername',
     'field_password' => 'Passwort',
     'field_validate_cert' => 'TLS-Zertifikat prüfen',
+    'validate_cert_warning' => 'Ohne Zertifikatsprüfung kann ein Angreifer in der Leitung deine Zugangsdaten und E-Mails abfangen. Deaktiviere dies nur für einen vertrauenswürdigen Server mit selbstsigniertem Zertifikat.',
     'security_note' => 'Zugangsdaten liegen verschlüsselt in deinem Tresor. Der Server speichert sie nie — er sieht das Passwort nur kurz beim Abruf der Statistiken, wie IMAP es erfordert.',
     'edit' => 'Bearbeiten',
     'delete' => 'Löschen',

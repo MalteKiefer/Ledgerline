@@ -25,6 +25,7 @@ return [
     'field_username' => 'Username',
     'field_password' => 'Password',
     'field_validate_cert' => 'Validate TLS certificate',
+    'validate_cert_warning' => 'Disabling certificate validation lets a man-in-the-middle intercept your credentials and mail. Only turn this off for a trusted server with a self-signed certificate.',
     'security_note' => 'Credentials are stored encrypted in your vault. The server never keeps them — it sees the password only briefly while fetching stats, which IMAP requires.',
     'edit' => 'Edit',
     'delete' => 'Delete',

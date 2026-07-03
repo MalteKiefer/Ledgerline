@@ -41,6 +41,7 @@
                     <input type="checkbox" x-model="form.validateCert" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                     {{ __('mail.field_validate_cert') }}
                 </label>
+                <p x-show="! form.validateCert" x-cloak class="text-xs text-amber-600">{{ __('mail.validate_cert_warning') }}</p>
                 <p class="text-xs text-gray-400">{{ __('mail.security_note') }}</p>
                 <p x-show="error" x-cloak class="text-xs text-red-600" x-text="error"></p>
             </div>

@@ -9,6 +9,7 @@ use App\Jobs\RunBackupJob;
 use App\Models\BackupDestination;
 use App\Models\BackupJob;
 use App\Models\BackupRun;
+use App\Rules\SafeUrl;
 use App\Services\Backup\BackupDestinationFactory;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
@@ -240,20 +241,21 @@ class BackupController extends Controller
             'region' => ['nullable', 'string', 'max:64'],
             'key' => ['nullable', 'string', 'max:255'],
             'secret' => ['nullable', 'string', 'max:255'],
-            'endpoint' => ['nullable', 'string', 'max:255'],
+            'endpoint' => ['nullable', 'string', 'max:255', new SafeUrl],
             'use_path_style' => ['sometimes', 'boolean'],
             // SFTP / WebDAV
             'host' => ['nullable', 'string', 'max:255'],
             'port' => ['nullable', 'integer', 'min:1', 'max:65535'],
             'username' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'max:255'],
-            'base_uri' => ['nullable', 'string', 'max:255'],
+            'host_fingerprint' => ['nullable', 'string', 'max:255'],
+            'base_uri' => ['nullable', 'string', 'max:255', new SafeUrl],
             'path' => ['nullable', 'string', 'max:255'],
         ]);
 
         $keys = match ($validated['driver']) {
             's3', 'b2' => ['bucket', 'region', 'key', 'secret', 'endpoint', 'use_path_style', 'path'],
-            'sftp' => ['host', 'port', 'username', 'password', 'path'],
+            'sftp' => ['host', 'port', 'username', 'password', 'host_fingerprint', 'path'],
             'webdav' => ['base_uri', 'username', 'password', 'path'],
             default => [],
         };

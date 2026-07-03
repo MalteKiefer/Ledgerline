@@ -53,6 +53,20 @@ class BackupSettingsTest extends TestCase
         $this->assertStringNotContainsString('topsecret', (string) \DB::table('backup_destinations')->value('config'));
     }
 
+    public function test_a_metadata_endpoint_is_rejected(): void
+    {
+        $this->signIn();
+
+        $this->post(route('settings.backup.destinations.store'), [
+            'name' => 'Evil',
+            'driver' => 's3',
+            'bucket' => 'b',
+            'endpoint' => 'http://169.254.169.254/',
+        ])->assertSessionHasErrors('endpoint');
+
+        $this->assertSame(0, BackupDestination::count());
+    }
+
     public function test_a_job_is_created(): void
     {
         $this->signIn();
