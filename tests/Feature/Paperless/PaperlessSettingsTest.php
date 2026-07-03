@@ -20,6 +20,19 @@ class PaperlessSettingsTest extends TestCase
         $this->get(route('settings.paperless.edit'))->assertOk();
     }
 
+    public function test_a_metadata_url_is_rejected(): void
+    {
+        $this->signIn();
+
+        $this->put(route('settings.paperless.update'), [
+            'paperless_enabled' => '1',
+            'paperless_url' => 'http://169.254.169.254/latest/meta-data/',
+            'paperless_token' => 'secret-token',
+        ])->assertSessionHasErrors('paperless_url');
+
+        $this->assertNull(AppSettings::current()->paperless_url);
+    }
+
     public function test_it_saves_url_and_token_encrypted(): void
     {
         $this->signIn();

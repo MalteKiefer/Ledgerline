@@ -185,4 +185,5 @@ return [
     'backup_mode' => 'Backup-Modus',
     'backup_mode_mirror' => 'Inkrementeller Spiegel (nur Änderungen)',
     'backup_mode_archive' => 'Vollständiges Archiv (tar.gz)',
+    'safe_url' => ':attribute muss eine http(s)-URL sein und darf nicht auf eine Link-local- oder Metadaten-Adresse zeigen.',
 ];

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Paperless;
 
 use App\Models\AppSettings;
+use App\Support\OutboundUrl;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -126,7 +127,7 @@ class PaperlessClient
             }
         }
 
-        throw new RuntimeException("Creating {$kind} failed: HTTP ".$res->status().' '.trim($res->body()));
+        throw new RuntimeException("Creating {$kind} failed: HTTP ".$res->status().'.');
     }
 
     /** Find a term by exact (case-insensitive) name, or null. */
@@ -185,7 +186,7 @@ class PaperlessClient
 
         $res = $request->post('/api/documents/post_document/', $fields);
         if (! $res->successful()) {
-            throw new RuntimeException('Upload failed: HTTP '.$res->status().' '.$res->body());
+            throw new RuntimeException('Upload failed: HTTP '.$res->status().'.');
         }
 
         // The endpoint returns the task UUID as a JSON string.
@@ -194,8 +195,17 @@ class PaperlessClient
 
     private function http(): PendingRequest
     {
+        // Re-check the target at request time (defence in depth: the stored URL
+        // could have been changed by a path that skipped validation) and never
+        // follow redirects, so a validated host cannot 30x-bounce the request
+        // to an internal/metadata address.
+        if (! OutboundUrl::safe($this->baseUrl)) {
+            throw new RuntimeException('The configured Paperless URL is not an allowed outbound target.');
+        }
+
         return Http::baseUrl(rtrim($this->baseUrl, '/'))
             ->withToken($this->token, 'Token')
+            ->withOptions(['allow_redirects' => false])
             ->acceptJson()
             ->timeout(30);
     }

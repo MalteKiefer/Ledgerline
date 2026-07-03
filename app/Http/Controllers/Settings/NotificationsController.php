@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
+use App\Rules\SafeUrl;
 use App\Services\Backup\BackupNotifier;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -36,11 +37,11 @@ class NotificationsController extends Controller
             'smtp_from_address' => ['nullable', 'email', 'max:255'],
             'smtp_from_name' => ['nullable', 'string', 'max:255'],
             'ntfy_enabled' => ['sometimes', 'boolean'],
-            'ntfy_url' => ['nullable', 'url', 'max:255'],
+            'ntfy_url' => ['nullable', 'url', 'max:255', new SafeUrl],
             'ntfy_topic' => ['nullable', 'string', 'max:255'],
             'ntfy_token' => ['nullable', 'string', 'max:255'],
             'webhook_enabled' => ['sometimes', 'boolean'],
-            'webhook_url' => ['nullable', 'url', 'max:255'],
+            'webhook_url' => ['nullable', 'url', 'max:255', new SafeUrl],
             'webhook_secret' => ['nullable', 'string', 'max:255'],
         ]);
 

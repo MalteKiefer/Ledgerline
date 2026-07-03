@@ -185,4 +185,5 @@ return [
     'backup_mode' => 'Backup mode',
     'backup_mode_mirror' => 'Incremental mirror (only changes)',
     'backup_mode_archive' => 'Full archive (tar.gz)',
+    'safe_url' => 'The :attribute must be an http(s) URL and must not point at a link-local or metadata address.',
 ];
