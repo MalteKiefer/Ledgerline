@@ -84,6 +84,18 @@ class MailArchiveActionsTest extends TestCase
         Storage::disk('files')->assertMissing('mail/'.$m->blob);
     }
 
+    public function test_an_oversized_eml_is_refused_on_view(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files', 'mail_archive.max_render_bytes' => 1024]);
+        $this->signIn();
+        $m = $this->archived();
+        Storage::disk('files')->put('mail/'.$m->blob, str_repeat('x', 2048));
+
+        $this->getJson(route('mail.archive.show', $m))->assertStatus(413);
+        $this->getJson(route('mail.archive.attachment', ['message' => $m, 'index' => 0]))->assertStatus(413);
+    }
+
     public function test_permanent_delete_removes_row_and_blob(): void
     {
         Storage::fake('files');

@@ -110,9 +110,16 @@ class MailArchiveController extends Controller
     private function raw(MailMessage $message): string
     {
         $path = 'mail/'.$message->blob;
-        abort_unless($this->disk()->exists($path), 404);
+        $disk = $this->disk();
+        abort_unless($disk->exists($path), 404);
 
-        return (string) $this->disk()->get($path);
+        // Refuse to load an oversized .eml into memory (OOM guard): a hostile
+        // message with a huge attachment must not be able to exhaust the worker
+        // on view/download/restore.
+        $max = (int) config('mail_archive.max_render_bytes', 25 * 1024 * 1024);
+        abort_if($disk->size($path) > $max, Response::HTTP_REQUEST_ENTITY_TOO_LARGE);
+
+        return (string) $disk->get($path);
     }
 
     private function deleteLocal(MailMessage $message): void

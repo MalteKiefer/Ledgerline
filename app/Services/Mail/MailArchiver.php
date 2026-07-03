@@ -56,7 +56,10 @@ class MailArchiver
             $serverSet = array_map('intval', array_keys($serverUids));
 
             // Deletion detection: present locally (not yet archived) but gone on
-            // the server → keep, mark archived.
+            // the server → keep, mark archived. An empty $serverSet here means a
+            // genuinely empty folder (uids() throws on enumeration failure rather
+            // than returning [], so it can never be a transient false positive),
+            // in which case every local message is correctly marked deleted.
             $archivedCount += MailMessage::where('mail_folder_id', $folder->id)
                 ->whereNull('deleted_on_server_at')
                 ->when($serverSet !== [], fn ($q) => $q->whereNotIn('uid', $serverSet))
