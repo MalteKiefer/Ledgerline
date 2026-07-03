@@ -5,7 +5,7 @@
 @endphp
 <form method="POST" action="{{ $action }}" x-data="{ driver: '{{ old('driver', $d->driver ?? 's3') }}' }" class="space-y-3">
     @csrf
-    @if ($d) @method('PUT') @endif
+    @if ($d) @method('PUT') <input type="hidden" name="destination_id" value="{{ $d->id }}"> @endif
     <div class="grid gap-3 sm:grid-cols-2">
         <div><label class="block text-sm font-medium text-gray-700">{{ __('settings.backup_name') }}</label>
             <input type="text" name="name" value="{{ old('name', $d->name ?? '') }}" required class="{{ $input }}"></div>
@@ -64,5 +64,8 @@
             <input type="text" name="path" value="{{ old('path', $cfg['path'] ?? '') }}" class="{{ $input }}"></div>
     </div>
 
-    <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.backup_save') }}</button>
+    <div class="flex flex-wrap gap-2">
+        <button type="submit" formaction="{{ route('settings.backup.destinations.test') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('settings.backup_test') }}</button>
+        <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.backup_save') }}</button>
+    </div>
 </form>

@@ -19,18 +19,41 @@ use Sabre\DAV\Client as WebDavClient;
  * share the S3 adapter (B2 via its S3-compatible endpoint); SFTP and WebDAV use
  * their own adapters.
  */
-final class BackupDestinationFactory
+class BackupDestinationFactory
 {
     public function make(BackupDestination $destination): Filesystem
     {
-        $c = $destination->config ?? [];
+        return $this->makeFromParts($destination->driver, $destination->config ?? []);
+    }
 
-        return new Filesystem(match ($destination->driver) {
+    /**
+     * Build a filesystem from a raw driver + config (used to test a destination
+     * before it is saved).
+     *
+     * @param  array<string, mixed>  $c
+     */
+    public function makeFromParts(string $driver, array $c): Filesystem
+    {
+        return new Filesystem(match ($driver) {
             's3', 'b2' => $this->s3($c),
             'sftp' => $this->sftp($c),
             'webdav' => $this->webdav($c),
-            default => throw new RuntimeException("Unknown backup driver: {$destination->driver}"),
+            default => throw new RuntimeException("Unknown backup driver: {$driver}"),
         });
+    }
+
+    /**
+     * Verify a destination is reachable and writable by writing then deleting a
+     * tiny probe object. Throws with the underlying reason on failure.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function test(string $driver, array $config): void
+    {
+        $fs = $this->makeFromParts($driver, $config);
+        $probe = '.ledgerline-connftest-'.bin2hex(random_bytes(6));
+        $fs->write($probe, "ok\n");
+        $fs->delete($probe);
     }
 
     private function s3(array $c): AwsS3V3Adapter

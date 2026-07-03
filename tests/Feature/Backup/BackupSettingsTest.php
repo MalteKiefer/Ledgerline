@@ -7,6 +7,7 @@ namespace Tests\Feature\Backup;
 use App\Jobs\RunBackupJob;
 use App\Models\BackupDestination;
 use App\Models\BackupJob;
+use App\Services\Backup\BackupDestinationFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -14,6 +15,14 @@ use Tests\TestCase;
 class BackupSettingsTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** Stub the factory so destination saves don't hit a real remote. */
+    private function fakeReachableDestinations(): void
+    {
+        $this->mock(BackupDestinationFactory::class, function ($mock): void {
+            $mock->shouldReceive('test')->andReturnNull();
+        });
+    }
 
     public function test_the_page_loads(): void
     {
@@ -24,6 +33,7 @@ class BackupSettingsTest extends TestCase
     public function test_a_destination_is_created_with_an_encrypted_config(): void
     {
         $this->signIn();
+        $this->fakeReachableDestinations();
 
         $this->post(route('settings.backup.destinations.store'), [
             'name' => 'Wasabi',
@@ -96,5 +106,32 @@ class BackupSettingsTest extends TestCase
         $this->post(route('settings.backup.jobs.run', $job))->assertRedirect();
 
         Queue::assertPushed(RunBackupJob::class, fn ($j) => $j->backupJobId === $job->id);
+    }
+
+    public function test_an_unreachable_destination_is_not_saved(): void
+    {
+        $this->signIn();
+        $this->mock(BackupDestinationFactory::class, function ($mock): void {
+            $mock->shouldReceive('test')->andThrow(new \RuntimeException('connection refused'));
+        });
+
+        $this->post(route('settings.backup.destinations.store'), [
+            'name' => 'Broken', 'driver' => 'sftp', 'host' => 'nope.test', 'port' => 22,
+            'username' => 'u', 'password' => 'p', 'path' => '/',
+        ])->assertSessionHasErrors('name');
+
+        $this->assertDatabaseCount('backup_destinations', 0);
+    }
+
+    public function test_the_test_endpoint_reports_reachability(): void
+    {
+        $this->signIn();
+        $this->mock(BackupDestinationFactory::class, function ($mock): void {
+            $mock->shouldReceive('test')->once()->andReturnNull();
+        });
+
+        $this->post(route('settings.backup.destinations.test'), [
+            'name' => 'X', 'driver' => 's3', 'bucket' => 'b', 'region' => 'r', 'key' => 'k', 'secret' => 's',
+        ])->assertRedirect()->assertSessionHas('status');
     }
 }

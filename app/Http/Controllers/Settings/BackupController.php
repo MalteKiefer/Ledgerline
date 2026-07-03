@@ -9,10 +9,12 @@ use App\Jobs\RunBackupJob;
 use App\Models\BackupDestination;
 use App\Models\BackupJob;
 use App\Models\BackupRun;
+use App\Services\Backup\BackupDestinationFactory;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -32,9 +34,13 @@ class BackupController extends Controller
 
     /* ---- Destinations ---- */
 
+    public function __construct(private readonly BackupDestinationFactory $factory) {}
+
     public function storeDestination(Request $request): RedirectResponse
     {
         $data = $this->validateDestination($request);
+        // Only persist a destination we can actually reach and write to.
+        $this->assertReachable($data['driver'], $data['config']);
         BackupDestination::create($data);
 
         return back()->with('status', __('flash.backup_saved'));
@@ -43,9 +49,23 @@ class BackupController extends Controller
     public function updateDestination(Request $request, BackupDestination $destination): RedirectResponse
     {
         $data = $this->validateDestination($request, $destination);
+        $this->assertReachable($data['driver'], $data['config']);
         $destination->update($data);
 
         return redirect()->route('settings.backup.index')->with('status', __('flash.backup_saved'));
+    }
+
+    /** Test a destination's config (from the form) without saving it. */
+    public function testDestination(Request $request): RedirectResponse
+    {
+        $data = $this->validateDestination($request, $this->existingForTest($request));
+        try {
+            $this->factory->test($data['driver'], $data['config']);
+        } catch (\Throwable $e) {
+            return back()->with('error', __('flash.backup_test_failed', ['error' => Str::limit($e->getMessage(), 200)]));
+        }
+
+        return back()->with('status', __('flash.backup_test_ok'));
     }
 
     public function destroyDestination(BackupDestination $destination): RedirectResponse
@@ -130,6 +150,26 @@ class BackupController extends Controller
         }
 
         return ['name' => $validated['name'], 'driver' => $validated['driver'], 'config' => $config];
+    }
+
+    /** Confirm a destination is reachable/writable, else block the save. */
+    private function assertReachable(string $driver, array $config): void
+    {
+        try {
+            $this->factory->test($driver, $config);
+        } catch (\Throwable $e) {
+            throw ValidationException::withMessages([
+                'name' => __('flash.backup_test_failed', ['error' => Str::limit($e->getMessage(), 200)]),
+            ]);
+        }
+    }
+
+    /** The destination being edited (for keeping a blank secret) when testing. */
+    private function existingForTest(Request $request): ?BackupDestination
+    {
+        $id = $request->integer('destination_id');
+
+        return $id ? BackupDestination::find($id) : null;
     }
 
     private function validateJob(Request $request, bool $requirePassphrase): array

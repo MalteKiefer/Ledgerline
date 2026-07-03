@@ -165,6 +165,9 @@ return [
     'notify_webhook_heading' => 'Webhook',
     'webhook_url' => 'URL',
     'webhook_secret' => 'Signing secret (optional)',
+    'notify_test_heading' => 'Send a test',
+    'notify_test_hint' => 'Sends a test message using the saved settings above — save first.',
+    'notify_test_send' => 'Test :channel',
 
     // Backup
     'backup_section' => 'Backup',
@@ -215,4 +218,5 @@ return [
     'backup_source_files' => 'Files',
     'backup_source_gallery' => 'Gallery',
     'backup_notify_none' => 'No notification',
+    'backup_test' => 'Test connection',
 ];
