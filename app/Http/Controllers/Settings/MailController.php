@@ -11,25 +11,26 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * Mail settings: account management (client-side, in the encrypted vault) and
- * the background-sync interval.
+ * Mail settings: account management (client-side over JSON) and the
+ * background-sync interval.
  */
 class MailController extends Controller
 {
+    /** Upper bound for the background-sync interval, in minutes (24 hours). */
+    private const MAX_SYNC_MINUTES = 1440;
+
     public function edit(): View
     {
-        return view('settings.mail.edit', ['settings' => AppSettings::current()]);
+        return view('settings.mail.edit', [
+            'settings' => AppSettings::current(),
+            'maxSyncMinutes' => self::MAX_SYNC_MINUTES,
+        ]);
     }
 
     public function update(Request $request): RedirectResponse
     {
-        // Never longer than the vault idle timeout (otherwise the vault locks
-        // before the next background sync). Idle lives in security settings, so
-        // compare against its stored value as a numeric max.
-        $idle = (int) (AppSettings::current()->vault_idle_minutes ?? 10);
-
         $validated = $request->validate([
-            'mail_sync_minutes' => ['required', 'integer', 'min:5', 'max:'.max(5, $idle)],
+            'mail_sync_minutes' => ['required', 'integer', 'min:5', 'max:'.self::MAX_SYNC_MINUTES],
         ], [], ['mail_sync_minutes' => __('settings.mail_sync_minutes')]);
 
         AppSettings::current()->update($validated);

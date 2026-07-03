@@ -21,7 +21,6 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_ffmpeg_path',
     'gallery_video_frame',
     'gallery_geocode_grid_km',
-    'vault_idle_minutes',
     'mail_sync_minutes',
     'mail_enabled',
     'smtp_host',
@@ -59,7 +58,6 @@ class AppSettings extends Model
             'gallery_max_upload_mb' => 'integer',
             'gallery_video_frame' => 'integer',
             'gallery_geocode_grid_km' => 'float',
-            'vault_idle_minutes' => 'integer',
             'mail_sync_minutes' => 'integer',
             // Notification/mail credentials: usable in the clear at runtime but
             // encrypted at rest (so they are not readable in a database backup).
