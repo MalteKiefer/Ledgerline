@@ -3329,4 +3329,159 @@ document.addEventListener('alpine:init', () => {
         },
     });
 });
+
+/**
+ * To-do lists + tasks, driven entirely client-side over the JSON API (no page
+ * reloads). Reminders are handled server-side on save.
+ */
+Alpine.data('todos', (labels = {}) => ({
+    state: 'boot', // boot | ready | error
+    lists: [],
+    tasks: [],
+    view: 'all', // all | marked | trash | a list id
+    query: '',
+    activeTag: '',
+    error: '',
+    newListName: '',
+    editorOpen: false,
+    editing: null,
+    tagsValue: '',
+
+    async init() { await this.load(); },
+
+    async load() {
+        try {
+            const res = await fetch('/todos/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) { this.state = 'error'; return; }
+            const d = await res.json();
+            this.lists = d.lists ?? [];
+            this.tasks = d.tasks ?? [];
+            this.state = 'ready';
+        } catch (e) { this.state = 'error'; }
+    },
+
+    _headers() {
+        return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
+    },
+    async _api(method, url, body) {
+        const res = await fetch(url, { method, headers: this._headers(), body: body ? JSON.stringify(body) : undefined });
+        if (! res.ok) throw new Error('request failed');
+        return res.json().catch(() => ({}));
+    },
+    _payload(t) {
+        return {
+            todo_list_id: t.listId ?? null, title: t.title, description: t.description, url: t.url,
+            priority: t.priority, marked: !! t.marked, tags: t.tags ?? [],
+            due: t.due || null, reminder_channels: t.reminderChannels ?? [], done: !! t.done,
+        };
+    },
+    _replace(task) {
+        const i = this.tasks.findIndex((x) => x.id === task.id);
+        if (i >= 0) this.tasks[i] = task; else this.tasks.unshift(task);
+    },
+
+    listName(id) { return (this.lists.find((l) => l.id === id) || {}).name || ''; },
+
+    async addList() {
+        const name = this.newListName.trim();
+        if (! name) return;
+        try {
+            const l = await this._api('POST', '/todos/lists', { name });
+            this.lists.push({ id: l.id, name: l.name });
+            this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            this.newListName = '';
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+    async renameList(l) {
+        const name = (prompt(labels.renameList, l.name) || '').trim();
+        if (! name || name === l.name) return;
+        try { await this._api('PUT', `/todos/lists/${l.id}`, { name }); l.name = name; this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async deleteList(l) {
+        if (! confirm(labels.deleteListConfirm)) return;
+        try {
+            await this._api('DELETE', `/todos/lists/${l.id}`);
+            this.lists = this.lists.filter((x) => x.id !== l.id);
+            this.tasks.forEach((t) => { if (t.listId === l.id) t.listId = null; });
+            if (this.view === l.id) this.view = 'all';
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    get allTags() {
+        const set = new Set();
+        for (const t of this.tasks) for (const g of t.tags ?? []) set.add(g);
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    get trashCount() { return this.tasks.filter((t) => t.trashed).length; },
+
+    get filteredTasks() {
+        const q = this.query.trim().toLowerCase();
+        let list = this.tasks.filter((t) => this.view === 'trash' ? t.trashed : ! t.trashed);
+        if (this.view === 'marked') list = list.filter((t) => t.marked);
+        else if (this.view !== 'all' && this.view !== 'trash') list = list.filter((t) => t.listId === this.view);
+        if (this.activeTag !== '') list = list.filter((t) => (t.tags ?? []).includes(this.activeTag));
+        if (q !== '') {
+            list = list.filter((t) => (t.title ?? '').toLowerCase().includes(q)
+                || (t.description ?? '').toLowerCase().includes(q)
+                || (t.tags ?? []).some((g) => g.toLowerCase().includes(q)));
+        }
+        const prio = { high: 0, normal: 1, low: 2 };
+        return [...list].sort((a, b) =>
+            (Number(a.done) - Number(b.done))
+            || (Number(b.marked) - Number(a.marked))
+            || ((prio[a.priority] ?? 1) - (prio[b.priority] ?? 1))
+            || ((a.due ?? '￿').localeCompare(b.due ?? '￿')));
+    },
+
+    newTask() {
+        const listId = (this.view !== 'all' && this.view !== 'marked' && this.view !== 'trash') ? this.view : null;
+        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false, reminderChannels: [] };
+        this.tagsValue = '';
+        this.editorOpen = true;
+    },
+    editTask(t) {
+        this.editing = { ...t, tags: [...(t.tags ?? [])], reminderChannels: [...(t.reminderChannels ?? [])] };
+        this.tagsValue = (this.editing.tags || []).join(', ');
+        this.editorOpen = true;
+    },
+    closeEditor() { this.editorOpen = false; this.editing = null; },
+
+    async saveTask() {
+        const e = this.editing;
+        if (! e || ! (e.title || '').trim()) return;
+        e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
+        try {
+            const task = e.id
+                ? await this._api('PUT', `/todos/tasks/${e.id}`, this._payload(e))
+                : await this._api('POST', '/todos/tasks', this._payload(e));
+            this._replace(task);
+            this.closeEditor();
+        } catch (err) { this.error = labels.saveFailed; }
+    },
+
+    async _patch(t, changes) {
+        try { this._replace(await this._api('PATCH', `/todos/tasks/${t.id}`, changes)); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async toggleDone(t) { await this._patch(t, { done: ! t.done }); },
+    async toggleMark(t) { await this._patch(t, { marked: ! t.marked }); },
+    async trashTask(t) { await this._patch(t, { trashed: true }); },
+    async restoreTask(t) { await this._patch(t, { trashed: false }); },
+    async deleteForever(t) {
+        if (! confirm(labels.deleteConfirm)) return;
+        try { await this._api('DELETE', `/todos/tasks/${t.id}`); this.tasks = this.tasks.filter((x) => x.id !== t.id); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+    async emptyTrash() {
+        if (! confirm(labels.emptyTrashConfirm)) return;
+        try { await this._api('DELETE', '/todos/trash'); this.tasks = this.tasks.filter((t) => ! t.trashed); }
+        catch (e) { this.error = labels.saveFailed; }
+    },
+
+    priorityClass(p) { return p === 'high' ? 'bg-red-500' : (p === 'low' ? 'bg-gray-300' : 'bg-amber-400'); },
+    dueLabel(t) { if (! t.due) return ''; try { return new Date(t.due).toLocaleString(); } catch (e) { return t.due; } },
+    isOverdue(t) { return t.due && ! t.done && new Date(t.due).getTime() < Date.now(); },
+}));
+
 Alpine.start();

@@ -18,33 +18,40 @@ class TodosTest extends TestCase
         $this->get(route('todos.index'))->assertRedirect(route('login'));
     }
 
-    public function test_the_page_loads_without_a_vault(): void
+    public function test_the_page_and_data_load(): void
     {
         $this->signIn();
         $this->get(route('todos.index'))->assertOk();
+        $this->getJson(route('todos.data'))->assertOk()->assertJson(['lists' => [], 'tasks' => []]);
     }
 
     public function test_it_creates_a_task_with_tags(): void
     {
         $this->signIn();
 
-        $this->post(route('todos.store'), [
-            'title' => 'Buy milk', 'priority' => 'normal', 'tags' => 'shopping, home',
-        ])->assertRedirect(route('todos.index'));
+        $this->postJson(route('todos.store'), [
+            'title' => 'Buy milk', 'priority' => 'normal', 'tags' => ['shopping', 'home'],
+        ])->assertOk()->assertJson(['title' => 'Buy milk', 'tags' => ['shopping', 'home']]);
 
-        $todo = Todo::firstWhere('title', 'Buy milk');
-        $this->assertSame(['shopping', 'home'], $todo->tags);
+        $this->assertSame(1, Todo::count());
     }
 
-    public function test_trashing_and_emptying_trash(): void
+    public function test_patch_toggles_done(): void
     {
         $this->signIn();
-        $todo = Todo::create(['title' => 'Temp', 'priority' => 'normal']);
+        $todo = Todo::create(['title' => 'X', 'priority' => 'normal']);
 
-        $this->post(route('todos.trash', $todo))->assertRedirect();
-        $this->assertNotNull($todo->refresh()->trashed_at);
+        $this->patchJson(route('todos.patch', $todo), ['done' => true])
+            ->assertOk()->assertJson(['done' => true]);
+        $this->assertTrue($todo->refresh()->done);
+    }
 
-        $this->delete(route('todos.trash.empty'))->assertRedirect(route('todos.index'));
+    public function test_empty_trash(): void
+    {
+        $this->signIn();
+        Todo::create(['title' => 'T', 'priority' => 'normal', 'trashed_at' => now()]);
+
+        $this->deleteJson(route('todos.trash.empty'))->assertOk();
         $this->assertSame(0, Todo::count());
     }
 
@@ -54,7 +61,7 @@ class TodosTest extends TestCase
         $list = TodoList::create(['name' => 'Work']);
         $todo = Todo::create(['title' => 'Task', 'priority' => 'normal', 'todo_list_id' => $list->id]);
 
-        $this->delete(route('todos.lists.destroy', $list))->assertRedirect(route('todos.index'));
+        $this->deleteJson(route('todos.lists.destroy', $list))->assertOk();
 
         $this->assertNull($todo->refresh()->todo_list_id);
         $this->assertSame(1, Todo::count());
@@ -66,7 +73,6 @@ class TodosTest extends TestCase
         Todo::create(['title' => 'Unique searchable todo', 'priority' => 'normal']);
 
         $this->getJson(route('search.suggest', ['q' => 'searchable']))
-            ->assertOk()
-            ->assertSee('Unique searchable todo');
+            ->assertOk()->assertSee('Unique searchable todo');
     }
 }

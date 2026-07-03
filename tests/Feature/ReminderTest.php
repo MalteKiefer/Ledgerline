@@ -18,13 +18,13 @@ class ReminderTest extends TestCase
     {
         $this->signIn();
 
-        $this->post(route('todos.store'), [
+        $this->postJson(route('todos.store'), [
             'title' => 'Pay invoice',
             'priority' => 'high',
             'due' => '2026-07-20T09:00',
             'reminder_channels' => ['desktop', 'ntfy'],
             'url' => 'https://example.com/invoice',
-        ])->assertRedirect(route('todos.index'));
+        ])->assertOk();
 
         $todo = Todo::firstWhere('title', 'Pay invoice');
         $reminder = Reminder::firstWhere('todo_id', $todo->id);
@@ -39,7 +39,7 @@ class ReminderTest extends TestCase
         $todo = Todo::create(['title' => 'X', 'priority' => 'normal', 'due_at' => now()->addDay(), 'reminder_channels' => ['desktop']]);
         Reminder::create(['todo_id' => $todo->id, 'due_at' => $todo->due_at, 'channels' => ['desktop'], 'title' => 'X']);
 
-        $this->post(route('todos.done', $todo))->assertRedirect();
+        $this->patchJson(route('todos.patch', $todo), ['done' => true])->assertOk();
 
         $this->assertSame(0, Reminder::where('todo_id', $todo->id)->count());
     }
@@ -48,11 +48,11 @@ class ReminderTest extends TestCase
     {
         $this->signIn();
 
-        $this->post(route('todos.store'), [
+        $this->postJson(route('todos.store'), [
             'title' => 'Bad link', 'priority' => 'normal',
             'due' => '2026-07-20T09:00', 'reminder_channels' => ['desktop'],
             'url' => 'javascript:alert(1)',
-        ])->assertRedirect();
+        ])->assertOk();
 
         $todo = Todo::firstWhere('title', 'Bad link');
         $this->assertNull(Reminder::firstWhere('todo_id', $todo->id)->url);
