@@ -259,6 +259,11 @@
                         <button type="button" x-show="viewerHasGallery" @click.stop="viewerStep(1)"
                             title="{{ __('files.next_image') }}" aria-label="{{ __('files.next_image') }}"
                             class="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-gray-900/50 p-2 text-white hover:bg-gray-900/70"><x-icon name="chevron-right" class="h-5 w-5" /></button>
+                        {{-- Decrypt indicator while paging: inside the viewer so it sits
+                             above the overlay. Spinner only — stays readable on mobile. --}}
+                        <div x-show="dl.active" x-cloak class="absolute inset-0 flex items-center justify-center rounded bg-white/70">
+                            <x-icon name="arrow-path" class="h-8 w-8 animate-spin text-gray-500" />
+                        </div>
                     </div>
                     <template x-if="viewer.kind === 'pdf'">
                         <object :data="viewer.src" type="application/pdf" class="h-[75vh] w-full rounded"></object>
