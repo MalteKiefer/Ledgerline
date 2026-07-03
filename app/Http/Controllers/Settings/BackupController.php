@@ -28,6 +28,8 @@ class BackupController extends Controller
 {
     public function index(): View
     {
+        $this->reapStale();
+
         return view('settings.backup.index', [
             'destinations' => BackupDestination::orderBy('name')->get(),
             // Eager-load runs so each job's statistics() works in memory (no N+1).
@@ -143,6 +145,7 @@ class BackupController extends Controller
     /** Recent runs as JSON, for the live-updating run list. */
     public function runs(): JsonResponse
     {
+        $this->reapStale();
         $runs = BackupRun::with('job')->latest('started_at')->limit(20)->get();
 
         return response()->json([
@@ -185,14 +188,46 @@ class BackupController extends Controller
         }, $name, ['Content-Type' => 'application/octet-stream']);
     }
 
-    /** Ask a running backup to stop at its next checkpoint. */
+    /**
+     * Stop a running backup. The first request asks it to stop gracefully at
+     * its next checkpoint; a second request (once a cancel is already pending)
+     * force-finalizes the run in the database — for when the worker was killed
+     * or is wedged inside a long upload and can no longer reach a checkpoint.
+     */
     public function cancelRun(BackupRun $run): JsonResponse
     {
+        $forced = false;
         if ($run->status === 'running') {
-            $run->update(['cancel_requested' => true]);
+            if ($run->cancel_requested) {
+                $run->update(['status' => 'cancelled', 'finished_at' => now(), 'message' => 'Force-stopped.']);
+                $run->job?->update(['last_status' => 'cancelled']);
+                $forced = true;
+            } else {
+                $run->update(['cancel_requested' => true]);
+            }
         }
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'forced' => $forced]);
+    }
+
+    /**
+     * Finalize runs whose worker is gone: a cancel was requested but nothing has
+     * progressed for a couple of minutes, or a run has sat with no progress for
+     * so long the process must have died. Each step touches the run, so
+     * updated_at tracks liveness.
+     */
+    private function reapStale(): void
+    {
+        $now = now();
+
+        BackupRun::where('status', 'running')
+            ->where('cancel_requested', true)
+            ->where('updated_at', '<', $now->copy()->subMinutes(2))
+            ->update(['status' => 'cancelled', 'finished_at' => $now, 'message' => 'Cancelled (worker stopped).']);
+
+        BackupRun::where('status', 'running')
+            ->where('updated_at', '<', $now->copy()->subMinutes(30))
+            ->update(['status' => 'failed', 'finished_at' => $now, 'message' => 'Interrupted (no progress).']);
     }
 
     private function validateDestination(Request $request, ?BackupDestination $existing = null): array

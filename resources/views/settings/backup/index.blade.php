@@ -200,7 +200,10 @@
                         <td class="py-1.5 pr-3 align-top">
                             <a x-show="r.downloadable" :href="downloadUrl(r.id)" title="{{ __('settings.backup_download') }}" :aria-label="'{{ __('settings.backup_download') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
                             <button x-show="r.cancellable" type="button" @click="cancel(r.id)" title="{{ __('settings.backup_cancel') }}" :aria-label="'{{ __('settings.backup_cancel') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
-                            <span x-show="r.cancelling" class="text-xs text-gray-400">{{ __('settings.backup_cancelling') }}</span>
+                            <span x-show="r.cancelling" class="inline-flex items-center gap-1.5">
+                                <span class="text-xs text-gray-400">{{ __('settings.backup_cancelling') }}</span>
+                                <button type="button" @click="cancel(r.id)" title="{{ __('settings.backup_force_stop') }}" :aria-label="'{{ __('settings.backup_force_stop') }}'" class="rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="stop" class="h-4 w-4" /></button>
+                            </span>
                         </td>
                     </tr>
                     <tr x-show="expanded[r.id]" x-cloak>
