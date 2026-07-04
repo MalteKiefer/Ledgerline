@@ -6,6 +6,7 @@ return [
     'avatar_refreshed' => 'Avatar aktualisiert.',
     'avatar_refresh_failed' => 'Avatar konnte nicht aktualisiert werden.',
     'gallery_settings_saved' => 'Galerie-Einstellungen gespeichert.',
+    'calendar_settings_saved' => 'Kalender-Einstellungen gespeichert.',
     'security_saved' => 'Sicherheitseinstellungen gespeichert.',
     'notifications_saved' => 'Benachrichtigungs-Einstellungen gespeichert.',
     'downloads_saved' => 'Download-Einstellungen gespeichert.',

@@ -3,6 +3,17 @@
 declare(strict_types=1);
 
 return [
+    'calendar_section' => 'Calendar',
+    'calendar_desc' => 'Week start, week numbers and the default duration for new events.',
+    'calendar_heading' => 'Calendar settings',
+    'calendar_display_heading' => 'Display & behaviour',
+    'calendar_display_hint' => 'How the calendar is shown and how new events default.',
+    'calendar_week_start' => 'Week starts on',
+    'calendar_week_start_monday' => 'Monday',
+    'calendar_week_start_sunday' => 'Sunday',
+    'calendar_week_numbers' => 'Show calendar week numbers',
+    'calendar_default_event_minutes' => 'Default event duration (minutes)',
+    'calendar_default_event_minutes_hint' => 'Pre-filled length when creating a new timed event.',
     'gallery_desc' => 'Trip-grouping thresholds and a metadata re-scan for the photo gallery.',
     'gallery_heading' => 'Gallery settings',
     'gallery_section' => 'Gallery',

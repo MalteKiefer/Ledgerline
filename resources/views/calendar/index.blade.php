@@ -81,36 +81,43 @@
 
             {{-- Month --}}
             <div x-show="view==='month'" class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-                <div class="grid grid-cols-7 border-b border-gray-200 text-center text-xs font-medium text-gray-500">
+                <div class="grid border-b border-gray-200 text-center text-xs font-medium text-gray-500"
+                    :style="`grid-template-columns:${weekNumbers?'2.5rem ':''}repeat(7,minmax(0,1fr))`">
+                    <template x-if="weekNumbers"><div class="py-2 text-gray-400">{{ __('calendar.ui.week_abbr') }}</div></template>
                     <template x-for="(d,i) in weekDays()" :key="'h'+i">
                         <div class="py-2" x-text="fmtWeekday(d)"></div>
                     </template>
                 </div>
-                <div class="grid grid-cols-7">
-                    <template x-for="(d,i) in monthGrid()" :key="'d'+i">
-                        <div @click="openNew(d)"
-                            class="min-h-[92px] cursor-pointer border-b border-r border-gray-100 p-1 last:border-r-0 hover:bg-gray-50"
-                            :class="inMonth(d)?'':'bg-gray-50/60'">
-                            <div class="text-right">
-                                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs"
-                                    :class="isToday(d)?'bg-gray-900 text-white':(inMonth(d)?'text-gray-700':'text-gray-400')"
-                                    x-text="d.getDate()"></span>
+                <template x-for="(wk,wi) in monthWeeks()" :key="'wk'+wi">
+                    <div class="grid" :style="`grid-template-columns:${weekNumbers?'2.5rem ':''}repeat(7,minmax(0,1fr))`">
+                        <template x-if="weekNumbers">
+                            <div class="flex items-start justify-center border-b border-r border-gray-100 pt-1 text-[11px] text-gray-400" x-text="wk.week"></div>
+                        </template>
+                        <template x-for="(d,i) in wk.days" :key="'d'+wi+'-'+i">
+                            <div @click="openNew(d)"
+                                class="min-h-[92px] cursor-pointer border-b border-r border-gray-100 p-1 last:border-r-0 hover:bg-gray-50"
+                                :class="inMonth(d)?'':'bg-gray-50/60'">
+                                <div class="text-right">
+                                    <span class="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs"
+                                        :class="isToday(d)?'bg-gray-900 text-white':(inMonth(d)?'text-gray-700':'text-gray-400')"
+                                        x-text="d.getDate()"></span>
+                                </div>
+                                <div class="mt-0.5 space-y-0.5">
+                                    <template x-for="e in eventsOn(d).slice(0,3)" :key="e.id+'-'+e.instance">
+                                        <button @click.stop="openEditor(e.id)"
+                                            class="block w-full truncate rounded px-1 py-0.5 text-left text-[11px] text-white"
+                                            :style="`background:${e.color}`">
+                                            <span x-show="!e.all_day" x-text="fmtTime(e.start)+' '"></span><span x-text="e.title||'—'"></span>
+                                        </button>
+                                    </template>
+                                    <template x-if="eventsOn(d).length>3">
+                                        <div class="px-1 text-[10px] text-gray-500" x-text="'+'+(eventsOn(d).length-3)"></div>
+                                    </template>
+                                </div>
                             </div>
-                            <div class="mt-0.5 space-y-0.5">
-                                <template x-for="e in eventsOn(d).slice(0,3)" :key="e.id+'-'+e.instance">
-                                    <button @click.stop="openEditor(e.id)"
-                                        class="block w-full truncate rounded px-1 py-0.5 text-left text-[11px] text-white"
-                                        :style="`background:${e.color}`">
-                                        <span x-show="!e.all_day" x-text="fmtTime(e.start)+' '"></span><span x-text="e.title||'—'"></span>
-                                    </button>
-                                </template>
-                                <template x-if="eventsOn(d).length>3">
-                                    <div class="px-1 text-[10px] text-gray-500" x-text="'+'+(eventsOn(d).length-3)"></div>
-                                </template>
-                            </div>
-                        </div>
-                    </template>
-                </div>
+                        </template>
+                    </div>
+                </template>
             </div>
 
             {{-- Week --}}

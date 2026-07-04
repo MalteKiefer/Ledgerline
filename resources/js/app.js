@@ -388,16 +388,43 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     hidden: new Set(),
     editor: false, form: {},
     locale: document.documentElement.lang || 'en',
+    weekStart: 'monday', weekNumbers: false, defaultMinutes: 60,
 
     init() {
+        this.weekStart = (document.querySelector('meta[name="calendar-week-start"]')?.content) || 'monday';
+        this.weekNumbers = (document.querySelector('meta[name="calendar-week-numbers"]')?.content) === '1';
+        this.defaultMinutes = parseInt(document.querySelector('meta[name="calendar-default-minutes"]')?.content, 10) || 60;
         this.cursor.setHours(0, 0, 0, 0);
         this.load();
     },
 
-    // ---- range for the current view (Monday-start weeks) --------------------
-    startOfWeek(d) { const x = new Date(d); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); x.setHours(0, 0, 0, 0); return x; },
+    // ---- range for the current view (week start per settings) ---------------
+    startOfWeek(d) {
+        const x = new Date(d);
+        const wd = this.weekStart === 'sunday' ? x.getDay() : (x.getDay() + 6) % 7;
+        x.setDate(x.getDate() - wd); x.setHours(0, 0, 0, 0); return x;
+    },
     addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; },
     ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; },
+
+    /** ISO-8601 week number (Thursday-of-week rule). */
+    isoWeek(d) {
+        const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        const day = (t.getUTCDay() + 6) % 7;
+        t.setUTCDate(t.getUTCDate() - day + 3);
+        const firstThursday = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+        const fday = (firstThursday.getUTCDay() + 6) % 7;
+        firstThursday.setUTCDate(firstThursday.getUTCDate() - fday + 3);
+        return 1 + Math.round((t - firstThursday) / (7 * 24 * 3600 * 1000));
+    },
+    /** The 6 week-rows of the month grid, each with its week number. */
+    monthWeeks() {
+        const [start] = this.range();
+        return Array.from({ length: 6 }, (_, w) => {
+            const days = Array.from({ length: 7 }, (_, i) => this.addDays(start, w * 7 + i));
+            return { week: this.isoWeek(days[0]), days };
+        });
+    },
 
     range() {
         const c = this.cursor;
@@ -472,9 +499,10 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     blank(d) {
         const writable = this.calendars.find((c) => ! c.read_only);
         const day = d || this.cursor;
-        const start = `${this.ymd(day)}T09:00`;
-        const end = `${this.ymd(day)}T10:00`;
-        return { id: null, calendar_id: writable?.id, summary: '', start, end, all_day: false, location: '', description: '', rrule: '', reminder_minutes: '' };
+        const startAt = new Date(day); startAt.setHours(9, 0, 0, 0);
+        const endAt = new Date(startAt.getTime() + this.defaultMinutes * 60000);
+        const fmt = (x) => `${this.ymd(x)}T${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
+        return { id: null, calendar_id: writable?.id, summary: '', start: fmt(startAt), end: fmt(endAt), all_day: false, location: '', description: '', rrule: '', reminder_minutes: '' };
     },
 
     openNew(d) {

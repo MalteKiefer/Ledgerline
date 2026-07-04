@@ -3,6 +3,17 @@
 declare(strict_types=1);
 
 return [
+    'calendar_section' => 'Kalender',
+    'calendar_desc' => 'Wochenstart, Kalenderwochen und die Standarddauer neuer Termine.',
+    'calendar_heading' => 'Kalender-Einstellungen',
+    'calendar_display_heading' => 'Anzeige & Verhalten',
+    'calendar_display_hint' => 'Wie der Kalender angezeigt wird und welche Vorgaben neue Termine haben.',
+    'calendar_week_start' => 'Woche beginnt am',
+    'calendar_week_start_monday' => 'Montag',
+    'calendar_week_start_sunday' => 'Sonntag',
+    'calendar_week_numbers' => 'Kalenderwochen anzeigen',
+    'calendar_default_event_minutes' => 'Standard-Termindauer (Minuten)',
+    'calendar_default_event_minutes_hint' => 'Vorausgefüllte Länge beim Anlegen eines neuen Termins mit Uhrzeit.',
     'gallery_desc' => 'Reise-Gruppierung und ein Metadaten-Rescan für die Fotogalerie.',
     'gallery_heading' => 'Galerie-Einstellungen',
     'gallery_section' => 'Galerie',
