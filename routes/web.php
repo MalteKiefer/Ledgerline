@@ -23,6 +23,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PersonController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ResourceShareController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
@@ -235,6 +236,10 @@ Route::middleware('auth')->group(function (): void {
     Route::patch('/todos/tasks/{todo}', [TodoController::class, 'patch'])->withTrashed()->name('todos.patch');
     Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->withTrashed()->name('todos.destroy');
     Route::delete('/todos/trash', [TodoController::class, 'emptyTrash'])->name('todos.trash.empty');
+    // Cross-user sharing management (grant/revoke access to your resources).
+    Route::get('/shares/data', [ResourceShareController::class, 'data'])->name('shares.data');
+    Route::post('/shares', [ResourceShareController::class, 'store'])->name('shares.store');
+    Route::delete('/shares/{share}', [ResourceShareController::class, 'destroy'])->name('shares.destroy');
     // Calendar: CalDAV-backed events, driven client-side over a JSON API.
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
