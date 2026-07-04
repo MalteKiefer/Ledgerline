@@ -8,16 +8,27 @@ use App\Models\DavCredential;
 use Sabre\DAV\PropPatch;
 use Sabre\DAVACL\PrincipalBackend\BackendInterface;
 
+// DavContext is in this namespace (App\Dav).
+
 /**
  * One principal per DAV credential. Group membership is unused (single-user
  * principals), so those methods are inert.
  */
 class PrincipalBackend implements BackendInterface
 {
+    public function __construct(private readonly DavContext $context) {}
+
     public function getPrincipalsByPrefix($prefixPath): array
     {
+        // Only ever expose the authenticated user's own principal.
+        $userId = $this->context->userId();
+        $query = DavCredential::query();
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
+
         $out = [];
-        foreach (DavCredential::all() as $credential) {
+        foreach ($query->get() as $credential) {
             $principal = $this->principal($credential);
             if (str_starts_with($principal['uri'], rtrim($prefixPath, '/'))) {
                 $out[] = $principal;

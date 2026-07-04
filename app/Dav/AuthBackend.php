@@ -14,14 +14,24 @@ use Sabre\DAV\Auth\Backend\AbstractBasic;
  */
 class AuthBackend extends AbstractBasic
 {
-    public function __construct(private readonly DavCredentialService $credentials)
-    {
+    public function __construct(
+        private readonly DavCredentialService $credentials,
+        private readonly DavContext $context,
+    ) {
         $this->realm = 'Ledgerline CardDAV';
         $this->principalPrefix = 'principals/';
     }
 
     protected function validateUserPass($username, $password): bool
     {
-        return $this->credentials->verify((string) $username, (string) $password) !== null;
+        $credential = $this->credentials->verify((string) $username, (string) $password);
+        if ($credential === null) {
+            return false;
+        }
+
+        // Remember who authenticated so the backends can scope to their data.
+        $this->context->set((int) $credential->user_id);
+
+        return true;
     }
 }

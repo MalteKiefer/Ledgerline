@@ -20,7 +20,19 @@ use Sabre\DAV\PropPatch;
  */
 class AddressBookBackend extends AbstractBackend implements SyncSupport
 {
-    public function __construct(private readonly VCardService $vcards) {}
+    public function __construct(
+        private readonly VCardService $vcards,
+        private readonly DavContext $context,
+    ) {}
+
+    /** True only when the book belongs to the authenticated CardDAV user. */
+    private function ownsBook(string $addressBookId): bool
+    {
+        $userId = $this->context->userId();
+
+        return $userId !== null
+            && AddressBook::where('id', $addressBookId)->where('user_id', $userId)->exists();
+    }
 
     public function getAddressBooksForUser($principalUri): array
     {
@@ -41,6 +53,9 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
     public function updateAddressBook($addressBookId, PropPatch $propPatch): void
     {
+        if (! $this->ownsBook($addressBookId)) {
+            return;
+        }
         $book = AddressBook::find($addressBookId);
         if ($book === null) {
             return;
@@ -78,11 +93,18 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
     public function deleteAddressBook($addressBookId): void
     {
+        if (! $this->ownsBook($addressBookId)) {
+            return;
+        }
         AddressBook::where('id', $addressBookId)->delete();
     }
 
     public function getCards($addressbookId): array
     {
+        if (! $this->ownsBook($addressbookId)) {
+            return [];
+        }
+
         return Contact::where('address_book_id', $addressbookId)->get()->map(fn (Contact $c): array => [
             'id' => $c->id,
             'uri' => $c->uri,
@@ -94,6 +116,9 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
     public function getCard($addressBookId, $cardUri): array|false
     {
+        if (! $this->ownsBook($addressBookId)) {
+            return false;
+        }
         $contact = Contact::where('address_book_id', $addressBookId)->where('uri', $cardUri)->first();
         if ($contact === null) {
             return false;
@@ -111,6 +136,9 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
     public function createCard($addressBookId, $cardUri, $cardData): ?string
     {
+        if (! $this->ownsBook($addressBookId)) {
+            return null;
+        }
         $etag = md5($cardData);
         Contact::create(array_merge([
             'address_book_id' => $addressBookId,
@@ -126,6 +154,9 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
     public function updateCard($addressBookId, $cardUri, $cardData): ?string
     {
+        if (! $this->ownsBook($addressBookId)) {
+            return null;
+        }
         $contact = Contact::where('address_book_id', $addressBookId)->where('uri', $cardUri)->first();
         if ($contact === null) {
             return null;
@@ -140,6 +171,9 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
     public function deleteCard($addressBookId, $cardUri): bool
     {
+        if (! $this->ownsBook($addressBookId)) {
+            return false;
+        }
         $deleted = Contact::where('address_book_id', $addressBookId)->where('uri', $cardUri)->delete();
         if ($deleted) {
             $this->logChange($addressBookId, $cardUri, 3);
@@ -150,6 +184,9 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
     public function getChangesForAddressBook($addressBookId, $syncToken, $syncLevel, $limit = null): ?array
     {
+        if (! $this->ownsBook($addressBookId)) {
+            return null;
+        }
         $book = AddressBook::find($addressBookId);
         if ($book === null) {
             return null;

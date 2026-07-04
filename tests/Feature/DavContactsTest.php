@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Dav\AddressBookBackend;
 use App\Dav\AuthBackend;
+use App\Dav\DavContext;
 use App\Dav\PrincipalBackend;
 use App\Models\AddressBook;
 use App\Models\Contact;
@@ -38,6 +39,7 @@ class DavContactsTest extends TestCase
     public function test_carddav_backend_stores_reads_updates_and_deletes_cards(): void
     {
         app(DavCredentialService::class)->generate(1);
+        app(DavContext::class)->set(1); // authenticated as user 1
         $book = AddressBook::where('user_id', 1)->firstOrFail();
         $backend = app(AddressBookBackend::class);
 
@@ -67,6 +69,28 @@ class DavContactsTest extends TestCase
         // Delete.
         $this->assertTrue($backend->deleteCard($book->id, 'jane.vcf'));
         $this->assertFalse($backend->getCard($book->id, 'jane.vcf'));
+    }
+
+    public function test_backend_denies_access_to_another_users_book(): void
+    {
+        app(DavCredentialService::class)->generate(1);
+        $mine = AddressBook::where('user_id', 1)->firstOrFail();
+        $theirs = AddressBook::create(['user_id' => 2, 'uri' => 'default', 'name' => 'Theirs', 'synctoken' => 1]);
+
+        // Authenticated as user 1.
+        app(DavContext::class)->set(1);
+        $backend = app(AddressBookBackend::class);
+
+        // Own book: writable.
+        $this->assertNotNull($backend->createCard($mine->id, 'a.vcf', self::VCARD));
+
+        // Someone else's book: every operation is denied.
+        $this->assertNull($backend->createCard($theirs->id, 'x.vcf', self::VCARD));
+        $this->assertFalse($backend->getCard($theirs->id, 'x.vcf'));
+        $this->assertSame([], $backend->getCards($theirs->id));
+        $this->assertFalse($backend->deleteCard($theirs->id, 'x.vcf'));
+        $this->assertNull($backend->getChangesForAddressBook($theirs->id, null, 1));
+        $this->assertDatabaseCount('contacts', 1); // only the one in the own book
     }
 
     public function test_well_known_redirects_to_dav(): void
