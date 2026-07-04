@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,9 +12,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * One archived message. Metadata is stored here; the raw RFC822 message (.eml)
  * lives on the files disk at mail/{blob}. deleted_on_server_at marks a message
- * that vanished from the server but is kept locally.
+ * that vanished from the server but is kept locally. Private to its owning user.
  */
 #[Fillable([
+    'user_id',
     'mail_account_id', 'mail_folder_id', 'uid', 'uidvalidity', 'message_id', 'subject',
     'from_name', 'from_email', 'to', 'cc', 'date_at', 'seen', 'flagged', 'answered',
     'has_attachments', 'attachment_names', 'size', 'blob', 'preview', 'body_text',
@@ -21,6 +23,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class MailMessage extends Model
 {
+    use OwnsUserData;
+
     protected function casts(): array
     {
         return [

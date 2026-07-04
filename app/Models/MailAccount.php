@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use App\Services\Mail\ImapCredentials;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,8 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable(['name', 'host', 'port', 'encryption', 'validate_cert', 'username', 'password', 'last_synced_at'])]
 class MailAccount extends Model
 {
+    use OwnsUserData;
+
     protected function casts(): array
     {
         return [

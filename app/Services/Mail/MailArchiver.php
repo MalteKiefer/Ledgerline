@@ -85,9 +85,11 @@ class MailArchiver
      */
     private function syncFolder(MailAccount $account, ImapCredentials $creds, $disk, array $f, int $cap, float $deadline, int &$newCount, int &$archivedCount): void
     {
-        $folder = MailFolder::firstOrNew(['mail_account_id' => $account->id, 'path' => $f['path']]);
+        $folder = MailFolder::withoutGlobalScopes()->firstOrNew(['mail_account_id' => $account->id, 'path' => $f['path']]);
         $validityChanged = $folder->exists && (int) $folder->uidvalidity !== (int) $f['uidvalidity'] && $folder->uidvalidity !== null;
-        $folder->fill(['name' => $f['name'], 'delimiter' => $f['delimiter'], 'role' => $f['role'], 'uidvalidity' => $f['uidvalidity']])->save();
+        // Sync runs without an auth context, so carry the account's owner
+        // explicitly onto folders/messages for per-user isolation.
+        $folder->fill(['user_id' => $account->user_id, 'name' => $f['name'], 'delimiter' => $f['delimiter'], 'role' => $f['role'], 'uidvalidity' => $f['uidvalidity']])->save();
 
         // Server reset the folder's UIDs → archive everything we had here.
         if ($validityChanged) {
@@ -146,9 +148,9 @@ class MailArchiver
      */
     public function archiveMessage(MailAccount $account, string $folderPath, int $uid, int $uidValidity): bool
     {
-        $folder = MailFolder::firstOrCreate(
+        $folder = MailFolder::withoutGlobalScopes()->firstOrCreate(
             ['mail_account_id' => $account->id, 'path' => $folderPath],
-            ['name' => $folderPath, 'delimiter' => '/', 'uidvalidity' => $uidValidity],
+            ['user_id' => $account->user_id, 'name' => $folderPath, 'delimiter' => '/', 'uidvalidity' => $uidValidity],
         );
         // Fill in a validity we did not know yet, but never clobber a real one.
         if ($folder->uidvalidity === null) {
@@ -181,6 +183,7 @@ class MailArchiver
         $blob = (string) Str::uuid();
         $disk->put('mail/'.$blob, $m['raw']);
         MailMessage::create([
+            'user_id' => $account->user_id,
             'mail_account_id' => $account->id,
             'mail_folder_id' => $folder->id,
             'uid' => $uid,

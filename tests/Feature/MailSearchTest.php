@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailMessage;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -16,6 +17,8 @@ class MailSearchTest extends TestCase
 {
     use RefreshDatabase;
 
+    private User $user;
+
     private MailAccount $account;
 
     private MailFolder $folder;
@@ -23,13 +26,18 @@ class MailSearchTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Mail is per-user: the account (+ its folders/messages) belong to the
+        // user who searches.
+        $this->user = User::factory()->create();
         $this->account = MailAccount::create(['name' => 'W', 'host' => 'h', 'port' => 993, 'encryption' => 'ssl', 'username' => 'u', 'password' => 'p']);
-        $this->folder = MailFolder::create(['mail_account_id' => $this->account->id, 'path' => 'INBOX', 'name' => 'INBOX']);
+        $this->account->forceFill(['user_id' => $this->user->id])->save();
+        $this->folder = MailFolder::create(['user_id' => $this->user->id, 'mail_account_id' => $this->account->id, 'path' => 'INBOX', 'name' => 'INBOX']);
     }
 
     private function message(array $attrs): MailMessage
     {
         return MailMessage::create(array_merge([
+            'user_id' => $this->user->id,
             'mail_account_id' => $this->account->id,
             'mail_folder_id' => $this->folder->id,
             'uid' => random_int(1, 1_000_000),
@@ -52,7 +60,7 @@ class MailSearchTest extends TestCase
 
     public function test_it_searches_subject_from_cc_body_and_attachment(): void
     {
-        $this->signIn();
+        $this->actingAs($this->user);
         $target = $this->message([
             'subject' => 'Quarterly invoice',
             'from_name' => 'Acme', 'from_email' => 'billing@acme.test',
@@ -73,7 +81,7 @@ class MailSearchTest extends TestCase
 
     public function test_it_filters_by_date_range_and_attachments(): void
     {
-        $this->signIn();
+        $this->actingAs($this->user);
         $old = $this->message(['subject' => 'Old', 'date_at' => now()->subYear(), 'has_attachments' => false]);
         $recent = $this->message(['subject' => 'Recent', 'date_at' => now()->subDay(), 'has_attachments' => true, 'attachment_names' => ['a.pdf']]);
 
@@ -89,7 +97,7 @@ class MailSearchTest extends TestCase
 
     public function test_it_searches_all_archived_mail_not_only_server_deleted(): void
     {
-        $this->signIn();
+        $this->actingAs($this->user);
         // A message still on the server (not deleted) must be searchable, unlike
         // the recovery index which only lists server-deleted mail.
         $this->message(['subject' => 'Present', 'deleted_on_server_at' => null]);
