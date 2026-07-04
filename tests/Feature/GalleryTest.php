@@ -257,7 +257,7 @@ class GalleryTest extends TestCase
         Photo::factory()->create(['media_type' => 'image', 'motion_path' => 'photos/x/motion/y.mp4']);
 
         $this->assertSame(
-            ['total' => 4, 'images' => 3, 'videos' => 1, 'motion' => 1],
+            ['total' => 4, 'images' => 3, 'videos' => 1, 'motion' => 1, 'duplicates' => 0],
             Photo::counts(),
         );
     }

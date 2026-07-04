@@ -44,6 +44,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'content_id',
     'phash',
     'embedded_at',
+    'duplicate_group_id',
+    'dup_score',
+    'dup_dismissed_at',
     'taken_at',
     'processed_at',
 ])]
@@ -63,6 +66,8 @@ class Photo extends Model
             'favorited_at' => 'datetime',
             'phash' => 'integer',
             'embedded_at' => 'datetime',
+            'dup_score' => 'float',
+            'dup_dismissed_at' => 'datetime',
             'size' => 'integer',
             'width' => 'integer',
             'height' => 'integer',
@@ -86,6 +91,7 @@ class Photo extends Model
     {
         $videos = static::query()->where('media_type', 'video')->count();
         $motion = static::query()->whereNotNull('motion_path')->count();
+        $duplicates = static::query()->whereNotNull('duplicate_group_id')->count();
         $total = static::query()->count();
 
         return [
@@ -93,6 +99,7 @@ class Photo extends Model
             'images' => $total - $videos,
             'videos' => $videos,
             'motion' => $motion,
+            'duplicates' => $duplicates,
         ];
     }
 
