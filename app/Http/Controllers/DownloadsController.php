@@ -77,13 +77,9 @@ class DownloadsController extends Controller
         ])['ids'];
 
         $exports = Export::query()->forUser($request->user()->id)->whereIn('id', $ids)->get();
-        $disk = Storage::disk(config('files.disk'));
 
         foreach ($exports as $export) {
-            foreach ($export->parts() as $part) {
-                $disk->delete($part['path']);
-            }
-            $export->delete();
+            $export->purge();
         }
 
         return $request->expectsJson()

@@ -20,19 +20,6 @@ class MachineLearning
         return (bool) config('gallery.ml_enabled');
     }
 
-    public function available(): bool
-    {
-        if (! $this->enabled()) {
-            return false;
-        }
-
-        try {
-            return Http::timeout(10)->get($this->base().'/ping')->successful();
-        } catch (Throwable) {
-            return false;
-        }
-    }
-
     /**
      * Embed an image file into the CLIP vector space.
      *

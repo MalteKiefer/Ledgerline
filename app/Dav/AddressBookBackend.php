@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Dav;
 
+use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\DavCredential;
+use App\Services\Contacts\DavChangeLog;
 use App\Services\Contacts\VCardService;
 use Illuminate\Support\Facades\DB;
 use Sabre\CardDAV\Backend\AbstractBackend;
@@ -23,6 +25,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
     public function __construct(
         private readonly VCardService $vcards,
         private readonly DavContext $context,
+        private readonly DavChangeLog $changes,
     ) {}
 
     /** True only when the book belongs to the authenticated CardDAV user. */
@@ -147,7 +150,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             'vcard' => $cardData,
         ], $this->vcards->denormalize($cardData)));
 
-        $this->logChange($addressBookId, $cardUri, 1);
+        $this->logChange($addressBookId, $cardUri, DavChangeOperation::Added);
 
         return '"'.$etag.'"';
     }
@@ -164,7 +167,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
         $etag = md5($cardData);
         $contact->forceFill(array_merge(['etag' => $etag, 'vcard' => $cardData], $this->vcards->denormalize($cardData)))->save();
-        $this->logChange($addressBookId, $cardUri, 2);
+        $this->logChange($addressBookId, $cardUri, DavChangeOperation::Modified);
 
         return '"'.$etag.'"';
     }
@@ -176,7 +179,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         }
         $deleted = Contact::where('address_book_id', $addressBookId)->where('uri', $cardUri)->delete();
         if ($deleted) {
-            $this->logChange($addressBookId, $cardUri, 3);
+            $this->logChange($addressBookId, $cardUri, DavChangeOperation::Deleted);
         }
 
         return $deleted > 0;
@@ -218,29 +221,22 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
 
         $result = ['syncToken' => (string) $current, 'added' => [], 'modified' => [], 'deleted' => []];
         foreach ($latest as $uri => $op) {
-            $result[match ($op) {
-                1 => 'added', 2 => 'modified', default => 'deleted'
+            $result[match (DavChangeOperation::from((int) $op)) {
+                DavChangeOperation::Added => 'added',
+                DavChangeOperation::Modified => 'modified',
+                DavChangeOperation::Deleted => 'deleted',
             }][] = $uri;
         }
 
         return $result;
     }
 
-    private function logChange(string $addressBookId, string $uri, int $operation): void
+    private function logChange(string $addressBookId, string $uri, DavChangeOperation $op): void
     {
         $book = AddressBook::find($addressBookId);
-        if ($book === null) {
-            return;
+        if ($book !== null) {
+            $this->changes->record($book, $uri, $op);
         }
-        $token = (int) $book->synctoken + 1;
-        $book->forceFill(['synctoken' => $token])->save();
-
-        DB::table('dav_changes')->insert([
-            'address_book_id' => $addressBookId,
-            'uri' => $uri,
-            'operation' => $operation,
-            'synctoken' => $token,
-        ]);
     }
 
     private function userId(string $principalUri): ?int
