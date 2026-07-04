@@ -1,0 +1,53 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'ui' => [
+        'heading' => 'Kalender',
+        'today' => 'Heute',
+        'month' => 'Monat',
+        'week' => 'Woche',
+        'day' => 'Tag',
+        'agenda' => 'Agenda',
+        'prev' => 'Zurück',
+        'next' => 'Weiter',
+        'calendars' => 'Kalender',
+        'new_calendar' => 'Name des neuen Kalenders',
+        'rename_calendar' => 'Kalender umbenennen',
+        'delete_calendar_confirm' => 'Diesen Kalender und alle seine Termine löschen?',
+        'read_only' => 'Schreibgeschützt',
+        'new_event' => 'Neuer Termin',
+        'edit_event' => 'Termin bearbeiten',
+        'no_events' => 'Keine Termine in diesem Zeitraum.',
+        'title' => 'Titel',
+        'calendar' => 'Kalender',
+        'all_day' => 'Ganztägig',
+        'start' => 'Beginn',
+        'end' => 'Ende',
+        'location' => 'Ort',
+        'description' => 'Beschreibung',
+        'repeat' => 'Wiederholung',
+        'reminder' => 'Erinnerung',
+        'save' => 'Speichern',
+        'cancel' => 'Abbrechen',
+        'delete' => 'Löschen',
+        'delete_confirm' => 'Diesen Termin löschen?',
+        'repeats' => [
+            'none' => 'Keine Wiederholung',
+            'daily' => 'Täglich',
+            'weekly' => 'Wöchentlich',
+            'monthly' => 'Monatlich',
+            'yearly' => 'Jährlich',
+        ],
+        'reminders' => [
+            'none' => 'Keine',
+            'at_time' => 'Zum Zeitpunkt des Termins',
+            '5' => '5 Minuten vorher',
+            '15' => '15 Minuten vorher',
+            '30' => '30 Minuten vorher',
+            '60' => '1 Stunde vorher',
+            '1440' => '1 Tag vorher',
+        ],
+    ],
+];

@@ -377,6 +377,168 @@ Alpine.data('contactsPage', (cfg = {}) => ({
 }));
 
 /**
+ * Calendar: month/week/day/agenda over the CalDAV-backed event store. Recurrence
+ * is expanded server-side within the requested window; the client only lays out
+ * the returned instances by day.
+ */
+Alpine.data('calendarPage', (cfg = {}) => ({
+    cfg,
+    calendars: [], events: [], loading: true,
+    view: 'month', cursor: new Date(),
+    hidden: new Set(),
+    editor: false, form: {},
+    locale: document.documentElement.lang || 'en',
+
+    init() {
+        this.cursor.setHours(0, 0, 0, 0);
+        this.load();
+    },
+
+    // ---- range for the current view (Monday-start weeks) --------------------
+    startOfWeek(d) { const x = new Date(d); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); x.setHours(0, 0, 0, 0); return x; },
+    addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; },
+    ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; },
+
+    range() {
+        const c = this.cursor;
+        if (this.view === 'day') return [new Date(c), this.addDays(c, 1)];
+        if (this.view === 'week') { const s = this.startOfWeek(c); return [s, this.addDays(s, 7)]; }
+        // month + agenda: the 6-week grid around the visited month.
+        const first = new Date(c.getFullYear(), c.getMonth(), 1);
+        const gridStart = this.startOfWeek(first);
+        return [gridStart, this.addDays(gridStart, 42)];
+    },
+
+    async load() {
+        const [from, to] = this.range();
+        const u = new URL(cfg.dataUrl, location.origin);
+        u.searchParams.set('from', this.ymd(from));
+        u.searchParams.set('to', this.ymd(to));
+        this.loading = true;
+        try {
+            const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) { const d = await r.json(); this.calendars = d.calendars; this.events = d.events; }
+        } catch (e) { /* keep */ } finally { this.loading = false; }
+    },
+
+    // ---- navigation ---------------------------------------------------------
+    step(n) {
+        const c = this.cursor;
+        if (this.view === 'day') this.cursor = this.addDays(c, n);
+        else if (this.view === 'week') this.cursor = this.addDays(c, 7 * n);
+        else this.cursor = new Date(c.getFullYear(), c.getMonth() + n, 1);
+        this.load();
+    },
+    today() { this.cursor = new Date(); this.cursor.setHours(0, 0, 0, 0); this.load(); },
+    setView(v) { this.view = v; this.load(); },
+
+    // ---- layout helpers -----------------------------------------------------
+    parse(s) { return s ? new Date(s.replace(' ', 'T')) : null; },
+    visibleEvents() { return this.events.filter((e) => ! this.hidden.has(e.calendar_id)); },
+    eventsOn(d) {
+        const key = this.ymd(d);
+        return this.visibleEvents()
+            .filter((e) => this.ymd(this.parse(e.start)) === key)
+            .sort((a, b) => (a.all_day === b.all_day ? a.start.localeCompare(b.start) : (a.all_day ? -1 : 1)));
+    },
+    agenda() {
+        return this.visibleEvents().slice().sort((a, b) => a.start.localeCompare(b.start));
+    },
+
+    monthGrid() {
+        const [start] = this.range();
+        return Array.from({ length: 42 }, (_, i) => this.addDays(start, i));
+    },
+    weekDays() { const s = this.startOfWeek(this.cursor); return Array.from({ length: 7 }, (_, i) => this.addDays(s, i)); },
+
+    isToday(d) { return this.ymd(d) === this.ymd(new Date()); },
+    inMonth(d) { return d.getMonth() === this.cursor.getMonth(); },
+
+    // ---- formatting (locale-aware) -----------------------------------------
+    fmtTime(s) { const d = this.parse(s); return d ? d.toLocaleTimeString(this.locale, { hour: '2-digit', minute: '2-digit' }) : ''; },
+    fmtDay(d) { return d.toLocaleDateString(this.locale, { weekday: 'short', day: 'numeric' }); },
+    fmtWeekday(d) { return d.toLocaleDateString(this.locale, { weekday: 'short' }); },
+    fmtFullDate(d) { return d.toLocaleDateString(this.locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); },
+    get title() {
+        if (this.view === 'day') return this.fmtFullDate(this.cursor);
+        if (this.view === 'week') { const s = this.startOfWeek(this.cursor); const e = this.addDays(s, 6); return s.toLocaleDateString(this.locale, { day: 'numeric', month: 'short' }) + ' – ' + e.toLocaleDateString(this.locale, { day: 'numeric', month: 'short', year: 'numeric' }); }
+        return this.cursor.toLocaleDateString(this.locale, { month: 'long', year: 'numeric' });
+    },
+
+    toggleCalendar(id) { this.hidden.has(id) ? this.hidden.delete(id) : this.hidden.add(id); },
+    calColor(id) { return this.calendars.find((c) => c.id === id)?.color || '#3366cc'; },
+
+    // ---- event editor -------------------------------------------------------
+    blank(d) {
+        const writable = this.calendars.find((c) => ! c.read_only);
+        const day = d || this.cursor;
+        const start = `${this.ymd(day)}T09:00`;
+        const end = `${this.ymd(day)}T10:00`;
+        return { id: null, calendar_id: writable?.id, summary: '', start, end, all_day: false, location: '', description: '', rrule: '', reminder_minutes: '' };
+    },
+
+    openNew(d) {
+        if (! this.calendars.some((c) => ! c.read_only)) return;
+        this.form = this.blank(d); this.editor = true;
+    },
+
+    async openEditor(id) {
+        const r = await fetch(cfg.eventBase + '/' + id, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        if (! r.ok) return;
+        const d = await r.json();
+        this.form = {
+            id: d.id, calendar_id: d.calendar_id, summary: d.summary || '',
+            start: d.start || '', end: d.end || '', all_day: !! d.all_day,
+            location: d.location || '', description: d.description || '', rrule: d.rrule || '', reminder_minutes: '',
+        };
+        this.editor = true;
+    },
+
+    payload() {
+        return {
+            calendar_id: this.form.calendar_id, summary: this.form.summary,
+            start: this.form.all_day ? this.form.start.slice(0, 10) : this.form.start,
+            end: this.form.all_day ? (this.form.end || this.form.start).slice(0, 10) : this.form.end,
+            all_day: this.form.all_day, location: this.form.location, description: this.form.description,
+            rrule: this.form.rrule || null,
+            reminder_minutes: this.form.reminder_minutes === '' ? null : Number(this.form.reminder_minutes),
+        };
+    },
+
+    async save() {
+        if (! this.form.summary || ! this.form.calendar_id) return;
+        const id = this.form.id;
+        await this._json(id ? cfg.eventBase + '/' + id : cfg.eventsUrl, id ? 'PUT' : 'POST', this.payload());
+        this.editor = false; this.load();
+    },
+
+    async destroy() {
+        if (! this.form.id || ! window.confirm(cfg.confirmDelete)) return;
+        await this._json(cfg.eventBase + '/' + this.form.id, 'DELETE');
+        this.editor = false; this.load();
+    },
+
+    // ---- calendar management ------------------------------------------------
+    async addCalendar() {
+        const name = window.prompt(cfg.newCalendar); if (! name) return;
+        await this._json(cfg.calUrl, 'POST', { name, color: this.randomColor() }); this.load();
+    },
+    async renameCalendar(c) {
+        const name = window.prompt(cfg.renameCalendar, c.name); if (! name || name === c.name) return;
+        await this._json(cfg.calBase + '/' + c.id, 'PUT', { name, color: c.color }); this.load();
+    },
+    async deleteCalendar(c) {
+        if (! window.confirm(cfg.confirmDeleteCalendar)) return;
+        await this._json(cfg.calBase + '/' + c.id, 'DELETE'); this.load();
+    },
+    randomColor() { const p = ['#3366cc', '#e11d48', '#059669', '#d97706', '#7c3aed', '#0891b2']; return p[Math.floor(Math.random() * p.length)]; },
+
+    async _json(url, method, body) {
+        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+    },
+}));
+
+/**
  * People grid: lists clustered people (cover face + name + count).
  */
 Alpine.data('peoplePage', (cfg = {}) => ({

@@ -6,6 +6,7 @@ use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarkController;
+use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DashboardController;
@@ -231,6 +232,16 @@ Route::middleware('auth')->group(function (): void {
     Route::patch('/todos/tasks/{todo}', [TodoController::class, 'patch'])->withTrashed()->name('todos.patch');
     Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->withTrashed()->name('todos.destroy');
     Route::delete('/todos/trash', [TodoController::class, 'emptyTrash'])->name('todos.trash.empty');
+    // Calendar: CalDAV-backed events, driven client-side over a JSON API.
+    Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
+    Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
+    Route::post('/calendar/calendars', [CalendarController::class, 'storeCalendar'])->name('calendar.calendars.store');
+    Route::put('/calendar/calendars/{calendar}', [CalendarController::class, 'updateCalendar'])->name('calendar.calendars.update');
+    Route::delete('/calendar/calendars/{calendar}', [CalendarController::class, 'destroyCalendar'])->name('calendar.calendars.destroy');
+    Route::post('/calendar/events', [CalendarController::class, 'store'])->name('calendar.events.store');
+    Route::get('/calendar/events/{object}', [CalendarController::class, 'show'])->name('calendar.events.show');
+    Route::put('/calendar/events/{object}', [CalendarController::class, 'update'])->name('calendar.events.update');
+    Route::delete('/calendar/events/{object}', [CalendarController::class, 'destroy'])->name('calendar.events.destroy');
     // Bookmarks: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::get('/bookmarks/data', [BookmarkController::class, 'index'])->name('bookmarks.data');
