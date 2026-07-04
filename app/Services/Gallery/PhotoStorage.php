@@ -436,6 +436,13 @@ class PhotoStorage
         if (in_array($mime, ['image/jpeg', 'image/tiff'], true)) {
             $out = $this->exif($path, $mime);
             if ($out['raw'] !== null) {
+                // JPEG Live Photos carry the Apple ContentIdentifier in a
+                // MakerNote that exif_read_data cannot parse; fetch just that tag
+                // via exiftool so they pair with their .mov like HEIC ones do.
+                if (($out['content_id'] ?? null) === null && $this->exifReader->available()) {
+                    $out['content_id'] = $this->exifReader->readContentId($path);
+                }
+
                 return $out;
             }
         }
