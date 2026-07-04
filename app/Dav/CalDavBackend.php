@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dav;
 
+use App\Enums\CalendarUri;
 use App\Enums\DavChangeOperation;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
@@ -61,8 +62,8 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
     public function createCalendar($principalUri, $calendarUri, array $properties): void
     {
         $userId = $this->userId($principalUri);
-        if ($userId === null) {
-            return;
+        if ($userId === null || CalendarUri::isReserved($calendarUri)) {
+            return; // don't let a client collide with a managed/virtual collection
         }
         $components = ['VEVENT'];
         if (isset($properties['{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set'])) {
@@ -113,9 +114,15 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
 
     public function deleteCalendar($calendarId): void
     {
-        if ($this->ownsCalendar($calendarId)) {
-            Calendar::where('id', $calendarId)->delete();
+        if (! $this->ownsCalendar($calendarId)) {
+            return;
         }
+        // The app manages default/tasks/derived collections; don't let a client
+        // delete them out from under it.
+        if (Calendar::find($calendarId)?->isUndeletable()) {
+            return;
+        }
+        Calendar::where('id', $calendarId)->delete();
     }
 
     public function getCalendarObjects($calendarId): array

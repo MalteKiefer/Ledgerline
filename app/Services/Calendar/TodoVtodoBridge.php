@@ -38,9 +38,9 @@ class TodoVtodoBridge
      *
      * @return list<array<string, mixed>>
      */
-    public function rows(string $calendarId, bool $withData = false): array
+    public function rows(string $calendarId): array
     {
-        return Todo::query()->orderBy('id')->get()->map(fn (Todo $t): array => $this->row($t, $calendarId, $withData))->all();
+        return Todo::query()->orderBy('id')->get()->map(fn (Todo $t): array => $this->row($t, $calendarId, false))->all();
     }
 
     /** @return array<string, mixed>|null */
@@ -68,11 +68,18 @@ class TodoVtodoBridge
             return null;
         }
 
+        // Only edits to an existing to-do (todo-<id>.ics) are honoured; a forged
+        // or unknown URI is rejected rather than silently creating a mismatched
+        // to-do (new tasks are created inside the app).
         $id = $this->idFromUri($uri);
         $todo = $id !== null ? Todo::find($id) : null;
-        $todo ??= new Todo(['priority' => 'normal']);
+        if ($todo === null) {
+            return null;
+        }
 
-        $todo->title = isset($vtodo->SUMMARY) ? (string) $vtodo->SUMMARY : ($todo->title ?: 'Untitled');
+        if (isset($vtodo->SUMMARY) && filled((string) $vtodo->SUMMARY)) {
+            $todo->title = (string) $vtodo->SUMMARY;
+        }
         if (isset($vtodo->DESCRIPTION)) {
             $todo->description = (string) $vtodo->DESCRIPTION;
         }

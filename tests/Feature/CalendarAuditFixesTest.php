@@ -11,6 +11,8 @@ use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\Contact;
+use App\Models\DavCredential;
+use App\Models\Todo;
 use App\Models\User;
 use App\Services\Calendar\CalendarObjectPersister;
 use App\Services\Calendar\ContactDerivedCalendars;
@@ -273,6 +275,39 @@ class CalendarAuditFixesTest extends TestCase
             'summary' => 'X', 'start' => '2026-09-01 10:00', 'end' => '2026-09-01 11:00', 'rrule' => 'FREQ=FORTNIGHTLY',
         ]);
         $this->assertStringNotContainsString('RRULE', $ics);
+    }
+
+    public function test_caldav_cannot_delete_a_reserved_calendar(): void
+    {
+        app(DavCredentialService::class)->generate(1);
+        app(DavContext::class)->set(1);
+        $backend = app(CalDavBackend::class);
+        $default = Calendar::where('user_id', 1)->where('uri', 'default')->firstOrFail();
+
+        $backend->deleteCalendar($default->id);
+        $this->assertDatabaseHas('calendars', ['id' => $default->id]);
+    }
+
+    public function test_caldav_create_rejects_a_reserved_uri(): void
+    {
+        app(DavCredentialService::class)->generate(1);
+        $principal = 'principals/'.DavCredential::where('user_id', 1)->value('username');
+        $backend = app(CalDavBackend::class);
+
+        $backend->createCalendar($principal, 'holidays', ['{DAV:}displayname' => 'Evil']);
+        $this->assertSame(0, Calendar::where('user_id', 1)->where('uri', 'holidays')->count());
+    }
+
+    public function test_tasks_write_to_a_forged_uri_is_rejected(): void
+    {
+        app(DavCredentialService::class)->generate(1);
+        app(DavContext::class)->set(1);
+        $tasks = Calendar::where('user_id', 1)->where('uri', 'tasks')->firstOrFail();
+        $backend = app(CalDavBackend::class);
+
+        $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:todo-9999\r\nSUMMARY:Ghost\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+        $this->assertNull($backend->updateCalendarObject($tasks->id, 'todo-9999.ics', $ics));
+        $this->assertSame(0, Todo::where('title', 'Ghost')->count());
     }
 
     public function test_unreachable_feed_error_does_not_leak_the_url(): void

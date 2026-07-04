@@ -40,7 +40,6 @@ return [
         'edit_event' => 'Edit event',
         'no_events' => 'No events in this range.',
         'title' => 'Title',
-        'calendar' => 'Calendar',
         'all_day' => 'All day',
         'start' => 'Start',
         'end' => 'End',

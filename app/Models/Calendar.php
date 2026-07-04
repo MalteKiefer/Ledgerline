@@ -8,7 +8,6 @@ use App\Enums\CalendarUri;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** A CalDAV calendar collection (may be a read-only subscription to a remote feed). */
 #[Fillable([
@@ -35,11 +34,6 @@ class Calendar extends Model
             // Feed URLs may embed credentials/secret tokens → encrypt at rest.
             'subscription_url' => 'encrypted',
         ];
-    }
-
-    public function objects(): HasMany
-    {
-        return $this->hasMany(CalendarObject::class);
     }
 
     public function isReadOnly(): bool
