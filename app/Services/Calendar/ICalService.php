@@ -184,6 +184,7 @@ class ICalService
     public function buildEvent(array $data, ?string $uid = null): string
     {
         $vcal = new VCalendar;
+        $vcal->PRODID = '-//Ledgerline//Calendar//EN';
         $vevent = $vcal->add('VEVENT', ['UID' => $uid ?: (string) Str::uuid()]);
         $vevent->add('SUMMARY', (string) ($data['summary'] ?? 'Untitled'));
 

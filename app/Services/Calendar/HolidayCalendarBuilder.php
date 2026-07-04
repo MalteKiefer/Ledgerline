@@ -106,7 +106,7 @@ class HolidayCalendarBuilder
      * @param  array<int, mixed>  $countries
      * @return list<string>
      */
-    public function validCountries(array $countries): array
+    private function validCountries(array $countries): array
     {
         return array_values(array_filter(
             array_map('strval', $countries),

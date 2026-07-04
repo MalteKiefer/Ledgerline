@@ -40,7 +40,6 @@ return [
         'edit_event' => 'Termin bearbeiten',
         'no_events' => 'Keine Termine in diesem Zeitraum.',
         'title' => 'Titel',
-        'calendar' => 'Kalender',
         'all_day' => 'Ganztägig',
         'start' => 'Beginn',
         'end' => 'Ende',
