@@ -12,9 +12,11 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
+use Intervention\Image\Interfaces\DriverInterface;
 use Intervention\Image\Interfaces\ImageInterface;
 
 /**
@@ -35,7 +37,24 @@ class PhotoStorage
         private readonly FilenameTemplate $filenameTemplate,
         private readonly VideoProcessor $video,
         private readonly MotionPhotoExtractor $motion,
+        private readonly ExifReader $exifReader,
     ) {}
+
+    /**
+     * Decode with Imagick when the extension is available (it can read HEIC/HEIF/
+     * AVIF via libheif); fall back to GD otherwise. Cached per instance.
+     */
+    private function imageManager(): ImageManager
+    {
+        return $this->manager ??= new ImageManager($this->driver());
+    }
+
+    private ?ImageManager $manager = null;
+
+    private function driver(): DriverInterface
+    {
+        return extension_loaded('imagick') ? new ImagickDriver : new GdDriver;
+    }
 
     /**
      * Persist just the original quickly (upload path). Renditions and EXIF are
@@ -172,7 +191,7 @@ class PhotoStorage
         try {
             $source = $photo->isVideo() ? ($poster = $this->posterFrame($photo, $tmp)) : $tmp;
 
-            $manager = new ImageManager(new Driver);
+            $manager = $this->imageManager();
             $image = $this->transform($manager->decodePath($source), $photo);
             $width = $image->width();
             $height = $image->height();
@@ -244,7 +263,7 @@ class PhotoStorage
             return;
         }
 
-        $meta = $this->exif($tmp, $photo->mime_type);
+        $meta = $this->imageMeta($tmp, $photo->mime_type);
         $attributes = ['metadata' => $meta['raw']];
 
         // Only pull date/location/camera from EXIF when the user has not
@@ -398,6 +417,35 @@ class PhotoStorage
         }
 
         return $image;
+    }
+
+    /**
+     * Read still-image metadata, picking the reader by format: PHP's fast
+     * exif_read_data() for JPEG/TIFF, exiftool for HEIC/HEIF/AVIF (and as a
+     * fallback whenever the fast path returns nothing).
+     *
+     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, raw: ?array<string, mixed>}
+     */
+    private function imageMeta(string $path, string $mime): array
+    {
+        if (in_array($mime, ['image/jpeg', 'image/tiff'], true)) {
+            $out = $this->exif($path, $mime);
+            if ($out['raw'] !== null) {
+                return $out;
+            }
+        }
+
+        if ($this->exifReader->available()) {
+            $meta = $this->exifReader->read($path);
+
+            // Drop the content_id key so the shape matches exif(); pairing reads
+            // it separately from the stored metadata dump.
+            unset($meta['content_id']);
+
+            return $meta;
+        }
+
+        return $this->exif($path, $mime);
     }
 
     /**

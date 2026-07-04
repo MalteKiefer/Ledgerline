@@ -79,7 +79,7 @@ return [
     'failed_count' => 'failed',
     'skipped_count' => 'skipped',
     'skipped_generic' => 'Skipped',
-    'skipped_heic' => 'HEIC — skipped',
+    'skipped_unsupported' => 'Unsupported format — skipped',
     'skipped_list' => 'Skipped',
     'unfavorite' => 'Remove favourite',
     'upload' => 'Upload photos',
