@@ -76,13 +76,16 @@ class NotificationBellTest extends TestCase
         $this->postJson(route('notifications.read', $n))->assertNotFound();
     }
 
-    public function test_push_creates_one_per_user(): void
+    public function test_record_targets_a_single_user(): void
     {
         $user = $this->signIn();
-        AppNotification::record('success', 'Backup done', 'details', 'backup');
+        $other = User::factory()->create();
+        AppNotification::record($user->id, 'success', 'Backup done', 'details', 'backup');
 
         $this->assertDatabaseHas('app_notifications', [
             'user_id' => $user->id, 'level' => 'success', 'category' => 'backup', 'title' => 'Backup done',
         ]);
+        // Not fanned out to other users.
+        $this->assertDatabaseMissing('app_notifications', ['user_id' => $other->id, 'title' => 'Backup done']);
     }
 }

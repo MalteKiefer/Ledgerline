@@ -30,15 +30,19 @@ class FileController extends Controller
         return Storage::disk(config('files.disk'));
     }
 
-    /** The whole tree as the client's manifest shape. */
+    /** The whole tree as the client's manifest shape. Owner-only: the full-replace
+     *  sync below must never see (and therefore never delete) files/folders that
+     *  are merely shared with the user. */
     public function data(): JsonResponse
     {
+        $uid = auth()->id();
+
         return response()->json([
             'v' => 1,
-            'folders' => FileFolder::get(['id', 'parent_id', 'name'])
+            'folders' => FileFolder::withoutGlobalScopes()->where('user_id', $uid)->get(['id', 'parent_id', 'name'])
                 ->map(fn (FileFolder $f) => ['id' => $f->id, 'name' => $f->name, 'parent' => $f->parent_id])
                 ->all(),
-            'files' => StoredFile::withTrashed()->get()->map(fn (StoredFile $f) => [
+            'files' => StoredFile::withoutGlobalScopes()->where('user_id', $uid)->withTrashed()->get()->map(fn (StoredFile $f) => [
                 'id' => $f->id,
                 'blob' => $f->blob,
                 'name' => $f->name,
@@ -81,21 +85,30 @@ class FileController extends Controller
         // that would make the tree walker recurse forever.
         $this->assertManifestConsistent($folders, $files);
 
-        $removedBlobs = DB::transaction(function () use ($folders, $files): array {
+        // Every query is pinned to the caller's OWN rows (withoutGlobalScopes +
+        // user_id) so a manifest can only ever touch files/folders the user owns,
+        // never ones merely shared with them (guards against the write-guard
+        // being bypassed by these query-builder mass operations).
+        $uid = $request->user()->id;
+        $owned = fn () => StoredFile::withoutGlobalScopes()->where('user_id', $uid);
+        $ownedFolders = fn () => FileFolder::withoutGlobalScopes()->where('user_id', $uid);
+
+        $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders): array {
             $folderIds = [];
             foreach ($folders as $f) {
-                FileFolder::updateOrCreate(['id' => $f['id']], ['parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
+                $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
                 $folderIds[] = $f['id'];
             }
-            FileFolder::when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->delete();
+            $ownedFolders()->when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->delete();
 
             $fileIds = [];
             foreach ($files as $f) {
                 // withTrashed: the manifest keeps trashed files, so a matching
                 // row may be soft-deleted; find it (or build a new one) and let
                 // the manifest's `trashed` timestamp drive deleted_at directly.
-                $file = StoredFile::withTrashed()->firstOrNew(['id' => $f['id']]);
+                $file = $owned()->withTrashed()->firstOrNew(['id' => $f['id']]);
                 $file->fill([
+                    'user_id' => $uid,
                     'file_folder_id' => $f['folder'] ?? null,
                     'name' => $f['name'],
                     'mime' => $f['mime'] ?? 'application/octet-stream',
@@ -108,12 +121,10 @@ class FileController extends Controller
                 $fileIds[] = $f['id'];
             }
 
-            // Reclaim the bytes of rows the manifest dropped in the same write
-            // (trashed rows included), so a deleted file never leaves an
-            // orphaned blob on the disk.
-            $removed = StoredFile::withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))
+            // Reclaim the bytes of the user's own rows the manifest dropped.
+            $removed = $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))
                 ->pluck('blob')->all();
-            StoredFile::withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->forceDelete();
+            $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->forceDelete();
 
             return $removed;
         });
@@ -200,10 +211,13 @@ class FileController extends Controller
             'folder_ids.*' => ['string'],
         ]);
 
-        // Keep only ids the current user actually owns (the global scope filters
-        // these), so a forged id can't export another user's files/folders.
-        $fileIds = StoredFile::withTrashed()->whereIn('id', array_values($validated['file_ids'] ?? []))->pluck('id')->all();
-        $folderIds = FileFolder::whereIn('id', array_values($validated['folder_ids'] ?? []))->pluck('id')->all();
+        // Keep only ids the current user actually OWNS (not merely shared with
+        // them) so an export can never exfiltrate another user's file bytes.
+        $uid = $request->user()->id;
+        $fileIds = StoredFile::withoutGlobalScopes()->where('user_id', $uid)->withTrashed()
+            ->whereIn('id', array_values($validated['file_ids'] ?? []))->pluck('id')->all();
+        $folderIds = FileFolder::withoutGlobalScopes()->where('user_id', $uid)
+            ->whereIn('id', array_values($validated['folder_ids'] ?? []))->pluck('id')->all();
         abort_if($fileIds === [] && $folderIds === [], 422, 'Nothing selected.');
 
         $count = count($fileIds) + count($folderIds);

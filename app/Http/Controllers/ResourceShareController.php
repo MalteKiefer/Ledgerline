@@ -101,6 +101,13 @@ class ResourceShareController extends Controller
         $resource = $class::withoutGlobalScopes()->findOrFail($id);
         abort_unless($resource->isOwnedBy($userId), 403);
 
+        // Virtual (tasks → would leak every to-do) and read-only generated
+        // (birthdays/anniversaries/holidays/subscriptions) calendars are not
+        // shareable.
+        if ($resource instanceof Calendar && ($resource->isVirtual() || $resource->isReadOnly())) {
+            abort(422, 'This calendar cannot be shared.');
+        }
+
         return $resource;
     }
 }

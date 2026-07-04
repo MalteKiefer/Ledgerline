@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Observers;
 
 use App\Enums\DavChangeOperation;
+use App\Models\Calendar;
 use App\Models\Todo;
 use App\Services\Calendar\TodoVtodoBridge;
 use App\Services\Contacts\DavChangeLog;
@@ -47,9 +48,15 @@ class TodoObserver
 
     private function record(Todo $todo, DavChangeOperation $op): void
     {
-        $uri = $this->bridge->uriFor($todo);
-        foreach ($this->bridge->tasksCalendars() as $calendar) {
-            $this->changes->recordCalendar($calendar, $uri, $op);
+        // Only the to-do OWNER's tasks calendar — never every user's (a to-do
+        // belongs to exactly one user and must not leak into others' sync feeds).
+        if ($todo->user_id === null) {
+            return;
+        }
+        $calendar = Calendar::withoutGlobalScopes()
+            ->where('uri', 'tasks')->where('user_id', $todo->user_id)->first();
+        if ($calendar !== null) {
+            $this->changes->recordCalendar($calendar, $this->bridge->uriFor($todo), $op);
         }
     }
 }
