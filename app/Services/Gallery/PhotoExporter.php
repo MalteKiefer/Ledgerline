@@ -91,15 +91,6 @@ class PhotoExporter
     }
 
     /**
-     * Whether a single edited download must be packaged as a zip (more than one
-     * output file, i.e. a motion photo).
-     */
-    public function isBundle(Photo $photo): bool
-    {
-        return $photo->hasMotion() && $photo->media_type !== 'video';
-    }
-
-    /**
      * Stream one of the photo's object-storage files to a local temp path so it
      * can be transcoded/rewritten without holding it in memory.
      */

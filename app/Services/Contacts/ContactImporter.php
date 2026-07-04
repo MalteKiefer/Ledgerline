@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Contacts;
 
+use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Sabre\VObject\Component\VCard;
 use Sabre\VObject\Reader;
@@ -20,7 +20,10 @@ use Throwable;
  */
 class ContactImporter
 {
-    public function __construct(private readonly VCardService $vcards) {}
+    public function __construct(
+        private readonly VCardService $vcards,
+        private readonly DavChangeLog $changes,
+    ) {}
 
     /**
      * @return array{created: int, updated: int, skipped: int}
@@ -69,7 +72,7 @@ class ContactImporter
                 if ($existing !== null) {
                     $existing->forceFill(array_merge(['etag' => md5($vcard), 'vcard' => $vcard], $denorm))->save();
                     $this->syncGroups($existing, $card, $book->user_id);
-                    $this->logChange($book, $existing->uri, 2);
+                    $this->changes->record($book, $existing->uri, DavChangeOperation::Modified);
                     $updated++;
                 } else {
                     $uri = Str::uuid().'.vcf';
@@ -77,7 +80,7 @@ class ContactImporter
                         'address_book_id' => $book->id, 'uri' => $uri, 'etag' => md5($vcard), 'vcard' => $vcard,
                     ], $denorm));
                     $this->syncGroups($contact, $card, $book->user_id);
-                    $this->logChange($book, $uri, 1);
+                    $this->changes->record($book, $uri, DavChangeOperation::Added);
                     $created++;
                 }
             } catch (Throwable) {
@@ -101,14 +104,5 @@ class ContactImporter
             }
         }
         $contact->groups()->sync($ids);
-    }
-
-    private function logChange(AddressBook $book, string $uri, int $operation): void
-    {
-        $token = (int) $book->synctoken + 1;
-        $book->forceFill(['synctoken' => $token])->save();
-        DB::table('dav_changes')->insert([
-            'address_book_id' => $book->id, 'uri' => $uri, 'operation' => $operation, 'synctoken' => $token,
-        ]);
     }
 }

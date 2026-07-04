@@ -32,10 +32,4 @@ class Vector
             return self::$available = false;
         }
     }
-
-    /** Reset the cached probe (tests). */
-    public static function flush(): void
-    {
-        self::$available = null;
-    }
 }
