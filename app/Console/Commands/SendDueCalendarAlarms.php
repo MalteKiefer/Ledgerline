@@ -29,7 +29,12 @@ class SendDueCalendarAlarms extends Command
         $channels = $this->channels(AppSettings::current());
         $sent = 0;
 
-        $objects = CalendarObject::whereNotNull('alarm_minutes')->where('component', 'VEVENT')->get();
+        // Only the owner's own events raise local alarms — never read-only
+        // subscriptions or generated (holiday/derived) calendars.
+        $objects = CalendarObject::whereNotNull('alarm_minutes')
+            ->where('component', 'VEVENT')
+            ->whereHas('calendar', fn ($q) => $q->where('read_only', false)->whereNull('subscription_url'))
+            ->get();
 
         foreach ($objects as $object) {
             $lead = (int) $object->alarm_minutes;
@@ -66,6 +71,10 @@ class SendDueCalendarAlarms extends Command
                 $sent++;
             }
         }
+
+        // Prune log rows past the look-back window: the fire window only reaches
+        // one day back, so older rows can never be re-matched.
+        DB::table('calendar_alarm_log')->where('fired_at', '<', (clone $now)->subDays(2))->delete();
 
         $this->info('Sent '.$sent.' calendar alarm(s).');
 

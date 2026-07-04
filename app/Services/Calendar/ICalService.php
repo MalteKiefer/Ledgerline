@@ -145,8 +145,10 @@ class ICalService
         $end = new \DateTimeImmutable((string) ($data['end'] ?? $data['start']), $tz);
 
         if ($allDay) {
+            // RFC5545: a DATE DTEND is exclusive, so a single-day event needs
+            // DTEND = DTSTART + 1 day (and DTEND must be strictly after DTSTART).
             $vevent->add('DTSTART', $start, ['VALUE' => 'DATE']);
-            $vevent->add('DTEND', $end, ['VALUE' => 'DATE']);
+            $vevent->add('DTEND', $end->modify('+1 day'), ['VALUE' => 'DATE']);
         } else {
             $vevent->add('DTSTART', $start);
             $vevent->add('DTEND', $end);
@@ -244,9 +246,16 @@ class ICalService
         $tzid = $allDay ? null : ($vevent->DTSTART['TZID'] !== null ? (string) $vevent->DTSTART['TZID'] : null);
         $format = $allDay ? 'Y-m-d' : 'Y-m-d\TH:i';
 
+        $end = null;
+        if (isset($vevent->DTEND)) {
+            $endDt = $vevent->DTEND->getDateTime();
+            // All-day DTEND is exclusive on the wire; show the inclusive last day.
+            $end = ($allDay ? $endDt->modify('-1 day') : $endDt)->format($format);
+        }
+
         return [
             'start' => $vevent->DTSTART->getDateTime()->format($format),
-            'end' => isset($vevent->DTEND) ? $vevent->DTEND->getDateTime()->format($format) : null,
+            'end' => $end,
             'all_day' => $allDay,
             'timezone' => $tzid,
         ];

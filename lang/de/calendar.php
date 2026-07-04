@@ -15,6 +15,7 @@ return [
         'week_abbr' => 'KW',
         'birthdays_calendar' => 'Geburtstage',
         'anniversaries_calendar' => 'Jahrestage',
+        'holidays_calendar' => 'Feiertage',
         'birthday_of' => 'Geburtstag von :name',
         'anniversary_of' => ':name – Jahrestag',
         'unnamed_contact' => 'Unbenannt',
