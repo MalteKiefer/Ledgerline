@@ -19,6 +19,7 @@ return [
         'birthday_of' => ":name's birthday",
         'anniversary_of' => ':name – anniversary',
         'unnamed_contact' => 'Unnamed',
+        'shared' => 'shared',
         'timezone' => 'Timezone',
         'tz_detected' => 'You appear to be in :tz. Switch the calendar to this timezone?',
         'tz_switch' => 'Switch',

@@ -9,13 +9,14 @@ use App\Enums\DavChangeOperation;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\DavCredential;
+use App\Models\ResourceShare;
 use App\Services\Calendar\CalendarObjectPersister;
 use App\Services\Calendar\TodoVtodoBridge;
 use App\Services\Contacts\DavChangeLog;
 use Illuminate\Support\Facades\DB;
 use Sabre\CalDAV\Backend\AbstractBackend;
 use Sabre\CalDAV\Backend\SyncSupport;
-use Sabre\CalDAV\Property\SupportedCalendarComponentSet;
+use Sabre\CalDAV\Xml\Property\SupportedCalendarComponentSet;
 use Sabre\DAV\Exception\Forbidden;
 use Sabre\DAV\PropPatch;
 
@@ -33,11 +34,51 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         private readonly TodoVtodoBridge $todos,
     ) {}
 
+    /** The authenticated principal may see this calendar (owns it or it's shared). */
     private function ownsCalendar(string $calendarId): bool
+    {
+        $userId = $this->context->userId();
+        if ($userId === null) {
+            return false;
+        }
+        if (Calendar::where('id', $calendarId)->where('user_id', $userId)->exists()) {
+            return true;
+        }
+
+        return $this->sharePermission($calendarId, $userId) !== null;
+    }
+
+    /** The principal may write to this calendar (owns a writable one, or has a write share). */
+    private function canWriteCalendar(string $calendarId): bool
+    {
+        $userId = $this->context->userId();
+        if ($userId === null) {
+            return false;
+        }
+        $owned = Calendar::where('id', $calendarId)->where('user_id', $userId)->first();
+        if ($owned !== null) {
+            return ! $owned->isReadOnly();
+        }
+
+        return $this->sharePermission($calendarId, $userId) === ResourceShare::WRITE;
+    }
+
+    /** Only the owner may rename/delete the calendar collection itself. */
+    private function ownsCalendarCollection(string $calendarId): bool
     {
         $userId = $this->context->userId();
 
         return $userId !== null && Calendar::where('id', $calendarId)->where('user_id', $userId)->exists();
+    }
+
+    /** 'read' | 'write' | null — this user's share level on a calendar they don't own. */
+    private function sharePermission(string $calendarId, int $userId): ?string
+    {
+        return ResourceShare::query()
+            ->where('shareable_type', (new Calendar)->getMorphClass())
+            ->where('shareable_id', $calendarId)
+            ->where('shared_with_user_id', $userId)
+            ->value('permission');
     }
 
     public function getCalendarsForUser($principalUri): array
@@ -47,16 +88,36 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             return [];
         }
 
-        return Calendar::where('user_id', $userId)->get()->map(fn (Calendar $c): array => [
+        // Owned calendars…
+        $rows = Calendar::where('user_id', $userId)->get()
+            ->map(fn (Calendar $c): array => $this->calendarRow($c, $principalUri, $c->uri))->all();
+
+        // …plus calendars other users shared with this principal (distinct uri +
+        // owner-suffixed name so they don't collide with the user's own).
+        $sharedIds = ResourceShare::query()
+            ->where('shareable_type', (new Calendar)->getMorphClass())
+            ->where('shared_with_user_id', $userId)
+            ->pluck('shareable_id');
+        foreach (Calendar::whereIn('id', $sharedIds)->get() as $c) {
+            $rows[] = $this->calendarRow($c, $principalUri, 'shared-'.$c->id, ' ('.__('calendar.ui.shared').')');
+        }
+
+        return $rows;
+    }
+
+    /** @return array<string, mixed> */
+    private function calendarRow(Calendar $c, string $principalUri, string $uri, string $nameSuffix = ''): array
+    {
+        return [
             'id' => $c->id,
-            'uri' => $c->uri,
+            'uri' => $uri,
             'principaluri' => $principalUri,
-            '{DAV:}displayname' => $c->name,
+            '{DAV:}displayname' => $c->name.$nameSuffix,
             '{urn:ietf:params:xml:ns:caldav}calendar-description' => (string) $c->description,
             '{http://apple.com/ns/ical/}calendar-color' => (string) ($c->color ?: Calendar::DEFAULT_COLOR),
             '{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set' => new SupportedCalendarComponentSet($c->components ?: ['VEVENT']),
             '{http://sabredav.org/ns}sync-token' => (string) $c->synctoken,
-        ])->all();
+        ];
     }
 
     public function createCalendar($principalUri, $calendarUri, array $properties): void
@@ -83,7 +144,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
 
     public function updateCalendar($calendarId, PropPatch $propPatch): void
     {
-        if (! $this->ownsCalendar($calendarId)) {
+        if (! $this->ownsCalendarCollection($calendarId)) {
             return;
         }
         $calendar = Calendar::find($calendarId);
@@ -114,7 +175,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
 
     public function deleteCalendar($calendarId): void
     {
-        if (! $this->ownsCalendar($calendarId)) {
+        if (! $this->ownsCalendarCollection($calendarId)) {
             return;
         }
         // The app manages default/tasks/derived collections; don't let a client
@@ -153,7 +214,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
     public function createCalendarObject($calendarId, $objectUri, $calendarData): ?string
     {
         $calendar = Calendar::find($calendarId);
-        if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
+        if ($calendar === null || ! $this->canWriteCalendar($calendarId)) {
             return null;
         }
         $this->assertWithinLimit($calendarData);
@@ -172,7 +233,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
     public function updateCalendarObject($calendarId, $objectUri, $calendarData): ?string
     {
         $calendar = Calendar::find($calendarId);
-        if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
+        if ($calendar === null || ! $this->canWriteCalendar($calendarId)) {
             return null;
         }
         $this->assertWithinLimit($calendarData);
@@ -199,7 +260,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
     public function deleteCalendarObject($calendarId, $objectUri): void
     {
         $calendar = Calendar::find($calendarId);
-        if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
+        if ($calendar === null || ! $this->canWriteCalendar($calendarId)) {
             return;
         }
         if ($calendar->isTasks()) {

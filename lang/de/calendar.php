@@ -19,6 +19,7 @@ return [
         'birthday_of' => 'Geburtstag von :name',
         'anniversary_of' => ':name – Jahrestag',
         'unnamed_contact' => 'Unbenannt',
+        'shared' => 'geteilt',
         'timezone' => 'Zeitzone',
         'tz_detected' => 'Du scheinst in :tz zu sein. Kalender auf diese Zeitzone umstellen?',
         'tz_switch' => 'Umstellen',
