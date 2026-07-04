@@ -8,6 +8,7 @@ return [
     'gallery_settings_saved' => 'Galerie-Einstellungen gespeichert.',
     'security_saved' => 'Sicherheitseinstellungen gespeichert.',
     'notifications_saved' => 'Benachrichtigungs-Einstellungen gespeichert.',
+    'downloads_saved' => 'Download-Einstellungen gespeichert.',
     'notify_test_sent' => 'Testnachricht gesendet.',
     'notify_test_failed' => 'Test fehlgeschlagen: :error',
     'backup_saved' => 'Backup-Einstellungen gespeichert.',

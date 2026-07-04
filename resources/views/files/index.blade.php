@@ -16,6 +16,9 @@
         uploadFailed: @js(__('files.upload_failed')),
         downloadFailed: @js(__('files.download_failed')),
         largeZip: @js(__('files.large_zip_confirm')),
+        exportUrl: '{{ url('/files/export') }}',
+        exportQueued: @js(__('downloads.queued_toast')),
+        downloadsUrl: '{{ url('/downloads') }}',
         rootFolder: @js(__('files.all_files')),
         migrateFailed: @js(__('files.migrate_failed')),
      })">

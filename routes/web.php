@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
+use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\MailController as SettingsMailController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
@@ -107,6 +109,10 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings/backup/runs/{run}/download', [SettingsBackupController::class, 'downloadRun'])->name('settings.backup.runs.download');
     Route::post('/settings/backup/runs/{run}/cancel', [SettingsBackupController::class, 'cancelRun'])->name('settings.backup.runs.cancel');
 
+    // Downloads/exports: max zip part size (files + gallery) and notify channels.
+    Route::get('/settings/downloads', [SettingsDownloadsController::class, 'edit'])->name('settings.downloads.edit');
+    Route::put('/settings/downloads', [SettingsDownloadsController::class, 'update'])->name('settings.downloads.update');
+
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
     // Gallery: a photo timeline with drag-and-drop upload and a trash.
@@ -121,6 +127,7 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
     Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
     Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->name('gallery.download');
+    Route::post('/gallery/export', [GalleryController::class, 'queueExport'])->name('gallery.export');
     Route::get('/gallery/{photo}/download/edited', [GalleryController::class, 'downloadEdited'])->name('gallery.download.edited');
     Route::get('/gallery/geocode/reverse', [GalleryController::class, 'geocodeReverse'])->name('gallery.geocode.reverse');
     Route::get('/gallery/geocode/search', [GalleryController::class, 'geocodeSearch'])->name('gallery.geocode.search');
@@ -146,7 +153,16 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/import', [FileController::class, 'import'])
         ->middleware('throttle:300,1')->name('files.import');
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
+    Route::post('/files/export', [FileController::class, 'queueExport'])->name('files.export');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
+
+    // Downloads center: asynchronous, worker-built export zips (gallery + files),
+    // kept for a retention window and collected here.
+    Route::get('/downloads', [DownloadsController::class, 'index'])->name('downloads.index');
+    Route::get('/downloads/data', [DownloadsController::class, 'data'])->name('downloads.data');
+    Route::get('/downloads/{export}/parts/{index}', [DownloadsController::class, 'download'])
+        ->whereNumber('index')->name('downloads.part');
+    Route::delete('/downloads', [DownloadsController::class, 'destroy'])->name('downloads.destroy');
     // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
     // Markdown rendering + share creation stay server-side (security-sensitive).
     Route::view('/notes', 'notes.index')->name('notes.index');

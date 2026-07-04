@@ -21,3 +21,6 @@ Schedule::command('reminders:send')->everyMinute()->withoutOverlapping();
 
 // Pull every mail account into the local archive (server-deleted mail is kept).
 Schedule::command('mail:sync')->hourly()->withoutOverlapping();
+
+// Remove expired download exports (past their retention window) and their zips.
+Schedule::command('exports:prune')->daily()->withoutOverlapping();

@@ -27,6 +27,8 @@
                             'icon' => 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75'],
                         ['label' => __('messages.nav.gallery'), 'url' => route('gallery.index'), 'active' => request()->routeIs('gallery.*'),
                             'icon' => 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M18 12h.008v.008H18V12zM2.25 6h19.5A2.25 2.25 0 0124 8.25v10.5A2.25 2.25 0 0121.75 21H2.25A2.25 2.25 0 010 18.75V8.25A2.25 2.25 0 012.25 6z'],
+                        ['label' => __('messages.nav.downloads'), 'url' => route('downloads.index'), 'active' => request()->routeIs('downloads.*'),
+                            'icon' => 'M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3'],
                     ];
                 @endphp
                 <div class="flex items-center gap-8">
@@ -184,5 +186,17 @@
             Ledgerline v{{ config('app.version') }}
         </footer>
     </div>
+
+    @auth
+        <div x-data="toastHub(@js(['link' => __('downloads.heading')]))" class="fixed bottom-4 right-4 z-50 space-y-2" x-cloak>
+            <template x-for="t in items" :key="t.id">
+                <div class="flex items-center gap-3 rounded-md bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
+                    <span x-text="t.message"></span>
+                    <template x-if="t.url"><a :href="t.url" class="font-medium underline" x-text="t.linkLabel"></a></template>
+                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="close">✕</button>
+                </div>
+            </template>
+        </div>
+    @endauth
 </body>
 </html>
