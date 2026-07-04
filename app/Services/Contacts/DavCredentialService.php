@@ -45,6 +45,7 @@ class DavCredentialService
 
         $this->ensureDefaultBook($userId);
         $this->ensureDefaultCalendar($userId);
+        $this->ensureTasksCalendar($userId);
 
         return ['credential' => $credential, 'password' => $password];
     }
@@ -75,6 +76,15 @@ class DavCredentialService
         return Calendar::firstOrCreate(
             ['user_id' => $userId, 'uri' => 'default'],
             ['name' => 'Calendar', 'color' => '#3366cc', 'components' => ['VEVENT'], 'synctoken' => 1],
+        );
+    }
+
+    /** The virtual VTODO calendar mirroring the shared to-dos (two-way via CalDAV). */
+    public function ensureTasksCalendar(int $userId): Calendar
+    {
+        return Calendar::firstOrCreate(
+            ['user_id' => $userId, 'uri' => 'tasks'],
+            ['name' => 'Tasks', 'color' => '#059669', 'components' => ['VTODO'], 'synctoken' => 1],
         );
     }
 }

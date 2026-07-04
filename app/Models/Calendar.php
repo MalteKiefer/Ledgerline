@@ -38,4 +38,10 @@ class Calendar extends Model
     {
         return (bool) $this->read_only;
     }
+
+    /** The virtual calendar that exposes the shared to-dos as VTODO over CalDAV. */
+    public function isTasks(): bool
+    {
+        return $this->uri === 'tasks';
+    }
 }
