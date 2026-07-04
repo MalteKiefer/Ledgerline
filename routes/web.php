@@ -235,6 +235,8 @@ Route::middleware('auth')->group(function (): void {
     // Calendar: CalDAV-backed events, driven client-side over a JSON API.
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
+    Route::get('/calendar/export', [CalendarController::class, 'export'])->name('calendar.export');
+    Route::post('/calendar/import', [CalendarController::class, 'import'])->name('calendar.import');
     Route::post('/calendar/calendars', [CalendarController::class, 'storeCalendar'])->name('calendar.calendars.store');
     Route::put('/calendar/calendars/{calendar}', [CalendarController::class, 'updateCalendar'])->name('calendar.calendars.update');
     Route::delete('/calendar/calendars/{calendar}', [CalendarController::class, 'destroyCalendar'])->name('calendar.calendars.destroy');

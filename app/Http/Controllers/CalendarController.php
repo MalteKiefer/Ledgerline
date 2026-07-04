@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Calendar;
 use App\Models\CalendarObject;
+use App\Services\Calendar\CalendarImporter;
 use App\Services\Calendar\CalendarWriter;
 use App\Services\Calendar\ICalService;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Sabre\VObject\Reader;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Calendar UI backend (reload-free JSON). All queries are scoped to the
@@ -124,6 +126,42 @@ class CalendarController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Export a calendar (or all the user's events) as one .ics download. */
+    public function export(Request $request): StreamedResponse
+    {
+        $userId = $request->user()->id;
+        $calendars = Calendar::where('user_id', $userId)
+            ->when($request->query('calendar'), fn ($q) => $q->where('id', $request->query('calendar')))
+            ->pluck('id');
+
+        return response()->streamDownload(function () use ($calendars): void {
+            echo "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ledgerline//Calendar//EN\r\n";
+            CalendarObject::whereIn('calendar_id', $calendars)->orderBy('starts_at')->chunk(200, function ($chunk): void {
+                foreach ($chunk as $object) {
+                    foreach ($this->veventBlocks($object->ics) as $block) {
+                        echo $block."\r\n";
+                    }
+                }
+            });
+            echo "END:VCALENDAR\r\n";
+        }, 'calendar.ics', ['Content-Type' => 'text/calendar; charset=utf-8']);
+    }
+
+    /** Import an .ics (one or many events) into a calendar; dedupe by UID. */
+    public function import(Request $request, CalendarImporter $importer): JsonResponse
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'max:51200'],
+            'calendar_id' => ['required', 'string'],
+        ]);
+        $calendar = $this->ownedCalendar($request, $data['calendar_id']);
+        abort_if($calendar->isReadOnly(), 403);
+
+        $result = $importer->import($calendar, (string) file_get_contents($request->file('file')->getRealPath()));
+
+        return response()->json($result);
+    }
+
     public function storeCalendar(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -162,6 +200,27 @@ class CalendarController extends Controller
         $calendar->delete();
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Serialize each inner component (VEVENT/VTODO/VTIMEZONE) of a stored
+     * VCALENDAR so it can be concatenated into one export document.
+     *
+     * @return list<string>
+     */
+    private function veventBlocks(string $ics): array
+    {
+        try {
+            $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
+        } catch (\Throwable) {
+            return [];
+        }
+        $blocks = [];
+        foreach ($vcal->getComponents() as $component) {
+            $blocks[] = rtrim($component->serialize(), "\r\n");
+        }
+
+        return $blocks;
     }
 
     /**

@@ -142,6 +142,9 @@ class DavContactsTest extends TestCase
         $this->assertStringContainsString('com.apple.carddav.account', $body);
         $this->assertStringContainsString('CardDAVHostName', $body);
         $this->assertStringContainsString($username, $body);
+        // The profile also bundles a CalDAV account (one profile for both).
+        $this->assertStringContainsString('com.apple.caldav.account', $body);
+        $this->assertStringContainsString('CalDAVHostName', $body);
     }
 
     public function test_apple_profile_requires_credentials(): void

@@ -17,6 +17,8 @@ return [
         'rename_calendar' => 'Rename calendar',
         'delete_calendar_confirm' => 'Delete this calendar and all its events?',
         'read_only' => 'Read-only',
+        'import' => 'Import .ics',
+        'export' => 'Export .ics',
         'new_event' => 'New event',
         'edit_event' => 'Edit event',
         'no_events' => 'No events in this range.',
