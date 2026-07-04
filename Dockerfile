@@ -23,8 +23,10 @@ USER root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       curl \
-      # HEIC/HEIF + Apple stills + HEVC still decode
+      # HEIC/HEIF + Apple stills + HEVC still: decode (libde265) AND encode
+      # (x265 for HEIC, aom for AVIF) so edited exports can be re-saved in format
       libheif1 libheif-examples libde265-0 imagemagick \
+      libheif-plugin-x265 libheif-plugin-aomenc libheif-plugin-libde265 \
       # video / Apple Motion + Live Photos (HEVC, MOV, ProRes) + thumbnails
       ffmpeg \
       # rich media metadata (EXIF/XMP, Motion-Photo + Live-Photo detection)

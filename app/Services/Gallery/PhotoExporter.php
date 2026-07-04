@@ -182,11 +182,22 @@ class PhotoExporter
         $fallbackExt = $mime === 'image/avif' ? 'avif' : 'heic';
         $dest = tempnam(sys_get_temp_dir(), 'export').'.'.$this->extension($photo, $fallbackExt);
 
+        $encoded = false;
         if ($transformed && extension_loaded('imagick')) {
-            $encoder = $mime === 'image/avif' ? new AvifEncoder(quality: 90) : new HeicEncoder(quality: 90);
-            file_put_contents($dest, (string) $this->transform($src, $photo)->encode($encoder));
-        } else {
-            // No transform (or no Imagick to re-encode): keep the original bytes.
+            try {
+                $encoder = $mime === 'image/avif' ? new AvifEncoder(quality: 90) : new HeicEncoder(quality: 90);
+                file_put_contents($dest, (string) $this->transform($src, $photo)->encode($encoder));
+                $encoded = true;
+            } catch (Throwable) {
+                // No HEIC/AVIF encode delegate (libheif built without an encoder):
+                // keep the original bytes rather than failing the whole export.
+                $encoded = false;
+            }
+        }
+
+        if (! $encoded) {
+            // No transform, no Imagick, or encoding unavailable: keep the original
+            // bytes (still a valid file that gets the metadata written below).
             copy($src, $dest);
         }
 
