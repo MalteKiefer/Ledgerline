@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\Photo;
 use App\Services\Gallery\MachineLearning;
 use App\Services\Gallery\PerceptualHash;
+use App\Support\Vector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
@@ -72,14 +73,14 @@ class EmbedPhoto implements ShouldQueue
                     return; // ML unavailable; a later backfill retries
                 }
 
-                if (DB::getDriverName() === 'pgsql') {
+                if (Vector::available()) {
                     DB::update('UPDATE photos SET embedding = ?::vector, embedded_at = ? WHERE id = ?', [
                         '['.implode(',', $vector).']',
                         Carbon::now(),
                         $photo->id,
                     ]);
                 } else {
-                    // No pgvector (e.g. sqlite test DB): record that we embedded.
+                    // No pgvector: record that we embedded (pHash still drives dedup).
                     $photo->forceFill(['embedded_at' => Carbon::now()])->save();
                 }
             }

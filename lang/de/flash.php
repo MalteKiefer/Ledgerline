@@ -21,6 +21,7 @@ return [
     'photos_location_set' => 'Standort für :count Foto(s) gesetzt.',
     'photos_all_jobs_queued' => 'Alle Jobs für :count Foto(s) eingereiht.',
     'duplicates_scan_queued' => 'Duplikat-Scan eingereiht. Gruppen erscheinen unter Galerie › Duplikate.',
+    'faces_scan_queued' => 'Gesichts-Scan eingereiht. Personen erscheinen unter Galerie › Personen.',
     'photos_regenerate_queued' => ':count Foto(s) zur Thumbnail-Neuerzeugung eingereiht.',
     'photos_rename_queued' => ':count Foto(s) zum Umbenennen eingereiht.',
     'photos_rescan_queued' => ':count Foto(s) zum Metadaten-Neueinlesen eingereiht.',

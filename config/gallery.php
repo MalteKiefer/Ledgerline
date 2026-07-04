@@ -61,6 +61,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Face recognition ("People")
+    |--------------------------------------------------------------------------
+    |
+    | Faces are detected + embedded by the immich-ml sidecar (buffalo_l) and
+    | clustered into people. face_min_score/face_min_size filter weak or tiny
+    | detections; face_cluster_threshold is the minimum cosine similarity for two
+    | faces to be the same person; face_min_per_person hides one-off clusters.
+    |
+    */
+
+    'face_enabled' => (bool) env('FACE_ENABLED', false),
+
+    'face_model' => env('ML_FACE_MODEL', 'buffalo_l'),
+
+    'face_min_score' => (float) env('GALLERY_FACE_MIN_SCORE', 0.7),
+
+    'face_min_size' => (int) env('GALLERY_FACE_MIN_SIZE', 32),
+
+    'face_cluster_threshold' => (float) env('GALLERY_FACE_CLUSTER_THRESHOLD', 0.5),
+
+    'face_min_per_person' => (int) env('GALLERY_FACE_MIN_PER_PERSON', 2),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reverse-geocoding rate limit
     |--------------------------------------------------------------------------
     |

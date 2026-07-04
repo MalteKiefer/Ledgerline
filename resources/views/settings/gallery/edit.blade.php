@@ -132,6 +132,11 @@
                 <button type="submit" @disabled($photoCount === 0)
                     class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.detect_duplicates') }}</button>
             </form>
+            <form method="POST" action="{{ route('settings.gallery.detect-faces') }}">
+                @csrf
+                <button type="submit" @disabled($photoCount === 0)
+                    class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.detect_faces') }}</button>
+            </form>
         </div>
 
         <template x-teleport="body">

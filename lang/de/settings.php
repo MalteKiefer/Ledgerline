@@ -49,6 +49,7 @@ return [
     'rename' => 'Dateinamen-Vorlage anwenden',
     'run_all_jobs' => 'Alle Jobs ausführen',
     'detect_duplicates' => 'Nach Duplikaten suchen',
+    'detect_faces' => 'Nach Gesichtern suchen',
     'rescan' => 'Metadaten neu einlesen',
     'save' => 'Speichern',
     'mail_sync_minutes' => 'Mails im Hintergrund aktualisieren alle (Minuten)',

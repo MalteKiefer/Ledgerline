@@ -264,6 +264,49 @@ Alpine.data('toastHub', (labels = {}) => ({
 }));
 
 /**
+ * People grid: lists clustered people (cover face + name + count).
+ */
+Alpine.data('peoplePage', (cfg = {}) => ({
+    people: [],
+    loading: true,
+    cfg,
+    async init() {
+        try {
+            const res = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (res.ok) this.people = (await res.json()).people ?? [];
+        } catch (e) { /* keep */ } finally { this.loading = false; }
+    },
+}));
+
+/**
+ * Person page: a person's photos + rename / hide.
+ */
+Alpine.data('personPage', (cfg = {}) => ({
+    person: { name: '', count: 0, hidden: false },
+    photos: [],
+    async init() {
+        try {
+            const res = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            const data = await res.json();
+            this.person = data.person;
+            this.photos = data.photos ?? [];
+        } catch (e) { /* keep */ }
+    },
+    async _patch(body) {
+        try {
+            await fetch(cfg.updateUrl, {
+                method: 'PATCH',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token },
+                body: JSON.stringify(body),
+            });
+        } catch (e) { /* ignore */ }
+    },
+    save() { this._patch({ name: this.person.name }); },
+    toggleHidden() { this.person.hidden = ! this.person.hidden; this._patch({ hidden: this.person.hidden }); },
+}));
+
+/**
  * Duplicates review page: lists content-based duplicate groups; pick one photo
  * to keep and trash the rest, or dismiss a group as not-a-duplicate.
  */

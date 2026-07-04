@@ -127,6 +127,16 @@ class GalleryController extends Controller
     }
 
     /**
+     * Scan the library for faces (detect + cluster into people).
+     */
+    public function detectFaces(Request $request): RedirectResponse
+    {
+        Artisan::call('gallery:faces');
+
+        return redirect()->route('settings.gallery.edit')->with('status', __('flash.faces_scan_queued'));
+    }
+
+    /**
      * Live progress for a running maintenance batch.
      */
     public function batchStatus(Request $request): JsonResponse
