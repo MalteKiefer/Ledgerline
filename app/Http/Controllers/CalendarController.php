@@ -77,7 +77,7 @@ class CalendarController extends Controller
                     'end' => $instance['end'],
                     'all_day' => $object->all_day,
                     'recurring' => $object->rrule !== null,
-                    'color' => $colors[$object->calendar_id] ?? '#3366cc',
+                    'color' => $colors[$object->calendar_id] ?? Calendar::DEFAULT_COLOR,
                 ];
             }
         }
@@ -86,7 +86,7 @@ class CalendarController extends Controller
             'calendars' => $calendars->map(fn (Calendar $c): array => [
                 'id' => $c->id,
                 'name' => $c->name,
-                'color' => $c->color ?: '#3366cc',
+                'color' => $c->color ?: Calendar::DEFAULT_COLOR,
                 'read_only' => $c->isReadOnly(),
                 'subscription_url' => $c->subscription_url,
             ]),
@@ -191,7 +191,7 @@ class CalendarController extends Controller
         $data = $request->validate([
             'url' => ['required', 'string', 'max:2048'],
             'name' => ['required', 'string', 'max:255'],
-            'color' => ['nullable', 'string', 'max:9'],
+            'color' => Calendar::COLOR_RULE,
             'refresh_minutes' => ['nullable', 'integer', 'min:15', 'max:10080'],
         ]);
 
@@ -239,14 +239,14 @@ class CalendarController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'color' => ['nullable', 'string', 'max:9'],
+            'color' => Calendar::COLOR_RULE,
         ]);
 
         $calendar = Calendar::create([
             'user_id' => $request->user()->id,
             'uri' => (string) Str::uuid(),
             'name' => $data['name'],
-            'color' => $data['color'] ?? '#3366cc',
+            'color' => $data['color'] ?? Calendar::DEFAULT_COLOR,
             'components' => ['VEVENT'],
             'synctoken' => 1,
         ]);
@@ -257,9 +257,12 @@ class CalendarController extends Controller
     public function updateCalendar(Request $request, Calendar $calendar): JsonResponse
     {
         $this->authorizeCalendar($calendar);
+        // Managed calendars (subscriptions, holidays, derived) are read-only —
+        // renaming/recolouring them would be overwritten on the next rebuild.
+        abort_if(! $calendar->isWritableByUser(), 403);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'color' => ['nullable', 'string', 'max:9'],
+            'color' => Calendar::COLOR_RULE,
         ]);
         $calendar->forceFill(['name' => $data['name'], 'color' => $data['color'] ?? $calendar->color])->save();
 
@@ -336,8 +339,10 @@ class CalendarController extends Controller
         return $request->validate([
             'calendar_id' => ['required', 'string'],
             'summary' => ['required', 'string', 'max:255'],
-            'start' => ['required', 'string', 'max:32'],
-            'end' => ['nullable', 'string', 'max:32'],
+            // 'date' accepts both YYYY-MM-DD and the datetime-local form, so an
+            // unparseable value is a 422, not an uncaught DateException (500).
+            'start' => ['required', 'string', 'max:32', 'date'],
+            'end' => ['nullable', 'string', 'max:32', 'date'],
             'all_day' => ['boolean'],
             'timezone' => ['nullable', 'string', 'max:64', 'timezone'],
             'location' => ['nullable', 'string', 'max:255'],

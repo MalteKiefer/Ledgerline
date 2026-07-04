@@ -107,7 +107,11 @@ class ICalService
         $rrule = strtoupper(trim(preg_replace('/[\x00-\x1F\x7F]+/', '', $rrule) ?? ''));
         // FREQ=…;INTERVAL=…;BYDAY=MO,TU;UNTIL=20260101T000000Z etc. — letters,
         // digits, and the RRULE separators only. No ':' or whitespace.
-        if ($rrule === '' || preg_match('/^[A-Z0-9;=,\-+]+$/', $rrule) !== 1 || ! str_contains($rrule, 'FREQ=')) {
+        if ($rrule === '' || preg_match('/^[A-Z0-9;=,\-+]+$/', $rrule) !== 1) {
+            return null;
+        }
+        // Must carry a valid RFC5545 FREQ.
+        if (preg_match('/(^|;)FREQ=(SECONDLY|MINUTELY|HOURLY|DAILY|WEEKLY|MONTHLY|YEARLY)(;|$)/', $rrule) !== 1) {
             return null;
         }
 
@@ -136,6 +140,9 @@ class ICalService
 
         $map = [];
         while (true) {
+            if (count($map) >= CalendarImporter::MAX_OBJECTS) {
+                break; // bound feed size (DoS guard)
+            }
             try {
                 $vobj = $splitter->getNext();
             } catch (Throwable) {
@@ -184,9 +191,16 @@ class ICalService
         // The wall-clock start/end are interpreted in the event's timezone (an
         // IANA name); absent, UTC — matching the previous behaviour. sabre emits
         // a TZID parameter for a named zone, or a 'Z' (UTC) time otherwise.
-        $tz = filled($data['timezone'] ?? null) ? new \DateTimeZone((string) $data['timezone']) : new \DateTimeZone('UTC');
-        $start = new \DateTimeImmutable((string) $data['start'], $tz);
-        $end = new \DateTimeImmutable((string) ($data['end'] ?? $data['start']), $tz);
+        $tz = $this->displayZone(filled($data['timezone'] ?? null) ? (string) $data['timezone'] : 'UTC');
+        try {
+            $start = new \DateTimeImmutable((string) $data['start'], $tz);
+            $end = new \DateTimeImmutable((string) ($data['end'] ?? $data['start']), $tz);
+        } catch (Throwable) {
+            // Unparseable date → fall back to "now" rather than fatalling; the
+            // web layer validates dates, this guards the other call paths.
+            $start = new \DateTimeImmutable('now', $tz);
+            $end = $start;
+        }
 
         if ($allDay) {
             // RFC5545: a DATE DTEND is exclusive, so a single-day event needs

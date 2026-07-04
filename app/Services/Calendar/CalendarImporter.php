@@ -18,6 +18,9 @@ use Throwable;
  */
 class CalendarImporter
 {
+    /** Upper bound on objects created from one file/feed (DoS guard). */
+    public const MAX_OBJECTS = 10000;
+
     public function __construct(private readonly CalendarObjectPersister $persister) {}
 
     /**
@@ -46,6 +49,9 @@ class CalendarImporter
             }
             if ($vobj === null) {
                 break;
+            }
+            if ($created + $updated >= self::MAX_OBJECTS) {
+                break; // stop importing once the cap is hit
             }
             if (! $vobj instanceof VCalendar) {
                 $skipped++;

@@ -52,7 +52,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             'principaluri' => $principalUri,
             '{DAV:}displayname' => $c->name,
             '{urn:ietf:params:xml:ns:caldav}calendar-description' => (string) $c->description,
-            '{http://apple.com/ns/ical/}calendar-color' => (string) ($c->color ?: '#3366cc'),
+            '{http://apple.com/ns/ical/}calendar-color' => (string) ($c->color ?: Calendar::DEFAULT_COLOR),
             '{urn:ietf:params:xml:ns:caldav}supported-calendar-component-set' => new SupportedCalendarComponentSet($c->components ?: ['VEVENT']),
             '{http://sabredav.org/ns}sync-token' => (string) $c->synctoken,
         ])->all();
@@ -99,7 +99,11 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
                 $calendar->description = (string) $m['{urn:ietf:params:xml:ns:caldav}calendar-description'];
             }
             if (isset($m['{http://apple.com/ns/ical/}calendar-color'])) {
-                $calendar->color = substr((string) $m['{http://apple.com/ns/ical/}calendar-color'], 0, 9);
+                // Apple sends #rrggbbaa; keep only a valid hex colour.
+                $color = substr((string) $m['{http://apple.com/ns/ical/}calendar-color'], 0, 9);
+                if (preg_match('/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/', $color) === 1) {
+                    $calendar->color = $color;
+                }
             }
             $calendar->save();
 
@@ -214,7 +218,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
 
         if ($syncToken === null || $syncToken === '') {
             $added = $calendar->isTasks()
-                ? array_column($this->todos->rows(), 'uri')
+                ? array_column($this->todos->rows($calendarId), 'uri')
                 : CalendarObject::where('calendar_id', $calendarId)->pluck('uri')->all();
 
             return [
@@ -225,8 +229,19 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             ];
         }
 
+        // A non-numeric or future token is stale/foreign: return null so Sabre
+        // answers with a 'valid-sync-token' precondition and the client falls
+        // back to a full sync (RFC 6578). Pruned-away history lands here too.
+        if (! ctype_digit((string) $syncToken) || (int) $syncToken > $current) {
+            return null;
+        }
+        $oldestKept = DB::table('calendar_changes')->where('calendar_id', $calendarId)->min('synctoken');
+        if ($oldestKept !== null && (int) $syncToken < (int) $oldestKept && (int) $syncToken < $current) {
+            return null;
+        }
+
         $latest = [];
-        foreach (DB::table('calendar_changes')->where('calendar_id', $calendarId)->where('synctoken', '>=', (int) $syncToken)->orderBy('synctoken')->get(['uri', 'operation']) as $row) {
+        foreach (DB::table('calendar_changes')->where('calendar_id', $calendarId)->where('synctoken', '>=', (int) $syncToken)->orderBy('synctoken')->when($limit, fn ($q) => $q->limit((int) $limit))->get(['uri', 'operation']) as $row) {
             $latest[$row->uri] = $row->operation;
         }
 

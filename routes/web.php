@@ -241,8 +241,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/calendar/timezone', [CalendarController::class, 'setTimezone'])->name('calendar.timezone');
     Route::get('/calendar/export', [CalendarController::class, 'export'])->name('calendar.export');
     Route::post('/calendar/import', [CalendarController::class, 'import'])->name('calendar.import');
-    Route::post('/calendar/import-url', [CalendarController::class, 'importUrl'])->name('calendar.import-url');
-    Route::post('/calendar/subscribe', [CalendarController::class, 'subscribe'])->name('calendar.subscribe');
+    // These issue a server-side outbound fetch → throttle to blunt SSRF-scan /
+    // amplification abuse.
+    Route::post('/calendar/import-url', [CalendarController::class, 'importUrl'])->middleware('throttle:20,1')->name('calendar.import-url');
+    Route::post('/calendar/subscribe', [CalendarController::class, 'subscribe'])->middleware('throttle:20,1')->name('calendar.subscribe');
     Route::post('/calendar/calendars', [CalendarController::class, 'storeCalendar'])->name('calendar.calendars.store');
     Route::put('/calendar/calendars/{calendar}', [CalendarController::class, 'updateCalendar'])->name('calendar.calendars.update');
     Route::delete('/calendar/calendars/{calendar}', [CalendarController::class, 'destroyCalendar'])->name('calendar.calendars.destroy');

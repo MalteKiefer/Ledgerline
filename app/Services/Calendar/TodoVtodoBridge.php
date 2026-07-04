@@ -115,6 +115,8 @@ class TodoVtodoBridge
         $vtodo->add('STATUS', $todo->done ? 'COMPLETED' : 'NEEDS-ACTION');
         if ($todo->done) {
             $vtodo->add('PERCENT-COMPLETE', '100');
+            // RFC5545: COMPLETED is the completion instant (UTC DATE-TIME).
+            $vtodo->add('COMPLETED', ($todo->updated_at ?? now())->utc());
         }
         if (filled($todo->url)) {
             $vtodo->add('URL', (string) $todo->url);
