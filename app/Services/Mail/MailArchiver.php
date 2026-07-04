@@ -30,10 +30,15 @@ class MailArchiver
 {
     public function __construct(private readonly MailSource $source) {}
 
-    /** @return array{new:int, archived:int, folders:int} */
-    public function syncAccount(MailAccount $account, ?int $perRunCap = null): array
+    /**
+     * @param  int|null  $perRunCap  max NEW messages to fetch this call (total across folders)
+     * @param  float|null  $deadline  microtime(true) after which fetching stops
+     * @return array{new:int, archived:int, folders:int}
+     */
+    public function syncAccount(MailAccount $account, ?int $perRunCap = null, ?float $deadline = null): array
     {
-        $cap = $perRunCap ?? (int) config('mail_archive.per_run_cap', 1000);
+        $cap = $perRunCap ?? (int) config('mail_archive.per_run_cap', 100);
+        $deadline ??= microtime(true) + (int) config('mail_archive.max_run_seconds', 300);
         $creds = $account->credentials();
         $disk = Storage::disk(config('files.disk'));
 
@@ -42,9 +47,16 @@ class MailArchiver
         $folderCount = 0;
 
         foreach ($this->source->folders($creds) as $f) {
+            // Time budget is global (across all folders and accounts); stop
+            // entering more folders once it is reached. The per-folder message
+            // cap is applied inside syncFolder, so EVERY folder makes progress
+            // each run rather than one folder eating the whole budget.
+            if (microtime(true) >= $deadline) {
+                break;
+            }
             $folderCount++;
             try {
-                $this->syncFolder($account, $creds, $disk, $f, $cap, $newCount, $archivedCount);
+                $this->syncFolder($account, $creds, $disk, $f, $cap, $deadline, $newCount, $archivedCount);
             } catch (\Throwable $e) {
                 // One folder failing (e.g. an iCloud special folder that answers
                 // a SELECT/SEARCH with an empty response) must not abort the whole
@@ -68,8 +80,10 @@ class MailArchiver
      *
      * @param  Filesystem  $disk
      * @param  array{path:string, name:string, delimiter:string, role:?string, uidvalidity:int}  $f
+     * @param  int  $cap  max new messages to fetch from THIS folder this run
+     * @param  float  $deadline  microtime(true) after which fetching stops (global)
      */
-    private function syncFolder(MailAccount $account, ImapCredentials $creds, $disk, array $f, int $cap, int &$newCount, int &$archivedCount): void
+    private function syncFolder(MailAccount $account, ImapCredentials $creds, $disk, array $f, int $cap, float $deadline, int &$newCount, int &$archivedCount): void
     {
         $folder = MailFolder::firstOrNew(['mail_account_id' => $account->id, 'path' => $f['path']]);
         $validityChanged = $folder->exists && (int) $folder->uidvalidity !== (int) $f['uidvalidity'] && $folder->uidvalidity !== null;
@@ -95,13 +109,18 @@ class MailArchiver
             ->when($serverSet !== [], fn ($q) => $q->whereNotIn('uid', $serverSet))
             ->update(['deleted_on_server_at' => Carbon::now()]);
 
-        // New UIDs (never stored, at the current validity): fetch newest-first,
-        // capped, so the backlog drains over runs.
+        // New UIDs (never stored, at the current validity): fetch newest-first
+        // until the shared run cap or the time budget is reached, so the backlog
+        // drains over runs.
         $stored = MailMessage::where('mail_folder_id', $folder->id)
             ->where('uidvalidity', (int) $f['uidvalidity'])->pluck('uid')->all();
         $newUids = array_values(array_diff($serverSet, array_map('intval', $stored)));
         rsort($newUids);
-        foreach (array_slice($newUids, 0, $cap) as $uid) {
+        $fetched = 0;
+        foreach ($newUids as $uid) {
+            if ($fetched >= $cap || microtime(true) >= $deadline) {
+                break;
+            }
             $m = $this->source->fetch($creds, $f['path'], $uid);
             $blob = (string) Str::uuid();
             $disk->put('mail/'.$blob, $m['raw']);
@@ -130,6 +149,7 @@ class MailArchiver
                 'synced_at' => Carbon::now(),
             ]);
             $newCount++;
+            $fetched++;
         }
 
         // Update flags of still-present, non-archived messages.

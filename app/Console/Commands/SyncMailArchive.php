@@ -26,9 +26,17 @@ class SyncMailArchive extends Command
             ->when($this->option('account'), fn ($q) => $q->whereKey($this->option('account')))
             ->get();
 
+        // Global time budget shared across all accounts, so the whole run is
+        // bounded (per-folder message cap lives in config, applied by the archiver).
+        $deadline = microtime(true) + (int) config('mail_archive.max_run_seconds', 300);
+
         foreach ($accounts as $account) {
+            if (microtime(true) >= $deadline) {
+                $this->warn('Time budget reached; remaining accounts will sync next run.');
+                break;
+            }
             try {
-                $r = $archiver->syncAccount($account);
+                $r = $archiver->syncAccount($account, deadline: $deadline);
                 $this->info(sprintf('%s: %d new, %d archived across %d folder(s).', $account->name, $r['new'], $r['archived'], $r['folders']));
             } catch (\Throwable $e) {
                 Log::warning('Mail sync failed', ['account' => $account->id, 'error' => $e->getMessage()]);
