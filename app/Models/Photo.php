@@ -41,6 +41,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'meta_locked',
     'favorited_at',
     'checksum',
+    'content_id',
     'taken_at',
     'processed_at',
 ])]
