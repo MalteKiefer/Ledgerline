@@ -42,5 +42,11 @@ class ProcessPhoto implements ShouldQueue
 
             throw $e;
         }
+
+        // Apple Live Photo halves (still + movie) arrive as two files sharing a
+        // ContentIdentifier; pair them once each half has its metadata.
+        if ($photo->content_id !== null) {
+            PairLivePhotos::dispatch($photo->id);
+        }
     }
 }

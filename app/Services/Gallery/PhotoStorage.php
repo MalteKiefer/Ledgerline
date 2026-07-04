@@ -264,7 +264,7 @@ class PhotoStorage
         }
 
         $meta = $this->imageMeta($tmp, $photo->mime_type);
-        $attributes = ['metadata' => $meta['raw']];
+        $attributes = ['metadata' => $meta['raw'], 'content_id' => $meta['content_id'] ?? null];
 
         // Only pull date/location/camera from EXIF when the user has not
         // edited them by hand (meta_locked). The place name always tracks
@@ -342,6 +342,10 @@ class PhotoStorage
         }
 
         $tags = $probe['raw']['format']['tags'] ?? [];
+
+        // Apple Live Photo pairing key, stored in the movie's QuickTime tags.
+        $attributes['content_id'] = $tags['com.apple.quicktime.content.identifier']
+            ?? ($tags['content.identifier'] ?? null);
 
         if (! $photo->meta_locked) {
             // Prefer the local-timezone creation date over the UTC creation_time.
@@ -424,7 +428,7 @@ class PhotoStorage
      * exif_read_data() for JPEG/TIFF, exiftool for HEIC/HEIF/AVIF (and as a
      * fallback whenever the fast path returns nothing).
      *
-     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, raw: ?array<string, mixed>}
+     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, content_id: ?string, raw: ?array<string, mixed>}
      */
     private function imageMeta(string $path, string $mime): array
     {
@@ -436,24 +440,18 @@ class PhotoStorage
         }
 
         if ($this->exifReader->available()) {
-            $meta = $this->exifReader->read($path);
-
-            // Drop the content_id key so the shape matches exif(); pairing reads
-            // it separately from the stored metadata dump.
-            unset($meta['content_id']);
-
-            return $meta;
+            return $this->exifReader->read($path);
         }
 
         return $this->exif($path, $mime);
     }
 
     /**
-     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, raw: ?array<string, mixed>}
+     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, content_id: ?string, raw: ?array<string, mixed>}
      */
     private function exif(string $path, string $mime): array
     {
-        $out = ['taken_at' => null, 'lat' => null, 'lon' => null, 'camera' => null, 'raw' => null];
+        $out = ['taken_at' => null, 'lat' => null, 'lon' => null, 'camera' => null, 'content_id' => null, 'raw' => null];
 
         if (! function_exists('exif_read_data') || ! in_array($mime, ['image/jpeg', 'image/tiff'], true)) {
             return $out;
