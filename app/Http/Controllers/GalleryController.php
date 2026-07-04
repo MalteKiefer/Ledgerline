@@ -612,22 +612,7 @@ class GalleryController extends Controller
     {
         abort_unless($photo->isVideo(), 404);
 
-        $disk = Storage::disk(config('files.disk'));
-        abort_unless($disk->exists($photo->disk_path), 404);
-
-        try {
-            return redirect()->away($disk->temporaryUrl($photo->disk_path, now()->addMinutes(30), [
-                'ResponseContentType' => $photo->mime_type,
-                'ResponseContentDisposition' => 'inline',
-            ]));
-        } catch (Throwable) {
-            // Local disk: BinaryFileResponse handles Range requests natively.
-            return response()->file($disk->path($photo->disk_path), [
-                'Content-Type' => $photo->mime_type,
-                'X-Content-Type-Options' => 'nosniff',
-                'Cache-Control' => 'private, max-age=86400',
-            ]);
-        }
+        return $this->streamMedia($photo->disk_path, (string) $photo->mime_type);
     }
 
     /**
@@ -638,17 +623,28 @@ class GalleryController extends Controller
     {
         abort_unless($photo->hasMotion(), 404);
 
+        return $this->streamMedia($photo->motion_path, 'video/mp4');
+    }
+
+    /**
+     * Stream a media file inline: redirect to a short-lived signed URL when the
+     * disk supports it (remote disk serves byte ranges), else a range-capable
+     * local file response.
+     */
+    private function streamMedia(string $path, string $contentType): Response
+    {
         $disk = Storage::disk(config('files.disk'));
-        abort_unless($disk->exists($photo->motion_path), 404);
+        abort_unless($disk->exists($path), 404);
 
         try {
-            return redirect()->away($disk->temporaryUrl($photo->motion_path, now()->addMinutes(30), [
-                'ResponseContentType' => 'video/mp4',
+            return redirect()->away($disk->temporaryUrl($path, now()->addMinutes(30), [
+                'ResponseContentType' => $contentType,
                 'ResponseContentDisposition' => 'inline',
             ]));
         } catch (Throwable) {
-            return response()->file($disk->path($photo->motion_path), [
-                'Content-Type' => 'video/mp4',
+            // Local disk: BinaryFileResponse handles Range requests natively.
+            return response()->file($disk->path($path), [
+                'Content-Type' => $contentType,
                 'X-Content-Type-Options' => 'nosniff',
                 'Cache-Control' => 'private, max-age=86400',
             ]);
