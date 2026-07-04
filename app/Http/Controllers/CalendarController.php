@@ -32,7 +32,8 @@ class CalendarController extends Controller
     public function data(Request $request, ICalService $ical): JsonResponse
     {
         $userId = $request->user()->id;
-        $calendars = Calendar::where('user_id', $userId)->orderBy('name')->get();
+        // The 'tasks' calendar is a VTODO mirror exposed over CalDAV only.
+        $calendars = Calendar::where('user_id', $userId)->where('uri', '!=', 'tasks')->orderBy('name')->get();
 
         $from = $this->parseDate($request->query('from'), '-1 month');
         $to = $this->parseDate($request->query('to'), '+2 months');
@@ -196,7 +197,7 @@ class CalendarController extends Controller
     public function destroyCalendar(Calendar $calendar): JsonResponse
     {
         $this->authorizeCalendar($calendar);
-        abort_if($calendar->uri === 'default', 422, 'The default calendar cannot be deleted.');
+        abort_if(in_array($calendar->uri, ['default', 'tasks'], true), 422, 'This calendar cannot be deleted.');
         $calendar->delete();
 
         return response()->json(['ok' => true]);

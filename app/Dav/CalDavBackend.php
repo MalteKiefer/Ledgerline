@@ -9,6 +9,7 @@ use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\DavCredential;
 use App\Services\Calendar\CalendarObjectPersister;
+use App\Services\Calendar\TodoVtodoBridge;
 use App\Services\Contacts\DavChangeLog;
 use Illuminate\Support\Facades\DB;
 use Sabre\CalDAV\Backend\AbstractBackend;
@@ -27,6 +28,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         private readonly DavContext $context,
         private readonly DavChangeLog $changes,
         private readonly CalendarObjectPersister $persister,
+        private readonly TodoVtodoBridge $todos,
     ) {}
 
     private function ownsCalendar(string $calendarId): bool
@@ -116,6 +118,9 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         if (! $this->ownsCalendar($calendarId)) {
             return [];
         }
+        if (Calendar::find($calendarId)?->isTasks()) {
+            return $this->todos->rows();
+        }
 
         return CalendarObject::where('calendar_id', $calendarId)->get()->map(fn (CalendarObject $o): array => $this->row($o))->all();
     }
@@ -124,6 +129,9 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
     {
         if (! $this->ownsCalendar($calendarId)) {
             return null;
+        }
+        if (Calendar::find($calendarId)?->isTasks()) {
+            return $this->todos->get($objectUri);
         }
         $object = CalendarObject::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
 
@@ -136,6 +144,11 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
             return null;
         }
+        if ($calendar->isTasks()) {
+            // Writing back into the to-do keeps it the source; the observer then
+            // records the change on the tasks calendar.
+            return $this->todos->write($objectUri, $calendarData);
+        }
         $this->persister->persistNew($calendar, $objectUri, $calendarData);
 
         return '"'.md5($calendarData).'"';
@@ -146,6 +159,9 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         $calendar = Calendar::find($calendarId);
         if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
             return null;
+        }
+        if ($calendar->isTasks()) {
+            return $this->todos->write($objectUri, $calendarData);
         }
         $object = CalendarObject::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
         if ($object === null) {
@@ -160,6 +176,11 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
     {
         $calendar = Calendar::find($calendarId);
         if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
+            return;
+        }
+        if ($calendar->isTasks()) {
+            $this->todos->delete($objectUri);
+
             return;
         }
         if (CalendarObject::where('calendar_id', $calendarId)->where('uri', $objectUri)->delete()) {
@@ -179,9 +200,13 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         $current = (int) $calendar->synctoken;
 
         if ($syncToken === null || $syncToken === '') {
+            $added = $calendar->isTasks()
+                ? array_column($this->todos->rows(), 'uri')
+                : CalendarObject::where('calendar_id', $calendarId)->pluck('uri')->all();
+
             return [
                 'syncToken' => (string) $current,
-                'added' => CalendarObject::where('calendar_id', $calendarId)->pluck('uri')->all(),
+                'added' => $added,
                 'modified' => [],
                 'deleted' => [],
             ];
