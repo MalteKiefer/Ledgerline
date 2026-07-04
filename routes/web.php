@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarkController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
@@ -116,6 +119,23 @@ Route::middleware('auth')->group(function (): void {
     // Contacts / CardDAV: enable + DAV credentials.
     Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
     Route::post('/settings/contacts/credentials', [SettingsContactsController::class, 'generate'])->name('settings.contacts.generate');
+
+    // Contacts UI (reload-free JSON over the CardDAV-backed store).
+    Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
+    Route::get('/contacts/data', [ContactController::class, 'data'])->name('contacts.data');
+    Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
+    Route::post('/contacts/import', [ContactController::class, 'import'])->name('contacts.import');
+    Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
+    Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
+    Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
+    Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->name('contacts.destroy');
+    Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->name('contacts.avatar');
+    Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->name('contacts.avatar.upload');
+    Route::post('/address-books', [AddressBookController::class, 'store'])->name('address-books.store');
+    Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->name('address-books.update');
+    Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->name('address-books.destroy');
+    Route::post('/contact-groups', [ContactGroupController::class, 'store'])->name('contact-groups.store');
+    Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->name('contact-groups.destroy');
 
     // Downloads/exports: max zip part size (files + gallery) and notify channels.
     Route::get('/settings/downloads', [SettingsDownloadsController::class, 'edit'])->name('settings.downloads.edit');

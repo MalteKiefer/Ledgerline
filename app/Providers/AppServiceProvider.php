@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Dav\DavContext;
+use App\Events\PersonNamed;
+use App\Listeners\LinkPersonContact;
 use App\Search\SearchManager;
 use App\Services\Mail\ImapReader;
 use App\Services\Mail\ImapStats;
@@ -55,5 +57,9 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(function (SocialiteWasCalled $event): void {
             $event->extendSocialite('pocketid', PocketIdProvider::class);
         });
+
+        // Naming a gallery person links/creates a vCard contact (avatar from the
+        // person's cover face).
+        Event::listen(PersonNamed::class, LinkPersonContact::class);
     }
 }
