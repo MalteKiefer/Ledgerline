@@ -97,6 +97,10 @@ services:
   valkey:
     image: valkey/valkey:8-alpine
     command: ["valkey-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--appendonly", "yes"]
+    environment:
+      # so the healthcheck below (which runs $$REDIS_PASSWORD inside the
+      # container) can authenticate — the password is otherwise only on the CLI.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     volumes:
       - valkey-data:/data
     networks:
