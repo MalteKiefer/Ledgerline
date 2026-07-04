@@ -7,7 +7,13 @@
         'calBase' => url('calendar/calendars'),
         'importUrl' => route('calendar.import'),
         'exportUrl' => route('calendar.export'),
+        'importFromUrl' => route('calendar.import-url'),
+        'subscribeUrl' => route('calendar.subscribe'),
         'token' => csrf_token(),
+        'importUrlPrompt' => __('calendar.ui.import_url_prompt'),
+        'subscribeUrlPrompt' => __('calendar.ui.subscribe_url_prompt'),
+        'subscribeNamePrompt' => __('calendar.ui.subscribe_name_prompt'),
+        'feedFailed' => __('calendar.ui.feed_failed'),
         'confirmDelete' => __('calendar.ui.delete_confirm'),
         'newCalendar' => __('calendar.ui.new_calendar'),
         'renameCalendar' => __('calendar.ui.rename_calendar'),
@@ -50,6 +56,8 @@
                     {{ __('calendar.ui.import') }}
                     <input type="file" accept=".ics,text/calendar" class="hidden" @change="importFile($event)">
                 </label>
+                <button @click="importFromUrl()" class="block text-left text-sm text-gray-600 hover:text-gray-900">{{ __('calendar.ui.import_url') }}</button>
+                <button @click="subscribe()" class="block text-left text-sm text-gray-600 hover:text-gray-900">{{ __('calendar.ui.subscribe') }}</button>
             </div>
         </aside>
 

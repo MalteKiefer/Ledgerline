@@ -22,6 +22,10 @@ Schedule::command('reminders:send')->everyMinute()->withoutOverlapping();
 // Fire calendar event alarms (VALARM) that have come due.
 Schedule::command('calendar:remind')->everyMinute()->withoutOverlapping();
 
+// Refresh subscribed remote ICS feeds that are due (each feed checks its own
+// interval; runs every 15 minutes).
+Schedule::command('calendar:refresh-subscriptions')->everyFifteenMinutes()->withoutOverlapping();
+
 // Pull every mail account into the local archive (server-deleted mail is kept).
 Schedule::command('mail:sync')->hourly()->withoutOverlapping();
 
