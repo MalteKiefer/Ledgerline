@@ -114,6 +114,62 @@ class CalendarAuditFixesTest extends TestCase
         }
     }
 
+    public function test_sync_collection_does_not_re_report_changes(): void
+    {
+        app(DavCredentialService::class)->generate(1);
+        app(DavContext::class)->set(1);
+        $cal = Calendar::where('user_id', 1)->where('uri', 'default')->firstOrFail();
+        $backend = app(CalDavBackend::class);
+        $backend->createCalendarObject($cal->id, 'e.ics', "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:e\r\nSUMMARY:S\r\nDTSTART:20260901T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+
+        // First delta sync from the initial token sees the change...
+        $first = $backend->getChangesForCalendar($cal->id, '1', 1);
+        $this->assertContains('e.ics', $first['added']);
+
+        // ...and syncing again from the token it returned sees nothing new.
+        $second = $backend->getChangesForCalendar($cal->id, $first['syncToken'], 1);
+        $this->assertSame([], $second['added']);
+        $this->assertSame([], $second['modified']);
+        $this->assertSame([], $second['deleted']);
+    }
+
+    public function test_all_day_event_uses_exclusive_dtend_and_round_trips_inclusive(): void
+    {
+        $ical = app(ICalService::class);
+        $ics = $ical->buildEvent(['summary' => 'Trip', 'start' => '2026-07-01', 'end' => '2026-07-03', 'all_day' => true]);
+        // Exclusive DTEND on the wire: last day 07-03 → DTEND 07-04.
+        $this->assertStringContainsString('DTEND;VALUE=DATE:20260704', $ics);
+        // Editor sees the inclusive last day again.
+        $this->assertSame('2026-07-03', $ical->editable($ics)['end']);
+
+        // Single-day all-day event is a valid 1-day interval, not zero-duration.
+        $one = $ical->buildEvent(['summary' => 'Day', 'start' => '2026-07-01', 'all_day' => true]);
+        $this->assertStringContainsString('DTSTART;VALUE=DATE:20260701', $one);
+        $this->assertStringContainsString('DTEND;VALUE=DATE:20260702', $one);
+    }
+
+    public function test_alarms_do_not_fire_for_read_only_calendars(): void
+    {
+        $user = User::factory()->create();
+        $sub = Calendar::create([
+            'user_id' => $user->id, 'uri' => 'feed', 'name' => 'Sub', 'components' => ['VEVENT'],
+            'synctoken' => 1, 'read_only' => true, 'subscription_url' => 'https://example.com/f.ics',
+        ]);
+        $start = now()->addMinutes(10);
+        $ics = app(ICalService::class)->buildEvent([
+            'summary' => 'Sub event', 'start' => $start->format('Y-m-d\TH:i'),
+            'end' => (clone $start)->addMinutes(30)->format('Y-m-d\TH:i'), 'reminder_minutes' => 15,
+        ]);
+        app(CalendarObjectPersister::class)->persistNew($sub, 'x.ics', $ics);
+
+        $notifier = \Mockery::mock(\App\Services\Notifications\ChannelNotifier::class);
+        $notifier->shouldNotReceive('send');
+        $this->app->instance(\App\Services\Notifications\ChannelNotifier::class, $notifier);
+
+        $this->artisan('calendar:remind')->assertSuccessful();
+        $this->assertSame(0, DB::table('calendar_alarm_log')->count());
+    }
+
     public function test_web_cannot_create_events_in_the_tasks_calendar(): void
     {
         $user = $this->signIn();

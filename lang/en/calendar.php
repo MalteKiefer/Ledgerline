@@ -15,6 +15,7 @@ return [
         'week_abbr' => 'Wk',
         'birthdays_calendar' => 'Birthdays',
         'anniversaries_calendar' => 'Anniversaries',
+        'holidays_calendar' => 'Holidays',
         'birthday_of' => ":name's birthday",
         'anniversary_of' => ':name – anniversary',
         'unnamed_contact' => 'Unnamed',
