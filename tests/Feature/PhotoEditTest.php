@@ -7,6 +7,8 @@ namespace Tests\Feature;
 use App\Jobs\ProcessPhoto;
 use App\Models\AppSettings;
 use App\Models\Photo;
+use App\Services\Gallery\ExifWriter;
+use App\Services\Gallery\GalleryFormats;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\VideoProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,6 +70,38 @@ class PhotoEditTest extends TestCase
         $res->assertOk();
         $res->assertDownload('x.jpg');
         $this->assertSame("\xFF\xD8", substr($res->getFile()->getContent(), 0, 2)); // JPEG SOI marker
+    }
+
+    public function test_edited_heic_download_stays_heic_and_is_not_relabelled_jpeg(): void
+    {
+        $formats = app(GalleryFormats::class);
+        if (! $formats->heicSupported() || ! app(ExifWriter::class)->available()) {
+            $this->markTestSkipped('Needs a HEIC-capable Imagick and exiftool.');
+        }
+
+        Storage::fake('files');
+        $this->signIn();
+
+        $imagick = new \Imagick;
+        $imagick->newImage(6, 4, new \ImagickPixel('#112233'));
+        $imagick->setImageFormat('heic');
+        $heic = $imagick->getImagesBlob();
+        $imagick->clear();
+
+        $photo = Photo::factory()->create([
+            'disk_path' => 'photos/x.heic', 'mime_type' => 'image/heic', 'name' => 'x.heic',
+            'rotation' => 90, 'taken_at' => now(), 'latitude' => 52.5, 'longitude' => 13.4, 'camera' => 'TestCam',
+        ]);
+        Storage::disk('files')->put('photos/x.heic', $heic);
+
+        $res = $this->get(route('gallery.download.edited', $photo));
+
+        $res->assertOk()->assertDownload('x.heic');
+        $content = $res->getFile()->getContent();
+        // Not a JPEG (SOI marker) — the edited HEIC kept its container.
+        $this->assertNotSame("\xFF\xD8", substr($content, 0, 2));
+        // ISO-BMFF 'ftyp' box marks a HEIF/HEIC container.
+        $this->assertStringContainsString('ftyp', substr($content, 0, 32));
     }
 
     public function test_edited_png_download_embeds_an_exif_chunk(): void
