@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\BuildExport;
+use App\Models\Export;
 use App\Models\FileFolder;
 use App\Models\StoredFile;
 use App\Support\Tags;
@@ -178,6 +180,40 @@ class FileController extends Controller
             'Content-Security-Policy' => "default-src 'none'; sandbox",
             'Cache-Control' => 'private, no-store',
         ], 'attachment');
+    }
+
+    /**
+     * Queue an asynchronous export of the selected files and/or folders. A worker
+     * zips them in the background (folders keep their tree); the user collects the
+     * result from the Downloads page.
+     */
+    public function queueExport(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'file_ids' => ['nullable', 'array', 'max:20000'],
+            'file_ids.*' => ['string'],
+            'folder_ids' => ['nullable', 'array', 'max:5000'],
+            'folder_ids.*' => ['string'],
+        ]);
+
+        $fileIds = array_values($validated['file_ids'] ?? []);
+        $folderIds = array_values($validated['folder_ids'] ?? []);
+        abort_if($fileIds === [] && $folderIds === [], 422, 'Nothing selected.');
+
+        $count = count($fileIds) + count($folderIds);
+
+        $export = Export::create([
+            'user_id' => $request->user()->id,
+            'source' => 'files',
+            'title' => trans_choice('downloads.title.files', $count, ['count' => $count]),
+            'status' => 'queued',
+            'item_count' => $count,
+            'payload' => ['file_ids' => $fileIds, 'folder_ids' => $folderIds],
+        ]);
+
+        BuildExport::dispatch($export->id);
+
+        return response()->json(['queued' => true, 'export_id' => $export->id], 202);
     }
 
     /** Delete a stored file's bytes (after its row was removed via sync). */

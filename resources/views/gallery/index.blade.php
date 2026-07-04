@@ -93,12 +93,10 @@
         x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
         @location-picked.window="if ($event.detail.context === 'bulk') { lat = $event.detail.lat; lng = $event.detail.lng; }">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
-        <form method="POST" action="{{ route('gallery.download') }}" class="flex items-center gap-2">
-            @csrf
-            <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
-            <button type="submit" name="variant" value="original" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_original') }}</button>
-            <button type="submit" name="variant" value="edited" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_edited') }}</button>
-        </form>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="queueExport('original', '{{ __('downloads.queued_toast') }}')" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_original') }}</button>
+            <button type="button" @click="queueExport('edited', '{{ __('downloads.queued_toast') }}')" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_edited') }}</button>
+        </div>
         <button type="button" @click="locationOpen = true" title="{{ __('gallery.set_location') }}" aria-label="{{ __('gallery.set_location') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="map-pin" class="h-5 w-5" /></button>
         <button type="button" @click="deleteOpen = true" title="{{ __('gallery.delete') }}" aria-label="{{ __('gallery.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
 

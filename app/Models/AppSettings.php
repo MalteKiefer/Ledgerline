@@ -41,6 +41,12 @@ use Illuminate\Database\Eloquent\Model;
     'paperless_url',
     'paperless_token',
     'paperless_synced_at',
+    'export_files_max_zip_mb',
+    'export_gallery_max_zip_mb',
+    'export_notify_desktop',
+    'export_notify_ntfy',
+    'export_notify_mail',
+    'export_notify_webhook',
 ])]
 class AppSettings extends Model
 {
@@ -79,6 +85,12 @@ class AppSettings extends Model
             'paperless_url' => 'encrypted',
             'paperless_token' => 'encrypted',
             'paperless_synced_at' => 'datetime',
+            'export_files_max_zip_mb' => 'integer',
+            'export_gallery_max_zip_mb' => 'integer',
+            'export_notify_desktop' => 'boolean',
+            'export_notify_ntfy' => 'boolean',
+            'export_notify_mail' => 'boolean',
+            'export_notify_webhook' => 'boolean',
         ];
     }
 

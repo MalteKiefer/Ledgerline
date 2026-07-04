@@ -238,6 +238,116 @@ Alpine.data('backupRuns', (labels = {}) => ({
 }));
 
 /**
+ * Fire a transient toast. `url` (optional) renders a link inside the toast.
+ */
+function toast(message, url = null) {
+    window.dispatchEvent(new CustomEvent('ll-toast', { detail: { message, url } }));
+}
+window.llToast = toast;
+
+/**
+ * Toast hub rendered once in the layout; listens for `ll-toast` events.
+ */
+Alpine.data('toastHub', (labels = {}) => ({
+    items: [],
+    init() {
+        window.addEventListener('ll-toast', (e) => this.push(e.detail));
+    },
+    push({ message, url }) {
+        const id = Date.now() + Math.random();
+        this.items.push({ id, message, url, linkLabel: labels.link || '' });
+        setTimeout(() => this.dismiss(id), 6000);
+    },
+    dismiss(id) {
+        this.items = this.items.filter((i) => i.id !== id);
+    },
+}));
+
+/**
+ * Downloads center: lists the user's async exports, polls while any are still
+ * building, supports multiselect delete, and streams finished zip parts.
+ */
+Alpine.data('downloadsPage', (labels = {}) => ({
+    exports: [],
+    selected: [],
+    loading: true,
+    _timer: null,
+
+    init() {
+        this.load();
+        this._timer = setInterval(() => {
+            if (! document.hidden && this.anyBuilding()) this.load();
+        }, 4000);
+    },
+
+    anyBuilding() {
+        return this.exports.some((e) => e.status === 'queued' || e.status === 'processing');
+    },
+
+    async load() {
+        try {
+            const res = await fetch(labels.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            this.exports = (await res.json()).exports ?? [];
+            // Drop selections that no longer exist.
+            const ids = new Set(this.exports.map((e) => e.id));
+            this.selected = this.selected.filter((id) => ids.has(id));
+        } catch (e) { /* keep current on error */ } finally {
+            this.loading = false;
+        }
+    },
+
+    statusLabel(status) { return (labels.status || {})[status] || status; },
+    sourceLabel(e) {
+        const src = (labels.source || {})[e.source] || e.source;
+        const variant = e.variant ? (labels.variant || {})[e.variant] : '';
+        return variant ? `${src} · ${variant}` : src;
+    },
+
+    metaLine(e) {
+        const parts = [];
+        if (e.total_size) parts.push(this.humanSize(e.total_size));
+        if (e.part_count > 1) parts.push(`${e.part_count}×`);
+        if (e.expires_at) {
+            const when = new Date(e.expires_at).toLocaleDateString();
+            parts.push((labels.expires || '__W__').replace('__W__', when));
+        }
+        return parts.join(' · ');
+    },
+
+    humanSize(bytes) {
+        if (! bytes) return '0 B';
+        const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0)} ${u[i]}`;
+    },
+
+    async destroy(id) {
+        await this._destroy([id]);
+    },
+
+    async destroySelected() {
+        if (! this.selected.length) return;
+        if (! window.confirm(labels.confirmDelete)) return;
+        await this._destroy([...this.selected]);
+        this.selected = [];
+    },
+
+    async _destroy(ids) {
+        // Optimistic removal; reconcile on next load.
+        this.exports = this.exports.filter((e) => ! ids.includes(e.id));
+        try {
+            await fetch(labels.destroyUrl, {
+                method: 'DELETE',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
+                body: JSON.stringify({ ids }),
+            });
+        } catch (e) { /* next load reconciles */ }
+        this.load();
+    },
+}));
+
+/**
  * Paperless settings page: connection test and on-demand cache refresh, both
  * over AJAX so the page needn't reload.
  */
@@ -614,6 +724,20 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         if (this.viewerOpen && (b.ids ?? []).includes(Number(this.current.id))) this.viewerOpen = false;
         this.applySelection([]);
         return true;
+    },
+
+    // Queue an async export of the current selection; a worker builds the zip and
+    // it appears under Downloads. Shows a toast instead of a synchronous download.
+    async queueExport(variant, queuedMsg) {
+        if (! this.selected.length) return;
+        try {
+            const res = await fetch('/gallery/export', {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
+                body: JSON.stringify({ photo_ids: this.selected, variant }),
+            });
+            if (res.ok) window.llToast(queuedMsg, '/downloads');
+        } catch (e) { /* ignore; user can retry */ }
     },
 
     // Bulk set location without a reload; returns success so the modal can close.
@@ -1870,62 +1994,25 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
-    // Download the selection (files + folders, recursively) as one zip built in
-    // the browser, folder structure preserved. Large sets build in memory, so
-    // confirm above 2 GiB.
+    // Queue an async export of the selection (files + folders). A worker builds
+    // the zip(s) server-side (folder structure preserved) and it appears under
+    // Downloads — no in-browser zipping or memory pressure.
     async bulkDownload() {
         const refs = this.selectionRefs;
         if (! refs.length) return;
 
-        const jobs = [];
-        const byId = new Map(this.manifest.folders.map((x) => [x.id, x]));
-        const folderPath = (id) => {
-            const parts = [];
-            let cur = id;
-            while (cur != null && byId.has(cur)) { parts.unshift(byId.get(cur).name); cur = byId.get(cur).parent; }
-            return parts;
-        };
-        for (const ref of refs) {
-            if (ref.kind === 'file') {
-                const f = this.manifest.files.find((x) => x.id === ref.id);
-                if (f) jobs.push({ file: f, path: f.name });
-            } else {
-                const tree = this.subtree(ref.id);
-                const base = folderPath(byId.get(ref.id)?.parent ?? null);
-                for (const f of this.manifest.files) {
-                    if (f.folder != null && tree.has(f.folder)) {
-                        const rel = folderPath(f.folder).slice(base.length);
-                        jobs.push({ file: f, path: [...rel, f.name].join('/') });
-                    }
-                }
-            }
-        }
-        if (! jobs.length) return;
+        const file_ids = refs.filter((r) => r.kind === 'file').map((r) => r.id);
+        const folder_ids = refs.filter((r) => r.kind !== 'file').map((r) => r.id);
+        if (! file_ids.length && ! folder_ids.length) return;
 
-        const total = jobs.reduce((n, j) => n + (j.file.size || 0), 0);
-        if (total > 2 * 1024 * 1024 * 1024 && ! window.confirm(labels.largeZip)) return;
-
-        const JSZip = await loadJSZip();
-        const zip = new JSZip();
-        const used = new Set();
-        this.dl = { active: true, done: 0, total: jobs.length };
-        for (const job of jobs) {
-            try {
-                let candidate = job.path;
-                let i = 1;
-                while (used.has(candidate)) {
-                    const dot = job.path.lastIndexOf('.');
-                    candidate = dot > 0 ? `${job.path.slice(0, dot)} (${++i})${job.path.slice(dot)}` : `${job.path} (${++i})`;
-                }
-                used.add(candidate);
-                zip.file(candidate, await this.fetchPlain(job.file));
-            } catch (e) { /* skip an unfetchable file */ }
-            this.dl.done++;
-        }
-
-        const blob = await zip.generateAsync({ type: 'blob' });
-        saveBlobAs(new Uint8Array(await blob.arrayBuffer()), 'files.zip', 'application/zip');
-        this.dl.active = false;
+        try {
+            const res = await fetch(labels.exportUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ file_ids, folder_ids }),
+            });
+            if (res.ok) window.llToast(labels.exportQueued, labels.downloadsUrl);
+        } catch (e) { /* user can retry */ }
         this.selected = [];
     },
 

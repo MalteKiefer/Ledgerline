@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Jobs\BuildExport;
 use App\Jobs\ProcessPhoto;
 use App\Models\AppSettings;
+use App\Models\Export;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
 use App\Services\Gallery\GalleryFormats;
@@ -510,6 +512,36 @@ class GalleryController extends Controller
         }
 
         return response()->download($tmp, 'photos.zip', ['Content-Type' => 'application/zip'])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Queue an asynchronous export of the selected photos. A worker builds the
+     * zip(s) in the background; the user collects them from the Downloads page.
+     */
+    public function queueExport(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'photo_ids' => ['required', 'array', 'max:5000'],
+            'photo_ids.*' => ['integer'],
+            'variant' => ['nullable', 'in:original,edited'],
+        ]);
+
+        $variant = $validated['variant'] ?? 'original';
+        $count = count($validated['photo_ids']);
+
+        $export = Export::create([
+            'user_id' => $request->user()->id,
+            'source' => 'gallery',
+            'variant' => $variant,
+            'title' => trans_choice('downloads.title.gallery', $count, ['count' => $count]),
+            'status' => 'queued',
+            'item_count' => $count,
+            'payload' => ['photo_ids' => array_values($validated['photo_ids'])],
+        ]);
+
+        BuildExport::dispatch($export->id);
+
+        return response()->json(['queued' => true, 'export_id' => $export->id], 202);
     }
 
     /**
