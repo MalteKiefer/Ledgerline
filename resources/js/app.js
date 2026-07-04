@@ -2495,7 +2495,24 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     sortedFolders(list) {
-        return [...(list ?? [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
+        // Dedupe by path: some servers (iCloud) intermittently return a folder
+        // twice — once as a \Noselect container (selectable:false → rendered as
+        // an uppercase section header) and once selectable — which showed each
+        // folder both as a header and a row. Merge duplicates, keeping it
+        // selectable and the larger counts.
+        const byPath = new Map();
+        for (const f of (list ?? [])) {
+            const prev = byPath.get(f.path);
+            byPath.set(f.path, prev ? {
+                ...prev, ...f,
+                selectable: prev.selectable !== false || f.selectable !== false,
+                total: Math.max(prev.total || 0, f.total || 0),
+                unseen: Math.max(prev.unseen || 0, f.unseen || 0),
+                role: prev.role ?? f.role ?? null,
+            } : f);
+        }
+
+        return [...byPath.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
     },
 
     /* ---- Reader ---- */
