@@ -74,6 +74,12 @@ final class OutboundUrl
 
     private static function ipAllowed(string $ip): bool
     {
+        // An IPv4-mapped/compatible IPv6 literal (::ffff:169.254.169.254,
+        // ::a9fe:a9fe, ::169.254.169.254, …) must be judged by the IPv4 it
+        // embeds — otherwise the checks below are trivially bypassed to reach
+        // loopback / the cloud metadata endpoint.
+        $ip = self::embeddedIpv4($ip) ?? $ip;
+
         // Always refuse link-local (covers the 169.254.169.254 metadata service).
         if (self::isLinkLocal($ip)) {
             return false;
@@ -88,6 +94,29 @@ final class OutboundUrl
         }
 
         return true;
+    }
+
+    /**
+     * If $ip is an IPv4-mapped or IPv4-compatible IPv6 address, return the
+     * embedded dotted IPv4; otherwise null. Operates on the canonical packed
+     * form so every textual representation is covered.
+     */
+    private static function embeddedIpv4(string $ip): ?string
+    {
+        $packed = @inet_pton($ip);
+        if ($packed === false || strlen($packed) !== 16) {
+            return null;
+        }
+        if (substr($packed, 0, 10) !== str_repeat("\0", 10)) {
+            return null;
+        }
+        $marker = substr($packed, 10, 2);
+        if ($marker !== "\xff\xff" && $marker !== "\0\0") {
+            return null;
+        }
+        $v4 = @inet_ntop(substr($packed, 12, 4));
+
+        return ($v4 !== false && filter_var($v4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) ? $v4 : null;
     }
 
     private static function isLinkLocal(string $ip): bool

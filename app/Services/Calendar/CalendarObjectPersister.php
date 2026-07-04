@@ -16,10 +16,19 @@ use App\Services\Contacts\DavChangeLog;
  */
 class CalendarObjectPersister
 {
+    /** Hard ceiling for a single calendar object's ICS (a real VEVENT/VTODO is KBs). */
+    public const MAX_ICS_BYTES = 1_048_576;
+
     public function __construct(
         private readonly ICalService $ical,
         private readonly DavChangeLog $changes,
     ) {}
+
+    /** Whether an ICS payload is within the per-object size limit. */
+    public static function withinLimit(string $ics): bool
+    {
+        return strlen($ics) <= self::MAX_ICS_BYTES;
+    }
 
     public function persistNew(Calendar $calendar, string $uri, string $ics): CalendarObject
     {

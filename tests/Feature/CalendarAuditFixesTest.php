@@ -1,0 +1,129 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Dav\CalDavBackend;
+use App\Dav\DavContext;
+use App\Models\Calendar;
+use App\Models\User;
+use App\Services\Calendar\CalendarObjectPersister;
+use App\Services\Calendar\ICalService;
+use App\Services\Contacts\DavCredentialService;
+use App\Support\OutboundUrl;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Sabre\DAV\Exception\Forbidden;
+use Tests\TestCase;
+
+class CalendarAuditFixesTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_ssrf_guard_blocks_ipv4_mapped_ipv6_metadata(): void
+    {
+        // Cloud metadata reached via an IPv4-mapped/compatible IPv6 literal.
+        $this->assertFalse(OutboundUrl::safe('http://[::ffff:169.254.169.254]/latest/meta-data/'));
+        $this->assertFalse(OutboundUrl::safe('http://[::ffff:a9fe:a9fe]/'));
+        $this->assertFalse(OutboundUrl::safe('http://[::169.254.169.254]/'));
+        // A legitimate public host still passes.
+        $this->assertTrue(OutboundUrl::safe('https://[::ffff:8.8.8.8]/x.ics'));
+    }
+
+    public function test_rrule_crlf_injection_is_rejected(): void
+    {
+        $ical = app(ICalService::class);
+        // A CRLF-injection payload must never smuggle extra properties/components.
+        $ics = $ical->buildEvent([
+            'summary' => 'X', 'start' => '2026-09-01 10:00', 'end' => '2026-09-01 11:00',
+            'rrule' => "FREQ=DAILY\r\nSUMMARY:injected\r\nX-EVIL:1",
+        ]);
+        $this->assertStringNotContainsString('X-EVIL', $ics);
+        $this->assertSame(1, substr_count($ics, 'SUMMARY:'));
+        $this->assertStringNotContainsString('RRULE', $ics); // whole tainted value dropped
+
+        // A clean recurrence rule survives.
+        $ok = $ical->buildEvent([
+            'summary' => 'X', 'start' => '2026-09-01 10:00', 'end' => '2026-09-01 11:00',
+            'rrule' => 'FREQ=WEEKLY;COUNT=5',
+        ]);
+        $this->assertStringContainsString('RRULE:FREQ=WEEKLY;COUNT=5', $ok);
+    }
+
+    public function test_subscription_url_is_encrypted_at_rest(): void
+    {
+        $user = User::factory()->create();
+        $secret = 'https://example.com/feed.ics?token=SUPERSECRET';
+        $cal = Calendar::create([
+            'user_id' => $user->id, 'uri' => 'feed', 'name' => 'Sub', 'components' => ['VEVENT'],
+            'synctoken' => 1, 'read_only' => true, 'subscription_url' => $secret,
+        ]);
+
+        $raw = DB::table('calendars')->where('id', $cal->id)->value('subscription_url');
+        $this->assertNotSame($secret, $raw);
+        $this->assertStringNotContainsString('SUPERSECRET', (string) $raw);
+        $this->assertSame($secret, $cal->fresh()->subscription_url);
+    }
+
+    public function test_caldav_rows_carry_calendarid_and_calendar_query_runs(): void
+    {
+        app(DavCredentialService::class)->generate(1);
+        app(DavContext::class)->set(1);
+        $cal = Calendar::where('user_id', 1)->where('uri', 'default')->firstOrFail();
+        $backend = app(CalDavBackend::class);
+        $backend->createCalendarObject($cal->id, 'e.ics', "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:e\r\nSUMMARY:Q\r\nDTSTART:20260901T100000Z\r\nDTEND:20260901T110000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n");
+
+        $rows = $backend->getCalendarObjects($cal->id);
+        $this->assertArrayHasKey('calendarid', $rows[0]);
+
+        // The inherited AbstractBackend calendar-query fallback must not fatal.
+        $filters = [
+            'name' => 'VCALENDAR',
+            'comp-filters' => [[
+                'name' => 'VEVENT', 'comp-filters' => [], 'prop-filters' => [],
+                'is-not-defined' => false, 'time-range' => null,
+            ]],
+            'prop-filters' => [], 'is-not-defined' => false, 'time-range' => null,
+        ];
+        $this->assertContains('e.ics', $backend->calendarQuery($cal->id, $filters));
+    }
+
+    public function test_oversized_caldav_object_is_rejected(): void
+    {
+        app(DavCredentialService::class)->generate(1);
+        app(DavContext::class)->set(1);
+        $cal = Calendar::where('user_id', 1)->where('uri', 'default')->firstOrFail();
+        $backend = app(CalDavBackend::class);
+
+        $huge = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:big\r\nSUMMARY:".str_repeat('A', CalendarObjectPersister::MAX_ICS_BYTES + 10)."\r\nDTSTART:20260901T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        $this->expectException(Forbidden::class);
+        $backend->createCalendarObject($cal->id, 'big.ics', $huge);
+    }
+
+    public function test_derived_and_reserved_calendars_are_undeletable(): void
+    {
+        $user = $this->signIn();
+        foreach (['default', 'tasks', 'birthdays', 'anniversaries', 'holidays'] as $uri) {
+            $cal = Calendar::create([
+                'user_id' => $user->id, 'uri' => $uri, 'name' => ucfirst($uri),
+                'components' => ['VEVENT'], 'synctoken' => 1,
+            ]);
+            $this->deleteJson(route('calendar.calendars.destroy', $cal))->assertStatus(422);
+            $this->assertDatabaseHas('calendars', ['id' => $cal->id]);
+        }
+    }
+
+    public function test_web_cannot_create_events_in_the_tasks_calendar(): void
+    {
+        $user = $this->signIn();
+        $tasks = Calendar::create([
+            'user_id' => $user->id, 'uri' => 'tasks', 'name' => 'Tasks',
+            'components' => ['VTODO'], 'synctoken' => 1,
+        ]);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $tasks->id, 'summary' => 'X', 'start' => '2026-09-01T10:00', 'end' => '2026-09-01T11:00',
+        ])->assertForbidden();
+    }
+}

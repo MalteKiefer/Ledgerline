@@ -94,6 +94,24 @@ class ICalService
         return $interval->invert === 1 ? $minutes : 0;
     }
 
+    /**
+     * Sanitise a user-supplied RRULE before it is written as a structured
+     * property: strip control characters (CRLF injection guard) and enforce an
+     * RFC5545 recurrence-rule charset, so it can never smuggle extra properties
+     * or components. Returns null if nothing valid remains.
+     */
+    public function sanitizeRrule(string $rrule): ?string
+    {
+        $rrule = strtoupper(trim(preg_replace('/[\x00-\x1F\x7F]+/', '', $rrule) ?? ''));
+        // FREQ=…;INTERVAL=…;BYDAY=MO,TU;UNTIL=20260101T000000Z etc. — letters,
+        // digits, and the RRULE separators only. No ':' or whitespace.
+        if ($rrule === '' || preg_match('/^[A-Z0-9;=,\-+]+$/', $rrule) !== 1 || ! str_contains($rrule, 'FREQ=')) {
+            return null;
+        }
+
+        return $rrule;
+    }
+
     /** Extract the first component's UID (to preserve it across edits). */
     public function uid(string $ics): ?string
     {
@@ -140,7 +158,10 @@ class ICalService
             }
         }
         if (filled($data['rrule'] ?? null)) {
-            $vevent->add('RRULE', (string) $data['rrule']);
+            $rrule = $this->sanitizeRrule((string) $data['rrule']);
+            if ($rrule !== null) {
+                $vevent->add('RRULE', $rrule);
+            }
         }
         // Reminder: minutes-before as a VALARM DISPLAY trigger.
         if (filled($data['reminder_minutes'] ?? null)) {

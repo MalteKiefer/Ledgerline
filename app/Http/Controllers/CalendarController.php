@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\CalendarUri;
 use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
@@ -45,7 +46,11 @@ class CalendarController extends Controller
     {
         $userId = $request->user()->id;
         // The 'tasks' calendar is a VTODO mirror exposed over CalDAV only.
-        $calendars = Calendar::where('user_id', $userId)->where('uri', '!=', 'tasks')->orderBy('name')->get();
+        // Virtual calendars (VTODO 'tasks') are CalDAV-only; the web calendar
+        // shows real + derived VEVENT calendars.
+        $calendars = Calendar::where('user_id', $userId)
+            ->whereNotIn('uri', CalendarUri::virtual())
+            ->orderBy('name')->get();
 
         $from = $this->parseDate($request->query('from'), '-1 month');
         $to = $this->parseDate($request->query('to'), '+2 months');
@@ -104,7 +109,7 @@ class CalendarController extends Controller
     {
         $data = $this->validated($request);
         $calendar = $this->ownedCalendar($request, $data['calendar_id']);
-        abort_if($calendar->isReadOnly(), 403);
+        abort_if(! $calendar->isWritableByUser(), 403);
 
         $object = $writer->create($calendar, $data);
 
@@ -114,13 +119,13 @@ class CalendarController extends Controller
     public function update(Request $request, CalendarObject $object, CalendarWriter $writer): JsonResponse
     {
         $this->authorizeObject($object);
-        abort_if($object->calendar->isReadOnly(), 403);
+        abort_if(! $object->calendar->isWritableByUser(), 403);
         $data = $this->validated($request);
 
         // Allow moving the event to another owned, writable calendar.
         if ($data['calendar_id'] !== $object->calendar_id) {
             $target = $this->ownedCalendar($request, $data['calendar_id']);
-            abort_if($target->isReadOnly(), 403);
+            abort_if(! $target->isWritableByUser(), 403);
             $writer->delete($object);
 
             return response()->json(['id' => $writer->create($target, $data)->id]);
@@ -134,7 +139,7 @@ class CalendarController extends Controller
     public function destroy(CalendarObject $object, CalendarWriter $writer): JsonResponse
     {
         $this->authorizeObject($object);
-        abort_if($object->calendar->isReadOnly(), 403);
+        abort_if(! $object->calendar->isWritableByUser(), 403);
         $writer->delete($object);
 
         return response()->json(['ok' => true]);
@@ -169,7 +174,7 @@ class CalendarController extends Controller
             'calendar_id' => ['required', 'string'],
         ]);
         $calendar = $this->ownedCalendar($request, $data['calendar_id']);
-        abort_if($calendar->isReadOnly(), 403);
+        abort_if(! $calendar->isWritableByUser(), 403);
 
         try {
             $body = $fetcher->fetch($data['url']);
@@ -217,11 +222,13 @@ class CalendarController extends Controller
     public function import(Request $request, CalendarImporter $importer): JsonResponse
     {
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:51200'],
+            // 5 MB: large enough for real calendars, small enough to keep peak
+            // parse memory well under the worker limit.
+            'file' => ['required', 'file', 'max:5120'],
             'calendar_id' => ['required', 'string'],
         ]);
         $calendar = $this->ownedCalendar($request, $data['calendar_id']);
-        abort_if($calendar->isReadOnly(), 403);
+        abort_if(! $calendar->isWritableByUser(), 403);
 
         $result = $importer->import($calendar, (string) file_get_contents($request->file('file')->getRealPath()));
 
@@ -262,7 +269,7 @@ class CalendarController extends Controller
     public function destroyCalendar(Calendar $calendar): JsonResponse
     {
         $this->authorizeCalendar($calendar);
-        abort_if(in_array($calendar->uri, ['default', 'tasks'], true), 422, 'This calendar cannot be deleted.');
+        abort_if($calendar->isUndeletable(), 422, 'This calendar cannot be deleted.');
         $calendar->delete();
 
         return response()->json(['ok' => true]);
