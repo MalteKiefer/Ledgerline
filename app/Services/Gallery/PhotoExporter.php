@@ -6,6 +6,7 @@ namespace App\Services\Gallery;
 
 use App\Models\Photo;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Direction;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Encoders\AvifEncoder;
@@ -222,7 +223,7 @@ class PhotoExporter
             $image->rotate(360 - $rotation);
         }
         if ($photo->flipped) {
-            $image->flop();
+            $image->flip(Direction::HORIZONTAL);
         }
 
         return $image;
