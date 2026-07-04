@@ -81,45 +81,50 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings', SettingsController::class)->name('settings');
     Route::get('/settings/calendar', [SettingsCalendarController::class, 'edit'])->name('settings.calendar.edit');
     Route::put('/settings/calendar', [SettingsCalendarController::class, 'update'])->name('settings.calendar.update');
-    Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
-    Route::put('/settings/gallery', [SettingsGalleryController::class, 'update'])->name('settings.gallery.update');
-    Route::post('/settings/gallery/rescan', [SettingsGalleryController::class, 'rescan'])->name('settings.gallery.rescan');
-    Route::post('/settings/gallery/regenerate', [SettingsGalleryController::class, 'regenerate'])->name('settings.gallery.regenerate');
-    Route::post('/settings/gallery/rename', [SettingsGalleryController::class, 'rename'])->name('settings.gallery.rename');
-    Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
-    Route::post('/settings/gallery/detect-duplicates', [SettingsGalleryController::class, 'detectDuplicates'])->name('settings.gallery.detect-duplicates');
-    Route::post('/settings/gallery/detect-faces', [SettingsGalleryController::class, 'detectFaces'])->name('settings.gallery.detect-faces');
-    Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
-    Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
 
-    // Mail settings (accounts + background-sync interval).
-    Route::get('/settings/mail', [SettingsMailController::class, 'edit'])->name('settings.mail.edit');
-    Route::put('/settings/mail', [SettingsMailController::class, 'update'])->name('settings.mail.update');
+    // Non-personal, workspace-wide settings — restricted to the Pocket-ID admin
+    // group (config services.pocketid.admin_group; open to all when unset).
+    Route::middleware('can:manage-global-settings')->group(function (): void {
+        Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
+        Route::put('/settings/gallery', [SettingsGalleryController::class, 'update'])->name('settings.gallery.update');
+        Route::post('/settings/gallery/rescan', [SettingsGalleryController::class, 'rescan'])->name('settings.gallery.rescan');
+        Route::post('/settings/gallery/regenerate', [SettingsGalleryController::class, 'regenerate'])->name('settings.gallery.regenerate');
+        Route::post('/settings/gallery/rename', [SettingsGalleryController::class, 'rename'])->name('settings.gallery.rename');
+        Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
+        Route::post('/settings/gallery/detect-duplicates', [SettingsGalleryController::class, 'detectDuplicates'])->name('settings.gallery.detect-duplicates');
+        Route::post('/settings/gallery/detect-faces', [SettingsGalleryController::class, 'detectFaces'])->name('settings.gallery.detect-faces');
+        Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
+        Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
 
-    // Paperless-ngx integration (instance URL + API token, cached terms).
-    Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
-    Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
-    Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->name('settings.paperless.test');
-    Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->name('settings.paperless.sync');
+        // Mail settings (accounts + background-sync interval).
+        Route::get('/settings/mail', [SettingsMailController::class, 'edit'])->name('settings.mail.edit');
+        Route::put('/settings/mail', [SettingsMailController::class, 'update'])->name('settings.mail.update');
 
-    // Notification channels (mail / NTFY / webhook).
-    Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
-    Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
-    Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->name('settings.notifications.test');
+        // Paperless-ngx integration (instance URL + API token, cached terms).
+        Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
+        Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
+        Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->name('settings.paperless.test');
+        Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->name('settings.paperless.sync');
 
-    // Backup destinations, jobs and run history.
-    Route::get('/settings/backup', [SettingsBackupController::class, 'index'])->name('settings.backup.index');
-    Route::post('/settings/backup/destinations', [SettingsBackupController::class, 'storeDestination'])->name('settings.backup.destinations.store');
-    Route::match(['post', 'put'], '/settings/backup/destinations/test', [SettingsBackupController::class, 'testDestination'])->name('settings.backup.destinations.test');
-    Route::put('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'updateDestination'])->name('settings.backup.destinations.update');
-    Route::delete('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'destroyDestination'])->name('settings.backup.destinations.destroy');
-    Route::post('/settings/backup/jobs', [SettingsBackupController::class, 'storeJob'])->name('settings.backup.jobs.store');
-    Route::put('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'updateJob'])->name('settings.backup.jobs.update');
-    Route::delete('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'destroyJob'])->name('settings.backup.jobs.destroy');
-    Route::post('/settings/backup/jobs/{job}/run', [SettingsBackupController::class, 'runNow'])->name('settings.backup.jobs.run');
-    Route::get('/settings/backup/runs', [SettingsBackupController::class, 'runs'])->name('settings.backup.runs');
-    Route::get('/settings/backup/runs/{run}/download', [SettingsBackupController::class, 'downloadRun'])->name('settings.backup.runs.download');
-    Route::post('/settings/backup/runs/{run}/cancel', [SettingsBackupController::class, 'cancelRun'])->name('settings.backup.runs.cancel');
+        // Notification channels (mail / NTFY / webhook).
+        Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
+        Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
+        Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->name('settings.notifications.test');
+
+        // Backup destinations, jobs and run history.
+        Route::get('/settings/backup', [SettingsBackupController::class, 'index'])->name('settings.backup.index');
+        Route::post('/settings/backup/destinations', [SettingsBackupController::class, 'storeDestination'])->name('settings.backup.destinations.store');
+        Route::match(['post', 'put'], '/settings/backup/destinations/test', [SettingsBackupController::class, 'testDestination'])->name('settings.backup.destinations.test');
+        Route::put('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'updateDestination'])->name('settings.backup.destinations.update');
+        Route::delete('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'destroyDestination'])->name('settings.backup.destinations.destroy');
+        Route::post('/settings/backup/jobs', [SettingsBackupController::class, 'storeJob'])->name('settings.backup.jobs.store');
+        Route::put('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'updateJob'])->name('settings.backup.jobs.update');
+        Route::delete('/settings/backup/jobs/{job}', [SettingsBackupController::class, 'destroyJob'])->name('settings.backup.jobs.destroy');
+        Route::post('/settings/backup/jobs/{job}/run', [SettingsBackupController::class, 'runNow'])->name('settings.backup.jobs.run');
+        Route::get('/settings/backup/runs', [SettingsBackupController::class, 'runs'])->name('settings.backup.runs');
+        Route::get('/settings/backup/runs/{run}/download', [SettingsBackupController::class, 'downloadRun'])->name('settings.backup.runs.download');
+        Route::post('/settings/backup/runs/{run}/cancel', [SettingsBackupController::class, 'cancelRun'])->name('settings.backup.runs.cancel');
+    });
 
     // Contacts / CardDAV: enable + DAV credentials.
     Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
@@ -144,8 +149,10 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->name('contact-groups.destroy');
 
     // Downloads/exports: max zip part size (files + gallery) and notify channels.
-    Route::get('/settings/downloads', [SettingsDownloadsController::class, 'edit'])->name('settings.downloads.edit');
-    Route::put('/settings/downloads', [SettingsDownloadsController::class, 'update'])->name('settings.downloads.update');
+    Route::middleware('can:manage-global-settings')->group(function (): void {
+        Route::get('/settings/downloads', [SettingsDownloadsController::class, 'edit'])->name('settings.downloads.edit');
+        Route::put('/settings/downloads', [SettingsDownloadsController::class, 'update'])->name('settings.downloads.update');
+    });
 
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 

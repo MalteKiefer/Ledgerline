@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Dav\DavContext;
 use App\Events\PersonNamed;
 use App\Listeners\LinkPersonContact;
+use App\Models\User;
 use App\Search\SearchManager;
 use App\Services\Mail\ImapReader;
 use App\Services\Mail\ImapStats;
@@ -16,6 +17,7 @@ use App\Services\Mail\WebklexImapStats;
 use App\Services\Mail\WebklexMailSource;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -66,5 +68,9 @@ class AppServiceProvider extends ServiceProvider
 
         // Rate-limit the unauthenticated CardDAV endpoint (bcrypt per request).
         RateLimiter::for('dav', fn ($request) => Limit::perMinute(60)->by($request->ip()));
+
+        // Only members of the configured Pocket-ID admin group (if any) may
+        // manage the non-personal, workspace-wide settings.
+        Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
     }
 }

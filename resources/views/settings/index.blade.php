@@ -3,15 +3,17 @@
     <p class="mt-1 text-sm text-gray-600">{{ __('settings.subheading') }}</p>
 
     @php
-        // Sorted alphabetically by the (localised) section title.
+        // Personal settings everyone sees; the workspace-wide (infra) sections
+        // only for members of the admin group.
+        $global = auth()->user()->managesGlobalSettings();
         $cards = collect([
-            ['url' => route('settings.calendar.edit'), 'title' => __('settings.calendar_section'), 'desc' => __('settings.calendar_desc')],
-            ['url' => route('settings.gallery.edit'), 'title' => __('settings.gallery_section'), 'desc' => __('settings.gallery_desc')],
-            ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc')],
-            ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc')],
-            ['url' => route('settings.mail.edit'), 'title' => __('settings.mail_section'), 'desc' => __('settings.mail_desc')],
-            ['url' => route('settings.paperless.edit'), 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
-        ])->sortBy('title', SORT_NATURAL | SORT_FLAG_CASE)->values();
+            ['url' => route('settings.calendar.edit'), 'title' => __('settings.calendar_section'), 'desc' => __('settings.calendar_desc'), 'global' => false],
+            ['url' => route('settings.gallery.edit'), 'title' => __('settings.gallery_section'), 'desc' => __('settings.gallery_desc'), 'global' => true],
+            ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc'), 'global' => true],
+            ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc'), 'global' => true],
+            ['url' => route('settings.mail.edit'), 'title' => __('settings.mail_section'), 'desc' => __('settings.mail_desc'), 'global' => true],
+            ['url' => route('settings.paperless.edit'), 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc'), 'global' => true],
+        ])->reject(fn ($c) => $c['global'] && ! $global)->sortBy('title', SORT_NATURAL | SORT_FLAG_CASE)->values();
     @endphp
 
     <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
