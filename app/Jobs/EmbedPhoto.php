@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\Photo;
 use App\Services\Gallery\MachineLearning;
 use App\Services\Gallery\PerceptualHash;
+use App\Support\DiskTempFile;
 use App\Support\Vector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -49,15 +50,7 @@ class EmbedPhoto implements ShouldQueue
             return;
         }
 
-        $tmp = tempnam(sys_get_temp_dir(), 'embed');
-        $stream = $disk->readStream($path);
-        try {
-            file_put_contents($tmp, $stream);
-        } finally {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-        }
+        $tmp = DiskTempFile::pull($disk, $path, 'embed');
 
         try {
             if ($needPhash) {

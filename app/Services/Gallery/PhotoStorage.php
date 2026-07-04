@@ -7,17 +7,15 @@ namespace App\Services\Gallery;
 use App\Models\AppSettings;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
+use App\Support\DiskTempFile;
+use App\Support\ImageManagerFactory;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Intervention\Image\Direction;
-use Intervention\Image\Drivers\Gd\Driver as GdDriver;
-use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
-use Intervention\Image\Interfaces\DriverInterface;
 use Intervention\Image\Interfaces\ImageInterface;
 
 /**
@@ -40,22 +38,16 @@ class PhotoStorage
         private readonly MotionPhotoExtractor $motion,
         private readonly ExifReader $exifReader,
         private readonly PerceptualHash $perceptualHash,
+        private readonly ImageManagerFactory $imageManagerFactory,
+        private readonly PhotoTransform $photoTransform,
     ) {}
-
-    /**
-     * Decode with Imagick when the extension is available (it can read HEIC/HEIF/
-     * AVIF via libheif); fall back to GD otherwise. Cached per instance.
-     */
-    private function imageManager(): ImageManager
-    {
-        return $this->manager ??= new ImageManager($this->driver());
-    }
 
     private ?ImageManager $manager = null;
 
-    private function driver(): DriverInterface
+    /** Imagick (HEIC/AVIF) when available, else GD. Cached per instance. */
+    private function imageManager(): ImageManager
     {
-        return extension_loaded('imagick') ? new ImagickDriver : new GdDriver;
+        return $this->manager ??= $this->imageManagerFactory->make();
     }
 
     /**
@@ -106,20 +98,7 @@ class PhotoStorage
      */
     private function download(Photo $photo, Filesystem $disk): string
     {
-        $tmp = tempnam(sys_get_temp_dir(), 'photo');
-        $source = $disk->readStream($photo->disk_path);
-
-        try {
-            // Passing the stream resource streams it to disk without holding the
-            // whole (possibly large) file in memory.
-            file_put_contents($tmp, $source);
-        } finally {
-            if (is_resource($source)) {
-                fclose($source);
-            }
-        }
-
-        return $tmp;
+        return DiskTempFile::pull($disk, $photo->disk_path, 'photo');
     }
 
     /**
@@ -410,22 +389,11 @@ class PhotoStorage
     }
 
     /**
-     * Apply the photo's stored, non-destructive edits (clockwise rotation and a
-     * horizontal flip) to a decoded image.
+     * Apply the photo's stored, non-destructive edits (rotation + flip).
      */
     private function transform(ImageInterface $image, Photo $photo): ImageInterface
     {
-        $rotation = ((int) $photo->rotation) % 360;
-        if ($rotation !== 0) {
-            // Intervention rotates counter-clockwise; negate for clockwise.
-            $image->rotate(360 - $rotation);
-        }
-
-        if ($photo->flipped) {
-            $image->flip(Direction::HORIZONTAL);
-        }
-
-        return $image;
+        return $this->photoTransform->applyEdits($image, $photo);
     }
 
     /**
