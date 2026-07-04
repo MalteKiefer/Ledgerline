@@ -38,6 +38,19 @@
                 <input type="checkbox" name="calendar_week_numbers" value="1" @checked(old('calendar_week_numbers', $settings->calendar_week_numbers)) class="rounded border-gray-300">
                 {{ __('settings.calendar_week_numbers') }}
             </label>
+
+            <div class="mt-4">
+                <label for="calendar_timezone" class="block text-sm font-medium text-gray-700">{{ __('settings.calendar_timezone') }}</label>
+                @php $tz = old('calendar_timezone', $settings->calendar_timezone); @endphp
+                <select id="calendar_timezone" name="calendar_timezone" class="{{ $input }}">
+                    <option value="">{{ __('settings.calendar_timezone_auto') }}</option>
+                    @foreach ($timezones as $zone)
+                        <option value="{{ $zone }}" @selected($tz === $zone)>{{ $zone }}</option>
+                    @endforeach
+                </select>
+                <p class="mt-1 text-xs text-gray-500">{{ __('settings.calendar_timezone_hint') }}</p>
+                @error('calendar_timezone')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
+            </div>
         </div>
 
         {{-- Contact-derived calendars --}}

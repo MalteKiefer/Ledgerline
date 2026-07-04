@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Services\Calendar\CalendarFeedFetcher;
@@ -27,7 +28,16 @@ class CalendarController extends Controller
 {
     public function index(): View
     {
-        return view('calendar.index');
+        return view('calendar.index', ['timezones' => timezone_identifiers_list()]);
+    }
+
+    /** Accept a detected browser timezone as the pinned calendar timezone. */
+    public function setTimezone(Request $request): JsonResponse
+    {
+        $data = $request->validate(['timezone' => ['required', 'string', 'timezone']]);
+        AppSettings::current()->update(['calendar_timezone' => $data['timezone']]);
+
+        return response()->json(['ok' => true]);
     }
 
     /** Calendars + event instances overlapping the [from, to] window. */
@@ -39,6 +49,7 @@ class CalendarController extends Controller
 
         $from = $this->parseDate($request->query('from'), '-1 month');
         $to = $this->parseDate($request->query('to'), '+2 months');
+        $displayTz = $this->safeTimezone($request->query('tz'));
 
         $events = [];
         $objects = CalendarObject::whereIn('calendar_id', $calendars->pluck('id'))
@@ -51,7 +62,7 @@ class CalendarController extends Controller
 
         $colors = $calendars->pluck('color', 'id');
         foreach ($objects as $object) {
-            foreach ($ical->expand($object->ics, $from, $to) as $i => $instance) {
+            foreach ($ical->expand($object->ics, $from, $to, $displayTz) as $i => $instance) {
                 $events[] = [
                     'id' => $object->id,
                     'instance' => $i,
@@ -285,17 +296,29 @@ class CalendarController extends Controller
     {
         $vcal = Reader::read($object->ics, Reader::OPTION_FORGIVING);
         $vevent = $vcal->VEVENT[0] ?? null;
+        // Wall-clock times in the event's own timezone (round-trips edits).
+        $when = $ical->editable($object->ics);
 
         return [
             'summary' => $object->summary,
-            'start' => $object->starts_at?->format('Y-m-d\TH:i'),
-            'end' => $object->ends_at?->format('Y-m-d\TH:i'),
-            'all_day' => $object->all_day,
+            'start' => $when['start'],
+            'end' => $when['end'],
+            'all_day' => $when['all_day'],
+            'timezone' => $when['timezone'],
             'location' => isset($vevent->LOCATION) ? (string) $vevent->LOCATION : null,
             'description' => isset($vevent->DESCRIPTION) ? (string) $vevent->DESCRIPTION : null,
             'rrule' => $object->rrule,
             'reminder_minutes' => $object->alarm_minutes,
         ];
+    }
+
+    private function safeTimezone(mixed $tz): string
+    {
+        if (! is_string($tz) || $tz === '') {
+            return 'UTC';
+        }
+
+        return in_array($tz, timezone_identifiers_list(), true) ? $tz : 'UTC';
     }
 
     /**
@@ -309,6 +332,7 @@ class CalendarController extends Controller
             'start' => ['required', 'string', 'max:32'],
             'end' => ['nullable', 'string', 'max:32'],
             'all_day' => ['boolean'],
+            'timezone' => ['nullable', 'string', 'max:64', 'timezone'],
             'location' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'rrule' => ['nullable', 'string', 'max:255'],

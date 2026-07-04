@@ -23,6 +23,7 @@ class CalendarController extends Controller
         return view('settings.calendar.edit', [
             'settings' => AppSettings::current(),
             'countries' => $this->countryChoices(),
+            'timezones' => timezone_identifiers_list(),
         ]);
     }
 

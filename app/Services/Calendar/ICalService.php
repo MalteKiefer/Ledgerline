@@ -46,15 +46,30 @@ class ICalService
             $end = (clone $start)->add(DateTimeParser::parseDuration((string) $comp->DURATION));
         }
 
+        // Timed events are stored in UTC (their TZID is preserved in the ICS);
+        // all-day events keep their bare calendar date.
         return [
             'component' => $comp->name,
             'summary' => isset($comp->SUMMARY) ? (string) $comp->SUMMARY : null,
-            'starts_at' => $start?->format('Y-m-d H:i:s'),
-            'ends_at' => $end?->format('Y-m-d H:i:s'),
+            'starts_at' => $this->toUtc($start, $allDay),
+            'ends_at' => $this->toUtc($end, $allDay),
             'all_day' => $allDay,
             'rrule' => isset($comp->RRULE) ? (string) $comp->RRULE : null,
             'alarm_minutes' => $this->alarmMinutes($comp),
         ];
+    }
+
+    /** Format a datetime for the denormalised columns: UTC for timed, bare date for all-day. */
+    private function toUtc(?DateTimeInterface $dt, bool $allDay): ?string
+    {
+        if ($dt === null) {
+            return null;
+        }
+        if ($allDay) {
+            return $dt->format('Y-m-d H:i:s');
+        }
+
+        return (new \DateTimeImmutable('@'.$dt->getTimestamp()))->format('Y-m-d H:i:s');
     }
 
     /** Lead minutes of the first VALARM's relative TRIGGER (null if none/absolute). */
@@ -104,8 +119,12 @@ class ICalService
         $vevent->add('SUMMARY', (string) ($data['summary'] ?? 'Untitled'));
 
         $allDay = (bool) ($data['all_day'] ?? false);
-        $start = new \DateTimeImmutable((string) $data['start']);
-        $end = new \DateTimeImmutable((string) ($data['end'] ?? $data['start']));
+        // The wall-clock start/end are interpreted in the event's timezone (an
+        // IANA name); absent, UTC — matching the previous behaviour. sabre emits
+        // a TZID parameter for a named zone, or a 'Z' (UTC) time otherwise.
+        $tz = filled($data['timezone'] ?? null) ? new \DateTimeZone((string) $data['timezone']) : new \DateTimeZone('UTC');
+        $start = new \DateTimeImmutable((string) $data['start'], $tz);
+        $end = new \DateTimeImmutable((string) ($data['end'] ?? $data['start']), $tz);
 
         if ($allDay) {
             $vevent->add('DTSTART', $start, ['VALUE' => 'DATE']);
@@ -134,10 +153,12 @@ class ICalService
 
     /**
      * Expand a (possibly recurring) event's instances overlapping [from, to].
+     * Timed instances are rendered as wall-clock in $displayTz (default UTC);
+     * all-day instances keep their bare date regardless of zone.
      *
      * @return list<array{start: string, end: ?string}>
      */
-    public function expand(string $ics, DateTimeInterface $from, DateTimeInterface $to): array
+    public function expand(string $ics, DateTimeInterface $from, DateTimeInterface $to, string $displayTz = 'UTC'): array
     {
         try {
             $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
@@ -148,6 +169,11 @@ class ICalService
             return [];
         }
 
+        $allDay = isset($vcal->VEVENT[0]->DTSTART) && ! $vcal->VEVENT[0]->DTSTART->hasTime();
+        $zone = $allDay ? null : $this->displayZone($displayTz);
+        $fmt = fn (?DateTimeInterface $d): ?string => $d === null ? null
+            : ($zone === null ? $d->format('Y-m-d H:i:s') : \DateTimeImmutable::createFromInterface($d)->setTimezone($zone)->format('Y-m-d H:i:s'));
+
         $out = [];
         try {
             if (isset($vcal->VEVENT[0]->RRULE)) {
@@ -155,14 +181,14 @@ class ICalService
                 $it->fastForward($from);
                 $limit = 0;
                 while ($it->valid() && $it->getDTStart() <= $to && $limit++ < 750) {
-                    $out[] = ['start' => $it->getDTStart()->format('Y-m-d H:i:s'), 'end' => $it->getDTEnd()?->format('Y-m-d H:i:s')];
+                    $out[] = ['start' => $fmt($it->getDTStart()), 'end' => $fmt($it->getDTEnd())];
                     $it->next();
                 }
             } else {
                 $s = $vcal->VEVENT[0]->DTSTART->getDateTime();
                 if ($s >= $from && $s <= $to) {
                     $e = isset($vcal->VEVENT[0]->DTEND) ? $vcal->VEVENT[0]->DTEND->getDateTime() : null;
-                    $out[] = ['start' => $s->format('Y-m-d H:i:s'), 'end' => $e?->format('Y-m-d H:i:s')];
+                    $out[] = ['start' => $fmt($s), 'end' => $fmt($e)];
                 }
             }
         } catch (Throwable) {
@@ -173,5 +199,44 @@ class ICalService
         }
 
         return $out;
+    }
+
+    /**
+     * The editor's view of an event: wall-clock start/end in the event's own
+     * timezone (so what the user typed comes back unchanged) plus that timezone.
+     *
+     * @return array{start: ?string, end: ?string, all_day: bool, timezone: ?string}
+     */
+    public function editable(string $ics): array
+    {
+        try {
+            $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
+            $vevent = $vcal->VEVENT[0] ?? null;
+        } catch (Throwable) {
+            $vevent = null;
+        }
+        if ($vevent === null || ! isset($vevent->DTSTART)) {
+            return ['start' => null, 'end' => null, 'all_day' => false, 'timezone' => null];
+        }
+
+        $allDay = ! $vevent->DTSTART->hasTime();
+        $tzid = $allDay ? null : ($vevent->DTSTART['TZID'] !== null ? (string) $vevent->DTSTART['TZID'] : null);
+        $format = $allDay ? 'Y-m-d' : 'Y-m-d\TH:i';
+
+        return [
+            'start' => $vevent->DTSTART->getDateTime()->format($format),
+            'end' => isset($vevent->DTEND) ? $vevent->DTEND->getDateTime()->format($format) : null,
+            'all_day' => $allDay,
+            'timezone' => $tzid,
+        ];
+    }
+
+    private function displayZone(string $tz): \DateTimeZone
+    {
+        try {
+            return new \DateTimeZone($tz);
+        } catch (Throwable) {
+            return new \DateTimeZone('UTC');
+        }
     }
 }
