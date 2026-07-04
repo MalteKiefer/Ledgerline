@@ -148,6 +148,26 @@ class MailArchiveTest extends TestCase
         $this->assertEqualsCanonicalizing([5, 4], MailMessage::pluck('uid')->all());
     }
 
+    public function test_the_cap_is_per_folder_so_every_folder_makes_progress(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $a = $this->account();
+        // Two folders; a per-folder cap of 1 must fetch the newest from EACH,
+        // not spend the whole budget on the first folder.
+        $source = new FakeMailSource([
+            'INBOX' => [1 => [], 2 => [], 3 => []],
+            'Archive' => [10 => [], 11 => []],
+        ]);
+
+        (new MailArchiver($source))->syncAccount($a, perRunCap: 1);
+
+        $this->assertSame(2, MailMessage::count());
+        $this->assertSame(2, MailMessage::distinct('mail_folder_id')->count('mail_folder_id'));
+        // Newest per folder.
+        $this->assertEqualsCanonicalizing([3, 11], MailMessage::pluck('uid')->all());
+    }
+
     public function test_a_uidvalidity_change_archives_old_and_refills(): void
     {
         Storage::fake('files');
