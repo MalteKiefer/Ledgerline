@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\GalleryRequest;
+use App\Jobs\DetectDuplicatesJob;
 use App\Jobs\GeneratePhotoRenditions;
 use App\Jobs\ReadPhotoMetadata;
 use App\Jobs\RenamePhotos;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
 
 /**
@@ -110,6 +112,18 @@ class GalleryController extends Controller
             fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('status', '!=', 'ready')->orWhereNull('metadata')),
             'flash.photos_all_jobs_queued',
         );
+    }
+
+    /**
+     * Scan the library for content-based duplicates (perceptual hash + CLIP).
+     * Backfills any missing embeddings first, then clusters into groups.
+     */
+    public function detectDuplicates(Request $request): RedirectResponse
+    {
+        Artisan::call('gallery:embed');
+        DetectDuplicatesJob::dispatch();
+
+        return redirect()->route('settings.gallery.edit')->with('status', __('flash.duplicates_scan_queued'));
     }
 
     /**

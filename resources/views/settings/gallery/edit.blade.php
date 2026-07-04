@@ -127,6 +127,11 @@
                 class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.rename') }}</button>
             <button type="button" @click="ask('{{ route('settings.gallery.run-all') }}', '{{ __('settings.run_all_jobs') }}')" @disabled($photoCount === 0)
                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('settings.run_all_jobs') }}</button>
+            <form method="POST" action="{{ route('settings.gallery.detect-duplicates') }}">
+                @csrf
+                <button type="submit" @disabled($photoCount === 0)
+                    class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">{{ __('settings.detect_duplicates') }}</button>
+            </form>
         </div>
 
         <template x-teleport="body">

@@ -264,6 +264,56 @@ Alpine.data('toastHub', (labels = {}) => ({
 }));
 
 /**
+ * Duplicates review page: lists content-based duplicate groups; pick one photo
+ * to keep and trash the rest, or dismiss a group as not-a-duplicate.
+ */
+Alpine.data('duplicatesPage', (cfg = {}) => ({
+    groups: [],
+    keep: {},
+    loading: true,
+
+    init() { this.load(); },
+
+    async load() {
+        try {
+            const res = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            this.groups = (await res.json()).groups ?? [];
+            // Default: keep the first member of each group.
+            for (const g of this.groups) {
+                if (this.keep[g.group] == null && g.photos.length) this.keep[g.group] = g.photos[0].id;
+            }
+        } catch (e) { /* keep current */ } finally {
+            this.loading = false;
+        }
+    },
+
+    async resolve(g) {
+        const keepId = this.keep[g.group];
+        if (! keepId) return;
+        if (! window.confirm(cfg.confirm)) return;
+        this.groups = this.groups.filter((x) => x.group !== g.group); // optimistic
+        try {
+            await fetch(cfg.resolveBase.replace('__G__', g.group), {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token },
+                body: JSON.stringify({ keep_id: keepId }),
+            });
+        } catch (e) { /* next load reconciles */ }
+    },
+
+    async dismiss(g) {
+        this.groups = this.groups.filter((x) => x.group !== g.group);
+        try {
+            await fetch(cfg.dismissBase.replace('__G__', g.group), {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token },
+            });
+        } catch (e) { /* ignore */ }
+    },
+}));
+
+/**
  * Downloads center: lists the user's async exports, polls while any are still
  * building, supports multiselect delete, and streams finished zip parts.
  */

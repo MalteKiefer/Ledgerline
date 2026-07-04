@@ -20,6 +20,7 @@ return [
     'photos_deleted' => ':count Foto(s) endgültig gelöscht.',
     'photos_location_set' => 'Standort für :count Foto(s) gesetzt.',
     'photos_all_jobs_queued' => 'Alle Jobs für :count Foto(s) eingereiht.',
+    'duplicates_scan_queued' => 'Duplikat-Scan eingereiht. Gruppen erscheinen unter Galerie › Duplikate.',
     'photos_regenerate_queued' => ':count Foto(s) zur Thumbnail-Neuerzeugung eingereiht.',
     'photos_rename_queued' => ':count Foto(s) zum Umbenennen eingereiht.',
     'photos_rescan_queued' => ':count Foto(s) zum Metadaten-Neueinlesen eingereiht.',

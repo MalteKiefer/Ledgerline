@@ -14,6 +14,7 @@ use App\Services\Gallery\GalleryFormats;
 use App\Services\Gallery\PhotoExporter;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
+use App\Support\Bytes;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -678,6 +679,74 @@ class GalleryController extends Controller
         return view('gallery.trash', [
             'photos' => Photo::onlyTrashed()->orderByDesc('deleted_at')->paginate(60),
         ]);
+    }
+
+    /** The Duplicates review page. */
+    public function duplicates(): View
+    {
+        return view('gallery.duplicates');
+    }
+
+    /** Duplicate groups as JSON: each group's members with name, size, similarity. */
+    public function duplicatesData(): JsonResponse
+    {
+        $groups = Photo::query()
+            ->whereNotNull('duplicate_group_id')
+            ->orderByDesc('dup_score')
+            ->orderBy('duplicate_group_id')
+            ->get()
+            ->groupBy('duplicate_group_id')
+            ->map(fn ($members, $groupId): array => [
+                'group' => $groupId,
+                'score' => (float) ($members->max('dup_score') ?? 0),
+                'photos' => $members->map(fn (Photo $p): array => [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'size' => (int) $p->size,
+                    'size_human' => Bytes::format((int) $p->size),
+                    'thumb' => route('gallery.image', ['photo' => $p, 'size' => 'thumb']),
+                    'media_type' => $p->media_type,
+                    'taken_at' => $p->taken_at?->toDateString(),
+                ])->values(),
+            ])
+            ->values();
+
+        return response()->json(['groups' => $groups]);
+    }
+
+    /** Keep one photo of a group and move the rest to the trash. */
+    public function resolveDuplicate(Request $request, string $group): JsonResponse|RedirectResponse
+    {
+        $keepId = $request->validate(['keep_id' => ['required', 'integer']])['keep_id'];
+
+        $members = Photo::query()->where('duplicate_group_id', $group)->get();
+        abort_if($members->isEmpty(), 404);
+        abort_unless($members->contains('id', $keepId), 422);
+
+        foreach ($members as $photo) {
+            if ($photo->id === (int) $keepId) {
+                $photo->forceFill(['duplicate_group_id' => null, 'dup_score' => null])->save();
+            } else {
+                $photo->delete(); // soft delete → gallery trash
+            }
+        }
+
+        return $request->expectsJson()
+            ? response()->json(['ok' => true, 'kept' => (int) $keepId])
+            : back();
+    }
+
+    /** Mark a group as "not a duplicate" so it is excluded from future scans. */
+    public function dismissDuplicate(Request $request, string $group): JsonResponse|RedirectResponse
+    {
+        $affected = Photo::query()->where('duplicate_group_id', $group)
+            ->update(['duplicate_group_id' => null, 'dup_score' => null, 'dup_dismissed_at' => now()]);
+
+        abort_if($affected === 0, 404);
+
+        return $request->expectsJson()
+            ? response()->json(['ok' => true])
+            : back();
     }
 
     /**
