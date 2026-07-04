@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Dav\DavContext;
 use App\Search\SearchManager;
 use App\Services\Mail\ImapReader;
 use App\Services\Mail\ImapStats;
@@ -23,6 +24,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // One CardDAV auth context per request; shared by the sabre backends so
+        // they can scope every operation to the authenticated user.
+        $this->app->scoped(DavContext::class);
+
         // Build the global-search manager from the configured providers, so
         // adding a searchable entity is just a config + provider-class change.
         $this->app->singleton(SearchManager::class, function ($app): SearchManager {

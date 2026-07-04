@@ -12,6 +12,7 @@ use Sabre\CardDAV\Plugin as CardDAVPlugin;
 use Sabre\DAV\Auth\Plugin as AuthPlugin;
 use Sabre\DAV\Server;
 use Sabre\DAV\Sync\Plugin as SyncPlugin;
+use Sabre\DAVACL\Plugin as AclPlugin;
 use Sabre\DAVACL\PrincipalCollection;
 
 /**
@@ -30,6 +31,14 @@ class DavController extends Controller
         $server->setBaseUri('/dav/');
 
         $server->addPlugin(new AuthPlugin($auth));
+
+        // Enforce that an authenticated principal can only reach its own
+        // resources (no cross-principal/address-book access).
+        $acl = new AclPlugin;
+        $acl->allowUnauthenticatedAccess = false;
+        $acl->principalCollectionSet = ['principals'];
+        $server->addPlugin($acl);
+
         $server->addPlugin(new CardDAVPlugin);
         $server->addPlugin(new SyncPlugin);
 
