@@ -36,7 +36,7 @@ class ContactWriter
             'vcard' => $vcard,
         ], $this->vcards->denormalize($vcard)));
 
-        $contact->groups()->sync($groupIds);
+        $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
         $this->logChange($book, $uri, 1);
 
         return $contact;
@@ -54,7 +54,7 @@ class ContactWriter
         $vcard = $this->vcards->build($data, $existing['uid'] ?? null);
 
         $contact->forceFill(array_merge(['etag' => md5($vcard), 'vcard' => $vcard], $this->vcards->denormalize($vcard)))->save();
-        $contact->groups()->sync($groupIds);
+        $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
         $this->logChange($book, $contact->uri, 2);
 
         return $contact;
@@ -75,6 +75,18 @@ class ContactWriter
     private function groupNames(int $userId, array $groupIds): array
     {
         return ContactGroup::where('user_id', $userId)->whereIn('id', $groupIds)->pluck('name')->all();
+    }
+
+    /**
+     * Only the caller's own group ids — never sync a contact into another user's
+     * group via a forged group_id (IDOR on the pivot).
+     *
+     * @param  list<string>  $groupIds
+     * @return list<string>
+     */
+    private function ownedGroupIds(int $userId, array $groupIds): array
+    {
+        return ContactGroup::where('user_id', $userId)->whereIn('id', $groupIds)->pluck('id')->all();
     }
 
     private function logChange(AddressBook $book, string $uri, int $operation): void

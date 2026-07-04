@@ -37,6 +37,10 @@ RUN apt-get update \
  && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Hardened ImageMagick coder/delegate policy (untrusted image decoding).
+COPY docker/imagemagick/policy.xml /etc/ImageMagick-6/policy.xml
+COPY docker/imagemagick/policy.xml /etc/ImageMagick-7/policy.xml
+
 # serversideup automations are driven per-service via env in compose; default off.
 ENV PHP_OPCACHE_ENABLE=1 \
     PHP_OPCACHE_MAX_ACCELERATED_FILES=20000 \

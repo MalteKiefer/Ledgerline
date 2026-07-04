@@ -41,7 +41,6 @@ class GalleryRequest extends FormRequest
             'gallery_filename_template' => ['nullable', 'string', 'max:255'],
             'gallery_map_zoom' => ['required', 'integer', 'min:1', 'max:19'],
             'gallery_max_upload_mb' => ['required', 'integer', 'min:1', 'max:5120'],
-            'gallery_ffmpeg_path' => ['nullable', 'string', 'max:255'],
             'gallery_video_frame' => ['required', 'integer', 'min:0', 'max:600'],
             'gallery_geocode_grid_km' => ['required', 'numeric', 'min:0', 'max:100'],
         ];

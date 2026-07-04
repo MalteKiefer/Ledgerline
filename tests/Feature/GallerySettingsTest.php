@@ -39,7 +39,6 @@ class GallerySettingsTest extends TestCase
             'gallery_filename_template' => '{{y}}-{{MM}}-{{dd}}',
             'gallery_max_upload_mb' => 500,
             'gallery_video_frame' => 3,
-            'gallery_ffmpeg_path' => '/var/www/bin/ffmpeg/ffmpeg',
             'gallery_geocode_grid_km' => 2.5,
         ])->assertRedirect(route('settings.gallery.edit'));
 
@@ -50,7 +49,6 @@ class GallerySettingsTest extends TestCase
         $this->assertSame('{{y}}-{{MM}}-{{dd}}', $company->gallery_filename_template);
         $this->assertSame(500, $company->gallery_max_upload_mb);
         $this->assertSame(3, $company->gallery_video_frame);
-        $this->assertSame('/var/www/bin/ffmpeg/ffmpeg', $company->gallery_ffmpeg_path);
     }
 
     public function test_rescan_queues_a_metadata_job_per_photo(): void

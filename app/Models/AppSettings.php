@@ -18,7 +18,6 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_filename_template',
     'gallery_map_zoom',
     'gallery_max_upload_mb',
-    'gallery_ffmpeg_path',
     'gallery_video_frame',
     'gallery_geocode_grid_km',
     'mail_sync_minutes',

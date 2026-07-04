@@ -199,7 +199,7 @@ class ExportArchiver
      */
     private function uniqueName(array $used, string $name): string
     {
-        $name = ltrim(str_replace(['\\', '../'], ['/', ''], $name), '/');
+        $name = $this->safePath($name);
         if (! isset($used[$name])) {
             return $name;
         }
@@ -221,5 +221,25 @@ class ExportArchiver
         $name = preg_replace('/[\/\\\\:*?"<>|]+/', '-', $name) ?? 'export';
 
         return trim($name) !== '' ? trim($name) : 'export';
+    }
+
+    /**
+     * Sanitise a zip member path against Zip-Slip: normalise backslashes, split on
+     * "/", scrub each segment (also dropping "", "." and ".."), and rejoin. The
+     * result can never contain a ".." segment or a leading "/", so no member can
+     * escape the extraction root — however naive the extractor.
+     */
+    private function safePath(string $name): string
+    {
+        $segments = [];
+        foreach (explode('/', str_replace('\\', '/', $name)) as $segment) {
+            $segment = trim($segment);
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                continue;
+            }
+            $segments[] = $this->safeName($segment);
+        }
+
+        return $segments === [] ? 'export' : implode('/', $segments);
     }
 }
