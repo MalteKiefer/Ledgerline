@@ -38,6 +38,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Content-based duplicate detection (machine learning + perceptual hash)
+    |--------------------------------------------------------------------------
+    |
+    | CLIP image embeddings come from the immich-machine-learning sidecar
+    | (docker compose --profile ml). ml_url points at it on the internal network.
+    | duplicate_threshold is the minimum cosine similarity (0..1) for two photos
+    | to count as duplicates; phash_max_distance is the Hamming distance under
+    | which the cheap perceptual-hash pre-pass treats two images as near-identical.
+    |
+    */
+
+    'ml_enabled' => (bool) env('ML_ENABLED', false),
+
+    'ml_url' => env('ML_URL', 'http://ml:3003'),
+
+    'ml_clip_model' => env('ML_CLIP_MODEL', 'ViT-B-32__openai'),
+
+    'duplicate_threshold' => (float) env('GALLERY_DUPLICATE_THRESHOLD', 0.92),
+
+    'phash_max_distance' => (int) env('GALLERY_PHASH_MAX_DISTANCE', 6),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reverse-geocoding rate limit
     |--------------------------------------------------------------------------
     |
