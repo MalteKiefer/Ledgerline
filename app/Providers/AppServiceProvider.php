@@ -14,7 +14,9 @@ use App\Services\Mail\MailSource;
 use App\Services\Mail\WebklexImapReader;
 use App\Services\Mail\WebklexImapStats;
 use App\Services\Mail\WebklexMailSource;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use SocialiteProviders\PocketID\Provider as PocketIdProvider;
@@ -61,5 +63,8 @@ class AppServiceProvider extends ServiceProvider
         // Naming a gallery person links/creates a vCard contact (avatar from the
         // person's cover face).
         Event::listen(PersonNamed::class, LinkPersonContact::class);
+
+        // Rate-limit the unauthenticated CardDAV endpoint (bcrypt per request).
+        RateLimiter::for('dav', fn ($request) => Limit::perMinute(60)->by($request->ip()));
     }
 }

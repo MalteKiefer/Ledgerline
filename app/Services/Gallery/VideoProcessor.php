@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Gallery;
 
-use App\Models\AppSettings;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 use Throwable;
@@ -173,8 +172,9 @@ class VideoProcessor
      */
     public function binaryPath(): string
     {
-        return AppSettings::current()->gallery_ffmpeg_path
-            ?: (string) config('gallery.ffmpeg_path', 'ffmpeg');
+        // Config/env only (like exiftool): the ffmpeg binary is executed by the
+        // worker, so it must not be settable from the app UI/database.
+        return (string) config('gallery.ffmpeg_path', 'ffmpeg');
     }
 
     private function ffmpeg(): string

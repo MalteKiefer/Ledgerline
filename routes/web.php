@@ -146,7 +146,8 @@ Route::middleware('auth')->group(function (): void {
 
     // Gallery: a photo timeline with drag-and-drop upload and a trash.
     Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery.index');
-    Route::post('/gallery', [GalleryController::class, 'store'])->name('gallery.store');
+    // Throttled: each accepted upload dispatches heavy media processing.
+    Route::post('/gallery', [GalleryController::class, 'store'])->middleware('throttle:300,1')->name('gallery.store');
     Route::get('/gallery/feed', [GalleryController::class, 'feed'])->name('gallery.feed');
     Route::get('/gallery/months', [GalleryController::class, 'months'])->name('gallery.months');
     Route::get('/gallery/map', [GalleryController::class, 'map'])->name('gallery.map');
@@ -172,8 +173,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->name('gallery.download');
     Route::post('/gallery/export', [GalleryController::class, 'queueExport'])->name('gallery.export');
     Route::get('/gallery/{photo}/download/edited', [GalleryController::class, 'downloadEdited'])->name('gallery.download.edited');
-    Route::get('/gallery/geocode/reverse', [GalleryController::class, 'geocodeReverse'])->name('gallery.geocode.reverse');
-    Route::get('/gallery/geocode/search', [GalleryController::class, 'geocodeSearch'])->name('gallery.geocode.search');
+    // Throttled: each call blocks on a global geocoder lock + a slow outbound
+    // request, so it can pin PHP-FPM workers without a limit.
+    Route::get('/gallery/geocode/reverse', [GalleryController::class, 'geocodeReverse'])->middleware('throttle:20,1')->name('gallery.geocode.reverse');
+    Route::get('/gallery/geocode/search', [GalleryController::class, 'geocodeSearch'])->middleware('throttle:20,1')->name('gallery.geocode.search');
     Route::put('/gallery/{photo}/meta', [GalleryController::class, 'editMeta'])->name('gallery.meta');
     Route::post('/gallery/{photo}/transform', [GalleryController::class, 'transform'])->name('gallery.transform');
     Route::post('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->name('gallery.favorite');

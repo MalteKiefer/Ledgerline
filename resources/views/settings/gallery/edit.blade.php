@@ -84,8 +84,7 @@
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.video_heading') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.video_hint') }}</p>
             <div class="mt-3">
-                <label for="gallery_ffmpeg_path" class="block text-sm font-medium text-gray-700">{{ __('settings.ffmpeg_path') }}</label>
-                <input type="text" id="gallery_ffmpeg_path" name="gallery_ffmpeg_path" value="{{ old('gallery_ffmpeg_path', $company->gallery_ffmpeg_path) }}" placeholder="ffmpeg" class="{{ $input }} font-mono">
+                <p class="text-sm font-medium text-gray-700">{{ __('settings.ffmpeg_path') }}</p>
                 <p class="mt-1 text-xs text-gray-500">{{ __('settings.ffmpeg_path_hint') }}</p>
                 <p class="mt-1 text-xs">
                     <span class="text-gray-500">{{ __('settings.ffmpeg_resolved') }}:</span>
@@ -96,7 +95,6 @@
                         <span class="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-red-700">{{ __('settings.ffmpeg_missing') }}</span>
                     @endif
                 </p>
-                @error('gallery_ffmpeg_path')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
             <div class="mt-4 sm:max-w-xs">
                 <label for="gallery_video_frame" class="block text-sm font-medium text-gray-700">{{ __('settings.video_frame') }}</label>

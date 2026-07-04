@@ -72,6 +72,21 @@ class ContactsFeatureTest extends TestCase
         $this->assertTrue($contact->groups()->where('contact_groups.id', $group->id)->exists());
     }
 
+    public function test_group_ids_from_another_user_are_not_attached(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $foreign = ContactGroup::create(['user_id' => 424242, 'name' => 'Victim group']);
+
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Mallory', 'group_ids' => [$foreign->id]])
+            ->assertStatus(201);
+
+        $contact = Contact::firstOrFail();
+        // The forged foreign group id must not create a pivot row.
+        $this->assertDatabaseMissing('contact_group', ['contact_id' => $contact->id, 'group_id' => $foreign->id]);
+        $this->assertSame(0, $contact->groups()->count());
+    }
+
     public function test_data_is_scoped_to_the_user(): void
     {
         $user = $this->signIn();
