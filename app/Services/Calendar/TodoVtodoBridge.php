@@ -40,23 +40,26 @@ class TodoVtodoBridge
      */
     public function rows(string $calendarId): array
     {
-        return Todo::query()->orderBy('id')->get()->map(fn (Todo $t): array => $this->row($t, $calendarId, false))->all();
+        $owner = $this->ownerOf($calendarId);
+
+        return Todo::withoutGlobalScopes()->where('user_id', $owner)->orderBy('id')
+            ->get()->map(fn (Todo $t): array => $this->row($t, $calendarId, false))->all();
     }
 
     /** @return array<string, mixed>|null */
     public function get(string $calendarId, string $uri): ?array
     {
-        $id = $this->idFromUri($uri);
-        $todo = $id !== null ? Todo::find($id) : null;
+        $todo = $this->todoFor($calendarId, $uri);
 
         return $todo !== null ? $this->row($todo, $calendarId, true) : null;
     }
 
     /**
-     * Apply a client-written VTODO back to a to-do (create or update). Returns the
-     * etag of the resulting object, or null if the payload had no VTODO.
+     * Apply a client-written VTODO back to a to-do (update). Returns the etag of
+     * the resulting object, or null if the payload had no VTODO or the URI does
+     * not resolve to one of THIS calendar owner's to-dos.
      */
-    public function write(string $uri, string $ics): ?string
+    public function write(string $calendarId, string $uri, string $ics): ?string
     {
         try {
             $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
@@ -68,11 +71,9 @@ class TodoVtodoBridge
             return null;
         }
 
-        // Only edits to an existing to-do (todo-<id>.ics) are honoured; a forged
-        // or unknown URI is rejected rather than silently creating a mismatched
-        // to-do (new tasks are created inside the app).
-        $id = $this->idFromUri($uri);
-        $todo = $id !== null ? Todo::find($id) : null;
+        // Only edits to an existing to-do (todo-<id>.ics) OWNED by this calendar's
+        // user are honoured; a forged/unknown/foreign URI is rejected.
+        $todo = $this->todoFor($calendarId, $uri);
         if ($todo === null) {
             return null;
         }
@@ -98,12 +99,26 @@ class TodoVtodoBridge
         return '"'.md5($this->buildVtodo($todo)).'"';
     }
 
-    public function delete(string $uri): void
+    public function delete(string $calendarId, string $uri): void
+    {
+        $this->todoFor($calendarId, $uri)?->delete();
+    }
+
+    /** The owning user id of a (tasks) calendar, ignoring the web owner scope. */
+    private function ownerOf(string $calendarId): ?int
+    {
+        return Calendar::withoutGlobalScopes()->whereKey($calendarId)->value('user_id');
+    }
+
+    /** The to-do a tasks-calendar object URI refers to, scoped to that calendar's owner. */
+    private function todoFor(string $calendarId, string $uri): ?Todo
     {
         $id = $this->idFromUri($uri);
-        if ($id !== null) {
-            Todo::where('id', $id)->get()->each->delete();
+        if ($id === null) {
+            return null;
         }
+
+        return Todo::withoutGlobalScopes()->where('user_id', $this->ownerOf($calendarId))->whereKey($id)->first();
     }
 
     /** Serialize a to-do as a VTODO ICS document. */

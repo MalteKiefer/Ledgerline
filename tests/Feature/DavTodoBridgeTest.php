@@ -24,6 +24,15 @@ class DavTodoBridgeTest extends TestCase
         return app(CalDavBackend::class);
     }
 
+    /** A to-do owned by the DAV principal (user 1); user_id is not fillable. */
+    private function ownedTodo(array $attrs): Todo
+    {
+        $todo = Todo::create($attrs);
+        $todo->forceFill(['user_id' => 1])->save();
+
+        return $todo;
+    }
+
     public function test_generate_creates_a_tasks_calendar(): void
     {
         app(DavCredentialService::class)->generate(1);
@@ -35,7 +44,7 @@ class DavTodoBridgeTest extends TestCase
     {
         $backend = $this->setUpDav();
         $tasks = Calendar::where('user_id', 1)->where('uri', 'tasks')->firstOrFail();
-        $todo = Todo::create(['title' => 'Buy milk', 'priority' => 'high', 'due_at' => '2026-09-01 12:00:00']);
+        $todo = $this->ownedTodo(['title' => 'Buy milk', 'priority' => 'high', 'due_at' => '2026-09-01 12:00:00']);
 
         $objects = $backend->getCalendarObjects($tasks->id);
         $this->assertCount(1, $objects);
@@ -52,7 +61,7 @@ class DavTodoBridgeTest extends TestCase
     {
         $backend = $this->setUpDav();
         $tasks = Calendar::where('user_id', 1)->where('uri', 'tasks')->firstOrFail();
-        $todo = Todo::create(['title' => 'Task', 'priority' => 'normal']);
+        $todo = $this->ownedTodo(['title' => 'Task', 'priority' => 'normal']);
         $uri = 'todo-'.$todo->id.'.ics';
 
         $completed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:todo-{$todo->id}\r\nSUMMARY:Task\r\nSTATUS:COMPLETED\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
@@ -79,7 +88,7 @@ class DavTodoBridgeTest extends TestCase
     {
         $backend = $this->setUpDav();
         $tasks = Calendar::where('user_id', 1)->where('uri', 'tasks')->firstOrFail();
-        $todo = Todo::create(['title' => 'Bye', 'priority' => 'normal']);
+        $todo = $this->ownedTodo(['title' => 'Bye', 'priority' => 'normal']);
 
         $backend->deleteCalendarObject($tasks->id, 'todo-'.$todo->id.'.ics');
         $this->assertSoftDeleted('todos', ['id' => $todo->id]);
@@ -91,7 +100,7 @@ class DavTodoBridgeTest extends TestCase
         $tasks = Calendar::where('user_id', 1)->where('uri', 'tasks')->firstOrFail();
         $before = $tasks->synctoken;
 
-        Todo::create(['title' => 'Sync me', 'priority' => 'normal']);
+        $this->ownedTodo(['title' => 'Sync me', 'priority' => 'normal']);
 
         $this->assertGreaterThan($before, $tasks->fresh()->synctoken);
         $this->assertDatabaseHas('calendar_changes', ['calendar_id' => $tasks->id, 'operation' => 1]);

@@ -72,7 +72,8 @@ class NotificationBellTest extends TestCase
         $other = User::factory()->create();
         $n = AppNotification::create(['user_id' => $other->id, 'level' => 'info', 'title' => 'Secret']);
 
-        $this->postJson(route('notifications.read', $n))->assertForbidden();
+        // Another user's notification is invisible (global owner scope → 404).
+        $this->postJson(route('notifications.read', $n))->assertNotFound();
     }
 
     public function test_push_creates_one_per_user(): void
