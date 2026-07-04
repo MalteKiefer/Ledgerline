@@ -2445,16 +2445,16 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
 
     /* ---- Mail search (over the whole local archive) ---- */
-    search: { open: false, loading: false, ran: false, q: '', dateFrom: '', dateTo: '', hasAttachment: false, results: [], viewing: null, viewLoading: false, error: '' },
+    search: { open: false, loading: false, ran: false, q: '', dateFrom: '', dateTo: '', hasAttachment: false, results: [], error: '' },
 
     openSearch(a) {
-        this.search = { open: true, loading: false, ran: false, q: '', dateFrom: '', dateTo: '', hasAttachment: false, results: [], viewing: null, viewLoading: false, error: '' };
+        this.search = { open: true, loading: false, ran: false, q: '', dateFrom: '', dateTo: '', hasAttachment: false, results: [], error: '' };
         this.searchAccountId = a.id;
     },
-    closeSearch() { this.search.open = false; this.search.viewing = null; },
+    closeSearch() { this.search.open = false; },
 
     async runSearch() {
-        this.search.loading = true; this.search.ran = true; this.search.error = ''; this.search.viewing = null;
+        this.search.loading = true; this.search.ran = true; this.search.error = '';
         const p = new URLSearchParams();
         if (this.search.q) p.set('q', this.search.q);
         if (this.search.dateFrom) p.set('date_from', this.search.dateFrom);
@@ -2467,15 +2467,14 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.search.loading = false;
     },
 
-    async viewSearchResult(m) {
-        this.search.viewLoading = true; this.search.viewing = { id: m.id, subject: m.subject, from: m.from };
-        try {
-            const res = await fetch(`/mail/archive/message/${m.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (res.ok) this.search.viewing = { id: m.id, ...(await res.json()) };
-        } catch (e) { /* keep header */ }
-        this.search.viewLoading = false;
+    // Open a search hit in the normal reader (not a modal): switch to its
+    // folder and open the message — archived, so it renders instantly.
+    viewSearchResult(m) {
+        if (! m.folderPath) return;
+        this.closeSearch();
+        this.openFolder(m.folderPath);
+        this.openMsg(m.uid);
     },
-    searchAttachmentUrl(i) { return this.search.viewing ? `/mail/archive/message/${this.search.viewing.id}/attachment/${i}` : '#'; },
 
     fmtBytes(n) { return formatBytes(n); },
 

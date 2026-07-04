@@ -89,7 +89,9 @@ class MailArchiveController extends Controller
     {
         return [
             'id' => $m->id,
+            'uid' => $m->uid,
             'folder' => $m->folder?->name,
+            'folderPath' => $m->folder?->path,
             'subject' => $m->subject,
             'from' => trim(($m->from_name ?: '').' <'.($m->from_email ?: '').'>', ' <>'),
             'date' => $m->date_at?->toIso8601String(),
