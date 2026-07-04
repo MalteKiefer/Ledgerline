@@ -62,16 +62,17 @@ class DavTodoBridgeTest extends TestCase
         $this->assertTrue($todo->fresh()->done);
     }
 
-    public function test_creating_a_vtodo_creates_a_todo(): void
+    public function test_client_create_on_tasks_is_rejected(): void
     {
+        // To-dos are the source of truth and are created inside the app; a
+        // client-initiated VTODO create cannot be honoured at its chosen URI
+        // (we expose todo-<id>.ics), so it is rejected rather than mis-stored.
         $backend = $this->setUpDav();
         $tasks = Calendar::where('user_id', 1)->where('uri', 'tasks')->firstOrFail();
 
         $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\nUID:new-1\r\nSUMMARY:From client\r\nPRIORITY:9\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
-        $backend->createCalendarObject($tasks->id, 'new-1.ics', $ics);
-
-        $todo = Todo::where('title', 'From client')->firstOrFail();
-        $this->assertSame('low', $todo->priority);
+        $this->assertNull($backend->createCalendarObject($tasks->id, 'new-1.ics', $ics));
+        $this->assertSame(0, Todo::where('title', 'From client')->count());
     }
 
     public function test_deleting_a_vtodo_trashes_the_todo(): void

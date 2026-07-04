@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\CalendarUri;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -26,6 +27,8 @@ class Calendar extends Model
             'read_only' => 'boolean',
             'refresh_minutes' => 'integer',
             'refreshed_at' => 'datetime',
+            // Feed URLs may embed credentials/secret tokens → encrypt at rest.
+            'subscription_url' => 'encrypted',
         ];
     }
 
@@ -42,6 +45,24 @@ class Calendar extends Model
     /** The virtual calendar that exposes the shared to-dos as VTODO over CalDAV. */
     public function isTasks(): bool
     {
-        return $this->uri === 'tasks';
+        return $this->uri === CalendarUri::Tasks->value;
+    }
+
+    /** A virtual calendar not backed by the calendar_objects table for writes. */
+    public function isVirtual(): bool
+    {
+        return CalendarUri::isVirtual((string) $this->uri);
+    }
+
+    /** Whether a user may create/edit events here through the web UI or CalDAV. */
+    public function isWritableByUser(): bool
+    {
+        return ! $this->isReadOnly() && ! $this->isVirtual();
+    }
+
+    /** Reserved calendars that must not be deleted through the UI. */
+    public function isUndeletable(): bool
+    {
+        return CalendarUri::isUndeletable((string) $this->uri);
     }
 }

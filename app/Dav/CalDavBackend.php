@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Sabre\CalDAV\Backend\AbstractBackend;
 use Sabre\CalDAV\Backend\SyncSupport;
 use Sabre\CalDAV\Property\SupportedCalendarComponentSet;
+use Sabre\DAV\Exception\Forbidden;
 use Sabre\DAV\PropPatch;
 
 /**
@@ -119,7 +120,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             return [];
         }
         if (Calendar::find($calendarId)?->isTasks()) {
-            return $this->todos->rows();
+            return $this->todos->rows($calendarId);
         }
 
         return CalendarObject::where('calendar_id', $calendarId)->get()->map(fn (CalendarObject $o): array => $this->row($o))->all();
@@ -131,7 +132,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             return null;
         }
         if (Calendar::find($calendarId)?->isTasks()) {
-            return $this->todos->get($objectUri);
+            return $this->todos->get($calendarId, $objectUri);
         }
         $object = CalendarObject::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
 
@@ -144,10 +145,13 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
             return null;
         }
+        $this->assertWithinLimit($calendarData);
         if ($calendar->isTasks()) {
-            // Writing back into the to-do keeps it the source; the observer then
-            // records the change on the tasks calendar.
-            return $this->todos->write($objectUri, $calendarData);
+            // To-dos are the source of truth and are created inside the app;
+            // client-initiated VTODO creates would live at a URI we cannot honour
+            // (we expose todo-<id>.ics), so reject them. Edits/completions of
+            // existing to-dos go through updateCalendarObject.
+            return null;
         }
         $this->persister->persistNew($calendar, $objectUri, $calendarData);
 
@@ -160,6 +164,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         if ($calendar === null || ! $this->ownsCalendar($calendarId) || $calendar->isReadOnly()) {
             return null;
         }
+        $this->assertWithinLimit($calendarData);
         if ($calendar->isTasks()) {
             return $this->todos->write($objectUri, $calendarData);
         }
@@ -170,6 +175,14 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         $this->persister->persistUpdate($object, $calendarData);
 
         return '"'.md5($calendarData).'"';
+    }
+
+    /** Reject oversized objects (memory-exhaustion guard). */
+    private function assertWithinLimit(string $calendarData): void
+    {
+        if (! CalendarObjectPersister::withinLimit($calendarData)) {
+            throw new Forbidden('Calendar object exceeds the maximum allowed size.');
+        }
     }
 
     public function deleteCalendarObject($calendarId, $objectUri): void
@@ -236,6 +249,10 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
     {
         $row = [
             'id' => $o->id,
+            // 'calendarid' lets Sabre's AbstractBackend::calendarQuery() fallback
+            // re-fetch the object when running filters (calendar-query /
+            // free-busy REPORTs); omitting it fatals on those reports.
+            'calendarid' => $o->calendar_id,
             'uri' => $o->uri,
             'lastmodified' => $o->updated_at?->getTimestamp(),
             'etag' => '"'.$o->etag.'"',

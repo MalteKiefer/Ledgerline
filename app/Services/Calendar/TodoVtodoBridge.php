@@ -38,18 +38,18 @@ class TodoVtodoBridge
      *
      * @return list<array<string, mixed>>
      */
-    public function rows(bool $withData = false): array
+    public function rows(string $calendarId, bool $withData = false): array
     {
-        return Todo::query()->orderBy('id')->get()->map(fn (Todo $t): array => $this->row($t, $withData))->all();
+        return Todo::query()->orderBy('id')->get()->map(fn (Todo $t): array => $this->row($t, $calendarId, $withData))->all();
     }
 
     /** @return array<string, mixed>|null */
-    public function get(string $uri): ?array
+    public function get(string $calendarId, string $uri): ?array
     {
         $id = $this->idFromUri($uri);
         $todo = $id !== null ? Todo::find($id) : null;
 
-        return $todo !== null ? $this->row($todo, true) : null;
+        return $todo !== null ? $this->row($todo, $calendarId, true) : null;
     }
 
     /**
@@ -124,11 +124,12 @@ class TodoVtodoBridge
     }
 
     /** @return array<string, mixed> */
-    private function row(Todo $todo, bool $withData): array
+    private function row(Todo $todo, string $calendarId, bool $withData): array
     {
         $ics = $this->buildVtodo($todo);
         $row = [
             'id' => $todo->id,
+            'calendarid' => $calendarId,
             'uri' => $this->uriFor($todo),
             'lastmodified' => $todo->updated_at?->getTimestamp(),
             'etag' => '"'.md5($ics).'"',

@@ -20,7 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // WebDAV/CardDAV verbs aren't in Route::any()'s set, so list them.
             Route::match(
                 ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS',
-                    'PROPFIND', 'PROPPATCH', 'MKCOL', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'REPORT', 'ACL'],
+                    'PROPFIND', 'PROPPATCH', 'MKCOL', 'MKCALENDAR', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'REPORT', 'ACL'],
                 'dav/{path?}',
                 [DavController::class, 'handle'],
             )->where('path', '.*')->middleware('throttle:dav');
