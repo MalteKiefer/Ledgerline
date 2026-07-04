@@ -49,6 +49,8 @@ use Illuminate\Database\Eloquent\Model;
     'calendar_week_start',
     'calendar_week_numbers',
     'calendar_default_event_minutes',
+    'calendar_birthdays_enabled',
+    'calendar_anniversaries_enabled',
 ])]
 class AppSettings extends Model
 {
@@ -95,6 +97,8 @@ class AppSettings extends Model
             'export_notify_webhook' => 'boolean',
             'calendar_week_numbers' => 'boolean',
             'calendar_default_event_minutes' => 'integer',
+            'calendar_birthdays_enabled' => 'boolean',
+            'calendar_anniversaries_enabled' => 'boolean',
         ];
     }
 

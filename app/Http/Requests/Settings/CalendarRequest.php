@@ -22,7 +22,11 @@ class CalendarRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         // Unchecked checkboxes are absent from the payload; normalise to false.
-        $this->merge(['calendar_week_numbers' => $this->boolean('calendar_week_numbers')]);
+        $this->merge([
+            'calendar_week_numbers' => $this->boolean('calendar_week_numbers'),
+            'calendar_birthdays_enabled' => $this->boolean('calendar_birthdays_enabled'),
+            'calendar_anniversaries_enabled' => $this->boolean('calendar_anniversaries_enabled'),
+        ]);
     }
 
     /**
@@ -34,6 +38,8 @@ class CalendarRequest extends FormRequest
             'calendar_week_start' => ['required', Rule::in(['monday', 'sunday'])],
             'calendar_week_numbers' => ['boolean'],
             'calendar_default_event_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
+            'calendar_birthdays_enabled' => ['boolean'],
+            'calendar_anniversaries_enabled' => ['boolean'],
         ];
     }
 }

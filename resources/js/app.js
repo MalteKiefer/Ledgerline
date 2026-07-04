@@ -292,7 +292,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     },
 
     blank() {
-        return { id: null, book_id: this.book || this.books[0]?.id, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null };
+        return { id: null, book_id: this.book || this.books[0]?.id, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', anniversaries: [], note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null };
     },
 
     async openEditor(id) {
@@ -302,7 +302,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         const d = await r.json();
         this.form = {
             id: d.id, book_id: d.book, fn: d.fn || '', first_name: d.first_name || '', last_name: d.last_name || '',
-            org: d.org || '', title: d.title || '', nickname: d.nickname || '', note: d.note || '',
+            org: d.org || '', title: d.title || '', nickname: d.nickname || '', bday: d.bday || '', anniversaries: d.anniversaries || [], note: d.note || '',
             emails: d.emails?.length ? d.emails : [{ value: '', type: 'home' }],
             phones: d.phones?.length ? d.phones : [{ value: '', type: 'cell' }],
             urls: d.urls || [], group_ids: d.group_ids || [],
@@ -314,7 +314,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     payload() {
         return {
             book_id: this.form.book_id, fn: this.form.fn, first_name: this.form.first_name, last_name: this.form.last_name,
-            org: this.form.org, title: this.form.title, nickname: this.form.nickname, note: this.form.note,
+            org: this.form.org, title: this.form.title, nickname: this.form.nickname, bday: this.form.bday, anniversaries: this.form.anniversaries.filter((a) => a.date), note: this.form.note,
             emails: this.form.emails.filter((e) => e.value), phones: this.form.phones.filter((p) => p.value),
             urls: this.form.urls, group_ids: this.form.group_ids,
         };
