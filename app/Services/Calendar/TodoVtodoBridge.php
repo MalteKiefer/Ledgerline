@@ -7,7 +7,6 @@ namespace App\Services\Calendar;
 use App\Models\Calendar;
 use App\Models\Todo;
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Reader;
 use Throwable;
@@ -177,11 +176,5 @@ class TodoVtodoBridge
         }
 
         return 'normal';
-    }
-
-    /** The tasks calendars (there is normally one per DAV principal). */
-    public function tasksCalendars(): Collection
-    {
-        return Calendar::where('uri', 'tasks')->get();
     }
 }
