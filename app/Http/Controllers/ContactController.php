@@ -10,14 +10,12 @@ use App\Models\ContactGroup;
 use App\Services\Contacts\ContactImporter;
 use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\VCardService;
+use App\Support\ImageManagerFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\View\View;
-use Intervention\Image\Drivers\Gd\Driver as GdDriver;
-use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Encoders\JpegEncoder;
-use Intervention\Image\ImageManager;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -110,7 +108,7 @@ class ContactController extends Controller
         $this->authorizeContact($contact);
         $request->validate(['photo' => ['required', 'image', 'max:15360']]);
 
-        $image = $this->manager()->decodePath($request->file('photo')->getRealPath())->scaleDown(512, 512);
+        $image = app(ImageManagerFactory::class)->make()->decodePath($request->file('photo')->getRealPath())->scaleDown(512, 512);
         $dataUri = 'data:image/jpeg;base64,'.base64_encode((string) $image->encode(new JpegEncoder(quality: 82)));
 
         $data = $vcards->parse($contact->vcard);
@@ -190,10 +188,5 @@ class ContactController extends Controller
     private function authorizeContact(Contact $contact): void
     {
         abort_unless($contact->addressBook->user_id === auth()->id(), 403);
-    }
-
-    private function manager(): ImageManager
-    {
-        return new ImageManager(extension_loaded('imagick') ? new ImagickDriver : new GdDriver);
     }
 }

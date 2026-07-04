@@ -9,6 +9,7 @@ use App\Models\FileFolder;
 use App\Models\Photo;
 use App\Models\StoredFile;
 use App\Services\Gallery\PhotoExporter;
+use App\Support\DiskTempFile;
 use Generator;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
@@ -181,17 +182,7 @@ class ExportArchiver
 
     private function localCopy(Filesystem $disk, string $path): string
     {
-        $tmp = tempnam(sys_get_temp_dir(), 'exp-src');
-        $stream = $disk->readStream($path);
-        try {
-            file_put_contents($tmp, $stream);
-        } finally {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-        }
-
-        return $tmp;
+        return DiskTempFile::pull($disk, $path, 'exp-src');
     }
 
     /**

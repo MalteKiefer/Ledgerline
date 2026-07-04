@@ -5,17 +5,15 @@ declare(strict_types=1);
 namespace App\Services\Gallery;
 
 use App\Models\Photo;
+use App\Support\DiskTempFile;
+use App\Support\ImageManagerFactory;
 use Illuminate\Support\Facades\Storage;
-use Intervention\Image\Direction;
-use Intervention\Image\Drivers\Gd\Driver as GdDriver;
-use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Encoders\AvifEncoder;
 use Intervention\Image\Encoders\HeicEncoder;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\ImageManager;
-use Intervention\Image\Interfaces\DriverInterface;
 use Intervention\Image\Interfaces\ImageInterface;
 use lsolesen\pel\PelEntryAscii;
 use lsolesen\pel\PelEntryRational;
@@ -43,18 +41,15 @@ class PhotoExporter
     public function __construct(
         private readonly VideoProcessor $video,
         private readonly ExifWriter $exifWriter,
+        private readonly ImageManagerFactory $imageManagerFactory,
+        private readonly PhotoTransform $photoTransform,
     ) {}
 
     private ?ImageManager $manager = null;
 
     private function imageManager(): ImageManager
     {
-        return $this->manager ??= new ImageManager($this->driver());
-    }
-
-    private function driver(): DriverInterface
-    {
-        return extension_loaded('imagick') ? new ImagickDriver : new GdDriver;
+        return $this->manager ??= $this->imageManagerFactory->make();
     }
 
     /**
@@ -96,18 +91,7 @@ class PhotoExporter
      */
     private function localCopy(string $path): string
     {
-        $disk = Storage::disk(config('files.disk'));
-        $tmp = tempnam(sys_get_temp_dir(), 'export-src');
-        $stream = $disk->readStream($path);
-        try {
-            file_put_contents($tmp, $stream);
-        } finally {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-        }
-
-        return $tmp;
+        return DiskTempFile::pull(Storage::disk(config('files.disk')), $path, 'export-src');
     }
 
     private function stripExtension(string $name): string
@@ -206,18 +190,7 @@ class PhotoExporter
      */
     private function transform(string $src, Photo $photo): ImageInterface
     {
-        $image = $this->imageManager()->decodePath($src);
-
-        $rotation = ((int) $photo->rotation) % 360;
-        if ($rotation !== 0) {
-            // Intervention rotates counter-clockwise; negate for clockwise.
-            $image->rotate(360 - $rotation);
-        }
-        if ($photo->flipped) {
-            $image->flip(Direction::HORIZONTAL);
-        }
-
-        return $image;
+        return $this->photoTransform->applyEdits($this->imageManager()->decodePath($src), $photo);
     }
 
     private function editVideo(string $src, Photo $photo): string
