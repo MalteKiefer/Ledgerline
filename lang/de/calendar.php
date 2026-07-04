@@ -12,6 +12,7 @@ return [
         'agenda' => 'Agenda',
         'prev' => 'Zurück',
         'next' => 'Weiter',
+        'week_abbr' => 'KW',
         'calendars' => 'Kalender',
         'new_calendar' => 'Name des neuen Kalenders',
         'rename_calendar' => 'Kalender umbenennen',
