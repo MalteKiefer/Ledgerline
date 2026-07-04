@@ -470,28 +470,11 @@
                     <p x-show="search.error" x-cloak class="px-5 py-2 text-sm text-red-600" x-text="search.error"></p>
                     <div x-show="search.loading" class="flex items-center justify-center gap-2 py-10 text-sm text-gray-500"><x-icon name="arrow-path" class="h-4 w-4 animate-spin" />{{ __('mail.loading') }}</div>
                     <p x-show="! search.loading && ! search.ran" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('mail.search_prompt') }}</p>
-                    <p x-show="! search.loading && search.ran && ! search.results.length && ! search.viewing" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('mail.search_empty') }}</p>
+                    <p x-show="! search.loading && search.ran && ! search.results.length" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('mail.search_empty') }}</p>
 
-                    {{-- Result view (reuses the sandboxed archive renderer) --}}
-                    <template x-if="search.viewing">
-                        <div class="border-b border-gray-100 p-5">
-                            <button type="button" @click="search.viewing = null" class="mb-3 text-xs text-gray-500 hover:text-gray-700">&larr; {{ __('mail.back_to_list') }}</button>
-                            <h4 class="text-base font-semibold text-gray-900" x-text="search.viewing.subject || '—'"></h4>
-                            <p class="mt-1 text-xs text-gray-500"><span x-text="search.viewing.from?.name || search.viewing.from?.email || search.viewing.from"></span></p>
-                            <div x-show="search.viewLoading" class="py-6 text-sm text-gray-500">{{ __('mail.loading') }}</div>
-                            <template x-if="(search.viewing.attachments ?? []).length">
-                                <div class="mt-3 flex flex-wrap gap-2">
-                                    <template x-for="att in search.viewing.attachments" :key="att.id">
-                                        <a :href="searchAttachmentUrl(att.id)" class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" /><span x-text="att.name"></span></a>
-                                    </template>
-                                </div>
-                            </template>
-                            <iframe x-show="! search.viewLoading" :srcdoc="archiveSrcdoc(search.viewing)" sandbox="allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" class="mt-4 h-[50vh] w-full rounded border border-gray-200 bg-white"></iframe>
-                        </div>
-                    </template>
-
-                    {{-- Result list --}}
-                    <ul x-show="! search.viewing" class="divide-y divide-gray-100">
+                    {{-- Result list — clicking a hit closes the modal and opens the
+                         message in the normal reader (not a modal viewer). --}}
+                    <ul class="divide-y divide-gray-100">
                         <template x-for="m in search.results" :key="m.id">
                             <li class="px-5 py-3 hover:bg-gray-50">
                                 <button type="button" @click="viewSearchResult(m)" class="block w-full min-w-0 text-left">
