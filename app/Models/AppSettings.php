@@ -52,6 +52,7 @@ use Illuminate\Database\Eloquent\Model;
     'calendar_birthdays_enabled',
     'calendar_anniversaries_enabled',
     'calendar_holiday_countries',
+    'calendar_timezone',
 ])]
 class AppSettings extends Model
 {

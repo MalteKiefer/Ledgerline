@@ -389,14 +389,29 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     editor: false, form: {},
     locale: document.documentElement.lang || 'en',
     weekStart: 'monday', weekNumbers: false, defaultMinutes: 60,
+    tzSetting: '', browserTz: 'UTC', tzMismatch: null,
 
     init() {
         this.weekStart = (document.querySelector('meta[name="calendar-week-start"]')?.content) || 'monday';
         this.weekNumbers = (document.querySelector('meta[name="calendar-week-numbers"]')?.content) === '1';
         this.defaultMinutes = parseInt(document.querySelector('meta[name="calendar-default-minutes"]')?.content, 10) || 60;
+        this.tzSetting = (document.querySelector('meta[name="calendar-timezone"]')?.content) || '';
+        try { this.browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { this.browserTz = 'UTC'; }
+        // A pinned timezone that no longer matches this device → offer to switch.
+        if (this.tzSetting && this.tzSetting !== this.browserTz) this.tzMismatch = this.browserTz;
         this.cursor.setHours(0, 0, 0, 0);
         this.load();
     },
+
+    // The zone the calendar renders in: the pinned setting, else this browser.
+    effectiveTz() { return this.tzSetting || this.browserTz; },
+
+    async acceptTimezone() {
+        const tz = this.tzMismatch; if (! tz) return;
+        const r = await this._json(cfg.timezoneUrl, 'POST', { timezone: tz });
+        if (r.ok) { this.tzSetting = tz; this.tzMismatch = null; this.load(); }
+    },
+    dismissTimezone() { this.tzMismatch = null; },
 
     // ---- range for the current view (week start per settings) ---------------
     startOfWeek(d) {
@@ -441,6 +456,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         const u = new URL(cfg.dataUrl, location.origin);
         u.searchParams.set('from', this.ymd(from));
         u.searchParams.set('to', this.ymd(to));
+        u.searchParams.set('tz', this.effectiveTz());
         this.loading = true;
         try {
             const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
@@ -502,7 +518,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         const startAt = new Date(day); startAt.setHours(9, 0, 0, 0);
         const endAt = new Date(startAt.getTime() + this.defaultMinutes * 60000);
         const fmt = (x) => `${this.ymd(x)}T${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
-        return { id: null, calendar_id: writable?.id, summary: '', start: fmt(startAt), end: fmt(endAt), all_day: false, location: '', description: '', rrule: '', reminder_minutes: '' };
+        return { id: null, calendar_id: writable?.id, summary: '', start: fmt(startAt), end: fmt(endAt), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminder_minutes: '' };
     },
 
     openNew(d) {
@@ -517,6 +533,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         this.form = {
             id: d.id, calendar_id: d.calendar_id, summary: d.summary || '',
             start: d.start || '', end: d.end || '', all_day: !! d.all_day,
+            timezone: d.timezone || this.effectiveTz(),
             location: d.location || '', description: d.description || '', rrule: d.rrule || '',
             reminder_minutes: d.reminder_minutes != null ? String(d.reminder_minutes) : '',
         };
@@ -529,6 +546,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
             start: this.form.all_day ? this.form.start.slice(0, 10) : this.form.start,
             end: this.form.all_day ? (this.form.end || this.form.start).slice(0, 10) : this.form.end,
             all_day: this.form.all_day, location: this.form.location, description: this.form.description,
+            timezone: this.form.all_day ? null : (this.form.timezone || null),
             rrule: this.form.rrule || null,
             reminder_minutes: this.form.reminder_minutes === '' ? null : Number(this.form.reminder_minutes),
         };

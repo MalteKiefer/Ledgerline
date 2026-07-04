@@ -28,6 +28,8 @@ class CalendarRequest extends FormRequest
             'calendar_birthdays_enabled' => $this->boolean('calendar_birthdays_enabled'),
             'calendar_anniversaries_enabled' => $this->boolean('calendar_anniversaries_enabled'),
             'calendar_holiday_countries' => array_values((array) $this->input('calendar_holiday_countries', [])),
+            // Empty select = "follow the browser" → store null.
+            'calendar_timezone' => filled($this->input('calendar_timezone')) ? $this->input('calendar_timezone') : null,
         ]);
     }
 
@@ -44,6 +46,7 @@ class CalendarRequest extends FormRequest
             'calendar_anniversaries_enabled' => ['boolean'],
             'calendar_holiday_countries' => ['array'],
             'calendar_holiday_countries.*' => [Rule::in(HolidayCalendarBuilder::COUNTRIES)],
+            'calendar_timezone' => ['nullable', 'string', 'timezone'],
         ];
     }
 }
