@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Mail;
 
-use Webklex\PHPIMAP\Attachment;
-
 /**
  * Inlines an email's embedded (cid:) images into its HTML as data: URIs, so
  * they render in the message body instead of appearing only as attachments.
@@ -18,43 +16,54 @@ final class EmbeddedImages
     private const MAX_BYTES = 5 * 1024 * 1024;
 
     /**
-     * Replace `cid:<id>` references in $html with data: URIs built from the
-     * matching embedded image parts.
+     * The set of Content-IDs referenced by `cid:` in the HTML (lowercased).
+     * An attachment whose id is in this set is an embedded image and should be
+     * inlined into the body rather than listed as a separate attachment —
+     * regardless of its Content-Disposition (Gmail marks them "attachment").
      *
-     * @param  iterable<Attachment>  $attachments
+     * @return list<string>
      */
-    public static function inline(?string $html, iterable $attachments): ?string
+    public static function referencedCids(?string $html): array
     {
-        if ($html === null || $html === '' || ! str_contains($html, 'cid:')) {
-            return $html;
+        if (! is_string($html) || ! str_contains($html, 'cid:')) {
+            return [];
         }
 
-        foreach ($attachments as $a) {
-            $id = trim((string) ($a->id ?? ''));
-            $mime = (string) ($a->getMimeType() ?? '');
-            if ($id === '' || ! str_starts_with($mime, 'image/')) {
-                continue;
-            }
+        preg_match_all('/cid:<?([a-z0-9!#$%&\'*+\/=?^_`{|}~.@-]+)>?/i', $html, $matches);
 
-            $content = $a->getContent();
-            if (! is_string($content) || $content === '' || strlen($content) > self::MAX_BYTES) {
-                continue;
-            }
-
-            $dataUri = 'data:'.$mime.';base64,'.base64_encode($content);
-            $html = str_replace(['cid:'.$id, 'cid:<'.$id.'>'], $dataUri, $html);
-        }
-
-        return $html;
+        return array_values(array_unique(array_map('strtolower', $matches[1] ?? [])));
     }
 
     /**
-     * Whether an attachment is an embedded inline image (rendered in the body,
-     * so it should not also be listed as a downloadable attachment).
+     * Replace every `cid:<id>` reference to the given attachment with a data:
+     * URI built from its bytes. Returns the HTML unchanged if the part has no
+     * usable content. $a is a webklex Attachment (loosely typed so it can be
+     * stubbed in tests).
      */
-    public static function isInlineImage(Attachment $a): bool
+    public static function embed(?string $html, object $a): ?string
     {
-        return $a->disposition === 'inline'
-            && str_starts_with((string) ($a->getMimeType() ?? ''), 'image/');
+        if ($html === null) {
+            return $html;
+        }
+        $id = trim((string) ($a->id ?? ''));
+        if ($id === '') {
+            return $html;
+        }
+
+        $content = $a->getContent();
+        if (! is_string($content) || $content === '' || strlen($content) > self::MAX_BYTES) {
+            return $html;
+        }
+
+        // An <img cid:> target is an image; fall back to image/png when the
+        // part's declared type is missing/generic so the browser still renders.
+        $mime = (string) ($a->getMimeType() ?? '');
+        if (! str_starts_with($mime, 'image/')) {
+            $mime = 'image/png';
+        }
+
+        $dataUri = 'data:'.$mime.';base64,'.base64_encode($content);
+
+        return preg_replace('/cid:<?'.preg_quote($id, '/').'>?/i', $dataUri, $html);
     }
 }

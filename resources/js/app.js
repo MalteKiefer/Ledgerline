@@ -2950,7 +2950,17 @@ Alpine.data('vaultMail', (labels = {}) => ({
     msgCacheKey(folder, uid) {
         // Include UIDVALIDITY: a recreated mailbox reuses UID numbers for
         // different messages, so a stale cached body must not be served.
-        return `msg:${this.reader.account.id}:${folder}:${this.reader.uidValidity}:${uid}`;
+        // v2: bumped when the rendered body changed (inline cid: images are now
+        // embedded), so pre-fix cached bodies with raw cid: are not reused.
+        return `msg:v2:${this.reader.account.id}:${folder}:${this.reader.uidValidity}:${uid}`;
+    },
+
+    // Reflect the list's archived state on the open message, so the reader
+    // header shows the archive marker even when served from the session cache.
+    applyArchivedFlag(uid) {
+        if (! this.reader.current) return;
+        const row = this.reader.messages.find((m) => m.uid === uid);
+        if (row?.archived) this.reader.current.archived = true;
     },
 
     async openMsg(uid) {
@@ -2963,7 +2973,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         // Served from the encrypted cache if this message was already read this
         // session — instant, no re-fetch. The cache is dropped on lock/logout.
         const cached = mailCache.get(this.msgCacheKey(folder, uid));
-        if (cached) { this.reader.current = cached; return; }
+        if (cached) { this.reader.current = cached; this.applyArchivedFlag(uid); return; }
 
         const accId = this.reader.account?.id;
         this.reader.busy = true;
