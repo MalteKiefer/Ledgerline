@@ -6,8 +6,10 @@ namespace Tests\Feature;
 
 use App\Models\Note;
 use App\Models\ResourceShare;
+use App\Models\StoredFile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ResourceSharingTest extends TestCase
@@ -85,6 +87,27 @@ class ResourceSharingTest extends TestCase
         $this->actingAs($bob)->postJson(route('shares.store'), [
             'type' => 'notes', 'id' => $note->id, 'email' => $alice->email, 'permission' => 'read',
         ])->assertForbidden();
+    }
+
+    public function test_a_sharee_sync_cannot_destroy_the_owners_files(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+
+        $this->actingAs($alice);
+        $file = StoredFile::create([
+            'id' => (string) Str::uuid(), 'name' => 'a.txt',
+            'mime' => 'text/plain', 'size' => 1, 'blob' => (string) Str::uuid(), 'tags' => [],
+        ]);
+        // Even a WRITE share must not let a full-replace sync delete the owner's file.
+        $this->postJson(route('shares.store'), ['type' => 'files', 'id' => $file->id, 'email' => $bob->email, 'permission' => 'write'])->assertCreated();
+
+        $this->actingAs($bob);
+        // Bob's own tree is empty; the shared file is NOT in his manifest…
+        $this->getJson(route('files.data'))->assertOk()->assertJsonMissing(['name' => 'a.txt']);
+        // …and posting an empty manifest must not touch Alice's file.
+        $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertOk();
+        $this->assertDatabaseHas('files', ['id' => $file->id, 'deleted_at' => null]);
     }
 
     public function test_owner_can_revoke_a_share(): void

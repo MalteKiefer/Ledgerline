@@ -7,6 +7,7 @@ namespace App\Services\Backup;
 use App\Models\AppNotification;
 use App\Models\AppSettings;
 use App\Models\BackupJob;
+use App\Models\User;
 use App\Services\Notifications\ChannelNotifier;
 use Illuminate\Support\Facades\Log;
 
@@ -78,11 +79,12 @@ class BackupNotifier
         };
     }
 
-    /** In-app bell + browser/desktop notification (via the notifications table). */
+    /** In-app bell notification — backups are workspace infra, so notify the admins. */
     private function desktop(BackupJob $job, bool $success, string $summary): void
     {
+        $admins = User::query()->get()->filter->managesGlobalSettings()->pluck('id');
         $success
-            ? AppNotification::record('success', __('notifications.backup_ok', ['name' => $job->name]), $summary, 'backup')
-            : AppNotification::record('error', __('notifications.backup_failed', ['name' => $job->name]), $summary, 'backup');
+            ? AppNotification::recordFor($admins, 'success', __('notifications.backup_ok', ['name' => $job->name]), $summary, 'backup')
+            : AppNotification::recordFor($admins, 'error', __('notifications.backup_failed', ['name' => $job->name]), $summary, 'backup');
     }
 }

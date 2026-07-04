@@ -99,6 +99,7 @@ class BuildExport implements ShouldQueue
         $notifier->send($channels, $title, $body, [
             'url' => route('downloads.index'),
             'category' => 'export',
+            'user_id' => $export->user_id,
             'event' => $ok ? 'export.ready' : 'export.failed',
             'level' => $ok ? 'success' : 'error',
             'priority' => $ok ? 'default' : 'high',

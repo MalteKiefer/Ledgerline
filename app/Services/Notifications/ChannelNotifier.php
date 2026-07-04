@@ -36,7 +36,10 @@ class ChannelNotifier
         foreach (array_unique($channels) as $channel) {
             try {
                 match ($channel) {
-                    'desktop' => AppNotification::record($opts['level'] ?? 'info', $title, $body ?: ($opts['url'] ?? null), $opts['category'] ?? 'reminder'),
+                    // In-app bell targets a specific user; skip when no owner is given.
+                    'desktop' => isset($opts['user_id'])
+                        ? AppNotification::record((int) $opts['user_id'], $opts['level'] ?? 'info', $title, $body ?: ($opts['url'] ?? null), $opts['category'] ?? 'reminder')
+                        : null,
                     'ntfy' => $this->ntfy($settings, $title, $body, ['priority' => $opts['priority'] ?? 'default', 'click' => $opts['url'] ?? null]),
                     'webhook' => $this->webhook($settings, [
                         'event' => $opts['event'] ?? 'reminder',

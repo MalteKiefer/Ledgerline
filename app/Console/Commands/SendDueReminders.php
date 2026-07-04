@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\Reminder;
+use App\Models\Todo;
 use App\Services\Notifications\ChannelNotifier;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -27,11 +28,13 @@ class SendDueReminders extends Command
 
         foreach ($due as $reminder) {
             $when = $reminder->due_at?->timezone(config('app.timezone'))->format('Y-m-d H:i');
+            // The in-app bell notification goes to the to-do's owner only.
+            $ownerId = Todo::withoutGlobalScopes()->whereKey($reminder->todo_id)->value('user_id');
             $notifier->send(
                 $reminder->channels ?? [],
                 $reminder->title,
                 trim(__('reminders.body', ['time' => $when]).($reminder->url ? "\n".$reminder->url : '')),
-                ['url' => $reminder->url, 'category' => 'reminder', 'priority' => 'high'],
+                ['url' => $reminder->url, 'category' => 'reminder', 'priority' => 'high', 'user_id' => $ownerId],
             );
             $reminder->update(['fired_at' => Carbon::now()]);
         }

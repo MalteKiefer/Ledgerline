@@ -60,9 +60,10 @@ class ReminderTest extends TestCase
 
     public function test_the_command_fires_due_reminders_once(): void
     {
-        $this->signIn(); // AppNotification::record writes one entry per user
-        Reminder::create(['due_at' => now()->subMinute(), 'channels' => ['desktop'], 'title' => 'Do it']);
-        Reminder::create(['due_at' => now()->addDay(), 'channels' => ['desktop'], 'title' => 'Later']);
+        $this->signIn(); // the desktop bell targets the to-do owner
+        $todo = Todo::create(['title' => 'Owned', 'priority' => 'normal']); // owned by the signed-in user
+        Reminder::create(['todo_id' => $todo->id, 'due_at' => now()->subMinute(), 'channels' => ['desktop'], 'title' => 'Do it']);
+        Reminder::create(['todo_id' => $todo->id, 'due_at' => now()->addDay(), 'channels' => ['desktop'], 'title' => 'Later']);
 
         $this->artisan('reminders:send')->assertSuccessful();
         $this->assertSame(1, AppNotification::count());

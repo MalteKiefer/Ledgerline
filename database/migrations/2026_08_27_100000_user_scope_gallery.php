@@ -37,7 +37,7 @@ return new class extends Migration
     public function down(): void
     {
         foreach (['people', 'faces'] as $table) {
-            Schema::table($table, fn (Blueprint $t) => $t->dropConstrainedForeignId('user_id'));
+            Schema::table($table, fn (Blueprint $t) => $t->dropColumn('user_id'));
         }
     }
 };

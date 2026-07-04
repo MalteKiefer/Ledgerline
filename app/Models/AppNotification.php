@@ -29,21 +29,31 @@ class AppNotification extends Model
      * Record a notification for every user (single-tenant: usually one). Safe to
      * call from queued jobs — a failure here must never break the caller.
      */
-    public static function record(string $level, string $title, ?string $body = null, string $category = 'general'): void
+    public static function record(int $userId, string $level, string $title, ?string $body = null, string $category = 'general'): void
     {
         try {
-            $userIds = User::query()->pluck('id');
-            foreach ($userIds as $userId) {
-                static::create([
-                    'user_id' => $userId,
-                    'level' => $level,
-                    'category' => $category,
-                    'title' => $title,
-                    'body' => $body,
-                ]);
-            }
+            static::create([
+                'user_id' => $userId,
+                'level' => $level,
+                'category' => $category,
+                'title' => $title,
+                'body' => $body,
+            ]);
         } catch (\Throwable) {
             // Notifications are best-effort; never propagate.
+        }
+    }
+
+    /**
+     * Record the same notification for several users (a workspace-infra event
+     * fanned out to the admins).
+     *
+     * @param  iterable<int>  $userIds
+     */
+    public static function recordFor(iterable $userIds, string $level, string $title, ?string $body = null, string $category = 'general'): void
+    {
+        foreach ($userIds as $userId) {
+            static::record((int) $userId, $level, $title, $body, $category);
         }
     }
 }

@@ -176,7 +176,9 @@ class GalleryController extends Controller
         // Default to "recent" when only a limit is posted (backwards compatible).
         $scope = $validated['scope'] ?? ($limit !== null ? 'recent' : 'all');
 
-        $query = Photo::query()->select('id')->orderByDesc('id');
+        // Library-wide maintenance (admin-gated): operate across every user's
+        // photos, not just the admin's own (the per-user scope would hide the rest).
+        $query = Photo::withoutGlobalScopes()->select('id')->orderByDesc('id');
         if ($scope === 'missing') {
             $missing($query);
         } elseif ($scope === 'recent' && $limit !== null) {

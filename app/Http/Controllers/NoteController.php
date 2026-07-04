@@ -68,7 +68,9 @@ class NoteController extends Controller
 
     public function emptyTrash(): JsonResponse
     {
-        Note::onlyTrashed()->forceDelete();
+        // Owner-only: a bulk builder forceDelete bypasses the SharesWithUsers
+        // write guard, so pin it to the caller's own notes (never shared ones).
+        Note::withoutGlobalScopes()->where('user_id', auth()->id())->onlyTrashed()->forceDelete();
 
         return response()->json(['ok' => true]);
     }

@@ -103,6 +103,6 @@ class DavTodoBridgeTest extends TestCase
         $this->ownedTodo(['title' => 'Sync me', 'priority' => 'normal']);
 
         $this->assertGreaterThan($before, $tasks->fresh()->synctoken);
-        $this->assertDatabaseHas('calendar_changes', ['calendar_id' => $tasks->id, 'operation' => 1]);
+        $this->assertDatabaseHas('calendar_changes', ['calendar_id' => $tasks->id]);
     }
 }

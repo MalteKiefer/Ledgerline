@@ -55,9 +55,12 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         if ($userId === null) {
             return false;
         }
-        $owned = Calendar::where('id', $calendarId)->where('user_id', $userId)->first();
-        if ($owned !== null) {
-            return ! $owned->isReadOnly();
+        $calendar = Calendar::find($calendarId);
+        if ($calendar === null || $calendar->isReadOnly()) {
+            return false; // subscription/derived read-only calendars are never writable
+        }
+        if ((int) $calendar->user_id === $userId) {
+            return true;
         }
 
         return $this->sharePermission($calendarId, $userId) === ResourceShare::WRITE;

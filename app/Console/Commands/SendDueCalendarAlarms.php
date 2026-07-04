@@ -67,13 +67,14 @@ class SendDueCalendarAlarms extends Command
                     continue;
                 }
 
-                $ownerTz = UserSetting::for((int) $object->calendar->user_id)->calendar_timezone ?: config('app.timezone');
+                $ownerId = (int) $object->calendar->user_id;
+                $ownerTz = UserSetting::for($ownerId)->calendar_timezone ?: config('app.timezone');
                 $when = $start->timezone($ownerTz)->format('Y-m-d H:i');
                 $notifier->send(
                     $channels,
                     (string) ($object->summary ?: __('calendar.ui.new_event')),
                     __('reminders.body', ['time' => $when]),
-                    ['category' => 'reminder', 'priority' => 'high'],
+                    ['category' => 'reminder', 'priority' => 'high', 'user_id' => $ownerId],
                 );
                 $sent++;
             }
