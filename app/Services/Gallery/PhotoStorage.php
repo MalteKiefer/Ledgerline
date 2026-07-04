@@ -39,6 +39,7 @@ class PhotoStorage
         private readonly VideoProcessor $video,
         private readonly MotionPhotoExtractor $motion,
         private readonly ExifReader $exifReader,
+        private readonly PerceptualHash $perceptualHash,
     ) {}
 
     /**
@@ -209,6 +210,9 @@ class PhotoStorage
                 'medium_path' => $mediumPath,
                 'status' => 'ready',
                 'processed_at' => Carbon::now(),
+                // Perceptual hash for near-identical duplicate detection (from the
+                // source image, or the video's poster frame).
+                'phash' => $this->perceptualHash->hash($source),
             ];
 
             // For videos the native pixel size comes from ffprobe, not the

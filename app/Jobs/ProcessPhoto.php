@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Models\Photo;
+use App\Services\Gallery\MachineLearning;
 use App\Services\Gallery\PhotoStorage;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -47,6 +48,11 @@ class ProcessPhoto implements ShouldQueue
         // ContentIdentifier; pair them once each half has its metadata.
         if ($photo->content_id !== null) {
             PairLivePhotos::dispatch($photo->id);
+        }
+
+        // Content-similarity embedding for duplicate detection (when ML is on).
+        if (app(MachineLearning::class)->enabled()) {
+            EmbedPhoto::dispatch($photo->id);
         }
     }
 }

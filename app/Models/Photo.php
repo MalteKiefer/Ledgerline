@@ -42,6 +42,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'favorited_at',
     'checksum',
     'content_id',
+    'phash',
+    'embedded_at',
     'taken_at',
     'processed_at',
 ])]
@@ -59,6 +61,8 @@ class Photo extends Model
             'taken_at' => 'datetime',
             'processed_at' => 'datetime',
             'favorited_at' => 'datetime',
+            'phash' => 'integer',
+            'embedded_at' => 'datetime',
             'size' => 'integer',
             'width' => 'integer',
             'height' => 'integer',

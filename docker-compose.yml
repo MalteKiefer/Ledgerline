@@ -89,7 +89,9 @@ services:
       start_period: 20s
 
   db:
-    image: postgres:17-alpine
+    # pgvector image (Postgres 17 + the `vector` extension) for image-similarity
+    # duplicate detection. Drop-in for postgres:17-alpine — same PG17 data dir.
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: ${DB_DATABASE:-ledgerline}
       POSTGRES_USER: ${DB_USERNAME:-ledgerline}
