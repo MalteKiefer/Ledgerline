@@ -17,6 +17,8 @@ return [
         'rename_calendar' => 'Kalender umbenennen',
         'delete_calendar_confirm' => 'Diesen Kalender und alle seine Termine löschen?',
         'read_only' => 'Schreibgeschützt',
+        'import' => '.ics importieren',
+        'export' => '.ics exportieren',
         'new_event' => 'Neuer Termin',
         'edit_event' => 'Termin bearbeiten',
         'no_events' => 'Keine Termine in diesem Zeitraum.',

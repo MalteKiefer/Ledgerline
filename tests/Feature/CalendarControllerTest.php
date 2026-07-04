@@ -8,6 +8,7 @@ use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class CalendarControllerTest extends TestCase
@@ -143,6 +144,53 @@ class CalendarControllerTest extends TestCase
         $this->getJson(route('calendar.events.show', $object))->assertForbidden();
         $this->deleteJson(route('calendar.events.destroy', $object))->assertForbidden();
         $this->assertDatabaseHas('calendar_objects', ['id' => $object->id]);
+    }
+
+    public function test_it_exports_events_as_ics(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id, 'summary' => 'Exported', 'start' => '2026-09-01T10:00', 'end' => '2026-09-01T11:00',
+        ])->assertCreated();
+
+        $res = $this->get(route('calendar.export'));
+        $res->assertOk()->assertHeader('Content-Type', 'text/calendar; charset=utf-8');
+        $body = $res->streamedContent();
+        $this->assertStringContainsString('BEGIN:VCALENDAR', $body);
+        $this->assertStringContainsString('SUMMARY:Exported', $body);
+        $this->assertStringContainsString('END:VCALENDAR', $body);
+    }
+
+    public function test_it_imports_events_from_ics(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:imp-1\r\nSUMMARY:Imported\r\nDTSTART:20260901T100000Z\r\nDTEND:20260901T110000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        $file = UploadedFile::fake()->createWithContent('cal.ics', $ics);
+
+        $this->post(route('calendar.import'), ['file' => $file, 'calendar_id' => $calendar->id])
+            ->assertOk()->assertJson(['created' => 1, 'updated' => 0]);
+
+        $this->assertDatabaseHas('calendar_objects', ['calendar_id' => $calendar->id, 'summary' => 'Imported']);
+
+        // Re-importing the same UID updates in place, not duplicates.
+        $file2 = UploadedFile::fake()->createWithContent('cal.ics', $ics);
+        $this->post(route('calendar.import'), ['file' => $file2, 'calendar_id' => $calendar->id])
+            ->assertOk()->assertJson(['created' => 0, 'updated' => 1]);
+        $this->assertSame(1, CalendarObject::count());
+    }
+
+    public function test_import_into_a_read_only_calendar_is_forbidden(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user, ['uri' => 'feed', 'read_only' => true]);
+        $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:x\r\nSUMMARY:X\r\nDTSTART:20260901T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        $file = UploadedFile::fake()->createWithContent('cal.ics', $ics);
+
+        $this->post(route('calendar.import'), ['file' => $file, 'calendar_id' => $calendar->id])->assertForbidden();
+        $this->assertSame(0, CalendarObject::count());
     }
 
     public function test_it_moves_an_event_to_another_calendar(): void

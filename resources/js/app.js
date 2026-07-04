@@ -518,6 +518,15 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         this.editor = false; this.load();
     },
 
+    async importFile(ev) {
+        const f = ev.target.files[0]; if (! f) return;
+        const target = this.calendars.find((c) => ! c.read_only);
+        if (! target) { ev.target.value = ''; return; }
+        const fd = new FormData(); fd.append('file', f); fd.append('calendar_id', target.id);
+        await fetch(cfg.importUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
+        this.load(); ev.target.value = '';
+    },
+
     // ---- calendar management ------------------------------------------------
     async addCalendar() {
         const name = window.prompt(cfg.newCalendar); if (! name) return;

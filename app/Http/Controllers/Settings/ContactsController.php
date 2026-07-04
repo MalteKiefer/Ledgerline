@@ -71,6 +71,7 @@ class ContactsController extends Controller
     private function mobileconfig(string $host, string $username): string
     {
         $accountUuid = (string) Str::uuid();
+        $calendarUuid = (string) Str::uuid();
         $profileUuid = (string) Str::uuid();
         $u = htmlspecialchars($username, ENT_XML1);
         $h = htmlspecialchars($host, ENT_XML1);
@@ -95,8 +96,21 @@ class ContactsController extends Controller
               <key>CardDAVPort</key><integer>443</integer>
               <key>CardDAVPrincipalURL</key><string>/dav/</string>
             </dict>
+            <dict>
+              <key>PayloadType</key><string>com.apple.caldav.account</string>
+              <key>PayloadVersion</key><integer>1</integer>
+              <key>PayloadIdentifier</key><string>de.ledgerline.caldav.{$calendarUuid}</string>
+              <key>PayloadUUID</key><string>{$calendarUuid}</string>
+              <key>PayloadDisplayName</key><string>Ledgerline Calendar</string>
+              <key>CalDAVAccountDescription</key><string>Ledgerline</string>
+              <key>CalDAVHostName</key><string>{$h}</string>
+              <key>CalDAVUsername</key><string>{$u}</string>
+              <key>CalDAVUseSSL</key><true/>
+              <key>CalDAVPort</key><integer>443</integer>
+              <key>CalDAVPrincipalURL</key><string>/dav/</string>
+            </dict>
           </array>
-          <key>PayloadDisplayName</key><string>Ledgerline Contacts</string>
+          <key>PayloadDisplayName</key><string>Ledgerline</string>
           <key>PayloadIdentifier</key><string>de.ledgerline.contacts</string>
           <key>PayloadType</key><string>Configuration</string>
           <key>PayloadUUID</key><string>{$profileUuid}</string>

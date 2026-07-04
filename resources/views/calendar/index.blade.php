@@ -5,6 +5,8 @@
         'eventBase' => url('calendar/events'),
         'calUrl' => route('calendar.calendars.store'),
         'calBase' => url('calendar/calendars'),
+        'importUrl' => route('calendar.import'),
+        'exportUrl' => route('calendar.export'),
         'token' => csrf_token(),
         'confirmDelete' => __('calendar.ui.delete_confirm'),
         'newCalendar' => __('calendar.ui.new_calendar'),
@@ -41,6 +43,13 @@
                         </li>
                     </template>
                 </ul>
+            </div>
+            <div class="space-y-2 border-t border-gray-100 pt-3">
+                <a :href="cfg.exportUrl" class="block text-sm text-gray-600 hover:text-gray-900">{{ __('calendar.ui.export') }}</a>
+                <label class="block cursor-pointer text-sm text-gray-600 hover:text-gray-900">
+                    {{ __('calendar.ui.import') }}
+                    <input type="file" accept=".ics,text/calendar" class="hidden" @change="importFile($event)">
+                </label>
             </div>
         </aside>
 
