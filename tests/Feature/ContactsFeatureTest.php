@@ -139,7 +139,7 @@ class ContactsFeatureTest extends TestCase
         $this->book($user->id);
         $person = Person::create(['name' => null]);
 
-        PersonNamed::dispatch($person->id, 'Alice Example');
+        PersonNamed::dispatch($person->id, 'Alice Example', $user->id);
 
         $person->refresh();
         $this->assertNotNull($person->contact_id);
@@ -147,7 +147,7 @@ class ContactsFeatureTest extends TestCase
 
         // Naming another person the same name reuses the existing contact.
         $p2 = Person::create(['name' => null]);
-        PersonNamed::dispatch($p2->id, 'Alice Example');
+        PersonNamed::dispatch($p2->id, 'Alice Example', $user->id);
         $this->assertSame($person->contact_id, $p2->fresh()->contact_id);
         $this->assertDatabaseCount('contacts', 1);
     }

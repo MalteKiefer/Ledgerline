@@ -82,7 +82,7 @@ class PersonController extends Controller
         if (array_key_exists('name', $data)) {
             $person->forceFill(['name' => $data['name'] ?: null])->save();
             if (filled($data['name'] ?? null)) {
-                PersonNamed::dispatch($person->id, (string) $data['name']);
+                PersonNamed::dispatch($person->id, (string) $data['name'], $request->user()->id);
             }
         }
         if ($request->has('hidden')) {

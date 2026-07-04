@@ -14,5 +14,5 @@ class PersonNamed
 {
     use Dispatchable;
 
-    public function __construct(public string $personId, public string $name) {}
+    public function __construct(public string $personId, public string $name, public ?int $userId = null) {}
 }
