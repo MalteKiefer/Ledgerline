@@ -26,13 +26,20 @@ class SendDueCalendarAlarms extends Command
     public function handle(ICalService $ical, ChannelNotifier $notifier): int
     {
         $now = Carbon::now();
-        $channels = $this->channels(AppSettings::current());
+        $settings = AppSettings::current();
+        $channels = $this->channels($settings);
+        // Render reminder times in the user's pinned calendar timezone (falling
+        // back to the app timezone when they follow the browser).
+        $displayTz = $settings->calendar_timezone ?: config('app.timezone');
         $sent = 0;
 
         // Only the owner's own events raise local alarms — never read-only
         // subscriptions or generated (holiday/derived) calendars.
         $objects = CalendarObject::whereNotNull('alarm_minutes')
             ->where('component', 'VEVENT')
+            // Recurring events always considered; one-off events only while their
+            // start is still within the look-back window (older can't re-fire).
+            ->where(fn ($q) => $q->whereNotNull('rrule')->orWhere('starts_at', '>=', (clone $now)->subDays(2)))
             ->whereHas('calendar', fn ($q) => $q->where('read_only', false)->whereNull('subscription_url'))
             ->get();
 
@@ -61,7 +68,7 @@ class SendDueCalendarAlarms extends Command
                     continue;
                 }
 
-                $when = $start->timezone(config('app.timezone'))->format('Y-m-d H:i');
+                $when = $start->timezone($displayTz)->format('Y-m-d H:i');
                 $notifier->send(
                     $channels,
                     (string) ($object->summary ?: __('calendar.ui.new_event')),

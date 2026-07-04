@@ -22,7 +22,9 @@ use App\Services\Contacts\DavCredentialService;
 use App\Services\Notifications\ChannelNotifier;
 use App\Support\OutboundUrl;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Sabre\DAV\Exception\Forbidden;
 use Tests\TestCase;
 
@@ -234,5 +236,57 @@ class CalendarAuditFixesTest extends TestCase
         app(HolidayCalendarBuilder::class)->sync(2026);
 
         $this->assertDatabaseHas('calendars', ['user_id' => $user->id, 'uri' => 'holidays']);
+    }
+
+    public function test_calendar_color_must_be_a_hex_value(): void
+    {
+        $this->signIn();
+        // Web routes render validation failures as a redirect with session errors.
+        $this->post(route('calendar.calendars.store'), ['name' => 'X', 'color' => 'red; DROP'])->assertSessionHasErrors('color');
+        $this->postJson(route('calendar.calendars.store'), ['name' => 'X', 'color' => '#a1b2c3'])->assertCreated();
+    }
+
+    public function test_read_only_calendar_cannot_be_renamed_via_web(): void
+    {
+        $user = $this->signIn();
+        $sub = Calendar::create([
+            'user_id' => $user->id, 'uri' => 'holidays', 'name' => 'Holidays',
+            'components' => ['VEVENT'], 'synctoken' => 1, 'read_only' => true,
+        ]);
+        $this->putJson(route('calendar.calendars.update', $sub), ['name' => 'Hacked'])->assertForbidden();
+    }
+
+    public function test_unparseable_event_date_is_a_422_not_a_500(): void
+    {
+        $user = $this->signIn();
+        $cal = Calendar::create([
+            'user_id' => $user->id, 'uri' => 'default', 'name' => 'C', 'components' => ['VEVENT'], 'synctoken' => 1,
+        ]);
+        $this->post(route('calendar.events.store'), [
+            'calendar_id' => $cal->id, 'summary' => 'X', 'start' => 'not-a-date',
+        ])->assertSessionHasErrors('start');
+    }
+
+    public function test_invalid_rrule_frequency_is_dropped(): void
+    {
+        $ics = app(ICalService::class)->buildEvent([
+            'summary' => 'X', 'start' => '2026-09-01 10:00', 'end' => '2026-09-01 11:00', 'rrule' => 'FREQ=FORTNIGHTLY',
+        ]);
+        $this->assertStringNotContainsString('RRULE', $ics);
+    }
+
+    public function test_unreachable_feed_error_does_not_leak_the_url(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('cURL error 7: Failed to connect to sekret.example.com'));
+        $user = $this->signIn();
+        $cal = Calendar::create([
+            'user_id' => $user->id, 'uri' => 'default', 'name' => 'C', 'components' => ['VEVENT'], 'synctoken' => 1,
+        ]);
+
+        $res = $this->postJson(route('calendar.import-url'), [
+            'url' => 'https://sekret.example.com/feed.ics?token=SECRET', 'calendar_id' => $cal->id,
+        ])->assertStatus(422);
+        $this->assertStringNotContainsString('SECRET', $res->getContent());
+        $this->assertStringNotContainsString('sekret.example.com', $res->getContent());
     }
 }

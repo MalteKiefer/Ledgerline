@@ -29,6 +29,9 @@ Schedule::command('calendar:refresh-subscriptions')->everyFifteenMinutes()->with
 // Rebuild the holidays calendar daily (advances the rolling year window).
 Schedule::command('calendar:refresh-holidays')->daily()->withoutOverlapping();
 
+// Trim the WebDAV sync-collection change logs (bounded history per collection).
+Schedule::command('dav:prune-changes')->daily()->withoutOverlapping();
+
 // Pull every mail account into the local archive (server-deleted mail is kept).
 Schedule::command('mail:sync')->hourly()->withoutOverlapping();
 

@@ -26,10 +26,16 @@ class CalendarFeedFetcher
             throw new RuntimeException('The feed URL is not an allowed outbound target.');
         }
 
-        $response = Http::withOptions(['allow_redirects' => false])
-            ->timeout(15)
-            ->accept('text/calendar')
-            ->get($url);
+        try {
+            $response = Http::withOptions(['allow_redirects' => false])
+                ->timeout(15)
+                ->accept('text/calendar')
+                ->get($url);
+        } catch (\Throwable) {
+            // Never surface the exception message — it embeds the (possibly
+            // credential-bearing) URL into the response and the log.
+            throw new RuntimeException('The calendar feed could not be reached.');
+        }
 
         if (! $response->successful()) {
             throw new RuntimeException('The feed responded with HTTP '.$response->status().'.');

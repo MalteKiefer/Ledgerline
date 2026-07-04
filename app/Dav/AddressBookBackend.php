@@ -201,10 +201,21 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             ];
         }
 
+        // Stale/foreign or pruned-away token → null so Sabre triggers a full
+        // resync (RFC 6578 valid-sync-token).
+        if (! ctype_digit((string) $syncToken) || (int) $syncToken > $current) {
+            return null;
+        }
+        $oldestKept = DB::table('dav_changes')->where('address_book_id', $addressBookId)->min('synctoken');
+        if ($oldestKept !== null && (int) $syncToken < (int) $oldestKept && (int) $syncToken < $current) {
+            return null;
+        }
+
         $rows = DB::table('dav_changes')
             ->where('address_book_id', $addressBookId)
             ->where('synctoken', '>=', (int) $syncToken)
             ->orderBy('synctoken')
+            ->when($limit, fn ($q) => $q->limit((int) $limit))
             ->get(['uri', 'operation']);
 
         // Latest operation per uri wins.

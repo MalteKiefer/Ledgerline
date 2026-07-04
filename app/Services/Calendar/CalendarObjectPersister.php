@@ -8,6 +8,7 @@ use App\Enums\DavChangeOperation;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Services\Contacts\DavChangeLog;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Persists a calendar object's ICS consistently (etag + denormalised columns +
@@ -63,6 +64,18 @@ class CalendarObjectPersister
      * @param  array<string, string>  $uriToIcs
      */
     public function replace(Calendar $calendar, array $uriToIcs): void
+    {
+        // Atomic: a mid-rebuild failure must not leave the calendar half-empty
+        // with a bumped sync token.
+        DB::transaction(function () use ($calendar, $uriToIcs): void {
+            $this->reconcile($calendar, $uriToIcs);
+        });
+    }
+
+    /**
+     * @param  array<string, string>  $uriToIcs
+     */
+    private function reconcile(Calendar $calendar, array $uriToIcs): void
     {
         $existing = CalendarObject::where('calendar_id', $calendar->id)->get(['id', 'uri', 'etag'])->keyBy('uri');
 

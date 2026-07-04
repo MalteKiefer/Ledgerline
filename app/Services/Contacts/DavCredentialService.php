@@ -75,7 +75,7 @@ class DavCredentialService
     {
         return Calendar::firstOrCreate(
             ['user_id' => $userId, 'uri' => 'default'],
-            ['name' => 'Calendar', 'color' => '#3366cc', 'components' => ['VEVENT'], 'synctoken' => 1],
+            ['name' => 'Calendar', 'color' => Calendar::DEFAULT_COLOR, 'components' => ['VEVENT'], 'synctoken' => 1],
         );
     }
 

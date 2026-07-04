@@ -19,6 +19,11 @@ class Calendar extends Model
 {
     use HasUuids;
 
+    /** Default calendar colour, and the validation rule for a user-supplied one. */
+    public const DEFAULT_COLOR = '#3366cc';
+
+    public const COLOR_RULE = ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/'];
+
     protected function casts(): array
     {
         return [
