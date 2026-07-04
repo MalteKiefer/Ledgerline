@@ -11,6 +11,7 @@ return [
         'gallery' => 'Galerie',
         'todos' => 'Aufgaben',
         'downloads' => 'Downloads',
+        'contacts' => 'Kontakte',
     ],
     'menu' => [
         'profile' => 'Profil',

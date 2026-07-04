@@ -264,6 +264,104 @@ Alpine.data('toastHub', (labels = {}) => ({
 }));
 
 /**
+ * Contacts page: book/group filter + search, contact list, and a create/edit
+ * modal that writes through the vCard-backed API.
+ */
+Alpine.data('contactsPage', (cfg = {}) => ({
+    cfg,
+    books: [], groups: [], contacts: [], loading: true,
+    book: '', group: '', q: '',
+    editor: false, form: {},
+
+    init() {
+        this.load();
+        this.$watch('q', () => this.load());
+        this.$watch('book', () => this.load());
+        this.$watch('group', () => this.load());
+    },
+
+    async load() {
+        const u = new URL(cfg.dataUrl, location.origin);
+        if (this.book) u.searchParams.set('book', this.book);
+        if (this.group) u.searchParams.set('group', this.group);
+        if (this.q) u.searchParams.set('q', this.q);
+        try {
+            const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) { const d = await r.json(); this.books = d.books; this.groups = d.groups; this.contacts = d.contacts; }
+        } catch (e) { /* keep */ } finally { this.loading = false; }
+    },
+
+    blank() {
+        return { id: null, book_id: this.book || this.books[0]?.id, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null };
+    },
+
+    async openEditor(id) {
+        if (! id) { this.form = this.blank(); this.editor = true; return; }
+        const r = await fetch(cfg.contactBase + '/' + id, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        if (! r.ok) return;
+        const d = await r.json();
+        this.form = {
+            id: d.id, book_id: d.book, fn: d.fn || '', first_name: d.first_name || '', last_name: d.last_name || '',
+            org: d.org || '', title: d.title || '', nickname: d.nickname || '', note: d.note || '',
+            emails: d.emails?.length ? d.emails : [{ value: '', type: 'home' }],
+            phones: d.phones?.length ? d.phones : [{ value: '', type: 'cell' }],
+            urls: d.urls || [], group_ids: d.group_ids || [],
+            avatar: this.contacts.find((c) => c.id === id)?.avatar || null,
+        };
+        this.editor = true;
+    },
+
+    payload() {
+        return {
+            book_id: this.form.book_id, fn: this.form.fn, first_name: this.form.first_name, last_name: this.form.last_name,
+            org: this.form.org, title: this.form.title, nickname: this.form.nickname, note: this.form.note,
+            emails: this.form.emails.filter((e) => e.value), phones: this.form.phones.filter((p) => p.value),
+            urls: this.form.urls, group_ids: this.form.group_ids,
+        };
+    },
+
+    async save() {
+        const id = this.form.id;
+        await this._json(id ? cfg.contactBase + '/' + id : cfg.storeUrl, id ? 'PUT' : 'POST', this.payload());
+        this.editor = false; this.load();
+    },
+
+    async destroy() {
+        if (! this.form.id || ! window.confirm(cfg.confirmDelete)) return;
+        await this._json(cfg.contactBase + '/' + this.form.id, 'DELETE');
+        this.editor = false; this.load();
+    },
+
+    async uploadAvatar(ev) {
+        const f = ev.target.files[0]; if (! f || ! this.form.id) return;
+        const fd = new FormData(); fd.append('photo', f);
+        const r = await fetch(cfg.contactBase + '/' + this.form.id + '/avatar', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
+        if (r.ok) { const d = await r.json(); this.form.avatar = d.avatar + '?t=' + Date.now(); this.load(); }
+        ev.target.value = '';
+    },
+
+    async importFile(ev) {
+        const f = ev.target.files[0]; if (! f) return;
+        const fd = new FormData(); fd.append('file', f); fd.append('book_id', this.book || this.books[0]?.id);
+        await fetch(cfg.importUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
+        this.load(); ev.target.value = '';
+    },
+
+    async addBook() {
+        const name = window.prompt(cfg.newBook); if (! name) return;
+        await this._json(cfg.booksUrl, 'POST', { name }); this.load();
+    },
+    async addGroup() {
+        const name = window.prompt(cfg.newGroup); if (! name) return;
+        await this._json(cfg.groupsUrl, 'POST', { name }); this.load();
+    },
+
+    async _json(url, method, body) {
+        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+    },
+}));
+
+/**
  * People grid: lists clustered people (cover face + name + count).
  */
 Alpine.data('peoplePage', (cfg = {}) => ({

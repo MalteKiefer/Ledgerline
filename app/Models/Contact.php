@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /** A contact card. The raw vCard 4.0 is authoritative; other columns are denormalised. */
 #[Fillable([
@@ -30,5 +31,10 @@ class Contact extends Model
     public function addressBook(): BelongsTo
     {
         return $this->belongsTo(AddressBook::class);
+    }
+
+    public function groups(): BelongsToMany
+    {
+        return $this->belongsToMany(ContactGroup::class, 'contact_group', 'contact_id', 'group_id');
     }
 }
