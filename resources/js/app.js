@@ -489,7 +489,8 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         this.form = {
             id: d.id, calendar_id: d.calendar_id, summary: d.summary || '',
             start: d.start || '', end: d.end || '', all_day: !! d.all_day,
-            location: d.location || '', description: d.description || '', rrule: d.rrule || '', reminder_minutes: '',
+            location: d.location || '', description: d.description || '', rrule: d.rrule || '',
+            reminder_minutes: d.reminder_minutes != null ? String(d.reminder_minutes) : '',
         };
         this.editor = true;
     },

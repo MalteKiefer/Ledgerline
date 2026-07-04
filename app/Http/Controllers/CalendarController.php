@@ -239,6 +239,7 @@ class CalendarController extends Controller
             'location' => isset($vevent->LOCATION) ? (string) $vevent->LOCATION : null,
             'description' => isset($vevent->DESCRIPTION) ? (string) $vevent->DESCRIPTION : null,
             'rrule' => $object->rrule,
+            'reminder_minutes' => $object->alarm_minutes,
         ];
     }
 

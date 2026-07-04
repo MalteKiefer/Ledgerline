@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** A calendar object (VEVENT/VTODO). The raw ICS is authoritative. */
 #[Fillable([
     'calendar_id', 'uri', 'etag', 'ics', 'component',
-    'summary', 'starts_at', 'ends_at', 'all_day', 'rrule',
+    'summary', 'starts_at', 'ends_at', 'all_day', 'rrule', 'alarm_minutes',
 ])]
 class CalendarObject extends Model
 {
@@ -24,6 +24,7 @@ class CalendarObject extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'all_day' => 'boolean',
+            'alarm_minutes' => 'integer',
         ];
     }
 
