@@ -1,0 +1,34 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+/** A contact card. The raw vCard 4.0 is authoritative; other columns are denormalised. */
+#[Fillable([
+    'address_book_id', 'uri', 'etag', 'vcard',
+    'fn', 'first_name', 'last_name', 'org', 'emails', 'phones', 'has_photo',
+])]
+class Contact extends Model
+{
+    use HasUuids;
+
+    protected function casts(): array
+    {
+        return [
+            'emails' => 'array',
+            'phones' => 'array',
+            'has_photo' => 'boolean',
+        ];
+    }
+
+    public function addressBook(): BelongsTo
+    {
+        return $this->belongsTo(AddressBook::class);
+    }
+}
