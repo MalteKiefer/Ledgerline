@@ -115,11 +115,11 @@
                                      Only an explicit false counts — a missing flag must not turn
                                      every reloaded folder into its own section header. --}}
                                 <div x-show="f.selectable === false" class="truncate px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
-                                    :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`" x-text="folderLabel(f)"></div>
+                                    :style="{ paddingLeft: (0.75 + folderDepth(f) * 0.75) + 'rem' }" x-text="folderLabel(f)"></div>
                                 {{-- Selectable folder — standard folders get a role icon; custom none --}}
                                 <button type="button" x-show="f.selectable !== false" @click="openFolder(f.path)"
                                     class="flex w-full items-center justify-between gap-2 py-2 pr-3 text-left text-sm hover:bg-gray-50"
-                                    :style="`padding-left: ${0.75 + folderDepth(f) * 0.75}rem`"
+                                    :style="{ paddingLeft: (0.75 + folderDepth(f) * 0.75) + 'rem' }"
                                     :class="f.path === reader.folderPath ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700'">
                                     <span class="flex min-w-0 items-center gap-2">
                                         <svg x-show="folderIconPath(f)" class="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(f)" /></svg>
