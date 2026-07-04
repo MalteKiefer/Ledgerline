@@ -108,4 +108,46 @@ class MailArchiveActionsTest extends TestCase
         $this->assertSame(0, MailMessage::count());
         Storage::disk('files')->assertMissing('mail/'.$m->blob);
     }
+
+    public function test_cached_serves_an_archived_message_or_reports_not_found(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $this->signIn();
+        $m = $this->archived();
+
+        $this->postJson(route('mail.message.cached', $m->mail_account_id), ['folder' => 'INBOX', 'uid' => 5])
+            ->assertOk()
+            ->assertJsonPath('found', true)
+            ->assertJsonPath('message.archived', true)
+            ->assertJsonPath('message.archiveId', $m->id);
+
+        $this->postJson(route('mail.message.cached', $m->mail_account_id), ['folder' => 'INBOX', 'uid' => 999])
+            ->assertOk()->assertJsonPath('found', false);
+    }
+
+    public function test_archive_one_captures_a_live_message_and_is_idempotent(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $this->signIn();
+        $a = MailAccount::create(['name' => 'W', 'host' => 'h', 'port' => 993, 'encryption' => 'ssl', 'username' => 'u', 'password' => 'p']);
+
+        $this->app->instance(MailSource::class, new class extends RecordingMailSource
+        {
+            public function fetch(ImapCredentials $c, string $folder, int $uid): array
+            {
+                return ['raw' => "Subject: Live {$uid}\r\n\r\nBody", 'subject' => "Live {$uid}", 'to' => [], 'cc' => []];
+            }
+        });
+
+        $this->postJson(route('mail.message.archive', $a->id), ['folder' => 'INBOX', 'uid' => 42, 'uidvalidity' => 7])
+            ->assertOk()->assertJson(['archived' => true]);
+        $this->assertDatabaseHas('mail_messages', ['mail_account_id' => $a->id, 'uid' => 42, 'uidvalidity' => 7]);
+
+        // Already archived → no duplicate.
+        $this->postJson(route('mail.message.archive', $a->id), ['folder' => 'INBOX', 'uid' => 42, 'uidvalidity' => 7])
+            ->assertOk()->assertJson(['archived' => false]);
+        $this->assertSame(1, MailMessage::where('uid', 42)->count());
+    }
 }
