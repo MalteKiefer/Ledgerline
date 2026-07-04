@@ -10,6 +10,7 @@ use App\Dav\DavContext;
 use App\Dav\PrincipalBackend;
 use App\Models\AddressBook;
 use App\Models\Contact;
+use App\Models\DavCredential;
 use App\Services\Contacts\DavCredentialService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Sabre\CardDAV\AddressBookRoot;
@@ -125,5 +126,33 @@ class DavContactsTest extends TestCase
             ->assertSessionHas('dav_password');
 
         $this->assertDatabaseCount('dav_credentials', 1);
+    }
+
+    public function test_apple_profile_downloads_a_carddav_mobileconfig(): void
+    {
+        $this->signIn();
+        $this->post(route('settings.contacts.generate'));
+        $username = DavCredential::firstOrFail()->username;
+
+        $res = $this->get(route('settings.contacts.profile'));
+        $res->assertOk()->assertHeader('Content-Type', 'application/x-apple-aspen-config; charset=utf-8');
+        $body = $res->getContent();
+        $this->assertStringContainsString('com.apple.carddav.account', $body);
+        $this->assertStringContainsString('CardDAVHostName', $body);
+        $this->assertStringContainsString($username, $body);
+    }
+
+    public function test_apple_profile_requires_credentials(): void
+    {
+        $this->signIn();
+        $this->get(route('settings.contacts.profile'))->assertNotFound();
+    }
+
+    public function test_settings_page_shows_a_qr_when_enabled(): void
+    {
+        $this->signIn();
+        $this->post(route('settings.contacts.generate'));
+
+        $this->get(route('settings.contacts.edit'))->assertOk()->assertSee('<svg', false);
     }
 }
