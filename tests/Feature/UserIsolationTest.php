@@ -5,10 +5,16 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Bookmark;
+use App\Models\MailAccount;
 use App\Models\Note;
+use App\Models\Person;
+use App\Models\Photo;
+use App\Models\StoredFile;
 use App\Models\Todo;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class UserIsolationTest extends TestCase
@@ -58,15 +64,15 @@ class UserIsolationTest extends TestCase
 
     public function test_files_are_private_and_raw_download_is_owner_only(): void
     {
-        \Illuminate\Support\Facades\Storage::fake(config('files.disk'));
+        Storage::fake(config('files.disk'));
         $alice = User::factory()->create();
         $bob = User::factory()->create();
 
         $this->actingAs($alice);
-        $blob = (string) \Illuminate\Support\Str::uuid();
-        \Illuminate\Support\Facades\Storage::disk(config('files.disk'))->put('files/'.$blob, 'secret bytes');
-        \App\Models\StoredFile::create([
-            'id' => (string) \Illuminate\Support\Str::uuid(), 'name' => 'a.txt',
+        $blob = (string) Str::uuid();
+        Storage::disk(config('files.disk'))->put('files/'.$blob, 'secret bytes');
+        StoredFile::create([
+            'id' => (string) Str::uuid(), 'name' => 'a.txt',
             'mime' => 'text/plain', 'size' => 12, 'blob' => $blob, 'tags' => [],
         ]);
 
@@ -86,16 +92,33 @@ class UserIsolationTest extends TestCase
         $bob = User::factory()->create();
 
         $this->actingAs($alice);
-        \App\Models\Photo::factory()->create(['uploaded_by' => $alice->id]);
-        \App\Models\Person::create(['name' => 'Alice friend']);
-        $this->assertSame(1, \App\Models\Photo::count());
-        $this->assertSame(1, \App\Models\Person::count());
+        Photo::factory()->create(['uploaded_by' => $alice->id]);
+        Person::create(['name' => 'Alice friend']);
+        $this->assertSame(1, Photo::count());
+        $this->assertSame(1, Person::count());
 
         // Bob's gallery + people are empty; the photo carries Alice's ownership.
         $this->actingAs($bob);
-        $this->assertSame(0, \App\Models\Photo::count());
-        $this->assertSame(0, \App\Models\Person::count());
-        $this->assertSame($alice->id, \App\Models\Photo::withoutGlobalScopes()->first()->uploaded_by);
+        $this->assertSame(0, Photo::count());
+        $this->assertSame(0, Person::count());
+        $this->assertSame($alice->id, Photo::withoutGlobalScopes()->first()->uploaded_by);
+    }
+
+    public function test_mail_accounts_are_private(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+
+        $this->actingAs($alice);
+        $this->postJson(route('mail.accounts.store'), [
+            'name' => 'Work', 'host' => 'imap.example.com', 'port' => 993,
+            'encryption' => 'ssl', 'username' => 'a@x.test', 'password' => 'secret',
+        ])->assertSuccessful();
+        $this->assertSame(1, MailAccount::count());
+
+        $this->actingAs($bob);
+        $this->assertSame(0, MailAccount::count());
+        $this->getJson(route('mail.accounts'))->assertOk()->assertJsonMissing(['name' => 'Work']);
     }
 
     public function test_owner_is_set_automatically_on_create(): void
