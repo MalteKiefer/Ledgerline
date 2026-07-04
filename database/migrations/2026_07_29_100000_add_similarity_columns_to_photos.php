@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Support\Vector;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ return new class extends Migration
             $table->timestamp('embedded_at')->nullable();
         });
 
-        if (DB::getDriverName() === 'pgsql') {
+        if (Vector::available()) {
             DB::statement('CREATE EXTENSION IF NOT EXISTS vector');
             DB::statement('ALTER TABLE photos ADD COLUMN embedding vector(512)');
             DB::statement('CREATE INDEX photos_embedding_hnsw ON photos USING hnsw (embedding vector_cosine_ops)');

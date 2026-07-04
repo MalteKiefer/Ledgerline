@@ -51,8 +51,14 @@ class ProcessPhoto implements ShouldQueue
         }
 
         // Content-similarity embedding for duplicate detection (when ML is on).
-        if (app(MachineLearning::class)->enabled()) {
+        $ml = app(MachineLearning::class);
+        if ($ml->enabled()) {
             EmbedPhoto::dispatch($photo->id);
+        }
+
+        // Face detection + clustering for the People view (when enabled).
+        if ($ml->faceEnabled()) {
+            DetectFaces::dispatch($photo->id);
         }
     }
 }

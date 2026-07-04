@@ -17,6 +17,7 @@ use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NoteController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
+use App\Http\Controllers\PersonController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
@@ -78,6 +79,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/gallery/rename', [SettingsGalleryController::class, 'rename'])->name('settings.gallery.rename');
     Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
     Route::post('/settings/gallery/detect-duplicates', [SettingsGalleryController::class, 'detectDuplicates'])->name('settings.gallery.detect-duplicates');
+    Route::post('/settings/gallery/detect-faces', [SettingsGalleryController::class, 'detectFaces'])->name('settings.gallery.detect-faces');
     Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
     Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
 
@@ -130,6 +132,15 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/gallery/duplicates/data', [GalleryController::class, 'duplicatesData'])->name('gallery.duplicates.data');
     Route::post('/gallery/duplicates/{group}/resolve', [GalleryController::class, 'resolveDuplicate'])->name('gallery.duplicates.resolve');
     Route::post('/gallery/duplicates/{group}/dismiss', [GalleryController::class, 'dismissDuplicate'])->name('gallery.duplicates.dismiss');
+    // People: faces clustered into people; name/merge/hide/reassign.
+    Route::get('/gallery/people', [PersonController::class, 'index'])->name('gallery.people');
+    Route::get('/gallery/people/data', [PersonController::class, 'data'])->name('gallery.people.data');
+    Route::get('/gallery/faces/{face}/thumb', [PersonController::class, 'thumb'])->name('gallery.faces.thumb');
+    Route::post('/gallery/faces/{face}/reassign', [PersonController::class, 'reassignFace'])->name('gallery.faces.reassign');
+    Route::get('/gallery/people/{person}', [PersonController::class, 'show'])->name('gallery.people.show');
+    Route::get('/gallery/people/{person}/data', [PersonController::class, 'showData'])->name('gallery.people.show.data');
+    Route::patch('/gallery/people/{person}', [PersonController::class, 'update'])->name('gallery.people.update');
+    Route::post('/gallery/people/{person}/merge', [PersonController::class, 'merge'])->name('gallery.people.merge');
     Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
     Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
     Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->name('gallery.download');

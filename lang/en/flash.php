@@ -21,6 +21,7 @@ return [
     'photos_location_set' => 'Location set on :count photo(s).',
     'photos_all_jobs_queued' => 'Queued all jobs for :count photo(s).',
     'duplicates_scan_queued' => 'Duplicate scan queued. Groups appear under Gallery › Duplicates.',
+    'faces_scan_queued' => 'Face scan queued. People appear under Gallery › People.',
     'photos_regenerate_queued' => 'Queued :count photo(s) for thumbnail regeneration.',
     'photos_rename_queued' => 'Queued :count photo(s) for renaming.',
     'photos_rescan_queued' => 'Queued :count photo(s) for metadata re-reading.',

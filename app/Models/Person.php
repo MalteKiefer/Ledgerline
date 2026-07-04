@@ -1,0 +1,53 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+/**
+ * A person: a cluster of detected faces. `contact_id` links to a vCard contact
+ * once the contacts module exists (naming is free-text until then).
+ */
+#[Fillable([
+    'name',
+    'contact_id',
+    'cover_face_id',
+    'hidden_at',
+    'faces_count',
+])]
+class Person extends Model
+{
+    use HasUuids;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'hidden_at' => 'datetime',
+            'faces_count' => 'integer',
+        ];
+    }
+
+    public function faces(): HasMany
+    {
+        return $this->hasMany(Face::class);
+    }
+
+    public function coverFace(): BelongsTo
+    {
+        return $this->belongsTo(Face::class, 'cover_face_id');
+    }
+
+    public function isHidden(): bool
+    {
+        return $this->hidden_at !== null;
+    }
+}

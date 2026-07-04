@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Gallery;
 
 use App\Models\Photo;
+use App\Support\Vector;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -35,7 +36,7 @@ class DuplicateDetector
             ->update(['duplicate_group_id' => null, 'dup_score' => null]);
 
         $this->perceptualPass();
-        if (DB::getDriverName() === 'pgsql') {
+        if (Vector::available()) {
             $this->embeddingPass();
         }
 
