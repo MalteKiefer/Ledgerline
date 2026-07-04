@@ -77,6 +77,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/gallery/regenerate', [SettingsGalleryController::class, 'regenerate'])->name('settings.gallery.regenerate');
     Route::post('/settings/gallery/rename', [SettingsGalleryController::class, 'rename'])->name('settings.gallery.rename');
     Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
+    Route::post('/settings/gallery/detect-duplicates', [SettingsGalleryController::class, 'detectDuplicates'])->name('settings.gallery.detect-duplicates');
     Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
     Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
 
@@ -124,6 +125,11 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/gallery/trips', [GalleryController::class, 'trips'])->name('gallery.trips');
     Route::get('/gallery/points', [GalleryController::class, 'points'])->name('gallery.points');
     Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
+    // Duplicates: content-based duplicate groups; keep one, trash the rest.
+    Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->name('gallery.duplicates');
+    Route::get('/gallery/duplicates/data', [GalleryController::class, 'duplicatesData'])->name('gallery.duplicates.data');
+    Route::post('/gallery/duplicates/{group}/resolve', [GalleryController::class, 'resolveDuplicate'])->name('gallery.duplicates.resolve');
+    Route::post('/gallery/duplicates/{group}/dismiss', [GalleryController::class, 'dismissDuplicate'])->name('gallery.duplicates.dismiss');
     Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
     Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
     Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->name('gallery.download');

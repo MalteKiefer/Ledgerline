@@ -48,6 +48,7 @@ return [
     'regenerate' => 'Regenerate thumbnails',
     'rename' => 'Apply filename template',
     'run_all_jobs' => 'Run all jobs',
+    'detect_duplicates' => 'Scan for duplicates',
     'rescan' => 'Re-read metadata',
     'save' => 'Save',
     'mail_sync_minutes' => 'Refresh mail in background every (minutes)',
