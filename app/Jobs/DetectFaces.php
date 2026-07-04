@@ -70,6 +70,9 @@ class DetectFaces implements ShouldQueue
                 }
 
                 $face = Face::create([
+                    // Faces inherit the photo's owner (job runs without an auth
+                    // context, so set it explicitly for per-user clustering).
+                    'user_id' => $photo->uploaded_by,
                     'photo_id' => $photo->id,
                     'det_score' => $f['score'],
                     'box_x1' => $f['box'][0], 'box_y1' => $f['box'][1],

@@ -50,10 +50,11 @@ class DuplicateDetector
         $rows = Photo::query()
             ->whereNull('dup_dismissed_at')
             ->whereNotNull('phash')
-            ->get(['id', 'phash', 'media_type']);
+            ->get(['id', 'phash', 'media_type', 'uploaded_by']);
 
-        // Compare within each media type only.
-        foreach ($rows->groupBy('media_type') as $group) {
+        // Compare within each media type AND owner only — never dedupe one
+        // user's photos against another's.
+        foreach ($rows->groupBy(fn (Photo $p): string => $p->media_type.'|'.$p->uploaded_by) as $group) {
             $list = $group->values();
             $n = $list->count();
             for ($i = 0; $i < $n; $i++) {
@@ -72,17 +73,19 @@ class DuplicateDetector
     {
         $maxDist = 1.0 - (float) config('gallery.duplicate_threshold', 0.92);
 
-        $candidates = DB::select("SELECT id, media_type, embedding::text AS vec FROM photos
+        $candidates = DB::select("SELECT id, media_type, uploaded_by, embedding::text AS vec FROM photos
             WHERE embedding IS NOT NULL AND dup_dismissed_at IS NULL AND deleted_at IS NULL AND status = 'ready'");
 
         foreach ($candidates as $c) {
-            // Nearest neighbours via the HNSW index (literal vector param).
+            // Nearest neighbours via the HNSW index (literal vector param),
+            // restricted to the same owner.
             $neighbours = DB::select(
                 "SELECT id, (embedding <=> ?::vector) AS dist FROM photos
                  WHERE id <> ? AND embedding IS NOT NULL AND media_type = ?
+                   AND uploaded_by IS NOT DISTINCT FROM ?
                    AND dup_dismissed_at IS NULL AND deleted_at IS NULL AND status = 'ready'
                  ORDER BY embedding <=> ?::vector LIMIT 25",
-                [$c->vec, $c->id, $c->media_type, $c->vec],
+                [$c->vec, $c->id, $c->media_type, $c->uploaded_by, $c->vec],
             );
 
             foreach ($neighbours as $n) {

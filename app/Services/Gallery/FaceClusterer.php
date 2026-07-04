@@ -28,7 +28,9 @@ class FaceClusterer
         $personId = $match?->person_id;
 
         if ($personId === null) {
-            $personId = Person::create()->id;
+            // A new cluster belongs to the same user as the face — people are
+            // never shared or clustered across users.
+            $personId = Person::create(['user_id' => $face->user_id])->id;
         }
 
         $face->forceFill(['person_id' => $personId])->save();
@@ -95,9 +97,10 @@ class FaceClusterer
         $row = DB::selectOne(
             'SELECT f.id FROM faces f
              WHERE f.id <> ? AND f.person_id IS NOT NULL AND f.embedding IS NOT NULL
+               AND f.user_id IS NOT DISTINCT FROM ?
                AND (f.embedding <=> (SELECT embedding FROM faces WHERE id = ?)) <= ?
              ORDER BY f.embedding <=> (SELECT embedding FROM faces WHERE id = ?) LIMIT 1',
-            [$face->id, $face->id, $maxDist, $face->id],
+            [$face->id, $face->user_id, $face->id, $maxDist, $face->id],
         );
 
         return $row !== null ? Face::find($row->id) : null;

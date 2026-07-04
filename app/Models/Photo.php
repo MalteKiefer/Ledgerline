@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use Database\Factories\PhotoFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -53,7 +54,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Photo extends Model
 {
     /** @use HasFactory<PhotoFactory> */
-    use HasFactory, SoftDeletes;
+    use HasFactory, OwnsUserData, SoftDeletes;
+
+    /** Photos are owned via the existing uploaded_by column. */
+    public function ownerColumn(): string
+    {
+        return 'uploaded_by';
+    }
 
     /**
      * @return array<string, string>
