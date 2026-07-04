@@ -20,6 +20,7 @@ class ContactWriter
     public function __construct(
         private readonly VCardService $vcards,
         private readonly DavChangeLog $changes,
+        private readonly ContactPersister $persister,
     ) {}
 
     /**
@@ -30,17 +31,9 @@ class ContactWriter
     {
         $data['categories'] = $this->groupNames($book->user_id, $groupIds);
         $vcard = $this->vcards->build($data);
-        $uri = Str::uuid().'.vcf';
 
-        $contact = Contact::create(array_merge([
-            'address_book_id' => $book->id,
-            'uri' => $uri,
-            'etag' => md5($vcard),
-            'vcard' => $vcard,
-        ], $this->vcards->denormalize($vcard)));
-
+        $contact = $this->persister->persistNew($book, Str::uuid().'.vcf', $vcard);
         $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
-        $this->changes->record($book, $uri, DavChangeOperation::Added);
 
         return $contact;
     }
@@ -56,9 +49,8 @@ class ContactWriter
         $existing = $this->vcards->parse($contact->vcard);
         $vcard = $this->vcards->build($data, $existing['uid'] ?? null);
 
-        $contact->forceFill(array_merge(['etag' => md5($vcard), 'vcard' => $vcard], $this->vcards->denormalize($vcard)))->save();
+        $this->persister->persistUpdate($contact, $vcard);
         $contact->groups()->sync($this->ownedGroupIds($book->user_id, $groupIds));
-        $this->changes->record($book, $contact->uri, DavChangeOperation::Modified);
 
         return $contact;
     }
