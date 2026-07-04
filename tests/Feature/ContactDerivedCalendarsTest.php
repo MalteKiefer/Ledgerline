@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AddressBook;
-use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Services\Calendar\ContactDerivedCalendars;
 use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\VCardService;
@@ -50,7 +50,7 @@ class ContactDerivedCalendarsTest extends TestCase
         app(ContactWriter::class)->create($book, ['fn' => 'Alice', 'bday' => '1988-03-15']);
         app(ContactWriter::class)->create($book, ['fn' => 'Bob']); // no birthday
 
-        AppSettings::current()->update(['calendar_birthdays_enabled' => true]);
+        UserSetting::for($user->id)->update(['calendar_birthdays_enabled' => true]);
         app(ContactDerivedCalendars::class)->sync();
 
         $calendar = Calendar::where('user_id', $user->id)->where('uri', 'birthdays')->firstOrFail();
@@ -73,7 +73,7 @@ class ContactDerivedCalendarsTest extends TestCase
             ],
         ]);
 
-        AppSettings::current()->update(['calendar_anniversaries_enabled' => true]);
+        UserSetting::for($user->id)->update(['calendar_anniversaries_enabled' => true]);
         app(ContactDerivedCalendars::class)->sync();
 
         $calendar = Calendar::where('user_id', $user->id)->where('uri', 'anniversaries')->firstOrFail();
@@ -87,11 +87,11 @@ class ContactDerivedCalendarsTest extends TestCase
         $book = $this->book($user);
         app(ContactWriter::class)->create($book, ['fn' => 'Dan', 'bday' => '1970-01-01']);
 
-        AppSettings::current()->update(['calendar_birthdays_enabled' => true]);
+        UserSetting::for($user->id)->update(['calendar_birthdays_enabled' => true]);
         app(ContactDerivedCalendars::class)->sync();
         $this->assertDatabaseHas('calendars', ['user_id' => $user->id, 'uri' => 'birthdays']);
 
-        AppSettings::current()->update(['calendar_birthdays_enabled' => false]);
+        UserSetting::for($user->id)->update(['calendar_birthdays_enabled' => false]);
         app(ContactDerivedCalendars::class)->sync();
         $this->assertDatabaseMissing('calendars', ['user_id' => $user->id, 'uri' => 'birthdays']);
     }
@@ -100,7 +100,7 @@ class ContactDerivedCalendarsTest extends TestCase
     {
         $user = User::factory()->create();
         $book = $this->book($user);
-        AppSettings::current()->update(['calendar_birthdays_enabled' => true]);
+        UserSetting::for($user->id)->update(['calendar_birthdays_enabled' => true]);
         app(ContactDerivedCalendars::class)->sync(); // empty calendar exists
 
         // Adding a contact with a birthday fires the observer → rebuild.
@@ -117,7 +117,7 @@ class ContactDerivedCalendarsTest extends TestCase
         // vCard 4.0 allows an omitted year: --MMDD.
         app(ContactWriter::class)->create($book, ['fn' => 'Frank', 'bday' => '--0704']);
 
-        AppSettings::current()->update(['calendar_birthdays_enabled' => true]);
+        UserSetting::for($user->id)->update(['calendar_birthdays_enabled' => true]);
         app(ContactDerivedCalendars::class)->sync();
 
         $calendar = Calendar::where('user_id', $user->id)->where('uri', 'birthdays')->firstOrFail();

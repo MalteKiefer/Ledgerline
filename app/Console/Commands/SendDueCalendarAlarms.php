@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Models\AppSettings;
 use App\Models\CalendarObject;
+use App\Models\UserSetting;
 use App\Services\Calendar\ICalService;
 use App\Services\Notifications\ChannelNotifier;
 use Carbon\Carbon;
@@ -26,11 +27,9 @@ class SendDueCalendarAlarms extends Command
     public function handle(ICalService $ical, ChannelNotifier $notifier): int
     {
         $now = Carbon::now();
-        $settings = AppSettings::current();
-        $channels = $this->channels($settings);
-        // Render reminder times in the user's pinned calendar timezone (falling
-        // back to the app timezone when they follow the browser).
-        $displayTz = $settings->calendar_timezone ?: config('app.timezone');
+        // Channels are workspace infra; the reminder time is rendered in each
+        // event owner's own pinned calendar timezone.
+        $channels = $this->channels(AppSettings::current());
         $sent = 0;
 
         // Only the owner's own events raise local alarms — never read-only
@@ -68,7 +67,8 @@ class SendDueCalendarAlarms extends Command
                     continue;
                 }
 
-                $when = $start->timezone($displayTz)->format('Y-m-d H:i');
+                $ownerTz = UserSetting::for((int) $object->calendar->user_id)->calendar_timezone ?: config('app.timezone');
+                $when = $start->timezone($ownerTz)->format('Y-m-d H:i');
                 $notifier->send(
                     $channels,
                     (string) ($object->summary ?: __('calendar.ui.new_event')),

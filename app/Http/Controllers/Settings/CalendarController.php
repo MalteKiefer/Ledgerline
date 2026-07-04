@@ -6,22 +6,23 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\CalendarRequest;
-use App\Models\AppSettings;
+use App\Models\UserSetting;
 use App\Services\Calendar\ContactDerivedCalendars;
 use App\Services\Calendar\HolidayCalendarBuilder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 /**
- * Calendar settings: display + behaviour preferences (week start, week numbers,
- * default event duration).
+ * Personal calendar settings (per user): display + behaviour preferences and the
+ * generated birthdays/anniversaries/holidays calendars.
  */
 class CalendarController extends Controller
 {
-    public function edit(): View
+    public function edit(Request $request): View
     {
         return view('settings.calendar.edit', [
-            'settings' => AppSettings::current(),
+            'settings' => UserSetting::for($request->user()->id),
             'countries' => $this->countryChoices(),
             'timezones' => timezone_identifiers_list(),
         ]);
@@ -29,11 +30,12 @@ class CalendarController extends Controller
 
     public function update(CalendarRequest $request, ContactDerivedCalendars $derived, HolidayCalendarBuilder $holidays): RedirectResponse
     {
-        AppSettings::current()->update($request->validated());
+        $userId = $request->user()->id;
+        UserSetting::for($userId)->update($request->validated());
 
-        // Reconcile the generated calendars with the saved toggles / countries.
-        $derived->sync();
-        $holidays->sync();
+        // Reconcile only this user's generated calendars with their toggles.
+        $derived->sync($userId);
+        $holidays->sync(null, $userId);
 
         return redirect()->route('settings.calendar.edit')->with('status', __('flash.calendar_settings_saved'));
     }

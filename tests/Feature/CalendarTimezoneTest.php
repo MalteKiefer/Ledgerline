@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Services\Calendar\ICalService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -75,19 +75,19 @@ class CalendarTimezoneTest extends TestCase
 
     public function test_settings_accepts_a_timezone_and_normalises_empty_to_null(): void
     {
-        $this->signIn();
+        $user = $this->signIn();
 
         $this->put(route('settings.calendar.update'), [
             'calendar_week_start' => 'monday', 'calendar_default_event_minutes' => 60,
             'calendar_timezone' => 'Europe/Berlin',
         ])->assertRedirect(route('settings.calendar.edit'));
-        $this->assertSame('Europe/Berlin', AppSettings::current()->calendar_timezone);
+        $this->assertSame('Europe/Berlin', UserSetting::for($user->id)->calendar_timezone);
 
         $this->put(route('settings.calendar.update'), [
             'calendar_week_start' => 'monday', 'calendar_default_event_minutes' => 60,
             'calendar_timezone' => '',
         ])->assertRedirect(route('settings.calendar.edit'));
-        $this->assertNull(AppSettings::current()->calendar_timezone);
+        $this->assertNull(UserSetting::for($user->id)->calendar_timezone);
     }
 
     public function test_settings_rejects_an_invalid_timezone(): void
@@ -101,14 +101,14 @@ class CalendarTimezoneTest extends TestCase
 
     public function test_the_detection_endpoint_pins_the_browser_timezone(): void
     {
-        $this->signIn();
+        $user = $this->signIn();
 
         $this->postJson(route('calendar.timezone'), ['timezone' => 'Asia/Tokyo'])->assertOk();
-        $this->assertSame('Asia/Tokyo', AppSettings::current()->calendar_timezone);
+        $this->assertSame('Asia/Tokyo', UserSetting::for($user->id)->calendar_timezone);
 
         // Web routes render validation failures as a redirect with session errors
         // (JSON is reserved for api/*), so an invalid zone is rejected, not stored.
         $this->post(route('calendar.timezone'), ['timezone' => 'Nope/Nope'])->assertSessionHasErrors('timezone');
-        $this->assertSame('Asia/Tokyo', AppSettings::current()->calendar_timezone);
+        $this->assertSame('Asia/Tokyo', UserSetting::for($user->id)->calendar_timezone);
     }
 }

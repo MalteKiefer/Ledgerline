@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\AppSettings;
+use App\Models\User;
+use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -20,7 +21,7 @@ class CalendarSettingsTest extends TestCase
 
     public function test_it_saves_valid_calendar_settings(): void
     {
-        $this->signIn();
+        $user = $this->signIn();
 
         $this->put(route('settings.calendar.update'), [
             'calendar_week_start' => 'sunday',
@@ -28,7 +29,7 @@ class CalendarSettingsTest extends TestCase
             'calendar_default_event_minutes' => 30,
         ])->assertRedirect(route('settings.calendar.edit'))->assertSessionHas('status');
 
-        $settings = AppSettings::current();
+        $settings = UserSetting::for($user->id);
         $this->assertSame('sunday', $settings->calendar_week_start);
         $this->assertTrue($settings->calendar_week_numbers);
         $this->assertSame(30, $settings->calendar_default_event_minutes);
@@ -36,15 +37,30 @@ class CalendarSettingsTest extends TestCase
 
     public function test_an_unchecked_week_numbers_box_saves_as_false(): void
     {
-        $this->signIn();
-        AppSettings::current()->update(['calendar_week_numbers' => true]);
+        $user = $this->signIn();
+        UserSetting::for($user->id)->update(['calendar_week_numbers' => true]);
 
         $this->put(route('settings.calendar.update'), [
             'calendar_week_start' => 'monday',
             'calendar_default_event_minutes' => 60,
         ])->assertRedirect(route('settings.calendar.edit'));
 
-        $this->assertFalse(AppSettings::current()->calendar_week_numbers);
+        $this->assertFalse(UserSetting::for($user->id)->calendar_week_numbers);
+    }
+
+    public function test_calendar_settings_are_per_user(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+
+        $this->actingAs($alice)->put(route('settings.calendar.update'), [
+            'calendar_week_start' => 'sunday', 'calendar_default_event_minutes' => 45, 'calendar_week_numbers' => '1',
+        ])->assertRedirect(route('settings.calendar.edit'));
+
+        // Bob is unaffected — his settings are his own defaults.
+        $this->assertSame('sunday', UserSetting::for($alice->id)->calendar_week_start);
+        $this->assertSame('monday', UserSetting::for($bob->id)->calendar_week_start);
+        $this->assertSame(60, UserSetting::for($bob->id)->calendar_default_event_minutes);
     }
 
     public function test_it_rejects_an_invalid_week_start_and_duration(): void

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Calendar;
 
-use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\Contact;
+use App\Models\UserSetting;
 use App\Services\Contacts\VCardService;
 use App\Support\WorkspaceOwners;
 
@@ -24,13 +24,13 @@ class ContactDerivedCalendars
         private readonly CalendarObjectPersister $persister,
     ) {}
 
-    /** Reconcile both derived calendars for every workspace user. */
+    /** Reconcile both derived calendars for every workspace user (or one). */
     public function sync(?int $onlyUserId = null): void
     {
-        $settings = AppSettings::current();
         $users = $onlyUserId !== null ? [$onlyUserId] : WorkspaceOwners::userIds();
 
         foreach ($users as $userId) {
+            $settings = UserSetting::for((int) $userId);
             $this->reconcile((int) $userId, 'birthdays', (bool) $settings->calendar_birthdays_enabled);
             $this->reconcile((int) $userId, 'anniversaries', (bool) $settings->calendar_anniversaries_enabled);
         }
