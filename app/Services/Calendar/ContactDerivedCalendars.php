@@ -4,15 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Calendar;
 
-use App\Enums\DavChangeOperation;
-use App\Models\AddressBook;
 use App\Models\AppSettings;
 use App\Models\Calendar;
-use App\Models\CalendarObject;
 use App\Models\Contact;
-use App\Services\Contacts\DavChangeLog;
 use App\Services\Contacts\VCardService;
-use Illuminate\Support\Str;
+use App\Support\WorkspaceOwners;
 
 /**
  * Materialises read-only calendars derived from contacts: birthdays (BDAY) and
@@ -26,15 +22,15 @@ class ContactDerivedCalendars
         private readonly VCardService $vcards,
         private readonly ICalService $ical,
         private readonly CalendarObjectPersister $persister,
-        private readonly DavChangeLog $changes,
     ) {}
 
-    /** Reconcile both derived calendars for every contact-owning user. */
-    public function sync(): void
+    /** Reconcile both derived calendars for every workspace user. */
+    public function sync(?int $onlyUserId = null): void
     {
         $settings = AppSettings::current();
+        $users = $onlyUserId !== null ? [$onlyUserId] : WorkspaceOwners::userIds();
 
-        foreach (AddressBook::query()->distinct()->pluck('user_id') as $userId) {
+        foreach ($users as $userId) {
             $this->reconcile((int) $userId, 'birthdays', (bool) $settings->calendar_birthdays_enabled);
             $this->reconcile((int) $userId, 'anniversaries', (bool) $settings->calendar_anniversaries_enabled);
         }
@@ -64,27 +60,29 @@ class ContactDerivedCalendars
 
     private function rebuild(Calendar $calendar, int $userId, string $kind): void
     {
-        // Clear existing objects (record deletions so CalDAV clients re-sync).
-        foreach (CalendarObject::where('calendar_id', $calendar->id)->pluck('uri') as $uri) {
-            $this->changes->recordCalendar($calendar, $uri, DavChangeOperation::Deleted);
-        }
-        CalendarObject::where('calendar_id', $calendar->id)->delete();
-
+        // Build a stable uri => ICS map (deterministic uris so an unchanged
+        // rebuild is a no-op) and reconcile by diff.
+        $map = [];
         Contact::whereHas('addressBook', fn ($q) => $q->where('user_id', $userId))
             ->orderBy('id')
-            ->chunk(200, function ($contacts) use ($calendar, $kind): void {
+            ->chunk(200, function ($contacts) use (&$map, $kind): void {
                 foreach ($contacts as $contact) {
                     foreach ($this->entriesFor($contact, $kind) as $entry) {
+                        $key = sha1($contact->id.'|'.$kind.'|'.$entry['date'].'|'.$entry['title']);
+                        // Stable UID so an unchanged rebuild produces identical ICS
+                        // (identical etag) and the diff is a genuine no-op.
                         $ics = $this->ical->buildEvent([
                             'summary' => $entry['title'],
                             'start' => $entry['date'],
                             'all_day' => true,
                             'rrule' => 'FREQ=YEARLY',
-                        ]);
-                        $this->persister->persistNew($calendar, Str::uuid().'.ics', $ics);
+                        ], 'll-'.$kind.'-'.$key);
+                        $map[$key.'.ics'] = $ics;
                     }
                 }
             });
+
+        $this->persister->replace($calendar, $map);
     }
 
     /**

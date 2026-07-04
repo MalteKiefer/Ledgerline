@@ -10,6 +10,7 @@ use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\DateTimeParser;
 use Sabre\VObject\Reader;
 use Sabre\VObject\Recur\EventIterator;
+use Sabre\VObject\Splitter\ICalendar;
 use Throwable;
 
 /**
@@ -24,7 +25,7 @@ class ICalService
      */
     public function denormalize(string $ics): array
     {
-        $empty = ['component' => 'VEVENT', 'summary' => null, 'starts_at' => null, 'ends_at' => null, 'all_day' => false, 'rrule' => null, 'alarm_minutes' => null];
+        $empty = ['component' => 'VEVENT', 'uid' => null, 'summary' => null, 'starts_at' => null, 'ends_at' => null, 'all_day' => false, 'rrule' => null, 'alarm_minutes' => null];
 
         try {
             $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
@@ -50,6 +51,7 @@ class ICalService
         // all-day events keep their bare calendar date.
         return [
             'component' => $comp->name,
+            'uid' => isset($comp->UID) ? (string) $comp->UID : null,
             'summary' => isset($comp->SUMMARY) ? (string) $comp->SUMMARY : null,
             'starts_at' => $this->toUtc($start, $allDay),
             'ends_at' => $this->toUtc($end, $allDay),
@@ -110,6 +112,48 @@ class ICalService
         }
 
         return $rrule;
+    }
+
+    /**
+     * Split a (multi-event) iCalendar document into a deterministic
+     * uri => single-component-ICS map, keyed by a stable hash of the component's
+     * UID (falling back to its content). Feeding the same feed twice yields the
+     * same uris, so a subscription refresh via CalendarObjectPersister::replace()
+     * touches only what actually changed.
+     *
+     * @return array<string, string>
+     */
+    public function eventMap(string $ics): array
+    {
+        try {
+            $stream = fopen('php://temp', 'r+');
+            fwrite($stream, $ics);
+            rewind($stream);
+            $splitter = new ICalendar($stream);
+        } catch (Throwable) {
+            return [];
+        }
+
+        $map = [];
+        while (true) {
+            try {
+                $vobj = $splitter->getNext();
+            } catch (Throwable) {
+                continue;
+            }
+            if ($vobj === null) {
+                break;
+            }
+            $comp = $vobj->VEVENT[0] ?? $vobj->VTODO[0] ?? null;
+            if ($comp === null) {
+                continue;
+            }
+            $payload = $vobj->serialize();
+            $key = isset($comp->UID) ? (string) $comp->UID : $payload;
+            $map[sha1($key).'.ics'] = $payload;
+        }
+
+        return $map;
     }
 
     /** Extract the first component's UID (to preserve it across edits). */

@@ -4,13 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Calendar;
 
-use App\Enums\DavChangeOperation;
-use App\Models\AddressBook;
 use App\Models\AppSettings;
 use App\Models\Calendar;
-use App\Models\CalendarObject;
-use App\Services\Contacts\DavChangeLog;
-use Illuminate\Support\Str;
+use App\Support\WorkspaceOwners;
 use Yasumi\Yasumi;
 
 /**
@@ -29,16 +25,15 @@ class HolidayCalendarBuilder
     public function __construct(
         private readonly ICalService $ical,
         private readonly CalendarObjectPersister $persister,
-        private readonly DavChangeLog $changes,
     ) {}
 
-    /** Reconcile the holidays calendar for every contact-owning user. */
+    /** Reconcile the holidays calendar for every workspace user. */
     public function sync(?int $currentYear = null): void
     {
         $countries = $this->validCountries(AppSettings::current()->calendar_holiday_countries ?? []);
 
-        foreach (AddressBook::query()->distinct()->pluck('user_id') as $userId) {
-            $this->reconcile((int) $userId, $countries, $currentYear);
+        foreach (WorkspaceOwners::userIds() as $userId) {
+            $this->reconcile($userId, $countries, $currentYear);
         }
     }
 
@@ -66,25 +61,26 @@ class HolidayCalendarBuilder
      */
     private function rebuild(Calendar $calendar, array $countries, ?int $currentYear): void
     {
-        foreach (CalendarObject::where('calendar_id', $calendar->id)->pluck('uri') as $uri) {
-            $this->changes->recordCalendar($calendar, $uri, DavChangeOperation::Deleted);
-        }
-        CalendarObject::where('calendar_id', $calendar->id)->delete();
-
         $locale = str_starts_with(app()->getLocale(), 'de') ? 'de' : 'en';
         $multi = count($countries) > 1;
         // A rolling window: last year through two years ahead.
         $years = range($currentYear ?? (int) date('Y') - 1, ($currentYear ?? (int) date('Y')) + 2);
 
+        // Stable uri per (country, date, name) so a re-run is a no-op diff.
+        $map = [];
         foreach ($countries as $country) {
             foreach ($years as $year) {
                 foreach ($this->holidays($country, $year, $locale) as $holiday) {
                     $title = $multi ? $holiday['name'].' ('.$country.')' : $holiday['name'];
-                    $ics = $this->ical->buildEvent(['summary' => $title, 'start' => $holiday['date'], 'all_day' => true]);
-                    $this->persister->persistNew($calendar, Str::uuid().'.ics', $ics);
+                    $key = sha1($country.'|'.$holiday['date'].'|'.$holiday['name']);
+                    // Stable UID → identical ICS on re-run → no-op diff.
+                    $ics = $this->ical->buildEvent(['summary' => $title, 'start' => $holiday['date'], 'all_day' => true], 'll-holiday-'.$key);
+                    $map[$key.'.ics'] = $ics;
                 }
             }
         }
+
+        $this->persister->replace($calendar, $map);
     }
 
     /**

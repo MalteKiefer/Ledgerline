@@ -4,42 +4,36 @@ declare(strict_types=1);
 
 namespace App\Services\Calendar;
 
-use App\Enums\DavChangeOperation;
 use App\Models\Calendar;
-use App\Models\CalendarObject;
-use App\Services\Contacts\DavChangeLog;
+use App\Services\Calendar\CalendarObjectPersister as Persister;
 use Illuminate\Support\Carbon;
 
 /**
- * Materialises a subscribed remote ICS feed into a read-only calendar. Refresh is
- * a full replace (old objects removed, feed re-imported) so events deleted
- * upstream disappear locally; the change-log keeps CalDAV clients in sync.
+ * Materialises a subscribed remote ICS feed into a read-only calendar. Refresh
+ * reconciles by diff (add new, update changed, delete vanished) against stable
+ * per-event uris, so events removed upstream disappear locally while unchanged
+ * events keep their identity and the CalDAV sync token stays put on a no-op.
  */
 class SubscriptionRefresher
 {
     public function __construct(
         private readonly CalendarFeedFetcher $fetcher,
-        private readonly CalendarImporter $importer,
-        private readonly DavChangeLog $changes,
+        private readonly ICalService $ical,
+        private readonly Persister $persister,
     ) {}
 
     /**
-     * @return array{created: int, updated: int, skipped: int}
+     * @return array{count: int}
      */
     public function refresh(Calendar $calendar): array
     {
         $body = $this->fetcher->fetch((string) $calendar->subscription_url);
+        $map = $this->ical->eventMap($body);
 
-        // Full replace: drop existing objects (recording deletions for sync).
-        foreach (CalendarObject::where('calendar_id', $calendar->id)->pluck('uri') as $uri) {
-            $this->changes->recordCalendar($calendar, $uri, DavChangeOperation::Deleted);
-        }
-        CalendarObject::where('calendar_id', $calendar->id)->delete();
-
-        $result = $this->importer->import($calendar, $body);
+        $this->persister->replace($calendar, $map);
         $calendar->forceFill(['refreshed_at' => Carbon::now()])->save();
 
-        return $result;
+        return ['count' => count($map)];
     }
 
     /** Whether the subscription is due for a refresh per its interval. */
