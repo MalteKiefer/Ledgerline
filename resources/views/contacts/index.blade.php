@@ -121,6 +121,20 @@
                         <input x-model="form.phones[i].value" placeholder="{{ __('contacts.ui.phone') }}" class="w-full rounded-md border-gray-300 text-sm">
                     </template>
                     <button @click="form.phones.push({value:'',type:'cell'})" class="text-xs text-gray-500 hover:text-gray-800">+ {{ __('contacts.ui.phone') }}</button>
+                    <label class="block text-xs text-gray-500">{{ __('contacts.ui.bday') }}
+                        <input type="date" x-model="form.bday" class="mt-0.5 w-full rounded-md border-gray-300 text-sm">
+                    </label>
+                    <div>
+                        <span class="text-xs text-gray-500">{{ __('contacts.ui.anniversaries') }}</span>
+                        <template x-for="(a,i) in form.anniversaries" :key="'a'+i">
+                            <div class="mt-1 flex items-center gap-2">
+                                <input type="date" x-model="form.anniversaries[i].date" class="rounded-md border-gray-300 text-sm">
+                                <input x-model="form.anniversaries[i].label" placeholder="{{ __('contacts.ui.anniversary_label') }}" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm">
+                                <button type="button" @click="form.anniversaries.splice(i,1)" class="shrink-0 text-gray-400 hover:text-red-600">✕</button>
+                            </div>
+                        </template>
+                        <button type="button" @click="form.anniversaries.push({date:'',label:''})" class="mt-1 text-xs text-gray-500 hover:text-gray-800">+ {{ __('contacts.ui.anniversary') }}</button>
+                    </div>
                     <textarea x-model="form.note" placeholder="{{ __('contacts.ui.note') }}" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
                     <div class="flex flex-wrap gap-2">
                         <template x-for="g in groups" :key="g.id">

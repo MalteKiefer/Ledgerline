@@ -40,6 +40,20 @@
             </label>
         </div>
 
+        {{-- Contact-derived calendars --}}
+        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.calendar_contacts_heading') }}</h2>
+            <p class="mt-1 text-sm text-gray-600">{{ __('settings.calendar_contacts_hint') }}</p>
+            <label class="mt-4 flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="calendar_birthdays_enabled" value="1" @checked(old('calendar_birthdays_enabled', $settings->calendar_birthdays_enabled)) class="rounded border-gray-300">
+                {{ __('settings.calendar_birthdays_enabled') }}
+            </label>
+            <label class="mt-3 flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="calendar_anniversaries_enabled" value="1" @checked(old('calendar_anniversaries_enabled', $settings->calendar_anniversaries_enabled)) class="rounded border-gray-300">
+                {{ __('settings.calendar_anniversaries_enabled') }}
+            </label>
+        </div>
+
         <div class="flex justify-end">
             <button type="submit" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('settings.save') }}</button>
         </div>

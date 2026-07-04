@@ -35,6 +35,21 @@ class VCardService
             }
         }
 
+        // A contact may have several anniversaries / important dates. vCard's
+        // ANNIVERSARY is single-valued, so store each as an Apple-style grouped
+        // itemN.X-ABDATE + itemN.X-ABLabel (widely interoperable).
+        $i = 0;
+        foreach ($data['anniversaries'] ?? [] as $ann) {
+            $value = is_array($ann) ? ($ann['date'] ?? '') : $ann;
+            if (! filled($value)) {
+                continue;
+            }
+            $label = is_array($ann) ? trim((string) ($ann['label'] ?? '')) : '';
+            $group = 'item'.(++$i);
+            $card->add($group.'.X-ABDATE', (string) $value, ['VALUE' => 'DATE']);
+            $card->add($group.'.X-ABLABEL', $label !== '' ? $label : 'Anniversary');
+        }
+
         foreach ($data['emails'] ?? [] as $e) {
             $value = is_array($e) ? ($e['value'] ?? '') : $e;
             if (filled($value)) {
@@ -91,6 +106,7 @@ class VCardService
             'title' => $this->s($card->TITLE ?? null),
             'nickname' => $this->s($card->NICKNAME ?? null),
             'bday' => $this->s($card->BDAY ?? null),
+            'anniversaries' => $this->anniversaries($card),
             'note' => $this->s($card->NOTE ?? null),
             'emails' => $this->multi($card->EMAIL ?? []),
             'phones' => $this->multi($card->TEL ?? []),
@@ -122,6 +138,38 @@ class VCardService
             'phones' => array_map(fn ($t) => trim((string) $t), iterator_to_array($card->TEL ?? [])),
             'has_photo' => isset($card->PHOTO),
         ];
+    }
+
+    /**
+     * All important dates: grouped itemN.X-ABDATE (with itemN.X-ABLabel) plus a
+     * legacy single ANNIVERSARY, if present.
+     *
+     * @return list<array{date: string, label: ?string}>
+     */
+    private function anniversaries(VCard $card): array
+    {
+        $out = [];
+        foreach ($card->children() as $prop) {
+            if (strtoupper($prop->name) !== 'X-ABDATE' || ! $prop->group) {
+                continue;
+            }
+            $label = null;
+            foreach ($card->children() as $sibling) {
+                if ($sibling->group === $prop->group && strtoupper($sibling->name) === 'X-ABLABEL') {
+                    $label = $this->s($sibling);
+                    break;
+                }
+            }
+            $date = $this->s($prop);
+            if ($date !== null) {
+                $out[] = ['date' => $date, 'label' => $label];
+            }
+        }
+        if (isset($card->ANNIVERSARY) && ($date = $this->s($card->ANNIVERSARY)) !== null) {
+            $out[] = ['date' => $date, 'label' => null];
+        }
+
+        return $out;
     }
 
     /** @return array<string, string> */
