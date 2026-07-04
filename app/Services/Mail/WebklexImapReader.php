@@ -260,11 +260,15 @@ final class WebklexImapReader implements ImapReader
         try {
             $m = $client->getFolderByPath($folder)->query()->getMessageByUid($uid);
 
+            $html = $this->str($m->getHTMLBody());
+            $cids = EmbeddedImages::referencedCids($html);
             $attachments = [];
             foreach ($m->getAttachments() as $i => $a) {
-                // Embedded inline images are rendered in the body (see below),
-                // so they are not listed as separate downloadable attachments.
-                if (EmbeddedImages::isInlineImage($a)) {
+                // An attachment referenced by cid: in the body is an embedded
+                // image: inline it into the HTML and do not list it separately.
+                if (in_array(strtolower(trim((string) ($a->id ?? ''))), $cids, true)) {
+                    $html = EmbeddedImages::embed($html, $a);
+
                     continue;
                 }
                 $attachments[] = [
@@ -275,7 +279,6 @@ final class WebklexImapReader implements ImapReader
                 ];
             }
 
-            $html = EmbeddedImages::inline($this->str($m->getHTMLBody()), $m->getAttachments());
             $text = $this->str($m->getTextBody());
 
             if ($markSeen) {
