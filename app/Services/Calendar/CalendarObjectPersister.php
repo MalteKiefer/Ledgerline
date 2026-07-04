@@ -51,4 +51,38 @@ class CalendarObjectPersister
 
         return $object;
     }
+
+    /**
+     * Reconcile a calendar's objects to exactly the given uri => ICS map by
+     * diffing against what is stored: create new uris, update changed ones (by
+     * etag), delete vanished ones, and leave unchanged objects (and the sync
+     * token) untouched. Used by every generated/mirrored calendar
+     * (subscriptions, birthdays, anniversaries, holidays) so a no-op rebuild
+     * produces zero change-log churn and stable CalDAV sync.
+     *
+     * @param  array<string, string>  $uriToIcs
+     */
+    public function replace(Calendar $calendar, array $uriToIcs): void
+    {
+        $existing = CalendarObject::where('calendar_id', $calendar->id)->get(['id', 'uri', 'etag'])->keyBy('uri');
+
+        foreach ($uriToIcs as $uri => $ics) {
+            $current = $existing->get($uri);
+            if ($current === null) {
+                $this->persistNew($calendar, (string) $uri, $ics);
+            } elseif ($current->etag !== md5($ics)) {
+                $object = CalendarObject::find($current->id);
+                if ($object !== null) {
+                    $object->setRelation('calendar', $calendar);
+                    $this->persistUpdate($object, $ics);
+                }
+            }
+            $existing->forget($uri);
+        }
+
+        foreach ($existing as $uri => $current) {
+            CalendarObject::whereKey($current->id)->delete();
+            $this->changes->recordCalendar($calendar, (string) $uri, DavChangeOperation::Deleted);
+        }
+    }
 }

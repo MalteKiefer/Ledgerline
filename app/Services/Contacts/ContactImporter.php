@@ -7,6 +7,7 @@ namespace App\Services\Contacts;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
+use App\Services\Calendar\ContactDerivedCalendars;
 use Illuminate\Support\Str;
 use Sabre\VObject\Component\VCard;
 use Sabre\VObject\Reader;
@@ -19,12 +20,28 @@ use Throwable;
  */
 class ContactImporter
 {
-    public function __construct(private readonly ContactPersister $persister) {}
+    public function __construct(
+        private readonly ContactPersister $persister,
+        private readonly ContactDerivedCalendars $derived,
+    ) {}
 
     /**
      * @return array{created: int, updated: int, skipped: int}
      */
     public function import(AddressBook $book, string $vcf): array
+    {
+        // Suppress the per-save derived-calendar observer during the bulk loop and
+        // rebuild that user's calendars once at the end (avoids O(N^2)).
+        $result = Contact::withoutEvents(fn (): array => $this->importCards($book, $vcf));
+        $this->derived->sync($book->user_id);
+
+        return $result;
+    }
+
+    /**
+     * @return array{created: int, updated: int, skipped: int}
+     */
+    private function importCards(AddressBook $book, string $vcf): array
     {
         $created = $updated = $skipped = 0;
 
@@ -62,7 +79,7 @@ class ContactImporter
                 $vcard = $card->serialize();
 
                 $existing = Contact::where('address_book_id', $book->id)
-                    ->whereRaw('vcard LIKE ?', ['%UID:'.$uid.'%'])->first();
+                    ->where('uid', $uid)->first();
 
                 if ($existing !== null) {
                     $this->persister->persistUpdate($existing, $vcard);

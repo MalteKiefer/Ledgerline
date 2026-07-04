@@ -6,11 +6,20 @@ namespace Tests\Feature;
 
 use App\Dav\CalDavBackend;
 use App\Dav\DavContext;
+use App\Models\AddressBook;
+use App\Models\AppSettings;
 use App\Models\Calendar;
+use App\Models\CalendarObject;
+use App\Models\Contact;
 use App\Models\User;
 use App\Services\Calendar\CalendarObjectPersister;
+use App\Services\Calendar\ContactDerivedCalendars;
+use App\Services\Calendar\HolidayCalendarBuilder;
 use App\Services\Calendar\ICalService;
+use App\Services\Contacts\ContactImporter;
+use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\DavCredentialService;
+use App\Services\Notifications\ChannelNotifier;
 use App\Support\OutboundUrl;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -162,9 +171,9 @@ class CalendarAuditFixesTest extends TestCase
         ]);
         app(CalendarObjectPersister::class)->persistNew($sub, 'x.ics', $ics);
 
-        $notifier = \Mockery::mock(\App\Services\Notifications\ChannelNotifier::class);
+        $notifier = \Mockery::mock(ChannelNotifier::class);
         $notifier->shouldNotReceive('send');
-        $this->app->instance(\App\Services\Notifications\ChannelNotifier::class, $notifier);
+        $this->app->instance(ChannelNotifier::class, $notifier);
 
         $this->artisan('calendar:remind')->assertSuccessful();
         $this->assertSame(0, DB::table('calendar_alarm_log')->count());
@@ -181,5 +190,49 @@ class CalendarAuditFixesTest extends TestCase
         $this->postJson(route('calendar.events.store'), [
             'calendar_id' => $tasks->id, 'summary' => 'X', 'start' => '2026-09-01T10:00', 'end' => '2026-09-01T11:00',
         ])->assertForbidden();
+    }
+
+    public function test_derived_calendar_rebuild_is_idempotent(): void
+    {
+        $user = User::factory()->create();
+        AddressBook::create(['user_id' => $user->id, 'uri' => 'default', 'name' => 'C', 'synctoken' => 1]);
+        app(ContactWriter::class)->create(
+            AddressBook::where('user_id', $user->id)->first(),
+            ['fn' => 'Al', 'bday' => '1990-05-04']
+        );
+        AppSettings::current()->update(['calendar_birthdays_enabled' => true]);
+
+        app(ContactDerivedCalendars::class)->sync();
+        $cal = Calendar::where('user_id', $user->id)->where('uri', 'birthdays')->firstOrFail();
+        $tokenAfterFirst = $cal->fresh()->synctoken;
+
+        // A second rebuild with identical data must be a no-op: no new change-log
+        // rows, sync token unchanged (deterministic uris + diff).
+        app(ContactDerivedCalendars::class)->sync();
+        $this->assertSame($tokenAfterFirst, $cal->fresh()->synctoken);
+        $this->assertSame(1, CalendarObject::where('calendar_id', $cal->id)->count());
+    }
+
+    public function test_import_dedup_is_exact_uid_not_substring(): void
+    {
+        $user = $this->signIn();
+        $book = AddressBook::create(['user_id' => $user->id, 'uri' => 'default', 'name' => 'C', 'synctoken' => 1]);
+        $importer = app(ContactImporter::class);
+
+        $importer->import($book, "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:foo\r\nFN:Foo\r\nEND:VCARD\r\n");
+        // 'foobar' must NOT match 'foo' (the old LIKE '%UID:foo%' did).
+        $importer->import($book, "BEGIN:VCARD\r\nVERSION:4.0\r\nUID:foobar\r\nFN:Bar\r\nEND:VCARD\r\n");
+
+        $this->assertSame(2, Contact::where('address_book_id', $book->id)->count());
+    }
+
+    public function test_holidays_build_for_a_user_without_an_address_book(): void
+    {
+        $user = User::factory()->create(); // no address book / contacts
+        AppSettings::current()->update(['calendar_holiday_countries' => ['DE']]);
+
+        app(HolidayCalendarBuilder::class)->sync(2026);
+
+        $this->assertDatabaseHas('calendars', ['user_id' => $user->id, 'uri' => 'holidays']);
     }
 }

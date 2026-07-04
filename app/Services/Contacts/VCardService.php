@@ -130,6 +130,7 @@ class VCardService
         $n = isset($card->N) ? $card->N->getParts() : [];
 
         return [
+            'uid' => $this->s($card->UID ?? null),
             'fn' => $this->s($card->FN ?? null),
             'last_name' => $this->part($n, 0),
             'first_name' => $this->part($n, 1),

@@ -65,7 +65,7 @@ class CalendarImporter
                 $payload = $vobj->serialize();
 
                 $existing = CalendarObject::where('calendar_id', $calendar->id)
-                    ->whereRaw('ics LIKE ?', ['%UID:'.$uid.'%'])->first();
+                    ->where('uid', $uid)->first();
 
                 if ($existing !== null) {
                     $this->persister->persistUpdate($existing, $payload);

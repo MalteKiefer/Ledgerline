@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** A calendar object (VEVENT/VTODO). The raw ICS is authoritative. */
 #[Fillable([
-    'calendar_id', 'uri', 'etag', 'ics', 'component',
+    'calendar_id', 'uri', 'etag', 'uid', 'ics', 'component',
     'summary', 'starts_at', 'ends_at', 'all_day', 'rrule', 'alarm_minutes',
 ])]
 class CalendarObject extends Model

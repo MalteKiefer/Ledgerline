@@ -19,19 +19,22 @@ class ContactObserver
 
     public function saved(Contact $contact): void
     {
-        $this->resync();
+        $this->resync($contact);
     }
 
     public function deleted(Contact $contact): void
     {
-        $this->resync();
+        $this->resync($contact);
     }
 
-    private function resync(): void
+    private function resync(Contact $contact): void
     {
         $settings = AppSettings::current();
-        if ($settings->calendar_birthdays_enabled || $settings->calendar_anniversaries_enabled) {
-            $this->derived->sync();
+        if (! $settings->calendar_birthdays_enabled && ! $settings->calendar_anniversaries_enabled) {
+            return;
         }
+        // A contact belongs to exactly one address book/user — rebuild only that
+        // user's derived calendars, not every user's.
+        $this->derived->sync($contact->addressBook?->user_id);
     }
 }
