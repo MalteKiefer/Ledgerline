@@ -59,6 +59,35 @@ class ExifReader
     }
 
     /**
+     * Read only the Apple Live Photo ContentIdentifier — cheap enough to run on
+     * the JPEG fast path (which otherwise skips exiftool) so JPEG Live Photos
+     * pair too. Returns null when absent or exiftool is unavailable.
+     */
+    public function readContentId(string $path): ?string
+    {
+        try {
+            $process = new Process([$this->binary(), '-s3', '-ContentIdentifier', '-MakerNotes:ContentIdentifier', '-MediaGroupUUID', $path]);
+            $process->setTimeout(30);
+            $process->run();
+
+            if (! $process->isSuccessful()) {
+                return null;
+            }
+
+            foreach (preg_split('/\r?\n/', trim($process->getOutput())) ?: [] as $line) {
+                $line = trim($line);
+                if ($line !== '' && $line !== '-') {
+                    return $line;
+                }
+            }
+
+            return null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Turn exiftool's group-prefixed tag map into normalised fields. Public so it
      * can be unit-tested with a fixture, no binary required.
      *
