@@ -31,7 +31,7 @@ class PocketIdController extends Controller
     public function redirect(): RedirectResponse
     {
         return Socialite::driver('pocketid')
-            ->scopes(['openid', 'profile', 'email'])
+            ->scopes(['openid', 'profile', 'email', 'groups'])
             ->redirect();
     }
 
@@ -65,12 +65,20 @@ class PocketIdController extends Controller
                 ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
         }
 
+        // Group memberships from the OIDC `groups` claim (used to gate the
+        // non-personal, workspace-wide settings). Refreshed on every sign-in.
+        $groups = array_values(array_filter(array_map(
+            'strval',
+            is_array($raw['groups'] ?? null) ? $raw['groups'] : [],
+        )));
+
         $user = User::updateOrCreate(
             ['oidc_sub' => $sub],
             [
                 'name' => $oidcUser->getName() ?? $oidcUser->getNickname() ?? 'Unknown',
                 'email' => $email,
                 'email_verified_at' => $emailVerified ? now() : null,
+                'groups' => $groups,
             ],
         );
 

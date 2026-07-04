@@ -54,6 +54,12 @@ return [
         'redirect' => env('POCKETID_REDIRECT_URI'),
         'use_pkce' => env('POCKETID_USE_PKCE', true),
 
+        // OIDC group (Pocket-ID `groups` claim) whose members may view/change the
+        // non-personal, workspace-wide settings (mail/SMTP, Paperless,
+        // notification channels, gallery processing, backups, downloads). Empty =
+        // every user may (backwards compatible). Personal settings stay open to all.
+        'admin_group' => env('POCKETID_ADMIN_GROUP'),
+
         // This is a single-tenant application. If neither allow-list is set, the
         // first identity to sign in claims the account and every other subject
         // is rejected ("first user wins"). Set either list to pin sign-in to

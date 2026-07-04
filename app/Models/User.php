@@ -18,7 +18,7 @@ use Illuminate\Notifications\Notifiable;
  * stable OIDC subject identifier ("oidc_sub"). All authenticated users share a
  * single workspace.
  */
-#[Fillable(['oidc_sub', 'name', 'email', 'email_verified_at', 'avatar', 'avatar_url', 'locale'])]
+#[Fillable(['oidc_sub', 'name', 'email', 'email_verified_at', 'avatar', 'avatar_url', 'locale', 'groups'])]
 #[Hidden(['remember_token'])]
 class User extends Authenticatable
 {
@@ -34,6 +34,25 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'groups' => 'array',
         ];
+    }
+
+    /** Whether the user belongs to the given OIDC group. */
+    public function inGroup(string $group): bool
+    {
+        return in_array($group, $this->groups ?? [], true);
+    }
+
+    /**
+     * May this user manage the non-personal, workspace-wide settings? True when
+     * no admin group is configured (single-admin / backwards compatible), else
+     * only members of that group.
+     */
+    public function managesGlobalSettings(): bool
+    {
+        $adminGroup = config('services.pocketid.admin_group');
+
+        return blank($adminGroup) || $this->inGroup((string) $adminGroup);
     }
 }
