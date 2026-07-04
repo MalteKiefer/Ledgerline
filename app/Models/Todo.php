@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use App\Observers\TodoObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Todo extends Model
 {
+    use OwnsUserData;
     use SoftDeletes;
 
     protected function casts(): array

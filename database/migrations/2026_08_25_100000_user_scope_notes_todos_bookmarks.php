@@ -1,0 +1,41 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\User;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Per-user isolation, phase 1: notes, to-dos and bookmarks. Adds an indexed
+ * user_id and backfills every existing (previously shared) row to the first
+ * user, so the current owner keeps their data and new users start empty.
+ */
+return new class extends Migration
+{
+    /** @var list<string> */
+    private array $tables = ['notes', 'todos', 'todo_lists', 'bookmarks', 'bookmark_folders'];
+
+    public function up(): void
+    {
+        $firstUserId = User::query()->orderBy('id')->value('id');
+
+        foreach ($this->tables as $table) {
+            Schema::table($table, function (Blueprint $t): void {
+                $t->foreignId('user_id')->nullable()->index();
+            });
+            if ($firstUserId !== null) {
+                DB::table($table)->whereNull('user_id')->update(['user_id' => $firstUserId]);
+            }
+        }
+    }
+
+    public function down(): void
+    {
+        foreach ($this->tables as $table) {
+            Schema::table($table, fn (Blueprint $t) => $t->dropConstrainedForeignId('user_id'));
+        }
+    }
+};
