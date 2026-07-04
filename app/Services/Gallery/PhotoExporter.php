@@ -6,11 +6,16 @@ namespace App\Services\Gallery;
 
 use App\Models\Photo;
 use Illuminate\Support\Facades\Storage;
-use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Drivers\Gd\Driver as GdDriver;
+use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
+use Intervention\Image\Encoders\AvifEncoder;
+use Intervention\Image\Encoders\HeicEncoder;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\Encoders\PngEncoder;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\ImageManager;
+use Intervention\Image\Interfaces\DriverInterface;
+use Intervention\Image\Interfaces\ImageInterface;
 use lsolesen\pel\PelEntryAscii;
 use lsolesen\pel\PelEntryRational;
 use lsolesen\pel\PelEntryShort;
@@ -25,15 +30,31 @@ use Throwable;
  * Produces the "edited" export of a photo or video: the stored non-destructive
  * edits (rotation / flip) baked into image pixels, and the user's current
  * metadata (capture date, GPS, camera) written into the file — EXIF for JPEG,
- * container tags for videos (via ffmpeg, stream-copied). Other image formats
- * keep their format and get the transforms only.
+ * a PNG eXIf chunk, exiftool for HEIC/HEIF/AVIF (which keep their format), and
+ * container tags for videos (via ffmpeg, stream-copied). WebP/GIF keep their
+ * format with the transforms only.
  *
  * Returns a temp file path so large videos never sit whole in memory; the
  * caller streams it and deletes it.
  */
 class PhotoExporter
 {
-    public function __construct(private readonly VideoProcessor $video) {}
+    public function __construct(
+        private readonly VideoProcessor $video,
+        private readonly ExifWriter $exifWriter,
+    ) {}
+
+    private ?ImageManager $manager = null;
+
+    private function imageManager(): ImageManager
+    {
+        return $this->manager ??= new ImageManager($this->driver());
+    }
+
+    private function driver(): DriverInterface
+    {
+        return extension_loaded('imagick') ? new ImagickDriver : new GdDriver;
+    }
 
     /**
      * Build the edited export(s) for a photo and return them as
@@ -106,30 +127,27 @@ class PhotoExporter
 
     private function editImage(string $src, Photo $photo): string
     {
+        $mime = (string) $photo->mime_type;
+
+        // HEIC/HEIF/AVIF: keep the format (re-encode via Imagick when rotated) and
+        // write metadata with exiftool, which PEL cannot do. Handled separately so
+        // an edited HEIC stays a valid HEIC with the user's metadata.
+        if (in_array($mime, ['image/heic', 'image/heif', 'image/avif'], true)) {
+            return $this->editHeif($src, $photo, $mime);
+        }
+
         $bytes = (string) file_get_contents($src);
 
         $transformed = (((int) $photo->rotation) % 360 !== 0) || $photo->flipped;
-        $isJpeg = in_array($photo->mime_type, ['image/jpeg', 'image/pjpeg'], true);
-        $isPng = $photo->mime_type === 'image/png';
+        $isJpeg = in_array($mime, ['image/jpeg', 'image/pjpeg'], true);
+        $isPng = $mime === 'image/png';
 
         if ($transformed) {
-            $image = (new ImageManager(new Driver))->decodePath($src);
-
-            $rotation = ((int) $photo->rotation) % 360;
-            if ($rotation !== 0) {
-                // Intervention rotates counter-clockwise; negate for clockwise.
-                $image->rotate(360 - $rotation);
-            }
-            if ($photo->flipped) {
-                $image->flop();
-            }
-
-            $encoder = match ($photo->mime_type) {
+            $bytes = (string) $this->transform($src, $photo)->encode(match ($mime) {
                 'image/png' => new PngEncoder,
                 'image/webp' => new WebpEncoder(quality: 90),
                 default => new JpegEncoder(quality: 92),
-            };
-            $bytes = (string) $image->encode($encoder);
+            });
         }
 
         // Write the current metadata into the pixels' container. JPEG carries a
@@ -150,6 +168,53 @@ class PhotoExporter
         file_put_contents($dest, $bytes);
 
         return $dest;
+    }
+
+    /**
+     * Edited export for HEIC/HEIF/AVIF: bake rotation/flip by re-encoding to the
+     * same format with Imagick (when transformed), then write the current metadata
+     * in place with exiftool. Keeps the original format and extension so the file
+     * is not mislabelled.
+     */
+    private function editHeif(string $src, Photo $photo, string $mime): string
+    {
+        $transformed = (((int) $photo->rotation) % 360 !== 0) || $photo->flipped;
+        $fallbackExt = $mime === 'image/avif' ? 'avif' : 'heic';
+        $dest = tempnam(sys_get_temp_dir(), 'export').'.'.$this->extension($photo, $fallbackExt);
+
+        if ($transformed && extension_loaded('imagick')) {
+            $encoder = $mime === 'image/avif' ? new AvifEncoder(quality: 90) : new HeicEncoder(quality: 90);
+            file_put_contents($dest, (string) $this->transform($src, $photo)->encode($encoder));
+        } else {
+            // No transform (or no Imagick to re-encode): keep the original bytes.
+            copy($src, $dest);
+        }
+
+        @unlink($src);
+
+        // Best-effort metadata write; the file stays valid even if exiftool fails.
+        $this->exifWriter->write($dest, $photo, $transformed);
+
+        return $dest;
+    }
+
+    /**
+     * Decode $src and apply the stored rotation (clockwise) and flip.
+     */
+    private function transform(string $src, Photo $photo): ImageInterface
+    {
+        $image = $this->imageManager()->decodePath($src);
+
+        $rotation = ((int) $photo->rotation) % 360;
+        if ($rotation !== 0) {
+            // Intervention rotates counter-clockwise; negate for clockwise.
+            $image->rotate(360 - $rotation);
+        }
+        if ($photo->flipped) {
+            $image->flop();
+        }
+
+        return $image;
     }
 
     private function editVideo(string $src, Photo $photo): string
