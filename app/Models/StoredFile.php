@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable(['id', 'file_folder_id', 'name', 'mime', 'size', 'blob', 'tags'])]
 class StoredFile extends Model
 {
+    use OwnsUserData;
     use SoftDeletes;
 
     protected $table = 'files';

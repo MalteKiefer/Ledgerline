@@ -56,6 +56,30 @@ class UserIsolationTest extends TestCase
         $this->assertSame(0, Bookmark::count());
     }
 
+    public function test_files_are_private_and_raw_download_is_owner_only(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake(config('files.disk'));
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+
+        $this->actingAs($alice);
+        $blob = (string) \Illuminate\Support\Str::uuid();
+        \Illuminate\Support\Facades\Storage::disk(config('files.disk'))->put('files/'.$blob, 'secret bytes');
+        \App\Models\StoredFile::create([
+            'id' => (string) \Illuminate\Support\Str::uuid(), 'name' => 'a.txt',
+            'mime' => 'text/plain', 'size' => 12, 'blob' => $blob, 'tags' => [],
+        ]);
+
+        // Owner can list + download.
+        $this->getJson(route('files.data'))->assertOk()->assertJsonFragment(['name' => 'a.txt']);
+        $this->get(route('files.raw', ['blob' => $blob]))->assertOk();
+
+        // Bob sees no files and cannot fetch Alice's blob by its UUID.
+        $this->actingAs($bob);
+        $this->getJson(route('files.data'))->assertOk()->assertJsonMissing(['name' => 'a.txt']);
+        $this->get(route('files.raw', ['blob' => $blob]))->assertNotFound();
+    }
+
     public function test_owner_is_set_automatically_on_create(): void
     {
         $alice = User::factory()->create();
