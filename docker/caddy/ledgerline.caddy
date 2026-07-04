@@ -1,0 +1,41 @@
+# Ledgerline — host Caddy site. Drop into /etc/caddy/sites/ledgerline.caddy
+# (the main Caddyfile imports sites/*), then: caddy validate && systemctl reload caddy
+#
+# TLS is handled here on the host; requests are reverse-proxied to the app
+# container published on 127.0.0.1:${APP_PORT} (default 8300). Adjust the domain
+# and port to match .env (APP_PORT).
+#
+# NOTE: the application sets its own Content-Security-Policy and security headers
+# (incl. HSTS, X-Frame-Options, Permissions-Policy) per response, so this site
+# does NOT import a header/CSP snippet — importing one would double the headers
+# and could break Alpine ('unsafe-eval'). We only import the path-block +
+# hardened-TLS snippets.
+
+erp.example.com {
+	import security_block
+	import hardened_tls
+
+	encode zstd gzip
+
+	# Uploads: files/import + mail attachments. Keep in sync with the app's
+	# FILES_MAX_UPLOAD_MB and the container's PHP post/upload limits.
+	request_body {
+		max_size 550MB
+	}
+
+	reverse_proxy 127.0.0.1:8300 {
+		# Give the app the real client + scheme (it trusts proxies via
+		# TRUSTED_PROXIES so Secure cookies / HTTPS URLs are correct).
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+		header_up Host {host}
+	}
+
+	log {
+		output file /var/log/caddy/ledgerline_access.log {
+			roll_size 100MiB
+			roll_keep 10
+		}
+		format json
+	}
+}
