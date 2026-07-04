@@ -11,6 +11,11 @@ x-app-image: &app-image
   image: ledgerline:${IMAGE_TAG:-local}
   build:
     context: .
+    # Build on the host network: this host's Docker daemon has no external DNS
+    # for bridge-network build containers (its resolver lives on a netbird
+    # overlay reachable only in the host netns), so apt/composer/npm fetches
+    # fail otherwise. Host-net build uses the host's working resolver.
+    network: host
     args:
       PHP_BASE: serversideup/php:8.4-fpm-nginx
   env_file: .env
