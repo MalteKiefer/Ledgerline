@@ -28,6 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // and expect a redirect to the CardDAV context path.
             Route::match(['GET', 'PROPFIND', 'OPTIONS', 'REPORT', 'HEAD'], '.well-known/carddav',
                 fn () => redirect('/dav/', 301));
+            Route::match(['GET', 'PROPFIND', 'OPTIONS', 'REPORT', 'HEAD'], '.well-known/caldav',
+                fn () => redirect('/dav/', 301));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

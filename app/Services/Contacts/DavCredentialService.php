@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Contacts;
 
 use App\Models\AddressBook;
+use App\Models\Calendar;
 use App\Models\DavCredential;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -43,6 +44,7 @@ class DavCredentialService
         }
 
         $this->ensureDefaultBook($userId);
+        $this->ensureDefaultCalendar($userId);
 
         return ['credential' => $credential, 'password' => $password];
     }
@@ -65,6 +67,14 @@ class DavCredentialService
         return AddressBook::firstOrCreate(
             ['user_id' => $userId, 'uri' => 'default'],
             ['name' => 'Contacts', 'description' => null, 'synctoken' => 1],
+        );
+    }
+
+    public function ensureDefaultCalendar(int $userId): Calendar
+    {
+        return Calendar::firstOrCreate(
+            ['user_id' => $userId, 'uri' => 'default'],
+            ['name' => 'Calendar', 'color' => '#3366cc', 'components' => ['VEVENT'], 'synctoken' => 1],
         );
     }
 }

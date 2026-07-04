@@ -6,7 +6,10 @@ namespace App\Http\Controllers;
 
 use App\Dav\AddressBookBackend;
 use App\Dav\AuthBackend;
+use App\Dav\CalDavBackend;
 use App\Dav\PrincipalBackend;
+use Sabre\CalDAV\CalendarRoot;
+use Sabre\CalDAV\Plugin as CalDAVPlugin;
 use Sabre\CardDAV\AddressBookRoot;
 use Sabre\CardDAV\Plugin as CardDAVPlugin;
 use Sabre\DAV\Auth\Plugin as AuthPlugin;
@@ -22,11 +25,12 @@ use Sabre\DAVACL\PrincipalCollection;
  */
 class DavController extends Controller
 {
-    public function handle(AuthBackend $auth, PrincipalBackend $principals, AddressBookBackend $cards): void
+    public function handle(AuthBackend $auth, PrincipalBackend $principals, AddressBookBackend $cards, CalDavBackend $calendars): void
     {
         $server = new Server([
             new PrincipalCollection($principals),
             new AddressBookRoot($principals, $cards),
+            new CalendarRoot($principals, $calendars),
         ]);
         $server->setBaseUri('/dav/');
 
@@ -40,6 +44,7 @@ class DavController extends Controller
         $server->addPlugin($acl);
 
         $server->addPlugin(new CardDAVPlugin);
+        $server->addPlugin(new CalDAVPlugin);
         $server->addPlugin(new SyncPlugin);
 
         $server->start();
