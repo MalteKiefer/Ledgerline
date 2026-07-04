@@ -47,6 +47,11 @@ services:
       AUTORUN_LARAVEL_EVENT_CACHE: "true"
     ports:
       - "127.0.0.1:${APP_PORT:-8300}:8080"
+    deploy:
+      resources:
+        limits:
+          # Hard ceiling for the web app (nginx + php-fpm children).
+          memory: ${APP_MEMORY_LIMIT:-8g}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/up"]
       interval: 30s
@@ -54,9 +59,18 @@ services:
       retries: 5
       start_period: 40s
 
+  # Queue workers. Scale up to 10 processes:  docker compose up -d --scale worker=10
+  # Each replica is capped at WORKER_MEMORY_LIMIT (default 768m) so 10 workers
+  # stay within ~7.5g. queue:work also self-restarts past its own memory bound.
   worker:
     <<: *app-image
-    command: ["php", "/var/www/html/artisan", "queue:work", "--sleep=1", "--tries=3", "--max-time=3600", "--timeout=600"]
+    command: ["php", "/var/www/html/artisan", "queue:work", "--sleep=1", "--tries=3", "--max-time=3600", "--timeout=600", "--memory=${WORKER_PHP_MEMORY:-512}"]
+    deploy:
+      # replicas is only applied when you don't pass --scale; keep 1 by default.
+      replicas: ${WORKER_REPLICAS:-1}
+      resources:
+        limits:
+          memory: ${WORKER_MEMORY_LIMIT:-768m}
     healthcheck:
       test: ["CMD-SHELL", "grep -la queue:work /proc/*/cmdline >/dev/null 2>&1 || exit 1"]
       interval: 30s
