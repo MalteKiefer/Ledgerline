@@ -9,10 +9,10 @@ use App\Dav\AuthBackend;
 use App\Dav\PrincipalBackend;
 use Sabre\CardDAV\AddressBookRoot;
 use Sabre\CardDAV\Plugin as CardDAVPlugin;
-use Sabre\CardDAV\Principal\Collection as PrincipalCollection;
 use Sabre\DAV\Auth\Plugin as AuthPlugin;
 use Sabre\DAV\Server;
 use Sabre\DAV\Sync\Plugin as SyncPlugin;
+use Sabre\DAVACL\PrincipalCollection;
 
 /**
  * Mounts the sabre/dav CardDAV server at /dav. Registered outside the web

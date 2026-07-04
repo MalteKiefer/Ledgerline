@@ -5,10 +5,16 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Dav\AddressBookBackend;
+use App\Dav\AuthBackend;
+use App\Dav\PrincipalBackend;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Services\Contacts\DavCredentialService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Sabre\CardDAV\AddressBookRoot;
+use Sabre\CardDAV\Plugin;
+use Sabre\DAV\Server;
+use Sabre\DAVACL\PrincipalCollection;
 use Tests\TestCase;
 
 class DavContactsTest extends TestCase
@@ -66,6 +72,24 @@ class DavContactsTest extends TestCase
     public function test_well_known_redirects_to_dav(): void
     {
         $this->get('/.well-known/carddav')->assertRedirect('/dav/');
+    }
+
+    public function test_sabre_server_tree_builds(): void
+    {
+        // Guards against wrong sabre class names in DavController (the tree is
+        // built the same way; DavController itself exits, so exercise the nodes).
+        $principals = app(PrincipalBackend::class);
+        $cards = app(AddressBookBackend::class);
+
+        $server = new Server([
+            new PrincipalCollection($principals),
+            new AddressBookRoot($principals, $cards),
+        ]);
+        $server->addPlugin(new \Sabre\DAV\Auth\Plugin(app(AuthBackend::class)));
+        $server->addPlugin(new Plugin);
+        $server->addPlugin(new \Sabre\DAV\Sync\Plugin);
+
+        $this->assertInstanceOf(Server::class, $server);
     }
 
     public function test_settings_generate_shows_password_once(): void

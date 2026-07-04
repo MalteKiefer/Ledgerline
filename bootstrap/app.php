@@ -17,7 +17,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // CardDAV: mounted outside the web group (no session/CSRF); sabre does
         // its own Basic auth. .well-known enables client auto-discovery.
         then: function (): void {
-            Route::any('dav/{path?}', [DavController::class, 'handle'])->where('path', '.*');
+            // WebDAV/CardDAV verbs aren't in Route::any()'s set, so list them.
+            Route::match(
+                ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS',
+                    'PROPFIND', 'PROPPATCH', 'MKCOL', 'MOVE', 'COPY', 'LOCK', 'UNLOCK', 'REPORT', 'ACL'],
+                'dav/{path?}',
+                [DavController::class, 'handle'],
+            )->where('path', '.*');
             Route::redirect('.well-known/carddav', '/dav/', 301);
         },
     )
