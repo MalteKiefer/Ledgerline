@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\CalendarUri;
-use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
+use App\Models\UserSetting;
 use App\Services\Calendar\CalendarFeedFetcher;
 use App\Services\Calendar\CalendarImporter;
 use App\Services\Calendar\CalendarWriter;
@@ -36,7 +36,7 @@ class CalendarController extends Controller
     public function setTimezone(Request $request): JsonResponse
     {
         $data = $request->validate(['timezone' => ['required', 'string', 'timezone']]);
-        AppSettings::current()->update(['calendar_timezone' => $data['timezone']]);
+        UserSetting::for($request->user()->id)->update(['calendar_timezone' => $data['timezone']]);
 
         return response()->json(['ok' => true]);
     }

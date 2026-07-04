@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Calendar;
 
-use App\Models\AppSettings;
 use App\Models\Calendar;
+use App\Models\UserSetting;
 use App\Support\WorkspaceOwners;
 use Yasumi\Yasumi;
 
@@ -27,13 +27,14 @@ class HolidayCalendarBuilder
         private readonly CalendarObjectPersister $persister,
     ) {}
 
-    /** Reconcile the holidays calendar for every workspace user. */
-    public function sync(?int $currentYear = null): void
+    /** Reconcile the holidays calendar for every workspace user (or one). */
+    public function sync(?int $currentYear = null, ?int $onlyUserId = null): void
     {
-        $countries = $this->validCountries(AppSettings::current()->calendar_holiday_countries ?? []);
+        $users = $onlyUserId !== null ? [$onlyUserId] : WorkspaceOwners::userIds();
 
-        foreach (WorkspaceOwners::userIds() as $userId) {
-            $this->reconcile($userId, $countries, $currentYear);
+        foreach ($users as $userId) {
+            $countries = $this->validCountries(UserSetting::for((int) $userId)->calendar_holiday_countries ?? []);
+            $this->reconcile((int) $userId, $countries, $currentYear);
         }
     }
 

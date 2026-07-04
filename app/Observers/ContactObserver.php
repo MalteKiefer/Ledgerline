@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Observers;
 
-use App\Models\AppSettings;
 use App\Models\Contact;
+use App\Models\UserSetting;
 use App\Services\Calendar\ContactDerivedCalendars;
 
 /**
@@ -29,12 +29,16 @@ class ContactObserver
 
     private function resync(Contact $contact): void
     {
-        $settings = AppSettings::current();
+        // A contact belongs to exactly one address book/user — rebuild only that
+        // user's derived calendars, and only when they've enabled one.
+        $userId = $contact->addressBook?->user_id;
+        if ($userId === null) {
+            return;
+        }
+        $settings = UserSetting::for((int) $userId);
         if (! $settings->calendar_birthdays_enabled && ! $settings->calendar_anniversaries_enabled) {
             return;
         }
-        // A contact belongs to exactly one address book/user — rebuild only that
-        // user's derived calendars, not every user's.
-        $this->derived->sync($contact->addressBook?->user_id);
+        $this->derived->sync((int) $userId);
     }
 }

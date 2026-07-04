@@ -7,13 +7,13 @@ namespace Tests\Feature;
 use App\Dav\CalDavBackend;
 use App\Dav\DavContext;
 use App\Models\AddressBook;
-use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\Contact;
 use App\Models\DavCredential;
 use App\Models\Todo;
 use App\Models\User;
+use App\Models\UserSetting;
 use App\Services\Calendar\CalendarObjectPersister;
 use App\Services\Calendar\ContactDerivedCalendars;
 use App\Services\Calendar\HolidayCalendarBuilder;
@@ -204,7 +204,7 @@ class CalendarAuditFixesTest extends TestCase
             AddressBook::where('user_id', $user->id)->first(),
             ['fn' => 'Al', 'bday' => '1990-05-04']
         );
-        AppSettings::current()->update(['calendar_birthdays_enabled' => true]);
+        UserSetting::for($user->id)->update(['calendar_birthdays_enabled' => true]);
 
         app(ContactDerivedCalendars::class)->sync();
         $cal = Calendar::where('user_id', $user->id)->where('uri', 'birthdays')->firstOrFail();
@@ -233,7 +233,7 @@ class CalendarAuditFixesTest extends TestCase
     public function test_holidays_build_for_a_user_without_an_address_book(): void
     {
         $user = User::factory()->create(); // no address book / contacts
-        AppSettings::current()->update(['calendar_holiday_countries' => ['DE']]);
+        UserSetting::for($user->id)->update(['calendar_holiday_countries' => ['DE']]);
 
         app(HolidayCalendarBuilder::class)->sync(2026);
 
