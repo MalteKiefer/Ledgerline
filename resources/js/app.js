@@ -2501,9 +2501,14 @@ Alpine.data('vaultMail', (labels = {}) => ({
         // selectable and the larger counts.
         const byPath = new Map();
         for (const f of (list ?? [])) {
-            const prev = byPath.get(f.path);
-            byPath.set(f.path, prev ? {
+            // Normalise the key: a trailing hierarchy delimiter (iCloud returns
+            // e.g. "Archive" and a "Archive/" container) must count as the same
+            // folder, else each shows as both an uppercase header and a row.
+            const key = (f.path || '').replace(/[/.]+$/, '') || f.path;
+            const prev = byPath.get(key);
+            byPath.set(key, prev ? {
                 ...prev, ...f,
+                path: prev.selectable !== false ? prev.path : f.path,
                 selectable: prev.selectable !== false || f.selectable !== false,
                 total: Math.max(prev.total || 0, f.total || 0),
                 unseen: Math.max(prev.unseen || 0, f.unseen || 0),

@@ -261,17 +261,21 @@ final class WebklexImapReader implements ImapReader
             $m = $client->getFolderByPath($folder)->query()->getMessageByUid($uid);
 
             $attachments = [];
-            $i = 0;
-            foreach ($m->getAttachments() as $a) {
+            foreach ($m->getAttachments() as $i => $a) {
+                // Embedded inline images are rendered in the body (see below),
+                // so they are not listed as separate downloadable attachments.
+                if (EmbeddedImages::isInlineImage($a)) {
+                    continue;
+                }
                 $attachments[] = [
-                    'id' => $i++,
+                    'id' => $i,
                     'name' => $this->str($a->getName()) ?: 'attachment',
                     'mime' => (string) ($a->getMimeType() ?? 'application/octet-stream'),
                     'size' => (int) $a->getSize(),
                 ];
             }
 
-            $html = $this->str($m->getHTMLBody());
+            $html = EmbeddedImages::inline($this->str($m->getHTMLBody()), $m->getAttachments());
             $text = $this->str($m->getTextBody());
 
             if ($markSeen) {
