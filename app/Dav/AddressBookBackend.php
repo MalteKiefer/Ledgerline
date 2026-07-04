@@ -8,8 +8,8 @@ use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\DavCredential;
+use App\Services\Contacts\ContactPersister;
 use App\Services\Contacts\DavChangeLog;
-use App\Services\Contacts\VCardService;
 use Illuminate\Support\Facades\DB;
 use Sabre\CardDAV\Backend\AbstractBackend;
 use Sabre\CardDAV\Backend\SyncSupport;
@@ -23,9 +23,9 @@ use Sabre\DAV\PropPatch;
 class AddressBookBackend extends AbstractBackend implements SyncSupport
 {
     public function __construct(
-        private readonly VCardService $vcards,
         private readonly DavContext $context,
         private readonly DavChangeLog $changes,
+        private readonly ContactPersister $persister,
     ) {}
 
     /** True only when the book belongs to the authenticated CardDAV user. */
@@ -142,17 +142,13 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         if (! $this->ownsBook($addressBookId)) {
             return null;
         }
-        $etag = md5($cardData);
-        Contact::create(array_merge([
-            'address_book_id' => $addressBookId,
-            'uri' => $cardUri,
-            'etag' => $etag,
-            'vcard' => $cardData,
-        ], $this->vcards->denormalize($cardData)));
+        $book = AddressBook::find($addressBookId);
+        if ($book === null) {
+            return null;
+        }
+        $this->persister->persistNew($book, $cardUri, $cardData);
 
-        $this->logChange($addressBookId, $cardUri, DavChangeOperation::Added);
-
-        return '"'.$etag.'"';
+        return '"'.md5($cardData).'"';
     }
 
     public function updateCard($addressBookId, $cardUri, $cardData): ?string
@@ -165,11 +161,9 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             return null;
         }
 
-        $etag = md5($cardData);
-        $contact->forceFill(array_merge(['etag' => $etag, 'vcard' => $cardData], $this->vcards->denormalize($cardData)))->save();
-        $this->logChange($addressBookId, $cardUri, DavChangeOperation::Modified);
+        $this->persister->persistUpdate($contact, $cardData);
 
-        return '"'.$etag.'"';
+        return '"'.md5($cardData).'"';
     }
 
     public function deleteCard($addressBookId, $cardUri): bool

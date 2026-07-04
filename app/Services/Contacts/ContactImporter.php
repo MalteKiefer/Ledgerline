@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Contacts;
 
-use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
@@ -20,10 +19,7 @@ use Throwable;
  */
 class ContactImporter
 {
-    public function __construct(
-        private readonly VCardService $vcards,
-        private readonly DavChangeLog $changes,
-    ) {}
+    public function __construct(private readonly ContactPersister $persister) {}
 
     /**
      * @return array{created: int, updated: int, skipped: int}
@@ -64,23 +60,17 @@ class ContactImporter
                 $uid = isset($card->UID) ? (string) $card->UID : (string) Str::uuid();
                 $card->UID = $uid;
                 $vcard = $card->serialize();
-                $denorm = $this->vcards->denormalize($vcard);
 
                 $existing = Contact::where('address_book_id', $book->id)
                     ->whereRaw('vcard LIKE ?', ['%UID:'.$uid.'%'])->first();
 
                 if ($existing !== null) {
-                    $existing->forceFill(array_merge(['etag' => md5($vcard), 'vcard' => $vcard], $denorm))->save();
+                    $this->persister->persistUpdate($existing, $vcard);
                     $this->syncGroups($existing, $card, $book->user_id);
-                    $this->changes->record($book, $existing->uri, DavChangeOperation::Modified);
                     $updated++;
                 } else {
-                    $uri = Str::uuid().'.vcf';
-                    $contact = Contact::create(array_merge([
-                        'address_book_id' => $book->id, 'uri' => $uri, 'etag' => md5($vcard), 'vcard' => $vcard,
-                    ], $denorm));
+                    $contact = $this->persister->persistNew($book, Str::uuid().'.vcf', $vcard);
                     $this->syncGroups($contact, $card, $book->user_id);
-                    $this->changes->record($book, $uri, DavChangeOperation::Added);
                     $created++;
                 }
             } catch (Throwable) {
