@@ -21,17 +21,25 @@ use Illuminate\Support\Facades\Auth;
  */
 trait OwnsUserData
 {
+    /** The column holding the owning user id (override per model, e.g. Photo). */
+    public function ownerColumn(): string
+    {
+        return 'user_id';
+    }
+
     protected static function bootOwnsUserData(): void
     {
         static::creating(function ($model): void {
-            if ($model->user_id === null && Auth::check()) {
-                $model->user_id = Auth::id();
+            $column = $model->ownerColumn();
+            if ($model->{$column} === null && Auth::check()) {
+                $model->{$column} = Auth::id();
             }
         });
 
         static::addGlobalScope('owner', function (Builder $query): void {
             if (Auth::check()) {
-                $query->where($query->getModel()->getTable().'.user_id', Auth::id());
+                $model = $query->getModel();
+                $query->where($model->getTable().'.'.$model->ownerColumn(), Auth::id());
             }
         });
     }

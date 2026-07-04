@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * once the contacts module exists (naming is free-text until then).
  */
 #[Fillable([
+    'user_id',
     'name',
     'contact_id',
     'cover_face_id',
@@ -24,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Person extends Model
 {
     use HasUuids;
+    use OwnsUserData;
 
     /**
      * @return array<string, string>

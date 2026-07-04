@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * crop thumbnail, and (on Postgres) a face embedding used for clustering.
  */
 #[Fillable([
+    'user_id',
     'photo_id',
     'person_id',
     'det_score',
@@ -27,6 +29,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Face extends Model
 {
     use HasUuids;
+    use OwnsUserData;
 
     /**
      * @return array<string, string>

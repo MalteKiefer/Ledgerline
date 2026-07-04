@@ -80,6 +80,24 @@ class UserIsolationTest extends TestCase
         $this->get(route('files.raw', ['blob' => $blob]))->assertNotFound();
     }
 
+    public function test_gallery_photos_and_people_are_private(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+
+        $this->actingAs($alice);
+        \App\Models\Photo::factory()->create(['uploaded_by' => $alice->id]);
+        \App\Models\Person::create(['name' => 'Alice friend']);
+        $this->assertSame(1, \App\Models\Photo::count());
+        $this->assertSame(1, \App\Models\Person::count());
+
+        // Bob's gallery + people are empty; the photo carries Alice's ownership.
+        $this->actingAs($bob);
+        $this->assertSame(0, \App\Models\Photo::count());
+        $this->assertSame(0, \App\Models\Person::count());
+        $this->assertSame($alice->id, \App\Models\Photo::withoutGlobalScopes()->first()->uploaded_by);
+    }
+
     public function test_owner_is_set_automatically_on_create(): void
     {
         $alice = User::factory()->create();
