@@ -72,6 +72,36 @@ class PhotoEditTest extends TestCase
         $this->assertSame("\xFF\xD8", substr($res->getFile()->getContent(), 0, 2)); // JPEG SOI marker
     }
 
+    public function test_flipped_photo_renditions_and_edited_export_do_not_crash(): void
+    {
+        // Regression: a horizontally flipped photo must survive rendition +
+        // edited export (the flip is applied via Intervention's flip(), not a
+        // non-existent flop()).
+        Storage::fake('files');
+        $this->signIn();
+
+        $img = imagecreatetruecolor(8, 6);
+        ob_start();
+        imagejpeg($img);
+        $jpeg = (string) ob_get_clean();
+        imagedestroy($img);
+
+        $photo = Photo::factory()->create([
+            'disk_path' => 'photos/f.jpg', 'mime_type' => 'image/jpeg', 'name' => 'f.jpg',
+            'flipped' => true, 'rotation' => 0, 'taken_at' => now(),
+        ]);
+        Storage::disk('files')->put('photos/f.jpg', $jpeg);
+
+        // Rendition (ProcessPhoto path) must succeed.
+        app(PhotoStorage::class)->process($photo->fresh());
+        $this->assertSame('ready', $photo->fresh()->status);
+
+        // Edited export must produce a JPEG, not error.
+        $res = $this->get(route('gallery.download.edited', $photo));
+        $res->assertOk();
+        $this->assertSame("\xFF\xD8", substr($res->getFile()->getContent(), 0, 2));
+    }
+
     public function test_edited_heic_download_stays_heic_and_is_not_relabelled_jpeg(): void
     {
         $formats = app(GalleryFormats::class);
