@@ -6,9 +6,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Calendar;
 use App\Models\CalendarObject;
+use App\Services\Calendar\CalendarFeedFetcher;
 use App\Services\Calendar\CalendarImporter;
 use App\Services\Calendar\CalendarWriter;
 use App\Services\Calendar\ICalService;
+use App\Services\Calendar\SubscriptionRefresher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -146,6 +148,58 @@ class CalendarController extends Controller
             });
             echo "END:VCALENDAR\r\n";
         }, 'calendar.ics', ['Content-Type' => 'text/calendar; charset=utf-8']);
+    }
+
+    /** One-off import of a public ICS URL into a writable calendar (SSRF-guarded). */
+    public function importUrl(Request $request, CalendarFeedFetcher $fetcher, CalendarImporter $importer): JsonResponse
+    {
+        $data = $request->validate([
+            'url' => ['required', 'string', 'max:2048'],
+            'calendar_id' => ['required', 'string'],
+        ]);
+        $calendar = $this->ownedCalendar($request, $data['calendar_id']);
+        abort_if($calendar->isReadOnly(), 403);
+
+        try {
+            $body = $fetcher->fetch($data['url']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json($importer->import($calendar, $body));
+    }
+
+    /** Subscribe to a remote ICS feed as a new read-only, auto-refreshing calendar. */
+    public function subscribe(Request $request, SubscriptionRefresher $refresher): JsonResponse
+    {
+        $data = $request->validate([
+            'url' => ['required', 'string', 'max:2048'],
+            'name' => ['required', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:9'],
+            'refresh_minutes' => ['nullable', 'integer', 'min:15', 'max:10080'],
+        ]);
+
+        $calendar = Calendar::create([
+            'user_id' => $request->user()->id,
+            'uri' => (string) Str::uuid(),
+            'name' => $data['name'],
+            'color' => $data['color'] ?? '#7c3aed',
+            'components' => ['VEVENT'],
+            'synctoken' => 1,
+            'subscription_url' => $data['url'],
+            'read_only' => true,
+            'refresh_minutes' => $data['refresh_minutes'] ?? 60,
+        ]);
+
+        try {
+            $refresher->refresh($calendar);
+        } catch (\RuntimeException $e) {
+            $calendar->delete();
+
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['id' => $calendar->id], 201);
     }
 
     /** Import an .ics (one or many events) into a calendar; dedupe by UID. */

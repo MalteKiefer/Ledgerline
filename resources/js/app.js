@@ -528,6 +528,21 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         this.load(); ev.target.value = '';
     },
 
+    async importFromUrl() {
+        const url = window.prompt(cfg.importUrlPrompt); if (! url) return;
+        const target = this.calendars.find((c) => ! c.read_only); if (! target) return;
+        const r = await this._json(cfg.importFromUrl, 'POST', { url, calendar_id: target.id });
+        if (! r.ok) { window.alert(cfg.feedFailed); return; }
+        this.load();
+    },
+    async subscribe() {
+        const url = window.prompt(cfg.subscribeUrlPrompt); if (! url) return;
+        const name = window.prompt(cfg.subscribeNamePrompt); if (! name) return;
+        const r = await this._json(cfg.subscribeUrl, 'POST', { url, name, color: this.randomColor() });
+        if (! r.ok) { window.alert(cfg.feedFailed); return; }
+        this.load();
+    },
+
     // ---- calendar management ------------------------------------------------
     async addCalendar() {
         const name = window.prompt(cfg.newCalendar); if (! name) return;
