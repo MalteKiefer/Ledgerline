@@ -13,6 +13,10 @@ return [
     'password' => 'App-Passwort',
     'password_once' => 'Kopiere dieses Passwort jetzt — es wird nur einmal angezeigt. Nutze es im CardDAV-Client zusammen mit URL und Benutzername.',
     'setup_hint' => 'Füge in deiner Kontakte-App ein CardDAV-Konto mit URL, Benutzername und App-Passwort hinzu. Auto-Discovery funktioniert auch über die Basis-Domain (.well-known/carddav).',
+    'qr_heading' => 'Zum Hinzufügen scannen',
+    'qr_hint' => 'Scanne dies mit dem Handy, um die CardDAV-URL in einen Client zu übernehmen.',
+    'apple_profile' => 'Apple-Profil laden (iOS / macOS)',
+    'apple_profile_hint' => 'Richtet ein CardDAV-Konto auf iPhone, iPad oder Mac ein. Das App-Passwort wird bei der Installation einmal abgefragt.',
 
     'ui' => [
         'heading' => 'Kontakte',

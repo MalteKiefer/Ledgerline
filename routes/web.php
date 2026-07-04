@@ -119,6 +119,7 @@ Route::middleware('auth')->group(function (): void {
     // Contacts / CardDAV: enable + DAV credentials.
     Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
     Route::post('/settings/contacts/credentials', [SettingsContactsController::class, 'generate'])->name('settings.contacts.generate');
+    Route::get('/settings/contacts/profile', [SettingsContactsController::class, 'profile'])->name('settings.contacts.profile');
 
     // Contacts UI (reload-free JSON over the CardDAV-backed store).
     Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');

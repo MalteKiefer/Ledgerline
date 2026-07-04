@@ -38,7 +38,26 @@
                 <dd class="font-mono text-gray-900 select-all">{{ $credential->username }}</dd>
             </dl>
             <p class="mt-3 text-xs text-gray-500">{{ __('contacts.setup_hint') }}</p>
-            <form method="POST" action="{{ route('settings.contacts.generate') }}" class="mt-4">
+
+            <div class="mt-5 grid gap-6 sm:grid-cols-2">
+                @if ($qr)
+                    <div>
+                        <h3 class="text-sm font-medium text-gray-700">{{ __('contacts.qr_heading') }}</h3>
+                        <div class="mt-2 inline-block rounded-md border border-gray-200 bg-white p-2">{!! $qr !!}</div>
+                        <p class="mt-1 text-xs text-gray-500">{{ __('contacts.qr_hint') }}</p>
+                    </div>
+                @endif
+                <div>
+                    <h3 class="text-sm font-medium text-gray-700">Apple</h3>
+                    <a href="{{ route('settings.contacts.profile') }}"
+                        class="mt-2 inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+                        {{ __('contacts.apple_profile') }}
+                    </a>
+                    <p class="mt-1 text-xs text-gray-500">{{ __('contacts.apple_profile_hint') }}</p>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ route('settings.contacts.generate') }}" class="mt-5">
                 @csrf
                 <button type="submit" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('contacts.regenerate') }}</button>
             </form>
