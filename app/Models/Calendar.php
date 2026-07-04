@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\CalendarUri;
+use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 class Calendar extends Model
 {
     use HasUuids;
+    use OwnsUserData;
 
     /** Default calendar colour, and the validation rule for a user-supplied one. */
     public const DEFAULT_COLOR = '#3366cc';

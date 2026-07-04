@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +32,8 @@ use Illuminate\Support\Facades\Storage;
 ])]
 class Export extends Model
 {
+    use OwnsUserData;
+
     /**
      * @return array<string, string>
      */

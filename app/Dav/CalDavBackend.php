@@ -177,7 +177,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         }
         $this->assertWithinLimit($calendarData);
         if ($calendar->isTasks()) {
-            return $this->todos->write($objectUri, $calendarData);
+            return $this->todos->write($calendarId, $objectUri, $calendarData);
         }
         $object = CalendarObject::where('calendar_id', $calendarId)->where('uri', $objectUri)->first();
         if ($object === null) {
@@ -203,7 +203,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             return;
         }
         if ($calendar->isTasks()) {
-            $this->todos->delete($objectUri);
+            $this->todos->delete($calendarId, $objectUri);
 
             return;
         }

@@ -373,6 +373,10 @@ class CalendarController extends Controller
 
     private function authorizeObject(CalendarObject $object): void
     {
-        abort_unless($object->calendar->user_id === auth()->id(), 403);
+        // CalendarObject isn't user-scoped itself (owned via its calendar); the
+        // calendar relation is now globally scoped, so resolve the owner without
+        // the scope to return a clean 403 for a foreign object rather than a 500.
+        $calendar = Calendar::withoutGlobalScopes()->find($object->calendar_id);
+        abort_unless($calendar !== null && $calendar->user_id === auth()->id(), 403);
     }
 }

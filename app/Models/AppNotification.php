@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
@@ -15,6 +16,8 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable(['user_id', 'level', 'category', 'title', 'body', 'read_at'])]
 class AppNotification extends Model
 {
+    use OwnsUserData;
+
     protected function casts(): array
     {
         return [

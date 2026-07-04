@@ -165,7 +165,9 @@ class ExportTest extends TestCase
             'expires_at' => now()->addDay(),
         ]);
 
-        $this->get(route('downloads.part', ['export' => $other->id, 'index' => 0]))->assertForbidden();
+        // Another user's export is invisible (global owner scope → 404), not
+        // merely forbidden.
+        $this->get(route('downloads.part', ['export' => $other->id, 'index' => 0]))->assertNotFound();
     }
 
     public function test_prune_removes_expired_exports_and_their_files(): void
