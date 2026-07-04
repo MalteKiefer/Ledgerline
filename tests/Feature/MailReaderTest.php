@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\MailAccount;
+use App\Models\MailFolder;
+use App\Models\MailMessage;
 use App\Services\Mail\ImapCredentials;
 use App\Services\Mail\ImapReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class MailReaderTest extends TestCase
@@ -140,6 +143,26 @@ class MailReaderTest extends TestCase
             ->assertOk()
             ->assertJson(['total' => 1])
             ->assertJsonPath('messages.0.uid', 5);
+    }
+
+    public function test_list_flags_messages_that_are_already_archived(): void
+    {
+        $this->signIn();
+        $this->fakeReader();
+
+        // Not archived yet → archived:false.
+        $this->postJson(route('mail.messages'), $this->creds(['folder' => 'INBOX']))
+            ->assertOk()->assertJsonPath('messages.0.archived', false);
+
+        // Archive uid 5 in INBOX → archived:true.
+        $folder = MailFolder::create(['mail_account_id' => $this->acct(), 'path' => 'INBOX', 'name' => 'INBOX']);
+        MailMessage::create([
+            'mail_account_id' => $this->acct(), 'mail_folder_id' => $folder->id,
+            'uid' => 5, 'uidvalidity' => 1, 'blob' => (string) Str::uuid(), 'synced_at' => now(),
+        ]);
+
+        $this->postJson(route('mail.messages'), $this->creds(['folder' => 'INBOX']))
+            ->assertOk()->assertJsonPath('messages.0.archived', true);
     }
 
     public function test_open_marks_seen_and_returns_body(): void

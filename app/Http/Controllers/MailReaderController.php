@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\MailAccount;
+use App\Models\MailMessage;
 use App\Services\Mail\ImapCredentials;
 use App\Services\Mail\ImapReader;
 use Illuminate\Http\JsonResponse;
@@ -74,9 +75,40 @@ class MailReaderController extends Controller
             'page' => ['sometimes', 'integer', 'min:1'],
         ]);
 
-        return $this->guard(fn () => response()->json(
-            $reader->listMessages($this->creds($request), $v['folder'], (int) ($v['page'] ?? 1), 50)
-        ));
+        return $this->guard(function () use ($reader, $request, $v) {
+            $result = $reader->listMessages($this->creds($request), $v['folder'], (int) ($v['page'] ?? 1), 50);
+
+            // Flag which listed messages are already in the local archive so the
+            // list can show an "archived" marker.
+            $uids = array_map(static fn ($m) => (int) ($m['uid'] ?? 0), $result['messages'] ?? []);
+            $archived = $this->archivedUids((int) $v['account_id'], $v['folder'], $uids);
+            foreach ($result['messages'] as &$m) {
+                $m['archived'] = in_array((int) ($m['uid'] ?? 0), $archived, true);
+            }
+            unset($m);
+
+            return response()->json($result);
+        });
+    }
+
+    /**
+     * Which of the given UIDs are already archived for this account+folder.
+     *
+     * @param  list<int>  $uids
+     * @return list<int>
+     */
+    private function archivedUids(int $accountId, string $folderPath, array $uids): array
+    {
+        if ($uids === []) {
+            return [];
+        }
+
+        return MailMessage::where('mail_account_id', $accountId)
+            ->whereIn('uid', $uids)
+            ->whereHas('folder', fn ($q) => $q->where('path', $folderPath))
+            ->pluck('uid')
+            ->map(static fn ($u) => (int) $u)
+            ->all();
     }
 
     public function message(Request $request, ImapReader $reader): JsonResponse
@@ -88,9 +120,12 @@ class MailReaderController extends Controller
             'mark_seen' => ['sometimes', 'boolean'],
         ]);
 
-        return $this->guard(fn () => response()->json(
-            $reader->getMessage($this->creds($request), $v['folder'], (int) $v['uid'], (bool) ($v['mark_seen'] ?? true))
-        ));
+        return $this->guard(function () use ($reader, $request, $v) {
+            $message = $reader->getMessage($this->creds($request), $v['folder'], (int) $v['uid'], (bool) ($v['mark_seen'] ?? true));
+            $message['archived'] = $this->archivedUids((int) $v['account_id'], $v['folder'], [(int) $v['uid']]) !== [];
+
+            return response()->json($message);
+        });
     }
 
     public function attachment(Request $request, ImapReader $reader): Response|JsonResponse

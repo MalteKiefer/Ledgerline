@@ -191,6 +191,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/mail/folder/empty', [MailReaderController::class, 'emptyFolder'])->name('mail.folder.empty');
     Route::post('/mail/messages', [MailReaderController::class, 'messages'])->name('mail.messages');
     Route::post('/mail/message', [MailReaderController::class, 'message'])->name('mail.message');
+    // Read an already-archived message straight from S3 (fast) + opportunistic archiving on live read.
+    Route::post('/mail/message/cached/{account}', [MailArchiveController::class, 'cached'])->name('mail.message.cached');
+    Route::post('/mail/message/archive/{account}', [MailArchiveController::class, 'archiveOne'])->name('mail.message.archive');
     Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->name('mail.message.attachment');
     Route::post('/mail/message/action', [MailReaderController::class, 'action'])->name('mail.message.action');
     Route::post('/mail/message/transfer', [MailReaderController::class, 'transfer'])->name('mail.message.transfer');

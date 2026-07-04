@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MailAccount;
 use App\Models\MailMessage;
+use App\Services\Mail\MailArchiver;
 use App\Services\Mail\MailArchiveReader;
 use App\Services\Mail\MailSource;
 use Carbon\Carbon;
@@ -102,6 +103,62 @@ class MailArchiveController extends Controller
     public function show(MailMessage $message, MailArchiveReader $reader): JsonResponse
     {
         return response()->json($reader->parse($this->raw($message)));
+    }
+
+    /**
+     * Fast reader path: if the (account, folder, uid) message is already in the
+     * local archive, return it rendered from the stored .eml (no server round
+     * trip). Returns {found:false} otherwise so the reader can fall back to live
+     * IMAP. archiveId lets the client download attachments from the archive.
+     */
+    public function cached(Request $request, MailAccount $account, MailArchiveReader $reader): JsonResponse
+    {
+        $v = $request->validate([
+            'folder' => ['required', 'string', 'max:255'],
+            'uid' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $message = MailMessage::where('mail_account_id', $account->id)
+            ->where('uid', $v['uid'])
+            ->whereHas('folder', fn ($q) => $q->where('path', $v['folder']))
+            ->latest('id')
+            ->first();
+
+        if ($message === null) {
+            return response()->json(['found' => false]);
+        }
+
+        return response()->json([
+            'found' => true,
+            'message' => array_merge($reader->parse($this->raw($message)), [
+                'uid' => $message->uid,
+                'seen' => $message->seen,
+                'archived' => true,
+                'archiveId' => $message->id,
+            ]),
+        ]);
+    }
+
+    /**
+     * Opportunistically archive a message the reader just fetched live (so a
+     * read mailbox fills the archive without waiting for the hourly sync).
+     * Fire-and-forget from the client; never fails the read.
+     */
+    public function archiveOne(Request $request, MailAccount $account, MailArchiver $archiver): JsonResponse
+    {
+        $v = $request->validate([
+            'folder' => ['required', 'string', 'max:255'],
+            'uid' => ['required', 'integer', 'min:1'],
+            'uidvalidity' => ['required', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $archived = $archiver->archiveMessage($account, $v['folder'], (int) $v['uid'], (int) $v['uidvalidity']);
+        } catch (\Throwable) {
+            $archived = false;
+        }
+
+        return response()->json(['archived' => $archived]);
     }
 
     public function attachment(MailMessage $message, int $index, MailArchiveReader $reader): Response|JsonResponse

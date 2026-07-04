@@ -2944,23 +2944,53 @@ Alpine.data('vaultMail', (labels = {}) => ({
         const cached = mailCache.get(this.msgCacheKey(folder, uid));
         if (cached) { this.reader.current = cached; return; }
 
+        const accId = this.reader.account?.id;
         this.reader.busy = true;
         try {
+            // 1) Prefer the local archive (S3) — instant, no IMAP round-trip.
+            const arch = await this.mailPost(`/mail/message/cached/${accId}`, { uid });
+            if (this.reader.gen !== gen || this.reader.folderPath !== folder) return;
+            if (arch.ok) {
+                const b = await arch.json().catch(() => ({}));
+                if (b.found) {
+                    this.reader.current = b.message; // has archived:true, archiveId, html/text/attachments
+                    mailCache.put(this.msgCacheKey(folder, uid), this.reader.current);
+                    this.markSeenHere(folder, uid); // local + server (background)
+                    return;
+                }
+            }
+
+            // 2) Not archived → live fetch (marks \Seen server-side).
             const res = await this.mailPost('/mail/message', { uid, mark_seen: true });
-            if (this.reader.gen !== gen || this.reader.folderPath !== folder) return; // account/folder changed → drop
+            if (this.reader.gen !== gen || this.reader.folderPath !== folder) return;
             if (! res.ok) { const b = await res.json().catch(() => ({})); this.reader.error = b.detail || labels.connectFailed; return; }
             this.reader.current = await res.json();
             if (this.reader.current.uidValidity != null) this.reader.uidValidity = this.reader.current.uidValidity;
             mailCache.put(this.msgCacheKey(folder, uid), this.reader.current);
-            // Opening marks \Seen server-side — reflect it in the list and the
-            // folder's unread count without a reload.
             const row = this.reader.messages.find((m) => m.uid === uid);
             if (row && ! row.seen) { row.seen = true; this.bumpFolder(folder, 0, -1); this.cacheList(folder); }
+
+            // 3) Capture it into the archive at the same time (fire-and-forget).
+            if (! this.reader.current.archived) {
+                this.runBg(this.mailPost(`/mail/message/archive/${accId}`, { uid, uidvalidity: this.reader.uidValidity ?? 0 })
+                    .then((r) => r.ok ? r.json() : null)
+                    .then((b) => { if (b?.archived) { this.reader.current && (this.reader.current.archived = true); const rr = this.reader.messages.find((m) => m.uid === uid); if (rr) rr.archived = true; } }));
+            }
         } catch (e) {
             this.reader.error = labels.connectFailed;
         } finally {
             this.reader.busy = false;
         }
+    },
+
+    // Mark the open message read: locally (list + folder count) and on the
+    // server in the background. Used when a message is rendered from the archive
+    // (which does not itself touch the server).
+    markSeenHere(folder, uid) {
+        const row = this.reader.messages.find((m) => m.uid === uid);
+        if (row && ! row.seen) { row.seen = true; this.bumpFolder(folder, 0, -1); this.cacheList(folder); }
+        if (this.reader.current) this.reader.current.seen = true;
+        this.runBg(this.mailPost('/mail/message/action', { uids: [uid], action: 'seen' }));
     },
 
     // Build the sandboxed iframe document. A strict CSP blocks remote content
@@ -3099,9 +3129,20 @@ Alpine.data('vaultMail', (labels = {}) => ({
         // list is left as-is (nothing was removed).
     },
 
+    // Fetch attachment bytes from wherever the open message came from: the
+    // local archive (S3) if it was rendered from there, else live IMAP.
+    fetchAttachment(att) {
+        const id = this.reader.current?.archiveId;
+        if (id) {
+            return fetch(`/mail/archive/message/${id}/attachment/${att.id}`, { headers: { Accept: '*/*', 'X-Requested-With': 'XMLHttpRequest' } });
+        }
+
+        return this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
+    },
+
     async downloadAttachment(att) {
         try {
-            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
+            const res = await this.fetchAttachment(att);
             if (! res.ok) return;
             saveBlobAs(new Uint8Array(await res.arrayBuffer()), att.name, att.mime);
         } catch (e) { /* ignore */ }
@@ -3122,7 +3163,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
             created,
         });
         try {
-            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
+            const res = await this.fetchAttachment(att);
             if (! res.ok) { store.fail(labels.connectFailed); return; }
             store.setFile(new Blob([await res.arrayBuffer()], { type: 'application/pdf' }));
         } catch (e) { store.fail(labels.connectFailed); }
@@ -3145,7 +3186,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         const kind = (att.mime || '').toLowerCase() === 'application/pdf' ? 'pdf' : 'image';
         this.reader.attView = { open: true, name: att.name || '', kind, url: '', loading: true, error: '' };
         try {
-            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: att.id });
+            const res = await this.fetchAttachment(att);
             if (! res.ok) { this.reader.attView.error = labels.connectFailed; this.reader.attView.loading = false; return; }
             const blob = new Blob([await res.arrayBuffer()], { type: att.mime || 'application/octet-stream' });
             this.reader.attView.url = URL.createObjectURL(blob);
@@ -3196,7 +3237,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         s.error = '';
         try {
             // Fetch the attachment bytes, then upload them into Files (plain).
-            const res = await this.mailPost('/mail/message/attachment', { uid: this.reader.current.uid, attachment: s.att.id });
+            const res = await this.fetchAttachment(s.att);
             if (! res.ok) { s.error = labels.saveFailed; return; }
             const bytes = new Uint8Array(await res.arrayBuffer());
 

@@ -122,32 +122,7 @@ class MailArchiver
                 break;
             }
             $m = $this->source->fetch($creds, $f['path'], $uid);
-            $blob = (string) Str::uuid();
-            $disk->put('mail/'.$blob, $m['raw']);
-            $flags = $serverUids[$uid] ?? [];
-            MailMessage::create([
-                'mail_account_id' => $account->id,
-                'mail_folder_id' => $folder->id,
-                'uid' => $uid,
-                'uidvalidity' => (int) $f['uidvalidity'],
-                'message_id' => $m['message_id'] ?? null,
-                'subject' => $m['subject'] ?? null,
-                'from_name' => $m['from_name'] ?? null,
-                'from_email' => $m['from_email'] ?? null,
-                'to' => $m['to'] ?? [],
-                'cc' => $m['cc'] ?? [],
-                'date_at' => ! empty($m['date']) ? Carbon::parse($m['date']) : null,
-                'seen' => (bool) ($flags['seen'] ?? false),
-                'flagged' => (bool) ($flags['flagged'] ?? false),
-                'answered' => (bool) ($flags['answered'] ?? false),
-                'has_attachments' => (bool) ($m['has_attachments'] ?? false),
-                'attachment_names' => $m['attachment_names'] ?? [],
-                'size' => (int) ($m['size'] ?? strlen($m['raw'])),
-                'blob' => $blob,
-                'preview' => $m['preview'] ?? null,
-                'body_text' => $m['body_text'] ?? null,
-                'synced_at' => Carbon::now(),
-            ]);
+            $this->persist($account, $folder, $uid, (int) $f['uidvalidity'], $m, $serverUids[$uid] ?? [], $disk);
             $newCount++;
             $fetched++;
         }
@@ -162,5 +137,71 @@ class MailArchiver
                     'answered' => (bool) ($flags['answered'] ?? false),
                 ]);
         }
+    }
+
+    /**
+     * Archive one specific message on demand (used when the reader opens a
+     * not-yet-archived message live — it is captured at the same time). Returns
+     * true if it was newly stored, false if already present or unavailable.
+     */
+    public function archiveMessage(MailAccount $account, string $folderPath, int $uid, int $uidValidity): bool
+    {
+        $folder = MailFolder::firstOrCreate(
+            ['mail_account_id' => $account->id, 'path' => $folderPath],
+            ['name' => $folderPath, 'delimiter' => '/', 'uidvalidity' => $uidValidity],
+        );
+        // Fill in a validity we did not know yet, but never clobber a real one.
+        if ($folder->uidvalidity === null) {
+            $folder->update(['uidvalidity' => $uidValidity]);
+        }
+
+        $exists = MailMessage::where('mail_folder_id', $folder->id)
+            ->where('uid', $uid)
+            ->where('uidvalidity', $uidValidity)
+            ->exists();
+        if ($exists) {
+            return false;
+        }
+
+        $m = $this->source->fetch($account->credentials(), $folderPath, $uid);
+        $this->persist($account, $folder, $uid, $uidValidity, $m, [], Storage::disk(config('files.disk')));
+
+        return true;
+    }
+
+    /**
+     * Store a fetched message's raw .eml on disk + its metadata row.
+     *
+     * @param  Filesystem  $disk
+     * @param  array<string,mixed>  $m  the MailSource::fetch result
+     * @param  array{seen?:bool,flagged?:bool,answered?:bool}  $flags
+     */
+    private function persist(MailAccount $account, MailFolder $folder, int $uid, int $uidValidity, array $m, array $flags, $disk): void
+    {
+        $blob = (string) Str::uuid();
+        $disk->put('mail/'.$blob, $m['raw']);
+        MailMessage::create([
+            'mail_account_id' => $account->id,
+            'mail_folder_id' => $folder->id,
+            'uid' => $uid,
+            'uidvalidity' => $uidValidity,
+            'message_id' => $m['message_id'] ?? null,
+            'subject' => $m['subject'] ?? null,
+            'from_name' => $m['from_name'] ?? null,
+            'from_email' => $m['from_email'] ?? null,
+            'to' => $m['to'] ?? [],
+            'cc' => $m['cc'] ?? [],
+            'date_at' => ! empty($m['date']) ? Carbon::parse($m['date']) : null,
+            'seen' => (bool) ($flags['seen'] ?? false),
+            'flagged' => (bool) ($flags['flagged'] ?? false),
+            'answered' => (bool) ($flags['answered'] ?? false),
+            'has_attachments' => (bool) ($m['has_attachments'] ?? false),
+            'attachment_names' => $m['attachment_names'] ?? [],
+            'size' => (int) ($m['size'] ?? strlen($m['raw'])),
+            'blob' => $blob,
+            'preview' => $m['preview'] ?? null,
+            'body_text' => $m['body_text'] ?? null,
+            'synced_at' => Carbon::now(),
+        ]);
     }
 }
