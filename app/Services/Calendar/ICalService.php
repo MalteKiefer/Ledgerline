@@ -56,6 +56,19 @@ class ICalService
         ];
     }
 
+    /** Extract the first component's UID (to preserve it across edits). */
+    public function uid(string $ics): ?string
+    {
+        try {
+            $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
+        } catch (Throwable) {
+            return null;
+        }
+        $comp = $vcal->VEVENT[0] ?? $vcal->VTODO[0] ?? null;
+
+        return isset($comp->UID) ? (string) $comp->UID : null;
+    }
+
     /**
      * Build a VEVENT ICS from editor data.
      *

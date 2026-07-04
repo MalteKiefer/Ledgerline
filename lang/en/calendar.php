@@ -1,0 +1,53 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'ui' => [
+        'heading' => 'Calendar',
+        'today' => 'Today',
+        'month' => 'Month',
+        'week' => 'Week',
+        'day' => 'Day',
+        'agenda' => 'Agenda',
+        'prev' => 'Previous',
+        'next' => 'Next',
+        'calendars' => 'Calendars',
+        'new_calendar' => 'New calendar name',
+        'rename_calendar' => 'Rename calendar',
+        'delete_calendar_confirm' => 'Delete this calendar and all its events?',
+        'read_only' => 'Read-only',
+        'new_event' => 'New event',
+        'edit_event' => 'Edit event',
+        'no_events' => 'No events in this range.',
+        'title' => 'Title',
+        'calendar' => 'Calendar',
+        'all_day' => 'All day',
+        'start' => 'Start',
+        'end' => 'End',
+        'location' => 'Location',
+        'description' => 'Description',
+        'repeat' => 'Repeat',
+        'reminder' => 'Reminder',
+        'save' => 'Save',
+        'cancel' => 'Cancel',
+        'delete' => 'Delete',
+        'delete_confirm' => 'Delete this event?',
+        'repeats' => [
+            'none' => 'Does not repeat',
+            'daily' => 'Daily',
+            'weekly' => 'Weekly',
+            'monthly' => 'Monthly',
+            'yearly' => 'Yearly',
+        ],
+        'reminders' => [
+            'none' => 'None',
+            'at_time' => 'At time of event',
+            '5' => '5 minutes before',
+            '15' => '15 minutes before',
+            '30' => '30 minutes before',
+            '60' => '1 hour before',
+            '1440' => '1 day before',
+        ],
+    ],
+];
