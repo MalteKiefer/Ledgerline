@@ -172,6 +172,10 @@ class FileController extends Controller
     public function raw(string $blob): StreamedResponse
     {
         $path = $this->path($blob);
+        // Only serve bytes the current user owns (the global scope limits this to
+        // their own files) — otherwise any authenticated user could fetch any
+        // blob by guessing its UUID.
+        abort_unless(StoredFile::withTrashed()->where('blob', $blob)->exists(), 404);
         abort_unless($this->disk()->exists($path), 404);
 
         return $this->disk()->response($path, 'file', [
@@ -196,8 +200,10 @@ class FileController extends Controller
             'folder_ids.*' => ['string'],
         ]);
 
-        $fileIds = array_values($validated['file_ids'] ?? []);
-        $folderIds = array_values($validated['folder_ids'] ?? []);
+        // Keep only ids the current user actually owns (the global scope filters
+        // these), so a forged id can't export another user's files/folders.
+        $fileIds = StoredFile::withTrashed()->whereIn('id', array_values($validated['file_ids'] ?? []))->pluck('id')->all();
+        $folderIds = FileFolder::whereIn('id', array_values($validated['folder_ids'] ?? []))->pluck('id')->all();
         abort_if($fileIds === [] && $folderIds === [], 422, 'Nothing selected.');
 
         $count = count($fileIds) + count($folderIds);
@@ -221,9 +227,9 @@ class FileController extends Controller
     {
         $path = $this->path($blob);
 
-        // Never destroy bytes still owned by a live row: a racing or forged
-        // delete could otherwise leave a dangling file that 404s on open.
-        abort_if(StoredFile::where('blob', $blob)->exists(), 409);
+        // Never destroy bytes still owned by a live row — of ANY user, so one
+        // user can't delete another's blob by guessing its UUID.
+        abort_if(StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists(), 409);
 
         $this->disk()->delete($path);
 
