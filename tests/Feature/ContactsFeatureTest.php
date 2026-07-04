@@ -105,6 +105,26 @@ class ContactsFeatureTest extends TestCase
         $this->deleteJson(route('address-books.destroy', $book))->assertStatus(422);
     }
 
+    public function test_address_book_can_be_renamed(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+
+        $this->putJson(route('address-books.update', $book), ['name' => 'Work'])->assertOk();
+
+        $this->assertSame('Work', $book->fresh()->name);
+    }
+
+    public function test_group_can_be_deleted(): void
+    {
+        $user = $this->signIn();
+        $group = ContactGroup::create(['user_id' => $user->id, 'name' => 'Temp']);
+
+        $this->deleteJson(route('contact-groups.destroy', ['group' => $group]))->assertOk();
+
+        $this->assertDatabaseMissing('contact_groups', ['id' => $group->id]);
+    }
+
     public function test_import_creates_and_dedupes_by_uid(): void
     {
         $user = $this->signIn();

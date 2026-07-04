@@ -54,11 +54,11 @@ class PersonController extends Controller
         return view('gallery.person', ['person' => $person]);
     }
 
-    /** A person's photos (+ the person's own faces for reassignment). */
+    /** A person's photos, their faces (for reassignment) and other people (merge targets). */
     public function showData(Person $person): JsonResponse
     {
-        $photoIds = Face::where('person_id', $person->id)->pluck('photo_id')->unique();
-        $photos = Photo::query()->whereIn('id', $photoIds)->orderByDesc('taken_at')->get()
+        $faces = Face::where('person_id', $person->id)->orderByDesc('det_score')->get();
+        $photos = Photo::query()->whereIn('id', $faces->pluck('photo_id')->unique())->orderByDesc('taken_at')->get()
             ->map(fn (Photo $p): array => [
                 'id' => $p->id,
                 'name' => $p->name,
@@ -68,6 +68,13 @@ class PersonController extends Controller
         return response()->json([
             'person' => ['id' => $person->id, 'name' => $person->name, 'count' => $person->faces_count, 'hidden' => $person->hidden_at !== null],
             'photos' => $photos->values(),
+            'faces' => $faces->filter(fn (Face $f) => $f->thumb_path !== null)->map(fn (Face $f): array => [
+                'id' => $f->id,
+                'thumb' => route('gallery.faces.thumb', ['face' => $f]),
+            ])->values(),
+            'others' => Person::query()->where('id', '!=', $person->id)->whereNull('hidden_at')
+                ->orderByDesc('faces_count')->get(['id', 'name'])
+                ->map(fn (Person $p): array => ['id' => $p->id, 'name' => $p->name ?: '—']),
         ]);
     }
 
