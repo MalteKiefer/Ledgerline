@@ -356,6 +356,21 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         await this._json(cfg.groupsUrl, 'POST', { name }); this.load();
     },
 
+    async renameBook(b) {
+        const name = window.prompt(cfg.renameBook, b.name); if (! name || name === b.name) return;
+        await this._json(cfg.bookBase + '/' + b.id, 'PUT', { name }); this.load();
+    },
+    async deleteBook(b) {
+        if (! window.confirm(cfg.confirmDeleteBook)) return;
+        if (this.book === b.id) this.book = '';
+        await this._json(cfg.bookBase + '/' + b.id, 'DELETE'); this.load();
+    },
+    async deleteGroup(g) {
+        if (! window.confirm(cfg.confirmDeleteGroup)) return;
+        if (this.group === g.id) this.group = '';
+        await this._json(cfg.groupBase + '/' + g.id, 'DELETE'); this.load();
+    },
+
     async _json(url, method, body) {
         return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
     },
@@ -381,14 +396,17 @@ Alpine.data('peoplePage', (cfg = {}) => ({
  */
 Alpine.data('personPage', (cfg = {}) => ({
     person: { name: '', count: 0, hidden: false },
-    photos: [],
-    async init() {
+    photos: [], faces: [], others: [],
+    async init() { await this.load(); },
+    async load() {
         try {
             const res = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) return;
             const data = await res.json();
             this.person = data.person;
             this.photos = data.photos ?? [];
+            this.faces = data.faces ?? [];
+            this.others = data.others ?? [];
         } catch (e) { /* keep */ }
     },
     async _patch(body) {
@@ -400,8 +418,23 @@ Alpine.data('personPage', (cfg = {}) => ({
             });
         } catch (e) { /* ignore */ }
     },
+    async _post(url, body) {
+        try {
+            await fetch(url, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+        } catch (e) { /* ignore */ }
+    },
     save() { this._patch({ name: this.person.name }); },
     toggleHidden() { this.person.hidden = ! this.person.hidden; this._patch({ hidden: this.person.hidden }); },
+    async merge(sourceId) {
+        if (! sourceId || ! window.confirm(cfg.mergeConfirm)) return;
+        await this._post(cfg.mergeUrl, { source_id: sourceId });
+        this.load();
+    },
+    async reassignFace(faceId) {
+        if (! window.confirm(cfg.reassignConfirm)) return;
+        await this._post(cfg.faceBase + '/' + faceId + '/reassign', { new: true });
+        this.load();
+    },
 }));
 
 /**

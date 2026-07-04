@@ -13,6 +13,11 @@
         'confirmDelete' => __('contacts.ui.delete_confirm'),
         'newBook' => __('contacts.ui.new_book'),
         'newGroup' => __('contacts.ui.new_group'),
+        'bookBase' => url('address-books'),
+        'groupBase' => url('contact-groups'),
+        'renameBook' => __('contacts.ui.rename_book'),
+        'confirmDeleteBook' => __('contacts.ui.delete_book_confirm'),
+        'confirmDeleteGroup' => __('contacts.ui.delete_group_confirm'),
     ]; @endphp
     <div x-data="contactsPage(@js($cfg))" x-init="init()" class="flex flex-col gap-4 md:flex-row">
         {{-- Sidebar --}}
@@ -25,7 +30,13 @@
                 <ul class="mt-2 space-y-1 text-sm">
                     <li><button @click="book=''" :class="book===''?'font-semibold text-gray-900':'text-gray-600'">{{ __('contacts.ui.all_books') }}</button></li>
                     <template x-for="b in books" :key="b.id">
-                        <li><button @click="book=b.id" :class="book===b.id?'font-semibold text-gray-900':'text-gray-600'" x-text="b.name"></button></li>
+                        <li class="group flex items-center justify-between gap-1">
+                            <button @click="book=b.id" :class="book===b.id?'font-semibold text-gray-900':'text-gray-600'" x-text="b.name" class="truncate text-left"></button>
+                            <span class="hidden shrink-0 gap-1 group-hover:flex">
+                                <button @click="renameBook(b)" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.rename_book') }}">✎</button>
+                                <button @click="deleteBook(b)" class="text-gray-400 hover:text-red-600" title="{{ __('contacts.ui.delete') }}">✕</button>
+                            </span>
+                        </li>
                     </template>
                 </ul>
             </div>
@@ -37,7 +48,10 @@
                 <ul class="mt-2 space-y-1 text-sm">
                     <li><button @click="group=''" :class="group===''?'font-semibold text-gray-900':'text-gray-600'">{{ __('contacts.ui.all_groups') }}</button></li>
                     <template x-for="g in groups" :key="g.id">
-                        <li><button @click="group=g.id" :class="group===g.id?'font-semibold text-gray-900':'text-gray-600'" x-text="g.name"></button></li>
+                        <li class="group flex items-center justify-between gap-1">
+                            <button @click="group=g.id" :class="group===g.id?'font-semibold text-gray-900':'text-gray-600'" x-text="g.name" class="truncate text-left"></button>
+                            <button @click="deleteGroup(g)" class="hidden shrink-0 text-gray-400 hover:text-red-600 group-hover:block" title="{{ __('contacts.ui.delete') }}">✕</button>
+                        </li>
                     </template>
                 </ul>
             </div>
