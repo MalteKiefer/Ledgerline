@@ -51,6 +51,7 @@ use Illuminate\Database\Eloquent\Model;
     'calendar_default_event_minutes',
     'calendar_birthdays_enabled',
     'calendar_anniversaries_enabled',
+    'calendar_holiday_countries',
 ])]
 class AppSettings extends Model
 {
@@ -99,6 +100,7 @@ class AppSettings extends Model
             'calendar_default_event_minutes' => 'integer',
             'calendar_birthdays_enabled' => 'boolean',
             'calendar_anniversaries_enabled' => 'boolean',
+            'calendar_holiday_countries' => 'array',
         ];
     }
 

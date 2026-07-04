@@ -54,6 +54,22 @@
             </label>
         </div>
 
+        {{-- Public holidays --}}
+        @php $selectedCountries = old('calendar_holiday_countries', $settings->calendar_holiday_countries ?? []); @endphp
+        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.calendar_holidays_heading') }}</h2>
+            <p class="mt-1 text-sm text-gray-600">{{ __('settings.calendar_holidays_hint') }}</p>
+            <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                @foreach ($countries as $code => $name)
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" name="calendar_holiday_countries[]" value="{{ $code }}"
+                            @checked(in_array($code, (array) $selectedCountries, true)) class="rounded border-gray-300">
+                        {{ $name }}
+                    </label>
+                @endforeach
+            </div>
+        </div>
+
         <div class="flex justify-end">
             <button type="submit" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('settings.save') }}</button>
         </div>

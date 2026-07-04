@@ -26,6 +26,9 @@ Schedule::command('calendar:remind')->everyMinute()->withoutOverlapping();
 // interval; runs every 15 minutes).
 Schedule::command('calendar:refresh-subscriptions')->everyFifteenMinutes()->withoutOverlapping();
 
+// Rebuild the holidays calendar daily (advances the rolling year window).
+Schedule::command('calendar:refresh-holidays')->daily()->withoutOverlapping();
+
 // Pull every mail account into the local archive (server-deleted mail is kept).
 Schedule::command('mail:sync')->hourly()->withoutOverlapping();
 

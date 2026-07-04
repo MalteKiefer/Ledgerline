@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Settings;
 
+use App\Services\Calendar\HolidayCalendarBuilder;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,6 +27,7 @@ class CalendarRequest extends FormRequest
             'calendar_week_numbers' => $this->boolean('calendar_week_numbers'),
             'calendar_birthdays_enabled' => $this->boolean('calendar_birthdays_enabled'),
             'calendar_anniversaries_enabled' => $this->boolean('calendar_anniversaries_enabled'),
+            'calendar_holiday_countries' => array_values((array) $this->input('calendar_holiday_countries', [])),
         ]);
     }
 
@@ -40,6 +42,8 @@ class CalendarRequest extends FormRequest
             'calendar_default_event_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
             'calendar_birthdays_enabled' => ['boolean'],
             'calendar_anniversaries_enabled' => ['boolean'],
+            'calendar_holiday_countries' => ['array'],
+            'calendar_holiday_countries.*' => [Rule::in(HolidayCalendarBuilder::COUNTRIES)],
         ];
     }
 }

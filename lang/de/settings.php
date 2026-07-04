@@ -18,6 +18,8 @@ return [
     'calendar_contacts_hint' => 'Automatisch schreibgeschützte Kalender aus den Datumsangaben deiner Kontakte erzeugen (jährlich, ganztägig).',
     'calendar_birthdays_enabled' => 'Geburtstagskalender anzeigen (aus Kontakt-Geburtstagen)',
     'calendar_anniversaries_enabled' => 'Jahrestagskalender anzeigen (aus Kontakt-Jahrestagen)',
+    'calendar_holidays_heading' => 'Feiertage',
+    'calendar_holidays_hint' => 'Einen schreibgeschützten Feiertagskalender für die gewählten Länder anzeigen.',
     'gallery_desc' => 'Reise-Gruppierung und ein Metadaten-Rescan für die Fotogalerie.',
     'gallery_heading' => 'Galerie-Einstellungen',
     'gallery_section' => 'Galerie',

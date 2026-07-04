@@ -18,6 +18,8 @@ return [
     'calendar_contacts_hint' => 'Automatically generate read-only calendars from your contacts\' dates (yearly, all-day).',
     'calendar_birthdays_enabled' => 'Show a Birthdays calendar (from contact birthdays)',
     'calendar_anniversaries_enabled' => 'Show an Anniversaries calendar (from contact anniversaries)',
+    'calendar_holidays_heading' => 'Public holidays',
+    'calendar_holidays_hint' => 'Show a read-only Holidays calendar for the selected countries.',
     'gallery_desc' => 'Trip-grouping thresholds and a metadata re-scan for the photo gallery.',
     'gallery_heading' => 'Gallery settings',
     'gallery_section' => 'Gallery',
