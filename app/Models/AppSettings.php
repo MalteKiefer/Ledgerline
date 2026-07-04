@@ -46,13 +46,6 @@ use Illuminate\Database\Eloquent\Model;
     'export_notify_ntfy',
     'export_notify_mail',
     'export_notify_webhook',
-    'calendar_week_start',
-    'calendar_week_numbers',
-    'calendar_default_event_minutes',
-    'calendar_birthdays_enabled',
-    'calendar_anniversaries_enabled',
-    'calendar_holiday_countries',
-    'calendar_timezone',
 ])]
 class AppSettings extends Model
 {
@@ -97,11 +90,6 @@ class AppSettings extends Model
             'export_notify_ntfy' => 'boolean',
             'export_notify_mail' => 'boolean',
             'export_notify_webhook' => 'boolean',
-            'calendar_week_numbers' => 'boolean',
-            'calendar_default_event_minutes' => 'integer',
-            'calendar_birthdays_enabled' => 'boolean',
-            'calendar_anniversaries_enabled' => 'boolean',
-            'calendar_holiday_countries' => 'array',
         ];
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dav;
 
+use App\Dav\Concerns\ResolvesResourceShares;
 use App\Enums\DavChangeOperation;
 use App\Models\AddressBook;
 use App\Models\Contact;
@@ -23,6 +24,8 @@ use Sabre\DAV\PropPatch;
  */
 class AddressBookBackend extends AbstractBackend implements SyncSupport
 {
+    use ResolvesResourceShares;
+
     public function __construct(
         private readonly DavContext $context,
         private readonly DavChangeLog $changes,
@@ -40,7 +43,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             return true;
         }
 
-        return $this->sharePermission($addressBookId, $userId) !== null;
+        return $this->shareLevel(AddressBook::class, $addressBookId, $userId) !== null;
     }
 
     /** The principal may write cards in this book (owner or write-share). */
@@ -54,7 +57,7 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
             return true;
         }
 
-        return $this->sharePermission($addressBookId, $userId) === ResourceShare::WRITE;
+        return $this->shareLevel(AddressBook::class, $addressBookId, $userId) === ResourceShare::WRITE;
     }
 
     /** Only the owner may rename/delete the book collection itself. */
@@ -63,15 +66,6 @@ class AddressBookBackend extends AbstractBackend implements SyncSupport
         $userId = $this->context->userId();
 
         return $userId !== null && AddressBook::where('id', $addressBookId)->where('user_id', $userId)->exists();
-    }
-
-    private function sharePermission(string $addressBookId, int $userId): ?string
-    {
-        return ResourceShare::query()
-            ->where('shareable_type', (new AddressBook)->getMorphClass())
-            ->where('shareable_id', $addressBookId)
-            ->where('shared_with_user_id', $userId)
-            ->value('permission');
     }
 
     public function getAddressBooksForUser($principalUri): array

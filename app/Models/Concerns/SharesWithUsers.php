@@ -20,21 +20,10 @@ use Illuminate\Support\Facades\Auth;
  */
 trait SharesWithUsers
 {
-    /** The column holding the owning user id (override per model, e.g. Photo). */
-    public function ownerColumn(): string
-    {
-        return 'user_id';
-    }
+    use AssignsOwner;
 
     protected static function bootSharesWithUsers(): void
     {
-        static::creating(function ($model): void {
-            $column = $model->ownerColumn();
-            if ($model->{$column} === null && Auth::check()) {
-                $model->{$column} = Auth::id();
-            }
-        });
-
         // Visible = owned by me OR shared with me.
         static::addGlobalScope('ownerOrShared', function (Builder $query): void {
             if (! Auth::check()) {

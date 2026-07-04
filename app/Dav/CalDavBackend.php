@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dav;
 
+use App\Dav\Concerns\ResolvesResourceShares;
 use App\Enums\CalendarUri;
 use App\Enums\DavChangeOperation;
 use App\Models\Calendar;
@@ -27,6 +28,8 @@ use Sabre\DAV\PropPatch;
  */
 class CalDavBackend extends AbstractBackend implements SyncSupport
 {
+    use ResolvesResourceShares;
+
     public function __construct(
         private readonly DavContext $context,
         private readonly DavChangeLog $changes,
@@ -45,7 +48,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             return true;
         }
 
-        return $this->sharePermission($calendarId, $userId) !== null;
+        return $this->shareLevel(Calendar::class, $calendarId, $userId) !== null;
     }
 
     /** The principal may write to this calendar (owns a writable one, or has a write share). */
@@ -63,7 +66,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
             return true;
         }
 
-        return $this->sharePermission($calendarId, $userId) === ResourceShare::WRITE;
+        return $this->shareLevel(Calendar::class, $calendarId, $userId) === ResourceShare::WRITE;
     }
 
     /** Only the owner may rename/delete the calendar collection itself. */
@@ -72,16 +75,6 @@ class CalDavBackend extends AbstractBackend implements SyncSupport
         $userId = $this->context->userId();
 
         return $userId !== null && Calendar::where('id', $calendarId)->where('user_id', $userId)->exists();
-    }
-
-    /** 'read' | 'write' | null — this user's share level on a calendar they don't own. */
-    private function sharePermission(string $calendarId, int $userId): ?string
-    {
-        return ResourceShare::query()
-            ->where('shareable_type', (new Calendar)->getMorphClass())
-            ->where('shareable_id', $calendarId)
-            ->where('shared_with_user_id', $userId)
-            ->value('permission');
     }
 
     public function getCalendarsForUser($principalUri): array
