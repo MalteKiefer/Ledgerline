@@ -24,7 +24,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 'dav/{path?}',
                 [DavController::class, 'handle'],
             )->where('path', '.*');
-            Route::redirect('.well-known/carddav', '/dav/', 301);
+            // RFC 6764 discovery: clients may GET or PROPFIND the well-known URI
+            // and expect a redirect to the CardDAV context path.
+            Route::match(['GET', 'PROPFIND', 'OPTIONS', 'REPORT', 'HEAD'], '.well-known/carddav',
+                fn () => redirect('/dav/', 301));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

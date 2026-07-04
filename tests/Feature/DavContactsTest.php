@@ -97,6 +97,8 @@ class DavContactsTest extends TestCase
     public function test_well_known_redirects_to_dav(): void
     {
         $this->get('/.well-known/carddav')->assertRedirect('/dav/');
+        // RFC 6764: clients often discover via PROPFIND, not GET.
+        $this->call('PROPFIND', '/.well-known/carddav')->assertRedirect('/dav/');
     }
 
     public function test_sabre_server_tree_builds(): void
