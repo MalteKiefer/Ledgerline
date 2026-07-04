@@ -94,6 +94,7 @@ return [
     'archive_delete' => 'Endgültig löschen',
     'archive_delete_confirm' => 'Diese archivierte Mail endgültig löschen? Kann nicht rückgängig gemacht werden.',
     'archive_view' => 'Ansehen',
+    'archived_badge' => 'Lokal archiviert',
     'archive_deleted_at' => 'Archiviert :time',
     'search_title' => 'Mail durchsuchen',
     'search_placeholder' => 'Betreff, Absender, Empfänger, Inhalt, Anhang…',

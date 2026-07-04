@@ -192,6 +192,7 @@
                                     <span class="truncate text-sm" :class="m.seen ? 'text-gray-700' : 'font-semibold text-gray-900'" x-text="fmtAddress(m.from) || '—'"></span>
                                     <span class="block truncate text-sm" :class="m.seen ? 'text-gray-600' : 'text-gray-900'" x-text="m.subject || @js(__('mail.no_subject'))"></span>
                                 </span>
+                                <span x-show="m.archived" x-cloak class="shrink-0 text-gray-400" title="{{ __('mail.archived_badge') }}"><x-icon name="archive" class="h-3.5 w-3.5" /></span>
                                 <span class="shrink-0 text-xs text-gray-400" x-text="fmtDateTime(m.date)"></span>
                             </li>
                         </template>
@@ -212,6 +213,7 @@
                     <div class="flex items-center gap-2">
                         <h1 class="min-w-0 text-lg font-semibold text-gray-900" x-text="reader.current.subject || @js(__('mail.no_subject'))"></h1>
                         <x-icon name="paperclip" x-show="(reader.current.attachments ?? []).length" x-cloak class="h-4 w-4 shrink-0 text-gray-500" title="{{ __('mail.attachments') }}" />
+                        <x-icon name="archive" x-show="reader.current.archived" x-cloak class="h-4 w-4 shrink-0 text-gray-400" title="{{ __('mail.archived_badge') }}" />
                     </div>
                     <dl class="mt-2 space-y-0.5 text-xs text-gray-500">
                         <div><dt class="inline font-medium">{{ __('mail.msg_from') }}:</dt> <dd class="inline" x-text="fmtAddress(reader.current.from)"></dd></div>

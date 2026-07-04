@@ -94,6 +94,7 @@ return [
     'archive_delete' => 'Delete permanently',
     'archive_delete_confirm' => 'Permanently delete this archived message? This cannot be undone.',
     'archive_view' => 'View',
+    'archived_badge' => 'Archived locally',
     'archive_deleted_at' => 'Archived :time',
     'search_title' => 'Search mail',
     'search_placeholder' => 'Subject, sender, recipient, content, attachment…',
