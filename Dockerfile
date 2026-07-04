@@ -32,7 +32,7 @@ RUN apt-get update \
       # document OCR (searchable PDFs) + text/image extraction
       ocrmypdf ghostscript qpdf poppler-utils \
       tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu \
- && install-php-extensions pdo_pgsql pgsql intl gd exif imagick bcmath zip \
+ && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # serversideup automations are driven per-service via env in compose; default off.
