@@ -24,6 +24,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | exiftool binary path
+    |--------------------------------------------------------------------------
+    |
+    | Path to the exiftool binary used to read still-image metadata that PHP's
+    | exif_read_data() cannot (HEIC/HEIF/AVIF and Apple's Live Photo tags). Read
+    | through config so it survives configuration caching. The production image
+    | installs it via libimage-exiftool-perl; set EXIFTOOL_PATH to override.
+    |
+    */
+
+    'exiftool_path' => env('EXIFTOOL_PATH', 'exiftool'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reverse-geocoding rate limit
     |--------------------------------------------------------------------------
     |

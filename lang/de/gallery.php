@@ -79,7 +79,7 @@ return [
     'failed_count' => 'fehlgeschlagen',
     'skipped_count' => 'übersprungen',
     'skipped_generic' => 'Übersprungen',
-    'skipped_heic' => 'HEIC – übersprungen',
+    'skipped_unsupported' => 'Format nicht unterstützt – übersprungen',
     'skipped_list' => 'Übersprungen',
     'unfavorite' => 'Favorit entfernen',
     'upload' => 'Fotos hochladen',

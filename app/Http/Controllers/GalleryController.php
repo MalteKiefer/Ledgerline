@@ -8,6 +8,7 @@ use App\Jobs\ProcessPhoto;
 use App\Models\AppSettings;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
+use App\Services\Gallery\GalleryFormats;
 use App\Services\Gallery\PhotoExporter;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
@@ -212,12 +213,12 @@ class GalleryController extends Controller
      * Store one uploaded photo (called per file by the uploader). Returns JSON
      * so the client can update its progress list.
      */
-    public function store(Request $request, PhotoStorage $storage): JsonResponse
+    public function store(Request $request, PhotoStorage $storage, GalleryFormats $formats): JsonResponse
     {
         $maxMb = (int) (AppSettings::current()->gallery_max_upload_mb ?? 200);
 
-        // Validate presence and size first, so an unsupported-but-valid file
-        // (e.g. HEIC) can be reported as skipped rather than a hard error.
+        // Validate presence and size first, so an unsupported-but-valid file can
+        // be reported as skipped rather than a hard error.
         $request->validate([
             'photo' => ['required', 'file', 'max:'.($maxMb * 1024)],
         ]);
@@ -226,19 +227,21 @@ class GalleryController extends Controller
         $mime = $upload->getMimeType() ?: 'application/octet-stream';
         $extension = strtolower($upload->getClientOriginalExtension());
 
-        // HEIC/HEIF cannot be decoded yet; skip it explicitly so the uploader
-        // can list it instead of failing.
-        if (in_array($extension, ['heic', 'heif'], true) || str_contains($mime, 'heic') || str_contains($mime, 'heif')) {
+        // A HEIC/HEIF/AVIF file this runtime cannot decode (no libheif-enabled
+        // Imagick): report it as skipped so the uploader can list it instead of
+        // storing an original it could never render.
+        if ($formats->isUnsupportedImage($extension, $mime)) {
             return response()->json([
                 'skipped' => true,
-                'reason' => 'heic',
+                'reason' => 'unsupported',
                 'name' => $upload->getClientOriginalName(),
             ], 200);
         }
 
-        // Reject anything outside the supported image/video types.
+        // Reject anything outside the supported image/video types (HEIC/HEIF/AVIF
+        // are included only when the runtime can decode them).
         $request->validate([
-            'photo' => ['mimes:jpg,jpeg,png,webp,gif,mp4,mov'],
+            'photo' => ['mimes:'.$formats->allowedExtensionsCsv()],
         ]);
 
         $mediaType = str_starts_with($mime, 'video/') ? 'video' : 'image';

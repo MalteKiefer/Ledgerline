@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Jobs\ProcessPhoto;
 use App\Models\Photo;
+use App\Services\Gallery\GalleryFormats;
 use App\Services\Gallery\VideoProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -198,18 +199,55 @@ class GalleryTest extends TestCase
         $this->assertSame(1, Photo::count());
     }
 
-    public function test_upload_skips_heic_files(): void
+    public function test_upload_skips_heic_when_the_runtime_cannot_decode_it(): void
     {
+        if (app(GalleryFormats::class)->heicSupported()) {
+            $this->markTestSkipped('Imagick decodes HEIC here; skip is not exercised.');
+        }
+
         Storage::fake('files');
         Queue::fake();
         $this->signIn();
 
         $this->post(route('gallery.store'), [
             'photo' => UploadedFile::fake()->create('live.heic', 500, 'image/heic'),
-        ])->assertOk()->assertJson(['skipped' => true, 'reason' => 'heic']);
+        ])->assertOk()->assertJson(['skipped' => true, 'reason' => 'unsupported']);
 
         $this->assertSame(0, Photo::count());
         Queue::assertNotPushed(ProcessPhoto::class);
+    }
+
+    public function test_heic_upload_is_processed_into_jpeg_renditions_when_supported(): void
+    {
+        $formats = app(GalleryFormats::class);
+        if (! $formats->heicSupported()) {
+            $this->markTestSkipped('Runtime has no HEIC-capable Imagick (needs libheif).');
+        }
+
+        Storage::fake('files');
+        $this->signIn();
+
+        // Build a real HEIC from an Imagick canvas so the decode path is exercised.
+        $imagick = new \Imagick;
+        $imagick->newImage(1200, 800, new \ImagickPixel('#3366cc'));
+        $imagick->setImageFormat('heic');
+        $heic = tempnam(sys_get_temp_dir(), 'heic').'.heic';
+        $imagick->writeImage($heic);
+        $imagick->clear();
+
+        $upload = new UploadedFile($heic, 'shot.heic', 'image/heic', null, true);
+
+        $this->post(route('gallery.store'), ['photo' => $upload])->assertCreated();
+
+        $photo = Photo::firstOrFail();
+        $photo->refresh();
+
+        $this->assertSame('image', $photo->media_type);
+        $this->assertSame('ready', $photo->status);
+        $this->assertSame(1200, $photo->width);
+        Storage::disk('files')->assertExists($photo->thumb_path);
+        Storage::disk('files')->assertExists($photo->medium_path);
+        $this->assertStringEndsWith('.jpg', $photo->thumb_path);
     }
 
     public function test_media_counts_break_down_by_type(): void

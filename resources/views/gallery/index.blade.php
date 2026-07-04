@@ -66,7 +66,7 @@
                                 x-text="{
                                     pending: '…', uploading: item.progress + '%', done: '✓',
                                     duplicate: '{{ __('gallery.duplicate') }}',
-                                    skipped: item.reason === 'heic' ? '{{ __('gallery.skipped_heic') }}' : '{{ __('gallery.skipped_generic') }}',
+                                    skipped: item.reason === 'unsupported' ? '{{ __('gallery.skipped_unsupported') }}' : '{{ __('gallery.skipped_generic') }}',
                                     error: '✕',
                                 }[item.state]"></span>
                         </div>
