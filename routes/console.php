@@ -19,6 +19,9 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 // Fire to-do reminders that have come due.
 Schedule::command('reminders:send')->everyMinute()->withoutOverlapping();
 
+// Fire calendar event alarms (VALARM) that have come due.
+Schedule::command('calendar:remind')->everyMinute()->withoutOverlapping();
+
 // Pull every mail account into the local archive (server-deleted mail is kept).
 Schedule::command('mail:sync')->hourly()->withoutOverlapping();
 

@@ -20,11 +20,11 @@ use Throwable;
 class ICalService
 {
     /**
-     * @return array{component: string, summary: ?string, starts_at: ?string, ends_at: ?string, all_day: bool, rrule: ?string}
+     * @return array{component: string, summary: ?string, starts_at: ?string, ends_at: ?string, all_day: bool, rrule: ?string, alarm_minutes: ?int}
      */
     public function denormalize(string $ics): array
     {
-        $empty = ['component' => 'VEVENT', 'summary' => null, 'starts_at' => null, 'ends_at' => null, 'all_day' => false, 'rrule' => null];
+        $empty = ['component' => 'VEVENT', 'summary' => null, 'starts_at' => null, 'ends_at' => null, 'all_day' => false, 'rrule' => null, 'alarm_minutes' => null];
 
         try {
             $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
@@ -53,7 +53,30 @@ class ICalService
             'ends_at' => $end?->format('Y-m-d H:i:s'),
             'all_day' => $allDay,
             'rrule' => isset($comp->RRULE) ? (string) $comp->RRULE : null,
+            'alarm_minutes' => $this->alarmMinutes($comp),
         ];
+    }
+
+    /** Lead minutes of the first VALARM's relative TRIGGER (null if none/absolute). */
+    private function alarmMinutes(object $comp): ?int
+    {
+        if (! isset($comp->VALARM[0]->TRIGGER)) {
+            return null;
+        }
+        $trigger = $comp->VALARM[0]->TRIGGER;
+        // Only relative (duration) triggers are supported; absolute DATE-TIME is ignored.
+        if (isset($trigger['VALUE']) && strtoupper((string) $trigger['VALUE']) === 'DATE-TIME') {
+            return null;
+        }
+        try {
+            $interval = DateTimeParser::parseDuration((string) $trigger);
+        } catch (Throwable) {
+            return null;
+        }
+        $minutes = ($interval->d * 1440) + ($interval->h * 60) + $interval->i;
+
+        // A negative duration (invert=1) means "before"; that's the reminder lead.
+        return $interval->invert === 1 ? $minutes : 0;
     }
 
     /** Extract the first component's UID (to preserve it across edits). */
