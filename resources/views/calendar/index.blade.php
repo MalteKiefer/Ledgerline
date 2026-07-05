@@ -30,7 +30,7 @@
                     <button @click="addCalendar()" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.new_calendar') }}">+</button>
                 </div>
                 <ul class="mt-2 space-y-1 text-sm">
-                    <template x-for="c in calendars" :key="c.id">
+                    <template x-for="c in ownCalendars()" :key="c.id">
                         <li class="group flex items-center justify-between gap-1">
                             <label class="flex min-w-0 items-center gap-2">
                                 <input type="checkbox" :checked="!hidden.has(c.id)" @change="toggleCalendar(c.id)"
@@ -39,12 +39,27 @@
                                 <span class="truncate text-gray-700" x-text="c.name"></span>
                             </label>
                             <span class="hidden shrink-0 gap-1 group-hover:flex">
-                                <template x-if="c.read_only">
-                                    <span class="text-[10px] text-gray-400" title="{{ __('calendar.ui.read_only') }}">🔒</span>
-                                </template>
                                 <button @click="renameCalendar(c)" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.rename_calendar') }}">✎</button>
                                 <button @click="deleteCalendar(c)" class="text-gray-400 hover:text-red-600" title="{{ __('calendar.ui.delete') }}">✕</button>
                             </span>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+
+            {{-- Read-only, generated calendars (birthdays, anniversaries, holidays) --}}
+            <div x-show="otherCalendars().length" x-cloak>
+                <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('calendar.ui.other_calendars') }}</h2>
+                <ul class="mt-2 space-y-1 text-sm">
+                    <template x-for="c in otherCalendars()" :key="c.id">
+                        <li class="flex items-center justify-between gap-1">
+                            <label class="flex min-w-0 items-center gap-2">
+                                <input type="checkbox" :checked="!hidden.has(c.id)" @change="toggleCalendar(c.id)"
+                                    class="rounded border-gray-300" :style="`color:${c.color}`">
+                                <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="`background:${c.color}`"></span>
+                                <span class="truncate text-gray-700" x-text="c.name"></span>
+                            </label>
+                            <span class="shrink-0 text-[10px] text-gray-400" title="{{ __('calendar.ui.read_only') }}">🔒</span>
                         </li>
                     </template>
                 </ul>
@@ -183,8 +198,9 @@
         <div x-show="editor" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="editor=false">
             <div class="absolute inset-0 bg-gray-900/40" @click="editor=false"></div>
             <div class="relative my-8 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-                <h3 class="text-base font-semibold text-gray-900" x-text="form.id ? '{{ __('calendar.ui.edit_event') }}' : '{{ __('calendar.ui.new_event') }}'"></h3>
-                <div class="mt-4 space-y-3">
+                <h3 class="text-base font-semibold text-gray-900" x-text="form.read_only ? '{{ __('calendar.ui.view_event') }}' : (form.id ? '{{ __('calendar.ui.edit_event') }}' : '{{ __('calendar.ui.new_event') }}')"></h3>
+                <p x-show="form.read_only" x-cloak class="mt-1 text-xs text-gray-400">🔒 {{ __('calendar.ui.read_only_note') }}</p>
+                <div class="mt-4 space-y-3" :class="form.read_only && 'pointer-events-none opacity-80'">
                     <input x-model="form.summary" placeholder="{{ __('calendar.ui.title') }}" class="w-full rounded-md border-gray-300 text-sm">
                     <label class="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" x-model="form.all_day" class="rounded border-gray-300"> {{ __('calendar.ui.all_day') }}
@@ -233,15 +249,20 @@
                             </select>
                         </label>
                     </div>
-                    <select x-model="form.calendar_id" class="w-full rounded-md border-gray-300 text-sm">
-                        <template x-for="c in calendars.filter(c=>!c.read_only)" :key="c.id"><option :value="c.id" x-text="c.name"></option></template>
-                    </select>
+                    <template x-if="!form.read_only">
+                        <select x-model="form.calendar_id" class="w-full rounded-md border-gray-300 text-sm">
+                            <template x-for="c in ownCalendars()" :key="c.id"><option :value="c.id" x-text="c.name"></option></template>
+                        </select>
+                    </template>
+                    <template x-if="form.read_only">
+                        <div class="text-sm text-gray-600" x-text="calName(form.calendar_id)"></div>
+                    </template>
                 </div>
                 <div class="mt-5 flex items-center justify-between">
-                    <button x-show="form.id" @click="destroy()" class="text-sm text-red-600 hover:text-red-700">{{ __('calendar.ui.delete') }}</button>
+                    <button x-show="form.id && !form.read_only" @click="destroy()" class="text-sm text-red-600 hover:text-red-700">{{ __('calendar.ui.delete') }}</button>
                     <div class="ml-auto flex gap-2">
-                        <button @click="editor=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('calendar.ui.cancel') }}</button>
-                        <button @click="save()" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('calendar.ui.save') }}</button>
+                        <button @click="editor=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" x-text="form.read_only ? '{{ __('calendar.ui.close') }}' : '{{ __('calendar.ui.cancel') }}'"></button>
+                        <button x-show="!form.read_only" @click="save()" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('calendar.ui.save') }}</button>
                     </div>
                 </div>
             </div>

@@ -691,7 +691,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         const startAt = new Date(day); startAt.setHours(9, 0, 0, 0);
         const endAt = new Date(startAt.getTime() + this.defaultMinutes * 60000);
         const fmt = (x) => `${this.ymd(x)}T${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
-        return { id: null, calendar_id: writable?.id, summary: '', start: fmt(startAt), end: fmt(endAt), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminder_minutes: '' };
+        return { id: null, calendar_id: writable?.id, summary: '', start: fmt(startAt), end: fmt(endAt), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminder_minutes: '', read_only: false };
     },
 
     openNew(d) {
@@ -709,9 +709,16 @@ Alpine.data('calendarPage', (cfg = {}) => ({
             timezone: d.timezone || this.effectiveTz(),
             location: d.location || '', description: d.description || '', rrule: d.rrule || '',
             reminder_minutes: d.reminder_minutes != null ? String(d.reminder_minutes) : '',
+            // Birthday/anniversary/holiday calendars are read-only — open such an
+            // event for viewing only (no save/delete, calendar shown as text).
+            read_only: !! this.calendars.find((c) => c.id === d.calendar_id)?.read_only,
         };
         this.editor = true;
     },
+
+    calName(id) { return this.calendars.find((c) => c.id === id)?.name || ''; },
+    ownCalendars() { return this.calendars.filter((c) => ! c.read_only); },
+    otherCalendars() { return this.calendars.filter((c) => c.read_only); },
 
     payload() {
         return {
