@@ -5,6 +5,7 @@
         deleteListConfirm: @js(__('todos.delete_list_confirm')),
         deleteConfirm: @js(__('todos.delete_confirm')),
         emptyTrashConfirm: @js(__('todos.empty_trash_confirm')),
+        defaultReminderChannels: @js(\App\Models\UserSetting::for(auth()->id())->reminder_channels ?? ['desktop']),
      })">
 
     <template x-if="state === 'error'">

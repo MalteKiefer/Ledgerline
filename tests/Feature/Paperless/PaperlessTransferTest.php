@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Paperless;
 
-use App\Models\AppSettings;
 use App\Models\PaperlessTerm;
+use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -15,9 +15,10 @@ class PaperlessTransferTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** Configure the currently signed-in user's Paperless instance. */
     private function configure(): void
     {
-        AppSettings::current()->update([
+        UserSetting::for(auth()->id())->update([
             'paperless_enabled' => true,
             'paperless_url' => 'https://p.example.com',
             'paperless_token' => 'tok',

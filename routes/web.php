@@ -34,6 +34,7 @@ use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController
 use App\Http\Controllers\Settings\MailController as SettingsMailController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
+use App\Http\Controllers\Settings\RemindersController as SettingsRemindersController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\TodoController;
@@ -83,6 +84,16 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings/calendar', [SettingsCalendarController::class, 'edit'])->name('settings.calendar.edit');
     Route::put('/settings/calendar', [SettingsCalendarController::class, 'update'])->name('settings.calendar.update');
 
+    // Per-user reminder defaults (which channels are pre-selected).
+    Route::get('/settings/reminders', [SettingsRemindersController::class, 'edit'])->name('settings.reminders.edit');
+    Route::put('/settings/reminders', [SettingsRemindersController::class, 'update'])->name('settings.reminders.update');
+
+    // Paperless-ngx: per-user integration (each user's own instance URL + token).
+    Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
+    Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
+    Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->name('settings.paperless.test');
+    Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->name('settings.paperless.sync');
+
     // Non-personal, workspace-wide settings — restricted to the Pocket-ID admin
     // group (config services.pocketid.admin_group; open to all when unset).
     Route::middleware('can:manage-global-settings')->group(function (): void {
@@ -100,12 +111,6 @@ Route::middleware('auth')->group(function (): void {
         // Mail settings (accounts + background-sync interval).
         Route::get('/settings/mail', [SettingsMailController::class, 'edit'])->name('settings.mail.edit');
         Route::put('/settings/mail', [SettingsMailController::class, 'update'])->name('settings.mail.update');
-
-        // Paperless-ngx integration (instance URL + API token, cached terms).
-        Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
-        Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
-        Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->name('settings.paperless.test');
-        Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->name('settings.paperless.sync');
 
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
