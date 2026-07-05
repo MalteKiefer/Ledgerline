@@ -40,6 +40,11 @@ return [
     'confirm_delete' => 'Ausgewählte Downloads löschen? Die Dateien werden sofort entfernt.',
     'building_hint' => 'Dieser Export wird noch vorbereitet – er ist gleich bereit.',
 
+    'error' => [
+        'too_many' => 'Es werden bereits :max Exporte vorbereitet. Warte, bis einer fertig ist, bevor du einen weiteren startest.',
+        'stuck' => 'Die Vorbereitung wurde unterbrochen und nicht abgeschlossen. Bitte starte den Export erneut.',
+    ],
+
     'notify' => [
         'ready_title' => 'Download bereit',
         'ready_body' => 'Dein Export „:title" steht zum Herunterladen bereit.',

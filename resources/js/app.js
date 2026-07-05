@@ -297,10 +297,10 @@ Alpine.data('toastHub', (labels = {}) => ({
  */
 function shareMixin(cfg) {
     return {
-        shareModal: { open: false, type: '', id: null, name: '', shares: [], email: '', permission: 'read', error: '', feedback: '', publicUrl: '', publicId: null, publicEmail: '' },
+        shareModal: { open: false, type: '', id: null, name: '', shares: [], email: '', permission: 'read', error: '', feedback: '', publicUrl: '', publicId: null, publicEmail: '', publicExpiry: '', publicPassword: '', publicExpiresAt: null, publicHasPassword: false },
         shareMailConfigured: !! cfg.mailConfigured,
         async openShare(type, id, name) {
-            this.shareModal = { open: true, type, id, name, shares: [], email: '', permission: 'read', error: '', feedback: '', publicUrl: '', publicId: null, publicEmail: '' };
+            this.shareModal = { open: true, type, id, name, shares: [], email: '', permission: 'read', error: '', feedback: '', publicUrl: '', publicId: null, publicEmail: '', publicExpiry: '', publicPassword: '', publicExpiresAt: null, publicHasPassword: false };
             await this.loadShares();
         },
         async copyShareLink() {
@@ -311,8 +311,19 @@ function shareMixin(cfg) {
             if (r.ok) { this.shareFlash(cfg.mailSent || 'Sent'); } else { this.shareModal.error = cfg.mailUnavailable || 'Error'; }
         },
         async createPublic() {
-            const r = await this._json(cfg.publicStoreUrl, 'POST', { type: this.shareModal.type, id: this.shareModal.id });
-            if (r.ok) await this.loadShares();
+            const payload = {
+                type: this.shareModal.type,
+                id: this.shareModal.id,
+                expires_in: this.shareModal.publicExpiry ? Number(this.shareModal.publicExpiry) : null,
+            };
+            if (this.shareModal.type === 'albums' && this.shareModal.publicPassword) payload.password = this.shareModal.publicPassword;
+            const r = await this._json(cfg.publicStoreUrl, 'POST', payload);
+            if (r.ok) { this.shareModal.publicPassword = ''; await this.loadShares(); }
+        },
+        async rotatePublic(msg) {
+            if (! this.shareModal.publicId) return;
+            const r = await this._json(cfg.publicBase + '/' + this.shareModal.publicId + '/rotate', 'POST');
+            if (r.ok && r.url) { this.shareModal.publicUrl = r.url; this.shareFlash(msg || 'Regenerated'); }
         },
         async revokePublic() {
             if (! this.shareModal.publicId) return;
@@ -337,6 +348,8 @@ function shareMixin(cfg) {
                     const pub = (d.public || []).find((s) => s.type === this.shareModal.type && String(s.resource_id) === String(this.shareModal.id));
                     this.shareModal.publicUrl = pub ? pub.url : '';
                     this.shareModal.publicId = pub ? pub.id : null;
+                    this.shareModal.publicExpiresAt = pub ? (pub.expires_at || null) : null;
+                    this.shareModal.publicHasPassword = pub ? !! pub.has_password : false;
                 }
             } catch (e) { /* keep */ }
         },

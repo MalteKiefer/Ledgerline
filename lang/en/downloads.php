@@ -40,6 +40,11 @@ return [
     'confirm_delete' => 'Delete the selected downloads? The files are removed immediately.',
     'building_hint' => 'This export is still being prepared — it will appear ready shortly.',
 
+    'error' => [
+        'too_many' => 'You already have :max exports being prepared. Wait for one to finish before starting another.',
+        'stuck' => 'Preparation was interrupted and did not finish. Please start the export again.',
+    ],
+
     'notify' => [
         'ready_title' => 'Download ready',
         'ready_body' => 'Your export ":title" is ready to download.',

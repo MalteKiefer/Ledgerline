@@ -34,6 +34,21 @@ class Export extends Model
 {
     use OwnsUserData;
 
+    /** Most exports one user may have building (queued/processing) at once. */
+    public const MAX_IN_FLIGHT = 3;
+
+    /**
+     * Count the user's exports still building (queued or processing). Used to cap
+     * how many heavy exports a single user can have in the queue at once.
+     */
+    public static function inFlightCount(int $userId): int
+    {
+        return static::withoutGlobalScopes()
+            ->where('user_id', $userId)
+            ->whereIn('status', ['queued', 'processing'])
+            ->count();
+    }
+
     /**
      * @return array<string, string>
      */
