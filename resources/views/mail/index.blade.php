@@ -160,20 +160,32 @@
                  a multi-selection. Single-only actions (back, headers, print) are
                  hidden in multi; multi-only (count, clear) hidden in single. --}}
             <div x-show="reader.current || reader.selected.length" x-cloak class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
+                {{-- Group 1: navigation --}}
                 <button type="button" x-show="reader.current" @click="reader.current = null" title="{{ __('mail.back_to_list') }}" aria-label="{{ __('mail.back_to_list') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="chevron-left" class="h-4 w-4" /></button>
+                <span x-show="! reader.current" class="text-sm font-medium text-gray-700"><span x-text="reader.selected.length"></span> {{ __('mail.selected') }}</span>
+                <span x-show="reader.current" class="mx-0.5 h-5 w-px bg-gray-200" aria-hidden="true"></span>
+
+                {{-- Group 2: reply / forward --}}
                 <button type="button" x-show="reader.current" @click="reply(false)" title="{{ __('mail.reply') }}" aria-label="{{ __('mail.reply') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
                 <button type="button" x-show="reader.current" @click="reply(true)" title="{{ __('mail.reply_all') }}" aria-label="{{ __('mail.reply_all') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-left" class="h-4 w-4" /><x-icon name="arrow-uturn-left" class="-ml-2 h-4 w-4" /></button>
                 <button type="button" x-show="reader.current" @click="forward()" title="{{ __('mail.forward') }}" aria-label="{{ __('mail.forward') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-right" class="h-4 w-4" /></button>
-                <span x-show="! reader.current" class="text-sm font-medium text-gray-700"><span x-text="reader.selected.length"></span> {{ __('mail.selected') }}</span>
-                <button type="button" @click="act('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" aria-label="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="trash" class="h-4 w-4" /></button>
-                <button type="button" @click="reader.current ? (reader.deleteChoiceOpen = true) : bulkAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" aria-label="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                <span x-show="reader.current" class="mx-0.5 h-5 w-px bg-gray-200" aria-hidden="true"></span>
+
+                {{-- Group 3: read state --}}
+                <button type="button" @click="act('seen')" :disabled="reader.busy" title="{{ __('mail.mark_read') }}" aria-label="{{ __('mail.mark_read') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="envelope-open" class="h-4 w-4" /></button>
+                <button type="button" @click="act('unseen')" :disabled="reader.busy" title="{{ __('mail.mark_unread') }}" aria-label="{{ __('mail.mark_unread') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="envelope" class="h-4 w-4" /></button>
+                <span class="mx-0.5 h-5 w-px bg-gray-200" aria-hidden="true"></span>
+
+                {{-- Group 4: organise (move / trash / delete) --}}
                 <select @change="if ($event.target.value) { act('move', $event.target.value); $event.target.value = '' }" title="{{ __('mail.move_to_folder') }}" class="rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <option value="">{{ __('mail.move_to_folder') }}</option>
                     <template x-for="f in moveFolders()" :key="f.path"><option :value="f.path" x-text="folderLabel(f)"></option></template>
                 </select>
                 <button type="button" x-show="otherAccounts().length" @click="openTransfer()" :disabled="reader.busy" title="{{ __('mail.move_to_account') }}" aria-label="{{ __('mail.move_to_account') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="share" class="h-4 w-4" /></button>
-                <button type="button" @click="act('seen')" :disabled="reader.busy" title="{{ __('mail.mark_read') }}" aria-label="{{ __('mail.mark_read') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="envelope-open" class="h-4 w-4" /></button>
-                <button type="button" @click="act('unseen')" :disabled="reader.busy" title="{{ __('mail.mark_unread') }}" aria-label="{{ __('mail.mark_unread') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="envelope" class="h-4 w-4" /></button>
+                <button type="button" @click="act('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" aria-label="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="trash" class="h-4 w-4" /></button>
+                <button type="button" @click="reader.current ? (reader.deleteChoiceOpen = true) : bulkAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" aria-label="{{ __('mail.action_delete') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="x-circle" class="h-4 w-4" /></button>
+
+                {{-- Group 5: utilities (right-aligned) --}}
                 <button type="button" x-show="reader.current" @click="reader.headersOpen = true" title="{{ __('mail.show_headers') }}" aria-label="{{ __('mail.show_headers') }}" class="ml-auto rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="bars-3" class="h-4 w-4" /></button>
                 <a x-show="reader.current && reader.current.archiveId" x-cloak :href="'/mail/archive/message/' + (reader.current?.archiveId ?? '') + '/download'"
                     title="{{ __('mail.download_eml') }}" aria-label="{{ __('mail.download_eml') }}" class="inline-flex items-center rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>

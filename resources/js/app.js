@@ -447,6 +447,16 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         return c.fn || '—';
     },
 
+    /** Up-to-two-letter initials for the avatar placeholder when a contact has no photo. */
+    initials(c) {
+        const first = (c.first_name || '').trim();
+        const last = (c.last_name || '').trim();
+        const letters = ((first[0] || '') + (last[0] || '')).toUpperCase();
+        if (letters) return letters;
+        const fn = (c.fn || '').trim();
+        return fn ? fn[0].toUpperCase() : '';
+    },
+
     async saveSettings() {
         if (! this._settingsReady) return;
         await this._json(cfg.settingsUrl, 'POST', { sort: this.sort, display_format: this.displayFormat });
@@ -3975,7 +3985,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.reader.page = 1;
         // Show a cached list instantly only if it is at most a day old (a fresh
         // load runs right after anyway); older entries fall back to a spinner.
-        const cached = mailCache.get(`msgs:${this.reader.account.id}:${this.reader.folderPath}`, 86400000);
+        const cached = mailCache.get(`msgs:v2:${this.reader.account.id}:${this.reader.folderPath}`, 86400000);
         if (cached && (cached.messages ?? []).length) {
             this.reader.messages = cached.messages;
             this.reader.total = cached.total ?? cached.messages.length;
@@ -4274,7 +4284,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     cacheList(folder = null) {
         if (! this.reader.account) return;
-        mailCache.put(`msgs:${this.reader.account.id}:${folder ?? this.reader.folderPath}`, {
+        mailCache.put(`msgs:v2:${this.reader.account.id}:${folder ?? this.reader.folderPath}`, {
             messages: this.reader.messages, total: this.reader.total, ts: Date.now(),
         });
     },
@@ -4310,7 +4320,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         // different messages, so a stale cached body must not be served.
         // v2: bumped when the rendered body changed (inline cid: images are now
         // embedded), so pre-fix cached bodies with raw cid: are not reused.
-        return `msg:v2:${this.reader.account.id}:${folder}:${this.reader.uidValidity}:${uid}`;
+        return `msg:v3:${this.reader.account.id}:${folder}:${this.reader.uidValidity}:${uid}`;
     },
 
     // Reflect the list's archived state on the open message, so the reader

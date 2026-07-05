@@ -86,8 +86,10 @@
             <ul class="mt-4 divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
                 <template x-for="c in contacts" :key="c.id">
                     <li class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer" @click="openEditor(c.id)">
-                        <div class="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-xs font-medium text-gray-500 ring-1 ring-gray-200">
                             <template x-if="c.avatar"><img :src="c.avatar" alt="" class="h-full w-full object-cover"></template>
+                            <template x-if="! c.avatar && initials(c)"><span x-text="initials(c)"></span></template>
+                            <template x-if="! c.avatar && ! initials(c)"><x-icon name="user" class="h-4 w-4 text-gray-400" /></template>
                         </div>
                         <div class="min-w-0 flex-1">
                             <p class="truncate text-sm font-medium text-gray-900" x-text="displayName(c)"></p>
