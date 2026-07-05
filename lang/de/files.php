@@ -67,4 +67,6 @@ return [
     'versions_none' => 'Keine früheren Versionen.',
     'version_download' => 'Herunterladen',
     'version_current' => 'Aktuell',
+    'version_restore' => 'Wiederherstellen',
+    'version_restore_confirm' => 'Diese Version wiederherstellen? Der aktuelle Inhalt wird als neue Version behalten.',
 ];
