@@ -290,7 +290,7 @@
                         <div class="mt-3 flex items-center gap-3">
                             <button type="button" @click="saveText()" :disabled="viewer.saving"
                                 class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('files.save') }}</button>
-                            <span x-show="viewer.saved" x-cloak class="text-sm text-green-600">✓</span>
+                            <span x-show="viewer.saved" x-cloak class="text-green-600"><x-icon name="check" class="h-4 w-4" /></span>
                         </div>
                     </div>
                     <p x-show="viewer.kind === 'none'" x-cloak class="py-10 text-center text-sm text-gray-500">{{ __('files.encrypted_no_preview') }}</p>

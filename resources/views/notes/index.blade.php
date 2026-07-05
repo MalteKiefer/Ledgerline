@@ -16,7 +16,7 @@
         <aside class="flex w-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm md:w-80 md:shrink-0">
             <div class="flex items-center gap-2 border-b border-gray-100 p-3">
                 <input type="search" x-model="query" placeholder="{{ __('notes.search') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                <button type="button" @click="newNote()" title="{{ __('notes.new_note') }}" class="shrink-0 rounded-md bg-gray-800 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700">+</button>
+                <x-button variant="primary" icon="plus" class="shrink-0 !gap-0" title="{{ __('notes.new_note') }}" @click="newNote()"></x-button>
             </div>
             <div class="flex items-center gap-3 border-b border-gray-100 px-3 py-2 text-xs">
                 <button type="button" @click="view = 'active'" :class="view === 'active' ? 'font-semibold text-gray-900' : 'text-gray-500 hover:text-gray-700'">{{ __('notes.active') }}</button>

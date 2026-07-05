@@ -670,6 +670,36 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     isToday(d) { return this.ymd(d) === this.ymd(new Date()); },
     inMonth(d) { return d.getMonth() === this.cursor.getMonth(); },
 
+    // ---- hour grid (week/day, Google-style) --------------------------------
+    hourPx: 48,
+    hours() { return Array.from({ length: 24 }, (_, h) => h); },
+    fmtHour(h) { return String(h).padStart(2, '0') + ':00'; },
+    timedEventsOn(d) { return this.eventsOn(d).filter((e) => ! e.all_day); },
+    allDayOn(d) { return this.eventsOn(d).filter((e) => e.all_day); },
+    eventStyle(e) {
+        const s = this.parse(e.start);
+        if (! s) return 'display:none';
+        const end = e.end ? this.parse(e.end) : null;
+        const startMin = s.getHours() * 60 + s.getMinutes();
+        let dur = end ? (end - s) / 60000 : this.defaultMinutes;
+        if (! (dur > 0)) dur = 30;
+        const top = (startMin / 60) * this.hourPx;
+        const height = Math.max((dur / 60) * this.hourPx, 16);
+        return `top:${top}px;height:${height}px`;
+    },
+    openNewAt(d, ev) {
+        if (! this.calendars.some((c) => ! c.read_only)) return;
+        const rect = ev.currentTarget.getBoundingClientRect();
+        let min = Math.round(((ev.clientY - rect.top) / this.hourPx * 60) / 15) * 15;
+        min = Math.max(0, Math.min(23 * 60 + 45, min));
+        const start = new Date(d); start.setHours(0, min, 0, 0);
+        const end = new Date(start.getTime() + this.defaultMinutes * 60000);
+        const fmt = (x) => `${this.ymd(x)}T${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
+        const writable = this.calendars.find((c) => ! c.read_only);
+        this.form = { id: null, calendar_id: writable?.id, summary: '', start: fmt(start), end: fmt(end), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminder_minutes: '', read_only: false };
+        this.editor = true;
+    },
+
     // ---- formatting (locale-aware) -----------------------------------------
     fmtTime(s) { const d = this.parse(s); return d ? d.toLocaleTimeString(this.locale, { hour: '2-digit', minute: '2-digit' }) : ''; },
     fmtDay(d) { return d.toLocaleDateString(this.locale, { weekday: 'short', day: 'numeric' }); },

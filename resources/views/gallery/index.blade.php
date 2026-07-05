@@ -55,18 +55,25 @@
                 <div class="flex items-center gap-3">
                     <div class="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100">
                         <template x-if="item.preview"><img :src="item.preview" class="h-full w-full object-cover"></template>
-                        <template x-if="! item.preview"><span class="flex h-full w-full items-center justify-center text-gray-400" x-text="item.isVideo ? '🎬' : '🖼️'"></span></template>
+                        <template x-if="! item.preview">
+                            <span class="flex h-full w-full items-center justify-center text-gray-400">
+                                <template x-if="item.isVideo"><x-icon name="film" class="h-5 w-5" /></template>
+                                <template x-if="! item.isVideo"><x-icon name="photo" class="h-5 w-5" /></template>
+                            </span>
+                        </template>
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="flex justify-between gap-2 text-xs">
                             <span class="truncate text-gray-700" x-text="item.name"></span>
-                            <span class="shrink-0" :class="{'text-green-600': item.state==='done', 'text-amber-600': item.state==='duplicate'||item.state==='skipped', 'text-red-600': item.state==='error', 'text-gray-500': item.state==='uploading'||item.state==='pending'}"
-                                x-text="{
-                                    pending: '…', uploading: item.progress + '%', done: '✓',
+                            <span class="shrink-0" :class="{'text-green-600': item.state==='done', 'text-amber-600': item.state==='duplicate'||item.state==='skipped', 'text-red-600': item.state==='error', 'text-gray-500': item.state==='uploading'||item.state==='pending'}">
+                                <template x-if="item.state==='done'"><x-icon name="check" class="h-4 w-4" /></template>
+                                <template x-if="item.state==='error'"><x-icon name="x-mark" class="h-4 w-4" /></template>
+                                <span x-show="!['done','error'].includes(item.state)" x-text="{
+                                    pending: '…', uploading: item.progress + '%',
                                     duplicate: '{{ __('gallery.duplicate') }}',
                                     skipped: item.reason === 'unsupported' ? '{{ __('gallery.skipped_unsupported') }}' : '{{ __('gallery.skipped_generic') }}',
-                                    error: '✕',
                                 }[item.state]"></span>
+                            </span>
                         </div>
                         <div class="mt-1 h-1.5 w-full rounded bg-gray-100">
                             <div class="h-1.5 rounded transition-all"

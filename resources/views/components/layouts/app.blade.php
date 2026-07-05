@@ -17,7 +17,7 @@
 <body class="h-full bg-gray-100 text-gray-900 antialiased">
     <div class="min-h-full">
         <header class="border-b border-gray-200 bg-white" x-data="{ mobileOpen: false }">
-            <nav class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+            <nav class="mx-auto flex w-[92%] max-w-[1700px] items-center justify-between px-4 py-4">
                 @php
                     $ico = [
                         'files' => 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z',
@@ -213,7 +213,7 @@
             @endauth
         </header>
 
-        <main class="mx-auto max-w-5xl px-4 py-8">
+        <main class="mx-auto w-[92%] max-w-[1700px] px-4 py-8">
             @if (session('status'))
                 <div class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
                     role="status">
@@ -231,7 +231,7 @@
             {{ $slot }}
         </main>
 
-        <footer class="mx-auto max-w-5xl px-4 py-6 text-center text-xs text-gray-400">
+        <footer class="mx-auto w-[92%] max-w-[1700px] px-4 py-6 text-center text-xs text-gray-400">
             Ledgerline v{{ config('app.version') }}
         </footer>
     </div>
@@ -242,7 +242,7 @@
                 <div class="flex items-center gap-3 rounded-md bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
                     <span x-text="t.message"></span>
                     <template x-if="t.url"><a :href="t.url" class="font-medium underline" x-text="t.linkLabel"></a></template>
-                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="close">✕</button>
+                    <button type="button" @click="dismiss(t.id)" class="text-gray-400 hover:text-white" aria-label="close"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
             </template>
         </div>

@@ -14,7 +14,7 @@
       <div>
         <div class="flex items-center justify-between gap-3">
             <h1 class="text-2xl font-semibold text-gray-900">{{ __('bookmarks.title') }}</h1>
-            <button type="button" @click="newBookmark()" class="shrink-0 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">+ {{ __('bookmarks.new_bookmark') }}</button>
+            <x-button variant="primary" icon="plus" class="shrink-0" @click="newBookmark()">{{ __('bookmarks.new_bookmark') }}</x-button>
         </div>
 
         <p x-show="error" x-cloak class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800" x-text="error"></p>

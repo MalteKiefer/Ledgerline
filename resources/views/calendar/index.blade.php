@@ -27,7 +27,7 @@
             <div>
                 <div class="flex items-center justify-between">
                     <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('calendar.ui.calendars') }}</h2>
-                    <button @click="addCalendar()" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.new_calendar') }}">+</button>
+                    <button @click="addCalendar()" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.new_calendar') }}"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
                 <ul class="mt-2 space-y-1 text-sm">
                     <template x-for="c in ownCalendars()" :key="c.id">
@@ -39,8 +39,8 @@
                                 <span class="truncate text-gray-700" x-text="c.name"></span>
                             </label>
                             <span class="hidden shrink-0 gap-1 group-hover:flex">
-                                <button @click="renameCalendar(c)" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.rename_calendar') }}">✎</button>
-                                <button @click="deleteCalendar(c)" class="text-gray-400 hover:text-red-600" title="{{ __('calendar.ui.delete') }}">✕</button>
+                                <button @click="renameCalendar(c)" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.rename_calendar') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
+                                <button @click="deleteCalendar(c)" class="text-gray-400 hover:text-red-600" title="{{ __('calendar.ui.delete') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             </span>
                         </li>
                     </template>
@@ -59,7 +59,7 @@
                                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="`background:${c.color}`"></span>
                                 <span class="truncate text-gray-700" x-text="c.name"></span>
                             </label>
-                            <span class="shrink-0 text-[10px] text-gray-400" title="{{ __('calendar.ui.read_only') }}">🔒</span>
+                            <x-icon name="lock-closed" class="h-3.5 w-3.5 shrink-0 text-gray-400" title="{{ __('calendar.ui.read_only') }}" />
                         </li>
                     </template>
                 </ul>
@@ -88,9 +88,9 @@
             {{-- Toolbar --}}
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-1">
-                    <button @click="step(-1)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.prev') }}">‹</button>
+                    <button @click="step(-1)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.prev') }}"><x-icon name="chevron-left" class="h-4 w-4" /></button>
                     <button @click="today()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{{ __('calendar.ui.today') }}</button>
-                    <button @click="step(1)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.next') }}">›</button>
+                    <button @click="step(1)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.next') }}"><x-icon name="chevron-right" class="h-4 w-4" /></button>
                     <h2 class="ml-2 text-base font-semibold text-gray-900" x-text="title"></h2>
                 </div>
                 <div class="inline-flex rounded-md border border-gray-300 text-sm">
@@ -142,36 +142,87 @@
                 </template>
             </div>
 
-            {{-- Week --}}
-            <div x-show="view==='week'" class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-7">
-                <template x-for="(d,i) in weekDays()" :key="'w'+i">
-                    <div class="rounded-lg border border-gray-200 bg-white">
-                        <div class="border-b border-gray-100 px-2 py-1.5 text-xs font-medium"
-                            :class="isToday(d)?'text-gray-900':'text-gray-500'" x-text="fmtDay(d)"></div>
-                        <div @click="openNew(d)" class="min-h-[120px] cursor-pointer space-y-1 p-1.5 hover:bg-gray-50">
-                            <template x-for="e in eventsOn(d)" :key="e.id+'-'+e.instance">
-                                <button @click.stop="openEditor(e.id)" class="block w-full truncate rounded px-1.5 py-1 text-left text-[11px] text-white" :style="`background:${e.color}`">
-                                    <span x-show="!e.all_day" x-text="fmtTime(e.start)+' '"></span><span x-text="e.title||'—'"></span>
+            {{-- Week (hour grid, Google-style) --}}
+            <div x-show="view==='week'" class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <div class="overflow-x-auto">
+                    <div class="min-w-[48rem]">
+                        {{-- Day headers --}}
+                        <div class="grid border-b border-gray-200" style="grid-template-columns:3.5rem repeat(7,minmax(0,1fr))">
+                            <div></div>
+                            <template x-for="(d,i) in weekDays()" :key="'wh'+i">
+                                <div class="border-l border-gray-100 py-1.5 text-center text-xs font-medium"
+                                    :class="isToday(d)?'text-gray-900':'text-gray-500'" x-text="fmtDay(d)"></div>
+                            </template>
+                        </div>
+                        {{-- All-day strip --}}
+                        <div class="grid border-b border-gray-200 bg-gray-50/50" style="grid-template-columns:3.5rem repeat(7,minmax(0,1fr))">
+                            <div class="px-1 py-1 text-[10px] text-gray-400">{{ __('calendar.ui.all_day') }}</div>
+                            <template x-for="(d,i) in weekDays()" :key="'wa'+i">
+                                <div class="min-h-[1.5rem] space-y-0.5 border-l border-gray-100 p-0.5">
+                                    <template x-for="e in allDayOn(d)" :key="e.id+'-'+e.instance">
+                                        <button @click.stop="openEditor(e.id)" class="block w-full truncate rounded px-1 text-left text-[10px] text-white" :style="`background:${e.color}`" x-text="e.title||'—'"></button>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                        {{-- Time grid --}}
+                        <div class="max-h-[68vh] overflow-y-auto">
+                            <div class="grid" style="grid-template-columns:3.5rem repeat(7,minmax(0,1fr))">
+                                {{-- hour gutter --}}
+                                <div class="relative" :style="`height:${24*hourPx}px`">
+                                    <template x-for="h in hours()" :key="'wg'+h">
+                                        <div class="absolute right-1 -translate-y-1/2 text-[10px] text-gray-400" :style="`top:${h*hourPx}px`" x-text="h===0?'':fmtHour(h)"></div>
+                                    </template>
+                                </div>
+                                <template x-for="(d,i) in weekDays()" :key="'wc'+i">
+                                    <div class="relative border-l border-gray-100" :style="`height:${24*hourPx}px`" @click="openNewAt(d,$event)">
+                                        <template x-for="h in hours()" :key="'wl'+i+'-'+h">
+                                            <div class="absolute inset-x-0 border-t border-gray-100" :style="`top:${h*hourPx}px`"></div>
+                                        </template>
+                                        <template x-for="e in timedEventsOn(d)" :key="e.id+'-'+e.instance">
+                                            <button @click.stop="openEditor(e.id)" class="absolute inset-x-0.5 overflow-hidden rounded px-1 text-left text-[10px] leading-tight text-white" :style="eventStyle(e)+`;background:${e.color}`">
+                                                <span class="font-medium" x-text="fmtTime(e.start)"></span>
+                                                <span class="block truncate" x-text="e.title||'—'"></span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Day (hour grid) --}}
+            <div x-show="view==='day'" class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                {{-- All-day strip --}}
+                <div class="flex border-b border-gray-200 bg-gray-50/50">
+                    <div class="w-14 shrink-0 px-1 py-1 text-[10px] text-gray-400">{{ __('calendar.ui.all_day') }}</div>
+                    <div class="min-h-[1.5rem] flex-1 space-y-0.5 p-0.5">
+                        <template x-for="e in allDayOn(cursor)" :key="e.id+'-'+e.instance">
+                            <button @click.stop="openEditor(e.id)" class="block w-full truncate rounded px-1 text-left text-[11px] text-white" :style="`background:${e.color}`" x-text="e.title||'—'"></button>
+                        </template>
+                    </div>
+                </div>
+                <div class="max-h-[68vh] overflow-y-auto">
+                    <div class="flex">
+                        <div class="relative w-14 shrink-0" :style="`height:${24*hourPx}px`">
+                            <template x-for="h in hours()" :key="'dg'+h">
+                                <div class="absolute right-1 -translate-y-1/2 text-[10px] text-gray-400" :style="`top:${h*hourPx}px`" x-text="h===0?'':fmtHour(h)"></div>
+                            </template>
+                        </div>
+                        <div class="relative flex-1 border-l border-gray-100" :style="`height:${24*hourPx}px`" @click="openNewAt(cursor,$event)">
+                            <template x-for="h in hours()" :key="'dl'+h">
+                                <div class="absolute inset-x-0 border-t border-gray-100" :style="`top:${h*hourPx}px`"></div>
+                            </template>
+                            <template x-for="e in timedEventsOn(cursor)" :key="e.id+'-'+e.instance">
+                                <button @click.stop="openEditor(e.id)" class="absolute inset-x-1 overflow-hidden rounded px-1.5 text-left text-xs leading-tight text-white" :style="eventStyle(e)+`;background:${e.color}`">
+                                    <span class="font-medium" x-text="fmtTime(e.start)"></span>
+                                    <span class="block truncate" x-text="e.title||'—'"></span>
                                 </button>
                             </template>
                         </div>
                     </div>
-                </template>
-            </div>
-
-            {{-- Day --}}
-            <div x-show="view==='day'" class="mt-4 rounded-lg border border-gray-200 bg-white">
-                <div @click="openNew(cursor)" class="min-h-[200px] cursor-pointer divide-y divide-gray-100 hover:bg-gray-50/40">
-                    <template x-for="e in eventsOn(cursor)" :key="e.id+'-'+e.instance">
-                        <button @click.stop="openEditor(e.id)" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50">
-                            <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="`background:${e.color}`"></span>
-                            <span class="w-24 shrink-0 text-sm text-gray-500" x-text="e.all_day?'{{ __('calendar.ui.all_day') }}':fmtTime(e.start)"></span>
-                            <span class="truncate text-sm font-medium text-gray-900" x-text="e.title||'—'"></span>
-                        </button>
-                    </template>
-                    <template x-if="eventsOn(cursor).length===0">
-                        <p class="px-4 py-8 text-center text-sm text-gray-500">{{ __('calendar.ui.no_events') }}</p>
-                    </template>
                 </div>
             </div>
 
@@ -199,7 +250,7 @@
             <div class="absolute inset-0 bg-gray-900/40" @click="editor=false"></div>
             <div class="relative my-8 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900" x-text="form.read_only ? '{{ __('calendar.ui.view_event') }}' : (form.id ? '{{ __('calendar.ui.edit_event') }}' : '{{ __('calendar.ui.new_event') }}')"></h3>
-                <p x-show="form.read_only" x-cloak class="mt-1 text-xs text-gray-400">🔒 {{ __('calendar.ui.read_only_note') }}</p>
+                <p x-show="form.read_only" x-cloak class="mt-1 flex items-center gap-1 text-xs text-gray-400"><x-icon name="lock-closed" class="h-3.5 w-3.5" /> {{ __('calendar.ui.read_only_note') }}</p>
                 <div class="mt-4 space-y-3" :class="form.read_only && 'pointer-events-none opacity-80'">
                     <input x-model="form.summary" placeholder="{{ __('calendar.ui.title') }}" class="w-full rounded-md border-gray-300 text-sm">
                     <label class="flex items-center gap-2 text-sm text-gray-700">
