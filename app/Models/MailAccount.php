@@ -50,6 +50,19 @@ class MailAccount extends Model
         ];
     }
 
+    /**
+     * Whether this account can send: a usable SMTP host, username and password
+     * (the IMAP login is the fallback for each). Guards the compose UI and the
+     * send endpoint so an unconfigured account produces a clear warning rather
+     * than an opaque transport failure.
+     */
+    public function smtpConfigured(): bool
+    {
+        $cfg = $this->smtpConfig();
+
+        return ($cfg['host'] ?? '') !== '' && ($cfg['username'] ?? '') !== '' && ($cfg['password'] ?? '') !== '';
+    }
+
     /** Build the IMAP credentials value object for the reader/stats services. */
     public function credentials(): ImapCredentials
     {

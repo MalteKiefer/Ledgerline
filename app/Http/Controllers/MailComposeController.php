@@ -29,12 +29,19 @@ class MailComposeController extends Controller
     {
         $data = $this->validated($request);
         $account = $this->account($request, $data['account_id']);
+
+        if (! $account->smtpConfigured()) {
+            return response()->json(['ok' => false, 'message' => __('mail.smtp_not_configured')], 422);
+        }
+
         $msg = $this->message($request, $account, $data);
 
         try {
             $raw = $sender->send($account->smtpConfig(), $msg);
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'message' => __('mail.send_failed')], 422);
+            report($e);
+
+            return response()->json(['ok' => false, 'message' => __('mail.send_failed_reason', ['reason' => $this->smtpReason($e)])], 422);
         }
 
         // Keep a copy in Sent so it appears on the next sync and on other clients.
@@ -75,6 +82,20 @@ class MailComposeController extends Controller
             'uploads' => ['array'],
             'uploads.*' => ['file', 'max:'.(self::MAX_ATTACH_BYTES / 1024)],
         ]);
+    }
+
+    /**
+     * A short, user-facing reason for a send failure. The SMTP transport error
+     * (auth rejected, connection refused, bad certificate, …) is the account
+     * owner's own server talking, so it is safe — and useful — to surface. The
+     * chained cause carries the real text; fall back to the wrapper message.
+     */
+    private function smtpReason(\Throwable $e): string
+    {
+        $reason = trim(($e->getPrevious() ?? $e)->getMessage());
+        $reason = preg_replace('/\s+/', ' ', $reason) ?? $reason;
+
+        return mb_substr($reason, 0, 200);
     }
 
     private function account(Request $request, int $id): MailAccount

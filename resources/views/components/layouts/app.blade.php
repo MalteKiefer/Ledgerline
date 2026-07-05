@@ -5,8 +5,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="mail-sync-minutes" content="{{ (int) (\App\Models\AppSettings::current()->mail_sync_minutes ?? 5) }}">
     @php $llCal = auth()->check() ? \App\Models\UserSetting::for(auth()->id()) : new \App\Models\UserSetting; @endphp
+    <meta name="mail-sync-minutes" content="{{ (int) ($llCal->mail_sync_minutes ?? 5) }}">
+    @php // $llCal reused below for calendar metas @endphp
     <meta name="calendar-week-start" content="{{ $llCal->calendar_week_start ?? 'monday' }}">
     <meta name="calendar-week-numbers" content="{{ $llCal->calendar_week_numbers ? '1' : '0' }}">
     <meta name="calendar-default-minutes" content="{{ (int) ($llCal->calendar_default_event_minutes ?? 60) }}">
