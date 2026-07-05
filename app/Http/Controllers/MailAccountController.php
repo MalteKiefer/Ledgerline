@@ -40,6 +40,10 @@ class MailAccountController extends Controller
         if (empty($data['password'])) {
             unset($data['password']);
         }
+        // Same for the SMTP password: an empty value keeps the stored one.
+        if (empty($data['smtp_password'])) {
+            unset($data['smtp_password']);
+        }
         $account->update($data);
 
         return response()->json($this->toArray($account->refresh()));
@@ -81,6 +85,14 @@ class MailAccountController extends Controller
             'username' => ['required', 'string', 'max:255'],
             'password' => [$requirePassword ? 'required' : 'nullable', 'string', 'max:1024'],
             'validate_cert' => ['sometimes', 'boolean'],
+            'smtp_host' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'smtp_port' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:65535'],
+            'smtp_encryption' => ['sometimes', 'nullable', Rule::in(['ssl', 'starttls', 'none'])],
+            'smtp_username' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'smtp_password' => ['sometimes', 'nullable', 'string', 'max:1024'],
+            'from_name' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'reply_to' => ['sometimes', 'nullable', 'email'],
+            'signature' => ['sometimes', 'nullable', 'string', 'max:5000'],
         ]);
     }
 
@@ -96,6 +108,14 @@ class MailAccountController extends Controller
             'username' => $a->username,
             'validateCert' => $a->validate_cert,
             'lastSyncedAt' => $a->last_synced_at?->toIso8601String(),
+            'smtpHost' => $a->smtp_host,
+            'smtpPort' => $a->smtp_port,
+            'smtpEncryption' => $a->smtp_encryption,
+            'smtpUsername' => $a->smtp_username,
+            'fromName' => $a->from_name,
+            'replyTo' => $a->reply_to,
+            'signature' => $a->signature,
+            'hasSmtpPassword' => $a->smtp_password !== null && $a->smtp_password !== '',
         ];
     }
 }

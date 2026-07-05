@@ -42,6 +42,7 @@ class MailArchiveReader
 
         return [
             'subject' => $this->str($m->getSubject()),
+            'messageId' => $this->str($m->getMessageId()) ?: null,
             'from' => $from ? ['name' => $this->str($from->personal ?? ''), 'email' => $this->str($from->mail ?? '')] : null,
             'to' => $this->addresses($m->getTo()),
             'cc' => $this->addresses($m->getCc()),

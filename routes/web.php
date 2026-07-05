@@ -19,6 +19,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\MailArchiveController;
+use App\Http\Controllers\MailComposeController;
 use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NoteController;
@@ -336,6 +337,9 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/bookmarks/{bookmark}', [BookmarkController::class, 'destroy'])->withTrashed()->name('bookmarks.destroy');
     Route::delete('/bookmarks/trash/all', [BookmarkController::class, 'emptyTrash'])->name('bookmarks.trash.empty');
     Route::view('/mail', 'mail.index')->name('mail.index');
+    // Composing / sending over SMTP.
+    Route::post('/mail/send', [MailComposeController::class, 'send'])->middleware('throttle:60,1')->name('mail.send');
+    Route::post('/mail/draft', [MailComposeController::class, 'draft'])->middleware('throttle:60,1')->name('mail.draft');
     // Mail accounts: plain rows (password encrypted at rest), JSON API.
     Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->name('mail.accounts.store');

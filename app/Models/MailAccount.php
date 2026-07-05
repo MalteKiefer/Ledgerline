@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * An IMAP mail account. Plain row except the login password, which is encrypted
  * at rest (usable in the clear at runtime for the connection + hourly sync).
  */
-#[Fillable(['name', 'host', 'port', 'encryption', 'validate_cert', 'username', 'password', 'last_synced_at'])]
+#[Fillable(['name', 'host', 'port', 'encryption', 'validate_cert', 'username', 'password', 'last_synced_at', 'smtp_host', 'smtp_port', 'smtp_encryption', 'smtp_username', 'smtp_password', 'from_name', 'reply_to', 'signature'])]
 class MailAccount extends Model
 {
     use OwnsUserData;
@@ -25,6 +25,28 @@ class MailAccount extends Model
             'validate_cert' => 'boolean',
             'password' => 'encrypted',
             'last_synced_at' => 'datetime',
+            'smtp_port' => 'integer',
+            'smtp_password' => 'encrypted',
+        ];
+    }
+
+    /**
+     * Build the outbound (SMTP) config, falling back to the IMAP login when the
+     * SMTP-specific host/credentials are blank.
+     *
+     * @return array<string,mixed>
+     */
+    public function smtpConfig(): array
+    {
+        return [
+            'host' => $this->smtp_host ?: $this->host,
+            'port' => $this->smtp_port ?: 587,
+            'encryption' => $this->smtp_encryption ?: 'starttls',
+            'username' => $this->smtp_username ?: $this->username,
+            'password' => (string) ($this->smtp_password !== null && $this->smtp_password !== '' ? $this->smtp_password : $this->password),
+            'from_name' => $this->from_name,
+            'from_email' => $this->username,
+            'reply_to' => $this->reply_to,
         ];
     }
 

@@ -3279,7 +3279,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     errors: {}, // per-account error message
     dialogOpen: false,
     editingId: null,
-    form: { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true },
+    form: { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true, smtp_host: '', smtp_port: '', smtp_encryption: 'starttls', smtp_username: '', smtp_password: '', from_name: '', reply_to: '', signature: '', hasSmtpPassword: false },
     deleteOpen: false,
     deleteId: null,
     cacheVersion: 0, // bumped on background sync to re-read cached stats
@@ -3291,6 +3291,134 @@ Alpine.data('vaultMail', (labels = {}) => ({
         saveAtt: { open: false, att: null, folder: '', busy: false, error: '', done: false }, filesFolders: [],
         attView: { open: false, name: '', kind: '', url: '', loading: false, error: '' },
     },
+
+    // ---- Compose / send -----------------------------------------------------
+    compose: {
+        open: false, accountId: null, to: '', cc: '', bcc: '', showCc: false, subject: '',
+        body: '', uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
+    },
+    attachPicker: { open: false, source: 'gallery', items: [], chosen: [], loading: false },
+
+    _account(id) { return this.manifest.accounts.find((a) => a.id === id) || this.manifest.accounts[0] || null; },
+    _signatureHtml(acc) { return acc && acc.signature ? '<br><br>-- <br>' + acc.signature.replace(/\n/g, '<br>') : ''; },
+    _emails(str) { return String(str || '').split(',').map((s) => s.trim()).filter(Boolean); },
+    _blankCompose() {
+        const acc = this._account(this.reader.account?.id);
+        return {
+            open: true, accountId: acc?.id ?? null, to: '', cc: '', bcc: '', showCc: false, subject: '',
+            body: this._signatureHtml(acc), uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
+        };
+    },
+    newCompose() { this.compose = this._blankCompose(); },
+
+    reply(all = false) {
+        const m = this.reader.current;
+        if (! m) return;
+        const c = this._blankCompose();
+        c.to = m.from?.email || '';
+        if (all) {
+            const self = (this._account(c.accountId)?.smtpUsername) || (this._account(c.accountId)?.username) || '';
+            c.cc = (m.to || []).concat(m.cc || []).map((a) => a.email).filter((e) => e && e !== c.to && e !== self).join(', ');
+            c.showCc = !! c.cc;
+        }
+        c.subject = /^re:/i.test(m.subject || '') ? m.subject : 'Re: ' + (m.subject || '');
+        c.inReplyTo = m.messageId || '';
+        c.references = m.messageId || '';
+        c.body = this._signatureHtml(this._account(c.accountId)) + this._quote(m);
+        this.compose = c;
+    },
+    forward() {
+        const m = this.reader.current;
+        if (! m) return;
+        const c = this._blankCompose();
+        c.subject = /^fwd:/i.test(m.subject || '') ? m.subject : 'Fwd: ' + (m.subject || '');
+        c.body = this._signatureHtml(this._account(c.accountId)) + this._quote(m, true);
+        this.compose = c;
+    },
+    _quote(m, forward = false) {
+        const head = forward
+            ? '<br><br>---------- ' + (labels.forwardedMessage || 'Forwarded message') + ' ----------<br>'
+                + 'From: ' + this.fmtAddress(m.from) + '<br>Subject: ' + (m.subject || '') + '<br>'
+            : '<br><br><blockquote style="border-left:2px solid #ccc;padding-left:8px;color:#555">';
+        const body = m.html || (m.text ? m.text.replace(/\n/g, '<br>') : '');
+        return forward ? head + body : head + body + '</blockquote>';
+    },
+
+    addUploads(event) {
+        for (const f of Array.from(event.target.files || [])) this.compose.uploads.push(f);
+        event.target.value = '';
+    },
+    removeUpload(i) { this.compose.uploads.splice(i, 1); },
+    removeRef(i) { this.compose.refs.splice(i, 1); },
+
+    async openAttachPicker(source) {
+        this.attachPicker = { open: true, source, items: [], chosen: [], loading: true };
+        try {
+            if (source === 'gallery') {
+                const r = await fetch('/gallery/picker', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                const d = await r.json();
+                this.attachPicker.items = (d.photos || d || []).map((p) => ({ id: p.id, name: p.name || ('photo-' + p.id), thumb: p.thumb }));
+            } else {
+                const r = await fetch('/files/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                const d = await r.json();
+                this.attachPicker.items = (d.files || []).filter((f) => ! f.trashed).map((f) => ({ id: f.id, name: f.name }));
+            }
+        } catch (e) { /* keep empty */ }
+        this.attachPicker.loading = false;
+    },
+    togglePick(id) {
+        const i = this.attachPicker.chosen.indexOf(id);
+        if (i >= 0) this.attachPicker.chosen.splice(i, 1); else this.attachPicker.chosen.push(id);
+    },
+    confirmAttachPicker() {
+        const type = this.attachPicker.source === 'gallery' ? 'gallery' : 'file';
+        for (const id of this.attachPicker.chosen) {
+            const it = this.attachPicker.items.find((x) => x.id === id);
+            if (it && ! this.compose.refs.some((r) => r.type === type && r.id === id)) {
+                this.compose.refs.push({ type, id, name: it.name });
+            }
+        }
+        this.attachPicker.open = false;
+    },
+
+    _composeForm() {
+        const c = this.compose;
+        const fd = new FormData();
+        fd.append('account_id', c.accountId);
+        this._emails(c.to).forEach((e) => fd.append('to[]', e));
+        this._emails(c.cc).forEach((e) => fd.append('cc[]', e));
+        this._emails(c.bcc).forEach((e) => fd.append('bcc[]', e));
+        fd.append('subject', c.subject || '');
+        fd.append('body', c.body || '');
+        if (c.inReplyTo) fd.append('in_reply_to', c.inReplyTo);
+        if (c.references) fd.append('references', c.references);
+        c.refs.forEach((r, i) => { fd.append(`refs[${i}][type]`, r.type); fd.append(`refs[${i}][id]`, r.id); });
+        c.uploads.forEach((f) => fd.append('uploads[]', f, f.name));
+        return fd;
+    },
+    async sendCompose() {
+        if (! this.compose.accountId || ! this._emails(this.compose.to).length) { this.compose.error = labels.composeNeedsTo || 'Recipient required'; return; }
+        this.compose.sending = true;
+        this.compose.error = '';
+        try {
+            const res = await fetch('/mail/send', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': this._csrf() }, body: this._composeForm() });
+            const body = await res.json().catch(() => ({}));
+            if (res.ok && body.ok) { this.compose.open = false; window.llToast(labels.sent || 'Sent'); }
+            else { this.compose.error = body.message || labels.sendFailed || 'Send failed'; }
+        } catch (e) { this.compose.error = labels.sendFailed || 'Send failed'; }
+        this.compose.sending = false;
+    },
+    async saveDraft() {
+        if (! this.compose.accountId) return;
+        this.compose.sending = true;
+        try {
+            await fetch('/mail/draft', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': this._csrf() }, body: this._composeForm() });
+            this.compose.open = false;
+            window.llToast(labels.draftSaved || 'Draft saved');
+        } catch (e) { this.compose.error = labels.sendFailed || 'Send failed'; }
+        this.compose.sending = false;
+    },
+    _csrf() { return document.querySelector('meta[name="csrf-token"]').content; },
 
     async init() {
         // Re-read cached stats when the background sync refreshes them.
@@ -3365,7 +3493,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     openAdd() {
         this.editingId = null;
-        this.form = { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true };
+        this.form = { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true, smtp_host: '', smtp_port: '', smtp_encryption: 'starttls', smtp_username: '', smtp_password: '', from_name: '', reply_to: '', signature: '', hasSmtpPassword: false };
         this.error = '';
         this.dialogOpen = true;
     },
@@ -3376,6 +3504,9 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.form = {
             name: a.name ?? '', host: a.host ?? '', port: a.port ?? 993, encryption: a.encryption ?? 'ssl',
             username: a.username ?? '', password: '', validateCert: a.validateCert !== false,
+            smtp_host: a.smtpHost ?? '', smtp_port: a.smtpPort ?? '', smtp_encryption: a.smtpEncryption ?? 'starttls',
+            smtp_username: a.smtpUsername ?? '', smtp_password: '', from_name: a.fromName ?? '',
+            reply_to: a.replyTo ?? '', signature: a.signature ?? '', hasSmtpPassword: !! a.hasSmtpPassword,
         };
         this.error = '';
         this.dialogOpen = true;
@@ -3387,6 +3518,10 @@ Alpine.data('vaultMail', (labels = {}) => ({
         const body = {
             name: f.name.trim() || f.host.trim(), host: f.host.trim(), port: Number(f.port) || 993,
             encryption: f.encryption, username: f.username.trim(), password: f.password, validate_cert: !! f.validateCert,
+            smtp_host: f.smtp_host?.trim() || null, smtp_port: f.smtp_port ? Number(f.smtp_port) : null,
+            smtp_encryption: f.smtp_encryption || null, smtp_username: f.smtp_username?.trim() || null,
+            smtp_password: f.smtp_password || null, from_name: f.from_name?.trim() || null,
+            reply_to: f.reply_to?.trim() || null, signature: f.signature ?? null,
         };
         try {
             if (this.editingId) {
