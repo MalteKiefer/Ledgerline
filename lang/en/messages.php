@@ -13,6 +13,7 @@ return [
         'calendar' => 'Calendar',
         'downloads' => 'Downloads',
         'contacts' => 'Contacts',
+        'more' => 'More',
     ],
     'menu' => [
         'profile' => 'Profile',

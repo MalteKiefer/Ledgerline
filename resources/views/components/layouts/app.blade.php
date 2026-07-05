@@ -19,32 +19,41 @@
         <header class="border-b border-gray-200 bg-white" x-data="{ mobileOpen: false }">
             <nav class="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
                 @php
-                    $navItems = [
-                        ['label' => __('messages.nav.files'), 'url' => route('files.index'), 'active' => request()->routeIs('files.*'),
-                            'icon' => 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'],
-                        ['label' => __('messages.nav.notes'), 'url' => route('notes.index'), 'active' => request()->routeIs('notes.*'),
-                            'icon' => 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125'],
-                        ['label' => __('messages.nav.bookmarks'), 'url' => route('bookmarks.index'), 'active' => request()->routeIs('bookmarks.*'),
-                            'icon' => 'M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z'],
-                        ['label' => __('messages.nav.todos'), 'url' => route('todos.index'), 'active' => request()->routeIs('todos.*'),
-                            'icon' => 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
-                        ['label' => __('messages.nav.calendar'), 'url' => route('calendar.index'), 'active' => request()->routeIs('calendar.*'),
-                            'icon' => 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5'],
-                        ['label' => __('messages.nav.mail'), 'url' => route('mail.index'), 'active' => request()->routeIs('mail.*'),
-                            'icon' => 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75'],
-                        ['label' => __('messages.nav.gallery'), 'url' => route('gallery.index'), 'active' => request()->routeIs('gallery.*'),
-                            'icon' => 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M18 12h.008v.008H18V12zM2.25 6h19.5A2.25 2.25 0 0124 8.25v10.5A2.25 2.25 0 0121.75 21H2.25A2.25 2.25 0 010 18.75V8.25A2.25 2.25 0 012.25 6z'],
-                        ['label' => __('messages.nav.downloads'), 'url' => route('downloads.index'), 'active' => request()->routeIs('downloads.*'),
-                            'icon' => 'M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3'],
-                        ['label' => __('messages.nav.contacts'), 'url' => route('contacts.index'), 'active' => request()->routeIs('contacts.*'),
-                            'icon' => 'M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z'],
+                    $ico = [
+                        'files' => 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z',
+                        'notes' => 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125',
+                        'bookmarks' => 'M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z',
+                        'todos' => 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+                        'calendar' => 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5',
+                        'mail' => 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75',
+                        'gallery' => 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M18 12h.008v.008H18V12zM2.25 6h19.5A2.25 2.25 0 0124 8.25v10.5A2.25 2.25 0 0121.75 21H2.25A2.25 2.25 0 010 18.75V8.25A2.25 2.25 0 012.25 6z',
+                        'downloads' => 'M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3',
+                        'contacts' => 'M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z',
+                        'more' => 'M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z',
                     ];
+                    // Most-used destinations stay as direct links; the rest fold
+                    // into a "More" menu so the bar stays short.
+                    $navPrimary = [
+                        ['label' => __('messages.nav.mail'), 'url' => route('mail.index'), 'active' => request()->routeIs('mail.*'), 'icon' => $ico['mail']],
+                        ['label' => __('messages.nav.calendar'), 'url' => route('calendar.index'), 'active' => request()->routeIs('calendar.*'), 'icon' => $ico['calendar']],
+                        ['label' => __('messages.nav.contacts'), 'url' => route('contacts.index'), 'active' => request()->routeIs('contacts.*'), 'icon' => $ico['contacts']],
+                        ['label' => __('messages.nav.gallery'), 'url' => route('gallery.index'), 'active' => request()->routeIs('gallery.*'), 'icon' => $ico['gallery']],
+                        ['label' => __('messages.nav.files'), 'url' => route('files.index'), 'active' => request()->routeIs('files.*'), 'icon' => $ico['files']],
+                    ];
+                    $navMore = [
+                        ['label' => __('messages.nav.notes'), 'url' => route('notes.index'), 'active' => request()->routeIs('notes.*'), 'icon' => $ico['notes']],
+                        ['label' => __('messages.nav.todos'), 'url' => route('todos.index'), 'active' => request()->routeIs('todos.*'), 'icon' => $ico['todos']],
+                        ['label' => __('messages.nav.bookmarks'), 'url' => route('bookmarks.index'), 'active' => request()->routeIs('bookmarks.*'), 'icon' => $ico['bookmarks']],
+                        ['label' => __('messages.nav.downloads'), 'url' => route('downloads.index'), 'active' => request()->routeIs('downloads.*'), 'icon' => $ico['downloads']],
+                    ];
+                    $navItems = array_merge($navPrimary, $navMore); // flat list for mobile
+                    $moreActive = collect($navMore)->contains('active', true);
                 @endphp
                 <div class="flex items-center gap-8">
                     <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900">Ledgerline</a>
                     @auth
                         <div class="hidden items-center gap-1 sm:flex">
-                            @foreach ($navItems as $item)
+                            @foreach ($navPrimary as $item)
                                 <a href="{{ $item['url'] }}"
                                     @class([
                                         'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium',
@@ -57,6 +66,37 @@
                                     {{ $item['label'] }}
                                 </a>
                             @endforeach
+                            <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+                                <button type="button" @click="open = ! open"
+                                    @class([
+                                        'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium',
+                                        'bg-gray-100 text-gray-900' => $moreActive,
+                                        'text-gray-600 hover:bg-gray-50 hover:text-gray-900' => ! $moreActive,
+                                    ])>
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="{{ $ico['more'] }}" />
+                                    </svg>
+                                    {{ __('messages.nav.more') }}
+                                    <svg class="h-3.5 w-3.5" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                    </svg>
+                                </button>
+                                <div x-show="open" x-cloak x-transition class="absolute left-0 z-40 mt-2 w-52 overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                    @foreach ($navMore as $item)
+                                        <a href="{{ $item['url'] }}" @click="open = false"
+                                            @class([
+                                                'flex items-center gap-2 px-3 py-2 text-sm font-medium',
+                                                'bg-gray-50 text-gray-900' => $item['active'],
+                                                'text-gray-700 hover:bg-gray-50' => ! $item['active'],
+                                            ])>
+                                            <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="{{ $item['icon'] }}" />
+                                            </svg>
+                                            {{ $item['label'] }}
+                                        </a>
+                                    @endforeach
+                                </div>
+                            </div>
                         </div>
                     @endauth
                 </div>

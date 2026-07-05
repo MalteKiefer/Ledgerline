@@ -51,7 +51,7 @@
                     <li><button @click="group=''" :class="group===''?'font-semibold text-gray-900':'text-gray-600'">{{ __('contacts.ui.all_groups') }}</button></li>
                     <template x-for="g in groups" :key="g.id">
                         <li class="group flex items-center justify-between gap-1">
-                            <button @click="group=g.id" :class="group===g.id?'font-semibold text-gray-900':'text-gray-600'" x-text="g.name" class="truncate text-left"></button>
+                            <button @click="group = (group===g.id ? '' : g.id)" :class="group===g.id?'font-semibold text-gray-900':'text-gray-600'" x-text="g.name" class="truncate text-left"></button>
                             <button @click="deleteGroup(g)" class="hidden shrink-0 text-gray-400 hover:text-red-600 group-hover:block" title="{{ __('contacts.ui.delete') }}">✕</button>
                         </li>
                     </template>
@@ -177,12 +177,30 @@
                         <button type="button" @click="form.anniversaries.push({date:'',label:''})" class="mt-1 text-xs text-gray-500 hover:text-gray-800">+ {{ __('contacts.ui.anniversary') }}</button>
                     </div>
                     <textarea x-model="form.note" placeholder="{{ __('contacts.ui.note') }}" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
-                    <div class="flex flex-wrap gap-2">
-                        <template x-for="g in groups" :key="g.id">
-                            <label class="flex items-center gap-1 text-xs">
-                                <input type="checkbox" :value="g.id" x-model="form.group_ids" class="rounded border-gray-300"><span x-text="g.name"></span>
-                            </label>
-                        </template>
+                    {{-- Groups: multi-select with autocomplete --}}
+                    <div>
+                        <span class="text-xs text-gray-500">{{ __('contacts.ui.groups') }}</span>
+                        <div class="mt-1 rounded-md border border-gray-300 px-2 py-1.5" @click="$refs.groupInput?.focus()">
+                            <div class="flex flex-wrap items-center gap-1">
+                                <template x-for="gid in (form.group_ids || [])" :key="gid">
+                                    <span class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                                        <span x-text="groupName(gid)"></span>
+                                        <button type="button" @click="removeGroupChip(gid)" class="text-gray-400 hover:text-red-600">&times;</button>
+                                    </span>
+                                </template>
+                                <div class="relative min-w-[6rem] flex-1">
+                                    <input x-ref="groupInput" x-model="groupQuery" @focus="groupOpen=true" @click="groupOpen=true"
+                                        @keydown.escape.stop="groupOpen=false" @click.outside="groupOpen=false"
+                                        placeholder="{{ __('contacts.ui.group_add_placeholder') }}" class="w-full border-0 p-0 text-sm focus:ring-0">
+                                    <div x-show="groupOpen && filteredGroups().length" x-cloak
+                                        class="absolute z-20 mt-1 max-h-40 w-56 overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                        <template x-for="g in filteredGroups()" :key="g.id">
+                                            <button type="button" @click="addGroupChip(g.id)" class="block w-full px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-50" x-text="g.name"></button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <select x-model="form.book_id" class="w-full rounded-md border-gray-300 text-sm">
                         <template x-for="b in books" :key="b.id"><option :value="b.id" x-text="b.name"></option></template>
@@ -195,6 +213,21 @@
                         <button @click="save()" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('contacts.ui.save') }}</button>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        {{-- Name prompt modal (new/rename address book or group) --}}
+        <div x-show="nameModal.open" x-cloak class="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="nameModal.open=false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="nameModal.open=false"></div>
+            <div class="relative my-16 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900" x-text="nameModal.title"></h3>
+                <form @submit.prevent="submitNameModal()">
+                    <input x-ref="nameInput" x-model="nameModal.value" class="mt-3 w-full rounded-md border-gray-300 text-sm" type="text">
+                    <div class="mt-4 flex justify-end gap-2">
+                        <button type="button" @click="nameModal.open=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('contacts.ui.cancel') }}</button>
+                        <button type="submit" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('contacts.ui.save') }}</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

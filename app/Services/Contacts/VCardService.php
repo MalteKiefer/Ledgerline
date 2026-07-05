@@ -112,8 +112,39 @@ class VCardService
             'phones' => $this->multi($card->TEL ?? []),
             'urls' => array_map(fn ($u) => trim((string) $u), iterator_to_array($card->URL ?? [])),
             'categories' => isset($card->CATEGORIES) ? $card->CATEGORIES->getParts() : [],
-            'photo' => isset($card->PHOTO) ? (string) $card->PHOTO : null,
+            'photo' => $this->photoUri($card),
         ];
+    }
+
+    /**
+     * Normalise PHOTO to a data: URI regardless of vCard version. vCard 4.0
+     * already carries a data: URI (or an http URL); vCard 3.0 stores a
+     * base64/binary body with ENCODING=b and a TYPE param — we wrap that into a
+     * data: URI so the app can serve/show it uniformly.
+     */
+    private function photoUri(VCard $card): ?string
+    {
+        if (! isset($card->PHOTO)) {
+            return null;
+        }
+        $prop = $card->PHOTO;
+        $value = trim((string) $prop);
+        if ($value === '') {
+            return null;
+        }
+        if (str_starts_with($value, 'data:') || preg_match('#^https?://#i', $value)) {
+            return $value;
+        }
+
+        // Binary body: infer the mime from the TYPE param (JPEG/PNG/GIF), and
+        // make sure the payload is base64 (encode if sabre handed us raw bytes).
+        $type = strtolower((string) ($prop['TYPE'] ?? ''));
+        $mime = str_contains($type, 'png') ? 'image/png' : (str_contains($type, 'gif') ? 'image/gif' : 'image/jpeg');
+        $compact = preg_replace('/\s+/', '', $value) ?? $value;
+        $decoded = base64_decode($compact, true);
+        $b64 = ($decoded !== false && base64_encode($decoded) === $compact) ? $compact : base64_encode($value);
+
+        return 'data:'.$mime.';base64,'.$b64;
     }
 
     /**
@@ -137,7 +168,7 @@ class VCardService
             'org' => $this->s($card->ORG ?? null),
             'emails' => array_map(fn ($e) => trim((string) $e), iterator_to_array($card->EMAIL ?? [])),
             'phones' => array_map(fn ($t) => trim((string) $t), iterator_to_array($card->TEL ?? [])),
-            'has_photo' => isset($card->PHOTO),
+            'has_photo' => $this->photoUri($card) !== null,
         ];
     }
 

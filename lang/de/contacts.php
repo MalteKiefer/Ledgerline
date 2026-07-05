@@ -61,6 +61,7 @@ return [
         'display_last_first' => 'Nachname, Vorname',
         'importing' => 'Importiere…',
         'import_result' => 'Importiert: :created neu, :updated aktualisiert, :skipped übersprungen',
+        'group_add_placeholder' => 'Gruppe hinzufügen…',
     ],
 
     'dup' => [

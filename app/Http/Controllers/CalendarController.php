@@ -45,6 +45,14 @@ class CalendarController extends Controller
     public function data(Request $request, ICalService $ical): JsonResponse
     {
         $userId = $request->user()->id;
+        // Guarantee a writable default calendar exists — web-only users who never
+        // set up CalDAV would otherwise have no writable calendar, so "New event"
+        // would silently do nothing.
+        Calendar::firstOrCreate(
+            ['user_id' => $userId, 'uri' => 'default'],
+            ['name' => 'Calendar', 'color' => Calendar::DEFAULT_COLOR, 'components' => ['VEVENT'], 'synctoken' => 1],
+        );
+
         // The 'tasks' calendar is a VTODO mirror exposed over CalDAV only.
         // Virtual calendars (VTODO 'tasks') are CalDAV-only; the web calendar
         // shows real + derived VEVENT calendars.

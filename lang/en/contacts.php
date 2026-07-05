@@ -61,6 +61,7 @@ return [
         'display_last_first' => 'Last, First',
         'importing' => 'Importing…',
         'import_result' => 'Imported: :created new, :updated updated, :skipped skipped',
+        'group_add_placeholder' => 'Add group…',
     ],
 
     'dup' => [

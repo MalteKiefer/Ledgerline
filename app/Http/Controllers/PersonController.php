@@ -72,9 +72,12 @@ class PersonController extends Controller
                 'id' => $f->id,
                 'thumb' => route('gallery.faces.thumb', ['face' => $f]),
             ])->values(),
+            // Only already-named people can be merged in (an unnamed cluster is
+            // not something you'd knowingly merge), sorted by name for the picker.
             'others' => Person::query()->where('id', '!=', $person->id)->whereNull('hidden_at')
-                ->orderByDesc('faces_count')->get(['id', 'name'])
-                ->map(fn (Person $p): array => ['id' => $p->id, 'name' => $p->name ?: '—']),
+                ->whereNotNull('name')->where('name', '!=', '')
+                ->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Person $p): array => ['id' => $p->id, 'name' => $p->name]),
         ]);
     }
 
