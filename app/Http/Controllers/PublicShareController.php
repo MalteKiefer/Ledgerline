@@ -13,6 +13,7 @@ use App\Models\Contact;
 use App\Models\Photo;
 use App\Models\PublicShare;
 use App\Services\Notifications\ChannelNotifier;
+use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +21,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Sabre\VObject\Reader;
@@ -157,7 +157,7 @@ class PublicShareController extends Controller
             'medium' => $photo->medium_path,
             default => $photo->disk_path,
         };
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         abort_unless($path && $disk->exists($path), 404);
 
         return $disk->response($path, $photo->name, [

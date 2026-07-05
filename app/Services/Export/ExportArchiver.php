@@ -9,10 +9,10 @@ use App\Models\FileFolder;
 use App\Models\Photo;
 use App\Models\StoredFile;
 use App\Services\Gallery\PhotoExporter;
+use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use Generator;
 use Illuminate\Contracts\Filesystem\Filesystem;
-use Illuminate\Support\Facades\Storage;
 use Phar;
 use PharData;
 use RuntimeException;
@@ -41,7 +41,7 @@ class ExportArchiver
      */
     public function build(Export $export, int $maxBytes): array
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         return match ($export->format ?: 'zip') {
             'tar', 'targz', 'tarbz2' => $this->buildTar($export, (string) $export->format, $disk),

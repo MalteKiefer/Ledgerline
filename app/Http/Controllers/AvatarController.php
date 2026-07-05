@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Services\AvatarFetcher;
+use App\Support\BlobStore;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -25,7 +26,7 @@ class AvatarController extends Controller
     public function __invoke(Request $request): StreamedResponse
     {
         $path = $request->user()->avatar;
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         abort_if(! is_string($path) || $path === '' || ! $disk->exists($path), 404);
 

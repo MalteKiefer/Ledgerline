@@ -11,6 +11,7 @@ use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\UserSetting;
+use App\Support\BlobStore;
 use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -31,7 +32,7 @@ class FileController extends Controller
 {
     private function disk()
     {
-        return Storage::disk(config('files.disk'));
+        return BlobStore::disk();
     }
 
     /** The whole tree as the client's manifest shape. Owner-only: the full-replace

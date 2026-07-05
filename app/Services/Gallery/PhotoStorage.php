@@ -7,6 +7,7 @@ namespace App\Services\Gallery;
 use App\Models\AppSettings;
 use App\Models\Photo;
 use App\Services\Files\ReverseGeocoder;
+use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\ImageManagerFactory;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -63,7 +64,7 @@ class PhotoStorage
         $ext = strtolower($upload->getClientOriginalExtension() ?: 'jpg');
         $path = "{$dir}/{$uuid}.{$ext}";
 
-        Storage::disk(config('files.disk'))->put($path, file_get_contents($upload->getRealPath()));
+        BlobStore::disk()->put($path, file_get_contents($upload->getRealPath()));
 
         return [
             'uuid' => $uuid,
@@ -80,7 +81,7 @@ class PhotoStorage
      */
     public function process(Photo $photo): void
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $tmp = $this->download($photo, $disk);
 
         try {
@@ -155,7 +156,7 @@ class PhotoStorage
      */
     public function renditions(Photo $photo): void
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $tmp = $this->download($photo, $disk);
 
         try {
@@ -229,7 +230,7 @@ class PhotoStorage
      */
     public function readMetadata(Photo $photo): void
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $tmp = $this->download($photo, $disk);
 
         try {

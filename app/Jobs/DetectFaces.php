@@ -8,12 +8,12 @@ use App\Models\Face;
 use App\Models\Photo;
 use App\Services\Gallery\FaceCropper;
 use App\Services\Gallery\MachineLearning;
+use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\Vector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Detects faces in a photo (or a video's poster frame) via the ML sidecar,
@@ -37,7 +37,7 @@ class DetectFaces implements ShouldQueue
             return;
         }
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $path = $photo->medium_path ?: $photo->disk_path;
         if (! $disk->exists($path)) {
             return;

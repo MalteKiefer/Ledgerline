@@ -7,10 +7,10 @@ namespace App\Console\Commands;
 use App\Models\FileBlob;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
+use App\Support\BlobStore;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Permanently purges files trashed longer than the retention window (blob +
@@ -27,7 +27,7 @@ class PruneTrashedFiles extends Command
 
     public function handle(): int
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $cutoff = Carbon::now()->subDays((int) config('files.trash_retention_days', 30));
 
         $count = 0;

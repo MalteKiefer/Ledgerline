@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\OwnsUserData;
+use App\Support\BlobStore;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * A user's asynchronous download export. Built by a worker into one or more zip
@@ -105,7 +105,7 @@ class Export extends Model
     /** Delete the export and all its zip parts from the files disk. */
     public function purge(): void
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         foreach ($this->parts() as $part) {
             $disk->delete($part['path']);
         }

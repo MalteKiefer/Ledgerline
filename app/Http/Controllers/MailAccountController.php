@@ -7,10 +7,10 @@ namespace App\Http\Controllers;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailMessage;
+use App\Support\BlobStore;
 use App\Support\OutboundUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 /**
@@ -57,7 +57,7 @@ class MailAccountController extends Controller
     public function destroy(Request $request, MailAccount $account): JsonResponse
     {
         if (! $request->boolean('keep_archive')) {
-            $disk = Storage::disk(config('files.disk'));
+            $disk = BlobStore::disk();
             MailMessage::withoutGlobalScopes()->where('mail_account_id', $account->id)
                 ->whereNotNull('blob')->orderBy('id')->chunkById(500, function ($chunk) use ($disk): void {
                     foreach ($chunk as $m) {

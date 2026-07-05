@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Backup;
 
-use Illuminate\Support\Facades\Storage;
+use App\Support\BlobStore;
 use League\Flysystem\Filesystem;
 
 /**
@@ -24,7 +24,7 @@ class DiskMirror
      */
     public function mirror(Filesystem $dest, string $sourcePrefix, string $destPrefix, callable $step, ?callable $checkCancel = null): array
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         $step('Listing source objects…');
         $sourceFiles = $disk->allFiles($sourcePrefix); // keys relative to the disk root

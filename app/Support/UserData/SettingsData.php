@@ -9,7 +9,7 @@ use App\Models\PublicShare;
 use App\Models\ResourceShare;
 use App\Models\User;
 use App\Models\UserSetting;
-use Illuminate\Support\Facades\Storage;
+use App\Support\BlobStore;
 
 /**
  * Settings & cross-cutting user-owned records contribution to per-user GDPR
@@ -105,7 +105,7 @@ class SettingsData implements UserDataContributor
             ->where('owner_id', $user->id)
             ->delete();
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         Export::withoutGlobalScopes()
             ->where('user_id', $user->id)

@@ -9,11 +9,11 @@ use App\Models\MailMessage;
 use App\Services\Mail\MailArchiver;
 use App\Services\Mail\MailArchiveReader;
 use App\Services\Mail\MailSource;
+use App\Support\BlobStore;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -27,7 +27,7 @@ class MailArchiveController extends Controller
 {
     private function disk()
     {
-        return Storage::disk(config('files.disk'));
+        return BlobStore::disk();
     }
 
     /** Archived (server-deleted) messages for an account — newest first. */

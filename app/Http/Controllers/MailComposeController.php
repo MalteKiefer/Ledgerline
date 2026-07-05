@@ -9,9 +9,9 @@ use App\Models\Photo;
 use App\Models\StoredFile;
 use App\Services\Mail\MailSource;
 use App\Services\Mail\SmtpSender;
+use App\Support\BlobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 /**
@@ -125,7 +125,7 @@ class MailComposeController extends Controller
             $add($file->getClientOriginalName() ?: 'attachment', (string) file_get_contents($file->getRealPath()), $file->getMimeType() ?: 'application/octet-stream');
         }
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $uid = $request->user()->id;
         foreach ($data['refs'] ?? [] as $ref) {
             if (($ref['type'] ?? null) === 'gallery') {

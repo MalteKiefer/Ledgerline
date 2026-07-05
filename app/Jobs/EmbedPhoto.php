@@ -7,13 +7,13 @@ namespace App\Jobs;
 use App\Models\Photo;
 use App\Services\Gallery\MachineLearning;
 use App\Services\Gallery\PerceptualHash;
+use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\Vector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Computes a photo's CLIP embedding (via the ML sidecar) for content-similarity
@@ -44,7 +44,7 @@ class EmbedPhoto implements ShouldQueue
             return;
         }
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $path = $photo->medium_path ?: $photo->disk_path;
         if (! $disk->exists($path)) {
             return;

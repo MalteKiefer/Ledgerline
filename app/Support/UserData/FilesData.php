@@ -9,7 +9,7 @@ use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\User;
-use Illuminate\Support\Facades\Storage;
+use App\Support\BlobStore;
 use Illuminate\Support\Str;
 
 /**
@@ -54,7 +54,7 @@ final class FilesData implements UserDataContributor
 
     public function purge(User $user): void
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         StoredFile::query()
             ->withoutGlobalScopes()
