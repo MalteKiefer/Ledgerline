@@ -8,6 +8,7 @@ use App\Models\Concerns\OwnsUserData;
 use App\Services\Mail\ImapCredentials;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * An IMAP mail account. Plain row except the login password, which is encrypted
@@ -61,6 +62,25 @@ class MailAccount extends Model
         $cfg = $this->smtpConfig();
 
         return ($cfg['host'] ?? '') !== '' && ($cfg['username'] ?? '') !== '' && ($cfg['password'] ?? '') !== '';
+    }
+
+    /**
+     * Sender identities for this account, default first then oldest.
+     *
+     * @return HasMany<MailIdentity, $this>
+     */
+    public function identities(): HasMany
+    {
+        return $this->hasMany(MailIdentity::class)->orderByDesc('is_default')->orderBy('id');
+    }
+
+    /**
+     * The default identity (the one flagged default, else the first). Null only
+     * for a freshly created account before its default identity is seeded.
+     */
+    public function defaultIdentity(): ?MailIdentity
+    {
+        return $this->identities()->first();
     }
 
     /** Build the IMAP credentials value object for the reader/stats services. */

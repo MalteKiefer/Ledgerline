@@ -20,6 +20,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MailAccountController;
 use App\Http\Controllers\MailArchiveController;
 use App\Http\Controllers\MailComposeController;
+use App\Http\Controllers\MailIdentityController;
 use App\Http\Controllers\MailReaderController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NoteController;
@@ -347,6 +348,11 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->name('mail.accounts.store');
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->name('mail.accounts.destroy');
+    // Sender identities per account (owner-scoped through the parent account).
+    Route::get('/mail/accounts/{account}/identities', [MailIdentityController::class, 'index'])->middleware('throttle:60,1')->name('mail.identities.index');
+    Route::post('/mail/accounts/{account}/identities', [MailIdentityController::class, 'store'])->middleware('throttle:60,1')->name('mail.identities.store');
+    Route::put('/mail/accounts/{account}/identities/{identity}', [MailIdentityController::class, 'update'])->middleware('throttle:60,1')->name('mail.identities.update');
+    Route::delete('/mail/accounts/{account}/identities/{identity}', [MailIdentityController::class, 'destroy'])->middleware('throttle:60,1')->name('mail.identities.destroy');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
     Route::post('/mail/folders', [MailReaderController::class, 'folders'])->middleware('throttle:60,1')->name('mail.folders');
     Route::post('/mail/folder/create', [MailReaderController::class, 'createFolder'])->middleware('throttle:60,1')->name('mail.folder.create');
