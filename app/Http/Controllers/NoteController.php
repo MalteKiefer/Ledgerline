@@ -70,7 +70,7 @@ class NoteController extends Controller
     {
         // Owner-only: a bulk builder forceDelete bypasses the SharesWithUsers
         // write guard, so pin it to the caller's own notes (never shared ones).
-        Note::withoutGlobalScopes()->where('user_id', auth()->id())->onlyTrashed()->forceDelete();
+        Note::ownedBy(auth()->id())->onlyTrashed()->forceDelete();
 
         return response()->json(['ok' => true]);
     }

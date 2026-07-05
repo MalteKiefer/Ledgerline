@@ -44,10 +44,10 @@ class FileController extends Controller
         return response()->json([
             'v' => 1,
             'usage' => ['used' => $this->usedBytes((int) $uid), 'quota' => $this->quotaBytes()],
-            'folders' => FileFolder::withoutGlobalScopes()->where('user_id', $uid)->get(['id', 'parent_id', 'name'])
+            'folders' => FileFolder::ownedBy($uid)->get(['id', 'parent_id', 'name'])
                 ->map(fn (FileFolder $f) => ['id' => $f->id, 'name' => $f->name, 'parent' => $f->parent_id])
                 ->all(),
-            'files' => StoredFile::withoutGlobalScopes()->where('user_id', $uid)->withTrashed()->get()->map(fn (StoredFile $f) => [
+            'files' => StoredFile::ownedBy($uid)->withTrashed()->get()->map(fn (StoredFile $f) => [
                 'id' => $f->id,
                 'blob' => $f->blob,
                 'name' => $f->name,
@@ -95,8 +95,8 @@ class FileController extends Controller
         // never ones merely shared with them (guards against the write-guard
         // being bypassed by these query-builder mass operations).
         $uid = $request->user()->id;
-        $owned = fn () => StoredFile::withoutGlobalScopes()->where('user_id', $uid);
-        $ownedFolders = fn () => FileFolder::withoutGlobalScopes()->where('user_id', $uid);
+        $owned = fn () => StoredFile::ownedBy($uid);
+        $ownedFolders = fn () => FileFolder::ownedBy($uid);
 
         // Per-user version cap (1–10); the owner is the syncing user.
         $keep = min(10, max(1, (int) UserSetting::for($uid)->file_max_versions));
@@ -351,9 +351,9 @@ class FileController extends Controller
         // Keep only ids the current user actually OWNS (not merely shared with
         // them) so an export can never exfiltrate another user's file bytes.
         $uid = $request->user()->id;
-        $fileIds = StoredFile::withoutGlobalScopes()->where('user_id', $uid)->withTrashed()
+        $fileIds = StoredFile::ownedBy($uid)->withTrashed()
             ->whereIn('id', array_values($validated['file_ids'] ?? []))->pluck('id')->all();
-        $folderIds = FileFolder::withoutGlobalScopes()->where('user_id', $uid)
+        $folderIds = FileFolder::ownedBy($uid)
             ->whereIn('id', array_values($validated['folder_ids'] ?? []))->pluck('id')->all();
         abort_if($fileIds === [] && $folderIds === [], 422, 'Nothing selected.');
 

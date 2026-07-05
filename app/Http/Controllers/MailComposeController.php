@@ -129,12 +129,12 @@ class MailComposeController extends Controller
         $uid = $request->user()->id;
         foreach ($data['refs'] ?? [] as $ref) {
             if (($ref['type'] ?? null) === 'gallery') {
-                $photo = Photo::withoutGlobalScopes()->where('uploaded_by', $uid)->find($ref['id']);
+                $photo = Photo::ownedBy($uid)->find($ref['id']);
                 if ($photo && $photo->disk_path && $disk->exists($photo->disk_path)) {
                     $add($photo->name ?: 'photo', (string) $disk->get($photo->disk_path), $photo->mime_type ?: 'application/octet-stream');
                 }
             } elseif (($ref['type'] ?? null) === 'file') {
-                $file = StoredFile::withoutGlobalScopes()->where('user_id', $uid)->find($ref['id']);
+                $file = StoredFile::ownedBy($uid)->find($ref['id']);
                 if ($file && is_string($file->blob) && $disk->exists('files/'.$file->blob)) {
                     $add($file->name ?: 'file', (string) $disk->get('files/'.$file->blob), $file->mime ?: 'application/octet-stream');
                 }

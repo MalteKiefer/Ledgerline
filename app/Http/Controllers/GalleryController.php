@@ -458,7 +458,7 @@ class GalleryController extends Controller
 
         $geo = $geocoder->lookupDetailed((float) $validated['latitude'], (float) $validated['longitude']);
 
-        $count = Photo::withoutGlobalScopes()->where('uploaded_by', $request->user()->id)->whereIn('id', $validated['photo_ids'])->get()
+        $count = Photo::ownedBy($request->user()->id)->whereIn('id', $validated['photo_ids'])->get()
             ->each(fn (Photo $photo) => $photo->forceFill([
                 'latitude' => $validated['latitude'],
                 'longitude' => $validated['longitude'],
@@ -513,7 +513,7 @@ class GalleryController extends Controller
         $edited = ($validated['variant'] ?? 'original') === 'edited';
 
         // Owner-only: never zip/serve bytes of photos merely shared with the user.
-        $photos = Photo::withoutGlobalScopes()->where('uploaded_by', $request->user()->id)->whereIn('id', $validated['photo_ids'])->get();
+        $photos = Photo::ownedBy($request->user()->id)->whereIn('id', $validated['photo_ids'])->get();
         abort_if($photos->isEmpty(), 404);
 
         $disk = Storage::disk(config('files.disk'));
@@ -568,7 +568,7 @@ class GalleryController extends Controller
         // there — an unscoped payload would let any user export another user's
         // photo bytes by id (mirrors FileController::queueExport's scoping).
         $uid = $request->user()->id;
-        $photoIds = Photo::withoutGlobalScopes()->where('uploaded_by', $uid)
+        $photoIds = Photo::ownedBy($uid)
             ->whereIn('id', array_values($validated['photo_ids']))->pluck('id')->all();
         abort_if($photoIds === [], 422, 'Nothing selected.');
         $count = count($photoIds);
@@ -728,7 +728,7 @@ class GalleryController extends Controller
             'photo_ids.*' => ['integer'],
         ]);
 
-        $count = Photo::withoutGlobalScopes()->where('uploaded_by', $request->user()->id)
+        $count = Photo::ownedBy($request->user()->id)
             ->whereIn('id', $validated['photo_ids'])->get()->each->delete()->count();
 
         if ($request->expectsJson()) {
@@ -783,7 +783,7 @@ class GalleryController extends Controller
     {
         $keepId = $request->validate(['keep_id' => ['required', 'integer']])['keep_id'];
 
-        $members = Photo::withoutGlobalScopes()->where('uploaded_by', $request->user()->id)->where('duplicate_group_id', $group)->get();
+        $members = Photo::ownedBy($request->user()->id)->where('duplicate_group_id', $group)->get();
         abort_if($members->isEmpty(), 404);
         abort_unless($members->contains('id', $keepId), 422);
 
@@ -803,7 +803,7 @@ class GalleryController extends Controller
     /** Mark a group as "not a duplicate" so it is excluded from future scans. */
     public function dismissDuplicate(Request $request, string $group): JsonResponse|RedirectResponse
     {
-        $affected = Photo::withoutGlobalScopes()->where('uploaded_by', $request->user()->id)
+        $affected = Photo::ownedBy($request->user()->id)
             ->where('duplicate_group_id', $group)
             ->update(['duplicate_group_id' => null, 'dup_score' => null, 'dup_dismissed_at' => now()]);
 
@@ -864,7 +864,7 @@ class GalleryController extends Controller
 
         // Owner-only: bulk restore/purge are builder ops that bypass the
         // SharesWithUsers guard, so never touch photos merely shared with the user.
-        $query = Photo::withoutGlobalScopes()->where('uploaded_by', $request->user()->id)->onlyTrashed();
+        $query = Photo::ownedBy($request->user()->id)->onlyTrashed();
 
         return $request->boolean('all')
             ? $query

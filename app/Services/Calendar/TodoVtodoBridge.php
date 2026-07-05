@@ -41,7 +41,7 @@ class TodoVtodoBridge
     {
         $owner = $this->ownerOf($calendarId);
 
-        return Todo::withoutGlobalScopes()->where('user_id', $owner)->orderBy('id')
+        return Todo::ownedBy($owner)->orderBy('id')
             ->get()->map(fn (Todo $t): array => $this->row($t, $calendarId, false))->all();
     }
 
@@ -117,7 +117,7 @@ class TodoVtodoBridge
             return null;
         }
 
-        return Todo::withoutGlobalScopes()->where('user_id', $this->ownerOf($calendarId))->whereKey($id)->first();
+        return Todo::ownedBy($this->ownerOf($calendarId))->whereKey($id)->first();
     }
 
     /** Serialize a to-do as a VTODO ICS document. */
