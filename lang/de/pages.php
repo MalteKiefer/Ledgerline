@@ -48,6 +48,8 @@ return [
         'avatar_none' => 'Keiner',
         'refresh_avatar' => 'Avatar aktualisieren',
         'account_created' => 'Konto erstellt',
+        'sync_heading' => 'Kontakte- & Kalender-Sync (CardDAV / CalDAV)',
+        'sync_hint' => 'Ein Login synchronisiert Kontakte und Kalender mit Handy und Desktop-Clients. Das Passwort wird nur einmal bei der Erstellung angezeigt.',
     ],
     'search' => [
         'title' => 'Suche',

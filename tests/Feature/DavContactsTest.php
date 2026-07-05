@@ -123,11 +123,24 @@ class DavContactsTest extends TestCase
     {
         $this->signIn();
 
-        $this->post(route('settings.contacts.generate'))
+        // generate() redirects back to the referring page (profile or settings).
+        $this->from(route('settings.contacts.edit'))
+            ->post(route('settings.contacts.generate'))
             ->assertRedirect(route('settings.contacts.edit'))
             ->assertSessionHas('dav_password');
 
         $this->assertDatabaseCount('dav_credentials', 1);
+    }
+
+    public function test_profile_page_shows_dav_sync_details(): void
+    {
+        $this->signIn();
+        $this->post(route('settings.contacts.generate'));
+
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee(url('/dav/'))
+            ->assertSee(route('settings.contacts.profile'));
     }
 
     public function test_apple_profile_downloads_a_carddav_mobileconfig(): void

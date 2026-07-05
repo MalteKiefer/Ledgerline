@@ -40,7 +40,8 @@ class ContactsController extends Controller
     {
         $result = $credentials->generate($request->user()->id);
 
-        return redirect()->route('settings.contacts.edit')
+        // Return to the page the request came from (profile or settings).
+        return redirect()->back()
             ->with('status', __('flash.dav_password_generated'))
             ->with('dav_username', $result['credential']->username)
             ->with('dav_password', $result['password']);
