@@ -204,14 +204,15 @@ class PaperlessClient
         // could have been changed by a path that skipped validation) and never
         // follow redirects, so a validated host cannot 30x-bounce the request
         // to an internal/metadata address.
-        if (! OutboundUrl::safe($this->baseUrl)) {
+        // Resolve + pin the verified IP (SSRF/DNS-rebinding safe), no redirects.
+        try {
+            $client = OutboundUrl::client($this->baseUrl, 30);
+        } catch (\Throwable) {
             throw new RuntimeException('The configured Paperless URL is not an allowed outbound target.');
         }
 
-        return Http::baseUrl(rtrim($this->baseUrl, '/'))
+        return $client->baseUrl(rtrim($this->baseUrl, '/'))
             ->withToken($this->token, 'Token')
-            ->withOptions(['allow_redirects' => false])
-            ->acceptJson()
-            ->timeout(30);
+            ->acceptJson();
     }
 }

@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailMessage;
+use App\Support\OutboundUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -74,18 +75,27 @@ class MailAccountController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** @return array<string,mixed> */
+    /** Reject IMAP/SMTP hosts resolving to the cloud-metadata/link-local range. */
+    private function hostRule(): \Closure
+    {
+        return function (string $attr, mixed $value, \Closure $fail): void {
+            if (filled($value) && ! OutboundUrl::hostAllowed((string) $value)) {
+                $fail(__('mail.host_not_allowed'));
+            }
+        };
+    }
+
     private function validated(Request $request, bool $requirePassword): array
     {
         return $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'host' => ['required', 'string', 'max:255'],
+            'host' => ['required', 'string', 'max:255', $this->hostRule()],
             'port' => ['required', 'integer', 'min:1', 'max:65535'],
             'encryption' => ['required', Rule::in(['ssl', 'starttls'])],
             'username' => ['required', 'string', 'max:255'],
             'password' => [$requirePassword ? 'required' : 'nullable', 'string', 'max:1024'],
             'validate_cert' => ['sometimes', 'boolean'],
-            'smtp_host' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'smtp_host' => ['sometimes', 'nullable', 'string', 'max:255', $this->hostRule()],
             'smtp_port' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:65535'],
             'smtp_encryption' => ['sometimes', 'nullable', Rule::in(['ssl', 'starttls', 'none'])],
             'smtp_username' => ['sometimes', 'nullable', 'string', 'max:255'],
