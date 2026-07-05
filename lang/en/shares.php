@@ -32,5 +32,7 @@ return [
     'public_download_vcf' => 'Download (vCard)',
     'public_no_events' => 'No events.',
     'public_no_contacts' => 'No contacts.',
+    'public_album_hint' => 'Shared album. Click a photo to download the original.',
+    'public_no_photos' => 'No photos.',
     'public_email_placeholder' => 'Email to send the link to',
 ];

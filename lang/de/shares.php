@@ -32,5 +32,7 @@ return [
     'public_download_vcf' => 'Herunterladen (vCard)',
     'public_no_events' => 'Keine Termine.',
     'public_no_contacts' => 'Keine Kontakte.',
+    'public_album_hint' => 'Geteiltes Album. Klicke ein Foto, um das Original herunterzuladen.',
+    'public_no_photos' => 'Keine Fotos.',
     'public_email_placeholder' => 'E-Mail für den Link',
 ];

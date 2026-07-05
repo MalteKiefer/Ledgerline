@@ -46,6 +46,7 @@
                             data-shutter="{{ $photo->shutter() }}"
                             data-iso="{{ $photo->iso() }}"
                             @click="openViewer($el)"
+                            @mouseenter="hoverMotion($el, true)" @mouseleave="hoverMotion($el, false)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
                                 x-on:load="$el.classList.remove('opacity-0')" x-init="$el.complete && $el.classList.remove('opacity-0')"

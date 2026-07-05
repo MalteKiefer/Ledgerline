@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AddressBookController;
+use App\Http\Controllers\AlbumController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarkController;
@@ -63,6 +64,9 @@ Route::post('/s/{share}/unlock', [ShareController::class, 'unlock'])
 Route::middleware('throttle:60,1')->group(function (): void {
     Route::get('/p/{publicShare:token}/ics', [PublicShareController::class, 'ics'])->name('public-share.ics');
     Route::get('/p/{publicShare:token}/vcf', [PublicShareController::class, 'vcf'])->name('public-share.vcf');
+    Route::get('/p/{publicShare:token}/album', [PublicShareController::class, 'album'])->name('public-share.album');
+    Route::get('/p/{publicShare:token}/photo/{photo}/{size}', [PublicShareController::class, 'photo'])
+        ->whereIn('size', ['thumb', 'medium', 'original'])->name('public-share.photo');
 });
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake.
@@ -189,6 +193,17 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/gallery/points', [GalleryController::class, 'points'])->name('gallery.points');
     Route::get('/gallery/picker', [GalleryController::class, 'pickerList'])->name('gallery.picker');
     Route::post('/gallery/columns', [GalleryController::class, 'setColumns'])->name('gallery.columns');
+
+    // Albums (before /gallery/{...} model-bound routes).
+    Route::get('/gallery/albums', [AlbumController::class, 'index'])->name('gallery.albums');
+    Route::get('/gallery/albums/data', [AlbumController::class, 'data'])->name('gallery.albums.data');
+    Route::post('/gallery/albums', [AlbumController::class, 'store'])->name('gallery.albums.store');
+    Route::get('/gallery/albums/{album}', [AlbumController::class, 'show'])->name('gallery.albums.show');
+    Route::get('/gallery/albums/{album}/data', [AlbumController::class, 'showData'])->name('gallery.albums.show.data');
+    Route::put('/gallery/albums/{album}', [AlbumController::class, 'update'])->name('gallery.albums.update');
+    Route::delete('/gallery/albums/{album}', [AlbumController::class, 'destroy'])->name('gallery.albums.destroy');
+    Route::post('/gallery/albums/{album}/photos', [AlbumController::class, 'addPhotos'])->name('gallery.albums.photos.add');
+    Route::delete('/gallery/albums/{album}/photos', [AlbumController::class, 'removePhotos'])->name('gallery.albums.photos.remove');
     Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
     // Duplicates: content-based duplicate groups; keep one, trash the rest.
     Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->name('gallery.duplicates');

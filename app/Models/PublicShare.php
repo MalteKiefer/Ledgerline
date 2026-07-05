@@ -36,11 +36,16 @@ class PublicShare extends Model
         );
     }
 
-    /** The public URL: an ICS feed for calendars, a vCard export for address books. */
+    /** The public URL: an ICS feed for calendars, an HTML page for albums, a vCard for address books. */
     public function url(): string
     {
-        return $this->shareable_type === (new Calendar)->getMorphClass()
-            ? route('public-share.ics', $this->token)
-            : route('public-share.vcf', $this->token);
+        if ($this->shareable_type === (new Calendar)->getMorphClass()) {
+            return route('public-share.ics', $this->token);
+        }
+        if ($this->shareable_type === (new Album)->getMorphClass()) {
+            return route('public-share.album', $this->token);
+        }
+
+        return route('public-share.vcf', $this->token);
     }
 }
