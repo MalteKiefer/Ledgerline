@@ -65,9 +65,10 @@
             <p x-show="reader.error" x-cloak class="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700" x-text="reader.error"></p>
 
             {{-- Two-column: folders left, messages/message right --}}
-            <div class="flex min-h-0 flex-1">
-                {{-- Folder sidebar --}}
-                <aside class="flex w-44 shrink-0 flex-col border-r border-gray-200 md:w-64">
+            <div x-data="{ foldersOpen: false }" class="relative flex min-h-0 flex-1">
+                {{-- Folder sidebar — static rail at md+, off-canvas drawer under md --}}
+                <aside class="flex w-64 shrink-0 flex-col border-r border-gray-200 bg-white md:static md:translate-x-0 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-72 max-md:max-w-[85%] max-md:shadow-xl max-md:transition-transform"
+                    :class="foldersOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'">
                     {{-- Account switcher (dropdown in the sidebar head) --}}
                     <div class="relative border-b border-gray-200 p-2" @click.outside="accountMenuOpen = false">
                         <button type="button" @click="accountMenuOpen = ! accountMenuOpen"
@@ -117,7 +118,7 @@
                                 <div x-show="f.selectable === false" class="truncate px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400"
                                     :style="{ paddingLeft: (0.75 + folderDepth(f) * 0.75) + 'rem' }" x-text="folderLabel(f)"></div>
                                 {{-- Selectable folder — standard folders get a role icon; custom none --}}
-                                <button type="button" x-show="f.selectable !== false" @click="openFolder(f.path)"
+                                <button type="button" x-show="f.selectable !== false" @click="openFolder(f.path); foldersOpen = false"
                                     class="flex w-full items-center justify-between gap-2 py-2 pr-3 text-left text-sm hover:bg-gray-50"
                                     :style="{ paddingLeft: (0.75 + folderDepth(f) * 0.75) + 'rem' }"
                                     :class="f.path === reader.folderPath ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700'">
@@ -134,6 +135,9 @@
                         </template>
                     </div>
                 </aside>
+
+                {{-- Mobile backdrop for the folder drawer --}}
+                <div x-show="foldersOpen" x-cloak @click="foldersOpen = false" class="absolute inset-0 z-10 bg-gray-900/30 md:hidden"></div>
 
                 {{-- Right pane --}}
                 <div class="flex min-h-0 flex-1 flex-col">
@@ -160,6 +164,7 @@
             <div x-show="! reader.current" class="flex min-h-0 flex-1 flex-col">
                 <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-1.5 text-xs text-gray-500">
                     <span class="flex min-w-0 items-center gap-2">
+                        <button type="button" @click="foldersOpen = true" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-gray-300 text-gray-700 md:hidden" title="{{ __('common.sections') }}" aria-label="{{ __('common.sections') }}"><x-icon name="bars-3" class="h-4 w-4" /></button>
                         <input type="checkbox" @change="toggleSelectAll()" :checked="allSelected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500" aria-label="{{ __('mail.select_all') }}">
                         <span class="truncate font-medium text-gray-700" x-text="currentFolderLabel()"></span>
                     </span>
