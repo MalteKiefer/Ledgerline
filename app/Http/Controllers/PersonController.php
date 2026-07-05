@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Events\PersonNamed;
+use App\Http\Controllers\Concerns\RespondsFlexibly;
 use App\Models\Face;
 use App\Models\Person;
 use App\Models\Photo;
@@ -23,6 +24,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PersonController extends Controller
 {
+    use RespondsFlexibly;
+
     public function index(): View
     {
         return view('gallery.people');
@@ -103,7 +106,7 @@ class PersonController extends Controller
             $person->forceFill(['hidden_at' => $request->boolean('hidden') ? now() : null])->save();
         }
 
-        return $request->expectsJson() ? response()->json(['ok' => true]) : back();
+        return $this->flexible($request);
     }
 
     /** Merge another person's faces into this one (pinning them), then delete it. */
@@ -117,7 +120,7 @@ class PersonController extends Controller
         $clusterer->recompute($person->id);
         $source->delete();
 
-        return $request->expectsJson() ? response()->json(['ok' => true]) : back();
+        return $this->flexible($request);
     }
 
     /** Move a single face to another person (or a fresh one), pinning it. */
@@ -139,7 +142,7 @@ class PersonController extends Controller
             $clusterer->recompute($old);
         }
 
-        return $request->expectsJson() ? response()->json(['ok' => true, 'person_id' => $target]) : back();
+        return $this->flexible($request, ['person_id' => $target]);
     }
 
     /** Stream a face crop thumbnail. */
