@@ -7,6 +7,8 @@
         // Personal — apply to the signed-in user only.
         $personal = [
             ['url' => route('settings.calendar.edit'), 'title' => __('settings.calendar_section'), 'desc' => __('settings.calendar_desc')],
+            ['url' => route('settings.reminders.edit'), 'title' => __('settings.reminders_section'), 'desc' => __('settings.reminders_desc')],
+            ['url' => route('settings.paperless.edit'), 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
             ['url' => route('profile'), 'title' => __('settings.sync_section'), 'desc' => __('settings.sync_desc')],
         ];
         // Administration — workspace-wide, admin group only.
@@ -14,7 +16,6 @@
             ['url' => route('settings.gallery.edit'), 'title' => __('settings.gallery_section'), 'desc' => __('settings.gallery_desc')],
             ['url' => route('settings.mail.edit'), 'title' => __('settings.mail_section'), 'desc' => __('settings.mail_desc')],
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc')],
-            ['url' => route('settings.paperless.edit'), 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
             ['url' => route('settings.downloads.edit'), 'title' => __('settings.downloads_section'), 'desc' => __('settings.downloads_desc')],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc')],
         ];

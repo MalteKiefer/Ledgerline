@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
-use App\Models\AppSettings;
 use App\Models\PaperlessTerm;
+use App\Models\UserSetting;
 use App\Rules\SafeUrl;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessSync;
@@ -17,17 +17,17 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * Paperless-ngx integration settings: the instance URL + API token, plus a
- * connection test and an on-demand cache refresh. Credentials are stored
- * encrypted on the settings row (like the backup destinations).
+ * Per-user Paperless-ngx integration: each user connects their own instance URL
+ * + API token (stored encrypted on their user_settings row), with a connection
+ * test and an on-demand cache refresh scoped to that user.
  */
 class PaperlessController extends Controller
 {
-    public function edit(): View
+    public function edit(Request $request): View
     {
         return view('settings.paperless.edit', [
-            'settings' => AppSettings::current(),
-            'counts' => $this->counts(),
+            'settings' => UserSetting::for($request->user()->id),
+            'counts' => $this->counts($request->user()->id),
         ]);
     }
 
@@ -42,7 +42,7 @@ class PaperlessController extends Controller
             'paperless_token' => __('settings.paperless_token'),
         ]);
 
-        $settings = AppSettings::current();
+        $settings = UserSetting::for($request->user()->id);
         // An empty token field keeps the stored one (so it need not be retyped).
         if (empty($validated['paperless_token'])) {
             unset($validated['paperless_token']);
@@ -56,7 +56,7 @@ class PaperlessController extends Controller
     /** Test the connection using the posted URL + token (falling back to stored). */
     public function test(Request $request): JsonResponse
     {
-        $settings = AppSettings::current();
+        $settings = UserSetting::for($request->user()->id);
         $url = trim((string) ($request->input('paperless_url') ?: $settings->paperless_url));
         $token = trim((string) ($request->input('paperless_token') ?: $settings->paperless_token));
 
@@ -64,15 +64,12 @@ class PaperlessController extends Controller
             return response()->json(['ok' => false, 'detail' => __('settings.paperless_test_missing')]);
         }
 
-        // Guard the raw posted URL before any request is issued (it may not have
-        // been persisted yet, so the update() rule has not necessarily run).
+        // Guard the raw posted URL before any request is issued.
         if (! OutboundUrl::safe($url)) {
             return response()->json(['ok' => false, 'detail' => __('settings.safe_url', ['attribute' => __('settings.paperless_url')])]);
         }
 
         try {
-            // A real end-to-end check: authenticate, then confirm read access on
-            // each collection the transfer modal relies on, reporting the counts.
             $client = new PaperlessClient($url, $token);
             $client->ping();
             $tags = $client->count('tag');
@@ -92,22 +89,22 @@ class PaperlessController extends Controller
         }
     }
 
-    /** Refresh the cached terms now. */
-    public function sync(PaperlessSync $sync): JsonResponse
+    /** Refresh the current user's cached terms now. */
+    public function sync(Request $request, PaperlessSync $sync): JsonResponse
     {
         try {
-            $counts = $sync->run();
+            $sync->run($request->user()->id);
         } catch (\Throwable $e) {
             return response()->json(['ok' => false, 'detail' => $e->getMessage()]);
         }
 
-        return response()->json(['ok' => true, 'counts' => $this->counts()]);
+        return response()->json(['ok' => true, 'counts' => $this->counts($request->user()->id)]);
     }
 
     /** @return array{tag:int, document_type:int, correspondent:int} */
-    private function counts(): array
+    private function counts(int $userId): array
     {
-        $by = PaperlessTerm::query()
+        $by = PaperlessTerm::query()->where('user_id', $userId)
             ->selectRaw('kind, count(*) as c')
             ->groupBy('kind')
             ->pluck('c', 'kind');

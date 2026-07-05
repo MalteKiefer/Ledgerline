@@ -23,6 +23,11 @@ use Illuminate\Database\Eloquent\Model;
     'calendar_holiday_countries',
     'contact_sort',
     'contact_display_format',
+    'paperless_enabled',
+    'paperless_url',
+    'paperless_token',
+    'paperless_synced_at',
+    'reminder_channels',
 ])]
 class UserSetting extends Model
 {
@@ -39,6 +44,7 @@ class UserSetting extends Model
         'calendar_anniversaries_enabled' => false,
         'contact_sort' => 'first_name',
         'contact_display_format' => 'first_last',
+        'paperless_enabled' => false,
     ];
 
     protected function casts(): array
@@ -49,6 +55,11 @@ class UserSetting extends Model
             'calendar_birthdays_enabled' => 'boolean',
             'calendar_anniversaries_enabled' => 'boolean',
             'calendar_holiday_countries' => 'array',
+            'paperless_enabled' => 'boolean',
+            'paperless_url' => 'encrypted',
+            'paperless_token' => 'encrypted',
+            'paperless_synced_at' => 'datetime',
+            'reminder_channels' => 'array',
         ];
     }
 

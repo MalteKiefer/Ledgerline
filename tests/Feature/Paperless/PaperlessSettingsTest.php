@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Paperless;
 
-use App\Models\AppSettings;
+use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -30,7 +30,7 @@ class PaperlessSettingsTest extends TestCase
             'paperless_token' => 'secret-token',
         ])->assertSessionHasErrors('paperless_url');
 
-        $this->assertNull(AppSettings::current()->paperless_url);
+        $this->assertNull(UserSetting::for(auth()->id())->paperless_url);
     }
 
     public function test_it_saves_url_and_token_encrypted(): void
@@ -43,20 +43,20 @@ class PaperlessSettingsTest extends TestCase
             'paperless_token' => 'secret-token',
         ])->assertRedirect(route('settings.paperless.edit'));
 
-        $settings = AppSettings::current();
+        $settings = UserSetting::for(auth()->id());
         $this->assertTrue($settings->paperless_enabled);
         $this->assertSame('https://paperless.example.com', $settings->paperless_url);
         $this->assertSame('secret-token', $settings->paperless_token);
 
         // The raw column must not contain the plaintext token.
-        $raw = DB::table('app_settings')->value('paperless_token');
+        $raw = DB::table('user_settings')->where('user_id', auth()->id())->value('paperless_token');
         $this->assertStringNotContainsString('secret-token', (string) $raw);
     }
 
     public function test_a_blank_token_keeps_the_stored_one(): void
     {
         $this->signIn();
-        AppSettings::current()->update(['paperless_token' => 'keep-me', 'paperless_url' => 'https://p.example.com']);
+        UserSetting::for(auth()->id())->update(['paperless_token' => 'keep-me', 'paperless_url' => 'https://p.example.com']);
 
         $this->put(route('settings.paperless.update'), [
             'paperless_enabled' => '1',
@@ -64,7 +64,7 @@ class PaperlessSettingsTest extends TestCase
             'paperless_token' => '',
         ])->assertRedirect();
 
-        $this->assertSame('keep-me', AppSettings::current()->paperless_token);
+        $this->assertSame('keep-me', UserSetting::for(auth()->id())->paperless_token);
     }
 
     public function test_it_rejects_an_invalid_url(): void

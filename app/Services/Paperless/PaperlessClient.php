@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Paperless;
 
-use App\Models\AppSettings;
+use App\Models\UserSetting;
 use App\Support\OutboundUrl;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -13,8 +13,8 @@ use RuntimeException;
 /**
  * Thin wrapper around the Paperless-ngx REST API, authenticated with a stored
  * API token. Used to list and create tags / document types / correspondents
- * and to upload documents. The base URL and token live (encrypted) in
- * AppSettings; this never persists credentials itself.
+ * and to upload documents. The base URL and token live (encrypted) per user on
+ * user_settings; this never persists credentials itself.
  */
 class PaperlessClient
 {
@@ -30,10 +30,15 @@ class PaperlessClient
         private readonly string $token,
     ) {}
 
-    /** Build a client from the stored settings, or null if not configured. */
-    public static function fromSettings(?AppSettings $settings = null): ?self
+    /** Build a client from a user's stored settings, or null if not configured. */
+    public static function forUser(int $userId): ?self
     {
-        $settings ??= AppSettings::current();
+        return self::fromUserSetting(UserSetting::for($userId));
+    }
+
+    /** Build a client from a UserSetting row, or null if not configured. */
+    public static function fromUserSetting(UserSetting $settings): ?self
+    {
         $url = trim((string) $settings->paperless_url);
         $token = trim((string) $settings->paperless_token);
         if ($url === '' || $token === '') {

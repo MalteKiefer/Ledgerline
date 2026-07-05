@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\AppSettings;
 use App\Models\PaperlessTerm;
+use App\Models\UserSetting;
 use App\Services\Paperless\PaperlessClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,16 +15,17 @@ use Illuminate\Validation\Rule;
 /**
  * App-facing Paperless endpoints used by the transfer modal: the cached
  * quick-pick terms, creating a new term, and uploading a document. Backed by
- * the credentials stored (encrypted) in settings; nothing is persisted here.
+ * the current user's own Paperless credentials; nothing is persisted here.
  */
 class PaperlessController extends Controller
 {
     /** Cached tags / document types / correspondents for the modal's pickers. */
-    public function terms(): JsonResponse
+    public function terms(Request $request): JsonResponse
     {
-        $settings = AppSettings::current();
-        $enabled = (bool) $settings->paperless_enabled && PaperlessClient::fromSettings($settings) !== null;
+        $settings = UserSetting::for($request->user()->id);
+        $enabled = (bool) $settings->paperless_enabled && PaperlessClient::fromUserSetting($settings) !== null;
 
+        // Auto-scoped to the current user by OwnsUserData.
         $grouped = PaperlessTerm::orderBy('name')->get(['kind', 'paperless_id', 'name', 'color'])
             ->groupBy('kind');
 
@@ -48,7 +49,7 @@ class PaperlessController extends Controller
             'name' => ['required', 'string', 'max:255'],
         ]);
 
-        $client = PaperlessClient::fromSettings();
+        $client = PaperlessClient::forUser($request->user()->id);
         if ($client === null) {
             return response()->json(['ok' => false, 'detail' => 'Paperless is not configured.'], 422);
         }
@@ -62,7 +63,7 @@ class PaperlessController extends Controller
         }
 
         PaperlessTerm::updateOrCreate(
-            ['kind' => $data['kind'], 'paperless_id' => $term['paperless_id']],
+            ['user_id' => $request->user()->id, 'kind' => $data['kind'], 'paperless_id' => $term['paperless_id']],
             ['name' => $term['name'], 'color' => $term['color']],
         );
 
@@ -82,7 +83,7 @@ class PaperlessController extends Controller
             'tags.*' => ['integer'],
         ]);
 
-        $client = PaperlessClient::fromSettings();
+        $client = PaperlessClient::forUser($request->user()->id);
         if ($client === null) {
             return response()->json(['ok' => false, 'detail' => 'Paperless is not configured.'], 422);
         }

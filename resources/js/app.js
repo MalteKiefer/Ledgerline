@@ -4345,7 +4345,7 @@ Alpine.data('todos', (labels = {}) => ({
 
     newTask() {
         const listId = (this.view !== 'all' && this.view !== 'marked' && this.view !== 'trash') ? this.view : null;
-        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false, reminderChannels: [] };
+        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false, reminderChannels: [...(labels.defaultReminderChannels ?? [])] };
         this.tagsValue = '';
         this.editorOpen = true;
     },
