@@ -48,6 +48,8 @@ return [
         'avatar_none' => 'None',
         'refresh_avatar' => 'Refresh avatar',
         'account_created' => 'Account created',
+        'sync_heading' => 'Contacts & calendar sync (CardDAV / CalDAV)',
+        'sync_hint' => 'One login syncs your contacts and calendars to phones and desktop clients. The password is shown once when generated.',
     ],
     'search' => [
         'title' => 'Search',
