@@ -45,9 +45,23 @@ class GlobalSettingsAccessTest extends TestCase
         config()->set('services.pocketid.admin_group', 'admins');
         $this->actingAs(User::factory()->create(['groups' => []]));
 
-        // Assert on card descriptions (section words like "Mail" also appear in nav).
+        // Personal section shown, admin section hidden entirely.
         $this->get(route('settings'))->assertOk()
+            ->assertSee(__('settings.personal_heading'))
             ->assertSee(__('settings.calendar_desc'))
+            ->assertDontSee(__('settings.admin_heading'))
             ->assertDontSee(__('settings.mail_desc'));
+    }
+
+    public function test_settings_index_shows_both_sections_for_admins(): void
+    {
+        config()->set('services.pocketid.admin_group', 'admins');
+        $this->actingAs(User::factory()->create(['groups' => ['admins']]));
+
+        $this->get(route('settings'))->assertOk()
+            ->assertSee(__('settings.personal_heading'))
+            ->assertSee(__('settings.admin_heading'))
+            ->assertSee(__('settings.mail_desc'))
+            ->assertSee(__('settings.downloads_desc'));
     }
 }
