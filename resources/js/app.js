@@ -271,6 +271,8 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     cfg,
     books: [], groups: [], contacts: [], loading: true,
     book: '', group: '', q: '',
+    sort: 'first_name', displayFormat: 'first_last', _settingsReady: false,
+    importing: false, importResult: '',
     editor: false, form: {},
 
     init() {
@@ -287,8 +289,29 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         if (this.q) u.searchParams.set('q', this.q);
         try {
             const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) { const d = await r.json(); this.books = d.books; this.groups = d.groups; this.contacts = d.contacts; }
+            if (r.ok) {
+                const d = await r.json();
+                this.books = d.books; this.groups = d.groups; this.contacts = d.contacts;
+                if (d.settings) { this.sort = d.settings.sort; this.displayFormat = d.settings.display_format; this._settingsReady = true; }
+            }
         } catch (e) { /* keep */ } finally { this.loading = false; }
+    },
+
+    /** Format a contact's name per the chosen display format, with sensible fallbacks. */
+    displayName(c) {
+        const first = (c.first_name || '').trim();
+        const last = (c.last_name || '').trim();
+        if (this.displayFormat === 'last_first' && (first || last)) {
+            return last ? (first ? `${last}, ${first}` : last) : first;
+        }
+        if (first || last) return `${first} ${last}`.trim();
+        return c.fn || '—';
+    },
+
+    async saveSettings() {
+        if (! this._settingsReady) return;
+        await this._json(cfg.settingsUrl, 'POST', { sort: this.sort, display_format: this.displayFormat });
+        this.load();
     },
 
     blank() {
@@ -343,8 +366,18 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     async importFile(ev) {
         const f = ev.target.files[0]; if (! f) return;
         const fd = new FormData(); fd.append('file', f); fd.append('book_id', this.book || this.books[0]?.id);
-        await fetch(cfg.importUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
-        this.load(); ev.target.value = '';
+        this.importing = true; this.importResult = '';
+        try {
+            const r = await fetch(cfg.importUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
+            if (r.ok) {
+                const d = await r.json();
+                this.importResult = (cfg.importResultLabel || '')
+                    .replace(':created', d.created ?? 0).replace(':updated', d.updated ?? 0).replace(':skipped', d.skipped ?? 0);
+                setTimeout(() => { this.importResult = ''; }, 8000);
+            }
+        } catch (e) { /* ignore */ } finally {
+            this.importing = false; this.load(); ev.target.value = '';
+        }
     },
 
     async addBook() {
@@ -373,6 +406,49 @@ Alpine.data('contactsPage', (cfg = {}) => ({
 
     async _json(url, method, body) {
         return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+    },
+}));
+
+/**
+ * Contact duplicate review: lists likely-duplicate groups, lets the user pick the
+ * primary card per group, then merges (union of fields) or dismisses the group.
+ */
+Alpine.data('contactDuplicatesPage', (cfg = {}) => ({
+    cfg,
+    groups: [], primary: {}, loading: true,
+
+    init() { this.load(); },
+
+    async load() {
+        try {
+            const r = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! r.ok) return;
+            this.groups = (await r.json()).groups ?? [];
+            for (const g of this.groups) {
+                if (this.primary[g.signature] == null && g.contacts.length) this.primary[g.signature] = g.contacts[0].id;
+            }
+        } catch (e) { /* keep current */ } finally { this.loading = false; }
+    },
+
+    async merge(g) {
+        const primaryId = this.primary[g.signature];
+        if (! primaryId || ! window.confirm(cfg.confirm)) return;
+        this.groups = this.groups.filter((x) => x.signature !== g.signature); // optimistic
+        try {
+            await this._post(cfg.mergeUrl, { primary_id: primaryId, ids: g.contacts.map((c) => c.id) });
+        } catch (e) { /* next load reconciles */ }
+        this.load();
+    },
+
+    async dismiss(g) {
+        this.groups = this.groups.filter((x) => x.signature !== g.signature);
+        try {
+            await this._post(cfg.dismissUrl, { ids: g.contacts.map((c) => c.id) });
+        } catch (e) { /* ignore */ }
+    },
+
+    _post(url, body) {
+        return fetch(url, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: JSON.stringify(body) });
     },
 }));
 

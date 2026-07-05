@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
+use App\Models\UserSetting;
 use App\Services\Contacts\ContactImporter;
 use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\VCardService;
@@ -34,10 +35,18 @@ class ContactController extends Controller
     {
         $userId = $request->user()->id;
         $bookIds = AddressBook::where('user_id', $userId)->pluck('id');
+        $settings = UserSetting::for($userId);
 
         $q = trim((string) $request->query('q'));
         $bookId = $request->query('book');
         $groupId = $request->query('group');
+
+        // Sort by the chosen name, falling back to the formatted name when that
+        // component is blank (e.g. imported cards with only FN); ties broken by
+        // the other name so ordering is stable.
+        [$primary, $secondary] = $settings->contact_sort === 'last_name'
+            ? ['last_name', 'first_name']
+            : ['first_name', 'last_name'];
 
         $contacts = Contact::query()
             ->whereIn('address_book_id', $bookIds)
@@ -46,12 +55,15 @@ class ContactController extends Controller
             ->when($q !== '', fn ($x) => $x->where(fn ($w) => $w
                 ->where('fn', 'like', "%{$q}%")->orWhere('org', 'like', "%{$q}%")
                 ->orWhereJsonContains('emails', $q)))
-            ->orderBy('fn')
+            ->orderByRaw("lower(coalesce(nullif({$primary}, ''), fn)) asc")
+            ->orderByRaw("lower(coalesce(nullif({$secondary}, ''), '')) asc")
             ->get()
             ->map(fn (Contact $c): array => [
                 'id' => $c->id,
                 'book' => $c->address_book_id,
                 'fn' => $c->fn,
+                'first_name' => $c->first_name,
+                'last_name' => $c->last_name,
                 'org' => $c->org,
                 'emails' => $c->emails ?? [],
                 'phones' => $c->phones ?? [],
@@ -63,7 +75,27 @@ class ContactController extends Controller
             'books' => AddressBook::where('user_id', $userId)->orderBy('name')->get(['id', 'name', 'uri']),
             'groups' => ContactGroup::where('user_id', $userId)->orderBy('name')->get(['id', 'name']),
             'contacts' => $contacts,
+            'settings' => [
+                'sort' => $settings->contact_sort,
+                'display_format' => $settings->contact_display_format,
+            ],
         ]);
+    }
+
+    /** Persist the user's contacts list preferences (sort + display format). */
+    public function settings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'sort' => ['required', 'in:first_name,last_name'],
+            'display_format' => ['required', 'in:first_last,last_first'],
+        ]);
+
+        UserSetting::for($request->user()->id)->update([
+            'contact_sort' => $data['sort'],
+            'contact_display_format' => $data['display_format'],
+        ]);
+
+        return response()->json(['ok' => true]);
     }
 
     public function show(Contact $contact, VCardService $vcards): JsonResponse
@@ -152,7 +184,7 @@ class ContactController extends Controller
     public function import(Request $request, ContactImporter $importer): JsonResponse
     {
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:51200'],
+            'file' => ['required', 'file', 'max:512000'],
             'book_id' => ['required', 'string'],
         ]);
         $book = AddressBook::where('user_id', $request->user()->id)->findOrFail($data['book_id']);
