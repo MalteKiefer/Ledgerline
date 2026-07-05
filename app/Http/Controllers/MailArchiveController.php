@@ -9,6 +9,7 @@ use App\Models\MailMessage;
 use App\Services\Mail\MailArchiver;
 use App\Services\Mail\MailArchiveReader;
 use App\Services\Mail\MailSource;
+use App\Services\Mail\MimeHeader;
 use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use Carbon\Carbon;
@@ -99,8 +100,8 @@ class MailArchiveController extends Controller
             'uid' => $m->uid,
             'folder' => $m->folder?->name,
             'folderPath' => $m->folder?->path,
-            'subject' => $m->subject,
-            'from' => trim(($m->from_name ?: '').' <'.($m->from_email ?: '').'>', ' <>'),
+            'subject' => MimeHeader::decode($m->subject),
+            'from' => trim((MimeHeader::decode($m->from_name) ?: '').' <'.($m->from_email ?: '').'>', ' <>'),
             'date' => $m->date_at?->toIso8601String(),
             'preview' => $m->preview,
             'hasAttachments' => $m->has_attachments,

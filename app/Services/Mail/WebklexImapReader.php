@@ -155,7 +155,7 @@ final class WebklexImapReader implements ImapReader
                 foreach ($messages as $m) {
                     $out[] = [
                         'uid' => $this->uid($m),
-                        'subject' => $this->str($m->getSubject()),
+                        'subject' => MimeHeader::decode($this->str($m->getSubject())),
                         'from' => $this->firstAddress($m->getFrom()),
                         'date' => $this->date($m),
                         'seen' => $this->flag($m, 'Seen'),
@@ -228,7 +228,7 @@ final class WebklexImapReader implements ImapReader
             );
             $out[] = [
                 'uid' => $uid,
-                'subject' => $this->str($m->getSubject()),
+                'subject' => MimeHeader::decode($this->str($m->getSubject())),
                 'from' => $this->firstAddress($m->getFrom()),
                 'date' => $this->date($m),
                 'seen' => $this->flag($m, 'Seen'),
@@ -273,7 +273,7 @@ final class WebklexImapReader implements ImapReader
                 }
                 $attachments[] = [
                     'id' => $i,
-                    'name' => $this->str($a->getName()) ?: 'attachment',
+                    'name' => MimeHeader::decode($this->str($a->getName())) ?: 'attachment',
                     'mime' => (string) ($a->getMimeType() ?? 'application/octet-stream'),
                     'size' => (int) $a->getSize(),
                 ];
@@ -290,7 +290,7 @@ final class WebklexImapReader implements ImapReader
 
             return [
                 'uid' => $uid,
-                'subject' => $this->str($m->getSubject()),
+                'subject' => MimeHeader::decode($this->str($m->getSubject())),
                 'from' => $this->firstAddress($m->getFrom()),
                 'to' => $this->addresses($m->getTo()),
                 'cc' => $this->addresses($m->getCc()),
@@ -319,7 +319,7 @@ final class WebklexImapReader implements ImapReader
             }
 
             return [
-                'name' => $this->str($a->getName()) ?: 'attachment',
+                'name' => MimeHeader::decode($this->str($a->getName())) ?: 'attachment',
                 'mime' => (string) ($a->getMimeType() ?? 'application/octet-stream'),
                 'content' => (string) $a->getContent(),
             ];
@@ -629,7 +629,7 @@ final class WebklexImapReader implements ImapReader
         $out = [];
         try {
             foreach ($attribute?->all() ?? [] as $a) {
-                $out[] = ['name' => $this->str($a->personal ?? ''), 'email' => $this->str($a->mail ?? '')];
+                $out[] = ['name' => MimeHeader::decode($this->str($a->personal ?? '')), 'email' => $this->str($a->mail ?? '')];
             }
         } catch (\Throwable) {
         }

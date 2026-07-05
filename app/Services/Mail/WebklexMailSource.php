@@ -156,14 +156,14 @@ class WebklexMailSource implements MailSource
             $text = $this->str($m->getTextBody());
             $attachmentNames = [];
             foreach ($m->getAttachments() as $a) {
-                $attachmentNames[] = $this->str($a->getName()) ?: 'attachment';
+                $attachmentNames[] = MimeHeader::decode($this->str($a->getName())) ?: 'attachment';
             }
 
             return [
                 'raw' => $this->raw($client, $folder, $uid, $m),
                 'message_id' => $this->str($m->getMessageId()) ?: null,
-                'subject' => $this->str($m->getSubject()) ?: null,
-                'from_name' => $from ? ($this->str($from->personal ?? '') ?: null) : null,
+                'subject' => MimeHeader::decode($this->str($m->getSubject())) ?: null,
+                'from_name' => $from ? (MimeHeader::decode($this->str($from->personal ?? '')) ?: null) : null,
                 'from_email' => $from ? ($this->str($from->mail ?? '') ?: null) : null,
                 'to' => $to,
                 'cc' => $cc,
@@ -285,7 +285,7 @@ class WebklexMailSource implements MailSource
     {
         $out = [];
         foreach ($list ?? [] as $addr) {
-            $out[] = ['name' => $this->str($addr->personal ?? '') ?: null, 'email' => $this->str($addr->mail ?? '')];
+            $out[] = ['name' => MimeHeader::decode($this->str($addr->personal ?? '')) ?: null, 'email' => $this->str($addr->mail ?? '')];
         }
 
         return $out;
