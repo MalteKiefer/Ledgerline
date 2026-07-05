@@ -40,3 +40,6 @@ Schedule::command('exports:prune')->daily()->withoutOverlapping();
 
 // Fail exports left stuck building by a dead worker so they get pruned.
 Schedule::command('exports:recover-stuck')->hourly()->withoutOverlapping();
+
+// Permanently purge files trashed longer than the retention window (and blobs).
+Schedule::command('files:prune-trash')->daily()->withoutOverlapping();

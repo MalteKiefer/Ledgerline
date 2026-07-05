@@ -60,4 +60,11 @@ return [
     'selected_word' => 'ausgewählt',
     'upload' => 'Hochladen',
     'uploading' => 'Wird hochgeladen',
+    'quota_exceeded' => 'Speicherkontingent überschritten.',
+    'storage_used' => ':used von :total belegt',
+    'storage_used_unlimited' => ':used belegt',
+    'versions' => 'Versionen',
+    'versions_none' => 'Keine früheren Versionen.',
+    'version_download' => 'Herunterladen',
+    'version_current' => 'Aktuell',
 ];
