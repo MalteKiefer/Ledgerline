@@ -9,6 +9,7 @@ use App\Models\Export;
 use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
+use App\Models\UserSetting;
 use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -95,7 +96,10 @@ class FileController extends Controller
         $owned = fn () => StoredFile::withoutGlobalScopes()->where('user_id', $uid);
         $ownedFolders = fn () => FileFolder::withoutGlobalScopes()->where('user_id', $uid);
 
-        $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders): array {
+        // Per-user version cap (1–10); the owner is the syncing user.
+        $keep = min(10, max(1, (int) UserSetting::for($uid)->file_max_versions));
+
+        $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep): array {
             $folderIds = [];
             foreach ($folders as $f) {
                 $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
@@ -133,7 +137,7 @@ class FileController extends Controller
                         'name' => $oldMeta['name'] ?? $f['name'], 'mime' => $oldMeta['mime'] ?? 'application/octet-stream',
                         'size' => $oldMeta['size'], 'blob' => $oldBlob, 'created_at' => now(),
                     ]);
-                    $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id));
+                    $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id, $keep));
                 }
             }
 
@@ -197,9 +201,9 @@ class FileController extends Controller
     }
 
     /** Keep only the newest N versions of a file; return the pruned blobs. */
-    private function capVersions(string $fileId): array
+    private function capVersions(string $fileId, int $keep): array
     {
-        $keep = max(1, (int) config('files.max_versions', 20));
+        $keep = max(1, $keep);
         $overflow = FileVersion::where('file_id', $fileId)->orderByDesc('created_at')->skip($keep)->take(1000)->get();
         $blobs = $overflow->pluck('blob')->all();
         if ($blobs !== []) {

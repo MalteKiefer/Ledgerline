@@ -3279,6 +3279,23 @@ Alpine.data('vaultMail', (labels = {}) => ({
         await this.load();
     },
 
+    // Download the selected messages that exist in the local archive as a zip
+    // (native form POST so the browser streams the download).
+    downloadSelectedMail() {
+        if (! this.reader.account || ! this.reader.selected.length) return;
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/mail/archive/' + this.reader.account.id + '/download-selection';
+        form.style.display = 'none';
+        const add = (n, v) => { const i = document.createElement('input'); i.type = 'hidden'; i.name = n; i.value = v; form.appendChild(i); };
+        add('_token', document.querySelector('meta[name="csrf-token"]').content);
+        add('folder', this.reader.folderPath);
+        this.reader.selected.forEach((u) => add('uids[]', u));
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
+    },
+
     // Prefer freshly-synced stats from the (plain) cache, falling back to the
     // stats last fetched onto the in-memory account. Reading cacheVersion makes
     // the template re-evaluate after a sync.
@@ -3368,12 +3385,12 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     confirmDelete(a) { this.deleteId = a.id; this.deleteOpen = true; },
 
-    async applyDelete() {
+    async applyDelete(keepArchive = false) {
         const id = this.deleteId;
         this.deleteOpen = false;
         this.deleteId = null;
         try {
-            await fetch(`/mail/accounts/${id}`, { method: 'DELETE', headers: this._headers() });
+            await fetch(`/mail/accounts/${id}?keep_archive=${keepArchive ? 1 : 0}`, { method: 'DELETE', headers: this._headers() });
             this.manifest.accounts = this.manifest.accounts.filter((x) => x.id !== id);
             mailCache.remove(`stats:${id}`);
         } catch (e) { this.error = labels.saveFailed; }

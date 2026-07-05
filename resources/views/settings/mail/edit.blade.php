@@ -65,6 +65,7 @@
                                     <button type="button" @click="menu = ! menu" class="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><x-icon name="ellipsis" /></button>
                                     <div x-show="menu" x-cloak class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                         <button type="button" @click="openEdit(a); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="pencil" />{{ __('mail.edit') }}</button>
+                                        <a :href="'/mail/archive/' + a.id + '/download'" @click="menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('mail.download_archive') }}</a>
                                         <button type="button" @click="confirmDelete(a); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('mail.delete') }}</button>
                                     </div>
                                 </div>

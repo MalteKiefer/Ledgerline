@@ -7,6 +7,7 @@ return [
     'cancel' => 'Cancel',
     'sections' => 'Sections',
     'back' => 'Back',
+    'save' => 'Save',
     'close' => 'Close',
     'confirm' => 'Confirm',
     'confirm_title' => 'Are you sure?',

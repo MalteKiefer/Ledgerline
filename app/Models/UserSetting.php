@@ -29,6 +29,7 @@ use Illuminate\Database\Eloquent\Model;
     'paperless_synced_at',
     'reminder_channels',
     'gallery_columns',
+    'file_max_versions',
 ])]
 class UserSetting extends Model
 {
@@ -47,6 +48,7 @@ class UserSetting extends Model
         'contact_display_format' => 'first_last',
         'paperless_enabled' => false,
         'gallery_columns' => 6,
+        'file_max_versions' => 10,
     ];
 
     protected function casts(): array
@@ -63,6 +65,7 @@ class UserSetting extends Model
             'paperless_synced_at' => 'datetime',
             'reminder_channels' => 'array',
             'gallery_columns' => 'integer',
+            'file_max_versions' => 'integer',
         ];
     }
 

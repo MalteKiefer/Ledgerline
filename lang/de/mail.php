@@ -108,4 +108,12 @@ return [
     'pick_account' => 'Postfach zum Öffnen wählen.',
     'switch_account' => 'Postfach wechseln',
     'working' => 'Arbeite…',
+    'download_eml' => 'Herunterladen (.eml)',
+    'download_selected' => 'Auswahl herunterladen',
+    'download_archive' => 'Archiv herunterladen',
+    'download_archive_hint' => 'Lade das gesamte lokale Archiv dieses Kontos als ZIP mit .eml-Dateien herunter.',
+    'delete_account' => 'Konto löschen',
+    'delete_account_keep' => 'Konto löschen, Archiv behalten',
+    'delete_account_with_archive' => 'Konto und Archiv löschen',
+    'delete_account_confirm' => 'Dieses Konto löschen? Wähle, ob auch das lokale Mail-Archiv gelöscht werden soll.',
 ];

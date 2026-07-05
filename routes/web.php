@@ -33,6 +33,7 @@ use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
 use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
+use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\MailController as SettingsMailController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
@@ -108,6 +109,10 @@ Route::middleware('auth')->group(function (): void {
     // Per-user reminder defaults (which channels are pre-selected).
     Route::get('/settings/reminders', [SettingsRemindersController::class, 'edit'])->name('settings.reminders.edit');
     Route::put('/settings/reminders', [SettingsRemindersController::class, 'update'])->name('settings.reminders.update');
+
+    // Per-user Files preferences (version-history depth).
+    Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
+    Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
 
     // Paperless-ngx: per-user integration (each user's own instance URL + token).
     Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
@@ -353,6 +358,9 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/mail/archive/{account}', [MailArchiveController::class, 'index'])->name('mail.archive');
     Route::get('/mail/archive/{account}/search', [MailArchiveController::class, 'search'])->name('mail.archive.search');
     Route::get('/mail/archive/message/{message}', [MailArchiveController::class, 'show'])->name('mail.archive.show');
+    Route::get('/mail/archive/message/{message}/download', [MailArchiveController::class, 'download'])->name('mail.archive.download');
+    Route::post('/mail/archive/{account}/download-selection', [MailArchiveController::class, 'downloadMany'])->middleware('throttle:30,1')->name('mail.archive.download-many');
+    Route::get('/mail/archive/{account}/download', [MailArchiveController::class, 'downloadArchive'])->middleware('throttle:10,1')->name('mail.archive.download-all');
     Route::get('/mail/archive/message/{message}/attachment/{index}', [MailArchiveController::class, 'attachment'])->whereNumber('index')->name('mail.archive.attachment');
     Route::post('/mail/archive/message/{message}/restore', [MailArchiveController::class, 'restore'])->name('mail.archive.restore');
     Route::delete('/mail/archive/message/{message}', [MailArchiveController::class, 'destroy'])->name('mail.archive.destroy');
