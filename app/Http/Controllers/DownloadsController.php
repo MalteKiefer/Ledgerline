@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\RespondsFlexibly;
 use App\Models\Export;
 use App\Support\BlobStore;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +20,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class DownloadsController extends Controller
 {
+    use RespondsFlexibly;
+
     public function index(): View
     {
         return view('downloads.index');
@@ -82,8 +85,6 @@ class DownloadsController extends Controller
             $export->purge();
         }
 
-        return $request->expectsJson()
-            ? response()->json(['ok' => true, 'ids' => $exports->pluck('id')])
-            : back();
+        return $this->flexible($request, ['ids' => $exports->pluck('id')]);
     }
 }
