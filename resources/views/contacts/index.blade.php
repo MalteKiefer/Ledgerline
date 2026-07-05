@@ -13,6 +13,7 @@
         'importResultLabel' => __('contacts.ui.import_result'),
         'galleryPickerUrl' => route('gallery.picker'),
         'peopleUrl' => route('gallery.people.data'),
+        'peopleShowBase' => url('gallery/people'),
         'filesDataUrl' => route('files.data'),
         'filesRawBase' => url('files/raw'),
         'sharesDataUrl' => route('shares.data'),
@@ -317,18 +318,35 @@
                             </div>
                         </div>
 
-                        {{-- People --}}
+                        {{-- People: pick a person (filter) → choose one of their photos --}}
                         <div x-show="avatarModal.tab==='people' && !avatarModal.loading">
-                            <p x-show="!peoplePhotos.length" class="py-8 text-center text-sm text-gray-400">{{ __('contacts.ui.avatar_no_images') }}</p>
-                            <div class="grid grid-cols-4 gap-3 sm:grid-cols-6">
-                                <template x-for="(p,i) in peoplePhotos" :key="i">
-                                    <button type="button" @click="startCrop(p.url)" class="text-center">
-                                        <span class="block aspect-square overflow-hidden rounded-full ring-1 ring-gray-200 hover:ring-gray-900">
-                                            <img :src="p.url" alt="" class="h-full w-full object-cover" loading="lazy">
-                                        </span>
-                                        <span class="mt-1 block truncate text-xs text-gray-500" x-text="p.name || ''"></span>
-                                    </button>
-                                </template>
+                            {{-- Step 1: person list --}}
+                            <div x-show="!personSelected">
+                                <p x-show="!peopleList.length" class="py-8 text-center text-sm text-gray-400">{{ __('contacts.ui.avatar_no_images') }}</p>
+                                <div class="grid grid-cols-4 gap-3 sm:grid-cols-6">
+                                    <template x-for="p in peopleList" :key="p.id">
+                                        <button type="button" @click="pickPerson(p)" class="text-center">
+                                            <span class="block aspect-square overflow-hidden rounded-full ring-1 ring-gray-200 hover:ring-gray-900">
+                                                <img :src="p.cover" alt="" class="h-full w-full object-cover" loading="lazy">
+                                            </span>
+                                            <span class="mt-1 block truncate text-xs text-gray-500" x-text="p.name || ''"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                            {{-- Step 2: that person's photos (crop the full image) --}}
+                            <div x-show="personSelected">
+                                <button type="button" @click="backToPeople()" class="mb-3 inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900">
+                                    <x-icon name="chevron-left" class="h-4 w-4" /> <span x-text="personSelected?.name"></span>
+                                </button>
+                                <p x-show="!personPhotos.length" class="py-8 text-center text-sm text-gray-400">{{ __('contacts.ui.avatar_no_images') }}</p>
+                                <div class="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                                    <template x-for="ph in personPhotos" :key="ph.id">
+                                        <button type="button" @click="startCrop(ph.full)" class="aspect-square overflow-hidden rounded-md ring-1 ring-gray-200 hover:ring-gray-900">
+                                            <img :src="ph.thumb" alt="" class="h-full w-full object-cover" loading="lazy">
+                                        </button>
+                                    </template>
+                                </div>
                             </div>
                         </div>
 

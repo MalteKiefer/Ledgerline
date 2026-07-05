@@ -1,6 +1,7 @@
 <x-layouts.app :title="__('gallery.title')">
   <div x-data="gallery('{{ route('gallery.store') }}', '{{ csrf_token() }}', '{{ route('gallery.feed', array_filter(['q' => $searchQuery ?: null, 'favorites' => $favoritesOnly ? 1 : null])) }}', {{ $photos->hasMorePages() ? 'true' : 'false' }}, {{ (int) $mapZoom }}, '{{ route('gallery.months') }}', '{{ route('gallery.geocode.reverse') }}')"
        x-init="initGallery()"
+       :style="'--gallery-cols:'+cols"
        @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()"
        @keydown.window="onKeydown($event)">
 
@@ -30,6 +31,14 @@
             </label>
         </x-slot:actions>
     </x-page-heading>
+
+    {{-- Zoom: photos per row (Apple-Photos-style), saved per user --}}
+    <div class="mt-3 flex items-center justify-end gap-2 text-gray-400">
+        <x-icon name="photo" class="h-4 w-4" />
+        <input type="range" min="2" max="10" step="1" x-model.number="cols" @change="saveCols()"
+            class="w-32 accent-gray-800" :title="cols + ' / {{ __('gallery.per_row') }}'" aria-label="{{ __('gallery.per_row') }}">
+        <x-icon name="photo" class="h-5 w-5" />
+    </div>
 
     {{-- Floating upload button on mobile (hidden while selecting, to clear the bulk bar). --}}
     <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 sm:hidden" aria-label="{{ __('gallery.upload') }}" title="{{ __('gallery.upload') }}">

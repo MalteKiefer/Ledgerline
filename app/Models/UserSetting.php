@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Model;
     'paperless_token',
     'paperless_synced_at',
     'reminder_channels',
+    'gallery_columns',
 ])]
 class UserSetting extends Model
 {
@@ -45,6 +46,7 @@ class UserSetting extends Model
         'contact_sort' => 'first_name',
         'contact_display_format' => 'first_last',
         'paperless_enabled' => false,
+        'gallery_columns' => 6,
     ];
 
     protected function casts(): array
@@ -60,6 +62,7 @@ class UserSetting extends Model
             'paperless_token' => 'encrypted',
             'paperless_synced_at' => 'datetime',
             'reminder_channels' => 'array',
+            'gallery_columns' => 'integer',
         ];
     }
 

@@ -188,6 +188,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/gallery/trips', [GalleryController::class, 'trips'])->name('gallery.trips');
     Route::get('/gallery/points', [GalleryController::class, 'points'])->name('gallery.points');
     Route::get('/gallery/picker', [GalleryController::class, 'pickerList'])->name('gallery.picker');
+    Route::post('/gallery/columns', [GalleryController::class, 'setColumns'])->name('gallery.columns');
     Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
     // Duplicates: content-based duplicate groups; keep one, trash the rest.
     Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->name('gallery.duplicates');

@@ -9,6 +9,7 @@ use App\Jobs\ProcessPhoto;
 use App\Models\AppSettings;
 use App\Models\Export;
 use App\Models\Photo;
+use App\Models\UserSetting;
 use App\Services\Files\ReverseGeocoder;
 use App\Services\Gallery\GalleryFormats;
 use App\Services\Gallery\PhotoExporter;
@@ -191,6 +192,15 @@ class GalleryController extends Controller
     /**
      * Photo locations as JSON for the map (id, lat, lng, thumb, medium, date).
      */
+    /** Persist the per-user gallery zoom (photos per row). */
+    public function setColumns(Request $request): JsonResponse
+    {
+        $data = $request->validate(['columns' => ['required', 'integer', 'min:2', 'max:12']]);
+        UserSetting::for($request->user()->id)->update(['gallery_columns' => $data['columns']]);
+
+        return response()->json(['ok' => true]);
+    }
+
     /** Recent photos for the avatar picker (thumb to browse, medium to crop). */
     public function pickerList(): JsonResponse
     {

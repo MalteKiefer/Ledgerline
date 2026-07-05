@@ -66,6 +66,7 @@ class PersonController extends Controller
                 'id' => $p->id,
                 'name' => $p->name,
                 'thumb' => route('gallery.image', ['photo' => $p, 'size' => 'thumb']),
+                'full' => route('gallery.image', ['photo' => $p, 'size' => 'medium']),
             ]);
 
         return response()->json([

@@ -475,13 +475,13 @@ Alpine.data('contactsPage', (cfg = {}) => ({
 
     // --- avatar picker (device / gallery / people / files) + crop ---
     avatarModal: { open: false, tab: 'upload', loading: false },
-    galleryPhotos: [], peoplePhotos: [], filePhotos: [],
+    galleryPhotos: [], peopleList: [], personPhotos: [], personSelected: null, filePhotos: [],
     cropSrc: null, _cropper: null, saving: false,
 
     openAvatarModal() {
         if (! this.form.id) return; // avatar needs a saved contact to attach to
         this.avatarModal = { open: true, tab: 'upload', loading: false };
-        this.cropSrc = null;
+        this.cropSrc = null; this.personSelected = null; this.personPhotos = [];
         this.destroyCropper();
     },
     closeAvatarModal() { this.avatarModal.open = false; this.cropSrc = null; this.destroyCropper(); },
@@ -489,8 +489,9 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     async avatarTab(tab) {
         this.avatarModal.tab = tab;
         this.cropSrc = null; this.destroyCropper();
+        this.personSelected = null; this.personPhotos = [];
         if (tab === 'gallery' && ! this.galleryPhotos.length) await this.loadPicker('galleryPickerUrl', 'photos', 'galleryPhotos');
-        if (tab === 'people' && ! this.peoplePhotos.length) await this.loadPeople();
+        if (tab === 'people' && ! this.peopleList.length) await this.loadPeople();
         if (tab === 'files' && ! this.filePhotos.length) await this.loadFilePhotos();
     },
     async loadPicker(cfgKey, field, target) {
@@ -504,9 +505,19 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         this.avatarModal.loading = true;
         try {
             const r = await fetch(cfg.peopleUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) this.peoplePhotos = ((await r.json()).people ?? []).filter((p) => p.cover).map((p) => ({ name: p.name, url: p.cover }));
+            if (r.ok) this.peopleList = ((await r.json()).people ?? []).filter((p) => p.cover && p.name);
         } catch (e) { /* keep */ } finally { this.avatarModal.loading = false; }
     },
+    // Pick a person → filter to all photos they appear in, then choose one.
+    async pickPerson(person) {
+        this.avatarModal.loading = true;
+        this.personSelected = person;
+        try {
+            const r = await fetch(cfg.peopleShowBase + '/' + person.id + '/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.personPhotos = (await r.json()).photos ?? [];
+        } catch (e) { /* keep */ } finally { this.avatarModal.loading = false; }
+    },
+    backToPeople() { this.personSelected = null; this.personPhotos = []; },
     async loadFilePhotos() {
         this.avatarModal.loading = true;
         try {
@@ -1358,6 +1369,9 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     // Timeline scrubber.
     months: [],
 
+    // Zoom: photos per row (persisted per user).
+    cols: 6,
+
     // Viewer.
     viewerOpen: false,
     current: {},
@@ -1370,7 +1384,19 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     placeTimer: null,
     mapZoom,
 
+    async saveCols() {
+        try {
+            await fetch('/gallery/columns', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token },
+                body: JSON.stringify({ columns: this.cols }),
+            });
+        } catch (e) { /* ignore */ }
+    },
+
     initGallery() {
+        this.cols = Number(document.querySelector('meta[name="gallery-columns"]')?.content) || 6;
+
         // Show the drop overlay only while files are dragged over the window.
         let depth = 0;
         window.addEventListener('dragenter', (e) => {
