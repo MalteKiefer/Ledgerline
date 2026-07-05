@@ -10,7 +10,7 @@
         ['label' => __('gallery.trash'), 'url' => route('gallery.trash'), 'icon' => 'trash', 'active' => request()->routeIs('gallery.trash')],
     ];
 @endphp
-<aside class="w-full shrink-0 md:w-52">
+<aside class="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-2 shadow-sm md:w-52">
     <nav class="space-y-1 text-sm">
         @foreach ($items as $item)
             <a href="{{ $item['url'] }}"

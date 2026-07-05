@@ -33,7 +33,7 @@
     ]; @endphp
     <div x-data="calendarPage(@js($cfg))" x-init="init()" class="flex flex-col gap-4 md:flex-row">
         {{-- Sidebar --}}
-        <aside class="w-full shrink-0 space-y-4 md:w-56">
+        <aside class="w-full shrink-0 space-y-4 rounded-lg border border-gray-200 bg-white p-3 shadow-sm md:w-56">
             <x-button variant="primary" icon="plus" class="w-full" @click="openNew()">{{ __('calendar.ui.new_event') }}</x-button>
             <div>
                 <div class="flex items-center justify-between">
