@@ -60,15 +60,15 @@
             {{-- Toolbar --}}
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-1">
-                    <button @click="step(-1)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.prev') }}"><x-icon name="chevron-left" class="h-4 w-4" /></button>
-                    <button @click="today()" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{{ __('calendar.ui.today') }}</button>
-                    <button @click="step(1)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.next') }}"><x-icon name="chevron-right" class="h-4 w-4" /></button>
+                    <button @click="step(-1)" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.prev') }}"><x-icon name="chevron-left" class="h-4 w-4" /></button>
+                    <button @click="today()" class="inline-flex min-h-11 items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{{ __('calendar.ui.today') }}</button>
+                    <button @click="step(1)" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('calendar.ui.next') }}"><x-icon name="chevron-right" class="h-4 w-4" /></button>
                     <h2 class="ml-2 text-base font-semibold text-gray-900" x-text="title"></h2>
                 </div>
-                <div class="inline-flex rounded-md border border-gray-300 text-sm">
+                <div class="inline-flex flex-wrap rounded-md border border-gray-300 text-sm">
                     @foreach (['month', 'week', 'day', 'agenda'] as $v)
                         <button @click="setView('{{ $v }}')" :class="view==='{{ $v }}'?'bg-gray-900 text-white':'text-gray-700 hover:bg-gray-50'"
-                            class="px-3 py-1.5 first:rounded-l-md last:rounded-r-md">{{ __("calendar.ui.$v") }}</button>
+                            class="min-h-11 px-3 py-1.5 first:rounded-l-md last:rounded-r-md">{{ __("calendar.ui.$v") }}</button>
                     @endforeach
                 </div>
             </div>
@@ -115,7 +115,7 @@
             </div>
 
             {{-- Week (hour grid, Google-style) --}}
-            <div x-show="view==='week'" class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <div x-show="view==='week'" class="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white">
                 <div class="overflow-x-auto">
                     <div class="min-w-[48rem]">
                         {{-- Day headers --}}
@@ -166,7 +166,8 @@
             </div>
 
             {{-- Day (hour grid) --}}
-            <div x-show="view==='day'" class="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <div x-show="view==='day'" class="mt-4 overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                <div class="min-w-[360px]">
                 {{-- All-day strip --}}
                 <div class="flex border-b border-gray-200 bg-gray-50/50">
                     <div class="w-14 shrink-0 px-1 py-1 text-[10px] text-gray-400">{{ __('calendar.ui.all_day') }}</div>
@@ -195,6 +196,7 @@
                             </template>
                         </div>
                     </div>
+                </div>
                 </div>
             </div>
 
