@@ -340,6 +340,8 @@ Route::middleware('auth')->group(function (): void {
     // Composing / sending over SMTP.
     Route::post('/mail/send', [MailComposeController::class, 'send'])->middleware('throttle:60,1')->name('mail.send');
     Route::post('/mail/draft', [MailComposeController::class, 'draft'])->middleware('throttle:60,1')->name('mail.draft');
+    // Recipient autocomplete from the user's contacts (name + email).
+    Route::get('/mail/recipients', [MailComposeController::class, 'recipients'])->middleware('throttle:60,1')->name('mail.recipients');
     // Mail accounts: plain rows (password encrypted at rest), JSON API.
     Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->name('mail.accounts.store');

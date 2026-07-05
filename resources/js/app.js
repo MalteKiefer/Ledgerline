@@ -3303,11 +3303,22 @@ Alpine.data('vaultMail', (labels = {}) => ({
         open: false, accountId: null, to: '', cc: '', bcc: '', showCc: false, subject: '',
         body: '', uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
     },
-    attachPicker: { open: false, source: 'gallery', items: [], chosen: [], loading: false },
+    attachPicker: { open: false, source: 'gallery', items: [], chosen: [], loading: false, q: '', _allFiles: [] },
+    // Recipient autocomplete state (shared by to/cc/bcc; keyed by field).
+    recipientBox: { field: '', items: [], active: -1, seq: 0 },
 
     _account(id) { return this.manifest.accounts.find((a) => a.id === id) || this.manifest.accounts[0] || null; },
     _signatureHtml(acc) { return acc && acc.signature ? '<br><br>-- <br>' + acc.signature.replace(/\n/g, '<br>') : ''; },
-    _emails(str) { return String(str || '').split(',').map((s) => s.trim()).filter(Boolean); },
+    // Parse a comma-separated recipients string into bare addresses. Accepts
+    // either "email" or "Name <email>" tokens and extracts the address so the
+    // backend's per-address 'email' validation always receives bare emails.
+    _emails(str) {
+        return String(str || '').split(',').map((s) => {
+            const t = s.trim();
+            const m = t.match(/<([^>]+)>/);
+            return (m ? m[1] : t).trim();
+        }).filter(Boolean);
+    },
     _blankCompose() {
         const acc = this._account(this.reader.account?.id);
         return {
@@ -3364,8 +3375,44 @@ Alpine.data('vaultMail', (labels = {}) => ({
     removeUpload(i) { this.compose.uploads.splice(i, 1); },
     removeRef(i) { this.compose.refs.splice(i, 1); },
 
+    // ---- Recipient autocomplete (contacts) ----------------------------------
+    // Return the current comma-separated token being typed in `field`.
+    _lastToken(field) {
+        const parts = String(this.compose[field] || '').split(',');
+        return parts[parts.length - 1].trim();
+    },
+    async recipientInput(field, event) {
+        const token = this._lastToken(field);
+        if (token.length < 2) { this.recipientBox = { field: '', items: [], active: -1, seq: this.recipientBox.seq }; return; }
+        const seq = ++this.recipientBox.seq;
+        try {
+            const r = await fetch('/mail/recipients?q=' + encodeURIComponent(token), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            const d = await r.json();
+            if (seq !== this.recipientBox.seq) return; // a newer keystroke won
+            this.recipientBox = { field, items: d.recipients || [], active: -1, seq };
+        } catch (e) { /* keep silent */ }
+    },
+    recipientKeydown(field, event) {
+        if (this.recipientBox.field !== field || ! this.recipientBox.items.length) return;
+        if (event.key === 'ArrowDown') { event.preventDefault(); this.recipientBox.active = Math.min(this.recipientBox.active + 1, this.recipientBox.items.length - 1); }
+        else if (event.key === 'ArrowUp') { event.preventDefault(); this.recipientBox.active = Math.max(this.recipientBox.active - 1, 0); }
+        else if (event.key === 'Enter' && this.recipientBox.active >= 0) { event.preventDefault(); this.recipientPick(field, this.recipientBox.items[this.recipientBox.active]); }
+        else if (event.key === 'Escape') { this.recipientBox = { field: '', items: [], active: -1, seq: this.recipientBox.seq }; }
+    },
+    recipientBlur(field) {
+        // Delay so a mousedown pick on the dropdown fires before it closes.
+        setTimeout(() => { if (this.recipientBox.field === field) this.recipientBox = { field: '', items: [], active: -1, seq: this.recipientBox.seq }; }, 150);
+    },
+    // Replace the token being typed with the chosen bare email and append ", ".
+    recipientPick(field, r) {
+        const parts = String(this.compose[field] || '').split(',');
+        parts[parts.length - 1] = ' ' + r.email;
+        this.compose[field] = parts.map((s) => s.trim()).filter(Boolean).join(', ') + ', ';
+        this.recipientBox = { field: '', items: [], active: -1, seq: this.recipientBox.seq };
+    },
+
     async openAttachPicker(source) {
-        this.attachPicker = { open: true, source, items: [], chosen: [], loading: true };
+        this.attachPicker = { open: true, source, items: [], chosen: [], loading: true, q: '', _allFiles: [] };
         try {
             if (source === 'gallery') {
                 const r = await fetch('/gallery/picker', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
@@ -3374,10 +3421,28 @@ Alpine.data('vaultMail', (labels = {}) => ({
             } else {
                 const r = await fetch('/files/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
                 const d = await r.json();
-                this.attachPicker.items = (d.files || []).filter((f) => ! f.trashed).map((f) => ({ id: f.id, name: f.name }));
+                this.attachPicker._allFiles = (d.files || []).filter((f) => ! f.trashed).map((f) => ({ id: f.id, name: f.name }));
+                this.attachPicker.items = this.attachPicker._allFiles;
             }
         } catch (e) { /* keep empty */ }
         this.attachPicker.loading = false;
+    },
+    // Re-query the gallery picker server-side (album / person / text / id).
+    async searchAttachGallery() {
+        this.attachPicker.loading = true;
+        try {
+            const q = (this.attachPicker.q || '').trim();
+            const r = await fetch('/gallery/picker' + (q ? '?q=' + encodeURIComponent(q) : ''), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            const d = await r.json();
+            this.attachPicker.items = (d.photos || d || []).map((p) => ({ id: p.id, name: p.name || ('photo-' + p.id), thumb: p.thumb }));
+        } catch (e) { /* keep previous */ }
+        this.attachPicker.loading = false;
+    },
+    // Client-side filtered files list (files have no thumbnail to re-query for).
+    get filteredAttachFiles() {
+        const q = (this.attachPicker.q || '').trim().toLowerCase();
+        const all = this.attachPicker._allFiles || [];
+        return q ? all.filter((f) => (f.name || '').toLowerCase().includes(q)) : all;
     },
     togglePick(id) {
         const i = this.attachPicker.chosen.indexOf(id);

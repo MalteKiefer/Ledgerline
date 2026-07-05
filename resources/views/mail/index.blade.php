@@ -11,6 +11,9 @@
         composeNeedsTo: @js(__('mail.compose_needs_to')),
         smtpMissingWarning: @js(__('mail.smtp_missing_warning')),
         forwardedMessage: @js(__('mail.forwarded_message')),
+        attachSearch: @js(__('mail.attach_search')),
+        attachSearchGallery: @js(__('mail.attach_search_gallery')),
+        attachSearchFiles: @js(__('mail.attach_search_files')),
         folderNames: @js([
             'inbox' => __('mail.folder_inbox'),
             'all' => __('mail.folder_all'),
@@ -523,7 +526,7 @@
     <template x-teleport="body">
         <div x-show="compose.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-0 sm:p-4" role="dialog" aria-modal="true" @keydown.escape.window="compose.open = false">
             <div class="absolute inset-0 bg-gray-900/50" @click="compose.open = false"></div>
-            <div class="relative flex min-h-full w-full flex-col bg-white shadow-xl sm:my-8 sm:min-h-0 sm:max-w-2xl sm:rounded-lg">
+            <div class="relative flex min-h-full w-full flex-col bg-white shadow-xl sm:my-8 sm:min-h-0 sm:max-w-4xl sm:rounded-lg">
                 <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                     <h3 class="text-base font-semibold text-gray-900">{{ __('mail.compose') }}</h3>
                     <button type="button" @click="compose.open = false" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50" aria-label="{{ __('common.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
@@ -537,16 +540,31 @@
                     <div x-show="compose.accountId && ! (_account(compose.accountId)?.smtpConfigured)" x-cloak
                         class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                         <x-icon name="exclamation-triangle" class="mt-0.5 h-4 w-4 shrink-0" />
-                        <span x-text="labels.smtpMissingWarning"></span>
+                        <span>{{ __('mail.smtp_missing_warning') }}</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.to') }}</label>
-                        <input type="text" x-model="compose.to" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm" placeholder="a@b.com, c@d.com">
+                        <div class="relative min-w-0 flex-1">
+                            <input type="text" x-model="compose.to" @input="recipientInput('to', $event)" @keydown="recipientKeydown('to', $event)" @blur="recipientBlur('to')" autocomplete="off" class="w-full rounded-md border-gray-300 text-sm" placeholder="a@b.com, c@d.com">
+                            @include('mail._recipient_suggest', ['field' => 'to'])
+                        </div>
                         <button type="button" @click="compose.showCc = ! compose.showCc" class="shrink-0 text-xs font-medium text-gray-500 hover:text-gray-800">{{ __('mail.add_cc') }}</button>
                     </div>
                     <div x-show="compose.showCc" x-cloak class="space-y-2">
-                        <div class="flex items-center gap-2"><label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.cc') }}</label><input type="text" x-model="compose.cc" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm"></div>
-                        <div class="flex items-center gap-2"><label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.bcc') }}</label><input type="text" x-model="compose.bcc" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm"></div>
+                        <div class="flex items-center gap-2">
+                            <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.cc') }}</label>
+                            <div class="relative min-w-0 flex-1">
+                                <input type="text" x-model="compose.cc" @input="recipientInput('cc', $event)" @keydown="recipientKeydown('cc', $event)" @blur="recipientBlur('cc')" autocomplete="off" class="w-full rounded-md border-gray-300 text-sm">
+                                @include('mail._recipient_suggest', ['field' => 'cc'])
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.bcc') }}</label>
+                            <div class="relative min-w-0 flex-1">
+                                <input type="text" x-model="compose.bcc" @input="recipientInput('bcc', $event)" @keydown="recipientKeydown('bcc', $event)" @blur="recipientBlur('bcc')" autocomplete="off" class="w-full rounded-md border-gray-300 text-sm">
+                                @include('mail._recipient_suggest', ['field' => 'bcc'])
+                            </div>
+                        </div>
                     </div>
                     <div class="flex items-center gap-2">
                         <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.subject') }}</label>
@@ -600,15 +618,49 @@
                     <h3 class="text-base font-semibold text-gray-900">{{ __('mail.attach_pick') }}</h3>
                     <button type="button" @click="attachPicker.open = false" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
                 </div>
-                <p x-show="attachPicker.loading" x-cloak class="mt-4 text-sm text-gray-500">…</p>
-                <div class="mt-4 grid max-h-[55vh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-                    <template x-for="it in attachPicker.items" :key="it.id">
-                        <button type="button" @click="togglePick(it.id)" class="flex items-center gap-2 rounded-md border p-2 text-left text-sm" :class="attachPicker.chosen.includes(it.id) ? 'border-gray-900 bg-gray-50' : 'border-gray-200'">
-                            <template x-if="it.thumb"><img :src="it.thumb" alt="" class="h-10 w-10 shrink-0 rounded object-cover"></template>
-                            <span class="min-w-0 truncate" x-text="it.name"></span>
-                        </button>
-                    </template>
+                {{-- Search: gallery re-queries the server (album/person/text/id);
+                     files filter the loaded list client-side. --}}
+                <div class="mt-4">
+                    <input type="text" x-model="attachPicker.q"
+                        @input.debounce.250ms="attachPicker.source === 'gallery' ? searchAttachGallery() : null"
+                        :placeholder="attachPicker.source === 'gallery' ? labels.attachSearchGallery : labels.attachSearchFiles"
+                        :aria-label="labels.attachSearch"
+                        class="w-full rounded-md border-gray-300 text-sm">
                 </div>
+                <p x-show="attachPicker.loading" x-cloak class="mt-4 text-sm text-gray-500">…</p>
+
+                {{-- Gallery: thumbnail-only grid, selection shown via ring. --}}
+                <template x-if="attachPicker.source === 'gallery'">
+                    <div class="mt-4 grid max-h-[55vh] grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-4">
+                        <template x-for="it in attachPicker.items" :key="it.id">
+                            <button type="button" @click="togglePick(it.id)"
+                                class="relative aspect-square overflow-hidden rounded-md ring-2 ring-offset-1 focus:outline-none"
+                                :class="attachPicker.chosen.includes(it.id) ? 'ring-gray-900' : 'ring-transparent hover:ring-gray-300'"
+                                :aria-pressed="attachPicker.chosen.includes(it.id)">
+                                <img :src="it.thumb" alt="" loading="lazy" class="h-full w-full object-cover">
+                                <span x-show="attachPicker.chosen.includes(it.id)" x-cloak
+                                    class="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white">
+                                    <x-icon name="check" class="h-3 w-3" />
+                                </span>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+
+                {{-- Files: name list (no thumbnails), client-side filtered. --}}
+                <template x-if="attachPicker.source === 'files'">
+                    <div class="mt-4 grid max-h-[55vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                        <template x-for="it in filteredAttachFiles" :key="it.id">
+                            <button type="button" @click="togglePick(it.id)" class="flex items-center gap-2 rounded-md border p-2 text-left text-sm" :class="attachPicker.chosen.includes(it.id) ? 'border-gray-900 bg-gray-50' : 'border-gray-200'">
+                                <x-icon name="document-text" class="h-5 w-5 shrink-0 text-gray-400" />
+                                <span class="min-w-0 truncate" x-text="it.name"></span>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+
+                <p x-show="! attachPicker.loading && (attachPicker.source === 'gallery' ? attachPicker.items.length === 0 : filteredAttachFiles.length === 0)" x-cloak
+                    class="mt-4 text-sm text-gray-500">{{ __('mail.attach_no_results') }}</p>
                 <div class="mt-4 flex justify-end gap-2">
                     <button type="button" @click="attachPicker.open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="button" @click="confirmAttachPicker()" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">{{ __('mail.attach_done') }} <span x-show="attachPicker.chosen.length" x-text="'('+attachPicker.chosen.length+')'"></span></button>
