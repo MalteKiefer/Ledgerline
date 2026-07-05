@@ -35,7 +35,7 @@
                 </div>
             </div>
             <x-button variant="primary" @click="save()">{{ __('gallery.person_save') }}</x-button>
-            <span x-show="saved" x-cloak x-transition class="text-sm font-medium text-green-600">✓ {{ __('gallery.person_saved') }}</span>
+            <span x-show="saved" x-cloak x-transition class="inline-flex items-center gap-1 text-sm font-medium text-green-600"><x-icon name="check" class="h-4 w-4" /> {{ __('gallery.person_saved') }}</span>
             <button type="button" @click="toggleHidden()" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 x-text="person.hidden ? '{{ __('gallery.person_unhide') }}' : '{{ __('gallery.person_hide') }}'"></button>
             {{-- Merge another (named) person in — autocomplete --}}
@@ -63,7 +63,7 @@
                         <div class="group relative">
                             <img :src="f.thumb" alt="" class="h-16 w-16 rounded-full object-cover ring-1 ring-gray-200">
                             <button @click="reassignFace(f.id)" title="{{ __('gallery.person_reassign') }}"
-                                class="absolute -right-1 -top-1 hidden rounded-full bg-gray-900 px-1.5 text-xs text-white group-hover:block">✕</button>
+                                class="absolute -right-1 -top-1 hidden rounded-full bg-gray-900 px-1.5 text-xs text-white group-hover:block"><x-icon name="x-mark" class="h-4 w-4" /></button>
                         </div>
                     </template>
                 </div>

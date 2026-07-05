@@ -81,7 +81,7 @@
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">
                         <span class="text-sm font-medium text-gray-900">{{ $job->name }}</span>
-                        @unless ($job->enabled)<span class="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">✕</span>@endunless
+                        @unless ($job->enabled)<span class="ml-2 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500"><x-icon name="x-mark" class="h-3.5 w-3.5" /></span>@endunless
                         <p class="text-xs text-gray-500">
                             {{ __('settings.backup_source_'.$job->source) }} → {{ $job->destination?->name }} · <code>{{ $job->cron }}</code> ·
                             @if ($s['lastStatus'])
@@ -117,7 +117,7 @@
                     <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-gray-50 p-3 text-xs sm:grid-cols-4">
                         <div>
                             <dt class="text-gray-500">{{ __('settings.backup_stat_runs') }}</dt>
-                            <dd class="font-medium text-gray-900">{{ $s['runs'] }} <span class="text-green-600">{{ $s['ok'] }}✓</span>@if ($s['failed']) <span class="text-red-600">{{ $s['failed'] }}✕</span>@endif</dd>
+                            <dd class="font-medium text-gray-900">{{ $s['runs'] }} <span class="inline-flex items-center gap-0.5 text-green-600">{{ $s['ok'] }}<x-icon name="check" class="h-3.5 w-3.5" /></span>@if ($s['failed']) <span class="inline-flex items-center gap-0.5 text-red-600">{{ $s['failed'] }}<x-icon name="x-mark" class="h-3.5 w-3.5" /></span>@endif</dd>
                         </div>
                         <div>
                             <dt class="text-gray-500">{{ __('settings.backup_stat_success_rate') }}</dt>

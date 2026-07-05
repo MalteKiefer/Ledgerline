@@ -31,7 +31,7 @@
             <div>
                 <div class="flex items-center justify-between">
                     <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.ui.books') }}</h2>
-                    <button @click="addBook()" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.new_book') }}">+</button>
+                    <button @click="addBook()" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.new_book') }}"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
                 <ul class="mt-2 space-y-1 text-sm">
                     <li><button @click="book=''" :class="book===''?'font-semibold text-gray-900':'text-gray-600'">{{ __('contacts.ui.all_books') }}</button></li>
@@ -39,8 +39,8 @@
                         <li class="group flex items-center justify-between gap-1">
                             <button @click="book=b.id" :class="book===b.id?'font-semibold text-gray-900':'text-gray-600'" x-text="b.name" class="truncate text-left"></button>
                             <span class="hidden shrink-0 gap-1 group-hover:flex">
-                                <button @click="renameBook(b)" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.rename_book') }}">✎</button>
-                                <button @click="deleteBook(b)" class="text-gray-400 hover:text-red-600" title="{{ __('contacts.ui.delete') }}">✕</button>
+                                <button @click="renameBook(b)" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.rename_book') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
+                                <button @click="deleteBook(b)" class="text-gray-400 hover:text-red-600" title="{{ __('contacts.ui.delete') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             </span>
                         </li>
                     </template>
@@ -49,14 +49,14 @@
             <div>
                 <div class="flex items-center justify-between">
                     <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.ui.groups') }}</h2>
-                    <button @click="addGroup()" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.new_group') }}">+</button>
+                    <button @click="addGroup()" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.new_group') }}"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
                 <ul class="mt-2 space-y-1 text-sm">
                     <li><button @click="group=''" :class="group===''?'font-semibold text-gray-900':'text-gray-600'">{{ __('contacts.ui.all_groups') }}</button></li>
                     <template x-for="g in groups" :key="g.id">
                         <li class="group flex items-center justify-between gap-1">
                             <button @click="group = (group===g.id ? '' : g.id)" :class="group===g.id?'font-semibold text-gray-900':'text-gray-600'" x-text="g.name" class="truncate text-left"></button>
-                            <button @click="deleteGroup(g)" class="hidden shrink-0 text-gray-400 hover:text-red-600 group-hover:block" title="{{ __('contacts.ui.delete') }}">✕</button>
+                            <button @click="deleteGroup(g)" class="hidden shrink-0 text-gray-400 hover:text-red-600 group-hover:block" title="{{ __('contacts.ui.delete') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                         </li>
                     </template>
                 </ul>
@@ -159,11 +159,11 @@
                     <template x-for="(e,i) in form.emails" :key="'e'+i">
                         <input x-model="form.emails[i].value" type="email" placeholder="{{ __('contacts.ui.email') }}" class="w-full rounded-md border-gray-300 text-sm">
                     </template>
-                    <button @click="form.emails.push({value:'',type:'home'})" class="text-xs text-gray-500 hover:text-gray-800">+ {{ __('contacts.ui.email') }}</button>
+                    <button @click="form.emails.push({value:'',type:'home'})" class="text-xs text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><x-icon name="plus" class="h-3 w-3" /> {{ __('contacts.ui.email') }}</button>
                     <template x-for="(p,i) in form.phones" :key="'p'+i">
                         <input x-model="form.phones[i].value" placeholder="{{ __('contacts.ui.phone') }}" class="w-full rounded-md border-gray-300 text-sm">
                     </template>
-                    <button @click="form.phones.push({value:'',type:'cell'})" class="text-xs text-gray-500 hover:text-gray-800">+ {{ __('contacts.ui.phone') }}</button>
+                    <button @click="form.phones.push({value:'',type:'cell'})" class="text-xs text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><x-icon name="plus" class="h-3 w-3" /> {{ __('contacts.ui.phone') }}</button>
                     <label class="block text-xs text-gray-500">{{ __('contacts.ui.bday') }}
                         <input type="date" x-model="form.bday" class="mt-0.5 w-full rounded-md border-gray-300 text-sm">
                     </label>
@@ -173,10 +173,10 @@
                             <div class="mt-1 flex items-center gap-2">
                                 <input type="date" x-model="form.anniversaries[i].date" class="rounded-md border-gray-300 text-sm">
                                 <input x-model="form.anniversaries[i].label" placeholder="{{ __('contacts.ui.anniversary_label') }}" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm">
-                                <button type="button" @click="form.anniversaries.splice(i,1)" class="shrink-0 text-gray-400 hover:text-red-600">✕</button>
+                                <button type="button" @click="form.anniversaries.splice(i,1)" class="shrink-0 text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             </div>
                         </template>
-                        <button type="button" @click="form.anniversaries.push({date:'',label:''})" class="mt-1 text-xs text-gray-500 hover:text-gray-800">+ {{ __('contacts.ui.anniversary') }}</button>
+                        <button type="button" @click="form.anniversaries.push({date:'',label:''})" class="mt-1 text-xs text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><x-icon name="plus" class="h-3 w-3" /> {{ __('contacts.ui.anniversary') }}</button>
                     </div>
                     <textarea x-model="form.note" placeholder="{{ __('contacts.ui.note') }}" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
                     {{-- Groups: multi-select with autocomplete --}}
