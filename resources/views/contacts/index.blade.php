@@ -39,7 +39,7 @@
     ]; @endphp
     <div x-data="contactsPage(@js($cfg))" x-init="init()" class="flex flex-col gap-4 md:flex-row">
         {{-- Sidebar --}}
-        <aside class="w-full shrink-0 space-y-4 md:w-56">
+        <aside class="w-full shrink-0 space-y-4 rounded-lg border border-gray-200 bg-white p-3 shadow-sm md:w-56">
             <div>
                 <div class="flex items-center justify-between">
                     <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.ui.books') }}</h2>
