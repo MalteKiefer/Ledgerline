@@ -16,9 +16,12 @@ use App\Services\Notifications\ChannelNotifier;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Sabre\VObject\Reader;
 
@@ -31,18 +34,45 @@ class PublicShareController extends Controller
 {
     private const TYPES = ['calendars' => Calendar::class, 'address-books' => AddressBook::class, 'albums' => Album::class];
 
-    /** Create (or return) the public link for an owned calendar/address book. */
+    /** Allowed expiry presets, in seconds (null = never). */
+    private const EXPIRY = [3600, 86400, 604800, 2592000];
+
+    /** Create (or update) the public link for an owned calendar/address book/album. */
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
             'type' => ['required', Rule::in(array_keys(self::TYPES))],
             'id' => ['required'],
+            'expires_in' => ['nullable', 'integer', Rule::in(self::EXPIRY)],
+            'password' => ['nullable', 'string', 'max:255'],
         ]);
 
         $resource = $this->ownedResource($data['type'], $data['id'], $request->user()->id);
         $share = PublicShare::forResource($resource, $request->user()->id);
 
-        return response()->json(['ok' => true, 'url' => $share->url()], 201);
+        // Expiry applies to every link type; the password only gates the album's
+        // HTML page (feeds can't prompt). An empty password clears it.
+        $share->expires_at = ! empty($data['expires_in']) ? now()->addSeconds((int) $data['expires_in']) : null;
+        if (array_key_exists('password', $data)) {
+            $share->password = filled($data['password']) ? Hash::make($data['password']) : null;
+        }
+        $share->save();
+
+        return response()->json([
+            'ok' => true,
+            'url' => $share->url(),
+            'expires_at' => $share->expires_at?->toIso8601String(),
+            'has_password' => $share->hasPassword(),
+        ], 201);
+    }
+
+    /** Rotate the token so a leaked URL stops working. */
+    public function rotate(Request $request, PublicShare $publicShare): JsonResponse
+    {
+        abort_unless($publicShare->owner_id === $request->user()->id, 403);
+        $publicShare->update(['token' => Str::random(48)]);
+
+        return response()->json(['ok' => true, 'url' => $publicShare->url()]);
     }
 
     public function destroy(Request $request, PublicShare $publicShare): JsonResponse
@@ -74,20 +104,45 @@ class PublicShareController extends Controller
     // ---- public (no auth) --------------------------------------------------
 
     /** Public HTML gallery page for a shared album. */
-    public function album(PublicShare $publicShare): View
+    public function album(Request $request, PublicShare $publicShare): View
     {
         $resource = $publicShare->shareable;
         abort_unless($resource instanceof Album, 404);
+        abort_if($publicShare->isExpired(), 410, __('shares.public_expired'));
+
+        if ($publicShare->hasPassword() && ! $this->unlocked($request, $publicShare)) {
+            return view('public-share.password', ['share' => $publicShare, 'error' => false]);
+        }
+
         $photos = $resource->photos()->get(['photos.id']);
 
         return view('public-share.album', ['share' => $publicShare, 'album' => $resource, 'photos' => $photos]);
     }
 
+    /** Verify the album password and unlock it for this session. */
+    public function albumUnlock(Request $request, PublicShare $publicShare): Response|View|RedirectResponse
+    {
+        $resource = $publicShare->shareable;
+        abort_unless($resource instanceof Album, 404);
+        abort_if($publicShare->isExpired(), 410, __('shares.public_expired'));
+
+        $given = (string) $request->input('password', '');
+        if (! $publicShare->hasPassword() || ! Hash::check($given, $publicShare->password)) {
+            return view('public-share.password', ['share' => $publicShare, 'error' => true]);
+        }
+
+        $request->session()->put($this->sessionKey($publicShare), true);
+
+        return redirect()->route('public-share.album', $publicShare->token);
+    }
+
     /** Stream a photo of a shared album (thumb/medium/original), no auth. */
-    public function photo(PublicShare $publicShare, Photo $photo, string $size): Response
+    public function photo(Request $request, PublicShare $publicShare, Photo $photo, string $size): Response
     {
         $album = $publicShare->shareable;
         abort_unless($album instanceof Album, 404);
+        abort_if($publicShare->isExpired(), 410);
+        abort_if($publicShare->hasPassword() && ! $this->unlocked($request, $publicShare), 403);
         abort_unless($album->photos()->whereKey($photo->id)->exists(), 404);
 
         $path = match ($size) {
@@ -111,6 +166,7 @@ class PublicShareController extends Controller
     {
         $resource = $publicShare->shareable;
         abort_unless($resource instanceof Calendar, 404);
+        abort_if($publicShare->isExpired(), 410);
 
         $blocks = [];
         CalendarObject::where('calendar_id', $resource->id)->orderBy('id')
@@ -132,6 +188,7 @@ class PublicShareController extends Controller
     {
         $resource = $publicShare->shareable;
         abort_unless($resource instanceof AddressBook, 404);
+        abort_if($publicShare->isExpired(), 410);
 
         $body = '';
         Contact::where('address_book_id', $resource->id)->orderBy('id')->chunk(200, function ($chunk) use (&$body): void {
@@ -164,6 +221,16 @@ class PublicShareController extends Controller
     private function esc(string $v): string
     {
         return str_replace(["\r", "\n"], '', $v);
+    }
+
+    private function sessionKey(PublicShare $publicShare): string
+    {
+        return 'pubshare_unlock_'.$publicShare->id;
+    }
+
+    private function unlocked(Request $request, PublicShare $publicShare): bool
+    {
+        return (bool) $request->session()->get($this->sessionKey($publicShare), false);
     }
 
     private function ownedResource(string $type, mixed $id, int $userId): Model

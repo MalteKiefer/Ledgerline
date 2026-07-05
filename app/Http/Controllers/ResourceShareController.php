@@ -73,6 +73,8 @@ class ResourceShareController extends Controller
                 'type' => $typeByClass[$p->shareable_type] ?? $p->shareable_type,
                 'resource_id' => $p->shareable_id,
                 'url' => $p->url(),
+                'expires_at' => $p->expires_at?->toIso8601String(),
+                'has_password' => $p->hasPassword(),
             ]);
 
         return response()->json(['shared_by_me' => $mine, 'shared_with_me' => $withMe, 'public' => $public]);

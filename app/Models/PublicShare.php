@@ -12,14 +12,31 @@ use Illuminate\Support\Str;
 
 /**
  * A public, tokenised read-only link to a calendar or address book. Anyone with
- * the token can view it without an account.
+ * the token can view it without an account. Optionally time-boxed (expires_at)
+ * and password-gated (hashed).
  */
-#[Fillable(['token', 'owner_id', 'shareable_type', 'shareable_id'])]
+#[Fillable(['token', 'owner_id', 'shareable_type', 'shareable_id', 'expires_at', 'password'])]
 class PublicShare extends Model
 {
+    protected function casts(): array
+    {
+        return ['expires_at' => 'datetime'];
+    }
+
     public function shareable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /** True once the optional expiry has passed. */
+    public function isExpired(): bool
+    {
+        return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    public function hasPassword(): bool
+    {
+        return $this->password !== null && $this->password !== '';
     }
 
     public function owner(): BelongsTo

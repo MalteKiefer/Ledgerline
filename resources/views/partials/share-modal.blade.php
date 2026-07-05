@@ -45,6 +45,27 @@
         <div class="mt-5 border-t border-gray-100 pt-4">
             <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('shares.public_heading') }}</h4>
             <p class="mt-1 text-xs text-gray-500">{{ __('shares.public_hint') }}</p>
+
+            {{-- Expiry + (album-only) password, applied on create and on update --}}
+            <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+                <label class="flex-1 text-xs text-gray-500">
+                    {{ __('shares.public_expiry_label') }}
+                    <select x-model="shareModal.publicExpiry" class="mt-1 block w-full rounded-md border-gray-300 text-xs">
+                        <option value="">{{ __('shares.public_expiry_never') }}</option>
+                        <option value="3600">{{ __('shares.public_expiry_1h') }}</option>
+                        <option value="86400">{{ __('shares.public_expiry_24h') }}</option>
+                        <option value="604800">{{ __('shares.public_expiry_7d') }}</option>
+                        <option value="2592000">{{ __('shares.public_expiry_30d') }}</option>
+                    </select>
+                </label>
+                <label class="flex-1 text-xs text-gray-500" x-show="shareModal.type === 'albums'">
+                    {{ __('shares.public_password_label') }}
+                    <input type="text" x-model="shareModal.publicPassword" autocomplete="off"
+                        :placeholder="shareModal.publicHasPassword ? '••••••' : ''"
+                        class="mt-1 block w-full rounded-md border-gray-300 text-xs">
+                </label>
+            </div>
+
             <template x-if="!shareModal.publicUrl">
                 <x-button variant="secondary" icon="link" class="mt-2" @click="createPublic()">{{ __('shares.public_create') }}</x-button>
             </template>
@@ -54,11 +75,18 @@
                         <input readonly :value="shareModal.publicUrl" @focus="$event.target.select()" class="min-w-0 flex-1 rounded-md border-gray-300 text-xs">
                         <x-button variant="secondary" icon="link" @click="copyPublicLink()">{{ __('shares.copy_link') }}</x-button>
                     </div>
+                    <p x-show="shareModal.publicExpiresAt" x-cloak class="text-xs text-gray-500">
+                        {{ __('shares.public_expiry_label') }}: <span x-text="shareModal.publicExpiresAt ? new Date(shareModal.publicExpiresAt).toLocaleString() : ''"></span>
+                    </p>
                     <div x-show="shareMailConfigured" class="flex items-center gap-2">
                         <input type="email" x-model="shareModal.publicEmail" placeholder="{{ __('shares.public_email_placeholder') }}" class="min-w-0 flex-1 rounded-md border-gray-300 text-xs">
                         <x-button variant="secondary" @click="emailPublic()">{{ __('shares.send_mail') }}</x-button>
                     </div>
-                    <button type="button" @click="revokePublic()" class="text-xs font-medium text-red-600 hover:text-red-700">{{ __('shares.public_revoke') }}</button>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <x-button variant="secondary" icon="arrow-path" @click="createPublic()">{{ __('contacts.ui.save') }}</x-button>
+                        <button type="button" @click="rotatePublic('{{ __('shares.public_rotated') }}')" class="text-xs font-medium text-gray-600 hover:text-gray-900">{{ __('shares.public_rotate') }}</button>
+                        <button type="button" @click="revokePublic()" class="text-xs font-medium text-red-600 hover:text-red-700">{{ __('shares.public_revoke') }}</button>
+                    </div>
                 </div>
             </template>
         </div>

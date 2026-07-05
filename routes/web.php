@@ -67,20 +67,24 @@ Route::middleware('throttle:60,1')->group(function (): void {
     Route::get('/p/{publicShare:token}/album', [PublicShareController::class, 'album'])->name('public-share.album');
     Route::get('/p/{publicShare:token}/photo/{photo}/{size}', [PublicShareController::class, 'photo'])
         ->whereIn('size', ['thumb', 'medium', 'original'])->name('public-share.photo');
+    // Password-gated album unlock; throttled to blunt brute-forcing the password.
+    Route::post('/p/{publicShare:token}/album/unlock', [PublicShareController::class, 'albumUnlock'])
+        ->middleware('throttle:10,1')->name('public-share.album.unlock');
 });
 
-// Guest-only routes: the login page and the Pocket-ID OIDC handshake.
+// Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
+// endpoints are throttled to blunt handshake replay/hammering.
 Route::middleware('guest')->group(function (): void {
     Route::view('/login', 'auth.login')->name('login');
-    Route::get('/auth/redirect', [PocketIdController::class, 'redirect'])->name('auth.redirect');
-    Route::get('/auth/callback', [PocketIdController::class, 'callback'])->name('auth.callback');
+    Route::get('/auth/redirect', [PocketIdController::class, 'redirect'])->middleware('throttle:30,1')->name('auth.redirect');
+    Route::get('/auth/callback', [PocketIdController::class, 'callback'])->middleware('throttle:30,1')->name('auth.callback');
 });
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
-    Route::get('/search', [SearchController::class, 'index'])->name('search');
-    Route::get('/search/suggest', [SearchController::class, 'suggest'])->name('search.suggest');
+    Route::get('/search', [SearchController::class, 'index'])->middleware('throttle:60,1')->name('search');
+    Route::get('/search/suggest', [SearchController::class, 'suggest'])->middleware('throttle:120,1')->name('search.suggest');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
@@ -291,6 +295,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/shares/public', [PublicShareController::class, 'store'])->name('public-share.store');
     Route::delete('/shares/public/{publicShare}', [PublicShareController::class, 'destroy'])->name('public-share.destroy');
     Route::post('/shares/public/{publicShare}/email', [PublicShareController::class, 'email'])->name('public-share.email');
+    Route::post('/shares/public/{publicShare}/rotate', [PublicShareController::class, 'rotate'])->name('public-share.rotate');
     // Calendar: CalDAV-backed events, driven client-side over a JSON API.
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');

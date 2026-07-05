@@ -220,6 +220,14 @@ class FileController extends Controller
             ->whereIn('id', array_values($validated['folder_ids'] ?? []))->pluck('id')->all();
         abort_if($fileIds === [] && $folderIds === [], 422, 'Nothing selected.');
 
+        // Cap how many exports one user can have building at once so a single
+        // user can't flood the queue with huge jobs.
+        abort_if(
+            Export::inFlightCount($uid) >= Export::MAX_IN_FLIGHT,
+            429,
+            __('downloads.error.too_many', ['max' => Export::MAX_IN_FLIGHT])
+        );
+
         $count = count($fileIds) + count($folderIds);
 
         $export = Export::create([

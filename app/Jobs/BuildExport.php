@@ -25,7 +25,10 @@ class BuildExport implements ShouldQueue
     /** Retention: exports are downloadable for this many days, then pruned. */
     public const RETENTION_DAYS = 7;
 
-    public int $timeout = 1800;
+    /** Seconds a single build may run before the queue worker kills it. */
+    public const TIMEOUT = 1800;
+
+    public int $timeout = self::TIMEOUT;
 
     public int $tries = 1;
 

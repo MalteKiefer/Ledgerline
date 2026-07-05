@@ -559,6 +559,14 @@ class GalleryController extends Controller
         $variant = $validated['variant'] ?? 'original';
         $count = count($validated['photo_ids']);
 
+        // Cap how many exports one user can have building at once so a single
+        // user can't flood the queue with huge jobs.
+        abort_if(
+            Export::inFlightCount($request->user()->id) >= Export::MAX_IN_FLIGHT,
+            429,
+            __('downloads.error.too_many', ['max' => Export::MAX_IN_FLIGHT])
+        );
+
         $export = Export::create([
             'user_id' => $request->user()->id,
             'source' => 'gallery',

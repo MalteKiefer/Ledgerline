@@ -71,6 +71,46 @@ class CalendarReminderTest extends TestCase
         $this->assertSame(0, DB::table('calendar_alarm_log')->count());
     }
 
+    public function test_recurring_alarm_with_tzid_is_dst_correct(): void
+    {
+        // A daily 09:00 Europe/Berlin standup with a 15-minute lead. Berlin
+        // switches to CEST (UTC+2) on Sun 29 Mar 2026, so on/after 30 Mar the
+        // 09:00 wall-clock instance is 07:00Z (fire 06:45Z), whereas before DST
+        // it was 08:00Z (fire 07:45Z). The alarm must track the event timezone.
+        $calendar = $this->calendar();
+        app(CalendarWriter::class)->create($calendar, [
+            'summary' => 'Standup',
+            'start' => '2026-03-27T09:00',
+            'end' => '2026-03-27T09:30',
+            'timezone' => 'Europe/Berlin',
+            'rrule' => 'FREQ=DAILY',
+            'reminder_minutes' => 15,
+        ]);
+
+        // Fire the run exactly at the DST-correct instant for the 30-Mar (CEST)
+        // occurrence: 09:00 CEST = 07:00Z, minus the 15m lead = 06:45Z.
+        Carbon::setTestNow(Carbon::parse('2026-03-30 06:45:00', 'UTC'));
+        $notifier = Mockery::mock(ChannelNotifier::class);
+        $notifier->shouldReceive('send');
+        $this->app->instance(ChannelNotifier::class, $notifier);
+        $this->artisan('calendar:remind')->assertSuccessful();
+
+        // The 30-Mar occurrence must be logged at 07:00Z (CEST). A UTC-computed
+        // (DST-blind) expansion would place it at 08:00Z — an hour off.
+        $this->assertSame(
+            1,
+            DB::table('calendar_alarm_log')->where('occurrence_at', '2026-03-30 07:00:00')->count(),
+            'The 30-Mar occurrence must fire at 07:00Z (CEST), not 08:00Z.',
+        );
+        $this->assertSame(
+            0,
+            DB::table('calendar_alarm_log')->where('occurrence_at', '2026-03-30 08:00:00')->count(),
+            'No 08:00Z instance should exist on 30 Mar — that would be the pre-DST (+1h) offset.',
+        );
+
+        Carbon::setTestNow();
+    }
+
     public function test_a_recurring_event_fires_per_instance(): void
     {
         $calendar = $this->calendar();
