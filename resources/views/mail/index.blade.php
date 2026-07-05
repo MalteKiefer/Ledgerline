@@ -646,8 +646,8 @@
                 <div class="mt-4">
                     <input type="text" x-model="attachPicker.q"
                         @input.debounce.250ms="attachPicker.source === 'gallery' ? searchAttachGallery() : null"
-                        :placeholder="attachPicker.source === 'gallery' ? labels.attachSearchGallery : labels.attachSearchFiles"
-                        :aria-label="labels.attachSearch"
+                        :placeholder="attachPicker.source === 'gallery' ? @js(__('mail.attach_search_gallery')) : @js(__('mail.attach_search_files'))"
+                        aria-label="{{ __('mail.attach_search') }}"
                         class="w-full rounded-md border-gray-300 text-sm">
                 </div>
                 <p x-show="attachPicker.loading" x-cloak class="mt-4 text-sm text-gray-500">…</p>
