@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\MailAccount;
+use App\Models\MailIdentity;
 use App\Models\Photo;
 use App\Models\StoredFile;
 use App\Services\Mail\MailSource;
@@ -108,10 +109,12 @@ class MailComposeController extends Controller
             return response()->json(['ok' => false, 'message' => __('mail.smtp_not_configured')], 422);
         }
 
-        $msg = $this->message($request, $account, $data);
+        $identity = $this->identity($account, $data);
+        $cfg = $this->cfgFor($account, $identity);
+        $msg = $this->message($request, $cfg, $data);
 
         try {
-            $raw = $sender->send($account->smtpConfig(), $msg);
+            $raw = $sender->send($cfg, $msg);
         } catch (\Throwable $e) {
             report($e);
 
@@ -128,7 +131,9 @@ class MailComposeController extends Controller
     {
         $data = $this->validated($request);
         $account = $this->account($request, $data['account_id']);
-        $raw = $sender->build($account->smtpConfig(), $this->message($request, $account, $data))->toString();
+        $identity = $this->identity($account, $data);
+        $cfg = $this->cfgFor($account, $identity);
+        $raw = $sender->build($cfg, $this->message($request, $cfg, $data))->toString();
 
         $this->appendSilently($source, $account, ['Drafts', 'INBOX.Drafts', '[Gmail]/Drafts'], $raw);
 
@@ -140,6 +145,7 @@ class MailComposeController extends Controller
     {
         return $request->validate([
             'account_id' => ['required', 'integer'],
+            'identity_id' => ['nullable', 'integer'],
             'to' => ['required', 'array', 'min:1'],
             'to.*' => ['email'],
             'cc' => ['array'],
@@ -175,16 +181,53 @@ class MailComposeController extends Controller
     private function account(Request $request, int $id): MailAccount
     {
         $account = MailAccount::withoutGlobalScopes()->findOrFail($id);
-        abort_unless($account->isOwnedBy($request->user()->id), 403);
+        abort_unless((int) $account->user_id === (int) $request->user()->id, 403);
 
         return $account;
     }
 
-    /** @return array<string,mixed> */
-    private function message(Request $request, MailAccount $account, array $data): array
+    /**
+     * Resolve the sending identity: the requested one (verified to belong to the
+     * account) or the account's default. Null only for a legacy account with no
+     * identities yet, in which case the account's own fields are used.
+     */
+    private function identity(MailAccount $account, array $data): ?MailIdentity
+    {
+        if (! empty($data['identity_id'])) {
+            $identity = MailIdentity::findOrFail((int) $data['identity_id']);
+            abort_unless($identity->mail_account_id === $account->id, 403);
+
+            return $identity;
+        }
+
+        return $account->defaultIdentity();
+    }
+
+    /**
+     * The SMTP config for this send. Auth (host/port/credentials) always comes
+     * from the account; the From/reply-to are overridden by the chosen identity.
+     *
+     * @return array<string,mixed>
+     */
+    private function cfgFor(MailAccount $account, ?MailIdentity $identity): array
     {
         $cfg = $account->smtpConfig();
 
+        if ($identity !== null) {
+            $cfg['from_email'] = $identity->from_email;
+            $cfg['from_name'] = $identity->from_name ?: $account->from_name;
+            $cfg['reply_to'] = $identity->reply_to;
+        }
+
+        return $cfg;
+    }
+
+    /**
+     * @param  array<string,mixed>  $cfg
+     * @return array<string,mixed>
+     */
+    private function message(Request $request, array $cfg, array $data): array
+    {
         return [
             'from_email' => $cfg['from_email'],
             'from_name' => $cfg['from_name'],

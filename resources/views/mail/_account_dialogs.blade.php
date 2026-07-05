@@ -95,6 +95,63 @@
                     </div>
                 </div>
 
+                {{-- Sender identities (only for an already-saved account). --}}
+                <template x-if="editingId">
+                    <div class="border-t border-gray-200 pt-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-medium text-gray-700">{{ __('mail.identities') }}</span>
+                            <button type="button" @click="openIdentityAdd()" class="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900">
+                                <x-icon name="plus" class="h-3.5 w-3.5" />{{ __('mail.identity_add') }}
+                            </button>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-400">{{ __('mail.identities_hint') }}</p>
+                        <ul class="mt-2 space-y-1.5">
+                            <template x-for="i in editingIdentities()" :key="i.id">
+                                <li class="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2">
+                                    <div class="min-w-0 flex-1">
+                                        <p class="truncate text-sm text-gray-800" x-text="(i.fromName ? i.fromName + ' <' + i.fromEmail + '>' : i.fromEmail)"></p>
+                                        <span x-show="i.isDefault" x-cloak class="text-[11px] font-medium text-gray-500">{{ __('mail.identity_default') }}</span>
+                                    </div>
+                                    <button type="button" x-show="! i.isDefault" @click="setIdentityDefault(i)" class="shrink-0 text-[11px] font-medium text-gray-500 hover:text-gray-800">{{ __('mail.identity_set_default') }}</button>
+                                    <button type="button" @click="openIdentityEdit(i)" class="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-50 hover:text-gray-800" aria-label="{{ __('mail.identity_edit') }}"><x-icon name="pencil" class="h-3.5 w-3.5" /></button>
+                                    <button type="button" x-show="editingIdentities().length > 1" @click="deleteIdentity(i)" class="shrink-0 rounded p-1 text-gray-500 hover:bg-gray-50 hover:text-red-600" aria-label="{{ __('mail.identity_delete') }}"><x-icon name="trash" class="h-3.5 w-3.5" /></button>
+                                </li>
+                            </template>
+                        </ul>
+
+                        {{-- Identity add/edit sub-form. --}}
+                        <div x-show="identityForm.open" x-cloak class="mt-3 space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700">{{ __('mail.identity_from_name') }}</label>
+                                    <input type="text" x-model="identityForm.from_name" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700">{{ __('mail.identity_from_email') }}</label>
+                                    <input type="email" x-model="identityForm.from_email" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">{{ __('mail.identity_reply_to') }}</label>
+                                <input type="email" x-model="identityForm.reply_to" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-700">{{ __('mail.identity_signature') }}</label>
+                                <textarea x-model="identityForm.signature" rows="3" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500"></textarea>
+                            </div>
+                            <label class="flex items-center gap-2 text-sm text-gray-700">
+                                <input type="checkbox" x-model="identityForm.is_default" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                                {{ __('mail.identity_set_default') }}
+                            </label>
+                            <p x-show="identityForm.error" x-cloak class="text-xs text-red-600" x-text="identityForm.error"></p>
+                            <div class="flex justify-end gap-2">
+                                <button type="button" @click="cancelIdentity()" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">{{ __('common.cancel') }}</button>
+                                <button type="button" @click="saveIdentity()" class="rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700">{{ __('mail.identity_save') }}</button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
                 <p class="text-xs text-gray-400">{{ __('mail.security_note') }}</p>
                 <p x-show="error" x-cloak class="text-xs text-red-600" x-text="error"></p>
             </div>

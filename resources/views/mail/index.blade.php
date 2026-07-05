@@ -533,9 +533,20 @@
                 </div>
                 <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
                     <template x-if="manifest.accounts.length > 1">
-                        <select x-model.number="compose.accountId" class="w-full rounded-md border-gray-300 text-sm">
+                        <select x-model.number="compose.accountId" @change="onComposeAccountChange()" class="w-full rounded-md border-gray-300 text-sm">
                             <template x-for="a in sortedAccounts" :key="a.id"><option :value="a.id" x-text="a.name"></option></template>
                         </select>
+                    </template>
+                    {{-- Sender identity (shown only when the account has more than one). --}}
+                    <template x-if="_identities(_account(compose.accountId)).length > 1">
+                        <div class="flex items-center gap-2">
+                            <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.from_identity') }}</label>
+                            <select x-model.number="compose.identityId" @change="onComposeIdentityChange()" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm">
+                                <template x-for="i in _identities(_account(compose.accountId))" :key="i.id">
+                                    <option :value="i.id" x-text="(i.fromName ? i.fromName + ' <' + i.fromEmail + '>' : i.fromEmail)"></option>
+                                </template>
+                            </select>
+                        </div>
                     </template>
                     <div x-show="compose.accountId && ! (_account(compose.accountId)?.smtpConfigured)" x-cloak
                         class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">

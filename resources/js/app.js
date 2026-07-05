@@ -3288,6 +3288,8 @@ Alpine.data('vaultMail', (labels = {}) => ({
     form: { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true, smtp_host: '', smtp_port: '', smtp_encryption: 'starttls', smtp_username: '', smtp_password: '', from_name: '', reply_to: '', signature: '', hasSmtpPassword: false },
     deleteOpen: false,
     deleteId: null,
+    // Identity management (inside the account edit dialog).
+    identityForm: { open: false, id: null, from_name: '', from_email: '', reply_to: '', signature: '', is_default: false, error: '' },
     cacheVersion: 0, // bumped on background sync to re-read cached stats
     reader: {
         open: false, account: null, folderPath: 'INBOX', page: 1, total: 0, perPage: 50, uidValidity: 0,
@@ -3300,7 +3302,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     // ---- Compose / send -----------------------------------------------------
     compose: {
-        open: false, accountId: null, to: '', cc: '', bcc: '', showCc: false, subject: '',
+        open: false, accountId: null, identityId: null, to: '', cc: '', bcc: '', showCc: false, subject: '',
         body: '', uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
     },
     attachPicker: { open: false, source: 'gallery', items: [], chosen: [], loading: false, q: '', _allFiles: [] },
@@ -3308,7 +3310,14 @@ Alpine.data('vaultMail', (labels = {}) => ({
     recipientBox: { field: '', items: [], active: -1, seq: 0 },
 
     _account(id) { return this.manifest.accounts.find((a) => a.id === id) || this.manifest.accounts[0] || null; },
-    _signatureHtml(acc) { return acc && acc.signature ? '<br><br>-- <br>' + acc.signature.replace(/\n/g, '<br>') : ''; },
+    // Identities for an account (empty array for a legacy/loading account).
+    _identities(acc) { return (acc && Array.isArray(acc.identities)) ? acc.identities : []; },
+    // The default identity of an account (flagged default, else the first).
+    _defaultIdentity(acc) { const list = this._identities(acc); return list.find((i) => i.isDefault) || list[0] || null; },
+    // Resolve an identity by id within an account.
+    _identity(acc, id) { return this._identities(acc).find((i) => i.id === id) || null; },
+    // Signature block from a signature string (identity- or account-level).
+    _signatureHtml(sig) { return sig ? '<br><br>-- <br>' + String(sig).replace(/\n/g, '<br>') : ''; },
     // Parse a comma-separated recipients string into bare addresses. Accepts
     // either "email" or "Name <email>" tokens and extracts the address so the
     // backend's per-address 'email' validation always receives bare emails.
@@ -3321,12 +3330,39 @@ Alpine.data('vaultMail', (labels = {}) => ({
     },
     _blankCompose() {
         const acc = this._account(this.reader.account?.id);
+        const identity = this._defaultIdentity(acc);
         return {
-            open: true, accountId: acc?.id ?? null, to: '', cc: '', bcc: '', showCc: false, subject: '',
-            body: this._signatureHtml(acc), uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
+            open: true, accountId: acc?.id ?? null, identityId: identity?.id ?? null, to: '', cc: '', bcc: '', showCc: false, subject: '',
+            body: this._signatureHtml(identity?.signature ?? acc?.signature), uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
         };
     },
     newCompose() { this.compose = this._blankCompose(); },
+
+    // The signature of the identity currently chosen in the compose modal
+    // (falls back to the account's legacy signature when it has no identities).
+    _composeSignature(c) {
+        const acc = this._account(c.accountId);
+        const identity = this._identity(acc, c.identityId) || this._defaultIdentity(acc);
+        return identity ? identity.signature : (acc?.signature ?? null);
+    },
+    // Account changed in compose: pick that account's default identity and swap
+    // its signature into the body (replacing any previous signature block).
+    onComposeAccountChange() {
+        const acc = this._account(this.compose.accountId);
+        this.compose.identityId = this._defaultIdentity(acc)?.id ?? null;
+        this._swapSignature();
+    },
+    // Identity changed in compose: swap its signature into the body.
+    onComposeIdentityChange() { this._swapSignature(); },
+    // Replace the trailing signature block (from the last "-- " marker) with the
+    // current identity's signature, so switching identity updates the sig.
+    _swapSignature() {
+        const sig = this._signatureHtml(this._composeSignature(this.compose));
+        const marker = '<br><br>-- <br>';
+        const idx = this.compose.body.lastIndexOf(marker);
+        if (idx >= 0) this.compose.body = this.compose.body.slice(0, idx) + sig;
+        else this.compose.body = this.compose.body + sig;
+    },
 
     reply(all = false) {
         const m = this.reader.current;
@@ -3341,7 +3377,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         c.subject = /^re:/i.test(m.subject || '') ? m.subject : 'Re: ' + (m.subject || '');
         c.inReplyTo = m.messageId || '';
         c.references = m.messageId || '';
-        c.body = this._signatureHtml(this._account(c.accountId)) + this._quote(m);
+        c.body = this._signatureHtml(this._composeSignature(c)) + this._quote(m);
         this.compose = c;
     },
     forward() {
@@ -3349,7 +3385,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         if (! m) return;
         const c = this._blankCompose();
         c.subject = /^fwd:/i.test(m.subject || '') ? m.subject : 'Fwd: ' + (m.subject || '');
-        c.body = this._signatureHtml(this._account(c.accountId)) + this._quote(m, true);
+        c.body = this._signatureHtml(this._composeSignature(c)) + this._quote(m, true);
         this.compose = c;
     },
     _quote(m, forward = false) {
@@ -3463,6 +3499,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         const c = this.compose;
         const fd = new FormData();
         fd.append('account_id', c.accountId);
+        if (c.identityId) fd.append('identity_id', c.identityId);
         this._emails(c.to).forEach((e) => fd.append('to[]', e));
         this._emails(c.cc).forEach((e) => fd.append('cc[]', e));
         this._emails(c.bcc).forEach((e) => fd.append('bcc[]', e));
@@ -3573,11 +3610,13 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.editingId = null;
         this.form = { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true, smtp_host: '', smtp_port: '', smtp_encryption: 'starttls', smtp_username: '', smtp_password: '', from_name: '', reply_to: '', signature: '', hasSmtpPassword: false };
         this.error = '';
+        this.identityForm.open = false;
         this.dialogOpen = true;
     },
 
     openEdit(a) {
         this.editingId = a.id;
+        this.identityForm.open = false;
         // Password left blank keeps the stored one (never sent to the browser).
         this.form = {
             name: a.name ?? '', host: a.host ?? '', port: a.port ?? 993, encryption: a.encryption ?? 'ssl',
@@ -3613,6 +3652,64 @@ Alpine.data('vaultMail', (labels = {}) => ({
             }
             this.dialogOpen = false;
         } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    // ---- Sender identities (inside the account edit dialog) -----------------
+    // The account being edited; identities are read/written through it.
+    _editingAccount() { return this.editingId ? this._account(this.editingId) : null; },
+    editingIdentities() { return this._identities(this._editingAccount()); },
+    openIdentityAdd() {
+        this.identityForm = { open: true, id: null, from_name: '', from_email: this._editingAccount()?.username ?? '', reply_to: '', signature: '', is_default: false, error: '' };
+    },
+    openIdentityEdit(i) {
+        this.identityForm = { open: true, id: i.id, from_name: i.fromName ?? '', from_email: i.fromEmail ?? '', reply_to: i.replyTo ?? '', signature: i.signature ?? '', is_default: !! i.isDefault, error: '' };
+    },
+    cancelIdentity() { this.identityForm.open = false; },
+    async saveIdentity() {
+        const acc = this._editingAccount();
+        const f = this.identityForm;
+        if (! acc || ! f.from_email.trim()) { f.error = labels.saveFailed; return; }
+        const body = {
+            from_name: f.from_name.trim() || null, from_email: f.from_email.trim(),
+            reply_to: f.reply_to.trim() || null, signature: f.signature ?? null, is_default: !! f.is_default,
+        };
+        try {
+            const url = f.id
+                ? `/mail/accounts/${acc.id}/identities/${f.id}`
+                : `/mail/accounts/${acc.id}/identities`;
+            const res = await fetch(url, { method: f.id ? 'PUT' : 'POST', headers: this._headers(), body: JSON.stringify(body) });
+            if (! res.ok) { f.error = labels.saveFailed; return; }
+            await this._reloadIdentities(acc);
+            this.identityForm.open = false;
+        } catch (e) { f.error = labels.saveFailed; }
+    },
+    async setIdentityDefault(i) {
+        const acc = this._editingAccount();
+        if (! acc || i.isDefault) return;
+        try {
+            const res = await fetch(`/mail/accounts/${acc.id}/identities/${i.id}`, {
+                method: 'PUT', headers: this._headers(),
+                body: JSON.stringify({ from_name: i.fromName, from_email: i.fromEmail, reply_to: i.replyTo, signature: i.signature, is_default: true }),
+            });
+            if (res.ok) await this._reloadIdentities(acc);
+        } catch (e) { /* keep current */ }
+    },
+    async deleteIdentity(i) {
+        const acc = this._editingAccount();
+        if (! acc) return;
+        try {
+            const res = await fetch(`/mail/accounts/${acc.id}/identities/${i.id}`, { method: 'DELETE', headers: this._headers() });
+            if (res.ok) await this._reloadIdentities(acc);
+        } catch (e) { /* keep current */ }
+    },
+    // Re-fetch the account's identities and write them back onto the manifest.
+    async _reloadIdentities(acc) {
+        try {
+            const res = await fetch(`/mail/accounts/${acc.id}/identities`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            const d = await res.json();
+            const target = this._account(acc.id);
+            if (target) target.identities = d.identities || [];
+        } catch (e) { /* keep current */ }
     },
 
     confirmDelete(a) { this.deleteId = a.id; this.deleteOpen = true; },

@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MailAccount;
 use App\Models\MailFolder;
+use App\Models\MailIdentity;
 use App\Models\MailMessage;
 use App\Support\BlobStore;
 use App\Support\KeepBlankSecrets;
@@ -23,7 +24,7 @@ class MailAccountController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'accounts' => MailAccount::orderBy('name')->get()->map(fn (MailAccount $a) => $this->toArray($a)),
+            'accounts' => MailAccount::with('identities')->orderBy('name')->get()->map(fn (MailAccount $a) => $this->toArray($a)),
         ]);
     }
 
@@ -32,7 +33,17 @@ class MailAccountController extends Controller
         $data = $this->validated($request, requirePassword: true);
         $account = MailAccount::create($data);
 
-        return response()->json($this->toArray($account), 201);
+        // Seed the default identity from the account's sending fields, matching
+        // the data migration so every account always has at least one identity.
+        $account->identities()->create([
+            'from_name' => $account->from_name,
+            'from_email' => $account->username,
+            'reply_to' => $account->reply_to,
+            'signature' => $account->signature,
+            'is_default' => true,
+        ]);
+
+        return response()->json($this->toArray($account->load('identities')), 201);
     }
 
     public function update(Request $request, MailAccount $account): JsonResponse
@@ -42,7 +53,7 @@ class MailAccountController extends Controller
         $data = KeepBlankSecrets::preserve($data, ['password', 'smtp_password']);
         $account->update($data);
 
-        return response()->json($this->toArray($account->refresh()));
+        return response()->json($this->toArray($account->load('identities')));
     }
 
     /**
@@ -122,6 +133,14 @@ class MailAccountController extends Controller
             'signature' => $a->signature,
             'hasSmtpPassword' => $a->smtp_password !== null && $a->smtp_password !== '',
             'smtpConfigured' => $a->smtpConfigured(),
+            'identities' => $a->identities->map(fn (MailIdentity $i) => [
+                'id' => $i->id,
+                'fromName' => $i->from_name,
+                'fromEmail' => $i->from_email,
+                'replyTo' => $i->reply_to,
+                'signature' => $i->signature,
+                'isDefault' => $i->is_default,
+            ])->values(),
         ];
     }
 }
