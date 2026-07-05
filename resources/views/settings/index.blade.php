@@ -21,6 +21,10 @@
             ['url' => route('settings.downloads.edit'), 'title' => __('settings.downloads_section'), 'desc' => __('settings.downloads_desc')],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc')],
         ];
+        // Show every settings card alphabetically by its (localised) title.
+        $byTitle = fn ($a, $b) => strcasecmp($a['title'], $b['title']);
+        usort($personal, $byTitle);
+        usort($admin, $byTitle);
     @endphp
 
     {{-- Personal settings --}}
