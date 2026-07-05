@@ -1394,6 +1394,48 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         } catch (e) { /* ignore */ }
     },
 
+    // Play a Live Photo's motion clip on hover (Apple-style), stop on leave.
+    hoverMotion(el, enter) {
+        const src = el.getAttribute('data-motion');
+        if (! src) return;
+        if (enter) {
+            if (el._motionVid) return;
+            const v = document.createElement('video');
+            v.src = src; v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
+            v.className = 'absolute inset-0 h-full w-full object-cover';
+            el.appendChild(v);
+            el._motionVid = v;
+            v.play().catch(() => {});
+        } else if (el._motionVid) {
+            el._motionVid.pause(); el._motionVid.remove(); el._motionVid = null;
+        }
+    },
+
+    // Add selected photos to an album (existing or new).
+    albumBox: { open: false, list: [], newName: '' },
+    async openAlbumBox() {
+        if (! this.selected.length) return;
+        this.albumBox = { open: true, list: [], newName: '' };
+        try {
+            const r = await fetch('/gallery/albums/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.albumBox.list = ((await r.json()).albums ?? []).filter((a) => a.owned);
+        } catch (e) { /* keep */ }
+    },
+    _albumPost(url, body) {
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token }, body: JSON.stringify(body) });
+    },
+    async addToAlbum(id) {
+        await this._albumPost('/gallery/albums/' + id + '/photos', { photo_ids: this.selected });
+        this.albumBox.open = false; this.selected = [];
+    },
+    async createAlbumAndAdd() {
+        const name = (this.albumBox.newName || '').trim();
+        if (! name) return;
+        const r = await this._albumPost('/gallery/albums', { name });
+        const id = (await r.json()).id;
+        await this.addToAlbum(id);
+    },
+
     initGallery() {
         this.cols = Number(document.querySelector('meta[name="gallery-columns"]')?.content) || 6;
 
@@ -4253,6 +4295,89 @@ Alpine.data('vaultMail', (labels = {}) => ({
     fmtAddress(a) {
         if (! a) return '';
         return a.name ? `${a.name} <${a.email}>` : a.email;
+    },
+}));
+
+/**
+ * Albums list: create/rename/delete albums, open the share dialog per album.
+ */
+Alpine.data('albumsPage', (cfg = {}) => ({
+    ...shareMixin(cfg),
+    albums: [], loading: true,
+    nameModal: { open: false, value: '' },
+
+    init() { this.load(); },
+    async load() {
+        try {
+            const r = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.albums = (await r.json()).albums ?? [];
+        } catch (e) { /* keep */ } finally { this.loading = false; }
+    },
+    openNew() { this.nameModal = { open: true, value: '' }; this.$nextTick(() => this.$refs.albumName?.focus()); },
+    async createAlbum() {
+        const name = (this.nameModal.value || '').trim();
+        if (! name) return;
+        this.nameModal.open = false;
+        await this._json(cfg.storeUrl, 'POST', { name });
+        this.load();
+    },
+    _json(url, method, body) {
+        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+    },
+}));
+
+/**
+ * Album detail: photos grid, add (from the gallery picker) / remove, rename,
+ * delete, and share (internal + public) via shareMixin.
+ */
+Alpine.data('albumPage', (cfg = {}) => ({
+    ...shareMixin(cfg),
+    album: { name: '', owned: false, can_edit: false }, photos: [], loading: true,
+    picker: { open: false, list: [], chosen: [] },
+    renameModal: { open: false, value: '' },
+
+    init() { this.load(); },
+    async load() {
+        try {
+            const r = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) { const d = await r.json(); this.album = d.album; this.photos = d.photos ?? []; }
+        } catch (e) { /* keep */ } finally { this.loading = false; }
+    },
+    async openPicker() {
+        this.picker = { open: true, list: [], chosen: [] };
+        try {
+            const r = await fetch(cfg.pickerUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.picker.list = (await r.json()).photos ?? [];
+        } catch (e) { /* keep */ }
+    },
+    togglePick(id) {
+        const i = this.picker.chosen.indexOf(id);
+        if (i >= 0) this.picker.chosen.splice(i, 1); else this.picker.chosen.push(id);
+    },
+    async addChosen() {
+        if (! this.picker.chosen.length) { this.picker.open = false; return; }
+        await this._json(cfg.photosUrl, 'POST', { photo_ids: this.picker.chosen });
+        this.picker.open = false; this.load();
+    },
+    async removePhoto(id) {
+        await this._json(cfg.photosUrl, 'DELETE', { photo_ids: [id] });
+        this.load();
+    },
+    openRename() { this.renameModal = { open: true, value: this.album.name }; },
+    async saveRename() {
+        const name = (this.renameModal.value || '').trim();
+        if (! name) return;
+        this.renameModal.open = false;
+        await this._json(cfg.albumUrl, 'PUT', { name });
+        this.album.name = name;
+    },
+    async destroyAlbum() {
+        if (! await this.$store.confirm.ask(cfg.deleteConfirm)) return;
+        await this._json(cfg.albumUrl, 'DELETE');
+        window.location = cfg.albumsUrl;
+    },
+    _json(url, method, body) {
+        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
     },
 }));
 

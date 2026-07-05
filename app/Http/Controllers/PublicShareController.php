@@ -5,16 +5,20 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\AddressBook;
+use App\Models\Album;
 use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\CalendarObject;
 use App\Models\Contact;
+use App\Models\Photo;
 use App\Models\PublicShare;
 use App\Services\Notifications\ChannelNotifier;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Sabre\VObject\Reader;
 
@@ -25,7 +29,7 @@ use Sabre\VObject\Reader;
  */
 class PublicShareController extends Controller
 {
-    private const TYPES = ['calendars' => Calendar::class, 'address-books' => AddressBook::class];
+    private const TYPES = ['calendars' => Calendar::class, 'address-books' => AddressBook::class, 'albums' => Album::class];
 
     /** Create (or return) the public link for an owned calendar/address book. */
     public function store(Request $request): JsonResponse
@@ -67,7 +71,40 @@ class PublicShareController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    // ---- public (no auth): the link IS the ICS/vCard feed ------------------
+    // ---- public (no auth) --------------------------------------------------
+
+    /** Public HTML gallery page for a shared album. */
+    public function album(PublicShare $publicShare): View
+    {
+        $resource = $publicShare->shareable;
+        abort_unless($resource instanceof Album, 404);
+        $photos = $resource->photos()->get(['photos.id']);
+
+        return view('public-share.album', ['share' => $publicShare, 'album' => $resource, 'photos' => $photos]);
+    }
+
+    /** Stream a photo of a shared album (thumb/medium/original), no auth. */
+    public function photo(PublicShare $publicShare, Photo $photo, string $size): Response
+    {
+        $album = $publicShare->shareable;
+        abort_unless($album instanceof Album, 404);
+        abort_unless($album->photos()->whereKey($photo->id)->exists(), 404);
+
+        $path = match ($size) {
+            'thumb' => $photo->thumb_path,
+            'medium' => $photo->medium_path,
+            default => $photo->disk_path,
+        };
+        $disk = Storage::disk(config('files.disk'));
+        abort_unless($path && $disk->exists($path), 404);
+
+        return $disk->response($path, $photo->name, [
+            'Content-Type' => $size === 'original' ? $photo->mime_type : 'image/jpeg',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
+            'Cache-Control' => 'private, max-age=3600',
+        ], $size === 'original' ? 'attachment' : 'inline');
+    }
 
     /** ICS subscription feed for a shared calendar. */
     public function ics(PublicShare $publicShare): Response

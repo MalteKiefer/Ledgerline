@@ -5,7 +5,10 @@
        @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()"
        @keydown.window="onKeydown($event)">
 
-    <x-page-heading :title="__('gallery.heading')" :subtitle="__('gallery.subtitle')">
+    <div class="flex flex-col gap-4 md:flex-row">
+    @include('gallery._sidebar')
+    <div class="min-w-0 flex-1">
+    <x-page-heading :title="$favoritesOnly ? __('gallery.favorites') : __('gallery.heading')" :subtitle="__('gallery.subtitle')">
         <x-slot:actions>
             <form method="GET" action="{{ route('gallery.index') }}" class="flex w-full items-center gap-1 sm:w-auto">
                 <input type="search" name="q" value="{{ $searchQuery }}" placeholder="{{ __('gallery.search_placeholder') }}"
@@ -15,16 +18,6 @@
                     <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900" title="{{ __('gallery.search_clear') }}"><x-icon name="x-mark" /></a>
                 @endif
             </form>
-            @if ($favoritesOnly)
-                <x-button :href="route('gallery.index')">{{ __('gallery.all_photos') }}</x-button>
-            @else
-                <x-button :href="route('gallery.index', ['favorites' => 1])">{{ __('gallery.favorites') }}</x-button>
-            @endif
-            <x-button :href="route('gallery.trips')">{{ __('gallery.trips') }}</x-button>
-            <x-button :href="route('gallery.map')">{{ __('gallery.map') }}</x-button>
-            <x-button :href="route('gallery.people')">{{ __('gallery.people_link') }}</x-button>
-            <x-button :href="route('gallery.duplicates')">{{ __('gallery.dup_link') }}</x-button>
-            <x-button :href="route('gallery.trash')">{{ __('gallery.trash') }}</x-button>
             <label title="{{ __('gallery.upload') }}" aria-label="{{ __('gallery.upload') }}" class="hidden cursor-pointer rounded-md bg-gray-900 p-2 text-white hover:bg-gray-800 sm:inline-flex">
                 <x-icon name="arrow-up-tray" class="h-5 w-5" />
                 <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
@@ -111,6 +104,7 @@
             <button type="button" @click="queueExport('original', '{{ __('downloads.queued_toast') }}')" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_original') }}</button>
             <button type="button" @click="queueExport('edited', '{{ __('downloads.queued_toast') }}')" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_edited') }}</button>
         </div>
+        <button type="button" @click="openAlbumBox()" title="{{ __('gallery.add_to_album') }}" aria-label="{{ __('gallery.add_to_album') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="view-columns" class="h-5 w-5" /></button>
         <button type="button" @click="locationOpen = true" title="{{ __('gallery.set_location') }}" aria-label="{{ __('gallery.set_location') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="map-pin" class="h-5 w-5" /></button>
         <button type="button" @click="deleteOpen = true" title="{{ __('gallery.delete') }}" aria-label="{{ __('gallery.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
 
@@ -155,6 +149,29 @@
         </template>
     </div>
 
+    {{-- Add-to-album modal (from the bulk selection) --}}
+    <div x-show="albumBox.open" x-cloak class="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="albumBox.open=false">
+        <div class="absolute inset-0 bg-gray-900/40" @click="albumBox.open=false"></div>
+        <div class="relative my-16 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900">{{ __('gallery.add_to_album') }}</h3>
+            <ul class="mt-3 max-h-56 divide-y divide-gray-100 overflow-y-auto">
+                <template x-for="a in albumBox.list" :key="a.id">
+                    <li><button type="button" @click="addToAlbum(a.id)" class="flex w-full items-center justify-between px-1 py-2 text-left text-sm hover:bg-gray-50">
+                        <span class="truncate text-gray-900" x-text="a.name"></span>
+                        <span class="text-xs text-gray-400" x-text="a.count"></span>
+                    </button></li>
+                </template>
+            </ul>
+            <form @submit.prevent="createAlbumAndAdd()" class="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+                <input x-model="albumBox.newName" placeholder="{{ __('gallery.new_album') }}" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm">
+                <x-button variant="primary" type="submit" icon="plus">{{ __('gallery.new_album') }}</x-button>
+            </form>
+            <div class="mt-4 flex justify-end">
+                <x-button variant="secondary" @click="albumBox.open=false">{{ __('common.cancel') }}</x-button>
+            </div>
+        </div>
+    </div>
+
     {{-- Timeline (infinite scroll appends here) --}}
     <div x-ref="timeline" class="mt-6 space-y-8">
         @include('gallery._timeline', ['grouped' => $grouped])
@@ -166,6 +183,8 @@
     {{-- Infinite-scroll sentinel --}}
     <div x-ref="sentinel" x-intersect.margin.800px="loadMore()" class="h-10"></div>
     <div x-show="loading" x-cloak class="py-4 text-center text-sm text-gray-400">…</div>
+    </div>{{-- /main --}}
+    </div>{{-- /flex --}}
 
     {{-- Year/month scrubber: year headers with three-letter months below --}}
     <div x-show="months.length" x-cloak

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\AddressBook;
+use App\Models\Album;
 use App\Models\AppNotification;
 use App\Models\AppSettings;
 use App\Models\Calendar;
@@ -36,6 +37,7 @@ class ResourceShareController extends Controller
         'folders' => FileFolder::class,
         'calendars' => Calendar::class,
         'address-books' => AddressBook::class,
+        'albums' => Album::class,
         'photos' => Photo::class,
     ];
 
@@ -137,6 +139,7 @@ class ResourceShareController extends Controller
         return match ($type) {
             'calendars' => route('calendar.index'),
             'address-books' => route('contacts.index'),
+            'albums' => route('gallery.albums'),
             'notes' => route('notes.index'),
             'files', 'folders' => route('files.index'),
             'photos' => route('gallery.index'),
