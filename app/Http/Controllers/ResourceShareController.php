@@ -70,7 +70,7 @@ class ResourceShareController extends Controller
                 'id' => $p->id,
                 'type' => $typeByClass[$p->shareable_type] ?? $p->shareable_type,
                 'resource_id' => $p->shareable_id,
-                'url' => route('public-share.show', $p->token),
+                'url' => $p->url(),
             ]);
 
         return response()->json(['shared_by_me' => $mine, 'shared_with_me' => $withMe, 'public' => $public]);

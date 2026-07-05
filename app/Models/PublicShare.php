@@ -35,4 +35,12 @@ class PublicShare extends Model
             ['token' => Str::random(48), 'owner_id' => $ownerId],
         );
     }
+
+    /** The public URL: an ICS feed for calendars, a vCard export for address books. */
+    public function url(): string
+    {
+        return $this->shareable_type === (new Calendar)->getMorphClass()
+            ? route('public-share.ics', $this->token)
+            : route('public-share.vcf', $this->token);
+    }
 }

@@ -58,9 +58,9 @@ Route::post('/s/{share}/unlock', [ShareController::class, 'unlock'])
     ->middleware('throttle:10,1')
     ->name('shares.unlock');
 
-// Public, tokenised read-only calendar/address-book links (no account needed).
+// Public, tokenised links (no account): an ICS feed for a shared calendar and a
+// vCard export for a shared address book. No HTML page — the link IS the feed.
 Route::middleware('throttle:60,1')->group(function (): void {
-    Route::get('/p/{publicShare:token}', [PublicShareController::class, 'show'])->name('public-share.show');
     Route::get('/p/{publicShare:token}/ics', [PublicShareController::class, 'ics'])->name('public-share.ics');
     Route::get('/p/{publicShare:token}/vcf', [PublicShareController::class, 'vcf'])->name('public-share.vcf');
 });
