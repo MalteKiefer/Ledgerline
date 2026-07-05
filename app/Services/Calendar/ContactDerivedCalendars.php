@@ -6,6 +6,7 @@ namespace App\Services\Calendar;
 
 use App\Models\Calendar;
 use App\Models\Contact;
+use App\Models\User;
 use App\Models\UserSetting;
 use App\Services\Contacts\VCardService;
 use App\Support\WorkspaceOwners;
@@ -29,11 +30,17 @@ class ContactDerivedCalendars
     {
         $users = $onlyUserId !== null ? [$onlyUserId] : WorkspaceOwners::userIds();
 
+        // Event titles ("… Geburtstag") are localised and baked into the stored
+        // ICS, so build each user's calendars in that user's own language rather
+        // than whatever locale the caller (web/queue/console) happens to have.
+        $original = app()->getLocale();
         foreach ($users as $userId) {
+            app()->setLocale(User::find($userId)?->locale ?: config('app.locale'));
             $settings = UserSetting::for((int) $userId);
             $this->reconcile((int) $userId, 'birthdays', (bool) $settings->calendar_birthdays_enabled);
             $this->reconcile((int) $userId, 'anniversaries', (bool) $settings->calendar_anniversaries_enabled);
         }
+        app()->setLocale($original);
     }
 
     private function reconcile(int $userId, string $kind, bool $enabled): void
