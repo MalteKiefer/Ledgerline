@@ -95,7 +95,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('account.export');
     Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('account.sessions.revoke');
     Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
-    Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->name('profile.avatar.refresh');
+    Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->middleware('throttle:6,1')->name('profile.avatar.refresh');
 
     // Local in-app notifications (bell menu).
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
@@ -118,8 +118,8 @@ Route::middleware('auth')->group(function (): void {
     // Paperless-ngx: per-user integration (each user's own instance URL + token).
     Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
     Route::put('/settings/paperless', [SettingsPaperlessController::class, 'update'])->name('settings.paperless.update');
-    Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->name('settings.paperless.test');
-    Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->name('settings.paperless.sync');
+    Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->middleware('throttle:20,1')->name('settings.paperless.test');
+    Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->middleware('throttle:20,1')->name('settings.paperless.sync');
 
     // Non-personal, workspace-wide settings — restricted to the Pocket-ID admin
     // group (config services.pocketid.admin_group; open to all when unset).
@@ -142,12 +142,12 @@ Route::middleware('auth')->group(function (): void {
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
         Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
-        Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->name('settings.notifications.test');
+        Route::post('/settings/notifications/test', [SettingsNotificationsController::class, 'test'])->middleware('throttle:20,1')->name('settings.notifications.test');
 
         // Backup destinations, jobs and run history.
         Route::get('/settings/backup', [SettingsBackupController::class, 'index'])->name('settings.backup.index');
         Route::post('/settings/backup/destinations', [SettingsBackupController::class, 'storeDestination'])->name('settings.backup.destinations.store');
-        Route::match(['post', 'put'], '/settings/backup/destinations/test', [SettingsBackupController::class, 'testDestination'])->name('settings.backup.destinations.test');
+        Route::match(['post', 'put'], '/settings/backup/destinations/test', [SettingsBackupController::class, 'testDestination'])->middleware('throttle:20,1')->name('settings.backup.destinations.test');
         Route::put('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'updateDestination'])->name('settings.backup.destinations.update');
         Route::delete('/settings/backup/destinations/{destination}', [SettingsBackupController::class, 'destroyDestination'])->name('settings.backup.destinations.destroy');
         Route::post('/settings/backup/jobs', [SettingsBackupController::class, 'storeJob'])->name('settings.backup.jobs.store');
@@ -161,22 +161,22 @@ Route::middleware('auth')->group(function (): void {
 
     // Contacts / CardDAV: enable + DAV credentials.
     Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
-    Route::post('/settings/contacts/credentials', [SettingsContactsController::class, 'generate'])->name('settings.contacts.generate');
+    Route::post('/settings/contacts/credentials', [SettingsContactsController::class, 'generate'])->middleware('throttle:20,1')->name('settings.contacts.generate');
     Route::get('/settings/contacts/profile', [SettingsContactsController::class, 'profile'])->name('settings.contacts.profile');
 
     // Contacts UI (reload-free JSON over the CardDAV-backed store).
     Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
     Route::get('/contacts/data', [ContactController::class, 'data'])->name('contacts.data');
     Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
-    Route::post('/contacts/import', [ContactController::class, 'import'])->name('contacts.import');
+    Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:30,1')->name('contacts.import');
     Route::post('/contacts/settings', [ContactController::class, 'settings'])->name('contacts.settings');
     Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('contacts.suggest');
     // Duplicate review — declared before /contacts/{contact} so "duplicates" is
     // not swallowed by the model-bound show route.
-    Route::get('/contacts/duplicates', [ContactDuplicateController::class, 'index'])->name('contacts.duplicates');
-    Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->name('contacts.duplicates.data');
-    Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->name('contacts.duplicates.merge');
-    Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->name('contacts.duplicates.dismiss');
+    Route::get('/contacts/duplicates', [ContactDuplicateController::class, 'index'])->middleware('throttle:60,1')->name('contacts.duplicates');
+    Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->middleware('throttle:60,1')->name('contacts.duplicates.data');
+    Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:60,1')->name('contacts.duplicates.merge');
+    Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:60,1')->name('contacts.duplicates.dismiss');
     Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
     Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
     Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
@@ -282,12 +282,12 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/notes', 'notes.index')->name('notes.index');
     Route::get('/notes/data', [NoteController::class, 'index'])->name('notes.data');
     Route::post('/notes', [NoteController::class, 'store'])->name('notes.store');
-    Route::post('/notes/preview', [NoteController::class, 'preview'])->name('notes.preview');
+    Route::post('/notes/preview', [NoteController::class, 'preview'])->middleware('throttle:60,1')->name('notes.preview');
     Route::put('/notes/{note}', [NoteController::class, 'update'])->name('notes.update');
     Route::patch('/notes/{note}', [NoteController::class, 'patch'])->withTrashed()->name('notes.patch');
     Route::delete('/notes/{note}', [NoteController::class, 'destroy'])->withTrashed()->name('notes.destroy');
     Route::delete('/notes/trash/all', [NoteController::class, 'emptyTrash'])->name('notes.trash.empty');
-    Route::post('/notes/{note}/share', [NoteController::class, 'share'])->name('notes.share');
+    Route::post('/notes/{note}/share', [NoteController::class, 'share'])->middleware('throttle:30,1')->name('notes.share');
     // To-dos: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/todos', 'todos.index')->name('todos.index');
     Route::get('/todos/data', [TodoController::class, 'index'])->name('todos.data');
@@ -314,7 +314,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
     Route::post('/calendar/timezone', [CalendarController::class, 'setTimezone'])->name('calendar.timezone');
     Route::get('/calendar/export', [CalendarController::class, 'export'])->name('calendar.export');
-    Route::post('/calendar/import', [CalendarController::class, 'import'])->name('calendar.import');
+    Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:20,1')->name('calendar.import');
     // These issue a server-side outbound fetch → throttle to blunt SSRF-scan /
     // amplification abuse.
     Route::post('/calendar/import-url', [CalendarController::class, 'importUrl'])->middleware('throttle:20,1')->name('calendar.import-url');
@@ -346,17 +346,17 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->name('mail.accounts.destroy');
     Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
-    Route::post('/mail/folders', [MailReaderController::class, 'folders'])->name('mail.folders');
-    Route::post('/mail/folder/create', [MailReaderController::class, 'createFolder'])->name('mail.folder.create');
-    Route::post('/mail/folder/empty', [MailReaderController::class, 'emptyFolder'])->name('mail.folder.empty');
-    Route::post('/mail/messages', [MailReaderController::class, 'messages'])->name('mail.messages');
-    Route::post('/mail/message', [MailReaderController::class, 'message'])->name('mail.message');
+    Route::post('/mail/folders', [MailReaderController::class, 'folders'])->middleware('throttle:60,1')->name('mail.folders');
+    Route::post('/mail/folder/create', [MailReaderController::class, 'createFolder'])->middleware('throttle:60,1')->name('mail.folder.create');
+    Route::post('/mail/folder/empty', [MailReaderController::class, 'emptyFolder'])->middleware('throttle:60,1')->name('mail.folder.empty');
+    Route::post('/mail/messages', [MailReaderController::class, 'messages'])->middleware('throttle:60,1')->name('mail.messages');
+    Route::post('/mail/message', [MailReaderController::class, 'message'])->middleware('throttle:60,1')->name('mail.message');
     // Read an already-archived message straight from S3 (fast) + opportunistic archiving on live read.
-    Route::post('/mail/message/cached/{account}', [MailArchiveController::class, 'cached'])->name('mail.message.cached');
-    Route::post('/mail/message/archive/{account}', [MailArchiveController::class, 'archiveOne'])->name('mail.message.archive');
-    Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->name('mail.message.attachment');
-    Route::post('/mail/message/action', [MailReaderController::class, 'action'])->name('mail.message.action');
-    Route::post('/mail/message/transfer', [MailReaderController::class, 'transfer'])->name('mail.message.transfer');
+    Route::post('/mail/message/cached/{account}', [MailArchiveController::class, 'cached'])->middleware('throttle:60,1')->name('mail.message.cached');
+    Route::post('/mail/message/archive/{account}', [MailArchiveController::class, 'archiveOne'])->middleware('throttle:60,1')->name('mail.message.archive');
+    Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->middleware('throttle:30,1')->name('mail.message.attachment');
+    Route::post('/mail/message/action', [MailReaderController::class, 'action'])->middleware('throttle:60,1')->name('mail.message.action');
+    Route::post('/mail/message/transfer', [MailReaderController::class, 'transfer'])->middleware('throttle:30,1')->name('mail.message.transfer');
 
     // Local mail archive: browse, view, restore (re-append to server), delete.
     Route::get('/mail/archive/{account}', [MailArchiveController::class, 'index'])->name('mail.archive');

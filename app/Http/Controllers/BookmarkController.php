@@ -9,6 +9,7 @@ use App\Models\BookmarkFolder;
 use App\Support\Tags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Plain (non-encrypted) bookmarks and folders, exposed as a JSON API so the
@@ -88,7 +89,7 @@ class BookmarkController extends Controller
     private function validated(Request $request): array
     {
         $v = $request->validate([
-            'bookmark_folder_id' => ['nullable', 'exists:bookmark_folders,id'],
+            'bookmark_folder_id' => ['nullable', Rule::exists('bookmark_folders', 'id')->where('user_id', $request->user()->id)],
             'title' => ['required', 'string', 'max:255'],
             // Only http(s): a javascript:/data:/vbscript: URL would execute on
             // click via the :href binding (stored XSS).

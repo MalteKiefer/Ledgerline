@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Sabre\VObject\Reader;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Public, tokenised read-only links to a calendar or address book for people
@@ -44,14 +45,20 @@ class PublicShareController extends Controller
             'type' => ['required', Rule::in(array_keys(self::TYPES))],
             'id' => ['required'],
             'expires_in' => ['nullable', 'integer', Rule::in(self::EXPIRY)],
-            'password' => ['nullable', 'string', 'max:255'],
+            'password' => ['nullable', 'string', 'min:8', 'max:255'],
         ]);
 
         $resource = $this->ownedResource($data['type'], $data['id'], $request->user()->id);
         $share = PublicShare::forResource($resource, $request->user()->id);
 
-        // Expiry applies to every link type; the password only gates the album's
-        // HTML page (feeds can't prompt). An empty password clears it.
+        // A password only gates the album's HTML page — calendar/address-book
+        // feeds can't prompt for one, so silently ignore any password set on a
+        // non-album share (and don't report has_password for feeds).
+        if ($data['type'] !== 'albums') {
+            $data['password'] = null;
+        }
+
+        // Expiry applies to every link type. An empty password clears it.
         $share->expires_at = ! empty($data['expires_in']) ? now()->addSeconds((int) $data['expires_in']) : null;
         if (array_key_exists('password', $data)) {
             $share->password = filled($data['password']) ? Hash::make($data['password']) : null;
@@ -162,42 +169,43 @@ class PublicShareController extends Controller
     }
 
     /** ICS subscription feed for a shared calendar. */
-    public function ics(PublicShare $publicShare): Response
+    public function ics(PublicShare $publicShare): StreamedResponse
     {
         $resource = $publicShare->shareable;
         abort_unless($resource instanceof Calendar, 404);
         abort_if($publicShare->isExpired(), 410);
 
-        $blocks = [];
-        CalendarObject::where('calendar_id', $resource->id)->orderBy('id')
-            ->chunk(200, function ($chunk) use (&$blocks): void {
-                foreach ($chunk as $object) {
-                    foreach ($this->innerComponents($object->ics) as $b) {
-                        $blocks[] = $b;
+        // Stream the feed rather than assembling the whole VCALENDAR in memory,
+        // so a large calendar can't OOM the worker. Same bytes as before.
+        return response()->stream(function () use ($resource): void {
+            echo "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ledgerline//Public//EN\r\nX-WR-CALNAME:".$this->esc($resource->name)."\r\n";
+            CalendarObject::where('calendar_id', $resource->id)->orderBy('id')
+                ->chunk(200, function ($chunk): void {
+                    foreach ($chunk as $object) {
+                        foreach ($this->innerComponents($object->ics) as $b) {
+                            echo $b;
+                        }
                     }
-                }
-            });
-
-        $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ledgerline//Public//EN\r\nX-WR-CALNAME:".$this->esc($resource->name)."\r\n".implode('', $blocks)."END:VCALENDAR\r\n";
-
-        return response($ics, 200, ['Content-Type' => 'text/calendar; charset=utf-8']);
+                });
+            echo "END:VCALENDAR\r\n";
+        }, 200, ['Content-Type' => 'text/calendar; charset=utf-8']);
     }
 
     /** vCard export for a shared address book. */
-    public function vcf(PublicShare $publicShare): Response
+    public function vcf(PublicShare $publicShare): StreamedResponse
     {
         $resource = $publicShare->shareable;
         abort_unless($resource instanceof AddressBook, 404);
         abort_if($publicShare->isExpired(), 410);
 
-        $body = '';
-        Contact::where('address_book_id', $resource->id)->orderBy('id')->chunk(200, function ($chunk) use (&$body): void {
-            foreach ($chunk as $contact) {
-                $body .= rtrim($contact->vcard, "\r\n")."\r\n";
-            }
-        });
-
-        return response($body, 200, ['Content-Type' => 'text/vcard; charset=utf-8']);
+        // Stream the export instead of concatenating every vCard in memory.
+        return response()->stream(function () use ($resource): void {
+            Contact::where('address_book_id', $resource->id)->orderBy('id')->chunk(200, function ($chunk): void {
+                foreach ($chunk as $contact) {
+                    echo rtrim($contact->vcard, "\r\n")."\r\n";
+                }
+            });
+        }, 200, ['Content-Type' => 'text/vcard; charset=utf-8']);
     }
 
     /** Inner VEVENT/VTIMEZONE blocks of a stored per-object VCALENDAR. */

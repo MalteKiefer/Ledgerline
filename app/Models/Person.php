@@ -8,7 +8,6 @@ use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -42,15 +41,5 @@ class Person extends Model
     public function faces(): HasMany
     {
         return $this->hasMany(Face::class);
-    }
-
-    public function coverFace(): BelongsTo
-    {
-        return $this->belongsTo(Face::class, 'cover_face_id');
-    }
-
-    public function isHidden(): bool
-    {
-        return $this->hidden_at !== null;
     }
 }

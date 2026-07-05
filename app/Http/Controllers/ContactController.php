@@ -151,7 +151,7 @@ class ContactController extends Controller
 
     public function store(Request $request, ContactWriter $writer): JsonResponse
     {
-        $data = $this->validated($request);
+        $data = $this->validated($request, creating: true);
         $book = AddressBook::where('user_id', $request->user()->id)->findOrFail($data['book_id']);
         $contact = $writer->create($book, $data, $data['group_ids'] ?? []);
 
@@ -201,7 +201,13 @@ class ContactController extends Controller
         [$meta, $b64] = explode(',', $photo, 2);
         $mime = str_contains($meta, 'image/png') ? 'image/png' : 'image/jpeg';
 
-        return response(base64_decode($b64), 200, ['Content-Type' => $mime, 'Cache-Control' => 'private, max-age=3600']);
+        return response(base64_decode($b64), 200, [
+            'Content-Type' => $mime,
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Content-Disposition' => 'inline',
+            'Cache-Control' => 'private, max-age=3600',
+        ]);
     }
 
     /** Export a book (or all the user's contacts) as one .vcf download. */
@@ -238,10 +244,10 @@ class ContactController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function validated(Request $request): array
+    private function validated(Request $request, bool $creating = false): array
     {
         return $request->validate([
-            'book_id' => ['sometimes', 'string'],
+            'book_id' => [$creating ? 'required' : 'sometimes', 'string'],
             'fn' => ['nullable', 'string', 'max:255'],
             'first_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],

@@ -51,7 +51,8 @@ class MailArchiveController extends Controller
      * Full-text search across the whole local archive (all folders, not only
      * server-deleted mail). Matches the free-text term against subject, from,
      * to, cc, body and attachment names, and filters by a date/time range and
-     * an attachments-only flag. Note: % and _ in the term act as wildcards.
+     * an attachments-only flag. LIKE metacharacters in the term are escaped so
+     * they match literally rather than acting as wildcards.
      */
     public function search(Request $request, MailAccount $account): JsonResponse
     {
@@ -67,10 +68,14 @@ class MailArchiveController extends Controller
         $messages = MailMessage::with('folder:id,name,path')
             ->where('mail_account_id', $account->id)
             ->when($term !== '', function ($qb) use ($term): void {
-                $like = '%'.$term.'%';
+                // Escape LIKE metacharacters (\ % _) so the term matches literally
+                // instead of acting as a wildcard, and bind it with an explicit
+                // ESCAPE clause for driver-portable behaviour.
+                $like = '%'.$this->likeEscape($term).'%';
                 $qb->where(function ($w) use ($like): void {
                     foreach (['subject', 'from_name', 'from_email', 'to', 'cc', 'preview', 'body_text', 'attachment_names'] as $col) {
-                        $w->orWhere($col, 'like', $like);
+                        // Wrap the identifier: `to`/`cc` are SQL reserved words.
+                        $w->orWhereRaw($w->getGrammar()->wrap($col)." LIKE ? ESCAPE '\\'", [$like]);
                     }
                 });
             })
@@ -149,17 +154,15 @@ class MailArchiveController extends Controller
         $zip->open($tmp, \ZipArchive::OVERWRITE);
         $disk = $this->disk();
         $used = [];
+        $temps = [];
         MailMessage::withoutGlobalScopes()->where('mail_account_id', $account->id)
-            ->whereNotNull('blob')->orderBy('id')->chunkById(200, function ($chunk) use ($zip, $disk, &$used): void {
+            ->whereNotNull('blob')->orderBy('id')->chunkById(200, function ($chunk) use ($zip, $disk, &$used, &$temps): void {
                 foreach ($chunk as $m) {
-                    $path = 'mail/'.$m->blob;
-                    if (! $disk->exists($path)) {
-                        continue;
-                    }
-                    $zip->addFromString($this->uniqueName($this->emlName($m->subject, (string) $m->id), $used), (string) $disk->get($path));
+                    $this->addBlobToZip($zip, $disk, $m, $used, $temps);
                 }
             });
         $zip->close();
+        $this->cleanupTemps($temps);
 
         return response()->streamDownload(function () use ($tmp): void {
             readfile($tmp);
@@ -174,18 +177,66 @@ class MailArchiveController extends Controller
         $zip->open($tmp, \ZipArchive::OVERWRITE);
         $disk = $this->disk();
         $used = [];
+        $temps = [];
         foreach ($messages as $m) {
-            $path = 'mail/'.$m->blob;
-            if (is_string($m->blob) && $m->blob !== '' && $disk->exists($path)) {
-                $zip->addFromString($this->uniqueName($this->emlName($m->subject, (string) $m->id), $used), (string) $disk->get($path));
-            }
+            $this->addBlobToZip($zip, $disk, $m, $used, $temps);
         }
         $zip->close();
+        $this->cleanupTemps($temps);
 
         return response()->streamDownload(function () use ($tmp): void {
             readfile($tmp);
             @unlink($tmp);
         }, $filename, ['Content-Type' => 'application/zip']);
+    }
+
+    /**
+     * Add one message's stored .eml to the zip by streaming its blob to a temp
+     * file and referencing that file (addFile), so a huge .eml is never held in
+     * memory. Oversized messages are skipped; written temp paths are collected
+     * in $temps for cleanup after $zip->close().
+     *
+     * @param  array<string,bool>  $used
+     * @param  list<string>  $temps
+     */
+    private function addBlobToZip(\ZipArchive $zip, $disk, MailMessage $m, array &$used, array &$temps): void
+    {
+        if (! is_string($m->blob) || $m->blob === '') {
+            return;
+        }
+        $path = 'mail/'.$m->blob;
+        if (! $disk->exists($path)) {
+            return;
+        }
+        // Skip a hostile/huge single message so it can't exhaust the worker.
+        $max = (int) config('mail_archive.max_render_bytes', 25 * 1024 * 1024);
+        if ($disk->size($path) > $max) {
+            return;
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'lleml');
+        $in = $disk->readStream($path);
+        if ($in === null) {
+            @unlink($tmp);
+
+            return;
+        }
+        $out = fopen($tmp, 'wb');
+        stream_copy_to_stream($in, $out);
+        fclose($out);
+        if (is_resource($in)) {
+            fclose($in);
+        }
+        $temps[] = $tmp;
+        $zip->addFile($tmp, $this->uniqueName($this->emlName($m->subject, (string) $m->id), $used));
+    }
+
+    /** @param  list<string>  $temps */
+    private function cleanupTemps(array $temps): void
+    {
+        foreach ($temps as $tmp) {
+            @unlink($tmp);
+        }
     }
 
     private function emlName(?string $subject, string $id): string
@@ -206,6 +257,12 @@ class MailArchiveController extends Controller
         $used[$candidate] = true;
 
         return $candidate;
+    }
+
+    /** Escape LIKE metacharacters (\ % _) so a search term matches literally. */
+    private function likeEscape(string $term): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term);
     }
 
     /**

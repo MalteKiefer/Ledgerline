@@ -86,7 +86,9 @@ class AlbumController extends Controller
             $attrs['name'] = $data['name'];
         }
         if (array_key_exists('cover_photo_id', $data)) {
-            $attrs['cover_photo_id'] = $data['cover_photo_id'];
+            $coverId = $data['cover_photo_id'];
+            abort_unless($coverId === null || $album->photos()->whereKey($coverId)->exists(), 422);
+            $attrs['cover_photo_id'] = $coverId;
         }
         $album->forceFill($attrs)->save();
 

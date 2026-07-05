@@ -114,10 +114,12 @@ class TodoController extends Controller
     private function validated(Request $request): array
     {
         $v = $request->validate([
-            'todo_list_id' => ['nullable', 'exists:todo_lists,id'],
+            'todo_list_id' => ['nullable', Rule::exists('todo_lists', 'id')->where('user_id', $request->user()->id)],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:20000'],
-            'url' => ['nullable', 'string', 'max:2048'],
+            // Only http(s): a javascript:/data:/vbscript: URL would execute on
+            // click via the :href binding (stored XSS).
+            'url' => ['nullable', 'string', 'max:2048', 'regex:#^https?://#i'],
             'priority' => ['required', Rule::in(['low', 'normal', 'high'])],
             'marked' => ['sometimes', 'boolean'],
             'due' => ['nullable', 'date'],

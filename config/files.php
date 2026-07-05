@@ -48,15 +48,4 @@ return [
 
     'quota_mb' => (int) env('FILES_QUOTA_MB', 0),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Kept versions per file
-    |--------------------------------------------------------------------------
-    |
-    | How many previous blobs of a file to keep when its content changes.
-    |
-    */
-
-    'max_versions' => (int) env('FILES_MAX_VERSIONS', 10),
-
 ];

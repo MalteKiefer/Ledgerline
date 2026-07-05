@@ -274,10 +274,14 @@ class FileController extends Controller
         $path = 'files/'.$version->blob;
         abort_unless($this->disk()->exists($path), 404);
 
+        // Force download + a script-less sandbox so a version whose mime is a
+        // client-controlled text/html can't render in-origin (self-XSS), matching raw().
         return $this->disk()->response($path, $version->name, [
-            'Content-Type' => $version->mime ?: 'application/octet-stream',
+            'Content-Type' => 'application/octet-stream',
             'X-Content-Type-Options' => 'nosniff',
-        ]);
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, no-store',
+        ], 'attachment');
     }
 
     /** Import an uploaded file straight into Files as a row (used by mail "save to Files"). */
