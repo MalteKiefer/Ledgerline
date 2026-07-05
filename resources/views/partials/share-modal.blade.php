@@ -41,6 +41,28 @@
             </ul>
         </div>
 
+        {{-- External: public tokenised link (no account needed) --}}
+        <div class="mt-5 border-t border-gray-100 pt-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('shares.public_heading') }}</h4>
+            <p class="mt-1 text-xs text-gray-500">{{ __('shares.public_hint') }}</p>
+            <template x-if="!shareModal.publicUrl">
+                <x-button variant="secondary" icon="link" class="mt-2" @click="createPublic()">{{ __('shares.public_create') }}</x-button>
+            </template>
+            <template x-if="shareModal.publicUrl">
+                <div class="mt-2 space-y-2">
+                    <div class="flex items-center gap-2">
+                        <input readonly :value="shareModal.publicUrl" @focus="$event.target.select()" class="min-w-0 flex-1 rounded-md border-gray-300 text-xs">
+                        <x-button variant="secondary" icon="link" @click="copyPublicLink()">{{ __('shares.copy_link') }}</x-button>
+                    </div>
+                    <div x-show="shareMailConfigured" class="flex items-center gap-2">
+                        <input type="email" x-model="shareModal.publicEmail" placeholder="{{ __('shares.public_email_placeholder') }}" class="min-w-0 flex-1 rounded-md border-gray-300 text-xs">
+                        <x-button variant="secondary" @click="emailPublic()">{{ __('shares.send_mail') }}</x-button>
+                    </div>
+                    <button type="button" @click="revokePublic()" class="text-xs font-medium text-red-600 hover:text-red-700">{{ __('shares.public_revoke') }}</button>
+                </div>
+            </template>
+        </div>
+
         <div class="mt-5 flex justify-end">
             <x-button variant="secondary" @click="shareModal.open=false">{{ __('common.cancel') }}</x-button>
         </div>

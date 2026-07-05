@@ -287,10 +287,10 @@ Alpine.data('toastHub', (labels = {}) => ({
  */
 function shareMixin(cfg) {
     return {
-        shareModal: { open: false, type: '', id: null, name: '', shares: [], email: '', permission: 'read', error: '', feedback: '' },
+        shareModal: { open: false, type: '', id: null, name: '', shares: [], email: '', permission: 'read', error: '', feedback: '', publicUrl: '', publicId: null, publicEmail: '' },
         shareMailConfigured: !! cfg.mailConfigured,
         async openShare(type, id, name) {
-            this.shareModal = { open: true, type, id, name, shares: [], email: '', permission: 'read', error: '', feedback: '' };
+            this.shareModal = { open: true, type, id, name, shares: [], email: '', permission: 'read', error: '', feedback: '', publicUrl: '', publicId: null, publicEmail: '' };
             await this.loadShares();
         },
         async copyShareLink() {
@@ -300,6 +300,23 @@ function shareMixin(cfg) {
             const r = await this._json(cfg.sharesBase + '/' + id + '/email', 'POST');
             if (r.ok) { this.shareFlash(cfg.mailSent || 'Sent'); } else { this.shareModal.error = cfg.mailUnavailable || 'Error'; }
         },
+        async createPublic() {
+            const r = await this._json(cfg.publicStoreUrl, 'POST', { type: this.shareModal.type, id: this.shareModal.id });
+            if (r.ok) await this.loadShares();
+        },
+        async revokePublic() {
+            if (! this.shareModal.publicId) return;
+            await this._json(cfg.publicBase + '/' + this.shareModal.publicId, 'DELETE');
+            await this.loadShares();
+        },
+        async copyPublicLink() {
+            try { await navigator.clipboard.writeText(this.shareModal.publicUrl); this.shareFlash(cfg.linkCopied || 'Copied'); } catch (e) { /* ignore */ }
+        },
+        async emailPublic() {
+            if (! this.shareModal.publicId || ! this.shareModal.publicEmail) return;
+            const r = await this._json(cfg.publicBase + '/' + this.shareModal.publicId + '/email', 'POST', { email: this.shareModal.publicEmail });
+            if (r.ok) { this.shareModal.publicEmail = ''; this.shareFlash(cfg.mailSent || 'Sent'); } else { this.shareModal.error = cfg.mailUnavailable || 'Error'; }
+        },
         shareFlash(msg) { this.shareModal.feedback = msg; clearTimeout(this._shareFlashT); this._shareFlashT = setTimeout(() => { this.shareModal.feedback = ''; }, 2500); },
         async loadShares() {
             try {
@@ -307,6 +324,9 @@ function shareMixin(cfg) {
                 if (r.ok) {
                     const d = await r.json();
                     this.shareModal.shares = (d.shared_by_me || []).filter((s) => s.type === this.shareModal.type && String(s.resource_id) === String(this.shareModal.id));
+                    const pub = (d.public || []).find((s) => s.type === this.shareModal.type && String(s.resource_id) === String(this.shareModal.id));
+                    this.shareModal.publicUrl = pub ? pub.url : '';
+                    this.shareModal.publicId = pub ? pub.id : null;
                 }
             } catch (e) { /* keep */ }
         },

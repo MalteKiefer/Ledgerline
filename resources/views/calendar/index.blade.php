@@ -19,6 +19,8 @@
         'linkCopied' => __('shares.link_copied'),
         'mailSent' => __('shares.mail_sent'),
         'mailUnavailable' => __('shares.mail_unavailable'),
+        'publicStoreUrl' => route('public-share.store'),
+        'publicBase' => url('shares/public'),
         'token' => csrf_token(),
         'importUrlPrompt' => __('calendar.ui.import_url_prompt'),
         'subscribeUrlPrompt' => __('calendar.ui.subscribe_url_prompt'),
