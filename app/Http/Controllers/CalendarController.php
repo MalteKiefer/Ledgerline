@@ -265,14 +265,21 @@ class CalendarController extends Controller
     public function updateCalendar(Request $request, Calendar $calendar): JsonResponse
     {
         $this->authorizeCalendar($calendar);
-        // Managed calendars (subscriptions, holidays, derived) are read-only —
-        // renaming/recolouring them would be overwritten on the next rebuild.
-        abort_if(! $calendar->isWritableByUser(), 403);
+        // The colour is editable on every calendar the user owns (it survives a
+        // rebuild). The name is only editable on writable calendars — for the
+        // managed ones (birthdays/anniversaries/holidays/subscriptions) the
+        // colour is the only thing that can be changed.
+        $writable = $calendar->isWritableByUser();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [$writable ? 'required' : 'nullable', 'string', 'max:255'],
             'color' => Calendar::COLOR_RULE,
         ]);
-        $calendar->forceFill(['name' => $data['name'], 'color' => $data['color'] ?? $calendar->color])->save();
+
+        $attrs = ['color' => $data['color'] ?? $calendar->color];
+        if ($writable && filled($data['name'] ?? null)) {
+            $attrs['name'] = $data['name'];
+        }
+        $calendar->forceFill($attrs)->save();
 
         return response()->json(['ok' => true]);
     }

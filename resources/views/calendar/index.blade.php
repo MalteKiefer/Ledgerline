@@ -39,7 +39,7 @@
                                 <span class="truncate text-gray-700" x-text="c.name"></span>
                             </label>
                             <span class="hidden shrink-0 gap-1 group-hover:flex">
-                                <button @click="renameCalendar(c)" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.rename_calendar') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
+                                <button @click="editCalendar(c)" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.edit_calendar') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
                                 <button @click="deleteCalendar(c)" class="text-gray-400 hover:text-red-600" title="{{ __('calendar.ui.delete') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             </span>
                         </li>
@@ -52,14 +52,17 @@
                 <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('calendar.ui.other_calendars') }}</h2>
                 <ul class="mt-2 space-y-1 text-sm">
                     <template x-for="c in otherCalendars()" :key="c.id">
-                        <li class="flex items-center justify-between gap-1">
+                        <li class="group flex items-center justify-between gap-1">
                             <label class="flex min-w-0 items-center gap-2">
                                 <input type="checkbox" :checked="!hidden.has(c.id)" @change="toggleCalendar(c.id)"
                                     class="rounded border-gray-300" :style="`color:${c.color}`">
                                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="`background:${c.color}`"></span>
                                 <span class="truncate text-gray-700" x-text="c.name"></span>
                             </label>
-                            <x-icon name="lock-closed" class="h-3.5 w-3.5 shrink-0 text-gray-400" title="{{ __('calendar.ui.read_only') }}" />
+                            <span class="flex shrink-0 items-center gap-1">
+                                <button @click="editCalendar(c)" class="hidden text-gray-400 hover:text-gray-700 group-hover:block" title="{{ __('calendar.ui.color') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
+                                <x-icon name="lock-closed" class="h-3.5 w-3.5 text-gray-400" title="{{ __('calendar.ui.read_only') }}" />
+                            </span>
                         </li>
                     </template>
                 </ul>
@@ -315,6 +318,72 @@
                         <button @click="editor=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" x-text="form.read_only ? '{{ __('calendar.ui.close') }}' : '{{ __('calendar.ui.cancel') }}'"></button>
                         <button x-show="!form.read_only" @click="save()" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('calendar.ui.save') }}</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        {{-- Calendar add/edit modal (name + colour; colour-only for read-only) --}}
+        <div x-show="calModal.open" x-cloak class="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="calModal.open=false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="calModal.open=false"></div>
+            <div class="relative my-16 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900" x-text="calModal.id ? '{{ __('calendar.ui.edit_calendar') }}' : '{{ __('calendar.ui.add_calendar') }}'"></h3>
+                <form @submit.prevent="saveCalModal()" class="mt-3 space-y-3">
+                    <template x-if="!calModal.readOnly">
+                        <div>
+                            <label class="text-xs text-gray-500">{{ __('calendar.ui.name') }}</label>
+                            <input x-ref="calName" x-model="calModal.name" type="text" class="mt-0.5 w-full rounded-md border-gray-300 text-sm">
+                        </div>
+                    </template>
+                    <p x-show="calModal.readOnly" x-cloak class="text-xs text-gray-500">{{ __('calendar.ui.color_only_note') }}</p>
+                    <div>
+                        <label class="text-xs text-gray-500">{{ __('calendar.ui.color') }}</label>
+                        <div class="mt-1 flex flex-wrap items-center gap-2">
+                            <template x-for="col in palette" :key="col">
+                                <button type="button" @click="calModal.color=col" class="h-6 w-6 rounded-full ring-2 ring-offset-1" :style="`background:${col}`" :class="calModal.color===col ? 'ring-gray-900' : 'ring-transparent'"></button>
+                            </template>
+                            <input type="color" x-model="calModal.color" class="h-8 w-10 cursor-pointer rounded border border-gray-300 bg-white p-0.5">
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" @click="calModal.open=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('calendar.ui.cancel') }}</button>
+                        <button type="submit" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('calendar.ui.save') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {{-- Import-from-URL / subscribe modal --}}
+        <div x-show="linkModal.open" x-cloak class="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="linkModal.open=false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="linkModal.open=false"></div>
+            <div class="relative my-16 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900" x-text="linkModal.mode==='subscribe' ? '{{ __('calendar.ui.subscribe_title') }}' : '{{ __('calendar.ui.import_url_title') }}'"></h3>
+                <form @submit.prevent="saveLinkModal()" class="mt-3 space-y-3">
+                    <div>
+                        <label class="text-xs text-gray-500">{{ __('calendar.ui.url') }}</label>
+                        <input x-model="linkModal.url" type="url" placeholder="https://…" class="mt-0.5 w-full rounded-md border-gray-300 text-sm">
+                    </div>
+                    <div x-show="linkModal.mode==='subscribe'">
+                        <label class="text-xs text-gray-500">{{ __('calendar.ui.name') }}</label>
+                        <input x-model="linkModal.name" type="text" class="mt-0.5 w-full rounded-md border-gray-300 text-sm">
+                    </div>
+                    <p x-show="linkModal.error" x-cloak class="text-xs text-red-600" x-text="linkModal.error"></p>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" @click="linkModal.open=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('calendar.ui.cancel') }}</button>
+                        <button type="submit" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('calendar.ui.save') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {{-- Confirm modal (delete calendar / event) --}}
+        <div x-show="confirmModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="confirmModal.open=false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="confirmModal.open=false"></div>
+            <div class="relative my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('calendar.ui.confirm_delete_title') }}</h3>
+                <p class="mt-2 text-sm text-gray-600" x-text="confirmModal.message"></p>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button type="button" @click="confirmModal.open=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('calendar.ui.cancel') }}</button>
+                    <button type="button" @click="doConfirm()" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">{{ __('calendar.ui.delete') }}</button>
                 </div>
             </div>
         </div>
