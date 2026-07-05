@@ -60,4 +60,11 @@ return [
     'selected_word' => 'selected',
     'upload' => 'Upload',
     'uploading' => 'Uploading',
+    'quota_exceeded' => 'Storage quota exceeded.',
+    'storage_used' => ':used of :total used',
+    'storage_used_unlimited' => ':used used',
+    'versions' => 'Versions',
+    'versions_none' => 'No previous versions.',
+    'version_download' => 'Download',
+    'version_current' => 'Current',
 ];

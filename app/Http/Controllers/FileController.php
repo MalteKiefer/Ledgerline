@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Jobs\BuildExport;
 use App\Models\Export;
 use App\Models\FileFolder;
+use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Support\Tags;
 use Carbon\Carbon;
@@ -39,6 +40,7 @@ class FileController extends Controller
 
         return response()->json([
             'v' => 1,
+            'usage' => ['used' => $this->usedBytes((int) $uid), 'quota' => $this->quotaBytes()],
             'folders' => FileFolder::withoutGlobalScopes()->where('user_id', $uid)->get(['id', 'parent_id', 'name'])
                 ->map(fn (FileFolder $f) => ['id' => $f->id, 'name' => $f->name, 'parent' => $f->parent_id])
                 ->all(),
@@ -102,11 +104,14 @@ class FileController extends Controller
             $ownedFolders()->when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->delete();
 
             $fileIds = [];
+            $prunedBlobs = [];
             foreach ($files as $f) {
                 // withTrashed: the manifest keeps trashed files, so a matching
                 // row may be soft-deleted; find it (or build a new one) and let
                 // the manifest's `trashed` timestamp drive deleted_at directly.
                 $file = $owned()->withTrashed()->firstOrNew(['id' => $f['id']]);
+                $oldBlob = $file->exists ? $file->blob : null;
+                $oldMeta = ['name' => $file->name, 'mime' => $file->mime, 'size' => (int) $file->size];
                 $file->fill([
                     'user_id' => $uid,
                     'file_folder_id' => $f['folder'] ?? null,
@@ -119,14 +124,31 @@ class FileController extends Controller
                 $file->deleted_at = ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null;
                 $file->save();
                 $fileIds[] = $f['id'];
+
+                // Content changed: snapshot the previous blob as a version instead
+                // of letting it leak, then cap the history and prune the overflow.
+                if (is_string($oldBlob) && $oldBlob !== $f['blob'] && Str::isUuid($oldBlob)) {
+                    FileVersion::create([
+                        'id' => (string) Str::uuid(), 'file_id' => $file->id, 'user_id' => $uid,
+                        'name' => $oldMeta['name'] ?? $f['name'], 'mime' => $oldMeta['mime'] ?? 'application/octet-stream',
+                        'size' => $oldMeta['size'], 'blob' => $oldBlob, 'created_at' => now(),
+                    ]);
+                    $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id));
+                }
             }
 
-            // Reclaim the bytes of the user's own rows the manifest dropped.
-            $removed = $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))
-                ->pluck('blob')->all();
+            // Reclaim the bytes of the user's own rows the manifest dropped —
+            // both the file blobs and any version blobs they kept.
+            $droppedFiles = $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds));
+            $droppedIds = $droppedFiles->pluck('id')->all();
+            $removed = $droppedFiles->pluck('blob')->all();
+            if ($droppedIds !== []) {
+                $removed = array_merge($removed, FileVersion::whereIn('file_id', $droppedIds)->pluck('blob')->all());
+                FileVersion::whereIn('file_id', $droppedIds)->delete();
+            }
             $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->forceDelete();
 
-            return $removed;
+            return array_merge($removed, $prunedBlobs);
         });
 
         foreach ($removedBlobs as $blob) {
@@ -145,10 +167,73 @@ class FileController extends Controller
             'file' => ['required', 'file', 'max:'.((int) config('files.max_upload_mb', 2048) * 1024)],
         ]);
 
+        $incoming = (int) $request->file('file')->getSize();
+        abort_if($this->quotaExceeded($request->user()->id, $incoming), 413, __('files.quota_exceeded'));
+
         $id = (string) Str::uuid();
         $this->disk()->putFileAs('files', $request->file('file'), $id);
 
         return response()->json(['id' => $id], 201);
+    }
+
+    /** Bytes the user currently occupies (live + trashed files + kept versions). */
+    private function usedBytes(int $userId): int
+    {
+        return (int) StoredFile::withoutGlobalScopes()->withTrashed()->where('user_id', $userId)->sum('size')
+            + (int) FileVersion::where('user_id', $userId)->sum('size');
+    }
+
+    /** Per-user quota in bytes (0 / null = unlimited). */
+    private function quotaBytes(): int
+    {
+        return (int) config('files.quota_mb', 0) * 1024 * 1024;
+    }
+
+    private function quotaExceeded(int $userId, int $incoming): bool
+    {
+        $quota = $this->quotaBytes();
+
+        return $quota > 0 && ($this->usedBytes($userId) + $incoming) > $quota;
+    }
+
+    /** Keep only the newest N versions of a file; return the pruned blobs. */
+    private function capVersions(string $fileId): array
+    {
+        $keep = max(1, (int) config('files.max_versions', 20));
+        $overflow = FileVersion::where('file_id', $fileId)->orderByDesc('created_at')->skip($keep)->take(1000)->get();
+        $blobs = $overflow->pluck('blob')->all();
+        if ($blobs !== []) {
+            FileVersion::whereIn('id', $overflow->pluck('id'))->delete();
+        }
+
+        return $blobs;
+    }
+
+    /** List a file's kept versions (owner or shared-with-edit). */
+    public function versions(Request $request, StoredFile $file): JsonResponse
+    {
+        abort_unless($file->isOwnedBy($request->user()->id), 403);
+        $versions = FileVersion::where('file_id', $file->id)->orderByDesc('created_at')->get()
+            ->map(fn (FileVersion $v): array => [
+                'id' => $v->id, 'name' => $v->name, 'mime' => $v->mime,
+                'size' => $v->size, 'created_at' => $v->created_at?->toIso8601String(),
+            ]);
+
+        return response()->json(['versions' => $versions]);
+    }
+
+    /** Download a specific version's bytes. */
+    public function downloadVersion(Request $request, StoredFile $file, FileVersion $version): StreamedResponse
+    {
+        abort_unless($version->file_id === $file->id, 404);
+        abort_unless($file->isOwnedBy($request->user()->id), 403);
+        $path = 'files/'.$version->blob;
+        abort_unless($this->disk()->exists($path), 404);
+
+        return $this->disk()->response($path, $version->name, [
+            'Content-Type' => $version->mime ?: 'application/octet-stream',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     /** Import an uploaded file straight into Files as a row (used by mail "save to Files"). */
@@ -160,6 +245,7 @@ class FileController extends Controller
         ]);
 
         $file = $request->file('file');
+        abort_if($this->quotaExceeded($request->user()->id, (int) $file->getSize()), 413, __('files.quota_exceeded'));
         $blob = (string) Str::uuid();
         $this->disk()->putFileAs('files', $file, $blob);
 

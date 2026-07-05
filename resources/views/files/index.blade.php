@@ -8,6 +8,7 @@
         uploadUrl: '{{ url('/files/upload') }}',
         rawBase: '{{ url('/files/raw') }}',
         blobBase: '{{ url('/files/blob') }}',
+        versionsBase: '{{ url('/files') }}',
         token: '{{ csrf_token() }}',
      }, {
         types: @js($typeLabels),
@@ -48,6 +49,12 @@
                     </template>
                 </nav>
                 <h1 class="mt-1 text-2xl font-semibold text-gray-900" x-text="currentFolderName ?? @js(__('messages.nav.files'))"></h1>
+                <div x-show="usage.quota > 0" x-cloak class="mt-2 max-w-xs">
+                    <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div class="h-full bg-gray-700" :style="'width:'+Math.min(100, Math.round((usage.used/usage.quota)*100))+'%'"></div>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500" x-text="'{{ __('files.storage_used', ['used' => '__U__', 'total' => '__T__']) }}'.replace('__U__', fmtSize(usage.used)).replace('__T__', fmtSize(usage.quota))"></p>
+                </div>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 {{-- New folder --}}
@@ -162,6 +169,7 @@
                                             <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
+                                            <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
                                             <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
                                             <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-gray-50"><x-icon name="trash" />{{ __('common.delete') }}</button>
@@ -315,6 +323,33 @@
                 <div class="mt-5 flex justify-end gap-3">
                     <button type="button" @click="tagsOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyTags()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.save') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Versions modal --}}
+    <template x-teleport="body">
+        <div x-show="versions.open" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" @keydown.escape.window="versions.open = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="versions.open = false"></div>
+            <div class="relative my-16 w-full max-w-md rounded-lg bg-white shadow-xl">
+                <h3 class="border-b border-gray-100 px-6 py-4 text-base font-semibold text-gray-900">{{ __('files.versions') }} <span class="text-gray-400" x-text="versions.row?.name"></span></h3>
+                <div class="max-h-[60vh] overflow-y-auto px-6 py-4">
+                    <p x-show="!versions.loading && !versions.list.length" x-cloak class="text-sm text-gray-500">{{ __('files.versions_none') }}</p>
+                    <ul class="divide-y divide-gray-100">
+                        <template x-for="v in versions.list" :key="v.id">
+                            <li class="flex items-center justify-between gap-3 py-2 text-sm">
+                                <span class="min-w-0">
+                                    <span class="block text-xs text-gray-500" x-text="v.created_at ? new Date(v.created_at).toLocaleString() : ''"></span>
+                                    <span class="text-gray-700" x-text="fmtSize(v.size)"></span>
+                                </span>
+                                <a :href="versionDownloadUrl(v.id)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.version_download') }}</a>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+                <div class="flex justify-end border-t border-gray-100 px-6 py-3">
+                    <button type="button" @click="versions.open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.close') }}</button>
                 </div>
             </div>
         </div>

@@ -2506,10 +2506,26 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             if (! res.ok) { this.state = 'error'; return; }
             const data = await res.json();
             this.manifest = data.files ? data : { v: 1, folders: [], files: [] };
+            this.usage = data.usage || { used: 0, quota: 0 };
             this.state = 'ready';
         } catch (e) {
             this.state = 'error';
         }
+    },
+
+    usage: { used: 0, quota: 0 },
+    versions: { open: false, row: null, list: [], loading: false },
+
+    async openVersions(row) {
+        this.versions = { open: true, row, list: [], loading: true };
+        try {
+            const res = await fetch(config.versionsBase + '/' + row.id + '/versions', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (res.ok) this.versions.list = (await res.json()).versions || [];
+        } catch (e) { /* keep empty */ }
+        this.versions.loading = false;
+    },
+    versionDownloadUrl(versionId) {
+        return config.versionsBase + '/' + this.versions.row.id + '/versions/' + versionId + '/download';
     },
 
     // Persist the whole tree; the server syncs it to clean rows.
