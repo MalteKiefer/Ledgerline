@@ -62,6 +62,17 @@ return [
         'importing' => 'Importing…',
         'import_result' => 'Imported: :created new, :updated updated, :skipped skipped',
         'group_add_placeholder' => 'Add group…',
+        'avatar_change' => 'Change photo',
+        'avatar_after_save' => 'Save the contact first to add a photo.',
+        'avatar_pick_title' => 'Contact photo',
+        'avatar_tab_upload' => 'Upload',
+        'avatar_tab_gallery' => 'Gallery',
+        'avatar_tab_people' => 'People',
+        'avatar_tab_files' => 'Files',
+        'avatar_choose_file' => 'Choose an image…',
+        'avatar_crop_hint' => 'Drag to reposition, pinch/scroll to zoom.',
+        'avatar_no_images' => 'No images found here.',
+        'avatar_apply' => 'Use photo',
     ],
 
     'dup' => [

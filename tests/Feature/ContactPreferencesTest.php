@@ -59,6 +59,19 @@ class ContactPreferencesTest extends TestCase
         $this->assertCount(1, $res2->json('contacts'));
     }
 
+    public function test_search_matches_all_fields_note_and_phone(): void
+    {
+        $user = User::factory()->create();
+        $book = $this->book($user);
+        app(ContactWriter::class)->create($book, ['fn' => 'Someone', 'note' => 'plays chess on tuesdays', 'phones' => [['value' => '+49 151 22233344']]]);
+        app(ContactWriter::class)->create($book, ['fn' => 'Nobody']);
+
+        // Note text lives only in the vCard — search must still find it.
+        $this->assertCount(1, $this->actingAs($user)->getJson(route('contacts.data', ['q' => 'chess']))->assertOk()->json('contacts'));
+        // Phone number too.
+        $this->assertCount(1, $this->actingAs($user)->getJson(route('contacts.data', ['q' => '22233344']))->assertOk()->json('contacts'));
+    }
+
     public function test_suggest_returns_matching_contacts(): void
     {
         $user = User::factory()->create();

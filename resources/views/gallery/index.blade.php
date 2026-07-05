@@ -4,39 +4,35 @@
        @keydown.left.window="viewerOpen && prev()" @keydown.right.window="viewerOpen && next()"
        @keydown.window="onKeydown($event)">
 
-    <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-            <h1 class="text-2xl font-semibold text-gray-900">{{ __('gallery.heading') }}</h1>
-            <p class="mt-1 text-sm text-gray-600">{{ __('gallery.subtitle') }}</p>
-        </div>
-        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <x-page-heading :title="__('gallery.heading')" :subtitle="__('gallery.subtitle')">
+        <x-slot:actions>
             <form method="GET" action="{{ route('gallery.index') }}" class="flex w-full items-center gap-1 sm:w-auto">
                 <input type="search" name="q" value="{{ $searchQuery }}" placeholder="{{ __('gallery.search_placeholder') }}"
                     class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:w-56">
-                <button type="submit" title="{{ __('gallery.search') }}" aria-label="{{ __('gallery.search') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="magnifying-glass" class="h-5 w-5" /></button>
+                <x-button type="submit" title="{{ __('gallery.search') }}" aria-label="{{ __('gallery.search') }}" class="!p-2"><x-icon name="magnifying-glass" class="h-5 w-5" /></x-button>
                 @if ($searchQuery !== '')
                     <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900" title="{{ __('gallery.search_clear') }}"><x-icon name="x-mark" /></a>
                 @endif
             </form>
             @if ($favoritesOnly)
-                <a href="{{ route('gallery.index') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.all_photos') }}</a>
+                <x-button :href="route('gallery.index')">{{ __('gallery.all_photos') }}</x-button>
             @else
-                <a href="{{ route('gallery.index', ['favorites' => 1]) }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.favorites') }}</a>
+                <x-button :href="route('gallery.index', ['favorites' => 1])">{{ __('gallery.favorites') }}</x-button>
             @endif
-            <a href="{{ route('gallery.trips') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trips') }}</a>
-            <a href="{{ route('gallery.map') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.map') }}</a>
-            <a href="{{ route('gallery.people') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.people_link') }}</a>
-            <a href="{{ route('gallery.duplicates') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.dup_link') }}</a>
-            <a href="{{ route('gallery.trash') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.trash') }}</a>
-            <label title="{{ __('gallery.upload') }}" aria-label="{{ __('gallery.upload') }}" class="hidden cursor-pointer rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700 sm:inline-flex">
+            <x-button :href="route('gallery.trips')">{{ __('gallery.trips') }}</x-button>
+            <x-button :href="route('gallery.map')">{{ __('gallery.map') }}</x-button>
+            <x-button :href="route('gallery.people')">{{ __('gallery.people_link') }}</x-button>
+            <x-button :href="route('gallery.duplicates')">{{ __('gallery.dup_link') }}</x-button>
+            <x-button :href="route('gallery.trash')">{{ __('gallery.trash') }}</x-button>
+            <label title="{{ __('gallery.upload') }}" aria-label="{{ __('gallery.upload') }}" class="hidden cursor-pointer rounded-md bg-gray-900 p-2 text-white hover:bg-gray-800 sm:inline-flex">
                 <x-icon name="arrow-up-tray" class="h-5 w-5" />
                 <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
             </label>
-        </div>
-    </div>
+        </x-slot:actions>
+    </x-page-heading>
 
     {{-- Floating upload button on mobile (hidden while selecting, to clear the bulk bar). --}}
-    <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-800 text-white shadow-lg hover:bg-gray-700 sm:hidden" aria-label="{{ __('gallery.upload') }}" title="{{ __('gallery.upload') }}">
+    <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 sm:hidden" aria-label="{{ __('gallery.upload') }}" title="{{ __('gallery.upload') }}">
         <x-icon name="arrow-up-tray" class="h-6 w-6" />
         <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
     </label>

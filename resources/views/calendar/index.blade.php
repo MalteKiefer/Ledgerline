@@ -23,9 +23,7 @@
     <div x-data="calendarPage(@js($cfg))" x-init="init()" class="flex flex-col gap-4 md:flex-row">
         {{-- Sidebar --}}
         <aside class="w-full shrink-0 space-y-4 md:w-56">
-            <button @click="openNew()" class="w-full rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
-                {{ __('calendar.ui.new_event') }}
-            </button>
+            <x-button variant="primary" icon="plus" class="w-full" @click="openNew()">{{ __('calendar.ui.new_event') }}</x-button>
             <div>
                 <div class="flex items-center justify-between">
                     <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('calendar.ui.calendars') }}</h2>

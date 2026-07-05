@@ -191,6 +191,24 @@ class GalleryController extends Controller
     /**
      * Photo locations as JSON for the map (id, lat, lng, thumb, medium, date).
      */
+    /** Recent photos for the avatar picker (thumb to browse, medium to crop). */
+    public function pickerList(): JsonResponse
+    {
+        $photos = Photo::query()
+            ->where('status', 'ready')
+            ->where('media_type', '!=', 'video')
+            ->orderByDesc('taken_at')
+            ->limit(120)
+            ->get()
+            ->map(fn (Photo $p): array => [
+                'id' => $p->id,
+                'thumb' => route('gallery.image', ['photo' => $p, 'size' => 'thumb']),
+                'full' => route('gallery.image', ['photo' => $p, 'size' => 'medium']),
+            ]);
+
+        return response()->json(['photos' => $photos]);
+    }
+
     public function points(): JsonResponse
     {
         $points = Photo::query()

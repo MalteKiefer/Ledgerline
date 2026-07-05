@@ -1,12 +1,11 @@
 <x-layouts.app :title="__('gallery.people_heading')">
     @php $cfg = ['dataUrl' => route('gallery.people.data'), 'showBase' => url('gallery/people')]; @endphp
     <div x-data="peoplePage(@js($cfg))" x-init="init()">
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <h1 class="text-2xl font-semibold text-gray-900">{{ __('gallery.people_heading') }}</h1>
-            </div>
-            <a href="{{ route('gallery.index') }}" class="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.back') }}</a>
-        </div>
+        <x-page-heading :title="__('gallery.people_heading')">
+            <x-slot:actions>
+                <x-button :href="route('gallery.index')" icon="arrow-uturn-left">{{ __('gallery.back') }}</x-button>
+            </x-slot:actions>
+        </x-page-heading>
 
         <template x-if="!loading && people.length === 0">
             <div class="mt-8 rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">

@@ -13,13 +13,11 @@
 
     <template x-if="state === 'ready'">
       <div>
-        <div class="flex items-center justify-between gap-3">
-            <div>
-                <h1 class="text-2xl font-semibold text-gray-900">{{ __('todos.heading') }}</h1>
-                <p class="mt-1 text-sm text-gray-600">{{ __('todos.subheading') }}</p>
-            </div>
-            <button type="button" @click="newTask()" class="shrink-0 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">+ {{ __('todos.new_task') }}</button>
-        </div>
+        <x-page-heading :title="__('todos.heading')" :subtitle="__('todos.subheading')">
+            <x-slot:actions>
+                <x-button variant="primary" icon="plus" @click="newTask()">{{ __('todos.new_task') }}</x-button>
+            </x-slot:actions>
+        </x-page-heading>
 
         <p x-show="error" x-cloak class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800" x-text="error"></p>
 
@@ -66,7 +64,7 @@
             <section class="min-w-0 flex-1">
                 <div class="flex items-center gap-2">
                     <input type="search" x-model="query" placeholder="{{ __('todos.search') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <button type="button" x-show="view === 'trash' && trashCount" @click="emptyTrash()" class="shrink-0 rounded-md border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50">{{ __('todos.empty_trash') }}</button>
+                    <x-button variant="danger" class="shrink-0" x-show="view === 'trash' && trashCount" @click="emptyTrash()">{{ __('todos.empty_trash') }}</x-button>
                 </div>
 
                 <ul class="mt-4 space-y-2">
