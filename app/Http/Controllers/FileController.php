@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -299,6 +300,7 @@ class FileController extends Controller
             'file_ids.*' => ['string'],
             'folder_ids' => ['nullable', 'array', 'max:5000'],
             'folder_ids.*' => ['string'],
+            'format' => ['nullable', Rule::in(['zip', 'tar', 'targz', 'tarbz2'])],
         ]);
 
         // Keep only ids the current user actually OWNS (not merely shared with
@@ -325,6 +327,7 @@ class FileController extends Controller
             'source' => 'files',
             'title' => trans_choice('downloads.title.files', $count, ['count' => $count]),
             'status' => 'queued',
+            'format' => $validated['format'] ?? 'zip',
             'item_count' => $count,
             'payload' => ['file_ids' => $fileIds, 'folder_ids' => $folderIds],
         ]);

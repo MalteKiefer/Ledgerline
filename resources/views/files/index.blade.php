@@ -193,7 +193,15 @@
         :class="(up.active || dl.active) ? 'bottom-72' : 'bottom-5'"
         class="fixed inset-x-0 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
-        <button type="button" @click="bulkDownload()" title="{{ __('files.download_zip') }}" aria-label="{{ __('files.download_zip') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="document-arrow-down" class="h-5 w-5" /></button>
+        <div class="relative" x-data="{ fmt: false }" @click.outside="fmt = false">
+            <button type="button" @click="fmt = ! fmt" title="{{ __('files.export_download') }}" aria-label="{{ __('files.export_download') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="document-arrow-down" class="h-5 w-5" /></button>
+            <div x-show="fmt" x-cloak class="absolute bottom-full left-1/2 mb-2 w-40 -translate-x-1/2 overflow-hidden rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
+                <button type="button" @click="bulkDownload('zip'); fmt = false" class="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50">ZIP</button>
+                <button type="button" @click="bulkDownload('tar'); fmt = false" class="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50">TAR</button>
+                <button type="button" @click="bulkDownload('targz'); fmt = false" class="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50">TAR.GZ</button>
+                <button type="button" @click="bulkDownload('tarbz2'); fmt = false" class="block w-full px-3 py-2 text-left text-gray-700 hover:bg-gray-50">TAR.BZ2</button>
+            </div>
+        </div>
         <button type="button" @click="openMove(null)" title="{{ __('files.move') }}" aria-label="{{ __('files.move') }}" class="rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="arrows-right-left" class="h-5 w-5" /></button>
         <button type="button" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
     </div>

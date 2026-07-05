@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Storage;
 #[Fillable([
     'user_id',
     'source',
+    'format',
     'variant',
     'title',
     'status',

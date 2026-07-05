@@ -13,13 +13,22 @@ use App\Support\DiskTempFile;
 use Generator;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
+use Phar;
+use PharData;
+use RuntimeException;
 use ZipArchive;
 
 /**
- * Builds an export's zip file(s) on the files disk. Entries are gathered per
- * source (gallery photos or files/folders), streamed through a local temp zip
- * and uploaded. When a configured maximum size is set, the archive is split into
- * several parts so no single zip exceeds it.
+ * Builds an export's archive file(s) on the files disk. Entries are gathered per
+ * source (gallery photos or files/folders) into a shared list, then written in
+ * the export's chosen format:
+ *
+ *  - 'zip' (default): streamed through a local temp zip and uploaded. When a
+ *    configured maximum size is set, the archive is split into several parts so
+ *    no single zip exceeds it.
+ *  - 'tar' | 'targz' | 'tarbz2': a single PharData tar (optionally gzip/bzip2
+ *    compressed). Tar cannot be incrementally size-split like zip, so it is
+ *    always one part regardless of $maxBytes.
  *
  * @phpstan-type Part array{name: string, path: string, size: int}
  */
@@ -34,6 +43,17 @@ class ExportArchiver
     {
         $disk = Storage::disk(config('files.disk'));
 
+        return match ($export->format ?: 'zip') {
+            'tar', 'targz', 'tarbz2' => $this->buildTar($export, (string) $export->format, $disk),
+            default => $this->buildZip($export, $maxBytes, $disk),
+        };
+    }
+
+    /**
+     * @return list<Part>
+     */
+    private function buildZip(Export $export, int $maxBytes, Filesystem $disk): array
+    {
         /** @var list<Part> $parts */
         $parts = [];
         $zip = null;
@@ -89,6 +109,78 @@ class ExportArchiver
         $flush();
 
         return $this->nameParts($parts, $export->title);
+    }
+
+    /**
+     * Build a single tar archive (optionally gzip/bzip2 compressed) from the same
+     * entries the zip path gathers. Tar cannot be size-split incrementally, so the
+     * whole selection is written into one archive and returned as one part.
+     *
+     * @return list<Part>
+     */
+    private function buildTar(Export $export, string $format, Filesystem $disk): array
+    {
+        // bzip2 needs the bz2 extension; fall back to gzip when it is missing.
+        if ($format === 'tarbz2' && ! extension_loaded('bz2')) {
+            $format = 'targz';
+        }
+
+        [$compression, $ext] = match ($format) {
+            'targz' => [Phar::GZ, 'tar.gz'],
+            'tarbz2' => [Phar::BZ2, 'tar.bz2'],
+            default => [null, 'tar'],
+        };
+
+        // PharData refuses to open an existing file, so start from a fresh path.
+        $tmpTar = tempnam(sys_get_temp_dir(), 'exp-tar');
+        @unlink($tmpTar);
+        $tmpTar .= '.tar';
+
+        /** @var list<string> $srcTemps entry temp files pulled from the disk */
+        $srcTemps = [];
+        // Every path we may need to clean up (the .tar and any compressed sibling).
+        $archiveTemps = [$tmpTar];
+
+        try {
+            $phar = new PharData($tmpTar);
+            $usedNames = [];
+            foreach ($this->entries($export, $disk) as [$name, $localPath, $size]) {
+                $srcTemps[] = $localPath;
+                $entry = $this->uniqueName($usedNames, $name);
+                $phar->addFile($localPath, $entry);
+                $usedNames[$entry] = true;
+            }
+
+            $archivePath = $tmpTar;
+            if ($compression !== null) {
+                // compress() writes a sibling file (e.g. .tar.gz) beside the .tar.
+                $phar->compress($compression, '.'.$ext);
+                $archivePath = preg_replace('/\.tar$/', '.'.$ext, $tmpTar) ?? $tmpTar;
+                $archiveTemps[] = $archivePath;
+            }
+            // Release the Phar handle before reading/unlinking the files.
+            unset($phar);
+
+            if (! is_file($archivePath)) {
+                throw new RuntimeException("Failed to build {$ext} archive.");
+            }
+
+            $size = (int) (filesize($archivePath) ?: 0);
+            $path = "exports/{$export->user_id}/{$export->id}/export.{$ext}";
+            $stream = fopen($archivePath, 'r');
+            $disk->writeStream($path, $stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+
+            $base = $this->safeName($export->title !== '' ? $export->title : 'export');
+
+            return [['name' => "{$base}.{$ext}", 'path' => $path, 'size' => $size]];
+        } finally {
+            foreach (array_merge($archiveTemps, $srcTemps) as $t) {
+                @unlink($t);
+            }
+        }
     }
 
     /**
