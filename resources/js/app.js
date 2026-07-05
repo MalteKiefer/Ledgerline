@@ -1638,7 +1638,10 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
                 body: JSON.stringify({ photo_ids: this.selected, variant }),
             });
-            if (res.ok) window.llToast(queuedMsg, '/downloads');
+            if (res.ok) { window.llToast(queuedMsg, '/downloads'); return; }
+            // Surface the in-flight cap (429) or other server message.
+            const body = await res.json().catch(() => ({}));
+            if (body.message) window.llToast(body.message);
         } catch (e) { /* ignore; user can retry */ }
     },
 
@@ -2950,7 +2953,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
                 body: JSON.stringify({ file_ids, folder_ids }),
             });
-            if (res.ok) window.llToast(labels.exportQueued, labels.downloadsUrl);
+            if (res.ok) { window.llToast(labels.exportQueued, labels.downloadsUrl); }
+            else { const body = await res.json().catch(() => ({})); if (body.message) window.llToast(body.message); }
         } catch (e) { /* user can retry */ }
         this.selected = [];
     },
@@ -3010,6 +3014,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     body: data,
                 });
+                if (res.status === 413) { this.error = labels.quotaExceeded || labels.uploadFailed; break; }
                 if (! res.ok) throw new Error('upload failed');
                 const { id } = await res.json();
 

@@ -23,6 +23,7 @@
         rootFolder: @js(__('files.all_files')),
         migrateFailed: @js(__('files.migrate_failed')),
         restoreConfirm: @js(__('files.version_restore_confirm')),
+        quotaExceeded: @js(__('files.quota_exceeded')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
