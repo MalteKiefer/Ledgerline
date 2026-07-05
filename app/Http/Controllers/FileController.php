@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\BuildExport;
 use App\Models\Export;
+use App\Models\FileBlob;
 use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
@@ -100,7 +101,22 @@ class FileController extends Controller
         // Per-user version cap (1–10); the owner is the syncing user.
         $keep = min(10, max(1, (int) UserSetting::for($uid)->file_max_versions));
 
-        $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep): array {
+        // A manifest row may only reference a blob the caller uploaded (recorded
+        // in file_blobs) or one already attached to one of their files — never a
+        // blob whose UUID they merely learned (e.g. from a since-revoked share).
+        $allowed = $owned()->withTrashed()->pluck('blob')
+            ->merge(FileBlob::where('user_id', $uid)->pluck('blob'))
+            ->filter()->flip();
+        foreach ($files as $f) {
+            abort_unless(isset($allowed[$f['blob']]), 422, 'Unknown blob reference.');
+        }
+
+        // Per-user storage quota (0 = unlimited). Reconcile sizes from disk so a
+        // lied-about size can't smuggle bytes past the quota.
+        $quota = $this->quotaBytes();
+        $disk = $this->disk();
+
+        $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): array {
             $folderIds = [];
             foreach ($folders as $f) {
                 $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
@@ -110,6 +126,7 @@ class FileController extends Controller
 
             $fileIds = [];
             $prunedBlobs = [];
+            $total = 0;
             foreach ($files as $f) {
                 // withTrashed: the manifest keeps trashed files, so a matching
                 // row may be soft-deleted; find it (or build a new one) and let
@@ -117,12 +134,18 @@ class FileController extends Controller
                 $file = $owned()->withTrashed()->firstOrNew(['id' => $f['id']]);
                 $oldBlob = $file->exists ? $file->blob : null;
                 $oldMeta = ['name' => $file->name, 'mime' => $file->mime, 'size' => (int) $file->size];
+                // Authoritative size: read from disk when the blob is new/changed
+                // (never trust the client's number), else keep the stored size.
+                $size = ($oldBlob === $f['blob'])
+                    ? (int) $file->size
+                    : (int) ($disk->exists('files/'.$f['blob']) ? $disk->size('files/'.$f['blob']) : 0);
+                $total += $size;
                 $file->fill([
                     'user_id' => $uid,
                     'file_folder_id' => $f['folder'] ?? null,
                     'name' => $f['name'],
                     'mime' => $f['mime'] ?? 'application/octet-stream',
-                    'size' => (int) ($f['size'] ?? 0),
+                    'size' => $size,
                     'blob' => $f['blob'],
                     'tags' => Tags::normalize($f['tags'] ?? null),
                 ]);
@@ -153,6 +176,19 @@ class FileController extends Controller
             }
             $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->forceDelete();
 
+            // Enforce the quota against the reconciled live + kept-version bytes;
+            // throwing here rolls back the whole sync.
+            if ($quota > 0) {
+                $versionBytes = (int) FileVersion::where('user_id', $uid)->sum('size');
+                abort_if($total + $versionBytes > $quota, 413, __('files.quota_exceeded'));
+            }
+
+            // Referenced blobs no longer need their upload record.
+            $syncedBlobs = collect($files)->pluck('blob')->all();
+            if ($syncedBlobs !== []) {
+                FileBlob::where('user_id', $uid)->whereIn('blob', $syncedBlobs)->delete();
+            }
+
             return array_merge($removed, $prunedBlobs);
         });
 
@@ -177,6 +213,9 @@ class FileController extends Controller
 
         $id = (string) Str::uuid();
         $this->disk()->putFileAs('files', $request->file('file'), $id);
+        // Record the uploader so sync can reject blobs the caller never uploaded
+        // and the sweeper can reclaim never-synced blobs.
+        FileBlob::create(['blob' => $id, 'user_id' => $request->user()->id, 'created_at' => now()]);
 
         return response()->json(['id' => $id], 201);
     }
@@ -246,7 +285,9 @@ class FileController extends Controller
     {
         $data = $request->validate([
             'file' => ['required', 'file', 'max:'.((int) config('files.max_upload_mb', 2048) * 1024)],
-            'folder_id' => ['nullable', 'uuid', 'exists:file_folders,id'],
+            // Owner-scoped exists: a plain exists rule would accept another
+            // user's folder id (the global scope doesn't apply to the rule).
+            'folder_id' => ['nullable', 'uuid', Rule::exists('file_folders', 'id')->where('user_id', $request->user()->id)],
         ]);
 
         $file = $request->file('file');
