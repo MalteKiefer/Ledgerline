@@ -221,7 +221,7 @@ class ExportArchiver
 
         // Defence in depth: the job runs without Auth so the owner global scope
         // is inert here — constrain to the export owner's photos explicitly.
-        foreach (Photo::withoutGlobalScopes()->where('uploaded_by', $ownerId)->whereIn('id', $ids)->get() as $photo) {
+        foreach (Photo::ownedBy($ownerId)->whereIn('id', $ids)->get() as $photo) {
             if ($variant === 'edited') {
                 foreach ($this->photoExporter->editedFiles($photo) as $file) {
                     yield [$file['name'], $file['path'], (int) (filesize($file['path']) ?: 0)];

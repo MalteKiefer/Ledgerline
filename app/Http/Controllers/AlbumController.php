@@ -128,7 +128,7 @@ class AlbumController extends Controller
     /** Keep only the caller's own photos (never add someone else's photo). */
     private function ownedPhotoIds(Request $request, array $ids): array
     {
-        return Photo::withoutGlobalScopes()->where('uploaded_by', $request->user()->id)
+        return Photo::ownedBy($request->user()->id)
             ->whereIn('id', $ids)->pluck('id')->all();
     }
 

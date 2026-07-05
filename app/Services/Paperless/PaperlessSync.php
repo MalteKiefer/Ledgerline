@@ -38,7 +38,7 @@ class PaperlessSync
                 $keepIds[] = $t['paperless_id'];
             }
             // Drop terms deleted in Paperless since the last sync (this user only).
-            PaperlessTerm::withoutGlobalScopes()->where('user_id', $userId)->where('kind', $kind)
+            PaperlessTerm::ownedBy($userId)->where('kind', $kind)
                 ->when($keepIds !== [], fn ($q) => $q->whereNotIn('paperless_id', $keepIds))
                 ->delete();
             $counts[$kind] = count($terms);

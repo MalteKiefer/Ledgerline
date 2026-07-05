@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models\Concerns;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -18,6 +19,19 @@ trait AssignsOwner
     public function ownerColumn(): string
     {
         return 'user_id';
+    }
+
+    /**
+     * Strictly the given user's OWN rows, with the auth-gated read scope removed
+     * (never merely-shared rows). The single, model-aware way to owner-scope a
+     * query — replaces hand-written withoutGlobalScopes()->where('<column>', …)
+     * chains so the owner column (e.g. Photo's uploaded_by) is never hardcoded.
+     */
+    public function scopeOwnedBy(Builder $query, int|string|null $userId): Builder
+    {
+        $model = $query->getModel();
+
+        return $query->withoutGlobalScopes()->where($model->getTable().'.'.$model->ownerColumn(), $userId);
     }
 
     protected static function bootAssignsOwner(): void
