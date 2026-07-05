@@ -167,7 +167,7 @@
 
                 {{-- Group 2: reply / forward --}}
                 <button type="button" x-show="reader.current" @click="reply(false)" title="{{ __('mail.reply') }}" aria-label="{{ __('mail.reply') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
-                <button type="button" x-show="reader.current" @click="reply(true)" title="{{ __('mail.reply_all') }}" aria-label="{{ __('mail.reply_all') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-left" class="h-4 w-4" /><x-icon name="arrow-uturn-left" class="-ml-2 h-4 w-4" /></button>
+                <button type="button" x-show="reader.current" @click="reply(true)" title="{{ __('mail.reply_all') }}" aria-label="{{ __('mail.reply_all') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="reply-all" class="h-4 w-4" /></button>
                 <button type="button" x-show="reader.current" @click="forward()" title="{{ __('mail.forward') }}" aria-label="{{ __('mail.forward') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-right" class="h-4 w-4" /></button>
                 <span x-show="reader.current" class="mx-0.5 h-5 w-px bg-gray-200" aria-hidden="true"></span>
 
