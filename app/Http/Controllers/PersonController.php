@@ -36,6 +36,9 @@ class PersonController extends Controller
 
         $people = Person::query()
             ->when(! $all, fn ($q) => $q->whereNull('hidden_at')->where('faces_count', '>=', $min))
+            // Named people first (A→Z), then the still-unassigned clusters.
+            ->orderByRaw("case when name is null or name = '' then 1 else 0 end asc")
+            ->orderByRaw('lower(name) asc')
             ->orderByDesc('faces_count')
             ->get()
             ->map(fn (Person $p): array => [

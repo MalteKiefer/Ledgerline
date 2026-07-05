@@ -167,7 +167,7 @@ class ContactDuplicateFinder
             'emails' => $this->values($c->emails),
             'phones' => $this->values($c->phones),
             'has_photo' => (bool) $c->has_photo,
-            'avatar' => $c->has_photo ? route('contacts.avatar', ['contact' => $c]) : null,
+            'avatar' => $c->has_photo ? route('contacts.avatar', ['contact' => $c]).'?v='.($c->updated_at?->timestamp ?? 0) : null,
         ];
     }
 

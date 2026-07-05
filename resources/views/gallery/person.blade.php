@@ -34,7 +34,8 @@
                     </template>
                 </div>
             </div>
-            <button type="button" @click="save()" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('gallery.person_save') }}</button>
+            <x-button variant="primary" @click="save()">{{ __('gallery.person_save') }}</x-button>
+            <span x-show="saved" x-cloak x-transition class="text-sm font-medium text-green-600">✓ {{ __('gallery.person_saved') }}</span>
             <button type="button" @click="toggleHidden()" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 x-text="person.hidden ? '{{ __('gallery.person_unhide') }}' : '{{ __('gallery.person_hide') }}'"></button>
             {{-- Merge another (named) person in — autocomplete --}}

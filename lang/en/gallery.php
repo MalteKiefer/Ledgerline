@@ -28,6 +28,7 @@ return [
     'person_merge_confirm' => 'Merge the selected person into this one? Their faces move here and the other person is removed.',
     'person_back' => 'Back to people',
     'person_save' => 'Save',
+    'person_saved' => 'Saved',
     'person_faces' => 'Faces',
     'person_reassign' => 'Not this person',
     'person_reassign_confirm' => 'Move this face to a new person?',

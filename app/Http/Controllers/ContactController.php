@@ -54,15 +54,17 @@ class ContactController extends Controller
             ->when($groupId, fn ($x) => $x->whereHas('groups', fn ($g) => $g->where('contact_groups.id', $groupId)))
             // Search across every field: the denormalised columns for precision
             // plus the raw vCard so notes, title, nickname, addresses, URLs and
-            // phone numbers are all matched too.
-            ->when($q !== '', fn ($x) => $x->where(fn ($w) => $w
-                ->where('fn', 'like', "%{$q}%")
-                ->orWhere('first_name', 'like', "%{$q}%")
-                ->orWhere('last_name', 'like', "%{$q}%")
-                ->orWhere('org', 'like', "%{$q}%")
-                ->orWhere('vcard', 'like', "%{$q}%")
-                ->orWhereJsonContains('emails', $q)
-                ->orWhereJsonContains('phones', $q)))
+            // phone numbers are all matched too. lower(...) both sides makes it
+            // case-insensitive on PostgreSQL (LIKE is case-sensitive there).
+            ->when($q !== '', function ($x) use ($q) {
+                $like = '%'.mb_strtolower($q).'%';
+                $x->where(fn ($w) => $w
+                    ->whereRaw('lower(fn) like ?', [$like])
+                    ->orWhereRaw('lower(first_name) like ?', [$like])
+                    ->orWhereRaw('lower(last_name) like ?', [$like])
+                    ->orWhereRaw('lower(org) like ?', [$like])
+                    ->orWhereRaw('lower(vcard) like ?', [$like]));
+            })
             ->orderByRaw("lower(coalesce(nullif({$primary}, ''), fn)) asc")
             ->orderByRaw("lower(coalesce(nullif({$secondary}, ''), '')) asc")
             ->get()
@@ -76,7 +78,7 @@ class ContactController extends Controller
                 'emails' => $c->emails ?? [],
                 'phones' => $c->phones ?? [],
                 'has_photo' => $c->has_photo,
-                'avatar' => $c->has_photo ? route('contacts.avatar', ['contact' => $c]) : null,
+                'avatar' => $this->avatarUrl($c),
             ]);
 
         return response()->json([
@@ -98,17 +100,20 @@ class ContactController extends Controller
 
         $contacts = Contact::query()
             ->whereIn('address_book_id', $bookIds)
-            ->when($q !== '', fn ($x) => $x->where(fn ($w) => $w
-                ->where('fn', 'like', "%{$q}%")
-                ->orWhere('first_name', 'like', "%{$q}%")
-                ->orWhere('last_name', 'like', "%{$q}%")))
+            ->when($q !== '', function ($x) use ($q) {
+                $like = '%'.mb_strtolower($q).'%';
+                $x->where(fn ($w) => $w
+                    ->whereRaw('lower(fn) like ?', [$like])
+                    ->orWhereRaw('lower(first_name) like ?', [$like])
+                    ->orWhereRaw('lower(last_name) like ?', [$like]));
+            })
             ->orderByRaw("lower(coalesce(nullif(first_name, ''), fn)) asc")
             ->limit(10)
             ->get()
             ->map(fn (Contact $c): array => [
                 'id' => $c->id,
                 'name' => $c->fn ?: trim(((string) $c->first_name).' '.((string) $c->last_name)),
-                'avatar' => $c->has_photo ? route('contacts.avatar', ['contact' => $c]) : null,
+                'avatar' => $this->avatarUrl($c),
             ])
             ->filter(fn (array $c): bool => $c['name'] !== '')
             ->values();
@@ -257,5 +262,19 @@ class ContactController extends Controller
     private function authorizeContact(Contact $contact): void
     {
         abort_unless($contact->addressBook->user_id === auth()->id(), 403);
+    }
+
+    /**
+     * Avatar URL with a version stamp so a changed photo busts the browser cache
+     * (the avatar route otherwise returns the same URL with a 1h cache header,
+     * which showed a stale/broken image in the list after a photo change).
+     */
+    private function avatarUrl(Contact $c): ?string
+    {
+        if (! $c->has_photo) {
+            return null;
+        }
+
+        return route('contacts.avatar', ['contact' => $c]).'?v='.($c->updated_at?->timestamp ?? 0);
     }
 }
