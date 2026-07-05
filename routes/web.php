@@ -236,8 +236,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/gallery/people/{person}/merge', [PersonController::class, 'merge'])->name('gallery.people.merge');
     Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
     Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
-    Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->name('gallery.download');
-    Route::post('/gallery/export', [GalleryController::class, 'queueExport'])->name('gallery.export');
+    Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->middleware('throttle:6,1')->name('gallery.download');
+    Route::post('/gallery/export', [GalleryController::class, 'queueExport'])->middleware('throttle:20,1')->name('gallery.export');
     Route::get('/gallery/{photo}/download/edited', [GalleryController::class, 'downloadEdited'])->name('gallery.download.edited');
     // Throttled: each call blocks on a global geocoder lock + a slow outbound
     // request, so it can pin PHP-FPM workers without a limit.
@@ -267,7 +267,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
     Route::get('/files/{file}/versions', [FileController::class, 'versions'])->name('files.versions');
     Route::get('/files/{file}/versions/{version}/download', [FileController::class, 'downloadVersion'])->name('files.versions.download');
-    Route::post('/files/export', [FileController::class, 'queueExport'])->name('files.export');
+    Route::post('/files/export', [FileController::class, 'queueExport'])->middleware('throttle:20,1')->name('files.export');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
 
     // Downloads center: asynchronous, worker-built export zips (gallery + files),
@@ -303,11 +303,11 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/shares/data', [ResourceShareController::class, 'data'])->name('shares.data');
     Route::post('/shares', [ResourceShareController::class, 'store'])->name('shares.store');
     Route::delete('/shares/{share}', [ResourceShareController::class, 'destroy'])->name('shares.destroy');
-    Route::post('/shares/{share}/email', [ResourceShareController::class, 'email'])->name('shares.email');
+    Route::post('/shares/{share}/email', [ResourceShareController::class, 'email'])->middleware('throttle:5,1')->name('shares.email');
     // Public (external) tokenised links.
     Route::post('/shares/public', [PublicShareController::class, 'store'])->name('public-share.store');
     Route::delete('/shares/public/{publicShare}', [PublicShareController::class, 'destroy'])->name('public-share.destroy');
-    Route::post('/shares/public/{publicShare}/email', [PublicShareController::class, 'email'])->name('public-share.email');
+    Route::post('/shares/public/{publicShare}/email', [PublicShareController::class, 'email'])->middleware('throttle:5,1')->name('public-share.email');
     Route::post('/shares/public/{publicShare}/rotate', [PublicShareController::class, 'rotate'])->name('public-share.rotate');
     // Calendar: CalDAV-backed events, driven client-side over a JSON API.
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');

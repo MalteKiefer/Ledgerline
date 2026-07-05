@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\FileBlob;
 use App\Models\FileFolder;
 use App\Models\StoredFile;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,12 +66,13 @@ class FilesTest extends TestCase
 
     public function test_sync_reclaims_the_blob_of_a_removed_file(): void
     {
-        $this->signIn();
+        $u = $this->signIn();
         Storage::fake('files');
         config(['files.disk' => 'files']);
 
         $blob = (string) Str::uuid();
         Storage::disk('files')->put('files/'.$blob, 'bytes');
+        FileBlob::create(['blob' => $blob, 'user_id' => $u->id, 'created_at' => now()]);
         $id = (string) Str::uuid();
         $this->putJson(route('files.sync'), [
             'folders' => [],
@@ -84,13 +86,14 @@ class FilesTest extends TestCase
 
     public function test_sync_round_trips_a_trashed_file(): void
     {
-        $this->signIn();
+        $u = $this->signIn();
         Storage::fake('files');
         config(['files.disk' => 'files']);
 
         $id = (string) Str::uuid();
         $blob = (string) Str::uuid();
         Storage::disk('files')->put('files/'.$blob, 'x');
+        FileBlob::create(['blob' => $blob, 'user_id' => $u->id, 'created_at' => now()]);
 
         // A file the client marks trashed is stored soft-deleted and still comes
         // back from the data endpoint (so it shows in the trash view).

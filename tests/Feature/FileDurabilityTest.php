@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\FileBlob;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\User;
@@ -19,6 +20,8 @@ class FileDurabilityTest extends TestCase
 
     private function syncOneFile(User $user, string $id, string $blob, int $size = 10): void
     {
+        // Sync only accepts blobs the user actually uploaded; register it.
+        FileBlob::firstOrCreate(['blob' => $blob], ['user_id' => $user->id, 'created_at' => now()]);
         $this->actingAs($user)->putJson(route('files.sync'), [
             'folders' => [],
             'files' => [['id' => $id, 'blob' => $blob, 'name' => 'doc.txt', 'mime' => 'text/plain', 'size' => $size, 'tags' => []]],
