@@ -52,12 +52,17 @@ class ContactController extends Controller
             ->whereIn('address_book_id', $bookIds)
             ->when($bookId, fn ($x) => $x->where('address_book_id', $bookId))
             ->when($groupId, fn ($x) => $x->whereHas('groups', fn ($g) => $g->where('contact_groups.id', $groupId)))
+            // Search across every field: the denormalised columns for precision
+            // plus the raw vCard so notes, title, nickname, addresses, URLs and
+            // phone numbers are all matched too.
             ->when($q !== '', fn ($x) => $x->where(fn ($w) => $w
                 ->where('fn', 'like', "%{$q}%")
                 ->orWhere('first_name', 'like', "%{$q}%")
                 ->orWhere('last_name', 'like', "%{$q}%")
                 ->orWhere('org', 'like', "%{$q}%")
-                ->orWhereJsonContains('emails', $q)))
+                ->orWhere('vcard', 'like', "%{$q}%")
+                ->orWhereJsonContains('emails', $q)
+                ->orWhereJsonContains('phones', $q)))
             ->orderByRaw("lower(coalesce(nullif({$primary}, ''), fn)) asc")
             ->orderByRaw("lower(coalesce(nullif({$secondary}, ''), '')) asc")
             ->get()

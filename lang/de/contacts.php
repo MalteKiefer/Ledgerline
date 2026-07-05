@@ -62,6 +62,17 @@ return [
         'importing' => 'Importiere…',
         'import_result' => 'Importiert: :created neu, :updated aktualisiert, :skipped übersprungen',
         'group_add_placeholder' => 'Gruppe hinzufügen…',
+        'avatar_change' => 'Foto ändern',
+        'avatar_after_save' => 'Speichere den Kontakt zuerst, um ein Foto hinzuzufügen.',
+        'avatar_pick_title' => 'Kontaktfoto',
+        'avatar_tab_upload' => 'Hochladen',
+        'avatar_tab_gallery' => 'Galerie',
+        'avatar_tab_people' => 'Personen',
+        'avatar_tab_files' => 'Dateien',
+        'avatar_choose_file' => 'Bild auswählen…',
+        'avatar_crop_hint' => 'Ziehen zum Verschieben, scrollen zum Zoomen.',
+        'avatar_no_images' => 'Keine Bilder gefunden.',
+        'avatar_apply' => 'Foto verwenden',
     ],
 
     'dup' => [

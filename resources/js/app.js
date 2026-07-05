@@ -387,12 +387,77 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         this.editor = false; this.load();
     },
 
-    async uploadAvatar(ev) {
-        const f = ev.target.files[0]; if (! f || ! this.form.id) return;
-        const fd = new FormData(); fd.append('photo', f);
-        const r = await fetch(cfg.contactBase + '/' + this.form.id + '/avatar', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
-        if (r.ok) { const d = await r.json(); this.form.avatar = d.avatar + '?t=' + Date.now(); this.load(); }
+    // --- avatar picker (device / gallery / people / files) + crop ---
+    avatarModal: { open: false, tab: 'upload', loading: false },
+    galleryPhotos: [], peoplePhotos: [], filePhotos: [],
+    cropSrc: null, _cropper: null, saving: false,
+
+    openAvatarModal() {
+        if (! this.form.id) return; // avatar needs a saved contact to attach to
+        this.avatarModal = { open: true, tab: 'upload', loading: false };
+        this.cropSrc = null;
+        this.destroyCropper();
+    },
+    closeAvatarModal() { this.avatarModal.open = false; this.cropSrc = null; this.destroyCropper(); },
+
+    async avatarTab(tab) {
+        this.avatarModal.tab = tab;
+        this.cropSrc = null; this.destroyCropper();
+        if (tab === 'gallery' && ! this.galleryPhotos.length) await this.loadPicker('galleryPickerUrl', 'photos', 'galleryPhotos');
+        if (tab === 'people' && ! this.peoplePhotos.length) await this.loadPeople();
+        if (tab === 'files' && ! this.filePhotos.length) await this.loadFilePhotos();
+    },
+    async loadPicker(cfgKey, field, target) {
+        this.avatarModal.loading = true;
+        try {
+            const r = await fetch(cfg[cfgKey], { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this[target] = (await r.json())[field] ?? [];
+        } catch (e) { /* keep */ } finally { this.avatarModal.loading = false; }
+    },
+    async loadPeople() {
+        this.avatarModal.loading = true;
+        try {
+            const r = await fetch(cfg.peopleUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.peoplePhotos = ((await r.json()).people ?? []).filter((p) => p.cover).map((p) => ({ name: p.name, url: p.cover }));
+        } catch (e) { /* keep */ } finally { this.avatarModal.loading = false; }
+    },
+    async loadFilePhotos() {
+        this.avatarModal.loading = true;
+        try {
+            const r = await fetch(cfg.filesDataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) {
+                const d = await r.json();
+                this.filePhotos = (d.files ?? []).filter((f) => ! f.trashed && (f.mime || '').startsWith('image/'))
+                    .map((f) => ({ name: f.name, url: cfg.filesRawBase + '/' + f.blob }));
+            }
+        } catch (e) { /* keep */ } finally { this.avatarModal.loading = false; }
+    },
+
+    pickDeviceImage(ev) {
+        const f = ev.target.files[0]; if (! f) return;
+        this.startCrop(URL.createObjectURL(f));
         ev.target.value = '';
+    },
+    async startCrop(src) {
+        this.cropSrc = src;
+        await this.$nextTick();
+        this.destroyCropper();
+        const { default: Cropper } = await import('cropperjs');
+        await import('cropperjs/dist/cropper.css');
+        this._cropper = new Cropper(this.$refs.cropImg, { aspectRatio: 1, viewMode: 1, autoCropArea: 1, background: false });
+    },
+    destroyCropper() { if (this._cropper) { this._cropper.destroy(); this._cropper = null; } },
+
+    async confirmCrop() {
+        if (! this._cropper || ! this.form.id) return;
+        this.saving = true;
+        const canvas = this._cropper.getCroppedCanvas({ width: 512, height: 512, imageSmoothingQuality: 'high' });
+        const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
+        const fd = new FormData(); fd.append('photo', blob, 'avatar.jpg');
+        try {
+            const r = await fetch(cfg.contactBase + '/' + this.form.id + '/avatar', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
+            if (r.ok) { const d = await r.json(); this.form.avatar = d.avatar + '?t=' + Date.now(); this.load(); this.closeAvatarModal(); }
+        } catch (e) { /* ignore */ } finally { this.saving = false; }
     },
 
     async importFile(ev) {

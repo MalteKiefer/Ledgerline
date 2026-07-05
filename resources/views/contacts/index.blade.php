@@ -11,6 +11,10 @@
         'exportUrl' => route('contacts.export'),
         'settingsUrl' => route('contacts.settings'),
         'importResultLabel' => __('contacts.ui.import_result'),
+        'galleryPickerUrl' => route('gallery.picker'),
+        'peopleUrl' => route('gallery.people.data'),
+        'filesDataUrl' => route('files.data'),
+        'filesRawBase' => url('files/raw'),
         'token' => csrf_token(),
         'confirmDelete' => __('contacts.ui.delete_confirm'),
         'newBook' => __('contacts.ui.new_book'),
@@ -92,7 +96,7 @@
             <div class="flex items-center gap-2">
                 <input type="search" x-model.debounce.300ms="q" placeholder="{{ __('contacts.ui.search') }}"
                     class="w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                <button @click="openEditor(null)" class="shrink-0 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('contacts.ui.new_contact') }}</button>
+                <x-button variant="primary" icon="plus" class="shrink-0" @click="openEditor(null)">{{ __('contacts.ui.new_contact') }}</x-button>
             </div>
 
             {{-- Sort + display-name format --}}
@@ -142,10 +146,8 @@
                         <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200">
                             <template x-if="form.avatar"><img :src="form.avatar" class="h-full w-full object-cover"></template>
                         </div>
-                        <label class="cursor-pointer text-xs text-gray-600 hover:text-gray-900" x-show="form.id">
-                            {{ __('contacts.ui.avatar') }}
-                            <input type="file" accept="image/*" class="hidden" @change="uploadAvatar($event)">
-                        </label>
+                        <x-button variant="secondary" icon="pencil" class="!px-2 !py-1 !text-xs" x-show="form.id" @click="openAvatarModal()">{{ __('contacts.ui.avatar_change') }}</x-button>
+                        <span class="text-[11px] text-gray-400" x-show="! form.id">{{ __('contacts.ui.avatar_after_save') }}</span>
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <input x-model="form.first_name" placeholder="{{ __('contacts.ui.first_name') }}" class="rounded-md border-gray-300 text-sm">
@@ -228,6 +230,94 @@
                         <button type="submit" class="rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('contacts.ui.save') }}</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        {{-- Avatar picker + crop (device / gallery / people / files) --}}
+        <div x-show="avatarModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="closeAvatarModal()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="closeAvatarModal()"></div>
+            <div class="relative my-10 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('contacts.ui.avatar_pick_title') }}</h3>
+                    <button type="button" @click="closeAvatarModal()" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                </div>
+
+                {{-- Crop step --}}
+                <template x-if="cropSrc">
+                    <div class="mt-4">
+                        <div class="mx-auto max-h-[52vh] overflow-hidden bg-gray-50">
+                            <img x-ref="cropImg" :src="cropSrc" alt="" class="block max-w-full">
+                        </div>
+                        <p class="mt-2 text-xs text-gray-500">{{ __('contacts.ui.avatar_crop_hint') }}</p>
+                        <div class="mt-3 flex justify-end gap-2">
+                            <x-button @click="cropSrc=null; destroyCropper()">{{ __('contacts.ui.cancel') }}</x-button>
+                            <x-button variant="primary" x-bind:disabled="saving" @click="confirmCrop()">{{ __('contacts.ui.avatar_apply') }}</x-button>
+                        </div>
+                    </div>
+                </template>
+
+                {{-- Source picker --}}
+                <div x-show="!cropSrc" class="mt-4">
+                    <div class="flex gap-1 border-b border-gray-100 text-sm">
+                        @foreach (['upload','gallery','people','files'] as $t)
+                            <button type="button" @click="avatarTab('{{ $t }}')"
+                                :class="avatarModal.tab==='{{ $t }}' ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-800'"
+                                class="-mb-px border-b-2 px-3 py-2 font-medium">{{ __('contacts.ui.avatar_tab_'.$t) }}</button>
+                        @endforeach
+                    </div>
+
+                    <div class="mt-4 min-h-[12rem]">
+                        <p x-show="avatarModal.loading" class="py-8 text-center text-sm text-gray-400">…</p>
+
+                        {{-- Upload --}}
+                        <div x-show="avatarModal.tab==='upload' && !avatarModal.loading">
+                            <label class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-12 text-sm text-gray-600 hover:bg-gray-50">
+                                <x-icon name="arrow-up-tray" class="h-6 w-6 text-gray-400" />
+                                <span>{{ __('contacts.ui.avatar_choose_file') }}</span>
+                                <input type="file" accept="image/*" class="hidden" @change="pickDeviceImage($event)">
+                            </label>
+                        </div>
+
+                        {{-- Gallery --}}
+                        <div x-show="avatarModal.tab==='gallery' && !avatarModal.loading">
+                            <p x-show="!galleryPhotos.length" class="py-8 text-center text-sm text-gray-400">{{ __('contacts.ui.avatar_no_images') }}</p>
+                            <div class="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                                <template x-for="p in galleryPhotos" :key="p.id">
+                                    <button type="button" @click="startCrop(p.full)" class="aspect-square overflow-hidden rounded-md ring-1 ring-gray-200 hover:ring-gray-900">
+                                        <img :src="p.thumb" alt="" class="h-full w-full object-cover" loading="lazy">
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+
+                        {{-- People --}}
+                        <div x-show="avatarModal.tab==='people' && !avatarModal.loading">
+                            <p x-show="!peoplePhotos.length" class="py-8 text-center text-sm text-gray-400">{{ __('contacts.ui.avatar_no_images') }}</p>
+                            <div class="grid grid-cols-4 gap-3 sm:grid-cols-6">
+                                <template x-for="(p,i) in peoplePhotos" :key="i">
+                                    <button type="button" @click="startCrop(p.url)" class="text-center">
+                                        <span class="block aspect-square overflow-hidden rounded-full ring-1 ring-gray-200 hover:ring-gray-900">
+                                            <img :src="p.url" alt="" class="h-full w-full object-cover" loading="lazy">
+                                        </span>
+                                        <span class="mt-1 block truncate text-xs text-gray-500" x-text="p.name || ''"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+
+                        {{-- Files --}}
+                        <div x-show="avatarModal.tab==='files' && !avatarModal.loading">
+                            <p x-show="!filePhotos.length" class="py-8 text-center text-sm text-gray-400">{{ __('contacts.ui.avatar_no_images') }}</p>
+                            <div class="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                                <template x-for="(p,i) in filePhotos" :key="i">
+                                    <button type="button" @click="startCrop(p.url)" class="aspect-square overflow-hidden rounded-md ring-1 ring-gray-200 hover:ring-gray-900" :title="p.name">
+                                        <img :src="p.url" alt="" class="h-full w-full object-cover" loading="lazy">
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
