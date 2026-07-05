@@ -87,6 +87,10 @@ class NoteController extends Controller
 
     public function share(Request $request, Note $note): JsonResponse
     {
+        // Route binding resolves notes shared TO the caller too; only the owner
+        // may mint a public, unauthenticated snapshot link.
+        abort_unless($note->isOwnedBy($request->user()->id), 403);
+
         $data = $request->validate([
             'expires_in' => ['required', 'integer', Rule::in(self::LIFETIMES)],
             'max_views' => ['nullable', 'integer', 'min:1', 'max:100000'],

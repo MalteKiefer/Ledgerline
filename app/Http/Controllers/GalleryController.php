@@ -557,7 +557,16 @@ class GalleryController extends Controller
         ]);
 
         $variant = $validated['variant'] ?? 'original';
-        $count = count($validated['photo_ids']);
+
+        // Keep only photos the caller actually OWNS. BuildExport runs on the
+        // queue with no Auth context, so Photo's owner global scope is inert
+        // there — an unscoped payload would let any user export another user's
+        // photo bytes by id (mirrors FileController::queueExport's scoping).
+        $uid = $request->user()->id;
+        $photoIds = Photo::withoutGlobalScopes()->where('uploaded_by', $uid)
+            ->whereIn('id', array_values($validated['photo_ids']))->pluck('id')->all();
+        abort_if($photoIds === [], 422, 'Nothing selected.');
+        $count = count($photoIds);
 
         // Cap how many exports one user can have building at once so a single
         // user can't flood the queue with huge jobs.
@@ -574,7 +583,7 @@ class GalleryController extends Controller
             'title' => trans_choice('downloads.title.gallery', $count, ['count' => $count]),
             'status' => 'queued',
             'item_count' => $count,
-            'payload' => ['photo_ids' => array_values($validated['photo_ids'])],
+            'payload' => ['photo_ids' => $photoIds],
         ]);
 
         BuildExport::dispatch($export->id);
