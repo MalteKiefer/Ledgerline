@@ -1,11 +1,9 @@
 <x-layouts.app :title="__('gallery.people_heading')">
     @php $cfg = ['dataUrl' => route('gallery.people.data'), 'showBase' => url('gallery/people')]; @endphp
-    <div x-data="peoplePage(@js($cfg))" x-init="init()">
-        <x-page-heading :title="__('gallery.people_heading')">
-            <x-slot:actions>
-                <x-button :href="route('gallery.index')" icon="arrow-uturn-left">{{ __('gallery.back') }}</x-button>
-            </x-slot:actions>
-        </x-page-heading>
+    <div class="flex flex-col gap-4 md:flex-row">
+    @include('gallery._sidebar')
+    <div class="min-w-0 flex-1" x-data="peoplePage(@js($cfg))" x-init="init()">
+        <x-page-heading :title="__('gallery.people_heading')" />
 
         <template x-if="!loading && people.length === 0">
             <div class="mt-8 rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">
@@ -26,5 +24,6 @@
                 </a>
             </template>
         </div>
+    </div>
     </div>
 </x-layouts.app>

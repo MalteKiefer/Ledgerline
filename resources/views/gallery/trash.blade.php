@@ -1,8 +1,9 @@
 <x-layouts.app :title="__('gallery.trash_title')">
-  <div x-data="{ selected: [], all: {{ $photos->pluck('id')->toJson() }},
+  <div class="flex flex-col gap-4 md:flex-row">
+  @include('gallery._sidebar')
+  <div class="min-w-0 flex-1" x-data="{ selected: [], all: {{ $photos->pluck('id')->toJson() }},
                  toggleAll(e){ this.selected = e.target.checked ? [...this.all] : [] } }">
-    <p class="text-sm text-gray-500"><a href="{{ route('gallery.index') }}" class="hover:underline">{{ __('gallery.back') }}</a></p>
-    <div class="mt-1 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-semibold text-gray-900">{{ __('gallery.trash_heading') }}</h1>
         @if ($photos->isNotEmpty())
             <div class="flex flex-wrap items-center gap-2">
@@ -57,5 +58,6 @@
     @endif
 
     <div class="mt-6">{{ $photos->links() }}</div>
+  </div>
   </div>
 </x-layouts.app>

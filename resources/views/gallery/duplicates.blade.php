@@ -6,13 +6,14 @@
         'confirm' => __('gallery.dup_confirm'),
         'token' => csrf_token(),
     ]; @endphp
-    <div x-data="duplicatesPage(@js($dup))" x-init="init()">
+    <div class="flex flex-col gap-4 md:flex-row">
+    @include('gallery._sidebar')
+    <div class="min-w-0 flex-1" x-data="duplicatesPage(@js($dup))" x-init="init()">
         <div class="flex items-start justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">{{ __('gallery.dup_heading') }}</h1>
                 <p class="mt-1 text-sm text-gray-500">{{ __('gallery.dup_subheading') }}</p>
             </div>
-            <a href="{{ route('gallery.index') }}" class="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.back') }}</a>
         </div>
 
         <template x-if="!loading && groups.length === 0">
@@ -53,5 +54,6 @@
                 </section>
             </template>
         </div>
+    </div>
     </div>
 </x-layouts.app>

@@ -1,9 +1,9 @@
 <x-layouts.app :title="__('gallery.map')">
+    <div class="flex flex-col gap-4 md:flex-row">
+    @include('gallery._sidebar')
+    <div class="min-w-0 flex-1">
     <div class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-2xl font-semibold text-gray-900">{{ __('gallery.map') }}</h1>
-        <div class="flex items-center gap-2">
-            <a href="{{ route('gallery.index') }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.timeline') }}</a>
-        </div>
     </div>
 
     <div x-data="photoMap('{{ route('gallery.points') }}', {{ (int) $mapZoom }})" class="mt-4">
@@ -16,5 +16,7 @@
                 <button type="button" @click="lightbox = null" class="absolute right-6 top-6 text-white/80 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="x-mark" class="h-6 w-6" /></button>
             </div>
         </template>
+    </div>
+    </div>
     </div>
 </x-layouts.app>
