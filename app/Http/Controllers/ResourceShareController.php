@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\AddressBook;
+use App\Models\AppNotification;
+use App\Models\AppSettings;
 use App\Models\Calendar;
 use App\Models\FileFolder;
 use App\Models\Note;
@@ -12,6 +14,7 @@ use App\Models\Photo;
 use App\Models\ResourceShare;
 use App\Models\StoredFile;
 use App\Models\User;
+use App\Services\Notifications\ChannelNotifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -78,9 +81,63 @@ class ResourceShareController extends Controller
         abort_if($target === null, 422, 'No user with that email.');
         abort_if($target->id === $request->user()->id, 422, 'You cannot share with yourself.');
 
-        $resource->shareWith($target, $data['permission']);
+        $share = $resource->shareWith($target, $data['permission']);
 
-        return response()->json(['ok' => true], 201);
+        // Internal share → in-app notification for the recipient.
+        AppNotification::record(
+            $target->id,
+            'info',
+            __('shares.notify_title', ['user' => $request->user()->name ?: $request->user()->email]),
+            $this->resourceLabel($resource),
+            'share',
+        );
+
+        return response()->json(['ok' => true, 'id' => $share->id, 'link' => $this->linkFor($data['type'])], 201);
+    }
+
+    /** Email the recipient a link to the shared resource (SMTP required). */
+    public function email(Request $request, ResourceShare $share, ChannelNotifier $notifier): JsonResponse
+    {
+        abort_unless($share->owner_id === $request->user()->id, 403);
+        abort_unless(ChannelNotifier::mailConfigured(), 422, __('shares.mail_unavailable'));
+
+        $to = $share->sharedWith?->email;
+        abort_if(blank($to), 422);
+
+        $type = array_flip(self::TYPES)[$share->shareable_type] ?? null;
+        $link = $this->linkFor($type);
+        $owner = $request->user()->name ?: $request->user()->email;
+
+        try {
+            $notifier->mailTo(
+                AppSettings::current(),
+                (string) $to,
+                __('shares.mail_subject', ['user' => $owner]),
+                __('shares.mail_body', ['user' => $owner, 'link' => $link]),
+            );
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'detail' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** App link to the page that lists a shared resource type. */
+    private function linkFor(?string $type): string
+    {
+        return match ($type) {
+            'calendars' => route('calendar.index'),
+            'address-books' => route('contacts.index'),
+            'notes' => route('notes.index'),
+            'files', 'folders' => route('files.index'),
+            'photos' => route('gallery.index'),
+            default => url('/'),
+        };
+    }
+
+    private function resourceLabel(Model $resource): string
+    {
+        return (string) ($resource->name ?? $resource->title ?? '');
     }
 
     public function destroy(Request $request, ResourceShare $share): JsonResponse
