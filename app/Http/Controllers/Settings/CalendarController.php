@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Settings;
 
+use App\Http\Controllers\Concerns\ProvidesDavSync;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\CalendarRequest;
 use App\Models\UserSetting;
@@ -14,17 +15,20 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * Personal calendar settings (per user): display + behaviour preferences and the
- * generated birthdays/anniversaries/holidays calendars.
+ * Personal calendar settings (per user): display + behaviour preferences, the
+ * generated birthdays/anniversaries/holidays calendars, and the CalDAV sync.
  */
 class CalendarController extends Controller
 {
+    use ProvidesDavSync;
+
     public function edit(Request $request): View
     {
         return view('settings.calendar.edit', [
             'settings' => UserSetting::for($request->user()->id),
             'countries' => $this->countryChoices(),
             'timezones' => timezone_identifiers_list(),
+            ...$this->davSync($request->user()->id),
         ]);
     }
 

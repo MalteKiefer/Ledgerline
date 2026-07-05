@@ -282,10 +282,40 @@ Alpine.data('toastHub', (labels = {}) => ({
 }));
 
 /**
+ * Cross-user sharing modal behaviour, mixed into pages that share resources
+ * (calendars, address books). The host must provide `_json` and cfg.shares*.
+ */
+function shareMixin(cfg) {
+    return {
+        shareModal: { open: false, type: '', id: null, name: '', shares: [], email: '', permission: 'read', error: '' },
+        async openShare(type, id, name) {
+            this.shareModal = { open: true, type, id, name, shares: [], email: '', permission: 'read', error: '' };
+            await this.loadShares();
+        },
+        async loadShares() {
+            try {
+                const r = await fetch(cfg.sharesDataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (r.ok) {
+                    const d = await r.json();
+                    this.shareModal.shares = (d.shared_by_me || []).filter((s) => s.type === this.shareModal.type && String(s.resource_id) === String(this.shareModal.id));
+                }
+            } catch (e) { /* keep */ }
+        },
+        async addShare() {
+            this.shareModal.error = '';
+            const r = await this._json(cfg.sharesUrl, 'POST', { type: this.shareModal.type, id: this.shareModal.id, email: this.shareModal.email, permission: this.shareModal.permission });
+            if (r.ok) { this.shareModal.email = ''; await this.loadShares(); } else { this.shareModal.error = cfg.shareError || 'Error'; }
+        },
+        async revokeShare(id) { await this._json(cfg.sharesBase + '/' + id, 'DELETE'); await this.loadShares(); },
+    };
+}
+
+/**
  * Contacts page: book/group filter + search, contact list, and a create/edit
  * modal that writes through the vCard-backed API.
  */
 Alpine.data('contactsPage', (cfg = {}) => ({
+    ...shareMixin(cfg),
     cfg,
     books: [], groups: [], contacts: [], loading: true,
     book: '', group: '', q: '',
@@ -369,7 +399,9 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     },
 
     blank() {
-        return { id: null, book_id: this.book || this.books[0]?.id, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', anniversaries: [], note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null };
+        const ownedBooks = this.books.filter((b) => b.owned);
+        const preferred = ownedBooks.find((b) => b.id === this.book) ? this.book : ownedBooks[0]?.id;
+        return { id: null, book_id: preferred, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', anniversaries: [], note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null };
     },
 
     async openEditor(id) {
@@ -588,6 +620,7 @@ Alpine.data('contactDuplicatesPage', (cfg = {}) => ({
  * the returned instances by day.
  */
 Alpine.data('calendarPage', (cfg = {}) => ({
+    ...shareMixin(cfg),
     cfg,
     calendars: [], events: [], loading: true,
     view: 'month', cursor: new Date(),
@@ -780,8 +813,10 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     },
 
     calName(id) { return this.calendars.find((c) => c.id === id)?.name || ''; },
-    ownCalendars() { return this.calendars.filter((c) => ! c.read_only); },
-    otherCalendars() { return this.calendars.filter((c) => c.read_only); },
+    // Own, editable calendars get management buttons; generated + shared ones
+    // (read-only or not owned) go under "Other calendars".
+    ownCalendars() { return this.calendars.filter((c) => c.owned && ! c.read_only); },
+    otherCalendars() { return this.calendars.filter((c) => ! (c.owned && ! c.read_only)); },
 
     payload() {
         return {

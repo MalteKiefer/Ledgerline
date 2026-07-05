@@ -15,6 +15,10 @@
         'peopleUrl' => route('gallery.people.data'),
         'filesDataUrl' => route('files.data'),
         'filesRawBase' => url('files/raw'),
+        'sharesDataUrl' => route('shares.data'),
+        'sharesUrl' => route('shares.store'),
+        'sharesBase' => url('shares'),
+        'shareError' => __('shares.error'),
         'token' => csrf_token(),
         'confirmDelete' => __('contacts.ui.delete_confirm'),
         'newBook' => __('contacts.ui.new_book'),
@@ -38,7 +42,8 @@
                     <template x-for="b in books" :key="b.id">
                         <li class="group flex items-center justify-between gap-1">
                             <button @click="book=b.id" :class="book===b.id?'font-semibold text-gray-900':'text-gray-600'" x-text="b.name" class="truncate text-left"></button>
-                            <span class="hidden shrink-0 gap-1 group-hover:flex">
+                            <span class="hidden shrink-0 gap-1 group-hover:flex" x-show="b.owned">
+                                <button @click="openShare('address-books', b.id, b.name)" class="text-gray-400 hover:text-gray-700" title="{{ __('shares.share') }}"><x-icon name="share" class="h-4 w-4" /></button>
                                 <button @click="renameBook(b)" class="text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.rename_book') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
                                 <button @click="deleteBook(b)" class="text-gray-400 hover:text-red-600" title="{{ __('contacts.ui.delete') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             </span>
@@ -205,7 +210,7 @@
                         </div>
                     </div>
                     <select x-model="form.book_id" class="w-full rounded-md border-gray-300 text-sm">
-                        <template x-for="b in books" :key="b.id"><option :value="b.id" x-text="b.name"></option></template>
+                        <template x-for="b in books.filter(x=>x.owned)" :key="b.id"><option :value="b.id" x-text="b.name"></option></template>
                     </select>
                 </div>
                 <div class="mt-5 flex items-center justify-between">
@@ -232,6 +237,8 @@
                 </form>
             </div>
         </div>
+
+        @include('partials.share-modal')
 
         {{-- Confirm modal (delete contact / book / group) --}}
         <div x-show="confirmModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="confirmModal.open=false">

@@ -55,8 +55,9 @@ class CalendarController extends Controller
 
         // The 'tasks' calendar is a VTODO mirror exposed over CalDAV only.
         // Virtual calendars (VTODO 'tasks') are CalDAV-only; the web calendar
-        // shows real + derived VEVENT calendars.
-        $calendars = Calendar::where('user_id', $userId)
+        // shows real + derived VEVENT calendars — owned OR shared with the user
+        // (the SharesWithUsers scope adds the shared ones).
+        $calendars = Calendar::query()
             ->whereNotIn('uri', CalendarUri::virtual())
             ->orderBy('name')->get();
 
@@ -95,7 +96,10 @@ class CalendarController extends Controller
                 'id' => $c->id,
                 'name' => $c->name,
                 'color' => $c->color ?: Calendar::DEFAULT_COLOR,
-                'read_only' => $c->isReadOnly(),
+                // Read-only when it's a generated/subscription calendar, or shared
+                // with only read access (canEdit = owner or write-share).
+                'read_only' => $c->isReadOnly() || ! $c->canEdit($userId),
+                'owned' => $c->isOwnedBy($userId),
                 'subscription_url' => $c->subscription_url,
             ]),
             'events' => $events,
