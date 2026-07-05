@@ -36,7 +36,6 @@ return [
     'list' => 'List',
     'tags' => 'Tags',
     'tags_placeholder' => 'comma, separated, tags',
-    'overdue' => 'Overdue',
     'done' => 'Done',
 
     'notify_heading' => 'Reminder',

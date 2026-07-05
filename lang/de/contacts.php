@@ -5,7 +5,6 @@ declare(strict_types=1);
 return [
     'heading' => 'Kontakte & CardDAV',
     'subheading' => 'Synchronisiere deine Kontakte per CardDAV auf Handy und Desktop-Clients.',
-    'not_enabled' => 'Kontakte sind noch nicht eingerichtet. Erzeuge einen CardDAV-Zugang, um zu starten.',
     'enable' => 'Kontakte aktivieren (Zugang erzeugen)',
     'regenerate' => 'Neues Passwort erzeugen',
     'dav_url' => 'CardDAV-URL',
@@ -44,7 +43,6 @@ return [
         'anniversaries' => 'Jahrestage',
         'anniversary_label' => 'Bezeichnung (z. B. Hochzeit)',
         'note' => 'Notiz',
-        'avatar' => 'Foto',
         'save' => 'Speichern',
         'cancel' => 'Abbrechen',
         'delete' => 'Löschen',

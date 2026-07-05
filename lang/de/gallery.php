@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'all_photos' => 'Alle Fotos',
-    'back' => 'Zurück zur Galerie',
     'dup_heading' => 'Duplikate',
     'dup_subheading' => 'Fotos mit gleichem oder ähnlichem Inhalt. Eins behalten, den Rest in den Papierkorb.',
     'dup_empty' => 'Keine Duplikate gefunden. Starte einen Scan in den Galerie-Einstellungen.',
@@ -14,7 +12,6 @@ return [
     'dup_resolve' => 'Auswahl behalten, Rest in den Papierkorb',
     'dup_dismiss' => 'Kein Duplikat',
     'dup_confirm' => 'Ausgewähltes Foto behalten und die anderen dieser Gruppe in den Papierkorb verschieben?',
-    'dup_group' => 'Gruppe',
     'people_heading' => 'Personen',
     'people_link' => 'Personen',
     'people_empty' => 'Noch keine Personen. Starte einen Gesichts-Scan in den Galerie-Einstellungen.',
@@ -63,7 +60,6 @@ return [
     'album_delete_confirm' => 'Dieses Album löschen? Die Fotos bleiben in deiner Mediathek.',
     'album_photos_count' => ':count Fotos',
     'add_to_album' => 'Zum Album hinzufügen',
-    'added_to_album' => 'Zum Album hinzugefügt',
     'album_pick_done' => 'Fertig',
     'map' => 'Karte',
     'meta_camera' => 'Kamera',
@@ -109,7 +105,6 @@ return [
     'use_location' => 'Diesen Standort verwenden',
     'change_location' => 'Auf Karte wählen',
     'subtitle' => 'Fotos hierher ziehen zum Hochladen.',
-    'timeline' => 'Zeitverlauf',
     'title' => 'Galerie',
     'trash' => 'Papierkorb',
     'trash_empty' => 'Papierkorb ist leer.',

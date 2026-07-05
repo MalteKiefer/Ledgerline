@@ -36,7 +36,6 @@ return [
     'list' => 'Liste',
     'tags' => 'Tags',
     'tags_placeholder' => 'komma, getrennte, tags',
-    'overdue' => 'Überfällig',
     'done' => 'Erledigt',
 
     'notify_heading' => 'Erinnerung',
