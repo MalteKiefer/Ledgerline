@@ -236,6 +236,20 @@
         </footer>
     </div>
 
+    {{-- App-wide confirm modal (replaces window.confirm) --}}
+    <div x-data x-show="$store.confirm.open" x-cloak class="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto p-4"
+        role="dialog" aria-modal="true" @keydown.escape.window="$store.confirm.no()">
+        <div class="absolute inset-0 bg-gray-900/50" @click="$store.confirm.no()"></div>
+        <div class="relative my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900">{{ __('common.confirm_title') }}</h3>
+            <p class="mt-2 text-sm text-gray-600" x-text="$store.confirm.message || '{{ __('common.confirm_message') }}'"></p>
+            <div class="mt-4 flex justify-end gap-2">
+                <button type="button" @click="$store.confirm.no()" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                <button type="button" @click="$store.confirm.yes()" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">{{ __('common.confirm') }}</button>
+            </div>
+        </div>
+    </div>
+
     @auth
         <div x-data="toastHub(@js(['link' => __('downloads.heading')]))" class="fixed bottom-4 right-4 z-50 space-y-2" x-cloak>
             <template x-for="t in items" :key="t.id">

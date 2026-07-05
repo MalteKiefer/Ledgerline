@@ -4,14 +4,32 @@ import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
 
+// App-wide confirm modal store (replaces native window.confirm everywhere).
+// Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
+document.addEventListener('alpine:init', () => {
+    Alpine.store('confirm', {
+        open: false, message: '', _resolve: null,
+        ask(message) {
+            this.message = message || '';
+            this.open = true;
+            return new Promise((resolve) => { this._resolve = resolve; });
+        },
+        yes() { this.open = false; const r = this._resolve; this._resolve = null; if (r) r(true); },
+        no() { this.open = false; const r = this._resolve; this._resolve = null; if (r) r(false); },
+    });
+});
+
 // CSP-safe replacement for inline `onsubmit="return confirm(...)"`: any form
-// carrying data-confirm asks for confirmation before submitting. Lets the
-// Content-Security-Policy drop 'unsafe-inline' for scripts.
+// carrying data-confirm asks (via the in-app modal, not window.confirm) before
+// submitting. Lets the CSP drop 'unsafe-inline' for scripts.
 document.addEventListener('submit', (e) => {
-    const message = e.target?.getAttribute?.('data-confirm');
-    if (message && ! window.confirm(message)) {
-        e.preventDefault();
-    }
+    const form = e.target;
+    const message = form?.getAttribute?.('data-confirm');
+    if (! message || form.dataset.confirmed) return;
+    e.preventDefault();
+    Alpine.store('confirm').ask(message).then((ok) => {
+        if (ok) { form.dataset.confirmed = '1'; form.submit(); }
+    });
 }, true);
 
 // Heavy, feature-specific libraries are code-split and loaded on first use so
@@ -931,12 +949,12 @@ Alpine.data('personPage', (cfg = {}) => ({
         await this.merge(o.id);
     },
     async merge(sourceId) {
-        if (! sourceId || ! window.confirm(cfg.mergeConfirm)) return;
+        if (! sourceId || ! await this.$store.confirm.ask(cfg.mergeConfirm)) return;
         await this._post(cfg.mergeUrl, { source_id: sourceId });
         this.load();
     },
     async reassignFace(faceId) {
-        if (! window.confirm(cfg.reassignConfirm)) return;
+        if (! await this.$store.confirm.ask(cfg.reassignConfirm)) return;
         await this._post(cfg.faceBase + '/' + faceId + '/reassign', { new: true });
         this.load();
     },
@@ -970,7 +988,7 @@ Alpine.data('duplicatesPage', (cfg = {}) => ({
     async resolve(g) {
         const keepId = this.keep[g.group];
         if (! keepId) return;
-        if (! window.confirm(cfg.confirm)) return;
+        if (! await this.$store.confirm.ask(cfg.confirm)) return;
         this.groups = this.groups.filter((x) => x.group !== g.group); // optimistic
         try {
             await fetch(cfg.resolveBase.replace('__G__', g.group), {
@@ -1057,7 +1075,7 @@ Alpine.data('downloadsPage', (labels = {}) => ({
 
     async destroySelected() {
         if (! this.selected.length) return;
-        if (! window.confirm(labels.confirmDelete)) return;
+        if (! await this.$store.confirm.ask(labels.confirmDelete)) return;
         await this._destroy([...this.selected]);
         this.selected = [];
     },
