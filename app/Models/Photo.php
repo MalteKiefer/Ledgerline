@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\SharesWithUsers;
+use App\Observers\PhotoObserver;
 use Database\Factories\PhotoFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -51,6 +53,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'taken_at',
     'processed_at',
 ])]
+#[ObservedBy(PhotoObserver::class)]
 class Photo extends Model
 {
     /** @use HasFactory<PhotoFactory> */

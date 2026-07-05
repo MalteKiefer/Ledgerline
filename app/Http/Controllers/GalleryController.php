@@ -631,7 +631,23 @@ class GalleryController extends Controller
     {
         abort_unless($photo->isVideo(), 404);
 
-        return $this->streamMedia($photo->disk_path, (string) $photo->mime_type);
+        return $this->streamMedia($photo->disk_path, $this->videoContentType($photo));
+    }
+
+    /**
+     * A browser-playable content type derived from the stored file extension.
+     * Some uploads (e.g. an .mp4 detected as video/quicktime) carry a mime that
+     * browsers refuse to play, so trust the container extension for playback.
+     */
+    private function videoContentType(Photo $photo): string
+    {
+        return match (strtolower(pathinfo((string) $photo->disk_path, PATHINFO_EXTENSION))) {
+            'mp4', 'm4v' => 'video/mp4',
+            'webm' => 'video/webm',
+            'ogv' => 'video/ogg',
+            'mov', 'qt' => 'video/quicktime',
+            default => $photo->mime_type ?: 'video/mp4',
+        };
     }
 
     /**

@@ -805,7 +805,14 @@ Alpine.data('personPage', (cfg = {}) => ({
     photos: [], faces: [], others: [],
     nameOpen: false, nameSuggest: [],
     mergeQuery: '', mergeOpen: false,
+    saved: false, _savedT: null,
     async init() { await this.load(); },
+
+    flashSaved() {
+        this.saved = true;
+        clearTimeout(this._savedT);
+        this._savedT = setTimeout(() => { this.saved = false; }, 2500);
+    },
     async load() {
         try {
             const res = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
@@ -831,7 +838,7 @@ Alpine.data('personPage', (cfg = {}) => ({
             await fetch(url, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
         } catch (e) { /* ignore */ }
     },
-    save() { this._patch({ name: this.person.name }); this.nameOpen = false; },
+    async save() { await this._patch({ name: this.person.name }); this.nameOpen = false; this.flashSaved(); },
     toggleHidden() { this.person.hidden = ! this.person.hidden; this._patch({ hidden: this.person.hidden }); },
 
     // Contact-name autocomplete for the person's name.
@@ -1427,6 +1434,11 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     },
 
     async renderMiniMap() {
+        // Two watchers (lat + lng) fire on every photo change; without a token
+        // both async runs would call L.map() on the same container and the
+        // second throws "Map container is already initialized". Only the latest
+        // call past the await is allowed to create the map.
+        const token = (this._miniToken = (this._miniToken || 0) + 1);
         this.destroyMiniMap();
 
         const el = this.$refs.miniMap;
@@ -1437,6 +1449,8 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         }
 
         const L = await loadLeaflet();
+        if (token !== this._miniToken) return; // superseded by a newer render
+        this.destroyMiniMap();
         this.miniMap = L.map(el, {
             attributionControl: false,
             zoomControl: false,

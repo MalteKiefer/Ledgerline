@@ -28,6 +28,7 @@ return [
     'person_merge_confirm' => 'Ausgewählte Person hierher zusammenführen? Ihre Gesichter wandern hierher, die andere Person wird entfernt.',
     'person_back' => 'Zurück zu Personen',
     'person_save' => 'Speichern',
+    'person_saved' => 'Gespeichert',
     'person_faces' => 'Gesichter',
     'person_reassign' => 'Nicht diese Person',
     'person_reassign_confirm' => 'Dieses Gesicht einer neuen Person zuordnen?',
