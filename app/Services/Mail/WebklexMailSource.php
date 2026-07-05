@@ -146,7 +146,9 @@ class WebklexMailSource implements MailSource
     {
         $client = $this->connect($c);
         try {
-            $m = $client->getFolderByPath($folder)->query()->getMessageByUid($uid);
+            // leaveUnread() = fetch with BODY.PEEK so archiving never sets \Seen
+            // on the server — otherwise new mail shows as read on other devices.
+            $m = $client->getFolderByPath($folder)->query()->leaveUnread()->getMessageByUid($uid);
 
             $from = $m->getFrom()[0] ?? null;
             $to = $this->addresses($m->getTo());
@@ -194,8 +196,9 @@ class WebklexMailSource implements MailSource
     {
         try {
             $client->openFolder($folder);
-            $data = $client->getConnection()->fetch(['BODY[]'], [$uid], null, IMAP::ST_UID)->validatedData();
-            $val = $data[$uid] ?? null;
+            // BODY.PEEK[] fetches the raw message WITHOUT setting the \Seen flag.
+            $data = $client->getConnection()->fetch(['BODY.PEEK[]'], [$uid], null, IMAP::ST_UID)->validatedData();
+            $val = $data[$uid]['BODY[]'] ?? $data[$uid] ?? null;
             if (is_array($val)) {
                 $val = reset($val);
             }
