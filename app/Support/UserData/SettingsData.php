@@ -18,7 +18,9 @@ use Illuminate\Support\Facades\Storage;
  * links. Secrets are deliberately excluded from the export: the paperless
  * token/URL (encrypted), the resource_shares are non-secret, and the public
  * share password is hashed. On purge the whole UserSetting row is deleted,
- * which supersedes PaperlessData's paperless_* column reset.
+ * which supersedes PaperlessData's paperless_* column reset. Purge also removes
+ * resource shares where the erased user is the recipient (shared_with_user_id),
+ * not just the owner, so no grant dangles against the deleted user.
  *
  * Exports are also cross-cutting: their zip parts live as blobs on the files
  * disk, so purge removes both the Export rows and those on-disk parts.
@@ -91,6 +93,12 @@ class SettingsData implements UserDataContributor
 
         ResourceShare::query()
             ->where('owner_id', $user->id)
+            ->delete();
+
+        // Grants where the erased user is the recipient of someone else's
+        // resource; leaving them would dangle against a deleted user.
+        ResourceShare::query()
+            ->where('shared_with_user_id', $user->id)
             ->delete();
 
         PublicShare::query()

@@ -7,9 +7,11 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AvatarFetcher;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
 
@@ -72,27 +74,39 @@ class PocketIdController extends Controller
             is_array($raw['groups'] ?? null) ? $raw['groups'] : [],
         )));
 
-        $user = User::updateOrCreate(
-            ['oidc_sub' => $sub],
-            [
-                'name' => $oidcUser->getName() ?? $oidcUser->getNickname() ?? 'Unknown',
-                'email' => $email,
-                'email_verified_at' => $emailVerified ? now() : null,
-                'groups' => $groups,
-            ],
-        );
+        try {
+            $user = User::updateOrCreate(
+                ['oidc_sub' => $sub],
+                [
+                    'name' => $oidcUser->getName() ?? $oidcUser->getNickname() ?? 'Unknown',
+                    'email' => $email,
+                    'email_verified_at' => $emailVerified ? now() : null,
+                    'groups' => $groups,
+                ],
+            );
 
-        // Remember the current avatar source so it can be refreshed later, and
-        // download it once on first sign-in (or if the stored image went away).
-        $url = $oidcUser->getAvatar() ?: ($oidcUser->getRaw()['picture'] ?? null);
-        if (is_string($url) && $url !== '' && $user->avatar_url !== $url) {
-            $user->update(['avatar_url' => $url]);
-        }
-        if (empty($user->avatar)) {
-            $avatars->fetch($user, $user->avatar_url);
-        }
+            // Record who first claimed this install so ownership survives the
+            // owner self-deleting (see mayProvision). No-op once a claim exists.
+            $this->recordInstallClaim($sub);
 
-        $user->forceFill(['last_login_at' => now()])->save();
+            // Remember the current avatar source so it can be refreshed later, and
+            // download it once on first sign-in (or if the stored image went away).
+            $url = $oidcUser->getAvatar() ?: ($oidcUser->getRaw()['picture'] ?? null);
+            if (is_string($url) && $url !== '' && $user->avatar_url !== $url) {
+                $user->update(['avatar_url' => $url]);
+            }
+            if (empty($user->avatar)) {
+                $avatars->fetch($user, $user->avatar_url);
+            }
+
+            $user->forceFill(['last_login_at' => now()])->save();
+        } catch (QueryException|Throwable) {
+            // A UNIQUE clash (e.g. two authorized subjects sharing one verified
+            // e-mail) or any other persistence error must not surface as a 500.
+            return redirect()
+                ->route('login')
+                ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
+        }
 
         Auth::login($user, remember: true);
 
@@ -126,10 +140,40 @@ class PocketIdController extends Controller
         }
 
         // No allow-list: first user wins. A provisioned account only accepts its
-        // own subject; a brand-new install accepts the first caller.
+        // own subject.
         $existing = User::query()->first();
+        if ($existing !== null) {
+            return $existing->oidc_sub === $sub;
+        }
 
-        return $existing === null || $existing->oidc_sub === $sub;
+        // No live users. This is either a brand-new install or one whose sole
+        // owner self-deleted. A persisted install claim (which outlives user
+        // deletion) records the original owner: after an erasure, only that
+        // subject may re-provision; a brand-new subject is rejected. If no claim
+        // exists yet, this is a genuine fresh install and the first caller wins.
+        $claim = DB::table('install_claims')->value('oidc_sub');
+
+        return $claim === null || $claim === $sub;
+    }
+
+    /**
+     * Persist the OIDC subject that first claimed this single-tenant install.
+     *
+     * Idempotent: only the first successful provision writes a row; every later
+     * call is a no-op. The row deliberately survives user deletion so ownership
+     * cannot be silently reassigned after the owner erases their account.
+     */
+    private function recordInstallClaim(string $sub): void
+    {
+        if (DB::table('install_claims')->exists()) {
+            return;
+        }
+
+        DB::table('install_claims')->insert([
+            'oidc_sub' => $sub,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     /**

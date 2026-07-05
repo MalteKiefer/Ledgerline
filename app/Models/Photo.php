@@ -123,12 +123,6 @@ class Photo extends Model
         return $this->media_type === 'video';
     }
 
-    /** Whether the photo carries a non-destructive edit (rotation or flip). */
-    public function isTransformed(): bool
-    {
-        return ((int) $this->rotation) % 360 !== 0 || (bool) $this->flipped;
-    }
-
     public function hasMotion(): bool
     {
         return $this->motion_path !== null;

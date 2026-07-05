@@ -8,7 +8,6 @@ use App\Models\Concerns\OwnsUserData;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** A synced IMAP folder in the local archive, private to its owning user. */
 #[Fillable(['user_id', 'mail_account_id', 'path', 'name', 'delimiter', 'role', 'uidvalidity'])]
@@ -25,11 +24,5 @@ class MailFolder extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(MailAccount::class, 'mail_account_id');
-    }
-
-    /** @return HasMany<MailMessage, $this> */
-    public function messages(): HasMany
-    {
-        return $this->hasMany(MailMessage::class);
     }
 }

@@ -43,3 +43,7 @@ Schedule::command('exports:recover-stuck')->hourly()->withoutOverlapping();
 
 // Permanently purge files trashed longer than the retention window (and blobs).
 Schedule::command('files:prune-trash')->daily()->withoutOverlapping();
+
+// Delete expired public note-share snapshots so their plaintext content does not
+// linger past its expiry (these anonymous rows can't be targeted at erasure).
+Schedule::command('shares:prune')->daily()->withoutOverlapping();

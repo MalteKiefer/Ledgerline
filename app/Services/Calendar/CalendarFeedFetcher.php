@@ -23,8 +23,16 @@ class CalendarFeedFetcher
         }
         try {
             // Resolves + pins the verified IP (SSRF/DNS-rebinding safe), no redirects.
+            // Abort before download if the server advertises an oversized body, so a
+            // multi-GB response can't OOM the worker before the post-body size check.
             $response = OutboundUrl::client($url, 15)
                 ->accept('text/calendar')
+                ->withOptions(['on_headers' => function ($resp): void {
+                    $len = $resp->getHeaderLine('Content-Length');
+                    if ($len !== '' && (int) $len > self::MAX_BYTES) {
+                        throw new RuntimeException('too large');
+                    }
+                }])
                 ->get($url);
         } catch (\Throwable) {
             // Never surface the exception message — it embeds the (possibly

@@ -140,13 +140,24 @@ final class SmtpSender
         $host = (string) ($cfg['host'] ?? 'localhost');
         $port = (int) ($cfg['port'] ?? 0);
 
-        $tls = match ((string) ($cfg['encryption'] ?? 'starttls')) {
+        $encryption = (string) ($cfg['encryption'] ?? 'starttls');
+
+        $tls = match ($encryption) {
             'ssl' => true,
             'none' => false,
             default => null, // 'starttls' and anything else: default STARTTLS
         };
 
         $transport = new EsmtpTransport($host, $port, $tls);
+
+        // Opportunistic STARTTLS is strippable by a MITM (the server can simply
+        // omit the STARTTLS capability), leaking credentials in cleartext.
+        // Require TLS for every mode except implicit TLS ('ssl', already
+        // encrypted from the first byte) and 'none', which is the deliberate
+        // no-TLS escape hatch for trusted local relays.
+        if ($encryption !== 'ssl' && $encryption !== 'none') {
+            $transport->setRequireTls(true);
+        }
 
         $username = (string) ($cfg['username'] ?? '');
         $password = (string) ($cfg['password'] ?? '');

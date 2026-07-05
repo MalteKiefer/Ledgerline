@@ -124,7 +124,12 @@ class GalleryController extends Controller
     private function search(Builder $query, string $q): void
     {
         $pg = $query->getConnection()->getDriverName() === 'pgsql';
-        $like = '%'.mb_strtolower($q).'%';
+
+        // Escape LIKE metacharacters (\, %, _) in the term so they match
+        // literally instead of acting as wildcards (e.g. "%" no longer matches
+        // everything, and "_" matches a literal underscore).
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($q));
+        $like = '%'.$escaped.'%';
 
         // Text columns (and the JSON dump / timestamp cast to text), matched
         // case-insensitively across both PostgreSQL and SQLite.
@@ -136,7 +141,7 @@ class GalleryController extends Controller
 
         $query->where(function ($w) use ($columns, $like, $q): void {
             foreach ($columns as $column) {
-                $w->orWhereRaw('LOWER('.$column.') LIKE ?', [$like]);
+                $w->orWhereRaw('LOWER('.$column.") LIKE ? ESCAPE '\\'", [$like]);
             }
 
             // "lat,lng" → photos near those coordinates.

@@ -94,14 +94,6 @@ async function loadCodeMirror() {
     return cmModule;
 }
 
-async function loadJSZip() {
-    return (await import('jszip')).default;
-}
-
-async function loadHtml2Pdf() {
-    return (await import('html2pdf.js')).default;
-}
-
 /**
  * Spotlight-style global search palette. Opens a centred modal, searches live
  * as the user types (debounced), and supports keyboard navigation. Results come

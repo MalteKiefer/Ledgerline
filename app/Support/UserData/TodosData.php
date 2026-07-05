@@ -6,13 +6,15 @@ namespace App\Support\UserData;
 
 use App\Models\Reminder;
 use App\Models\Todo;
+use App\Models\TodoList;
 use App\Models\User;
 
 /**
  * Per-user data contributor for the to-dos module: exports and erases a user's
  * to-do tasks together with their attached reminder rows. To-dos own their data
  * via the `user_id` column; reminders hang off a to-do by `todo_id` and are
- * scoped transitively through it.
+ * scoped transitively through it. Purge also removes the user's named to-do
+ * lists (own their data via `user_id`) so none are left orphaned.
  */
 final class TodosData implements UserDataContributor
 {
@@ -51,18 +53,23 @@ final class TodosData implements UserDataContributor
             ->where('user_id', $user->getKey())
             ->pluck('id');
 
-        if ($todoIds->isEmpty()) {
-            return;
+        if ($todoIds->isNotEmpty()) {
+            Reminder::query()
+                ->whereIn('todo_id', $todoIds)
+                ->delete();
+
+            Todo::query()
+                ->withoutGlobalScopes()
+                ->withTrashed()
+                ->whereIn('id', $todoIds)
+                ->forceDelete();
         }
 
-        Reminder::query()
-            ->whereIn('todo_id', $todoIds)
-            ->delete();
-
-        Todo::query()
+        // Named lists the tasks hung off (owner column user_id); orphaned once
+        // the tasks are gone, so purge them too.
+        TodoList::query()
             ->withoutGlobalScopes()
-            ->withTrashed()
-            ->whereIn('id', $todoIds)
-            ->forceDelete();
+            ->where('user_id', $user->getKey())
+            ->delete();
     }
 }

@@ -7,7 +7,6 @@ namespace App\Models\Concerns;
 use App\Models\ResourceShare;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
@@ -55,11 +54,6 @@ trait SharesWithUsers
             ->pluck('shareable_id');
     }
 
-    public function shares(): MorphMany
-    {
-        return $this->morphMany(ResourceShare::class, 'shareable');
-    }
-
     public function isOwnedBy(?int $userId): bool
     {
         return $userId !== null && (int) $this->{$this->ownerColumn()} === $userId;
@@ -86,14 +80,5 @@ trait SharesWithUsers
             ['shareable_type' => $this->getMorphClass(), 'shareable_id' => $this->getKey(), 'shared_with_user_id' => $user->id],
             ['owner_id' => $this->{$this->ownerColumn()}, 'permission' => $permission === ResourceShare::WRITE ? ResourceShare::WRITE : ResourceShare::READ],
         );
-    }
-
-    public function unshareFrom(User $user): void
-    {
-        ResourceShare::query()
-            ->where('shareable_type', $this->getMorphClass())
-            ->where('shareable_id', $this->getKey())
-            ->where('shared_with_user_id', $user->id)
-            ->delete();
     }
 }
