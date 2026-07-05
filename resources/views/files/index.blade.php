@@ -22,6 +22,7 @@
         downloadsUrl: '{{ url('/downloads') }}',
         rootFolder: @js(__('files.all_files')),
         migrateFailed: @js(__('files.migrate_failed')),
+        restoreConfirm: @js(__('files.version_restore_confirm')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -343,7 +344,10 @@
                                     <span class="block text-xs text-gray-500" x-text="v.created_at ? new Date(v.created_at).toLocaleString() : ''"></span>
                                     <span class="text-gray-700" x-text="fmtSize(v.size)"></span>
                                 </span>
-                                <a :href="versionDownloadUrl(v.id)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.version_download') }}</a>
+                                <span class="flex shrink-0 items-center gap-2">
+                                    <a :href="versionDownloadUrl(v.id)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('files.version_download') }}</a>
+                                    <button type="button" @click="restoreVersion(v)" class="inline-flex min-h-11 items-center rounded-md bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800">{{ __('files.version_restore') }}</button>
+                                </span>
                             </li>
                         </template>
                     </ul>

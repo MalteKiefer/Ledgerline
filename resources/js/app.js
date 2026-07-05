@@ -2527,6 +2527,20 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     versionDownloadUrl(versionId) {
         return config.versionsBase + '/' + this.versions.row.id + '/versions/' + versionId + '/download';
     },
+    // Restore a version by pointing the file's manifest row back at the version's
+    // blob and re-syncing. The client stays authoritative; the sync then snapshots
+    // the pre-restore blob as a new version automatically.
+    async restoreVersion(v) {
+        if (! await this.$store.confirm.ask(labels.restoreConfirm || '')) return;
+        const row = this.manifest.files.find((f) => f.id === this.versions.row.id);
+        if (! row) return;
+        row.blob = v.blob;
+        row.size = v.size;
+        row.mime = v.mime;
+        await this.persist();
+        this.versions.open = false;
+        await this.load();
+    },
 
     // Persist the whole tree; the server syncs it to clean rows.
     async persist() {

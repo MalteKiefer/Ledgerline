@@ -67,4 +67,6 @@ return [
     'versions_none' => 'No previous versions.',
     'version_download' => 'Download',
     'version_current' => 'Current',
+    'version_restore' => 'Restore',
+    'version_restore_confirm' => 'Restore this version? The current content is kept as a new version.',
 ];
