@@ -2939,7 +2939,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Queue an async export of the selection (files + folders). A worker builds
     // the zip(s) server-side (folder structure preserved) and it appears under
     // Downloads — no in-browser zipping or memory pressure.
-    async bulkDownload() {
+    async bulkDownload(format = 'zip') {
         const refs = this.selectionRefs;
         if (! refs.length) return;
 
@@ -2951,7 +2951,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const res = await fetch(labels.exportUrl, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ file_ids, folder_ids }),
+                body: JSON.stringify({ file_ids, folder_ids, format }),
             });
             if (res.ok) { window.llToast(labels.exportQueued, labels.downloadsUrl); }
             else { const body = await res.json().catch(() => ({})); if (body.message) window.llToast(body.message); }
@@ -3336,12 +3336,19 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.compose = c;
     },
     _quote(m, forward = false) {
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         const head = forward
-            ? '<br><br>---------- ' + (labels.forwardedMessage || 'Forwarded message') + ' ----------<br>'
-                + 'From: ' + this.fmtAddress(m.from) + '<br>Subject: ' + (m.subject || '') + '<br>'
+            ? '<br><br>---------- ' + esc(labels.forwardedMessage || 'Forwarded message') + ' ----------<br>'
+                + 'From: ' + esc(this.fmtAddress(m.from)) + '<br>Subject: ' + esc(m.subject || '') + '<br>'
             : '<br><br><blockquote style="border-left:2px solid #ccc;padding-left:8px;color:#555">';
-        const body = m.html || (m.text ? m.text.replace(/\n/g, '<br>') : '');
-        return forward ? head + body : head + body + '</blockquote>';
+        const body = m.html || (m.text ? esc(m.text).replace(/\n/g, '<br>') : '');
+        const assembled = forward ? head + body : head + body + '</blockquote>';
+        // The composer is a plain contenteditable (not the reader's sandboxed
+        // iframe), so sanitize the untrusted original before it becomes innerHTML.
+        return DOMPurify.sanitize(assembled, {
+            FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'],
+            FORBID_ATTR: ['onerror', 'onload', 'onclick'],
+        });
     },
 
     addUploads(event) {
