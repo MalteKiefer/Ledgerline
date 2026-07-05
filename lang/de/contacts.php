@@ -62,6 +62,7 @@ return [
         'importing' => 'Importiere…',
         'import_result' => 'Importiert: :created neu, :updated aktualisiert, :skipped übersprungen',
         'group_add_placeholder' => 'Gruppe hinzufügen…',
+        'confirm_title' => 'Sicher?',
         'avatar_change' => 'Foto ändern',
         'avatar_after_save' => 'Speichere den Kontakt zuerst, um ein Foto hinzuzufügen.',
         'avatar_pick_title' => 'Kontaktfoto',

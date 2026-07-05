@@ -275,7 +275,11 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     importing: false, importResult: '',
     editor: false, form: {},
     nameModal: { open: false, title: '', value: '', onsubmit: null },
+    confirmModal: { open: false, message: '', onConfirm: null },
     groupQuery: '', groupOpen: false,
+
+    openConfirm(message, onConfirm) { this.confirmModal = { open: true, message, onConfirm }; },
+    async doConfirm() { const cb = this.confirmModal.onConfirm; this.confirmModal.open = false; if (cb) await cb(); },
 
     init() {
         this.load();
@@ -381,10 +385,13 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         this.editor = false; this.load();
     },
 
-    async destroy() {
-        if (! this.form.id || ! window.confirm(cfg.confirmDelete)) return;
-        await this._json(cfg.contactBase + '/' + this.form.id, 'DELETE');
-        this.editor = false; this.load();
+    destroy() {
+        if (! this.form.id) return;
+        const id = this.form.id;
+        this.openConfirm(cfg.confirmDelete, async () => {
+            await this._json(cfg.contactBase + '/' + id, 'DELETE');
+            this.editor = false; this.load();
+        });
     },
 
     // --- avatar picker (device / gallery / people / files) + crop ---
@@ -490,15 +497,17 @@ Alpine.data('contactsPage', (cfg = {}) => ({
             await this._json(cfg.bookBase + '/' + b.id, 'PUT', { name }); this.load();
         });
     },
-    async deleteBook(b) {
-        if (! window.confirm(cfg.confirmDeleteBook)) return;
-        if (this.book === b.id) this.book = '';
-        await this._json(cfg.bookBase + '/' + b.id, 'DELETE'); this.load();
+    deleteBook(b) {
+        this.openConfirm(cfg.confirmDeleteBook, async () => {
+            if (this.book === b.id) this.book = '';
+            await this._json(cfg.bookBase + '/' + b.id, 'DELETE'); this.load();
+        });
     },
-    async deleteGroup(g) {
-        if (! window.confirm(cfg.confirmDeleteGroup)) return;
-        if (this.group === g.id) this.group = '';
-        await this._json(cfg.groupBase + '/' + g.id, 'DELETE'); this.load();
+    deleteGroup(g) {
+        this.openConfirm(cfg.confirmDeleteGroup, async () => {
+            if (this.group === g.id) this.group = '';
+            await this._json(cfg.groupBase + '/' + g.id, 'DELETE'); this.load();
+        });
     },
 
     async _json(url, method, body) {
@@ -513,8 +522,12 @@ Alpine.data('contactsPage', (cfg = {}) => ({
 Alpine.data('contactDuplicatesPage', (cfg = {}) => ({
     cfg,
     groups: [], primary: {}, loading: true,
+    confirmModal: { open: false, onConfirm: null },
 
     init() { this.load(); },
+
+    openConfirm(onConfirm) { this.confirmModal = { open: true, onConfirm }; },
+    async doConfirm() { const cb = this.confirmModal.onConfirm; this.confirmModal.open = false; if (cb) await cb(); },
 
     async load() {
         try {
@@ -527,14 +540,16 @@ Alpine.data('contactDuplicatesPage', (cfg = {}) => ({
         } catch (e) { /* keep current */ } finally { this.loading = false; }
     },
 
-    async merge(g) {
+    merge(g) {
         const primaryId = this.primary[g.signature];
-        if (! primaryId || ! window.confirm(cfg.confirm)) return;
-        this.groups = this.groups.filter((x) => x.signature !== g.signature); // optimistic
-        try {
-            await this._post(cfg.mergeUrl, { primary_id: primaryId, ids: g.contacts.map((c) => c.id) });
-        } catch (e) { /* next load reconciles */ }
-        this.load();
+        if (! primaryId) return;
+        this.openConfirm(async () => {
+            this.groups = this.groups.filter((x) => x.signature !== g.signature); // optimistic
+            try {
+                await this._post(cfg.mergeUrl, { primary_id: primaryId, ids: g.contacts.map((c) => c.id) });
+            } catch (e) { /* next load reconciles */ }
+            this.load();
+        });
     },
 
     async dismiss(g) {
@@ -769,10 +784,13 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         this.editor = false; this.load();
     },
 
-    async destroy() {
-        if (! this.form.id || ! window.confirm(cfg.confirmDelete)) return;
-        await this._json(cfg.eventBase + '/' + this.form.id, 'DELETE');
-        this.editor = false; this.load();
+    destroy() {
+        if (! this.form.id) return;
+        const id = this.form.id;
+        this.openConfirm(cfg.confirmDelete, async () => {
+            await this._json(cfg.eventBase + '/' + id, 'DELETE');
+            this.editor = false; this.load();
+        });
     },
 
     async importFile(ev) {
@@ -784,35 +802,49 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         this.load(); ev.target.value = '';
     },
 
-    async importFromUrl() {
-        const url = window.prompt(cfg.importUrlPrompt); if (! url) return;
-        const target = this.calendars.find((c) => ! c.read_only); if (! target) return;
-        const r = await this._json(cfg.importFromUrl, 'POST', { url, calendar_id: target.id });
-        if (! r.ok) { window.alert(cfg.feedFailed); return; }
+    // ---- modals (replace window.prompt/confirm) ----------------------------
+    calModal: { open: false, id: null, name: '', color: '#3366cc', readOnly: false },
+    linkModal: { open: false, mode: 'import', url: '', name: '', error: '' },
+    confirmModal: { open: false, message: '', onConfirm: null },
+    palette: ['#3366cc', '#e11d48', '#059669', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4b5563'],
+
+    openConfirm(message, onConfirm) { this.confirmModal = { open: true, message, onConfirm }; },
+    async doConfirm() { const cb = this.confirmModal.onConfirm; this.confirmModal.open = false; if (cb) await cb(); },
+
+    addCalendar() { this.calModal = { open: true, id: null, name: '', color: this.randomColor(), readOnly: false }; },
+    editCalendar(c) { this.calModal = { open: true, id: c.id, name: c.name, color: c.color || '#3366cc', readOnly: !! c.read_only }; },
+    async saveCalModal() {
+        const m = this.calModal;
+        if (! m.id && ! m.name.trim()) return;
+        this.calModal.open = false;
+        if (m.id) {
+            await this._json(cfg.calBase + '/' + m.id, 'PUT', { name: m.name, color: m.color });
+        } else {
+            await this._json(cfg.calUrl, 'POST', { name: m.name, color: m.color });
+        }
         this.load();
     },
-    async subscribe() {
-        const url = window.prompt(cfg.subscribeUrlPrompt); if (! url) return;
-        const name = window.prompt(cfg.subscribeNamePrompt); if (! name) return;
-        const r = await this._json(cfg.subscribeUrl, 'POST', { url, name, color: this.randomColor() });
-        if (! r.ok) { window.alert(cfg.feedFailed); return; }
-        this.load();
+    deleteCalendar(c) {
+        this.openConfirm(cfg.confirmDeleteCalendar, async () => { await this._json(cfg.calBase + '/' + c.id, 'DELETE'); this.load(); });
     },
 
-    // ---- calendar management ------------------------------------------------
-    async addCalendar() {
-        const name = window.prompt(cfg.newCalendar); if (! name) return;
-        await this._json(cfg.calUrl, 'POST', { name, color: this.randomColor() }); this.load();
+    importFromUrl() { this.linkModal = { open: true, mode: 'import', url: '', name: '', error: '' }; },
+    subscribe() { this.linkModal = { open: true, mode: 'subscribe', url: '', name: '', error: '' }; },
+    async saveLinkModal() {
+        const m = this.linkModal;
+        if (! m.url.trim()) return;
+        let r;
+        if (m.mode === 'import') {
+            const target = this.calendars.find((c) => ! c.read_only); if (! target) return;
+            r = await this._json(cfg.importFromUrl, 'POST', { url: m.url, calendar_id: target.id });
+        } else {
+            if (! m.name.trim()) { this.linkModal.error = cfg.subscribeNamePrompt; return; }
+            r = await this._json(cfg.subscribeUrl, 'POST', { url: m.url, name: m.name, color: this.randomColor() });
+        }
+        if (! r.ok) { this.linkModal.error = cfg.feedFailed; return; }
+        this.linkModal.open = false; this.load();
     },
-    async renameCalendar(c) {
-        const name = window.prompt(cfg.renameCalendar, c.name); if (! name || name === c.name) return;
-        await this._json(cfg.calBase + '/' + c.id, 'PUT', { name, color: c.color }); this.load();
-    },
-    async deleteCalendar(c) {
-        if (! window.confirm(cfg.confirmDeleteCalendar)) return;
-        await this._json(cfg.calBase + '/' + c.id, 'DELETE'); this.load();
-    },
-    randomColor() { const p = ['#3366cc', '#e11d48', '#059669', '#d97706', '#7c3aed', '#0891b2']; return p[Math.floor(Math.random() * p.length)]; },
+    randomColor() { const p = this.palette; return p[Math.floor(Math.random() * p.length)]; },
 
     async _json(url, method, body) {
         return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });

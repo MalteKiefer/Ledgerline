@@ -62,6 +62,7 @@ return [
         'importing' => 'Importing…',
         'import_result' => 'Imported: :created new, :updated updated, :skipped skipped',
         'group_add_placeholder' => 'Add group…',
+        'confirm_title' => 'Are you sure?',
         'avatar_change' => 'Change photo',
         'avatar_after_save' => 'Save the contact first to add a photo.',
         'avatar_pick_title' => 'Contact photo',

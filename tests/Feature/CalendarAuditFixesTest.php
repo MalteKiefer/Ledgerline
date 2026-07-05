@@ -248,14 +248,21 @@ class CalendarAuditFixesTest extends TestCase
         $this->postJson(route('calendar.calendars.store'), ['name' => 'X', 'color' => '#a1b2c3'])->assertCreated();
     }
 
-    public function test_read_only_calendar_cannot_be_renamed_via_web(): void
+    public function test_read_only_calendar_keeps_its_name_but_colour_is_editable(): void
     {
         $user = $this->signIn();
         $sub = Calendar::create([
-            'user_id' => $user->id, 'uri' => 'holidays', 'name' => 'Holidays',
+            'user_id' => $user->id, 'uri' => 'holidays', 'name' => 'Holidays', 'color' => '#111111',
             'components' => ['VEVENT'], 'synctoken' => 1, 'read_only' => true,
         ]);
-        $this->putJson(route('calendar.calendars.update', $sub), ['name' => 'Hacked'])->assertForbidden();
+
+        // A rename attempt is accepted but the name is ignored; only the colour
+        // changes on a generated/read-only calendar.
+        $this->putJson(route('calendar.calendars.update', $sub), ['name' => 'Hacked', 'color' => '#a1b2c3'])->assertOk();
+
+        $sub->refresh();
+        $this->assertSame('Holidays', $sub->name);
+        $this->assertSame('#a1b2c3', $sub->color);
     }
 
     public function test_unparseable_event_date_is_a_422_not_a_500(): void

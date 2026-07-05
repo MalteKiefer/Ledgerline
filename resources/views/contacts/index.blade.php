@@ -233,6 +233,19 @@
             </div>
         </div>
 
+        {{-- Confirm modal (delete contact / book / group) --}}
+        <div x-show="confirmModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="confirmModal.open=false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="confirmModal.open=false"></div>
+            <div class="relative my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('contacts.ui.confirm_title') }}</h3>
+                <p class="mt-2 text-sm text-gray-600" x-text="confirmModal.message"></p>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button type="button" @click="confirmModal.open=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('contacts.ui.cancel') }}</button>
+                    <button type="button" @click="doConfirm()" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">{{ __('contacts.ui.delete') }}</button>
+                </div>
+            </div>
+        </div>
+
         {{-- Avatar picker + crop (device / gallery / people / files) --}}
         <div x-show="avatarModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="closeAvatarModal()">
             <div class="absolute inset-0 bg-gray-900/50" @click="closeAvatarModal()"></div>
