@@ -19,6 +19,13 @@ x-app-image: &app-image
     args:
       PHP_BASE: serversideup/php:8.4-fpm-nginx
   env_file: .env
+  environment:
+    # This host has no route to the EC2 instance-metadata IP (169.254.169.254),
+    # which is black-holed rather than refused. Without this, the AWS SDK's
+    # credential provider probes IMDS on every S3 call and blocks until timeout,
+    # hanging photo processing (renditions/metadata) for minutes. We always pass
+    # explicit S3 keys, so IMDS is never needed — disable the probe outright.
+    AWS_EC2_METADATA_DISABLED: "true"
   restart: unless-stopped
   security_opt:
     - no-new-privileges:true
@@ -38,6 +45,10 @@ services:
     # Only this service runs migrations + optimize on start (isolated lock
     # prevents races); worker/scheduler skip it.
     environment:
+      # Repeated from the x-app-image anchor: an explicit `environment:` here
+      # overrides (not merges with) the anchor's, so the IMDS opt-out must be
+      # restated or the web app would lose it and hang on S3 access.
+      AWS_EC2_METADATA_DISABLED: "true"
       AUTORUN_ENABLED: "true"
       AUTORUN_LARAVEL_MIGRATION: "true"
       AUTORUN_LARAVEL_STORAGE_LINK: "true"
