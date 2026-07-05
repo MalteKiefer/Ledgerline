@@ -11,7 +11,6 @@ use App\Models\CalendarObject;
 use App\Models\Contact;
 use App\Models\PublicShare;
 use App\Services\Notifications\ChannelNotifier;
-use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,7 +38,7 @@ class PublicShareController extends Controller
         $resource = $this->ownedResource($data['type'], $data['id'], $request->user()->id);
         $share = PublicShare::forResource($resource, $request->user()->id);
 
-        return response()->json(['ok' => true, 'url' => route('public-share.show', $share->token)], 201);
+        return response()->json(['ok' => true, 'url' => $share->url()], 201);
     }
 
     public function destroy(Request $request, PublicShare $publicShare): JsonResponse
@@ -58,7 +57,7 @@ class PublicShareController extends Controller
         $to = $request->validate(['email' => ['required', 'email']])['email'];
 
         $owner = $request->user()->name ?: $request->user()->email;
-        $link = route('public-share.show', $publicShare->token);
+        $link = $publicShare->url();
         try {
             $notifier->mailTo(AppSettings::current(), $to, __('shares.mail_subject', ['user' => $owner]), __('shares.mail_body', ['user' => $owner, 'link' => $link]));
         } catch (\Throwable $e) {
@@ -68,24 +67,7 @@ class PublicShareController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    // ---- public (no auth) ---------------------------------------------------
-
-    public function show(PublicShare $publicShare): View
-    {
-        $resource = $publicShare->shareable;
-        abort_if($resource === null, 404);
-
-        if ($resource instanceof Calendar) {
-            $events = CalendarObject::where('calendar_id', $resource->id)->where('component', 'VEVENT')
-                ->orderByRaw('coalesce(starts_at, created_at) asc')->limit(500)->get();
-
-            return view('public-share.calendar', ['share' => $publicShare, 'calendar' => $resource, 'events' => $events]);
-        }
-
-        $contacts = Contact::where('address_book_id', $resource->id)->orderBy('fn')->get();
-
-        return view('public-share.addressbook', ['share' => $publicShare, 'book' => $resource, 'contacts' => $contacts]);
-    }
+    // ---- public (no auth): the link IS the ICS/vCard feed ------------------
 
     /** ICS subscription feed for a shared calendar. */
     public function ics(PublicShare $publicShare): Response

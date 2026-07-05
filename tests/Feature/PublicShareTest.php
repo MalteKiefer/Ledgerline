@@ -15,7 +15,7 @@ class PublicShareTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_owner_creates_a_public_calendar_link_openable_without_auth(): void
+    public function test_public_calendar_link_is_an_ics_feed_openable_without_auth(): void
     {
         $alice = User::factory()->create();
         $calendar = Calendar::create(['user_id' => $alice->id, 'uri' => 'default', 'name' => 'Team', 'components' => ['VEVENT'], 'synctoken' => 1]);
@@ -23,25 +23,25 @@ class PublicShareTest extends TestCase
         $url = $this->actingAs($alice)->postJson(route('public-share.store'), ['type' => 'calendars', 'id' => $calendar->id])
             ->assertCreated()->json('url');
 
-        $token = PublicShare::firstOrFail()->token;
+        $this->assertStringContainsString('/ics', $url);
 
-        // No auth needed for the public views.
+        // No auth needed; the link is the feed itself.
         $this->app['auth']->forgetGuards();
-        $this->get($url)->assertOk()->assertSee('Team');
-        $this->get(route('public-share.ics', $token))->assertOk()->assertHeader('content-type', 'text/calendar; charset=utf-8');
+        $this->get($url)->assertOk()->assertHeader('content-type', 'text/calendar; charset=utf-8');
     }
 
-    public function test_owner_creates_a_public_address_book_link(): void
+    public function test_public_address_book_link_is_a_vcard_feed(): void
     {
         $alice = User::factory()->create();
         $book = AddressBook::create(['user_id' => $alice->id, 'uri' => 'default', 'name' => 'Shared', 'synctoken' => 1]);
 
-        $this->actingAs($alice)->postJson(route('public-share.store'), ['type' => 'address-books', 'id' => $book->id])->assertCreated();
-        $share = PublicShare::firstOrFail();
+        $url = $this->actingAs($alice)->postJson(route('public-share.store'), ['type' => 'address-books', 'id' => $book->id])
+            ->assertCreated()->json('url');
+
+        $this->assertStringContainsString('/vcf', $url);
 
         $this->app['auth']->forgetGuards();
-        $this->get(route('public-share.show', $share->token))->assertOk();
-        $this->get(route('public-share.vcf', $share->token))->assertOk()->assertHeader('content-type', 'text/vcard; charset=utf-8');
+        $this->get($url)->assertOk()->assertHeader('content-type', 'text/vcard; charset=utf-8');
     }
 
     public function test_a_read_only_calendar_cannot_get_a_public_link(): void
