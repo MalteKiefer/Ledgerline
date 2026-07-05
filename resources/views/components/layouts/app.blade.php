@@ -21,10 +21,18 @@
             {{-- Desktop persistent top bar --}}
             <x-nav />
 
-            {{-- Mobile top strip: brand + spotlight + bell. Primary navigation
-                 lives in the fixed bottom tab bar (x-mobile-nav). --}}
+            {{-- Mobile top strip: hamburger + brand + spotlight + bell. All
+                 navigation lives in the hamburger drawer (x-mobile-nav). --}}
             <div class="mx-auto flex w-full max-w-[1700px] items-center justify-between px-4 py-3 sm:hidden">
-                <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900">Ledgerline</a>
+                <div class="flex items-center gap-1">
+                    @auth
+                        <button type="button" @click="$store.nav.toggleNav()" aria-label="{{ __('pages.menu.toggle_menu') }}"
+                            class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 hover:bg-gray-50">
+                            <x-icon name="bars-3" class="h-6 w-6" />
+                        </button>
+                    @endauth
+                    <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900">Ledgerline</a>
+                </div>
                 @auth
                     <div class="flex items-center gap-1">
                         <x-spotlight-search />
@@ -41,7 +49,7 @@
             </div>
         </header>
 
-        <main class="mx-auto w-full max-w-[1700px] overflow-x-hidden px-4 pb-24 pt-8 sm:w-[92%] sm:px-6 sm:pb-8">
+        <main class="mx-auto w-full max-w-[1700px] overflow-x-hidden px-4 py-8 sm:w-[92%] sm:px-6">
             @if (session('status'))
                 <div class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
                     role="status">
@@ -59,12 +67,12 @@
             {{ $slot }}
         </main>
 
-        <footer class="mx-auto w-full max-w-[1700px] px-4 pb-24 pt-6 text-center text-xs text-gray-400 sm:w-[92%] sm:px-6 sm:pb-6">
+        <footer class="mx-auto w-full max-w-[1700px] px-4 py-6 text-center text-xs text-gray-400 sm:w-[92%] sm:px-6">
             Ledgerline v{{ config('app.version') }}
         </footer>
     </div>
 
-    {{-- Mobile bottom tab bar (< sm) --}}
+    {{-- Mobile navigation drawer (hamburger) --}}
     <x-mobile-nav />
 
     {{-- App-wide confirm modal (replaces window.confirm) --}}
