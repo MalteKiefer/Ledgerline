@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+
 /**
  * SSRF guard for server-issued outbound HTTP requests to user-configured
  * targets (Paperless, NTFY, webhooks).
@@ -37,6 +41,74 @@ final class OutboundUrl
             return ! config('security.block_private_hosts', false);
         }
 
+        foreach ($ips as $ip) {
+            if (! self::ipAllowed($ip)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * A redirect-free HTTP client for a user-configured target, with the
+     * resolved (and verified-safe) IP PINNED to the connection. This closes the
+     * validate-then-reconnect (DNS-rebinding / TOCTOU) bypass: the host is
+     * resolved once here and curl connects to exactly that address, so a
+     * short-TTL record can't answer a safe IP to the guard and a private/
+     * metadata IP to the real request. Fails closed when the host cannot be
+     * resolved to a verified-safe address.
+     */
+    public static function client(string $url, int $timeout = 15): PendingRequest
+    {
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        $host = parse_url($url, PHP_URL_HOST);
+
+        if (! in_array($scheme, ['http', 'https'], true) || ! is_string($host) || $host === '') {
+            throw new RuntimeException('Refusing to fetch an unsafe URL.');
+        }
+
+        $options = ['allow_redirects' => false];
+        $ips = self::resolve($host);
+
+        if ($ips !== []) {
+            $allowed = array_values(array_filter($ips, fn ($ip) => self::ipAllowed($ip)));
+            if ($allowed === []) {
+                // Resolves only to refused addresses (metadata/link-local, or
+                // private in hardened mode) — never connect.
+                throw new RuntimeException('Refusing to fetch an unsafe URL.');
+            }
+            // Pin the verified IP so a DNS-rebind can't swap it at connect time.
+            $addr = str_contains($allowed[0], ':') ? "[{$allowed[0]}]" : $allowed[0];
+            $port = (int) (parse_url($url, PHP_URL_PORT) ?: ($scheme === 'https' ? 443 : 80));
+            $options['curl'] = [CURLOPT_RESOLVE => ["{$host}:{$port}:{$addr}"]];
+        } elseif (config('security.block_private_hosts', false)) {
+            // Hardened posture: an unresolvable host cannot be verified — refuse.
+            throw new RuntimeException('Refusing to fetch an unresolvable URL.');
+        }
+        // Default posture: an unresolvable host (e.g. a Docker-internal service
+        // not resolvable at request time) is left unpinned, as before.
+
+        return Http::withOptions($options)->timeout($timeout);
+    }
+
+    /**
+     * Whether a bare host (IMAP/SMTP target — no URL/scheme) is an allowed
+     * outbound destination: every resolved address must clear the same checks
+     * as safe() (link-local/metadata always refused; private refused only in
+     * hardened mode). Unresolvable hosts are allowed in the default posture so
+     * a LAN/Docker mail server that doesn't resolve at save time still works.
+     */
+    public static function hostAllowed(string $host): bool
+    {
+        $host = trim($host);
+        if ($host === '') {
+            return false;
+        }
+        $ips = self::resolve($host);
+        if ($ips === []) {
+            return ! config('security.block_private_hosts', false);
+        }
         foreach ($ips as $ip) {
             if (! self::ipAllowed($ip)) {
                 return false;

@@ -7,7 +7,6 @@ namespace App\Services\Notifications;
 use App\Models\AppNotification;
 use App\Models\AppSettings;
 use App\Support\OutboundUrl;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport;
@@ -67,9 +66,6 @@ class ChannelNotifier
         if (! $s->ntfy_enabled || ! $s->ntfy_url || ! $s->ntfy_topic) {
             throw new \RuntimeException('NTFY is not enabled or not fully configured.');
         }
-        if (! OutboundUrl::safe((string) $s->ntfy_url)) {
-            throw new \RuntimeException('The NTFY URL is not an allowed outbound target.');
-        }
         $url = rtrim((string) $s->ntfy_url, '/').'/'.ltrim((string) $s->ntfy_topic, '/');
         // Strip CR/LF: header values are attacker-influenced (reminder title /
         // click URL) and a newline would smuggle extra headers.
@@ -81,7 +77,8 @@ class ChannelNotifier
         if (! empty($opts['click'])) {
             $headers['Click'] = $this->headerSafe((string) $opts['click']);
         }
-        $request = Http::withHeaders($headers)->withOptions(['allow_redirects' => false]);
+        // Resolve + pin the verified IP (SSRF/DNS-rebinding safe), no redirects.
+        $request = OutboundUrl::client($url, 15)->withHeaders($headers);
         if ($s->ntfy_token) {
             $request = $request->withToken((string) $s->ntfy_token);
         }
@@ -99,17 +96,15 @@ class ChannelNotifier
         if (! $s->webhook_enabled || ! $s->webhook_url) {
             throw new \RuntimeException('Webhook is not enabled or has no URL.');
         }
-        if (! OutboundUrl::safe((string) $s->webhook_url)) {
-            throw new \RuntimeException('The webhook URL is not an allowed outbound target.');
-        }
         $body = json_encode($payload, JSON_THROW_ON_ERROR);
 
         $headers = ['Content-Type' => 'application/json'];
         if ($s->webhook_secret) {
             $headers['X-Ledgerline-Signature'] = 'sha256='.hash_hmac('sha256', $body, (string) $s->webhook_secret);
         }
-        Http::withHeaders($headers)
-            ->withOptions(['allow_redirects' => false])
+        // Resolve + pin the verified IP (SSRF/DNS-rebinding safe), no redirects.
+        OutboundUrl::client((string) $s->webhook_url, 15)
+            ->withHeaders($headers)
             ->withBody($body, 'application/json')
             ->post((string) $s->webhook_url)
             ->throw();

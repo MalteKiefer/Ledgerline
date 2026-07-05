@@ -8,6 +8,7 @@ return [
     'stale' => 'The accounts were changed somewhere else at the same time and were reloaded. Please repeat your last change.',
     'save_failed' => 'Could not save. Please try again.',
     'connect_failed' => 'Could not connect. Check the host, port, encryption and credentials.',
+    'host_not_allowed' => 'This mail server host is not an allowed destination.',
     'empty' => 'No mail accounts yet — add your first one.',
     'add_account' => 'Add account',
     'refresh_all' => 'Refresh all',

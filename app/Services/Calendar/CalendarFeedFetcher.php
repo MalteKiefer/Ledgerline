@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Calendar;
 
 use App\Support\OutboundUrl;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
@@ -22,13 +21,9 @@ class CalendarFeedFetcher
         if (str_starts_with(strtolower($url), 'webcal://')) {
             $url = 'https://'.substr($url, 9);
         }
-        if (! OutboundUrl::safe($url)) {
-            throw new RuntimeException('The feed URL is not an allowed outbound target.');
-        }
-
         try {
-            $response = Http::withOptions(['allow_redirects' => false])
-                ->timeout(15)
+            // Resolves + pins the verified IP (SSRF/DNS-rebinding safe), no redirects.
+            $response = OutboundUrl::client($url, 15)
                 ->accept('text/calendar')
                 ->get($url);
         } catch (\Throwable) {

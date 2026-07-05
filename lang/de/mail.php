@@ -8,6 +8,7 @@ return [
     'stale' => 'Die Konten wurden zeitgleich woanders geändert und neu geladen. Bitte letzte Änderung wiederholen.',
     'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
     'connect_failed' => 'Verbindung fehlgeschlagen. Prüfe Host, Port, Verschlüsselung und Zugangsdaten.',
+    'host_not_allowed' => 'Dieser Mailserver-Host ist kein erlaubtes Ziel.',
     'empty' => 'Noch keine Mailkonten — lege das erste an.',
     'add_account' => 'Konto hinzufügen',
     'refresh_all' => 'Alle aktualisieren',
