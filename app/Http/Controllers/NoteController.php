@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\PurgesOwnedTrash;
 use App\Models\Note;
 use App\Models\NoteShare;
 use App\Support\Tags;
@@ -22,6 +23,8 @@ use Illuminate\Validation\Rule;
  */
 class NoteController extends Controller
 {
+    use PurgesOwnedTrash;
+
     private const LIFETIMES = [3600, 86400, 604800, 2592000];
 
     public function index(): JsonResponse
@@ -68,11 +71,7 @@ class NoteController extends Controller
 
     public function emptyTrash(): JsonResponse
     {
-        // Owner-only: a bulk builder forceDelete bypasses the SharesWithUsers
-        // write guard, so pin it to the caller's own notes (never shared ones).
-        Note::ownedBy(auth()->id())->onlyTrashed()->forceDelete();
-
-        return response()->json(['ok' => true]);
+        return $this->emptyOwnedTrash(Note::class);
     }
 
     /** Server-side markdown render (escaped + sanitised). */

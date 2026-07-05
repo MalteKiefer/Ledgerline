@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\PurgesOwnedTrash;
 use App\Models\Bookmark;
 use App\Models\BookmarkFolder;
 use App\Support\Tags;
@@ -17,6 +18,8 @@ use Illuminate\Validation\Rule;
  */
 class BookmarkController extends Controller
 {
+    use PurgesOwnedTrash;
+
     public function index(): JsonResponse
     {
         return response()->json([
@@ -80,9 +83,7 @@ class BookmarkController extends Controller
 
     public function emptyTrash(): JsonResponse
     {
-        Bookmark::onlyTrashed()->forceDelete();
-
-        return response()->json(['ok' => true]);
+        return $this->emptyOwnedTrash(Bookmark::class);
     }
 
     /** @return array<string,mixed> */
