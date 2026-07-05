@@ -34,7 +34,8 @@ class ContactController extends Controller
     public function data(Request $request, VCardService $vcards): JsonResponse
     {
         $userId = $request->user()->id;
-        $bookIds = AddressBook::where('user_id', $userId)->pluck('id');
+        // Owned OR shared-with-me address books (SharesWithUsers scope).
+        $bookIds = AddressBook::query()->pluck('id');
         $settings = UserSetting::for($userId);
 
         $q = trim((string) $request->query('q'));
@@ -82,7 +83,8 @@ class ContactController extends Controller
             ]);
 
         return response()->json([
-            'books' => AddressBook::where('user_id', $userId)->orderBy('name')->get(['id', 'name', 'uri']),
+            'books' => AddressBook::query()->orderBy('name')->get(['id', 'name', 'uri', 'user_id'])
+                ->map(fn ($b): array => ['id' => $b->id, 'name' => $b->name, 'uri' => $b->uri, 'owned' => (int) $b->user_id === $userId]),
             'groups' => ContactGroup::where('user_id', $userId)->orderBy('name')->get(['id', 'name']),
             'contacts' => $contacts,
             'settings' => [

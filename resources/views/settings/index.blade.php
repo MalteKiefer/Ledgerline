@@ -7,9 +7,9 @@
         // Personal — apply to the signed-in user only.
         $personal = [
             ['url' => route('settings.calendar.edit'), 'title' => __('settings.calendar_section'), 'desc' => __('settings.calendar_desc')],
+            ['url' => route('settings.contacts.edit'), 'title' => __('settings.contacts_section'), 'desc' => __('settings.contacts_desc')],
             ['url' => route('settings.reminders.edit'), 'title' => __('settings.reminders_section'), 'desc' => __('settings.reminders_desc')],
             ['url' => route('settings.paperless.edit'), 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
-            ['url' => route('profile'), 'title' => __('settings.sync_section'), 'desc' => __('settings.sync_desc')],
         ];
         // Administration — workspace-wide, admin group only.
         $admin = [

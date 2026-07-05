@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\AddressBook;
+use App\Models\Calendar;
 use App\Models\Note;
 use App\Models\ResourceShare;
 use App\Models\StoredFile;
@@ -108,6 +110,33 @@ class ResourceSharingTest extends TestCase
         // …and posting an empty manifest must not touch Alice's file.
         $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertOk();
         $this->assertDatabaseHas('files', ['id' => $file->id, 'deleted_at' => null]);
+    }
+
+    public function test_owner_can_share_a_calendar_and_address_book(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+
+        $calendar = Calendar::create(['user_id' => $alice->id, 'uri' => 'default', 'name' => 'Team', 'components' => ['VEVENT'], 'synctoken' => 1]);
+        $book = AddressBook::create(['user_id' => $alice->id, 'uri' => 'default', 'name' => 'Shared', 'synctoken' => 1]);
+
+        $this->actingAs($alice)->postJson(route('shares.store'), ['type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'write'])->assertCreated();
+        $this->actingAs($alice)->postJson(route('shares.store'), ['type' => 'address-books', 'id' => $book->id, 'email' => $bob->email, 'permission' => 'read'])->assertCreated();
+
+        // Bob now sees both via the owned-or-shared scope.
+        $this->actingAs($bob);
+        $this->assertNotNull(Calendar::find($calendar->id));
+        $this->assertNotNull(AddressBook::find($book->id));
+    }
+
+    public function test_a_read_only_calendar_cannot_be_shared(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+        $holidays = Calendar::create(['user_id' => $alice->id, 'uri' => 'holidays', 'name' => 'Holidays', 'components' => ['VEVENT'], 'synctoken' => 1, 'read_only' => true]);
+
+        $this->actingAs($alice)->postJson(route('shares.store'), ['type' => 'calendars', 'id' => $holidays->id, 'email' => $bob->email, 'permission' => 'read'])
+            ->assertStatus(422);
     }
 
     public function test_owner_can_revoke_a_share(): void

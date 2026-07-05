@@ -10,6 +10,10 @@
         'importFromUrl' => route('calendar.import-url'),
         'subscribeUrl' => route('calendar.subscribe'),
         'timezoneUrl' => route('calendar.timezone'),
+        'sharesDataUrl' => route('shares.data'),
+        'sharesUrl' => route('shares.store'),
+        'sharesBase' => url('shares'),
+        'shareError' => __('shares.error'),
         'token' => csrf_token(),
         'importUrlPrompt' => __('calendar.ui.import_url_prompt'),
         'subscribeUrlPrompt' => __('calendar.ui.subscribe_url_prompt'),
@@ -39,6 +43,7 @@
                                 <span class="truncate text-gray-700" x-text="c.name"></span>
                             </label>
                             <span class="hidden shrink-0 gap-1 group-hover:flex">
+                                <button @click="openShare('calendars', c.id, c.name)" class="text-gray-400 hover:text-gray-700" title="{{ __('shares.share') }}"><x-icon name="share" class="h-4 w-4" /></button>
                                 <button @click="editCalendar(c)" class="text-gray-400 hover:text-gray-700" title="{{ __('calendar.ui.edit_calendar') }}"><x-icon name="pencil" class="h-4 w-4" /></button>
                                 <button @click="deleteCalendar(c)" class="text-gray-400 hover:text-red-600" title="{{ __('calendar.ui.delete') }}"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             </span>
@@ -374,6 +379,8 @@
                 </form>
             </div>
         </div>
+
+        @include('partials.share-modal')
 
         {{-- Confirm modal (delete calendar / event) --}}
         <div x-show="confirmModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="confirmModal.open=false">

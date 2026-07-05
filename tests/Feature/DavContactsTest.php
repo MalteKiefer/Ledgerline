@@ -132,15 +132,21 @@ class DavContactsTest extends TestCase
         $this->assertDatabaseCount('dav_credentials', 1);
     }
 
-    public function test_profile_page_shows_dav_sync_details(): void
+    public function test_contacts_and_calendar_settings_show_dav_sync_details(): void
     {
         $this->signIn();
         $this->post(route('settings.contacts.generate'));
 
-        $this->get(route('profile'))
-            ->assertOk()
-            ->assertSee(url('/dav/'))
-            ->assertSee(route('settings.contacts.profile'));
+        // The DAV sync block lives on the per-user contacts + calendar settings.
+        foreach (['settings.contacts.edit', 'settings.calendar.edit'] as $route) {
+            $this->get(route($route))
+                ->assertOk()
+                ->assertSee(url('/dav/'))
+                ->assertSee(route('settings.contacts.profile'));
+        }
+
+        // …and no longer on the profile page.
+        $this->get(route('profile'))->assertOk()->assertDontSee(url('/dav/'));
     }
 
     public function test_apple_profile_downloads_a_carddav_mobileconfig(): void

@@ -87,4 +87,9 @@
             <button type="submit" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('settings.save') }}</button>
         </div>
     </form>
+
+    {{-- CalDAV sync (same login as contacts) --}}
+    <div class="mt-6">
+        @include('settings.partials.dav-sync')
+    </div>
 </x-layouts.app>
