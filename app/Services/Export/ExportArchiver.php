@@ -207,7 +207,7 @@ class ExportArchiver
         $payload = $export->payload ?? [];
 
         return $export->source === 'gallery'
-            ? $this->galleryEntries($payload, (string) $export->variant, $disk)
+            ? $this->galleryEntries($payload, (string) $export->variant, (int) $export->user_id, $disk)
             : $this->fileEntries($payload, $disk);
     }
 
@@ -215,11 +215,13 @@ class ExportArchiver
      * @param  array<string, mixed>  $payload
      * @return Generator<array{0: string, 1: string, 2: int}>
      */
-    private function galleryEntries(array $payload, string $variant, Filesystem $disk): Generator
+    private function galleryEntries(array $payload, string $variant, int $ownerId, Filesystem $disk): Generator
     {
         $ids = $payload['photo_ids'] ?? [];
 
-        foreach (Photo::query()->whereIn('id', $ids)->get() as $photo) {
+        // Defence in depth: the job runs without Auth so the owner global scope
+        // is inert here — constrain to the export owner's photos explicitly.
+        foreach (Photo::withoutGlobalScopes()->where('uploaded_by', $ownerId)->whereIn('id', $ids)->get() as $photo) {
             if ($variant === 'edited') {
                 foreach ($this->photoExporter->editedFiles($photo) as $file) {
                     yield [$file['name'], $file['path'], (int) (filesize($file['path']) ?: 0)];

@@ -53,6 +53,15 @@ class User extends Authenticatable
     {
         $adminGroup = config('services.pocketid.admin_group');
 
-        return blank($adminGroup) || $this->inGroup((string) $adminGroup);
+        if (filled($adminGroup)) {
+            return $this->inGroup((string) $adminGroup);
+        }
+
+        // No admin group configured: allow on a single-user install (backwards
+        // compatible), but fail CLOSED on multi-user installs — otherwise every
+        // authenticated user could reach workspace-wide settings and download
+        // backups of ALL users' data. Multi-user installs must set
+        // POCKETID_ADMIN_GROUP to grant admin access.
+        return static::query()->count() <= 1;
     }
 }
