@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Settings;
 
+use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\GalleryRequest;
 use App\Jobs\DetectDuplicatesJob;
@@ -29,6 +30,8 @@ use Illuminate\Support\Facades\Bus;
  */
 class GalleryController extends Controller
 {
+    use RedirectsToSettings;
+
     public function edit(QueueStatus $queue, VideoProcessor $video): View
     {
         $counts = Photo::counts();
@@ -55,7 +58,7 @@ class GalleryController extends Controller
     {
         AppSettings::current()->update($request->validated());
 
-        return redirect()->route('settings.gallery.edit')->with('status', __('flash.gallery_settings_saved'));
+        return $this->savedRedirect('settings.gallery.edit', 'flash.gallery_settings_saved');
     }
 
     /**

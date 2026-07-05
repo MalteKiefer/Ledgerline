@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Settings;
 
+use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Rules\SafeUrl;
@@ -21,6 +22,8 @@ use Illuminate\Validation\Rule;
  */
 class NotificationsController extends Controller
 {
+    use RedirectsToSettings;
+
     public function edit(): View
     {
         return view('settings.notifications.edit', ['settings' => AppSettings::current()]);
@@ -59,7 +62,7 @@ class NotificationsController extends Controller
 
         $settings->update($data);
 
-        return redirect()->route('settings.notifications.edit')->with('status', __('flash.notifications_saved'));
+        return $this->savedRedirect('settings.notifications.edit', 'flash.notifications_saved');
     }
 
     /**

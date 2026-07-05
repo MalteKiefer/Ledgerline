@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Settings;
 
+use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\UserSetting;
 use Illuminate\Contracts\View\View;
@@ -16,6 +17,8 @@ use Illuminate\Http\Request;
  */
 class FilesController extends Controller
 {
+    use RedirectsToSettings;
+
     public function edit(Request $request): View
     {
         return view('settings.files.edit', [
@@ -31,6 +34,6 @@ class FilesController extends Controller
 
         UserSetting::for($request->user()->id)->update(['file_max_versions' => $data['file_max_versions']]);
 
-        return redirect()->route('settings.files.edit')->with('status', __('settings.files_saved'));
+        return $this->savedRedirect('settings.files.edit', 'settings.files_saved');
     }
 }

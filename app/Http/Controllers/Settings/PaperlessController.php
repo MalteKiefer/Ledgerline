@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Settings;
 
+use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\PaperlessTerm;
 use App\Models\UserSetting;
@@ -24,6 +25,8 @@ use Illuminate\Http\Request;
  */
 class PaperlessController extends Controller
 {
+    use RedirectsToSettings;
+
     public function edit(Request $request): View
     {
         return view('settings.paperless.edit', [
@@ -49,7 +52,7 @@ class PaperlessController extends Controller
         $validated['paperless_enabled'] = $request->boolean('paperless_enabled');
         $settings->update($validated);
 
-        return redirect()->route('settings.paperless.edit')->with('status', __('flash.paperless_settings_saved'));
+        return $this->savedRedirect('settings.paperless.edit', 'flash.paperless_settings_saved');
     }
 
     /** Test the connection using the posted URL + token (falling back to stored). */
