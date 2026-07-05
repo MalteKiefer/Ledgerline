@@ -8,7 +8,7 @@
 @php
     // One button vocabulary across every app: primary (dark), secondary
     // (outline) and danger (red outline). Same padding, radius and text size.
-    $base = 'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-60';
+    $base = 'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition disabled:opacity-60';
     $variants = [
         'primary' => 'bg-gray-900 text-white hover:bg-gray-800',
         'secondary' => 'border border-gray-300 text-gray-700 hover:bg-gray-50',
