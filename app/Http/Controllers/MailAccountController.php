@@ -8,6 +8,7 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailMessage;
 use App\Support\BlobStore;
+use App\Support\KeepBlankSecrets;
 use App\Support\OutboundUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,14 +38,8 @@ class MailAccountController extends Controller
     public function update(Request $request, MailAccount $account): JsonResponse
     {
         $data = $this->validated($request, requirePassword: false);
-        // Empty password keeps the stored one (so it need not be retyped).
-        if (empty($data['password'])) {
-            unset($data['password']);
-        }
-        // Same for the SMTP password: an empty value keeps the stored one.
-        if (empty($data['smtp_password'])) {
-            unset($data['smtp_password']);
-        }
+        // Empty password/SMTP password keeps the stored one (so it need not be retyped).
+        $data = KeepBlankSecrets::preserve($data, ['password', 'smtp_password']);
         $account->update($data);
 
         return response()->json($this->toArray($account->refresh()));

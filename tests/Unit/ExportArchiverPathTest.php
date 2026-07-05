@@ -4,23 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
-use App\Services\Export\ExportArchiver;
-use App\Services\Gallery\PhotoExporter;
+use App\Support\ArchiveName;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use ReflectionMethod;
 
 class ExportArchiverPathTest extends TestCase
 {
     #[DataProvider('malicious')]
     public function test_safe_path_never_escapes_the_zip_root(string $input): void
     {
-        // ExportArchiver only needs its collaborator's type for construction here.
-        $archiver = new ExportArchiver($this->createStub(PhotoExporter::class));
-        $method = new ReflectionMethod($archiver, 'safePath');
-        $method->setAccessible(true);
-
-        $out = $method->invoke($archiver, $input);
+        // The zip-slip scrub now lives in the shared ArchiveName::sanitize().
+        $out = ArchiveName::sanitize($input);
 
         $this->assertStringStartsNotWith('/', $out, 'no leading slash');
         $this->assertNotContains('..', explode('/', $out), 'no traversal segment');

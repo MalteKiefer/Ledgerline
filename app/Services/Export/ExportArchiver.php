@@ -9,6 +9,7 @@ use App\Models\FileFolder;
 use App\Models\Photo;
 use App\Models\StoredFile;
 use App\Services\Gallery\PhotoExporter;
+use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use Generator;
@@ -284,21 +285,7 @@ class ExportArchiver
      */
     private function uniqueName(array $used, string $name): string
     {
-        $name = $this->safePath($name);
-        if (! isset($used[$name])) {
-            return $name;
-        }
-
-        $dot = strrpos($name, '.');
-        $base = $dot > 0 ? substr($name, 0, $dot) : $name;
-        $ext = $dot > 0 ? substr($name, $dot) : '';
-
-        $i = 2;
-        while (isset($used[$base.'_'.$i.$ext])) {
-            $i++;
-        }
-
-        return $base.'_'.$i.$ext;
+        return ArchiveName::unique(ArchiveName::sanitize($name), $used, '_');
     }
 
     private function safeName(string $name): string
@@ -306,25 +293,5 @@ class ExportArchiver
         $name = preg_replace('/[\/\\\\:*?"<>|]+/', '-', $name) ?? 'export';
 
         return trim($name) !== '' ? trim($name) : 'export';
-    }
-
-    /**
-     * Sanitise a zip member path against Zip-Slip: normalise backslashes, split on
-     * "/", scrub each segment (also dropping "", "." and ".."), and rejoin. The
-     * result can never contain a ".." segment or a leading "/", so no member can
-     * escape the extraction root — however naive the extractor.
-     */
-    private function safePath(string $name): string
-    {
-        $segments = [];
-        foreach (explode('/', str_replace('\\', '/', $name)) as $segment) {
-            $segment = trim($segment);
-            if ($segment === '' || $segment === '.' || $segment === '..') {
-                continue;
-            }
-            $segments[] = $this->safeName($segment);
-        }
-
-        return $segments === [] ? 'export' : implode('/', $segments);
     }
 }

@@ -9,6 +9,7 @@ use App\Models\MailMessage;
 use App\Services\Mail\MailArchiver;
 use App\Services\Mail\MailArchiveReader;
 use App\Services\Mail\MailSource;
+use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -249,14 +250,7 @@ class MailArchiveController extends Controller
 
     private function uniqueName(string $name, array &$used): string
     {
-        $candidate = $name;
-        $i = 1;
-        while (isset($used[$candidate])) {
-            $candidate = preg_replace('/\.eml$/', '', $name).'-'.(++$i).'.eml';
-        }
-        $used[$candidate] = true;
-
-        return $candidate;
+        return ArchiveName::unique($name, $used, '-');
     }
 
     /** Escape LIKE metacharacters (\ % _) so a search term matches literally. */

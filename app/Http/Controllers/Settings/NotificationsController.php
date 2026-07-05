@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Rules\SafeUrl;
 use App\Services\Backup\BackupNotifier;
+use App\Support\KeepBlankSecrets;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -54,11 +55,7 @@ class NotificationsController extends Controller
 
         // Secret fields: an empty submission keeps the stored value (the form
         // never renders the current secret back), so it isn't wiped by accident.
-        foreach (['smtp_password', 'ntfy_token', 'webhook_secret'] as $secret) {
-            if (($data[$secret] ?? '') === '' || $data[$secret] === null) {
-                unset($data[$secret]);
-            }
-        }
+        $data = KeepBlankSecrets::preserve($data, ['smtp_password', 'ntfy_token', 'webhook_secret']);
 
         $settings->update($data);
 

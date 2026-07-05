@@ -58,29 +58,49 @@ class ReverseGeocoder
      */
     private function request(float $lat, float $lon): array
     {
+        $json = $this->nominatim(self::HOST, [
+            'lat' => $lat,
+            'lon' => $lon,
+            'format' => 'jsonv2',
+            'zoom' => 18,
+            'addressdetails' => 1,
+        ]);
+
+        if ($json === null) {
+            return ['display' => null, 'address' => []];
+        }
+
+        return [
+            'display' => ($json['display_name'] ?? null) ?: null,
+            'address' => array_map('strval', $json['address'] ?? []),
+        ];
+    }
+
+    /**
+     * Perform a throttled Nominatim request with the shared User-Agent and
+     * timeout, returning the decoded JSON body or null on any failure.
+     *
+     * @param  array<string, mixed>  $query
+     * @return array<mixed>|null
+     */
+    private function nominatim(string $path, array $query): ?array
+    {
         try {
             $this->throttle();
 
             $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
                 ->timeout(5)
-                ->get(self::HOST, [
-                    'lat' => $lat,
-                    'lon' => $lon,
-                    'format' => 'jsonv2',
-                    'zoom' => 18,
-                    'addressdetails' => 1,
-                ]);
+                ->get($path, $query);
 
             if (! $response->successful()) {
-                return ['display' => null, 'address' => []];
+                return null;
             }
 
-            return [
-                'display' => $response->json('display_name') ?: null,
-                'address' => array_map('strval', $response->json('address') ?: []),
-            ];
+            $json = $response->json();
+
+            return is_array($json) ? $json : null;
         } catch (Throwable) {
-            return ['display' => null, 'address' => []];
+            return null;
         }
     }
 
@@ -103,38 +123,30 @@ class ReverseGeocoder
             return $cached;
         }
 
-        try {
-            $this->throttle();
+        $json = $this->nominatim(self::SEARCH_HOST, [
+            'q' => $query,
+            'format' => 'jsonv2',
+            'limit' => 5,
+            'addressdetails' => 0,
+        ]);
 
-            $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
-                ->timeout(5)
-                ->get(self::SEARCH_HOST, [
-                    'q' => $query,
-                    'format' => 'jsonv2',
-                    'limit' => 5,
-                    'addressdetails' => 0,
-                ]);
-
-            if (! $response->successful()) {
-                return [];
-            }
-
-            $results = collect($response->json() ?: [])
-                ->map(static fn (array $row): array => [
-                    'display' => (string) ($row['display_name'] ?? ''),
-                    'lat' => (float) ($row['lat'] ?? 0),
-                    'lon' => (float) ($row['lon'] ?? 0),
-                ])
-                ->filter(static fn (array $r): bool => $r['display'] !== '')
-                ->values()
-                ->all();
-
-            Cache::put($key, $results, now()->addDays(7));
-
-            return $results;
-        } catch (Throwable) {
+        if ($json === null) {
             return [];
         }
+
+        $results = collect($json)
+            ->map(static fn (array $row): array => [
+                'display' => (string) ($row['display_name'] ?? ''),
+                'lat' => (float) ($row['lat'] ?? 0),
+                'lon' => (float) ($row['lon'] ?? 0),
+            ])
+            ->filter(static fn (array $r): bool => $r['display'] !== '')
+            ->values()
+            ->all();
+
+        Cache::put($key, $results, now()->addDays(7));
+
+        return $results;
     }
 
     /**
