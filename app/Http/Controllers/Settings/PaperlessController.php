@@ -10,6 +10,7 @@ use App\Models\UserSetting;
 use App\Rules\SafeUrl;
 use App\Services\Paperless\PaperlessClient;
 use App\Services\Paperless\PaperlessSync;
+use App\Support\KeepBlankSecrets;
 use App\Support\OutboundUrl;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -44,9 +45,7 @@ class PaperlessController extends Controller
 
         $settings = UserSetting::for($request->user()->id);
         // An empty token field keeps the stored one (so it need not be retyped).
-        if (empty($validated['paperless_token'])) {
-            unset($validated['paperless_token']);
-        }
+        $validated = KeepBlankSecrets::preserve($validated, ['paperless_token']);
         $validated['paperless_enabled'] = $request->boolean('paperless_enabled');
         $settings->update($validated);
 

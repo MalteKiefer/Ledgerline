@@ -15,6 +15,7 @@ use App\Services\Gallery\GalleryFormats;
 use App\Services\Gallery\PhotoExporter;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
+use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use App\Support\Bytes;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -641,17 +642,8 @@ class GalleryController extends Controller
     private function uniqueZipName(string $name, array &$used): string
     {
         $name = trim(str_replace(['/', '\\'], '-', $name)) ?: 'file';
-        $candidate = $name;
-        $dot = strrpos($name, '.');
-        [$base, $ext] = $dot > 0 ? [substr($name, 0, $dot), substr($name, $dot)] : [$name, ''];
 
-        $i = 1;
-        while (isset($used[$candidate])) {
-            $candidate = $base.' ('.(++$i).')'.$ext;
-        }
-        $used[$candidate] = true;
-
-        return $candidate;
+        return ArchiveName::unique($name, $used, parenthesize: true);
     }
 
     /**
