@@ -16,7 +16,7 @@ return [
         'birthdays_calendar' => 'Geburtstage',
         'anniversaries_calendar' => 'Jahrestage',
         'holidays_calendar' => 'Feiertage',
-        'birthday_of' => 'Geburtstag von :name',
+        'birthday_of' => ':name Geburtstag',
         'anniversary_of' => ':name – Jahrestag',
         'unnamed_contact' => 'Unbenannt',
         'shared' => 'geteilt',

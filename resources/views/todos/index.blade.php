@@ -107,7 +107,8 @@
                     <h3 class="text-base font-semibold text-gray-900" x-text="editing?.id ? @js(__('todos.edit')) : @js(__('todos.new_task'))"></h3>
                     <button type="button" @click="closeEditor()" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('todos.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
                 </div>
-                <div class="min-h-0 flex-1 space-y-4 overflow-auto p-5" x-show="editing">
+                <template x-if="editing">
+                <div class="min-h-0 flex-1 space-y-4 overflow-auto p-5">
                     <div>
                         <label class="block text-sm font-medium text-gray-700">{{ __('todos.title') }}</label>
                         <input type="text" x-model="editing.title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
@@ -160,6 +161,7 @@
                         <span class="text-sm text-gray-700">{{ __('todos.marked_label') }}</span>
                     </label>
                 </div>
+                </template>
                 <div class="flex items-center justify-end gap-3 border-t border-gray-100 px-5 py-3">
                     <button type="button" @click="closeEditor()" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('todos.cancel') }}</button>
                     <button type="button" @click="saveTask()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('todos.save') }}</button>

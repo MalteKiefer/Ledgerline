@@ -43,6 +43,46 @@ class ContactPreferencesTest extends TestCase
         ])->assertSessionHasErrors(['sort', 'display_format']);
     }
 
+    public function test_search_matches_first_and_last_name(): void
+    {
+        $user = User::factory()->create();
+        $book = $this->book($user);
+        app(ContactWriter::class)->create($book, ['first_name' => 'Daniel', 'last_name' => 'Reim']);
+        app(ContactWriter::class)->create($book, ['first_name' => 'Other', 'last_name' => 'Person']);
+
+        $res = $this->actingAs($user)->getJson(route('contacts.data', ['q' => 'daniel']))->assertOk();
+        $names = array_column($res->json('contacts'), 'first_name');
+        $this->assertSame(['Daniel'], $names);
+
+        // Last name also matches.
+        $res2 = $this->actingAs($user)->getJson(route('contacts.data', ['q' => 'reim']))->assertOk();
+        $this->assertCount(1, $res2->json('contacts'));
+    }
+
+    public function test_suggest_returns_matching_contacts(): void
+    {
+        $user = User::factory()->create();
+        $book = $this->book($user);
+        app(ContactWriter::class)->create($book, ['first_name' => 'Daniel', 'last_name' => 'Reim']);
+        app(ContactWriter::class)->create($book, ['fn' => 'Zzz Nomatch']);
+
+        $res = $this->actingAs($user)->getJson(route('contacts.suggest', ['q' => 'dani']))->assertOk();
+        $contacts = $res->json('contacts');
+        $this->assertCount(1, $contacts);
+        $this->assertSame('Daniel Reim', $contacts[0]['name']);
+    }
+
+    public function test_vcard_v3_binary_photo_is_normalised_to_a_data_uri(): void
+    {
+        $b64 = base64_encode('fake-jpeg-bytes');
+        $v3 = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Foo\r\nPHOTO;ENCODING=b;TYPE=JPEG:{$b64}\r\nEND:VCARD\r\n";
+
+        $parsed = app(\App\Services\Contacts\VCardService::class)->parse($v3);
+
+        $this->assertNotNull($parsed['photo']);
+        $this->assertStringStartsWith('data:image/jpeg;base64,', $parsed['photo']);
+    }
+
     public function test_data_returns_names_settings_and_sorts_by_setting(): void
     {
         $user = User::factory()->create();

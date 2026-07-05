@@ -138,6 +138,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
     Route::post('/contacts/import', [ContactController::class, 'import'])->name('contacts.import');
     Route::post('/contacts/settings', [ContactController::class, 'settings'])->name('contacts.settings');
+    Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('contacts.suggest');
     // Duplicate review — declared before /contacts/{contact} so "duplicates" is
     // not swallowed by the model-bound show route.
     Route::get('/contacts/duplicates', [ContactDuplicateController::class, 'index'])->name('contacts.duplicates');

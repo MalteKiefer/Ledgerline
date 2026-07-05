@@ -53,7 +53,10 @@ class ContactController extends Controller
             ->when($bookId, fn ($x) => $x->where('address_book_id', $bookId))
             ->when($groupId, fn ($x) => $x->whereHas('groups', fn ($g) => $g->where('contact_groups.id', $groupId)))
             ->when($q !== '', fn ($x) => $x->where(fn ($w) => $w
-                ->where('fn', 'like', "%{$q}%")->orWhere('org', 'like', "%{$q}%")
+                ->where('fn', 'like', "%{$q}%")
+                ->orWhere('first_name', 'like', "%{$q}%")
+                ->orWhere('last_name', 'like', "%{$q}%")
+                ->orWhere('org', 'like', "%{$q}%")
                 ->orWhereJsonContains('emails', $q)))
             ->orderByRaw("lower(coalesce(nullif({$primary}, ''), fn)) asc")
             ->orderByRaw("lower(coalesce(nullif({$secondary}, ''), '')) asc")
@@ -80,6 +83,32 @@ class ContactController extends Controller
                 'display_format' => $settings->contact_display_format,
             ],
         ]);
+    }
+
+    /** Lightweight name autocomplete over the user's contacts (for the gallery people naming). */
+    public function suggest(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->query('q'));
+        $bookIds = AddressBook::where('user_id', $request->user()->id)->pluck('id');
+
+        $contacts = Contact::query()
+            ->whereIn('address_book_id', $bookIds)
+            ->when($q !== '', fn ($x) => $x->where(fn ($w) => $w
+                ->where('fn', 'like', "%{$q}%")
+                ->orWhere('first_name', 'like', "%{$q}%")
+                ->orWhere('last_name', 'like', "%{$q}%")))
+            ->orderByRaw("lower(coalesce(nullif(first_name, ''), fn)) asc")
+            ->limit(10)
+            ->get()
+            ->map(fn (Contact $c): array => [
+                'id' => $c->id,
+                'name' => $c->fn ?: trim(((string) $c->first_name).' '.((string) $c->last_name)),
+                'avatar' => $c->has_photo ? route('contacts.avatar', ['contact' => $c]) : null,
+            ])
+            ->filter(fn (array $c): bool => $c['name'] !== '')
+            ->values();
+
+        return response()->json(['contacts' => $contacts]);
     }
 
     /** Persist the user's contacts list preferences (sort + display format). */

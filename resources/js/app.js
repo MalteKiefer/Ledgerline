@@ -274,12 +274,44 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     sort: 'first_name', displayFormat: 'first_last', _settingsReady: false,
     importing: false, importResult: '',
     editor: false, form: {},
+    nameModal: { open: false, title: '', value: '', onsubmit: null },
+    groupQuery: '', groupOpen: false,
 
     init() {
         this.load();
         this.$watch('q', () => this.load());
         this.$watch('book', () => this.load());
         this.$watch('group', () => this.load());
+    },
+
+    // --- group combobox (multi-select with autocomplete) ---
+    filteredGroups() {
+        const q = this.groupQuery.toLowerCase().trim();
+        const chosen = this.form.group_ids || [];
+        return this.groups.filter((g) => ! chosen.includes(g.id) && (q === '' || g.name.toLowerCase().includes(q)));
+    },
+    groupName(id) { return this.groups.find((g) => g.id === id)?.name || ''; },
+    addGroupChip(id) {
+        if (! this.form.group_ids) this.form.group_ids = [];
+        if (! this.form.group_ids.includes(id)) this.form.group_ids.push(id);
+        this.groupQuery = ''; this.groupOpen = false;
+    },
+    removeGroupChip(id) {
+        const arr = this.form.group_ids || [];
+        const i = arr.indexOf(id);
+        if (i >= 0) arr.splice(i, 1);
+    },
+
+    // --- reusable name modal (replaces window.prompt for books/groups) ---
+    openNameModal(title, value, onsubmit) {
+        this.nameModal = { open: true, title, value: value || '', onsubmit };
+        this.$nextTick(() => this.$refs.nameInput?.focus());
+    },
+    async submitNameModal() {
+        const v = (this.nameModal.value || '').trim();
+        const cb = this.nameModal.onsubmit;
+        this.nameModal.open = false;
+        if (v && cb) await cb(v);
     },
 
     async load() {
@@ -380,18 +412,18 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         }
     },
 
-    async addBook() {
-        const name = window.prompt(cfg.newBook); if (! name) return;
-        await this._json(cfg.booksUrl, 'POST', { name }); this.load();
+    addBook() {
+        this.openNameModal(cfg.newBook, '', async (name) => { await this._json(cfg.booksUrl, 'POST', { name }); this.load(); });
     },
-    async addGroup() {
-        const name = window.prompt(cfg.newGroup); if (! name) return;
-        await this._json(cfg.groupsUrl, 'POST', { name }); this.load();
+    addGroup() {
+        this.openNameModal(cfg.newGroup, '', async (name) => { await this._json(cfg.groupsUrl, 'POST', { name }); this.load(); });
     },
 
-    async renameBook(b) {
-        const name = window.prompt(cfg.renameBook, b.name); if (! name || name === b.name) return;
-        await this._json(cfg.bookBase + '/' + b.id, 'PUT', { name }); this.load();
+    renameBook(b) {
+        this.openNameModal(cfg.renameBook, b.name, async (name) => {
+            if (name === b.name) return;
+            await this._json(cfg.bookBase + '/' + b.id, 'PUT', { name }); this.load();
+        });
     },
     async deleteBook(b) {
         if (! window.confirm(cfg.confirmDeleteBook)) return;
@@ -706,6 +738,8 @@ Alpine.data('peoplePage', (cfg = {}) => ({
 Alpine.data('personPage', (cfg = {}) => ({
     person: { name: '', count: 0, hidden: false },
     photos: [], faces: [], others: [],
+    nameOpen: false, nameSuggest: [],
+    mergeQuery: '', mergeOpen: false,
     async init() { await this.load(); },
     async load() {
         try {
@@ -732,8 +766,29 @@ Alpine.data('personPage', (cfg = {}) => ({
             await fetch(url, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
         } catch (e) { /* ignore */ }
     },
-    save() { this._patch({ name: this.person.name }); },
+    save() { this._patch({ name: this.person.name }); this.nameOpen = false; },
     toggleHidden() { this.person.hidden = ! this.person.hidden; this._patch({ hidden: this.person.hidden }); },
+
+    // Contact-name autocomplete for the person's name.
+    async suggestNames() {
+        const q = (this.person.name || '').trim();
+        this.nameOpen = true;
+        try {
+            const r = await fetch(cfg.suggestUrl + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.nameSuggest = (await r.json()).contacts ?? [];
+        } catch (e) { /* keep */ }
+    },
+    pickContactName(c) { this.person.name = c.name; this.nameOpen = false; this.save(); },
+
+    // Merge autocomplete over the already-named people.
+    filteredOthers() {
+        const q = this.mergeQuery.toLowerCase().trim();
+        return this.others.filter((o) => q === '' || (o.name || '').toLowerCase().includes(q));
+    },
+    async pickMerge(o) {
+        this.mergeOpen = false; this.mergeQuery = '';
+        await this.merge(o.id);
+    },
     async merge(sourceId) {
         if (! sourceId || ! window.confirm(cfg.mergeConfirm)) return;
         await this._post(cfg.mergeUrl, { source_id: sourceId });
