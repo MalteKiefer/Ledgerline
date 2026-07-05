@@ -14,7 +14,7 @@
                 class="rounded border-gray-300 text-gray-800 focus:ring-gray-500" aria-label="{{ __('gallery.select_day') }}">
             <span class="text-sm font-semibold text-gray-700">{{ \Illuminate\Support\Carbon::parse($day)->isoFormat('LL') }}</span>
         </label>
-        <div class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6" data-day-grid>
+        <div class="grid gap-2" style="grid-template-columns: repeat(var(--gallery-cols, 6), minmax(0, 1fr))" data-day-grid>
             @foreach ($dayPhotos as $photo)
                 <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100">
                     @if ($photo->isReady())

@@ -11,6 +11,7 @@
     <meta name="calendar-week-numbers" content="{{ $llCal->calendar_week_numbers ? '1' : '0' }}">
     <meta name="calendar-default-minutes" content="{{ (int) ($llCal->calendar_default_event_minutes ?? 60) }}">
     <meta name="calendar-timezone" content="{{ $llCal->calendar_timezone ?? '' }}">
+    <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
     <title>{{ $title }} — Ledgerline</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>

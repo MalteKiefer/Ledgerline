@@ -50,6 +50,7 @@ return [
     'favorites' => 'Favoriten',
     'flip' => 'Spiegeln',
     'heading' => 'Fotos',
+    'per_row' => 'Fotos pro Zeile',
     'map' => 'Karte',
     'meta_camera' => 'Kamera',
     'meta_date' => 'Datum',
