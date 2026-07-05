@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Settings;
 
+use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\UserSetting;
 use Illuminate\Contracts\View\View;
@@ -18,6 +19,8 @@ use Illuminate\Http\Request;
  */
 class RemindersController extends Controller
 {
+    use RedirectsToSettings;
+
     public const CHANNELS = ['desktop', 'ntfy', 'mail', 'webhook'];
 
     public function edit(Request $request): View
@@ -39,6 +42,6 @@ class RemindersController extends Controller
         $chosen = array_values(array_intersect(self::CHANNELS, $data['channels'] ?? []));
         UserSetting::for($request->user()->id)->update(['reminder_channels' => $chosen]);
 
-        return redirect()->route('settings.reminders.edit')->with('status', __('settings.reminders_saved'));
+        return $this->savedRedirect('settings.reminders.edit', 'settings.reminders_saved');
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Concerns\ProvidesDavSync;
+use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\CalendarRequest;
 use App\Models\UserSetting;
@@ -21,6 +22,7 @@ use Illuminate\Http\Request;
 class CalendarController extends Controller
 {
     use ProvidesDavSync;
+    use RedirectsToSettings;
 
     public function edit(Request $request): View
     {
@@ -41,7 +43,7 @@ class CalendarController extends Controller
         $derived->sync($userId);
         $holidays->sync(null, $userId);
 
-        return redirect()->route('settings.calendar.edit')->with('status', __('flash.calendar_settings_saved'));
+        return $this->savedRedirect('settings.calendar.edit', 'flash.calendar_settings_saved');
     }
 
     /**

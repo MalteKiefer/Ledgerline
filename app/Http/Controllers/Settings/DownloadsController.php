@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Settings;
 
+use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use Illuminate\Contracts\View\View;
@@ -18,6 +19,8 @@ use Illuminate\Http\Request;
  */
 class DownloadsController extends Controller
 {
+    use RedirectsToSettings;
+
     public function edit(): View
     {
         return view('settings.downloads.edit', ['settings' => AppSettings::current()]);
@@ -40,6 +43,6 @@ class DownloadsController extends Controller
 
         AppSettings::current()->update($data);
 
-        return redirect()->route('settings.downloads.edit')->with('status', __('flash.downloads_saved'));
+        return $this->savedRedirect('settings.downloads.edit', 'flash.downloads_saved');
     }
 }

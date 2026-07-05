@@ -265,6 +265,17 @@ function toast(message, url = null) {
 }
 window.llToast = toast;
 
+// Shared JSON request used by the module Alpine components (contacts, calendar,
+// albums, …). Each component still calls this.\_json(url, method, body); the body
+// delegates here so the fetch shape lives in one place.
+function apiJson(url, method, body, token) {
+    return fetch(url, {
+        method,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': token },
+        body: body ? JSON.stringify(body) : undefined,
+    });
+}
+
 /**
  * Toast hub rendered once in the layout; listens for `ll-toast` events.
  */
@@ -616,7 +627,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     },
 
     async _json(url, method, body) {
-        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+        return apiJson(url, method, body, cfg.token);
     },
 }));
 
@@ -955,7 +966,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     randomColor() { const p = this.palette; return p[Math.floor(Math.random() * p.length)]; },
 
     async _json(url, method, body) {
-        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+        return apiJson(url, method, body, cfg.token);
     },
 }));
 
@@ -4531,7 +4542,7 @@ Alpine.data('albumsPage', (cfg = {}) => ({
         this.load();
     },
     _json(url, method, body) {
-        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+        return apiJson(url, method, body, cfg.token);
     },
 }));
 
@@ -4586,7 +4597,7 @@ Alpine.data('albumPage', (cfg = {}) => ({
         window.location = cfg.albumsUrl;
     },
     _json(url, method, body) {
-        return fetch(url, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: body ? JSON.stringify(body) : undefined });
+        return apiJson(url, method, body, cfg.token);
     },
 }));
 
