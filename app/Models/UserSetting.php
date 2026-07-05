@@ -30,6 +30,7 @@ use Illuminate\Database\Eloquent\Model;
     'reminder_channels',
     'gallery_columns',
     'file_max_versions',
+    'mail_sync_minutes',
 ])]
 class UserSetting extends Model
 {
@@ -49,6 +50,7 @@ class UserSetting extends Model
         'paperless_enabled' => false,
         'gallery_columns' => 6,
         'file_max_versions' => 10,
+        'mail_sync_minutes' => 5,
     ];
 
     protected function casts(): array
@@ -66,6 +68,7 @@ class UserSetting extends Model
             'reminder_channels' => 'array',
             'gallery_columns' => 'integer',
             'file_max_versions' => 'integer',
+            'mail_sync_minutes' => 'integer',
         ];
     }
 

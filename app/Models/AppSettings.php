@@ -20,7 +20,6 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_max_upload_mb',
     'gallery_video_frame',
     'gallery_geocode_grid_km',
-    'mail_sync_minutes',
     'mail_enabled',
     'smtp_host',
     'smtp_port',
@@ -59,7 +58,6 @@ class AppSettings extends Model
             'gallery_max_upload_mb' => 'integer',
             'gallery_video_frame' => 'integer',
             'gallery_geocode_grid_km' => 'float',
-            'mail_sync_minutes' => 'integer',
             // Notification/mail credentials: usable in the clear at runtime but
             // encrypted at rest (so they are not readable in a database backup).
             'mail_enabled' => 'boolean',

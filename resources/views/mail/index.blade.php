@@ -9,6 +9,7 @@
         draftSaved: @js(__('mail.draft_saved')),
         sendFailed: @js(__('mail.send_failed')),
         composeNeedsTo: @js(__('mail.compose_needs_to')),
+        smtpMissingWarning: @js(__('mail.smtp_missing_warning')),
         forwardedMessage: @js(__('mail.forwarded_message')),
         folderNames: @js([
             'inbox' => __('mail.folder_inbox'),
@@ -533,6 +534,11 @@
                             <template x-for="a in sortedAccounts" :key="a.id"><option :value="a.id" x-text="a.name"></option></template>
                         </select>
                     </template>
+                    <div x-show="compose.accountId && ! (_account(compose.accountId)?.smtpConfigured)" x-cloak
+                        class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <x-icon name="exclamation-triangle" class="mt-0.5 h-4 w-4 shrink-0" />
+                        <span x-text="labels.smtpMissingWarning"></span>
+                    </div>
                     <div class="flex items-center gap-2">
                         <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.to') }}</label>
                         <input type="text" x-model="compose.to" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm" placeholder="a@b.com, c@d.com">
@@ -579,7 +585,7 @@
                 </div>
                 <div class="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
                     <button type="button" @click="saveDraft()" :disabled="compose.sending" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">{{ __('mail.save_draft') }}</button>
-                    <button type="button" @click="sendCompose()" :disabled="compose.sending" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"><x-icon name="arrow-uturn-right" class="h-4 w-4" />{{ __('mail.send') }}</button>
+                    <button type="button" @click="sendCompose()" :disabled="compose.sending || ! (_account(compose.accountId)?.smtpConfigured)" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"><x-icon name="arrow-uturn-right" class="h-4 w-4" />{{ __('mail.send') }}</button>
                 </div>
             </div>
         </div>

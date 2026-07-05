@@ -121,6 +121,7 @@ class MailAccountController extends Controller
             'replyTo' => $a->reply_to,
             'signature' => $a->signature,
             'hasSmtpPassword' => $a->smtp_password !== null && $a->smtp_password !== '',
+            'smtpConfigured' => $a->smtpConfigured(),
         ];
     }
 }
