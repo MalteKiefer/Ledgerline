@@ -9,7 +9,9 @@
         'mergeConfirm' => __('gallery.person_merge_confirm'),
         'reassignConfirm' => __('gallery.person_reassign_confirm'),
     ]; @endphp
-    <div x-data="personPage(@js($cfg))" x-init="init()">
+    <div class="flex flex-col gap-4 md:flex-row">
+    @include('gallery._sidebar')
+    <div class="min-w-0 flex-1" x-data="personPage(@js($cfg))" x-init="init()">
         <div class="flex items-center justify-between gap-4">
             <a href="{{ route('gallery.people') }}" class="text-sm text-gray-500 hover:text-gray-900">← {{ __('gallery.person_back') }}</a>
         </div>
@@ -77,5 +79,6 @@
                 </a>
             </template>
         </div>
+    </div>
     </div>
 </x-layouts.app>
