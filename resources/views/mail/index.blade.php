@@ -5,6 +5,11 @@
         saveFailed: @js(__('mail.save_failed')),
         connectFailed: @js(__('mail.connect_failed')),
         archiveDeleteConfirm: @js(__('mail.archive_delete_confirm')),
+        sent: @js(__('mail.sent_toast')),
+        draftSaved: @js(__('mail.draft_saved')),
+        sendFailed: @js(__('mail.send_failed')),
+        composeNeedsTo: @js(__('mail.compose_needs_to')),
+        forwardedMessage: @js(__('mail.forwarded_message')),
         folderNames: @js([
             'inbox' => __('mail.folder_inbox'),
             'all' => __('mail.folder_all'),
@@ -69,6 +74,12 @@
                 {{-- Folder sidebar — static rail at md+, off-canvas drawer under md --}}
                 <aside class="flex w-64 shrink-0 flex-col border-r border-gray-200 bg-white md:static md:translate-x-0 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-72 max-md:max-w-[85%] max-md:shadow-xl max-md:transition-transform"
                     :class="foldersOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'">
+                    {{-- Compose --}}
+                    <div class="border-b border-gray-200 p-2">
+                        <button type="button" @click="newCompose()" class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800">
+                            <x-icon name="pencil" class="h-4 w-4" />{{ __('mail.compose') }}
+                        </button>
+                    </div>
                     {{-- Account switcher (dropdown in the sidebar head) --}}
                     <div class="relative border-b border-gray-200 p-2" @click.outside="accountMenuOpen = false">
                         <button type="button" @click="accountMenuOpen = ! accountMenuOpen"
@@ -146,6 +157,9 @@
                  hidden in multi; multi-only (count, clear) hidden in single. --}}
             <div x-show="reader.current || reader.selected.length" x-cloak class="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2">
                 <button type="button" x-show="reader.current" @click="reader.current = null" title="{{ __('mail.back_to_list') }}" aria-label="{{ __('mail.back_to_list') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="chevron-left" class="h-4 w-4" /></button>
+                <button type="button" x-show="reader.current" @click="reply(false)" title="{{ __('mail.reply') }}" aria-label="{{ __('mail.reply') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                <button type="button" x-show="reader.current" @click="reply(true)" title="{{ __('mail.reply_all') }}" aria-label="{{ __('mail.reply_all') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-left" class="h-4 w-4" /><x-icon name="arrow-uturn-left" class="-ml-2 h-4 w-4" /></button>
+                <button type="button" x-show="reader.current" @click="forward()" title="{{ __('mail.forward') }}" aria-label="{{ __('mail.forward') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="arrow-uturn-right" class="h-4 w-4" /></button>
                 <span x-show="! reader.current" class="text-sm font-medium text-gray-700"><span x-text="reader.selected.length"></span> {{ __('mail.selected') }}</span>
                 <button type="button" @click="act('trash')" :disabled="reader.busy" title="{{ __('mail.action_trash') }}" aria-label="{{ __('mail.action_trash') }}" class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="trash" class="h-4 w-4" /></button>
                 <button type="button" @click="reader.current ? (reader.deleteChoiceOpen = true) : bulkAction('delete')" :disabled="reader.busy" title="{{ __('mail.action_delete') }}" aria-label="{{ __('mail.action_delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 hover:bg-red-50"><x-icon name="trash" class="h-4 w-4" /></button>
@@ -503,5 +517,98 @@
     </template>
 
     @include('_paperless_modal')
+
+    {{-- Compose modal (full-screen on mobile) --}}
+    <template x-teleport="body">
+        <div x-show="compose.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-0 sm:p-4" role="dialog" aria-modal="true" @keydown.escape.window="compose.open = false">
+            <div class="absolute inset-0 bg-gray-900/50" @click="compose.open = false"></div>
+            <div class="relative flex min-h-full w-full flex-col bg-white shadow-xl sm:my-8 sm:min-h-0 sm:max-w-2xl sm:rounded-lg">
+                <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('mail.compose') }}</h3>
+                    <button type="button" @click="compose.open = false" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50" aria-label="{{ __('common.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                </div>
+                <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+                    <template x-if="manifest.accounts.length > 1">
+                        <select x-model.number="compose.accountId" class="w-full rounded-md border-gray-300 text-sm">
+                            <template x-for="a in sortedAccounts" :key="a.id"><option :value="a.id" x-text="a.name"></option></template>
+                        </select>
+                    </template>
+                    <div class="flex items-center gap-2">
+                        <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.to') }}</label>
+                        <input type="text" x-model="compose.to" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm" placeholder="a@b.com, c@d.com">
+                        <button type="button" @click="compose.showCc = ! compose.showCc" class="shrink-0 text-xs font-medium text-gray-500 hover:text-gray-800">{{ __('mail.add_cc') }}</button>
+                    </div>
+                    <div x-show="compose.showCc" x-cloak class="space-y-2">
+                        <div class="flex items-center gap-2"><label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.cc') }}</label><input type="text" x-model="compose.cc" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm"></div>
+                        <div class="flex items-center gap-2"><label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.bcc') }}</label><input type="text" x-model="compose.bcc" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm"></div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="w-12 shrink-0 text-sm text-gray-500">{{ __('mail.subject') }}</label>
+                        <input type="text" x-model="compose.subject" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm">
+                    </div>
+
+                    @include('mail._compose_editor')
+
+                    {{-- Attachments --}}
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <label class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                <x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('mail.attach_upload') }}
+                                <input type="file" multiple class="hidden" @change="addUploads($event)">
+                            </label>
+                            <button type="button" @click="openAttachPicker('gallery')" class="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="photo" class="h-4 w-4" />{{ __('mail.attach_gallery') }}</button>
+                            <button type="button" @click="openAttachPicker('files')" class="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="files" class="h-4 w-4" />{{ __('mail.attach_files') }}</button>
+                        </div>
+                        <ul class="mt-2 space-y-1" x-show="compose.uploads.length || compose.refs.length" x-cloak>
+                            <template x-for="(f, i) in compose.uploads" :key="'u'+i">
+                                <li class="flex items-center justify-between gap-2 rounded bg-gray-50 px-2 py-1 text-xs">
+                                    <span class="truncate" x-text="f.name"></span>
+                                    <button type="button" @click="removeUpload(i)" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
+                                </li>
+                            </template>
+                            <template x-for="(r, i) in compose.refs" :key="'r'+i">
+                                <li class="flex items-center justify-between gap-2 rounded bg-gray-50 px-2 py-1 text-xs">
+                                    <span class="truncate" x-text="r.name"></span>
+                                    <button type="button" @click="removeRef(i)" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
+                                </li>
+                            </template>
+                        </ul>
+                    </div>
+
+                    <p x-show="compose.error" x-cloak class="text-xs text-red-600" x-text="compose.error"></p>
+                </div>
+                <div class="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
+                    <button type="button" @click="saveDraft()" :disabled="compose.sending" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">{{ __('mail.save_draft') }}</button>
+                    <button type="button" @click="sendCompose()" :disabled="compose.sending" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60"><x-icon name="arrow-uturn-right" class="h-4 w-4" />{{ __('mail.send') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Attachment picker (gallery / files) --}}
+    <template x-teleport="body">
+        <div x-show="attachPicker.open" x-cloak class="fixed inset-0 z-[75] flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" @keydown.escape.window="attachPicker.open = false">
+            <div class="absolute inset-0 bg-gray-900/50" @click="attachPicker.open = false"></div>
+            <div class="relative my-10 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('mail.attach_pick') }}</h3>
+                    <button type="button" @click="attachPicker.open = false" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                </div>
+                <p x-show="attachPicker.loading" x-cloak class="mt-4 text-sm text-gray-500">…</p>
+                <div class="mt-4 grid max-h-[55vh] grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+                    <template x-for="it in attachPicker.items" :key="it.id">
+                        <button type="button" @click="togglePick(it.id)" class="flex items-center gap-2 rounded-md border p-2 text-left text-sm" :class="attachPicker.chosen.includes(it.id) ? 'border-gray-900 bg-gray-50' : 'border-gray-200'">
+                            <template x-if="it.thumb"><img :src="it.thumb" alt="" class="h-10 w-10 shrink-0 rounded object-cover"></template>
+                            <span class="min-w-0 truncate" x-text="it.name"></span>
+                        </button>
+                    </template>
+                </div>
+                <div class="mt-4 flex justify-end gap-2">
+                    <button type="button" @click="attachPicker.open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="confirmAttachPicker()" class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">{{ __('mail.attach_done') }} <span x-show="attachPicker.chosen.length" x-text="'('+attachPicker.chosen.length+')'"></span></button>
+                </div>
+            </div>
+        </div>
+    </template>
   </div>
 </x-layouts.app>
