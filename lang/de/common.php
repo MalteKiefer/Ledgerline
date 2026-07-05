@@ -6,6 +6,7 @@ return [
     'delete' => 'Löschen',
     'cancel' => 'Abbrechen',
     'sections' => 'Bereiche',
+    'back' => 'Zurück',
     'close' => 'Schließen',
     'confirm' => 'Bestätigen',
     'confirm_title' => 'Sind Sie sicher?',
