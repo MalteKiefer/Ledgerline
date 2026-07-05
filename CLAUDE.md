@@ -21,6 +21,20 @@ Diese Datei = Stand nach der Session vom 2026-07-05/06. Aktuelle Version:
 - **Keine AI-Referenzen** in Code/Commits/Releases (kein "Claude", "Anthropic", "generated with AI", kein Co-Authored-By).
 - Module sind **plaintext + Alpine-Client über JSON-APIs** (kein Vault mehr, nichts verschlüsselt außer Passwörter/Secrets `encrypted` cast). Controller: `index()`=GET `/{mod}/data`, PATCH=Toggle, PUT=Full-Save. Web-Route-Validation → redirect+session errors; JSON nur `api/*`/XHR.
 
+## Arbeitsweise — stehende Anweisungen des Users (gelten dauerhaft)
+- **Gründlichkeit / Parallelität:** große Aufgaben (Audits, Redesign, Feature-Batches) mit **min. 45 parallelen Agenten** bzw. Workflows angehen. Nicht oberflächlich — vollständige Analyse aller betroffenen Module.
+- **„Sei hart, keine Kompromisse"** bei Audits/Fixes: alle Findings adressieren, RFC/POSIX/PHP-/Laravel-Best-Practice strikt einhalten; zusätzlich immer Scan auf toten/ungenutzten/doppelten/nicht-generalisierten Code → so viel wie möglich generalisieren.
+- **„Mache alle weiteren Schritte ohne Nachfragen"** / **„setze alles um"**: eigenständig bis zum Ende durcharbeiten, inkl. Release-Ritual. NUR anhalten bei: (a) Deploy-Freigabe (Klassifikator blockt), (b) fehlenden Artefakten die nur der User liefern kann (Screenshots, Fehler-Traces), (c) echten irreversiblen Entscheidungen.
+- **Kommunikation:** knapp, technisch, deutsch, handlungsorientiert. Keine Floskeln.
+- Jede Änderung als **eigenes getestetes Git-Flow-Release** + deploy, nicht sammeln (außer User sagt sammeln).
+
+## Layout-/UI-Entscheidungen (getroffen, gelten weiter)
+- **Mobile ≠ Desktop**, bewusst unterschiedlich gestalten.
+- **Navigation mobil = Hamburger-Menü mit LINKS einfahrendem Drawer** (Seitennavigation). Die früher gebaute **Bottom-Tab-Bar wurde VERWORFEN** (instabil, Klicks gingen nicht) — nicht wieder einführen.
+- Alle Modul-Sidebars: Desktop = Rail/weiße **Card**, mobil = Slide-over/Sheet (`x-sheet`, `$store.nav`). Sidebar-Card **nur so hoch wie ihr Inhalt** (nicht auf Content-Höhe strecken).
+- Geteilte Komponenten nutzen: `x-button`, `x-page-heading`, `x-icon`, `x-sheet`. Keine Einzel-Neubauten.
+- Konsistenz zwischen Modulen (z. B. Sidebar-Fußaktionen als gestapelte Text-Links wie im Kalender, nicht mal Buttons mal Links).
+
 ## Per-User-Isolation (WICHTIG, security-relevant)
 - Basis-Trait `AssignsOwner` (ownerColumn(), creating-hook stempelt owner, `scopeOwnedBy()` → `Model::ownedBy($uid)`).
 - `OwnsUserData` = auth-gated global read scope. `SharesWithUsers` = zusätzlich Cross-User-Sharing.
