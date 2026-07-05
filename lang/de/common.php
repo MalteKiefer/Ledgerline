@@ -7,6 +7,7 @@ return [
     'cancel' => 'Abbrechen',
     'sections' => 'Bereiche',
     'back' => 'Zurück',
+    'save' => 'Speichern',
     'close' => 'Schließen',
     'confirm' => 'Bestätigen',
     'confirm_title' => 'Sind Sie sicher?',

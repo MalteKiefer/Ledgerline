@@ -108,4 +108,12 @@ return [
     'pick_account' => 'Choose a mailbox to open.',
     'switch_account' => 'Switch mailbox',
     'working' => 'Working…',
+    'download_eml' => 'Download (.eml)',
+    'download_selected' => 'Download selected',
+    'download_archive' => 'Download archive',
+    'download_archive_hint' => 'Download this account\'s whole local archive as a zip of .eml files.',
+    'delete_account' => 'Delete account',
+    'delete_account_keep' => 'Delete account, keep archive',
+    'delete_account_with_archive' => 'Delete account and archive',
+    'delete_account_confirm' => 'Delete this account? Choose whether to also delete its local mail archive.',
 ];

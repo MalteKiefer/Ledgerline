@@ -57,6 +57,6 @@ return [
     |
     */
 
-    'max_versions' => (int) env('FILES_MAX_VERSIONS', 20),
+    'max_versions' => (int) env('FILES_MAX_VERSIONS', 10),
 
 ];

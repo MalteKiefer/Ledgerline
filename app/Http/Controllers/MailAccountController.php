@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\MailAccount;
+use App\Models\MailFolder;
+use App\Models\MailMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 /**
@@ -42,8 +45,26 @@ class MailAccountController extends Controller
         return response()->json($this->toArray($account->refresh()));
     }
 
-    public function destroy(MailAccount $account): JsonResponse
+    /**
+     * Delete a mail account. By default its local archive (stored .eml blobs +
+     * rows) is deleted too; pass keep_archive=1 to retain the archive.
+     */
+    public function destroy(Request $request, MailAccount $account): JsonResponse
     {
+        if (! $request->boolean('keep_archive')) {
+            $disk = Storage::disk(config('files.disk'));
+            MailMessage::withoutGlobalScopes()->where('mail_account_id', $account->id)
+                ->whereNotNull('blob')->orderBy('id')->chunkById(500, function ($chunk) use ($disk): void {
+                    foreach ($chunk as $m) {
+                        if (is_string($m->blob) && $m->blob !== '') {
+                            $disk->delete('mail/'.$m->blob);
+                        }
+                    }
+                });
+            MailMessage::withoutGlobalScopes()->where('mail_account_id', $account->id)->delete();
+            MailFolder::withoutGlobalScopes()->where('mail_account_id', $account->id)->delete();
+        }
+
         $account->delete();
 
         return response()->json(['ok' => true]);

@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\HeaderUtils;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The local mail archive: browse messages the sync captured, view a message
@@ -105,6 +106,106 @@ class MailArchiveController extends Controller
     public function show(MailMessage $message, MailArchiveReader $reader): JsonResponse
     {
         return response()->json($reader->parse($this->raw($message)));
+    }
+
+    /** Download a single archived message as an .eml file. */
+    public function download(MailMessage $message): StreamedResponse
+    {
+        $eml = $this->raw($message);
+        $name = $this->emlName($message->subject, (string) $message->id);
+
+        return response()->streamDownload(fn () => print ($eml), $name, [
+            'Content-Type' => 'message/rfc822',
+        ]);
+    }
+
+    /**
+     * Download the selected messages (by folder + UID) that exist in the local
+     * archive as a zip of .eml files. Non-archived selections are skipped.
+     */
+    public function downloadMany(Request $request, MailAccount $account): StreamedResponse
+    {
+        $v = $request->validate([
+            'folder' => ['required', 'string', 'max:255'],
+            'uids' => ['required', 'array', 'max:1000'],
+            'uids.*' => ['integer'],
+        ]);
+
+        // Owner scope is applied by the model's global scope; pin to the account.
+        $messages = MailMessage::where('mail_account_id', $account->id)
+            ->whereIn('uid', $v['uids'])
+            ->whereHas('folder', fn ($q) => $q->where('path', $v['folder']))
+            ->get();
+        abort_if($messages->isEmpty(), 404);
+
+        return $this->zipMessages($messages, 'mail-selection-'.now()->format('Ymd-His').'.zip');
+    }
+
+    /** Download an account's entire local archive as a zip of .eml files. */
+    public function downloadArchive(MailAccount $account): StreamedResponse
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'llmail');
+        $zip = new \ZipArchive;
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        $disk = $this->disk();
+        $used = [];
+        MailMessage::withoutGlobalScopes()->where('mail_account_id', $account->id)
+            ->whereNotNull('blob')->orderBy('id')->chunkById(200, function ($chunk) use ($zip, $disk, &$used): void {
+                foreach ($chunk as $m) {
+                    $path = 'mail/'.$m->blob;
+                    if (! $disk->exists($path)) {
+                        continue;
+                    }
+                    $zip->addFromString($this->uniqueName($this->emlName($m->subject, (string) $m->id), $used), (string) $disk->get($path));
+                }
+            });
+        $zip->close();
+
+        return response()->streamDownload(function () use ($tmp): void {
+            readfile($tmp);
+            @unlink($tmp);
+        }, 'mail-archive-'.now()->format('Ymd-His').'.zip', ['Content-Type' => 'application/zip']);
+    }
+
+    private function zipMessages($messages, string $filename): StreamedResponse
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'llmail');
+        $zip = new \ZipArchive;
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        $disk = $this->disk();
+        $used = [];
+        foreach ($messages as $m) {
+            $path = 'mail/'.$m->blob;
+            if (is_string($m->blob) && $m->blob !== '' && $disk->exists($path)) {
+                $zip->addFromString($this->uniqueName($this->emlName($m->subject, (string) $m->id), $used), (string) $disk->get($path));
+            }
+        }
+        $zip->close();
+
+        return response()->streamDownload(function () use ($tmp): void {
+            readfile($tmp);
+            @unlink($tmp);
+        }, $filename, ['Content-Type' => 'application/zip']);
+    }
+
+    private function emlName(?string $subject, string $id): string
+    {
+        $base = trim(preg_replace('/[^\p{L}\p{N}\-_ ]+/u', '', (string) $subject) ?? '');
+        $base = mb_substr($base !== '' ? $base : 'message', 0, 80);
+
+        return $base.'-'.substr($id, 0, 8).'.eml';
+    }
+
+    private function uniqueName(string $name, array &$used): string
+    {
+        $candidate = $name;
+        $i = 1;
+        while (isset($used[$candidate])) {
+            $candidate = preg_replace('/\.eml$/', '', $name).'-'.(++$i).'.eml';
+        }
+        $used[$candidate] = true;
+
+        return $candidate;
     }
 
     /**
