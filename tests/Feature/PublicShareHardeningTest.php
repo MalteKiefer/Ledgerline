@@ -30,13 +30,13 @@ class PublicShareHardeningTest extends TestCase
         $album = Album::create(['user_id' => $alice->id, 'name' => 'A']);
 
         $this->postJson(route('public-share.store'), [
-            'type' => 'albums', 'id' => $album->id, 'expires_in' => 3600, 'password' => 'secret',
+            'type' => 'albums', 'id' => $album->id, 'expires_in' => 3600, 'password' => 'secret123',
         ])->assertCreated()->assertJsonPath('has_password', true);
 
         $share = PublicShare::firstWhere('shareable_id', $album->id);
         $this->assertNotNull($share->expires_at);
         $this->assertTrue($share->hasPassword());
-        $this->assertNotSame('secret', $share->password); // hashed
+        $this->assertNotSame('secret123', $share->password); // hashed
     }
 
     public function test_expired_album_link_returns_410(): void

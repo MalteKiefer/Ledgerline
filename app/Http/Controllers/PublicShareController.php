@@ -14,6 +14,7 @@ use App\Models\Photo;
 use App\Models\PublicShare;
 use App\Services\Notifications\ChannelNotifier;
 use App\Support\BlobStore;
+use App\Support\Shareable;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -33,7 +34,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PublicShareController extends Controller
 {
-    private const TYPES = ['calendars' => Calendar::class, 'address-books' => AddressBook::class, 'albums' => Album::class];
+    /**
+     * Slugs public sharing accepts. This is a deliberate SUBSET of the global
+     * Shareable registry: public (no-auth) links must never widen to
+     * notes/files/folders/photos — only whole calendars/address-books/albums.
+     */
+    private const ALLOWED = ['calendars', 'address-books', 'albums'];
 
     /** Allowed expiry presets, in seconds (null = never). */
     private const EXPIRY = [3600, 86400, 604800, 2592000];
@@ -42,7 +48,7 @@ class PublicShareController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'type' => ['required', Rule::in(array_keys(self::TYPES))],
+            'type' => ['required', Rule::in(self::ALLOWED)],
             'id' => ['required'],
             'expires_in' => ['nullable', 'integer', Rule::in(self::EXPIRY)],
             'password' => ['nullable', 'string', 'min:8', 'max:255'],
@@ -243,9 +249,9 @@ class PublicShareController extends Controller
 
     private function ownedResource(string $type, mixed $id, int $userId): Model
     {
-        $class = self::TYPES[$type];
-        $resource = $class::withoutGlobalScopes()->findOrFail($id);
-        abort_unless($resource->isOwnedBy($userId), 403);
+        $resource = Shareable::resolveOwned($type, $id, $userId);
+        // PublicShare-specific: virtual (tasks) and read-only generated
+        // calendars can't be exposed as a public ICS feed.
         if ($resource instanceof Calendar && ($resource->isVirtual() || $resource->isReadOnly())) {
             abort(422, 'This calendar cannot be shared.');
         }
