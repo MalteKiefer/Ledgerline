@@ -2,22 +2,22 @@
     <h1 class="text-2xl font-semibold text-gray-900">{{ __('pages.dashboard.heading') }}</h1>
     <p class="mt-1 text-sm text-gray-600">{{ __('pages.dashboard.subtitle') }}</p>
 
-    <div class="mt-6 grid grid-cols-3 gap-4">
-        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+    <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm hover:border-gray-300">
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.gallery_images') }}</dt>
-            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $gallery['images'] }}</dd>
+            <dd class="mt-2 text-2xl sm:text-3xl font-semibold text-gray-900 tabular-nums">{{ $gallery['images'] }}</dd>
         </a>
-        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm hover:border-gray-300">
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.gallery_videos') }}</dt>
-            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $gallery['videos'] }}</dd>
+            <dd class="mt-2 text-2xl sm:text-3xl font-semibold text-gray-900 tabular-nums">{{ $gallery['videos'] }}</dd>
         </a>
-        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm hover:border-gray-300">
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.gallery_motion') }}</dt>
-            <dd class="mt-2 text-3xl font-semibold text-gray-900">{{ $gallery['motion'] }}</dd>
+            <dd class="mt-2 text-2xl sm:text-3xl font-semibold text-gray-900 tabular-nums">{{ $gallery['motion'] }}</dd>
         </a>
     </div>
 
-    <a href="{{ route('files.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+    <a href="{{ route('files.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm hover:border-gray-300">
         <div>
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.files') }}</dt>
             <dd class="mt-2 text-base text-gray-900">{{ __('pages.dashboard.vault_ready') }}</dd>
@@ -27,7 +27,7 @@
         </svg>
     </a>
 
-    <a href="{{ route('notes.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+    <a href="{{ route('notes.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm hover:border-gray-300">
         <div>
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.notes') }}</dt>
             <dd class="mt-2 text-base text-gray-900">{{ __('pages.dashboard.notes_ready') }}</dd>
@@ -37,7 +37,7 @@
         </svg>
     </a>
 
-    <a href="{{ route('bookmarks.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+    <a href="{{ route('bookmarks.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm hover:border-gray-300">
         <div>
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.bookmarks') }}</dt>
             <dd class="mt-2 text-base text-gray-900">{{ __('pages.dashboard.bookmarks_ready') }}</dd>
@@ -47,7 +47,7 @@
         </svg>
     </a>
 
-    <a href="{{ route('mail.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm hover:border-gray-300">
+    <a href="{{ route('mail.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm hover:border-gray-300">
         <div>
             <dt class="text-sm font-medium text-gray-500">{{ __('pages.dashboard.mail') }}</dt>
             <dd class="mt-2 text-base text-gray-900">{{ __('pages.dashboard.mail_ready') }}</dd>

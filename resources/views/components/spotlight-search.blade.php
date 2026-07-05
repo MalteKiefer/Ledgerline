@@ -40,7 +40,7 @@
                         <span x-show="loading" x-cloak class="text-xs text-gray-400">…</span>
                     </div>
 
-                    <div class="max-h-80 overflow-y-auto">
+                    <div class="max-h-[70vh] overflow-y-auto">
                         <p x-show="query.trim() !== '' && flat.length === 0 && !loading" x-cloak
                             class="px-4 py-6 text-center text-sm text-gray-500">{{ __('pages.spotlight.no_results') }}</p>
 
@@ -52,10 +52,10 @@
                                     <template x-for="item in group.results" :key="item.url">
                                         <li>
                                             <a :href="item.url"
-                                                class="block px-4 py-2"
+                                                class="block min-w-0 px-4 py-3"
                                                 :class="isActive(item) ? 'bg-gray-100' : 'hover:bg-gray-50'">
-                                                <span class="text-sm font-medium text-gray-900" x-text="item.title"></span>
-                                                <span x-show="item.subtitle" class="block text-xs text-gray-500"
+                                                <span class="block truncate text-sm font-medium text-gray-900" x-text="item.title"></span>
+                                                <span x-show="item.subtitle" class="block truncate text-xs text-gray-500"
                                                     x-text="item.subtitle"></span>
                                             </a>
                                         </li>
@@ -65,7 +65,7 @@
                         </template>
 
                         <a x-show="query.trim() !== '' && flat.length > 0" x-cloak href="#" @click.prevent="seeAll()"
-                            class="block border-t border-gray-100 px-4 py-2 text-center text-xs text-gray-500 hover:bg-gray-50">
+                            class="block border-t border-gray-100 px-4 py-3 text-center text-xs text-gray-500 hover:bg-gray-50">
                             {{ __('pages.spotlight.see_all_results') }}
                         </a>
                     </div>

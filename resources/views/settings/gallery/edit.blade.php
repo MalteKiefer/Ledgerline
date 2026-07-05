@@ -8,7 +8,7 @@
     <h1 class="mt-1 text-2xl font-semibold text-gray-900">{{ __('settings.gallery_heading') }}</h1>
 
     {{-- Library counts --}}
-    <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <dt class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.count_total') }}</dt>
             <dd class="mt-1 text-2xl font-semibold text-gray-900">{{ $counts['total'] }}</dd>
@@ -32,7 +32,7 @@
         @method('PUT')
 
         {{-- General (uploads) --}}
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.general_heading') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.general_hint') }}</p>
             <div class="mt-3">
@@ -50,7 +50,7 @@
         </div>
 
         {{-- Photos --}}
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.photos_heading') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.trips_hint') }}</p>
             <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -80,7 +80,7 @@
         </div>
 
         {{-- Videos --}}
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.video_heading') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.video_hint') }}</p>
             <div class="mt-3">
@@ -111,7 +111,7 @@
 
     {{-- Maintenance jobs: each can run for the whole library or only the newest
          N items, chosen in a scope dialog before dispatch. --}}
-    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6"
          x-data="{ open: false, action: '', label: '', scope: 'all', count: 30,
                    ask(action, label) { this.action = action; this.label = label; this.scope = 'all'; this.count = 30; this.open = true; } }">
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.maintenance_heading') }}</h2>
@@ -172,7 +172,7 @@
 
     {{-- Live batch progress for the most recently started maintenance run. --}}
     @if (session('batch_id'))
-        <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+        <div class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6"
              x-data="{ status: null,
                 async refresh() {
                     try {
@@ -201,7 +201,7 @@
     {{-- Live queue status. Pending and failed job counts are read from the queue
          backend; worker count and a completion estimate are not tracked without
          Horizon, so they are not shown. --}}
-    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6"
          x-data="{
             status: @js($queue),
             async refresh() {
@@ -221,7 +221,7 @@
             <span class="text-gray-400">(<span x-text="status.driver"></span>)</span>
         </p>
 
-        <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
             <div class="rounded-md border border-gray-200 p-4">
                 <div class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ __('settings.queue_pending') }}</div>
                 <div class="mt-1 text-2xl font-semibold text-gray-900">

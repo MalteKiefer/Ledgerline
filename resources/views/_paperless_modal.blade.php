@@ -40,10 +40,10 @@
                         <button type="button" x-show="s.corrQuery" @click="s.clearCorrespondent(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
                         <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
                             <template x-for="c in s.filteredCorrespondents" :key="c.id">
-                                <button type="button" @click="s.selectCorrespondent(c); show = false" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="c.name"></button>
+                                <button type="button" @click="s.selectCorrespondent(c); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-gray-50" x-text="c.name"></button>
                             </template>
                             <button type="button" x-show="s.canCreate(s.correspondents, s.corrQuery)" @click="s.createTerm('correspondent', s.corrQuery); show = false"
-                                class="block w-full truncate px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.corrQuery"></span>»</button>
+                                class="block w-full truncate px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.corrQuery"></span>»</button>
                             <p x-show="! s.filteredCorrespondents.length && ! s.canCreate(s.correspondents, s.corrQuery)" class="px-3 py-1.5 text-gray-400">{{ __('paperless.none') }}</p>
                         </div>
                     </div>
@@ -59,10 +59,10 @@
                         <button type="button" x-show="s.typeQuery" @click="s.clearDocumentType(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
                         <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
                             <template x-for="t in s.filteredDocumentTypes" :key="t.id">
-                                <button type="button" @click="s.selectDocumentType(t); show = false" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="t.name"></button>
+                                <button type="button" @click="s.selectDocumentType(t); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-gray-50" x-text="t.name"></button>
                             </template>
                             <button type="button" x-show="s.canCreate(s.documentTypes, s.typeQuery)" @click="s.createTerm('document_type', s.typeQuery); show = false"
-                                class="block w-full truncate px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.typeQuery"></span>»</button>
+                                class="block w-full truncate px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.typeQuery"></span>»</button>
                             <p x-show="! s.filteredDocumentTypes.length && ! s.canCreate(s.documentTypes, s.typeQuery)" class="px-3 py-1.5 text-gray-400">{{ __('paperless.none') }}</p>
                         </div>
                     </div>
@@ -87,10 +87,10 @@
                              clipped by the scroll area and hidden behind the footer. --}}
                         <div x-show="show" x-cloak class="absolute bottom-full z-30 mb-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg">
                             <template x-for="t in s.filteredTags" :key="t.id">
-                                <button type="button" @click="s.addTag(t)" class="block w-full truncate px-3 py-1.5 text-left hover:bg-gray-50" x-text="t.name"></button>
+                                <button type="button" @click="s.addTag(t)" class="block w-full truncate px-3 py-2.5 text-left hover:bg-gray-50" x-text="t.name"></button>
                             </template>
                             <button type="button" x-show="s.canCreate(s.tags, s.tagQuery)" @click="s.createTerm('tag', s.tagQuery)"
-                                class="block w-full truncate px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.tagQuery"></span>»</button>
+                                class="block w-full truncate px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50"><span class="text-gray-400">{{ __('paperless.create') }}:</span> «<span x-text="s.tagQuery"></span>»</button>
                             <p x-show="! s.filteredTags.length && ! s.canCreate(s.tags, s.tagQuery)" class="px-3 py-1.5 text-gray-400">{{ __('paperless.none') }}</p>
                         </div>
                     </div>

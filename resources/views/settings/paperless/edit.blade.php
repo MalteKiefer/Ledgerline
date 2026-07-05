@@ -17,7 +17,7 @@
             counts: @js($counts),
         })">
         {{-- Connection --}}
-        <form method="POST" action="{{ route('settings.paperless.update') }}" class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <form method="POST" action="{{ route('settings.paperless.update') }}" class="mt-6 rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
             @csrf
             @method('PUT')
 
@@ -42,22 +42,22 @@
                 @error('paperless_token')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
 
-            <div class="mt-5 flex items-center gap-3">
+            <div class="mt-5 flex flex-wrap items-center gap-2">
                 <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button>
                 <button type="button" @click="test()" :disabled="busy"
                     class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" x-text="busy === 'test' ? config.testing : @js(__('settings.paperless_test'))"></button>
-                <span x-show="testResult" x-cloak :class="testOk ? 'text-green-600' : 'text-red-600'" class="text-sm" x-text="testResult"></span>
+                <span x-show="testResult" x-cloak :class="testOk ? 'text-green-600' : 'text-red-600'" class="text-sm w-full break-words" x-text="testResult"></span>
             </div>
         </form>
 
         {{-- Cached quick-pick terms --}}
-        <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="mt-6 rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
             <div class="flex items-center justify-between gap-3">
                 <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.paperless_cache_heading') }}</h2>
                 <button type="button" @click="sync()" :disabled="busy"
                     class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" x-text="busy === 'sync' ? config.syncing : @js(__('settings.paperless_sync_now'))"></button>
             </div>
-            <div class="mt-4 grid grid-cols-3 gap-3 text-center">
+            <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                 <div class="rounded-md bg-gray-50 p-3">
                     <div class="text-xs text-gray-500">{{ __('settings.paperless_tags') }}</div>
                     <div class="mt-1 text-xl font-semibold text-gray-900" x-text="counts.tag"></div>

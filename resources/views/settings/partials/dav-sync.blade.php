@@ -1,5 +1,5 @@
 {{-- Shared CardDAV/CalDAV sync block. Expects $credential, $davUrl, $qr. --}}
-<section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+<section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
     <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.sync_section') }}</h2>
     <p class="mt-1 text-sm text-gray-500">{{ __('settings.sync_block_hint') }}</p>
 
