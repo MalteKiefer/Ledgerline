@@ -12,7 +12,7 @@
         ],
     ]; @endphp
     <div x-data="contactDuplicatesPage(@js($cfg))" x-init="init()">
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">{{ __('contacts.dup.heading') }}</h1>
                 <p class="mt-1 max-w-2xl text-sm text-gray-500">{{ __('contacts.dup.subheading') }}</p>
@@ -36,12 +36,12 @@
                         </span>
                         <div class="flex gap-2">
                             <button type="button" @click="merge(g)"
-                                class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800">
+                                class="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2.5 text-xs font-medium text-white hover:bg-gray-800">
                                 <x-icon name="arrows-pointing-in" class="h-4 w-4" />
                                 {{ __('contacts.dup.merge') }}
                             </button>
                             <button type="button" @click="dismiss(g)"
-                                class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">{{ __('contacts.dup.dismiss') }}</button>
+                                class="min-h-11 rounded-md border border-gray-300 px-4 py-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50">{{ __('contacts.dup.dismiss') }}</button>
                         </div>
                     </div>
                     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -59,10 +59,10 @@
                                 </div>
                                 <div class="mt-2 space-y-0.5">
                                     <template x-for="(e,i) in c.emails" :key="'e'+i">
-                                        <p class="truncate text-xs text-gray-600" x-text="e"></p>
+                                        <p class="break-all text-xs text-gray-600" x-text="e"></p>
                                     </template>
                                     <template x-for="(p,i) in c.phones" :key="'p'+i">
-                                        <p class="truncate text-xs text-gray-600" x-text="p"></p>
+                                        <p class="break-all text-xs text-gray-600" x-text="p"></p>
                                     </template>
                                 </div>
                                 <div class="mt-2 flex items-center gap-2">
@@ -80,7 +80,7 @@
         {{-- Merge confirm modal --}}
         <div x-show="confirmModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="confirmModal.open=false">
             <div class="absolute inset-0 bg-gray-900/40" @click="confirmModal.open=false"></div>
-            <div class="relative my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+            <div class="relative my-8 sm:my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900">{{ __('contacts.dup.merge') }}</h3>
                 <p class="mt-2 text-sm text-gray-600">{{ __('contacts.dup.merge_confirm') }}</p>
                 <div class="mt-4 flex justify-end gap-2">

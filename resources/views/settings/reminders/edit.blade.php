@@ -10,7 +10,7 @@
         <div class="mt-4 rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">{{ session('status') }}</div>
     @endif
 
-    <form method="POST" action="{{ route('settings.reminders.update') }}" class="mt-6 max-w-lg rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+    <form method="POST" action="{{ route('settings.reminders.update') }}" class="mt-6 max-w-lg rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         @csrf
         @method('PUT')
         @php $labels = ['desktop' => __('todos.channel_browser'), 'ntfy' => __('todos.channel_ntfy'), 'mail' => __('todos.channel_mail'), 'webhook' => __('todos.channel_webhook')]; @endphp

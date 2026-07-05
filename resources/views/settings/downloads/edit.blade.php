@@ -16,7 +16,7 @@
         @csrf
         @method('PUT')
 
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('downloads.settings_page.zip_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500">{{ __('downloads.settings_page.zip_hint') }}</p>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -35,7 +35,7 @@
             </div>
         </section>
 
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('downloads.settings_page.notify_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500">{{ __('downloads.settings_page.notify_hint') }}</p>
             <div class="mt-3 space-y-2">

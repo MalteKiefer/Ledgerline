@@ -4,16 +4,16 @@
         {{ __('pages.profile.subtitle') }}
     </p>
 
-    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="mt-6 rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
         <div class="flex items-center gap-4">
             <x-user-avatar :user="$user" size="h-16 w-16" />
-            <div>
+            <div class="min-w-0">
                 <p class="text-lg font-semibold text-gray-900">{{ $user->name }}</p>
-                <p class="text-sm text-gray-600">{{ $user->email }}</p>
+                <p class="text-sm text-gray-600 truncate">{{ $user->email }}</p>
                 @if ($user->avatar_url)
                     <form method="POST" action="{{ route('profile.avatar.refresh') }}" class="mt-2">
                         @csrf
-                        <button type="submit" class="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1.5"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</span></button>
+                        <button type="submit" class="min-h-11 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center gap-1.5"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</span></button>
                     </form>
                 @endif
             </div>

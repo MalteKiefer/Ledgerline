@@ -12,7 +12,7 @@
         @method('PUT')
 
         {{-- Display --}}
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.calendar_display_heading') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.calendar_display_hint') }}</p>
 
@@ -54,7 +54,7 @@
         </div>
 
         {{-- Contact-derived calendars --}}
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.calendar_contacts_heading') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.calendar_contacts_hint') }}</p>
             <label class="mt-4 flex items-center gap-2 text-sm text-gray-700">
@@ -69,10 +69,10 @@
 
         {{-- Public holidays --}}
         @php $selectedCountries = old('calendar_holiday_countries', $settings->calendar_holiday_countries ?? []); @endphp
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.calendar_holidays_heading') }}</h2>
             <p class="mt-1 text-sm text-gray-600">{{ __('settings.calendar_holidays_hint') }}</p>
-            <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
                 @foreach ($countries as $code => $name)
                     <label class="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" name="calendar_holiday_countries[]" value="{{ $code }}"

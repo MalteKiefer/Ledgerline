@@ -26,10 +26,10 @@
                     <ul class="mt-2 divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm text-sm">
                         @foreach ($results as $result)
                             <li>
-                                <a href="{{ $result->url }}" class="block px-4 py-3 hover:bg-gray-50">
-                                    <span class="font-medium text-gray-900">{{ $result->title }}</span>
+                                <a href="{{ $result->url }}" class="block min-w-0 px-4 py-3 hover:bg-gray-50">
+                                    <span class="block truncate font-medium text-gray-900">{{ $result->title }}</span>
                                     @if ($result->subtitle)
-                                        <span class="block text-gray-500">{{ $result->subtitle }}</span>
+                                        <span class="block break-words text-gray-500">{{ $result->subtitle }}</span>
                                     @endif
                                 </a>
                             </li>

@@ -28,8 +28,8 @@
     @endif
 
     {{-- Destinations --}}
-    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm" x-data="{ adding: false, editing: null }">
-        <div class="flex items-center justify-between">
+    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6" x-data="{ adding: false, editing: null }">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.backup_destinations_heading') }}</h2>
             <button type="button" @click="adding = ! adding" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('settings.backup_add_destination') }}</button>
         </div>
@@ -46,10 +46,10 @@
                         <span class="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs uppercase text-gray-500">{{ $destination->driver }}</span>
                     </div>
                     <div class="flex shrink-0 items-center gap-2">
-                        <button type="button" @click="editing = (editing === {{ $destination->id }} ? null : {{ $destination->id }})" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="pencil" /></button>
+                        <button type="button" @click="editing = (editing === {{ $destination->id }} ? null : {{ $destination->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 hover:bg-gray-100"><x-icon name="pencil" /></button>
                         <form method="POST" action="{{ route('settings.backup.destinations.destroy', $destination) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
-                            <button type="submit" class="rounded p-1.5 text-red-600 hover:bg-red-50"><x-icon name="trash" /></button>
+                            <button type="submit" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-red-600 hover:bg-red-50"><x-icon name="trash" /></button>
                         </form>
                     </div>
                 </div>
@@ -63,8 +63,8 @@
     </section>
 
     {{-- Jobs --}}
-    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm" x-data="{ adding: false, editing: null }">
-        <div class="flex items-center justify-between">
+    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6" x-data="{ adding: false, editing: null }">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.backup_jobs_heading') }}</h2>
             <button type="button" x-show="{{ $destinations->isNotEmpty() ? 'true' : 'false' }}" @click="adding = ! adding" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('settings.backup_add_job') }}</button>
         </div>
@@ -104,17 +104,17 @@
                             <span x-show="! queued">{{ __('settings.backup_run_now') }}</span>
                             <span x-show="queued" x-cloak>{{ __('settings.backup_queued_short') }}</span>
                         </button>
-                        <button type="button" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" class="rounded p-1.5 text-gray-500 hover:bg-gray-100"><x-icon name="pencil" /></button>
+                        <button type="button" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 hover:bg-gray-100"><x-icon name="pencil" /></button>
                         <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
-                            <button type="submit" class="rounded p-1.5 text-red-600 hover:bg-red-50"><x-icon name="trash" /></button>
+                            <button type="submit" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-red-600 hover:bg-red-50"><x-icon name="trash" /></button>
                         </form>
                     </div>
                 </div>
 
                 {{-- Per-job statistics --}}
                 @if ($s['runs'] > 0)
-                    <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-md bg-gray-50 p-3 text-xs sm:grid-cols-4">
+                    <dl class="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 rounded-md bg-gray-50 p-3 text-xs sm:grid-cols-2 md:grid-cols-4">
                         <div>
                             <dt class="text-gray-500">{{ __('settings.backup_stat_runs') }}</dt>
                             <dd class="font-medium text-gray-900">{{ $s['runs'] }} <span class="inline-flex items-center gap-0.5 text-green-600">{{ $s['ok'] }}<x-icon name="check" class="h-3.5 w-3.5" /></span>@if ($s['failed']) <span class="inline-flex items-center gap-0.5 text-red-600">{{ $s['failed'] }}<x-icon name="x-mark" class="h-3.5 w-3.5" /></span>@endif</dd>
@@ -165,10 +165,11 @@
     </section>
 
     {{-- Recent runs — live-updating (no page reload) --}}
-    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm"
+    <section class="mt-6 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6"
         x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.backup_runs_heading') }}</h2>
         <p x-show="runs.length === 0" class="mt-3 text-sm text-gray-500">{{ __('settings.backup_no_runs') }}</p>
+        <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <table x-show="runs.length > 0" x-cloak class="mt-3 w-full text-left text-sm">
             <thead class="text-xs uppercase text-gray-400">
                 <tr>
@@ -193,7 +194,7 @@
                         <td class="py-1.5 pr-3 align-top text-gray-700" x-text="r.job ?? '—'"></td>
                         <td class="py-1.5 pr-3 align-top">
                             <span :class="r.status === 'success' ? 'text-green-600' : (r.status === 'failed' ? 'text-red-600' : 'text-gray-500')" x-text="r.status"></span>
-                            <span x-show="r.status === 'failed' && r.message" class="block max-w-md truncate text-xs text-gray-400" :title="r.message" x-text="r.message"></span>
+                            <span x-show="r.status === 'failed' && r.message" class="block break-words text-xs text-gray-400" :title="r.message" x-text="r.message"></span>
                         </td>
                         <td class="py-1.5 pr-3 align-top text-gray-500" x-text="r.startedHuman"></td>
                         <td class="py-1.5 pr-3 align-top text-gray-500" x-text="r.size ?? '—'"></td>
@@ -216,5 +217,6 @@
                 </tbody>
             </template>
         </table>
+        </div>
     </section>
 </x-layouts.app>

@@ -6,7 +6,7 @@
         @if ($photos->isEmpty())
             <p class="mt-8 text-center text-sm text-gray-500">{{ __('shares.public_no_photos') }}</p>
         @else
-            <div class="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6">
+            <div class="mt-6 grid grid-cols-2 gap-3 sm:gap-2 sm:grid-cols-4 md:grid-cols-6">
                 @foreach ($photos as $photo)
                     <a href="{{ route('public-share.photo', ['publicShare' => $share->token, 'photo' => $photo->id, 'size' => 'original']) }}"
                         class="block aspect-square overflow-hidden rounded-lg bg-gray-100">

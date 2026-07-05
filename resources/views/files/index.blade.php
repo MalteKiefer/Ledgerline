@@ -53,7 +53,7 @@
                 {{-- New folder --}}
                 <form class="flex items-center gap-1" @submit.prevent="mkdir($refs.newFolder.value); $refs.newFolder.value = ''">
                     <input type="text" x-ref="newFolder" required placeholder="{{ __('files.new_folder') }}"
-                        class="w-40 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        class="w-full sm:w-40 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <button type="submit" title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
                         class="rounded-md border border-gray-300 p-2 text-gray-700 hover:bg-gray-50"><x-icon name="folder-plus" class="h-5 w-5" /></button>
                 </form>
@@ -69,7 +69,7 @@
         {{-- Search (client-side, over the decrypted manifest) --}}
         <div class="mt-6">
             <input type="search" x-model="query" placeholder="{{ __('files.search') }}"
-                class="w-64 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                class="w-full sm:w-64 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
             <span x-show="activeTag" x-cloak class="ml-3 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-800">
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
                 <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
@@ -83,6 +83,7 @@
             <template x-if="rows.length === 0">
                 <p class="px-4 py-10 text-center text-sm text-gray-500">{{ __('files.empty_explorer') }}</p>
             </template>
+            <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <table x-show="rows.length > 0" class="min-w-full divide-y divide-gray-200 text-sm">
                 <thead class="bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                     <tr>
@@ -127,10 +128,10 @@
                             @click="if (renaming !== row.id) { row.kind === 'folder' ? cwd = row.id : openFile(row) }">
                             <td class="px-4 py-3" @click.stop><input type="checkbox" :value="rowKey(row)" x-model="selected" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></td>
                             <td class="px-4 py-3 font-medium text-gray-900">
-                                <span class="flex items-center gap-2" x-show="renaming !== row.id">
+                                <span class="flex min-w-0 items-center gap-2" x-show="renaming !== row.id">
                                     <svg x-show="row.kind === 'folder'" class="h-5 w-5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
                                     <svg x-show="row.kind === 'file'" class="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="fileIconPath(row)" /></svg>
-                                    <span x-text="row.name"></span>
+                                    <span class="truncate" x-text="row.name"></span>
                                 </span>
                                 <form x-show="renaming === row.id" x-cloak class="flex gap-2" @click.stop @submit.prevent="applyRename(row)">
                                     <input type="text" x-model="renameValue" x-ref="rename"
@@ -152,11 +153,11 @@
                             <td class="px-4 py-3 text-right" @click.stop>
                                 <div class="flex items-center justify-end gap-1">
                                     {{-- Quick actions (icon-only): preview, info, download. --}}
-                                    <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="eye" class="h-4 w-4" /></button>
-                                    <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="info" class="h-4 w-4" /></button>
-                                    <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
+                                    <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="eye" class="h-4 w-4" /></button>
+                                    <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="info" class="h-4 w-4" /></button>
+                                    <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
                                     <div class="relative inline-block text-left">
-                                        <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
+                                        <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
                                         <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-44 rounded-md border border-gray-200 bg-white py-1 text-left text-sm shadow-lg">
                                             <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
@@ -172,6 +173,7 @@
                     </template>
                 </tbody>
             </table>
+            </div>
         </div>
       </div>
     </template>

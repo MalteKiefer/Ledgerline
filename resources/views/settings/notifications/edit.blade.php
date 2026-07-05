@@ -12,7 +12,7 @@
         @method('PUT')
 
         {{-- Mail server --}}
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <label class="flex items-center gap-2">
                 <input type="checkbox" name="mail_enabled" value="1" @checked(old('mail_enabled', $settings->mail_enabled)) class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                 <span class="text-sm font-semibold text-gray-900">{{ __('settings.notify_mail_heading') }}</span>
@@ -43,7 +43,7 @@
         </section>
 
         {{-- NTFY --}}
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <label class="flex items-center gap-2">
                 <input type="checkbox" name="ntfy_enabled" value="1" @checked(old('ntfy_enabled', $settings->ntfy_enabled)) class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                 <span class="text-sm font-semibold text-gray-900">{{ __('settings.notify_ntfy_heading') }}</span>
@@ -61,7 +61,7 @@
         </section>
 
         {{-- Webhook --}}
-        <section class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
             <label class="flex items-center gap-2">
                 <input type="checkbox" name="webhook_enabled" value="1" @checked(old('webhook_enabled', $settings->webhook_enabled)) class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                 <span class="text-sm font-semibold text-gray-900">{{ __('settings.notify_webhook_heading') }}</span>
@@ -80,7 +80,7 @@
     </form>
 
     {{-- Send a test message over each channel (uses the saved settings above). --}}
-    <div class="mt-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+    <div class="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 class="text-sm font-semibold text-gray-900">{{ __('settings.notify_test_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500">{{ __('settings.notify_test_hint') }}</p>
         <div class="mt-3 flex flex-wrap gap-2">

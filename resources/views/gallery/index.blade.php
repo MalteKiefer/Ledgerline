@@ -26,7 +26,7 @@
     </x-page-heading>
 
     {{-- Zoom: photos per row (Apple-Photos-style), saved per user --}}
-    <div class="mt-3 flex items-center justify-end gap-2 text-gray-400">
+    <div class="mt-3 hidden sm:flex items-center justify-end gap-2 text-gray-400">
         <x-icon name="photo" class="h-4 w-4" />
         <input type="range" min="2" max="10" step="1" x-model.number="cols" @change="saveCols()"
             class="w-32 accent-gray-800" :title="cols + ' / {{ __('gallery.per_row') }}'" aria-label="{{ __('gallery.per_row') }}">
@@ -96,7 +96,7 @@
 
     {{-- Bulk bar --}}
     <div x-show="selected.length" x-cloak x-transition
-        class="fixed inset-x-0 bottom-5 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl"
+        class="fixed inset-x-0 bottom-20 sm:bottom-5 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl"
         x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
         @location-picked.window="if ($event.detail.context === 'bulk') { lat = $event.detail.lat; lng = $event.detail.lng; }">
         <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
@@ -229,7 +229,7 @@
                     <button type="button" @click="viewerOpen = false" aria-label="{{ __('gallery.close') }}"
                         class="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"><x-icon name="x-mark" class="h-5 w-5" /></button>
                 </div>
-                <button type="button" @click="prev()" x-show="index > 0" class="absolute left-4 text-white/70 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="chevron-left" class="h-9 w-9" /></button>
+                <button type="button" @click="prev()" x-show="index > 0" class="absolute left-4 flex h-11 w-11 items-center justify-center text-white/70 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="chevron-left" class="h-9 w-9" /></button>
                 {{-- Video loads only on play (preload=none); until then the poster is shown. No autoplay. --}}
                 <template x-if="current.mediaType === 'video'">
                     <video :src="current.video" :poster="current.medium" controls preload="none" playsinline class="max-h-[92vh] max-w-full rounded bg-black shadow-2xl"></video>
@@ -249,7 +249,7 @@
                         </button>
                     </div>
                 </template>
-                <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 text-white/70 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="chevron-right" class="h-9 w-9" /></button>
+                <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 flex h-11 w-11 items-center justify-center text-white/70 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="chevron-right" class="h-9 w-9" /></button>
             </div>
             <aside :class="showDetails ? 'block' : 'hidden sm:block'"
                 class="fixed inset-x-0 bottom-0 z-[1010] max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl sm:static sm:z-auto sm:max-h-none sm:w-80 sm:shrink-0 sm:rounded-none sm:shadow-none">
