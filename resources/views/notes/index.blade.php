@@ -11,9 +11,10 @@
     </template>
 
     <template x-if="state === 'ready'">
-      <div class="flex gap-4" style="height: calc(100vh - 10rem);">
-        {{-- List pane --}}
-        <aside class="flex w-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm md:w-80 md:shrink-0">
+      <div class="flex h-[calc(100dvh-11rem)] gap-4 md:h-[calc(100vh-10rem)]">
+        {{-- List pane (full screen on mobile until a note is opened) --}}
+        <aside class="w-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm md:w-80 md:shrink-0"
+            :class="current ? 'hidden md:flex' : 'flex'">
             <div class="flex items-center gap-2 border-b border-gray-100 p-3">
                 <input type="search" x-model="query" placeholder="{{ __('notes.search') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                 <x-button variant="primary" icon="plus" class="shrink-0 !gap-0" title="{{ __('notes.new_note') }}" @click="newNote()"></x-button>
@@ -42,14 +43,18 @@
             </div>
         </aside>
 
-        {{-- Editor pane --}}
-        <section class="min-w-0 flex-1">
+        {{-- Editor pane (shown alone on mobile once a note is open) --}}
+        <section class="min-w-0 flex-1" :class="current ? '' : 'hidden md:block'">
             <template x-if="! current">
                 <div class="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-300 text-sm text-gray-400">{{ __('notes.pick_note') }}</div>
             </template>
             <template x-if="current">
               <div class="flex h-full flex-col gap-3 lg:flex-row">
                 <div class="flex min-w-0 flex-1 flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                    <button type="button" @click="current = null; currentId = null"
+                        class="mb-2 inline-flex min-h-11 w-max items-center gap-1 text-sm text-gray-600 md:hidden">
+                        <x-icon name="chevron-left" class="h-4 w-4" />{{ __('common.back') }}
+                    </button>
                     <div class="flex items-center gap-2">
                         <input type="text" x-model="current.title" @input.debounce.800ms="save()" placeholder="{{ __('notes.title_placeholder') }}" class="w-full border-0 border-b border-gray-100 px-0 text-lg font-semibold text-gray-900 focus:border-gray-400 focus:ring-0">
                         <button type="button" @click="togglePin(current)" :title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))" class="rounded p-1" :class="current.pinned ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'"><x-icon name="bookmark" class="h-4 w-4" /></button>
@@ -67,7 +72,7 @@
 
                     {{-- Share panel --}}
                     <div x-show="shareOpen" x-cloak class="mt-3 rounded-md border border-gray-200 p-3" x-data="{ f: { expires_in: 86400, max_views: null, password: '' } }">
-                        <div class="grid grid-cols-2 gap-2">
+                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <select x-model.number="f.expires_in" class="rounded-md border-gray-300 text-xs shadow-sm">
                                 <option value="3600">{{ __('notes.share_expiry_1h') }}</option>
                                 <option value="86400">{{ __('notes.share_expiry_24h') }}</option>
