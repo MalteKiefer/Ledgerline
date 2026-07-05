@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\PurgesOwnedTrash;
 use App\Models\Reminder;
 use App\Models\Todo;
 use App\Models\TodoList;
@@ -22,6 +23,8 @@ use Illuminate\Validation\Rule;
  */
 class TodoController extends Controller
 {
+    use PurgesOwnedTrash;
+
     public function index(): JsonResponse
     {
         return response()->json([
@@ -105,9 +108,7 @@ class TodoController extends Controller
 
     public function emptyTrash(): JsonResponse
     {
-        Todo::onlyTrashed()->get()->each->forceDelete();
-
-        return response()->json(['ok' => true]);
+        return $this->emptyOwnedTrash(Todo::class);
     }
 
     /** @return array<string,mixed> */
