@@ -9,13 +9,26 @@
         ['label' => __('gallery.dup_link'), 'url' => route('gallery.duplicates'), 'icon' => 'arrows-pointing-in', 'active' => request()->routeIs('gallery.duplicates')],
         ['label' => __('gallery.trash'), 'url' => route('gallery.trash'), 'icon' => 'trash', 'active' => request()->routeIs('gallery.trash')],
     ];
+    $active = collect($items)->firstWhere('active', true);
 @endphp
-<aside class="w-full shrink-0 self-start rounded-lg border border-gray-200 bg-white p-2 shadow-sm md:w-52">
+
+{{-- Mobile: a compact trigger opening the sidebar as a slide-over sheet (the
+     rail itself is hidden < md so it never stacks as a full-width block). --}}
+<div class="md:hidden">
+    <button type="button" @click="$store.nav.toggleSidebar()"
+        class="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm">
+        <x-icon name="bars-3" class="h-4 w-4 text-gray-400" />
+        <span>{{ $active['label'] ?? __('common.sections') }}</span>
+    </button>
+</div>
+
+{{-- Desktop rail --}}
+<aside class="hidden shrink-0 self-start rounded-lg border border-gray-200 bg-white p-2 shadow-sm md:block md:w-52">
     <nav class="space-y-1 text-sm">
         @foreach ($items as $item)
             <a href="{{ $item['url'] }}"
                 @class([
-                    'flex items-center gap-2 rounded-md px-3 py-2 font-medium',
+                    'flex min-h-11 items-center gap-2 rounded-md px-3 font-medium',
                     'bg-gray-100 text-gray-900' => $item['active'],
                     'text-gray-600 hover:bg-gray-50 hover:text-gray-900' => ! $item['active'],
                 ])>
@@ -25,3 +38,20 @@
         @endforeach
     </nav>
 </aside>
+
+{{-- Mobile slide-over --}}
+<x-sheet side="left" store="sidebarOpen" :title="__('common.sections')">
+    <nav class="space-y-1 text-sm">
+        @foreach ($items as $item)
+            <a href="{{ $item['url'] }}" @click="$store.nav.closeAll()"
+                @class([
+                    'flex min-h-11 items-center gap-2 rounded-md px-3 font-medium',
+                    'bg-gray-100 text-gray-900' => $item['active'],
+                    'text-gray-600 hover:bg-gray-50 hover:text-gray-900' => ! $item['active'],
+                ])>
+                <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400" />
+                {{ $item['label'] }}
+            </a>
+        @endforeach
+    </nav>
+</x-sheet>

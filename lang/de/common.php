@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
     'delete' => 'Löschen',
     'cancel' => 'Abbrechen',
+    'sections' => 'Bereiche',
     'close' => 'Schließen',
     'confirm' => 'Bestätigen',
     'confirm_title' => 'Sind Sie sicher?',

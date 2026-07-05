@@ -17,6 +17,17 @@ document.addEventListener('alpine:init', () => {
         yes() { this.open = false; const r = this._resolve; this._resolve = null; if (r) r(true); },
         no() { this.open = false; const r = this._resolve; this._resolve = null; if (r) r(false); },
     });
+
+    // Global navigation/off-canvas state. Drives the mobile "More" sheet and the
+    // per-module sidebar slide-over so the bottom bar, any page and the sheets
+    // share one source of truth. Opening one sheet closes the other.
+    Alpine.store('nav', {
+        moreOpen: false,
+        sidebarOpen: false,
+        toggleMore() { this.moreOpen = ! this.moreOpen; if (this.moreOpen) this.sidebarOpen = false; },
+        toggleSidebar() { this.sidebarOpen = ! this.sidebarOpen; if (this.sidebarOpen) this.moreOpen = false; },
+        closeAll() { this.moreOpen = false; this.sidebarOpen = false; },
+    });
 });
 
 // CSP-safe replacement for inline `onsubmit="return confirm(...)"`: any form
