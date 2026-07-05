@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'all_photos' => 'All photos',
-    'back' => 'Back to gallery',
     'dup_heading' => 'Duplicates',
     'dup_subheading' => 'Photos that look like the same or similar content. Keep one, send the rest to the trash.',
     'dup_empty' => 'No duplicates found. Run a scan from Gallery settings to check.',
@@ -14,7 +12,6 @@ return [
     'dup_resolve' => 'Keep selected, trash the rest',
     'dup_dismiss' => 'Not a duplicate',
     'dup_confirm' => 'Keep the selected photo and move the others in this group to the trash?',
-    'dup_group' => 'Group',
     'people_heading' => 'People',
     'people_link' => 'People',
     'people_empty' => 'No people yet. Run a face scan from Gallery settings.',
@@ -63,7 +60,6 @@ return [
     'album_delete_confirm' => 'Delete this album? The photos stay in your library.',
     'album_photos_count' => ':count photos',
     'add_to_album' => 'Add to album',
-    'added_to_album' => 'Added to album',
     'album_pick_done' => 'Done',
     'map' => 'Map',
     'meta_camera' => 'Camera',
@@ -109,7 +105,6 @@ return [
     'use_location' => 'Use this location',
     'change_location' => 'Choose on map',
     'subtitle' => 'Drag photos here to upload.',
-    'timeline' => 'Timeline',
     'title' => 'Gallery',
     'trash' => 'Trash',
     'trash_empty' => 'Trash is empty.',

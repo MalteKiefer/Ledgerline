@@ -5,7 +5,6 @@ declare(strict_types=1);
 return [
     'heading' => 'Contacts & CardDAV',
     'subheading' => 'Sync your contacts to phones and desktop clients over CardDAV.',
-    'not_enabled' => 'Contacts are not set up yet. Generate a CardDAV login to start.',
     'enable' => 'Enable contacts (generate login)',
     'regenerate' => 'Generate a new password',
     'dav_url' => 'CardDAV URL',
@@ -44,7 +43,6 @@ return [
         'anniversaries' => 'Anniversaries',
         'anniversary_label' => 'Label (e.g. Wedding)',
         'note' => 'Note',
-        'avatar' => 'Photo',
         'save' => 'Save',
         'cancel' => 'Cancel',
         'delete' => 'Delete',

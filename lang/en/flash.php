@@ -7,7 +7,6 @@ return [
     'avatar_refresh_failed' => 'Could not refresh the avatar.',
     'gallery_settings_saved' => 'Gallery settings saved.',
     'calendar_settings_saved' => 'Calendar settings saved.',
-    'security_saved' => 'Security settings saved.',
     'notifications_saved' => 'Notification settings saved.',
     'downloads_saved' => 'Download settings saved.',
     'notify_test_sent' => 'Test notification sent.',
