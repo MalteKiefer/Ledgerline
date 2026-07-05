@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\AlbumController;
 use App\Http\Controllers\Auth\PocketIdController;
@@ -88,6 +89,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
+    // Self-service account: GDPR export, session revocation, account erasure.
+    Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('account.export');
+    Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('account.sessions.revoke');
+    Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
     Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->name('profile.avatar.refresh');
 
     // Local in-app notifications (bell menu).

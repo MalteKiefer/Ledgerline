@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Shows the signed-in user's profile.
@@ -17,6 +18,19 @@ class ProfileController extends Controller
 {
     public function __invoke(Request $request): View
     {
-        return view('profile', ['user' => $request->user()]);
+        $currentId = $request->session()->getId();
+        $sessions = config('session.driver') === 'database'
+            ? DB::table('sessions')->where('user_id', $request->user()->id)
+                ->orderByDesc('last_activity')->get()
+                ->map(fn ($s): array => [
+                    'id' => $s->id,
+                    'ip' => $s->ip_address,
+                    'agent' => $s->user_agent,
+                    'last_activity' => $s->last_activity,
+                    'current' => $s->id === $currentId,
+                ])->all()
+            : [];
+
+        return view('profile', ['user' => $request->user(), 'sessions' => $sessions]);
     }
 }
