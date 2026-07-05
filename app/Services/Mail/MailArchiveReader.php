@@ -32,7 +32,7 @@ class MailArchiveReader
             }
             $attachments[] = [
                 'id' => $i,
-                'name' => $this->str($a->getName()) ?: 'attachment',
+                'name' => MimeHeader::decode($this->str($a->getName())) ?: 'attachment',
                 'mime' => (string) ($a->getMimeType() ?? 'application/octet-stream'),
                 'size' => (int) $a->getSize(),
             ];
@@ -41,9 +41,9 @@ class MailArchiveReader
         $text = $this->str($m->getTextBody());
 
         return [
-            'subject' => $this->str($m->getSubject()),
+            'subject' => MimeHeader::decode($this->str($m->getSubject())),
             'messageId' => $this->str($m->getMessageId()) ?: null,
-            'from' => $from ? ['name' => $this->str($from->personal ?? ''), 'email' => $this->str($from->mail ?? '')] : null,
+            'from' => $from ? ['name' => MimeHeader::decode($this->str($from->personal ?? '')), 'email' => $this->str($from->mail ?? '')] : null,
             'to' => $this->addresses($m->getTo()),
             'cc' => $this->addresses($m->getCc()),
             'date' => $this->date($m),
@@ -64,7 +64,7 @@ class MailArchiveReader
         }
 
         return [
-            'name' => $this->str($a->getName()) ?: 'attachment',
+            'name' => MimeHeader::decode($this->str($a->getName())) ?: 'attachment',
             'mime' => (string) ($a->getMimeType() ?? 'application/octet-stream'),
             'content' => (string) $a->getContent(),
         ];
@@ -75,7 +75,7 @@ class MailArchiveReader
     {
         $out = [];
         foreach ($list ?? [] as $a) {
-            $out[] = ['name' => $this->str($a->personal ?? '') ?: null, 'email' => $this->str($a->mail ?? '')];
+            $out[] = ['name' => MimeHeader::decode($this->str($a->personal ?? '')) ?: null, 'email' => $this->str($a->mail ?? '')];
         }
 
         return $out;
