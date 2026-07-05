@@ -15,7 +15,7 @@
     <title>{{ $title }} — Ledgerline</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="h-full bg-gray-100 text-gray-900 antialiased">
+<body class="h-full bg-gray-100 text-gray-900 antialiased" x-data>
     <div class="min-h-full">
         <header class="border-b border-gray-200 bg-white">
             {{-- Desktop persistent top bar --}}
