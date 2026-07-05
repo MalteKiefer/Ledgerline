@@ -8,7 +8,7 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailMessage;
 use App\Models\User;
-use Illuminate\Support\Facades\Storage;
+use App\Support\BlobStore;
 
 /**
  * Mail module contribution to per-user GDPR export and account erasure.
@@ -86,7 +86,7 @@ final class MailData implements UserDataContributor
 
     public function purge(User $user): void
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         // 1. Delete the raw .eml blobs (which also hold the attachments) from
         //    disk, chunked to bound memory over large archives.

@@ -6,8 +6,8 @@ namespace App\Console\Commands;
 
 use App\Models\MailMessage;
 use App\Services\Mail\MailArchiveReader;
+use App\Support\BlobStore;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Backfill the search columns (cc, body_text, attachment_names) on already
@@ -25,7 +25,7 @@ class ReindexMailArchive extends Command
 
     public function handle(MailArchiveReader $reader): int
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         $query = MailMessage::query()
             ->when(! $this->option('force'), fn ($q) => $q->whereNull('body_text')->whereNull('cc'));

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Gallery;
 
 use App\Models\Photo;
+use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\ImageManagerFactory;
 use Illuminate\Support\Facades\Storage;
@@ -91,7 +92,7 @@ class PhotoExporter
      */
     private function localCopy(string $path): string
     {
-        return DiskTempFile::pull(Storage::disk(config('files.disk')), $path, 'export-src');
+        return DiskTempFile::pull(BlobStore::disk(), $path, 'export-src');
     }
 
     private function stripExtension(string $name): string

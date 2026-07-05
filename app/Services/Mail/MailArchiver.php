@@ -7,10 +7,10 @@ namespace App\Services\Mail;
 use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailMessage;
+use App\Support\BlobStore;
 use Carbon\Carbon;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -40,7 +40,7 @@ class MailArchiver
         $cap = $perRunCap ?? (int) config('mail_archive.per_run_cap', 100);
         $deadline ??= microtime(true) + (int) config('mail_archive.max_run_seconds', 300);
         $creds = $account->credentials();
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         $newCount = 0;
         $archivedCount = 0;
@@ -166,7 +166,7 @@ class MailArchiver
         }
 
         $m = $this->source->fetch($account->credentials(), $folderPath, $uid);
-        $this->persist($account, $folder, $uid, $uidValidity, $m, [], Storage::disk(config('files.disk')));
+        $this->persist($account, $folder, $uid, $uidValidity, $m, [], BlobStore::disk());
 
         return true;
     }

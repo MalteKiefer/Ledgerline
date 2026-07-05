@@ -15,6 +15,7 @@ use App\Services\Gallery\GalleryFormats;
 use App\Services\Gallery\PhotoExporter;
 use App\Services\Gallery\PhotoStorage;
 use App\Services\Gallery\TripGrouper;
+use App\Support\BlobStore;
 use App\Support\Bytes;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
@@ -486,7 +487,7 @@ class GalleryController extends Controller
             default => $photo->disk_path,
         };
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         abort_unless($disk->exists($path), 404);
 
         return $disk->response($path, $photo->name, [
@@ -516,7 +517,7 @@ class GalleryController extends Controller
         $photos = Photo::ownedBy($request->user()->id)->whereIn('id', $validated['photo_ids'])->get();
         abort_if($photos->isEmpty(), 404);
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $tmp = tempnam(sys_get_temp_dir(), 'gallery-zip').'.zip';
 
         $zip = new ZipArchive;
@@ -700,7 +701,7 @@ class GalleryController extends Controller
      */
     private function streamMedia(string $path, string $contentType): Response
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         abort_unless($disk->exists($path), 404);
 
         try {
@@ -833,7 +834,7 @@ class GalleryController extends Controller
      */
     public function forceDestroy(Request $request): RedirectResponse|JsonResponse
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $count = 0;
 
         $this->trashedQuery($request)->get()->each(function (Photo $photo) use ($disk, &$count): void {

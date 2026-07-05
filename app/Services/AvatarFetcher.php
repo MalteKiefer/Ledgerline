@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\BlobStore;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -57,7 +58,7 @@ class AvatarFetcher
                 default => 'jpg',
             };
 
-            $disk = Storage::disk(config('files.disk'));
+            $disk = BlobStore::disk();
             $path = "avatars/{$user->id}.{$extension}";
             $disk->put($path, $body);
 

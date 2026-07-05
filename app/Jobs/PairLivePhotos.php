@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Models\Photo;
+use App\Support\BlobStore;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Pairs an Apple Live Photo whose still (HEIC/JPEG) and motion clip (MOV) were
@@ -52,7 +52,7 @@ class PairLivePhotos implements ShouldQueue
                 return; // already has a motion clip (embedded or previously paired)
             }
 
-            $disk = Storage::disk(config('files.disk'));
+            $disk = BlobStore::disk();
             if (! $disk->exists($video->disk_path)) {
                 return;
             }

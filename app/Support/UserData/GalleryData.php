@@ -9,8 +9,8 @@ use App\Models\Face;
 use App\Models\Person;
 use App\Models\Photo;
 use App\Models\User;
+use App\Support\BlobStore;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Gallery module contribution to per-user GDPR export and account erasure.
@@ -111,7 +111,7 @@ final class GalleryData implements UserDataContributor
 
     public function purge(User $user): void
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
 
         // Face crop thumbnails + rows first: photos.id cascade-deletes faces at
         // the DB level, so clearing the crop blobs here (before the photo purge)

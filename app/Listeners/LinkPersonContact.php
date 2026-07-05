@@ -10,7 +10,7 @@ use App\Models\Contact;
 use App\Models\Face;
 use App\Models\Person;
 use App\Services\Contacts\ContactWriter;
-use Illuminate\Support\Facades\Storage;
+use App\Support\BlobStore;
 
 /**
  * When a gallery person is named, link it to a vCard contact — reusing an
@@ -70,7 +70,7 @@ class LinkPersonContact
             return null;
         }
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         if (! $disk->exists($face->thumb_path)) {
             return null;
         }

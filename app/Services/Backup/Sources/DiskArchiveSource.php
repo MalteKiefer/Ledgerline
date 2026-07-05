@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Backup\Sources;
 
 use App\Services\Backup\BackupArtifact;
-use Illuminate\Support\Facades\Storage;
+use App\Support\BlobStore;
 use PharData;
 use RuntimeException;
 
@@ -26,7 +26,7 @@ abstract class DiskArchiveSource implements BackupSource
 
     public function build(string $workDir): BackupArtifact
     {
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         $staging = $workDir.'/'.$this->name();
         $this->makeDir($staging);
 

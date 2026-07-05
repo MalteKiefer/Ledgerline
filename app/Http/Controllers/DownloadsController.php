@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Models\Export;
+use App\Support\BlobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -62,7 +62,7 @@ class DownloadsController extends Controller
         $parts = $export->parts();
         abort_unless(isset($parts[$index]), 404);
 
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         abort_unless($disk->exists($parts[$index]['path']), 404);
 
         return $disk->download($parts[$index]['path'], $parts[$index]['name']);

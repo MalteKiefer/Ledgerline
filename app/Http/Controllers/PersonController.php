@@ -9,10 +9,10 @@ use App\Models\Face;
 use App\Models\Person;
 use App\Models\Photo;
 use App\Services\Gallery\FaceClusterer;
+use App\Support\BlobStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -146,7 +146,7 @@ class PersonController extends Controller
     public function thumb(Face $face): StreamedResponse
     {
         abort_if($face->thumb_path === null, 404);
-        $disk = Storage::disk(config('files.disk'));
+        $disk = BlobStore::disk();
         abort_unless($disk->exists($face->thumb_path), 404);
 
         return $disk->response($face->thumb_path, 'face.jpg', [
