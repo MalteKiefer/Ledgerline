@@ -21,4 +21,16 @@ return [
     'link_copied' => 'Link kopiert',
     'send_mail' => 'E-Mail senden',
     'mail_sent' => 'E-Mail gesendet',
+    // Externe / öffentliche Links
+    'public_heading' => 'Öffentlicher Link (jeder mit dem Link)',
+    'public_hint' => 'Ein Nur-Lese-Link für Personen ohne Konto.',
+    'public_create' => 'Öffentlichen Link erstellen',
+    'public_revoke' => 'Öffentlichen Link entfernen',
+    'public_calendar_hint' => 'Geteilter Kalender (nur lesen). Zum Synchronisieren abonnieren.',
+    'public_addressbook_hint' => 'Geteiltes Adressbuch (nur lesen).',
+    'public_subscribe' => 'Abonnieren (ICS)',
+    'public_download_vcf' => 'Herunterladen (vCard)',
+    'public_no_events' => 'Keine Termine.',
+    'public_no_contacts' => 'Keine Kontakte.',
+    'public_email_placeholder' => 'E-Mail für den Link',
 ];

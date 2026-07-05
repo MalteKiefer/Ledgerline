@@ -24,6 +24,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PersonController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\ResourceShareController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
@@ -56,6 +57,13 @@ Route::get('/s/{share}', [ShareController::class, 'show'])
 Route::post('/s/{share}/unlock', [ShareController::class, 'unlock'])
     ->middleware('throttle:10,1')
     ->name('shares.unlock');
+
+// Public, tokenised read-only calendar/address-book links (no account needed).
+Route::middleware('throttle:60,1')->group(function (): void {
+    Route::get('/p/{publicShare:token}', [PublicShareController::class, 'show'])->name('public-share.show');
+    Route::get('/p/{publicShare:token}/ics', [PublicShareController::class, 'ics'])->name('public-share.ics');
+    Route::get('/p/{publicShare:token}/vcf', [PublicShareController::class, 'vcf'])->name('public-share.vcf');
+});
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake.
 Route::middleware('guest')->group(function (): void {
@@ -263,6 +271,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/shares', [ResourceShareController::class, 'store'])->name('shares.store');
     Route::delete('/shares/{share}', [ResourceShareController::class, 'destroy'])->name('shares.destroy');
     Route::post('/shares/{share}/email', [ResourceShareController::class, 'email'])->name('shares.email');
+    // Public (external) tokenised links.
+    Route::post('/shares/public', [PublicShareController::class, 'store'])->name('public-share.store');
+    Route::delete('/shares/public/{publicShare}', [PublicShareController::class, 'destroy'])->name('public-share.destroy');
+    Route::post('/shares/public/{publicShare}/email', [PublicShareController::class, 'email'])->name('public-share.email');
     // Calendar: CalDAV-backed events, driven client-side over a JSON API.
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');

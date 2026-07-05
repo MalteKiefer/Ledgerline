@@ -24,6 +24,8 @@
         'linkCopied' => __('shares.link_copied'),
         'mailSent' => __('shares.mail_sent'),
         'mailUnavailable' => __('shares.mail_unavailable'),
+        'publicStoreUrl' => route('public-share.store'),
+        'publicBase' => url('shares/public'),
         'token' => csrf_token(),
         'confirmDelete' => __('contacts.ui.delete_confirm'),
         'newBook' => __('contacts.ui.new_book'),

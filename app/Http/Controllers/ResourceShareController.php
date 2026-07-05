@@ -11,6 +11,7 @@ use App\Models\Calendar;
 use App\Models\FileFolder;
 use App\Models\Note;
 use App\Models\Photo;
+use App\Models\PublicShare;
 use App\Models\ResourceShare;
 use App\Models\StoredFile;
 use App\Models\User;
@@ -64,7 +65,15 @@ class ResourceShareController extends Controller
                 'owner' => ['name' => $s->owner?->name, 'email' => $s->owner?->email],
             ]);
 
-        return response()->json(['shared_by_me' => $mine, 'shared_with_me' => $withMe]);
+        $public = PublicShare::where('owner_id', $userId)->get()
+            ->map(fn ($p): array => [
+                'id' => $p->id,
+                'type' => $typeByClass[$p->shareable_type] ?? $p->shareable_type,
+                'resource_id' => $p->shareable_id,
+                'url' => route('public-share.show', $p->token),
+            ]);
+
+        return response()->json(['shared_by_me' => $mine, 'shared_with_me' => $withMe, 'public' => $public]);
     }
 
     public function store(Request $request): JsonResponse
