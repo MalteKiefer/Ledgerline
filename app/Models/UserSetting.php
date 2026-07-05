@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Model;
     'calendar_birthdays_enabled',
     'calendar_anniversaries_enabled',
     'calendar_holiday_countries',
+    'contact_sort',
+    'contact_display_format',
 ])]
 class UserSetting extends Model
 {
@@ -35,6 +37,8 @@ class UserSetting extends Model
         'calendar_default_event_minutes' => 60,
         'calendar_birthdays_enabled' => false,
         'calendar_anniversaries_enabled' => false,
+        'contact_sort' => 'first_name',
+        'contact_display_format' => 'first_last',
     ];
 
     protected function casts(): array

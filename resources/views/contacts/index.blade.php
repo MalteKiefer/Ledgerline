@@ -9,6 +9,8 @@
         'groupBase' => url('contact-groups'),
         'importUrl' => route('contacts.import'),
         'exportUrl' => route('contacts.export'),
+        'settingsUrl' => route('contacts.settings'),
+        'importResultLabel' => __('contacts.ui.import_result'),
         'token' => csrf_token(),
         'confirmDelete' => __('contacts.ui.delete_confirm'),
         'newBook' => __('contacts.ui.new_book'),
@@ -56,11 +58,32 @@
                 </ul>
             </div>
             <div class="space-y-2 border-t border-gray-100 pt-3">
-                <a :href="cfg.exportUrl + (book ? ('?book='+book) : '')" class="block text-sm text-gray-600 hover:text-gray-900">{{ __('contacts.ui.export') }}</a>
-                <label class="block cursor-pointer text-sm text-gray-600 hover:text-gray-900">
-                    {{ __('contacts.ui.import') }}
-                    <input type="file" accept=".vcf,text/vcard" class="hidden" @change="importFile($event)">
-                </label>
+                <div class="flex gap-2">
+                    <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        :class="importing && 'pointer-events-none opacity-60'" title="{{ __('contacts.ui.import') }}">
+                        <x-icon name="arrow-up-tray" class="h-4 w-4" />
+                        <span>{{ __('contacts.ui.import') }}</span>
+                        <input type="file" accept=".vcf,text/vcard" class="hidden" :disabled="importing" @change="importFile($event)">
+                    </label>
+                    <a :href="cfg.exportUrl + (book ? ('?book='+book) : '')"
+                        class="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        title="{{ __('contacts.ui.export') }}">
+                        <x-icon name="document-arrow-down" class="h-4 w-4" />
+                        <span>{{ __('contacts.ui.export') }}</span>
+                    </a>
+                </div>
+                <a href="{{ route('contacts.duplicates') }}"
+                    class="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <x-icon name="arrows-pointing-in" class="h-4 w-4" />
+                    <span>{{ __('contacts.ui.duplicates') }}</span>
+                </a>
+                {{-- Import progress + result --}}
+                <div x-show="importing" x-cloak class="flex items-center gap-2 rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                    <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
+                    <span>{{ __('contacts.ui.importing') }}</span>
+                </div>
+                <div x-show="importResult" x-cloak x-transition
+                    class="rounded-md bg-green-50 px-3 py-2 text-xs text-green-800" x-text="importResult"></div>
             </div>
         </aside>
 
@@ -70,6 +93,24 @@
                 <input type="search" x-model.debounce.300ms="q" placeholder="{{ __('contacts.ui.search') }}"
                     class="w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                 <button @click="openEditor(null)" class="shrink-0 rounded-md bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">{{ __('contacts.ui.new_contact') }}</button>
+            </div>
+
+            {{-- Sort + display-name format --}}
+            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500">
+                <label class="flex items-center gap-1.5">
+                    <span>{{ __('contacts.ui.sort_by') }}</span>
+                    <select x-model="sort" @change="saveSettings()" class="rounded-md border-gray-300 py-1 text-xs">
+                        <option value="first_name">{{ __('contacts.ui.sort_first_name') }}</option>
+                        <option value="last_name">{{ __('contacts.ui.sort_last_name') }}</option>
+                    </select>
+                </label>
+                <label class="flex items-center gap-1.5">
+                    <span>{{ __('contacts.ui.display_format') }}</span>
+                    <select x-model="displayFormat" @change="saveSettings()" class="rounded-md border-gray-300 py-1 text-xs">
+                        <option value="first_last">{{ __('contacts.ui.display_first_last') }}</option>
+                        <option value="last_first">{{ __('contacts.ui.display_last_first') }}</option>
+                    </select>
+                </label>
             </div>
 
             <template x-if="!loading && contacts.length===0">
@@ -83,7 +124,7 @@
                             <template x-if="c.avatar"><img :src="c.avatar" alt="" class="h-full w-full object-cover"></template>
                         </div>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-medium text-gray-900" x-text="c.fn || '—'"></p>
+                            <p class="truncate text-sm font-medium text-gray-900" x-text="displayName(c)"></p>
                             <p class="truncate text-xs text-gray-500" x-text="(c.org || '') + (c.emails[0] ? ' · '+c.emails[0] : '')"></p>
                         </div>
                     </li>

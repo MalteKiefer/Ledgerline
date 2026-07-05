@@ -8,6 +8,7 @@ use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ContactDuplicateController;
 use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
@@ -136,6 +137,13 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/contacts/data', [ContactController::class, 'data'])->name('contacts.data');
     Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
     Route::post('/contacts/import', [ContactController::class, 'import'])->name('contacts.import');
+    Route::post('/contacts/settings', [ContactController::class, 'settings'])->name('contacts.settings');
+    // Duplicate review — declared before /contacts/{contact} so "duplicates" is
+    // not swallowed by the model-bound show route.
+    Route::get('/contacts/duplicates', [ContactDuplicateController::class, 'index'])->name('contacts.duplicates');
+    Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->name('contacts.duplicates.data');
+    Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->name('contacts.duplicates.merge');
+    Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->name('contacts.duplicates.dismiss');
     Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
     Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
     Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
