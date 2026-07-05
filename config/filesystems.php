@@ -76,6 +76,13 @@ return [
             'bucket' => env('FILES_S3_BUCKET', env('AWS_BUCKET')),
             'endpoint' => env('FILES_S3_ENDPOINT', env('AWS_ENDPOINT')),
             'use_path_style_endpoint' => env('FILES_S3_USE_PATH_STYLE', env('AWS_USE_PATH_STYLE_ENDPOINT', true)),
+            // aws-sdk-php >= 3.337 sends integrity checksums (x-amz-checksum-*)
+            // by default, which several S3-compatible providers (Hetzner Object
+            // Storage, Backblaze B2, some MinIO builds) reject. Only send/verify
+            // them when the operation actually requires it. Override per env if a
+            // provider ever needs the stricter "when_supported".
+            'request_checksum_calculation' => env('FILES_S3_CHECKSUM_CALCULATION', 'when_required'),
+            'response_checksum_validation' => env('FILES_S3_CHECKSUM_VALIDATION', 'when_required'),
             'throw' => true,
         ],
 
