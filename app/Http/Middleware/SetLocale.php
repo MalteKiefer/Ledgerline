@@ -21,13 +21,22 @@ class SetLocale
     {
         $supported = array_keys(config('locales.languages'));
 
+        $browser = $this->fromBrowser($request, $supported);
         $locale = $request->user()?->locale
             ?? $request->session()->get('locale')
-            ?? $this->fromBrowser($request, $supported)
+            ?? $browser
             ?? config('app.locale');
 
         if (! in_array($locale, $supported, true)) {
             $locale = config('app.locale');
+        }
+
+        // Persist the detected browser language onto the user once, so background
+        // work (e.g. derived birthday calendars, whose localised titles are baked
+        // into the stored ICS) can build in the user's language outside a request.
+        $user = $request->user();
+        if ($user !== null && $user->locale === null && $browser !== null) {
+            $user->forceFill(['locale' => $browser])->saveQuietly();
         }
 
         app()->setLocale($locale);
