@@ -92,7 +92,15 @@ class PocketIdController extends Controller
             $avatars->fetch($user, $user->avatar_url);
         }
 
+        $user->forceFill(['last_login_at' => now()])->save();
+
         Auth::login($user, remember: true);
+
+        // Keep the provider id_token so logout can end the SSO session too.
+        $idToken = $oidcUser->accessTokenResponseBody['id_token'] ?? null;
+        if (is_string($idToken)) {
+            $request->session()->put('oidc_id_token', $idToken);
+        }
 
         // Prevent session fixation by issuing a fresh session identifier.
         $request->session()->regenerate();
@@ -129,10 +137,24 @@ class PocketIdController extends Controller
      */
     public function logout(Request $request): RedirectResponse
     {
-        Auth::logout();
+        $idToken = $request->session()->get('oidc_id_token');
 
+        Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        // RP-initiated logout: end the Pocket-ID SSO session too, otherwise a
+        // fresh sign-in silently re-authenticates. Falls back to the local login
+        // page when no end-session endpoint is configured.
+        $endSession = config('services.pocketid.logout_endpoint');
+        if (is_string($endSession) && $endSession !== '') {
+            $params = ['post_logout_redirect_uri' => route('login')];
+            if (is_string($idToken) && $idToken !== '') {
+                $params['id_token_hint'] = $idToken;
+            }
+
+            return redirect()->away($endSession.'?'.http_build_query($params));
+        }
 
         return redirect()->route('login');
     }

@@ -54,6 +54,11 @@ return [
         'redirect' => env('POCKETID_REDIRECT_URI'),
         'use_pkce' => env('POCKETID_USE_PKCE', true),
 
+        // OIDC end-session endpoint for RP-initiated logout (ends the SSO session
+        // on logout so the next sign-in isn't silently re-authenticated). Unset =
+        // local logout only. Pocket-ID: typically <base_url>/api/oidc/end-session.
+        'logout_endpoint' => env('POCKETID_LOGOUT_ENDPOINT'),
+
         // OIDC group (Pocket-ID `groups` claim) whose members may view/change the
         // non-personal, workspace-wide settings (mail/SMTP, Paperless,
         // notification channels, gallery processing, backups, downloads). Empty =
