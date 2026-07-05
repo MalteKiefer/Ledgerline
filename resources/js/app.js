@@ -287,11 +287,20 @@ Alpine.data('toastHub', (labels = {}) => ({
  */
 function shareMixin(cfg) {
     return {
-        shareModal: { open: false, type: '', id: null, name: '', shares: [], email: '', permission: 'read', error: '' },
+        shareModal: { open: false, type: '', id: null, name: '', shares: [], email: '', permission: 'read', error: '', feedback: '' },
+        shareMailConfigured: !! cfg.mailConfigured,
         async openShare(type, id, name) {
-            this.shareModal = { open: true, type, id, name, shares: [], email: '', permission: 'read', error: '' };
+            this.shareModal = { open: true, type, id, name, shares: [], email: '', permission: 'read', error: '', feedback: '' };
             await this.loadShares();
         },
+        async copyShareLink() {
+            try { await navigator.clipboard.writeText(cfg.shareLink); this.shareFlash(cfg.linkCopied || 'Copied'); } catch (e) { /* ignore */ }
+        },
+        async emailShare(id) {
+            const r = await this._json(cfg.sharesBase + '/' + id + '/email', 'POST');
+            if (r.ok) { this.shareFlash(cfg.mailSent || 'Sent'); } else { this.shareModal.error = cfg.mailUnavailable || 'Error'; }
+        },
+        shareFlash(msg) { this.shareModal.feedback = msg; clearTimeout(this._shareFlashT); this._shareFlashT = setTimeout(() => { this.shareModal.feedback = ''; }, 2500); },
         async loadShares() {
             try {
                 const r = await fetch(cfg.sharesDataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });

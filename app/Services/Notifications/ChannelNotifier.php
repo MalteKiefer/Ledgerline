@@ -121,8 +121,14 @@ class ChannelNotifier
         return str_replace(["\r", "\n", "\0"], '', $value);
     }
 
-    /** Low-level SMTP send. Public so other notifiers reuse the single transport. */
+    /** Low-level SMTP send to the configured from-address (self-notification). */
     public function mail(AppSettings $s, string $subject, string $body): void
+    {
+        $this->mailTo($s, (string) $s->smtp_from_address, $subject, $body);
+    }
+
+    /** Low-level SMTP send to an explicit recipient. */
+    public function mailTo(AppSettings $s, string $to, string $subject, string $body): void
     {
         if (! $s->mail_enabled || ! $s->smtp_host || ! $s->smtp_from_address) {
             throw new \RuntimeException('Mail is not enabled or has no host / from address.');
@@ -142,10 +148,18 @@ class ChannelNotifier
 
         $email = (new Email)
             ->from(new Address((string) $s->smtp_from_address, (string) ($s->smtp_from_name ?: 'Ledgerline')))
-            ->to((string) $s->smtp_from_address)
+            ->to($to ?: (string) $s->smtp_from_address)
             ->subject($subject)
             ->text($body ?: $subject);
 
         (new Mailer($transport))->send($email);
+    }
+
+    /** Whether outgoing mail is configured (used to gate the mail-share option). */
+    public static function mailConfigured(?AppSettings $s = null): bool
+    {
+        $s ??= AppSettings::current();
+
+        return (bool) $s->mail_enabled && (bool) $s->smtp_host && (bool) $s->smtp_from_address;
     }
 }

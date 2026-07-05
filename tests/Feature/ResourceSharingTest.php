@@ -139,6 +139,37 @@ class ResourceSharingTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_internal_share_notifies_the_recipient_in_app(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+        $note = $this->noteOf($alice, 'Plan');
+
+        $this->actingAs($alice)->postJson(route('shares.store'), [
+            'type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'read',
+        ])->assertCreated()->assertJsonStructure(['ok', 'id', 'link']);
+
+        $this->assertDatabaseHas('app_notifications', ['user_id' => $bob->id, 'category' => 'share']);
+        $this->assertDatabaseMissing('app_notifications', ['user_id' => $alice->id, 'category' => 'share']);
+    }
+
+    public function test_share_email_is_rejected_without_a_mail_server(): void
+    {
+        $alice = User::factory()->create();
+        $bob = User::factory()->create();
+        $note = $this->noteOf($alice, 'Plan');
+        $this->actingAs($alice)->postJson(route('shares.store'), [
+            'type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'read',
+        ]);
+        $share = ResourceShare::firstOrFail();
+
+        // No SMTP configured → the mail-share option is refused (offer copy link instead).
+        $this->actingAs($alice)->postJson(route('shares.email', $share->id))->assertStatus(422);
+
+        // A non-owner cannot trigger it either.
+        $this->actingAs($bob)->postJson(route('shares.email', $share->id))->assertForbidden();
+    }
+
     public function test_owner_can_revoke_a_share(): void
     {
         $alice = User::factory()->create();

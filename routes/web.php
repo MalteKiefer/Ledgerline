@@ -262,6 +262,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/shares/data', [ResourceShareController::class, 'data'])->name('shares.data');
     Route::post('/shares', [ResourceShareController::class, 'store'])->name('shares.store');
     Route::delete('/shares/{share}', [ResourceShareController::class, 'destroy'])->name('shares.destroy');
+    Route::post('/shares/{share}/email', [ResourceShareController::class, 'email'])->name('shares.email');
     // Calendar: CalDAV-backed events, driven client-side over a JSON API.
     Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
     Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');

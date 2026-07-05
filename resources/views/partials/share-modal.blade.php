@@ -17,6 +17,11 @@
         </form>
         <p x-show="shareModal.error" x-cloak class="mt-1 text-xs text-red-600" x-text="shareModal.error"></p>
 
+        <div class="mt-3 flex items-center gap-2">
+            <x-button variant="secondary" icon="link" @click="copyShareLink()">{{ __('shares.copy_link') }}</x-button>
+            <span x-show="shareModal.feedback" x-cloak x-transition class="text-xs font-medium text-green-600" x-text="shareModal.feedback"></span>
+        </div>
+
         <div class="mt-5">
             <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('shares.shared_heading') }}</h4>
             <p x-show="!shareModal.shares.length" x-cloak class="mt-2 text-sm text-gray-500">{{ __('shares.no_shares') }}</p>
@@ -27,7 +32,10 @@
                             <span class="block truncate text-gray-900" x-text="s.user.name || s.user.email"></span>
                             <span class="block text-xs text-gray-500" x-text="s.permission === 'write' ? '{{ __('shares.permission_write') }}' : '{{ __('shares.permission_read') }}'"></span>
                         </span>
-                        <button type="button" @click="revokeShare(s.id)" class="shrink-0 text-xs font-medium text-red-600 hover:text-red-700">{{ __('shares.revoke') }}</button>
+                        <span class="flex shrink-0 items-center gap-2">
+                            <button type="button" x-show="shareMailConfigured" @click="emailShare(s.id)" class="text-xs font-medium text-gray-600 hover:text-gray-900">{{ __('shares.send_mail') }}</button>
+                            <button type="button" @click="revokeShare(s.id)" class="text-xs font-medium text-red-600 hover:text-red-700">{{ __('shares.revoke') }}</button>
+                        </span>
                     </li>
                 </template>
             </ul>
