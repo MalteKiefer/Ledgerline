@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\AddressBook;
+use App\Models\Contact;
 use App\Models\MailAccount;
 use App\Models\Photo;
 use App\Models\StoredFile;
@@ -24,6 +26,78 @@ class MailComposeController extends Controller
 {
     /** Cap total attachment bytes to protect the worker from OOM. */
     private const MAX_ATTACH_BYTES = 25 * 1024 * 1024;
+
+    /**
+     * Recipient autocomplete: up to 10 {name, email} entries from the current
+     * user's contacts, matching the query against contact names and their email
+     * addresses. Owner-scoped to address books the user owns.
+     */
+    public function recipients(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->query('q'));
+
+        if ($q === '') {
+            return response()->json(['recipients' => []]);
+        }
+
+        $bookIds = AddressBook::where('user_id', $request->user()->id)->pluck('id');
+
+        // Escape LIKE metacharacters so they match literally, then lowercase
+        // both sides for case-insensitive matching on PostgreSQL and SQLite.
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($q));
+        $like = '%'.$escaped.'%';
+        // The emails JSON column is text in SQLite but needs an explicit ::text
+        // cast on PostgreSQL to LIKE against it.
+        $pg = Contact::query()->getConnection()->getDriverName() === 'pgsql';
+        $emailsColumn = $pg ? 'emails::text' : 'emails';
+
+        $contacts = Contact::query()
+            ->whereIn('address_book_id', $bookIds)
+            ->where(fn ($w) => $w
+                ->whereRaw("lower(fn) like ? escape '\\'", [$like])
+                ->orWhereRaw("lower(first_name) like ? escape '\\'", [$like])
+                ->orWhereRaw("lower(last_name) like ? escape '\\'", [$like])
+                ->orWhereRaw("lower(org) like ? escape '\\'", [$like])
+                // The emails JSON column is searched textually; the exact match
+                // per address is done in PHP below.
+                ->orWhereRaw('lower('.$emailsColumn.') like ?', [$like]))
+            ->orderByRaw("lower(coalesce(nullif(fn, ''), first_name)) asc")
+            ->limit(50)
+            ->get(['fn', 'first_name', 'last_name', 'emails']);
+
+        $needle = mb_strtolower($q);
+        $out = [];
+        $seen = [];
+
+        foreach ($contacts as $c) {
+            $name = $c->fn ?: trim(((string) $c->first_name).' '.((string) $c->last_name));
+            foreach ((array) ($c->emails ?? []) as $entry) {
+                $email = trim((string) (is_array($entry) ? ($entry['value'] ?? '') : $entry));
+                if ($email === '') {
+                    continue;
+                }
+                // Keep an address when either the name or the address itself
+                // matches the query, so "ali" surfaces alice@… but a contact
+                // matched only by name still contributes its addresses.
+                $matches = str_contains(mb_strtolower($name), $needle)
+                    || str_contains(mb_strtolower($email), $needle);
+                if (! $matches) {
+                    continue;
+                }
+                $key = mb_strtolower($email);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = ['name' => $name, 'email' => $email];
+                if (count($out) >= 10) {
+                    break 2;
+                }
+            }
+        }
+
+        return response()->json(['recipients' => $out]);
+    }
 
     public function send(Request $request, SmtpSender $sender, MailSource $source): JsonResponse
     {

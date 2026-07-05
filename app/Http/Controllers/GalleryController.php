@@ -6,8 +6,10 @@ namespace App\Http\Controllers;
 
 use App\Jobs\BuildExport;
 use App\Jobs\ProcessPhoto;
+use App\Models\Album;
 use App\Models\AppSettings;
 use App\Models\Export;
+use App\Models\Face;
 use App\Models\Photo;
 use App\Models\UserSetting;
 use App\Services\Files\ReverseGeocoder;
@@ -208,22 +210,82 @@ class GalleryController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Recent photos for the avatar picker (thumb to browse, medium to crop). */
-    public function pickerList(): JsonResponse
+    /**
+     * Photos for a thumbnail picker (avatar cropper + mail attach picker).
+     * An optional `q` filters by album name, person (face) name, free text over
+     * the photo's own metadata, or a bare photo id. Everything is owner-scoped.
+     */
+    public function pickerList(Request $request): JsonResponse
     {
-        $photos = Photo::query()
+        $q = trim((string) $request->query('q'));
+
+        $query = Photo::query()
             ->where('status', 'ready')
-            ->where('media_type', '!=', 'video')
+            ->where('media_type', '!=', 'video');
+
+        if ($q !== '') {
+            $this->pickerSearch($query, $q);
+        }
+
+        $photos = $query
             ->orderByDesc('taken_at')
-            ->limit(120)
+            ->limit($q === '' ? 120 : 300)
             ->get()
             ->map(fn (Photo $p): array => [
                 'id' => $p->id,
+                'name' => $p->name ?: ('photo-'.$p->id),
                 'thumb' => route('gallery.image', ['photo' => $p, 'size' => 'thumb']),
                 'full' => route('gallery.image', ['photo' => $p, 'size' => 'medium']),
             ]);
 
         return response()->json(['photos' => $photos]);
+    }
+
+    /**
+     * Filter the picker query by album name, person name, free text over the
+     * photo's own fields, or a bare id. All sub-queries are owner-scoped so a
+     * user can never surface another user's photos, albums or people.
+     *
+     * @param  Builder<Photo>  $query
+     */
+    private function pickerSearch(Builder $query, string $q): void
+    {
+        $uid = (int) auth()->id();
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($q));
+        $like = '%'.$escaped.'%';
+
+        // Photo ids belonging to an album whose name matches (owner-scoped via
+        // the SharesWithUsers global scope + explicit user_id on the query).
+        $albumPhotoIds = Album::query()
+            ->where('user_id', $uid)
+            ->whereRaw("lower(name) like ? escape '\\'", [$like])
+            ->get()
+            ->flatMap(fn (Album $a) => $a->photos()->pluck('photos.id'))
+            ->unique();
+
+        // Photo ids that have a matching (owner-scoped) named person.
+        $personPhotoIds = Face::query()
+            ->whereHas('person', fn ($p) => $p
+                ->where('people.user_id', $uid)
+                ->whereRaw("lower(people.name) like ? escape '\\'", [$like]))
+            ->pluck('photo_id')
+            ->unique();
+
+        $query->where(function ($w) use ($like, $q, $albumPhotoIds, $personPhotoIds): void {
+            $w->whereRaw("lower(name) like ? escape '\\'", [$like])
+                ->orWhereRaw("lower(original_name) like ? escape '\\'", [$like])
+                ->orWhereRaw("lower(place) like ? escape '\\'", [$like]);
+
+            if (ctype_digit($q)) {
+                $w->orWhere('id', (int) $q);
+            }
+            if ($albumPhotoIds->isNotEmpty()) {
+                $w->orWhereIn('id', $albumPhotoIds);
+            }
+            if ($personPhotoIds->isNotEmpty()) {
+                $w->orWhereIn('id', $personPhotoIds);
+            }
+        });
     }
 
     public function points(): JsonResponse
