@@ -45,12 +45,13 @@ class GlobalSettingsAccessTest extends TestCase
         config()->set('services.pocketid.admin_group', 'admins');
         $this->actingAs(User::factory()->create(['groups' => []]));
 
-        // Personal section shown, admin section hidden entirely.
+        // Personal section shown (mail is per-user since 1.298.3), admin
+        // section hidden entirely.
         $this->get(route('settings'))->assertOk()
             ->assertSee(__('settings.personal_heading'))
             ->assertSee(__('settings.calendar_desc'))
-            ->assertDontSee(__('settings.admin_heading'))
-            ->assertDontSee(__('settings.mail_desc'));
+            ->assertSee(__('settings.mail_desc'))
+            ->assertDontSee(__('settings.admin_heading'));
     }
 
     public function test_settings_index_shows_both_sections_for_admins(): void
