@@ -772,6 +772,7 @@ Alpine.data('contactViewPage', (cfg = {}) => ({
     cfg,
     c: { emails: [], phones: [], urls: [], addresses: [], related: [], custom_fields: [], anniversaries: [], group_ids: [] },
     groups: [],
+    geo: {}, _minis: [],
     mapModal: { open: false, loading: false, error: false, display: '', osmUrl: '' }, _map: null,
 
     async init() {
@@ -782,6 +783,39 @@ Alpine.data('contactViewPage', (cfg = {}) => ({
             const g = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (g.ok) this.groups = (await g.json()).groups ?? [];
         } catch (e) { /* groups stay empty */ }
+        this.loadGeos();
+    },
+
+    // Geocode every address (cached server-side) and render a small static
+    // map thumbnail beside it; clicking the thumbnail opens the big modal.
+    async loadGeos() {
+        for (let i = 0; i < (this.c.addresses || []).length; i++) {
+            try {
+                const u = new URL(cfg.contactBase + '/' + cfg.contactId + '/geo', location.origin);
+                u.searchParams.set('address', i);
+                const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (r.ok) this.geo[i] = await r.json();
+            } catch (e) { /* no thumbnail for this address */ }
+        }
+        if (Object.keys(this.geo).length) await this.renderMinis();
+    },
+    async renderMinis() {
+        const L = await loadLeaflet();
+        await this.$nextTick();
+        this.$root.querySelectorAll('[data-mini-map]').forEach((el) => {
+            const g = this.geo[el.dataset.miniMap];
+            if (! g || el._miniDone) return;
+            el._miniDone = true;
+            const m = L.map(el, {
+                zoomControl: false, attributionControl: false, dragging: false,
+                scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false,
+                keyboard: false, touchZoom: false,
+            }).setView([g.lat, g.lon], 15);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(m);
+            L.marker([g.lat, g.lon]).addTo(m);
+            setTimeout(() => m.invalidateSize(), 50);
+            this._minis.push(m);
+        });
     },
 
     displayName() {
