@@ -21,11 +21,11 @@
             x-transition:enter-start="{{ $enter }}" x-transition:enter-end="translate-x-0 translate-y-0"
             x-transition:leave="transition ease-in duration-150"
             x-transition:leave-start="translate-x-0 translate-y-0" x-transition:leave-end="{{ $enter }}"
-            class="absolute {{ $panel }} overflow-y-auto bg-white p-4 shadow-xl">
+            class="absolute {{ $panel }} overflow-y-auto bg-white p-4 shadow-xl dark:bg-gray-900">
             <div class="mb-3 flex items-center justify-between">
-                <h2 class="text-sm font-semibold text-gray-900">{{ $title ?? '' }}</h2>
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ $title ?? '' }}</h2>
                 <button type="button" @click="$store.nav.{{ $store }} = false"
-                    class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50"
+                    class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
                     aria-label="{{ __('common.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
             </div>
             {{ $slot }}

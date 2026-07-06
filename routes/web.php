@@ -43,6 +43,7 @@ use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessContro
 use App\Http\Controllers\Settings\RemindersController as SettingsRemindersController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
+use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodoController;
 use Illuminate\Support\Facades\Route;
 
@@ -90,6 +91,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/search', [SearchController::class, 'index'])->middleware('throttle:60,1')->name('search');
     Route::get('/search/suggest', [SearchController::class, 'suggest'])->middleware('throttle:120,1')->name('search.suggest');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
+    Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
     Route::get('/profile', ProfileController::class)->name('profile');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
     // Self-service account: GDPR export, session revocation, account erasure.

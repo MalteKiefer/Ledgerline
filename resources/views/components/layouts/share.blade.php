@@ -11,7 +11,7 @@
          page can run under a strict script-less Content-Security-Policy. --}}
     @vite(['resources/css/app.css'])
 </head>
-<body class="h-full bg-gray-100 text-gray-900 antialiased">
+<body class="h-full bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 antialiased">
     <main class="min-h-full">
         {{ $slot }}
     </main>

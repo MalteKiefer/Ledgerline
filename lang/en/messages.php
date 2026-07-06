@@ -19,5 +19,8 @@ return [
         'profile' => 'Profile',
         'settings' => 'Settings',
         'logout' => 'Log out',
+        'theme_light' => 'Light',
+        'theme_dark' => 'Dark',
+        'theme_system' => 'System',
     ],
 ];

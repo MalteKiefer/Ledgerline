@@ -12,13 +12,13 @@
         <x-slot:actions>
             <form method="GET" action="{{ route('gallery.index') }}" class="flex w-full items-center gap-1 sm:w-auto">
                 <input type="search" name="q" value="{{ $searchQuery }}" placeholder="{{ __('gallery.search_placeholder') }}"
-                    class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:w-56">
+                    class="w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:w-56">
                 <x-button type="submit" title="{{ __('gallery.search') }}" aria-label="{{ __('gallery.search') }}" class="!p-2"><x-icon name="magnifying-glass" class="h-5 w-5" /></x-button>
                 @if ($searchQuery !== '')
-                    <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900" title="{{ __('gallery.search_clear') }}"><x-icon name="x-mark" /></a>
+                    <a href="{{ route('gallery.index') }}" class="px-1 text-sm text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white" title="{{ __('gallery.search_clear') }}"><x-icon name="x-mark" /></a>
                 @endif
             </form>
-            <label title="{{ __('gallery.upload') }}" aria-label="{{ __('gallery.upload') }}" class="hidden cursor-pointer rounded-md bg-gray-900 p-2 text-white hover:bg-gray-800 sm:inline-flex">
+            <label title="{{ __('gallery.upload') }}" aria-label="{{ __('gallery.upload') }}" class="hidden cursor-pointer rounded-md bg-gray-900 p-2 text-white hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white sm:inline-flex">
                 <x-icon name="arrow-up-tray" class="h-5 w-5" />
                 <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
             </label>
@@ -26,7 +26,7 @@
     </x-page-heading>
 
     {{-- Zoom: photos per row (Apple-Photos-style), saved per user --}}
-    <div class="mt-3 hidden sm:flex items-center justify-end gap-2 text-gray-400">
+    <div class="mt-3 hidden sm:flex items-center justify-end gap-2 text-gray-400 dark:text-gray-500">
         <x-icon name="photo" class="h-4 w-4" />
         <input type="range" min="2" max="10" step="1" x-model.number="cols" @change="saveCols()"
             class="w-32 accent-gray-800" :title="cols + ' / {{ __('gallery.per_row') }}'" aria-label="{{ __('gallery.per_row') }}">
@@ -34,15 +34,15 @@
     </div>
 
     {{-- Floating upload button on mobile (hidden while selecting, to clear the bulk bar). --}}
-    <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 sm:hidden" aria-label="{{ __('gallery.upload') }}" title="{{ __('gallery.upload') }}">
+    <label x-show="! selected.length" class="fixed bottom-6 right-5 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white sm:hidden" aria-label="{{ __('gallery.upload') }}" title="{{ __('gallery.upload') }}">
         <x-icon name="arrow-up-tray" class="h-6 w-6" />
         <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
     </label>
 
     {{-- Upload tray (Google/Immich style): per-file thumbnail, progress and state --}}
-    <div x-show="queue.length" x-cloak class="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div class="flex items-center justify-between border-b border-gray-100 px-4 py-2">
-            <span class="text-sm font-medium text-gray-700">
+    <div x-show="queue.length" x-cloak class="mt-4 rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div class="flex items-center justify-between border-b border-gray-100 px-4 py-2 dark:border-gray-800">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                 <template x-if="! summary"><span>{{ __('gallery.uploading') }} (<span x-text="queue.filter(i => ['done','duplicate','skipped','error'].includes(i.state)).length"></span>/<span x-text="queue.length"></span>)</span></template>
                 <template x-if="summary">
                     <span>{{ __('gallery.upload_done') }} —
@@ -50,15 +50,15 @@
                     </span>
                 </template>
             </span>
-            <button type="button" x-show="summary" @click="dismissUploads()" class="text-sm font-medium text-gray-600 hover:text-gray-900">{{ __('gallery.upload_dismiss') }}</button>
+            <button type="button" x-show="summary" @click="dismissUploads()" class="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">{{ __('gallery.upload_dismiss') }}</button>
         </div>
         <div class="max-h-64 space-y-2 overflow-y-auto p-4">
             <template x-for="(item, i) in queue" :key="i">
                 <div class="flex items-center gap-3">
-                    <div class="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100">
+                    <div class="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
                         <template x-if="item.preview"><img :src="item.preview" class="h-full w-full object-cover"></template>
                         <template x-if="! item.preview">
-                            <span class="flex h-full w-full items-center justify-center text-gray-400">
+                            <span class="flex h-full w-full items-center justify-center text-gray-400 dark:text-gray-500">
                                 <template x-if="item.isVideo"><x-icon name="film" class="h-5 w-5" /></template>
                                 <template x-if="! item.isVideo"><x-icon name="photo" class="h-5 w-5" /></template>
                             </span>
@@ -66,8 +66,8 @@
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="flex justify-between gap-2 text-xs">
-                            <span class="truncate text-gray-700" x-text="item.name"></span>
-                            <span class="shrink-0" :class="{'text-green-600': item.state==='done', 'text-amber-600': item.state==='duplicate'||item.state==='skipped', 'text-red-600': item.state==='error', 'text-gray-500': item.state==='uploading'||item.state==='pending'}">
+                            <span class="truncate text-gray-700 dark:text-gray-300" x-text="item.name"></span>
+                            <span class="shrink-0" :class="{'text-green-600': item.state==='done', 'text-amber-600': item.state==='duplicate'||item.state==='skipped', 'text-red-600 dark:text-red-400': item.state==='error', 'text-gray-500 dark:text-gray-400': item.state==='uploading'||item.state==='pending'}">
                                 <template x-if="item.state==='done'"><x-icon name="check" class="h-4 w-4" /></template>
                                 <template x-if="item.state==='error'"><x-icon name="x-mark" class="h-4 w-4" /></template>
                                 <span x-show="!['done','error'].includes(item.state)" x-text="{
@@ -77,7 +77,7 @@
                                 }[item.state]"></span>
                             </span>
                         </div>
-                        <div class="mt-1 h-1.5 w-full rounded bg-gray-100">
+                        <div class="mt-1 h-1.5 w-full rounded bg-gray-100 dark:bg-gray-800">
                             <div class="h-1.5 rounded transition-all"
                                 :class="{'bg-green-500': item.state==='done', 'bg-amber-500': item.state==='duplicate'||item.state==='skipped', 'bg-red-500': item.state==='error', 'bg-gray-800': item.state==='uploading'||item.state==='pending'}"
                                 :style="`width: ${item.state==='pending' ? 0 : (item.state==='uploading' ? item.progress : 100)}%`"></div>
@@ -86,20 +86,20 @@
                 </div>
             </template>
         </div>
-        <div x-show="summary && summary.duplicates.length" x-cloak class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+        <div x-show="summary && summary.duplicates.length" x-cloak class="border-t border-gray-100 dark:border-gray-800 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
             {{ __('gallery.duplicate_list') }}: <span x-text="summary && summary.duplicates.join(', ')"></span>
         </div>
-        <div x-show="summary && summary.skipped.length" x-cloak class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+        <div x-show="summary && summary.skipped.length" x-cloak class="border-t border-gray-100 dark:border-gray-800 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
             {{ __('gallery.skipped_list') }}: <span x-text="summary && summary.skipped.join(', ')"></span>
         </div>
     </div>
 
     {{-- Bulk bar --}}
     <div x-show="selected.length" x-cloak x-transition
-        class="fixed inset-x-0 bottom-5 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl"
+        class="fixed inset-x-0 bottom-5 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2 shadow-xl"
         x-data="{ deleteOpen: false, locationOpen: false, lat: '', lng: '' }"
         @location-picked.window="if ($event.detail.context === 'bulk') { lat = $event.detail.lat; lng = $event.detail.lng; }">
-        <span class="text-sm font-medium text-gray-700"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
+        <span class="text-sm font-medium text-gray-700 dark:text-gray-300"><span x-text="selected.length"></span> {{ __('gallery.selected', ['count' => '']) }}</span>
         <div class="flex items-center gap-2">
             <button type="button" @click="queueExport('original', '{{ __('downloads.queued_toast') }}')" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_original') }}</button>
             <button type="button" @click="queueExport('edited', '{{ __('downloads.queued_toast') }}')" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('gallery.download_edited') }}</button>
@@ -111,20 +111,20 @@
         <template x-teleport="body">
             <div x-show="locationOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="locationOpen = false">
                 <div class="absolute inset-0 bg-gray-900/40" @click="locationOpen = false"></div>
-                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-                    <h3 class="text-base font-semibold text-gray-900">{{ __('gallery.set_location') }}</h3>
-                    <p class="mt-1 text-sm text-gray-600">{{ __('gallery.set_location_hint') }}</p>
+                <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.set_location') }}</h3>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('gallery.set_location_hint') }}</p>
                     <form method="POST" action="{{ route('gallery.location') }}" @submit.prevent="bulkLocation($event).then(ok => { if (ok) locationOpen = false })" class="mt-4">
                         @csrf
                         <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
                         <div class="grid grid-cols-2 gap-2">
-                            <input type="number" step="any" name="latitude" x-model="lat" placeholder="lat" required class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                            <input type="number" step="any" name="longitude" x-model="lng" placeholder="lng" required class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            <input type="number" step="any" name="latitude" x-model="lat" placeholder="lat" required class="rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            <input type="number" step="any" name="longitude" x-model="lng" placeholder="lng" required class="rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         </div>
                         <button type="button" @click="window.dispatchEvent(new CustomEvent('open-location-picker', { detail: { context: 'bulk', lat, lng } }))"
-                            class="mt-2 w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center justify-center gap-1.5"><x-icon name="map-pin" />{{ __('gallery.change_location') }}</span></button>
+                            class="mt-2 w-full rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><span class="inline-flex items-center justify-center gap-1.5"><x-icon name="map-pin" />{{ __('gallery.change_location') }}</span></button>
                         <div class="mt-5 flex justify-end gap-3">
-                            <button type="button" @click="locationOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                            <button type="button" @click="locationOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
                             <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.save_meta') }}</button>
                         </div>
                     </form>
@@ -135,13 +135,13 @@
         <template x-teleport="body">
             <div x-show="deleteOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="deleteOpen = false">
                 <div class="absolute inset-0 bg-gray-900/40" @click="deleteOpen = false"></div>
-                <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-                    <h3 class="text-base font-semibold text-gray-900">{{ __('common.confirm_title') }}</h3>
-                    <p class="mt-2 text-sm text-gray-600">{{ __('gallery.delete_confirm') }}</p>
+                <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('common.confirm_title') }}</h3>
+                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ __('gallery.delete_confirm') }}</p>
                     <form method="POST" action="{{ route('gallery.destroy') }}" @submit.prevent="bulkDelete($event).then(() => deleteOpen = false)" class="mt-5 flex justify-end gap-3">
                         @csrf @method('DELETE')
                         <template x-for="id in selected" :key="id"><input type="hidden" name="photo_ids[]" :value="id"></template>
-                        <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
+                        <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
                         <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('common.delete') }}</button>
                     </form>
                 </div>
@@ -152,17 +152,17 @@
     {{-- Add-to-album modal (from the bulk selection) --}}
     <div x-show="albumBox.open" x-cloak class="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="albumBox.open=false">
         <div class="absolute inset-0 bg-gray-900/40" @click="albumBox.open=false"></div>
-        <div class="relative my-16 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
-            <h3 class="text-base font-semibold text-gray-900">{{ __('gallery.add_to_album') }}</h3>
-            <ul class="mt-3 max-h-56 divide-y divide-gray-100 overflow-y-auto">
+        <div class="relative my-16 w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-5 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.add_to_album') }}</h3>
+            <ul class="mt-3 max-h-56 divide-y divide-gray-100 dark:divide-gray-800 overflow-y-auto">
                 <template x-for="a in albumBox.list" :key="a.id">
-                    <li><button type="button" @click="addToAlbum(a.id)" class="flex w-full items-center justify-between px-1 py-2 text-left text-sm hover:bg-gray-50">
-                        <span class="truncate text-gray-900" x-text="a.name"></span>
-                        <span class="text-xs text-gray-400" x-text="a.count"></span>
+                    <li><button type="button" @click="addToAlbum(a.id)" class="flex w-full items-center justify-between px-1 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <span class="truncate text-gray-900 dark:text-gray-100" x-text="a.name"></span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500" x-text="a.count"></span>
                     </button></li>
                 </template>
             </ul>
-            <form @submit.prevent="createAlbumAndAdd()" class="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+            <form @submit.prevent="createAlbumAndAdd()" class="mt-3 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800 pt-3">
                 <input x-model="albumBox.newName" placeholder="{{ __('gallery.new_album') }}" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm">
                 <x-button variant="primary" type="submit" icon="plus">{{ __('gallery.new_album') }}</x-button>
             </form>
@@ -176,13 +176,13 @@
     <div x-ref="timeline" class="mt-6 space-y-8">
         @include('gallery._timeline', ['grouped' => $grouped])
         @if ($grouped->isEmpty())
-            <p class="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 shadow-sm">{{ $searchQuery !== '' ? __('gallery.search_empty', ['q' => $searchQuery]) : __('gallery.empty') }}</p>
+            <p class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400 shadow-sm">{{ $searchQuery !== '' ? __('gallery.search_empty', ['q' => $searchQuery]) : __('gallery.empty') }}</p>
         @endif
     </div>
 
     {{-- Infinite-scroll sentinel --}}
     <div x-ref="sentinel" x-intersect.margin.800px="loadMore()" class="h-10"></div>
-    <div x-show="loading" x-cloak class="py-4 text-center text-sm text-gray-400">…</div>
+    <div x-show="loading" x-cloak class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">…</div>
     </div>{{-- /main --}}
     </div>{{-- /flex --}}
 
@@ -192,9 +192,9 @@
         <template x-for="(m, i) in months" :key="m.ym">
             <div>
                 <div x-show="i === 0 || m.year !== months[i - 1].year"
-                    class="px-2 pt-2 text-[11px] font-bold uppercase tracking-wide text-gray-800" x-text="m.year"></div>
+                    class="px-2 pt-2 text-[11px] font-bold uppercase tracking-wide text-gray-800 dark:text-gray-200" x-text="m.year"></div>
                 <button type="button" @click="scrollToMonth(m.ym)"
-                    class="block w-full px-2 py-0.5 text-[11px] leading-tight text-gray-500 hover:font-semibold hover:text-gray-900"
+                    class="block w-full px-2 py-0.5 text-[11px] leading-tight text-gray-500 dark:text-gray-400 hover:font-semibold hover:text-gray-900 dark:hover:text-white"
                     x-text="m.month"></button>
             </div>
         </template>
@@ -252,33 +252,33 @@
                 <button type="button" @click="next()" x-show="index < list.length - 1" class="absolute right-4 flex h-11 w-11 items-center justify-center text-white/70 hover:text-white" aria-label="{{ __('gallery.close') }}"><x-icon name="chevron-right" class="h-9 w-9" /></button>
             </div>
             <aside :class="showDetails ? 'block' : 'hidden sm:block'"
-                class="fixed inset-x-0 bottom-0 z-[1010] max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl sm:static sm:z-auto sm:max-h-none sm:w-80 sm:shrink-0 sm:rounded-none sm:shadow-none">
+                class="fixed inset-x-0 bottom-0 z-[1010] max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl sm:static sm:z-auto sm:max-h-none sm:w-80 sm:shrink-0 sm:rounded-none sm:shadow-none">
                 <div class="flex items-start justify-between gap-2">
-                    <h2 class="text-sm font-semibold text-gray-900 break-all" x-text="current.name"></h2>
+                    <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all" x-text="current.name"></h2>
                     <div class="hidden shrink-0 items-center gap-2 sm:flex">
                         <button type="button" @click="editing = ! editing" :title="'{{ __('gallery.edit') }}'"
-                            :class="editing ? 'text-gray-800' : 'text-gray-400 hover:text-gray-600'"><x-icon name="pencil" class="h-[18px] w-[18px]" /></button>
+                            :class="editing ? 'text-gray-800 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'"><x-icon name="pencil" class="h-[18px] w-[18px]" /></button>
                         <form method="POST" :action="`/gallery/${current.id}/favorite`" @submit.prevent="favoriteCurrent($event)">
                             @csrf
                             <button type="submit" :title="current.favorite === '1' ? '{{ __('gallery.unfavorite') }}' : '{{ __('gallery.favorite') }}'"
-                                :class="current.favorite === '1' ? 'text-red-500' : 'text-gray-400 hover:text-red-500'" class="text-xl">
+                                :class="current.favorite === '1' ? 'text-red-500' : 'text-gray-400 dark:text-gray-500 hover:text-red-500'" class="text-xl">
                                 <x-icon name="heart-solid" class="h-5 w-5" x-show="current.favorite === '1'" />
                                 <x-icon name="heart" class="h-5 w-5" x-show="current.favorite !== '1'" />
                             </button>
                         </form>
-                        <button type="button" @click="viewerOpen = false" class="text-gray-400 hover:text-gray-600" aria-label="{{ __('gallery.close') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                        <button type="button" @click="viewerOpen = false" class="text-gray-400 dark:text-gray-500 hover:text-gray-600" aria-label="{{ __('gallery.close') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
                     </div>
                 </div>
                 @php
                     $cardRow = 'flex justify-between gap-3 py-1 text-sm';
-                    $cardLabel = 'shrink-0 text-gray-500';
-                    $cardValue = 'text-right text-gray-900';
+                    $cardLabel = 'shrink-0 text-gray-500 dark:text-gray-400';
+                    $cardValue = 'text-right text-gray-900 dark:text-gray-100';
                 @endphp
 
                 {{-- Capture details --}}
-                <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('gallery.card_capture') }}</h3>
-                    <dl class="mt-2 divide-y divide-gray-100">
+                <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ __('gallery.card_capture') }}</h3>
+                    <dl class="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
                         <div class="{{ $cardRow }}"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_date') }}</dt><dd class="{{ $cardValue }}" x-text="`${current.date} · ${current.time}`"></dd></div>
                         <div class="{{ $cardRow }}" x-show="current.camera"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_camera') }}</dt><dd class="{{ $cardValue }}" x-text="current.camera"></dd></div>
                         <div class="{{ $cardRow }}" x-show="current.focal"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_focal') }}</dt><dd class="{{ $cardValue }}" x-text="current.focal"></dd></div>
@@ -289,9 +289,9 @@
                 </div>
 
                 {{-- Technical details --}}
-                <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('gallery.card_technical') }}</h3>
-                    <dl class="mt-2 divide-y divide-gray-100">
+                <div class="mt-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ __('gallery.card_technical') }}</h3>
+                    <dl class="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
                         <div class="{{ $cardRow }}" x-show="current.dims"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_dimensions') }}</dt><dd class="{{ $cardValue }}" x-text="current.dims"></dd></div>
                         <div class="{{ $cardRow }}" x-show="current.durationText"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_duration') }}</dt><dd class="{{ $cardValue }}" x-text="current.durationText"></dd></div>
                         <div class="{{ $cardRow }}" x-show="current.fps"><dt class="{{ $cardLabel }}">{{ __('gallery.meta_fps') }}</dt><dd class="{{ $cardValue }}" x-text="current.fps"></dd></div>
@@ -301,22 +301,22 @@
                 </div>
 
                 {{-- Location --}}
-                <div class="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4" x-show="current.lat && current.lng">
-                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('gallery.meta_location') }}</h3>
-                    <div class="mt-2 text-sm text-gray-900">
+                <div class="mt-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4" x-show="current.lat && current.lng">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ __('gallery.meta_location') }}</h3>
+                    <div class="mt-2 text-sm text-gray-900 dark:text-gray-100">
                         <template x-if="current.placeLines">
                             <div>
                                 <template x-for="(line, i) in current.placeLines.split('|')" :key="i">
-                                    <span class="block" :class="i === 0 ? 'font-medium' : 'text-gray-600'" x-text="line"></span>
+                                    <span class="block" :class="i === 0 ? 'font-medium' : 'text-gray-600 dark:text-gray-400'" x-text="line"></span>
                                 </template>
                             </div>
                         </template>
-                        <div class="mt-1 text-gray-500">
+                        <div class="mt-1 text-gray-500 dark:text-gray-400">
                             <span x-text="current.lat && current.lng ? `${(+current.lat).toFixed(5)}, ${(+current.lng).toFixed(5)}` : ''"></span>
                             <a :href="`https://www.openstreetmap.org/?mlat=${current.lat}&mlon=${current.lng}#map=14/${current.lat}/${current.lng}`" target="_blank" rel="noopener" class="ml-1 underline">{{ __('gallery.map') }} ↗</a>
                         </div>
                     </div>
-                    <div x-ref="miniMap" class="mt-2 h-40 w-full overflow-hidden rounded-md border border-gray-200"></div>
+                    <div x-ref="miniMap" class="mt-2 h-40 w-full overflow-hidden rounded-md border border-gray-200 dark:border-gray-800"></div>
                 </div>
                 {{-- Editing tools, hidden until the edit button is pressed. --}}
                 <div x-show="editing" x-cloak>
@@ -325,22 +325,22 @@
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
                         @csrf
                         <input type="hidden" name="action" value="rotate_left">
-                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_left') }}"><x-icon name="arrow-uturn-left" class="mx-auto" /></button>
+                        <button type="submit" class="w-full rounded-md border border-gray-300 dark:border-gray-700 px-2 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" title="{{ __('gallery.rotate_left') }}"><x-icon name="arrow-uturn-left" class="mx-auto" /></button>
                     </form>
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
                         @csrf
                         <input type="hidden" name="action" value="rotate_right">
-                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.rotate_right') }}"><x-icon name="arrow-uturn-right" class="mx-auto" /></button>
+                        <button type="submit" class="w-full rounded-md border border-gray-300 dark:border-gray-700 px-2 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" title="{{ __('gallery.rotate_right') }}"><x-icon name="arrow-uturn-right" class="mx-auto" /></button>
                     </form>
                     <form method="POST" :action="`/gallery/${current.id}/transform`" class="flex-1">
                         @csrf
                         <input type="hidden" name="action" value="flip">
-                        <button type="submit" class="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-700 hover:bg-gray-50" title="{{ __('gallery.flip') }}"><x-icon name="arrows-right-left" class="mx-auto" /></button>
+                        <button type="submit" class="w-full rounded-md border border-gray-300 dark:border-gray-700 px-2 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" title="{{ __('gallery.flip') }}"><x-icon name="arrows-right-left" class="mx-auto" /></button>
                     </form>
                 </div>
 
                 {{-- Edit name / date / time / location --}}
-                <form method="POST" :action="`/gallery/${current.id}/meta`" @submit.prevent="saveMeta($event)" class="mt-4 space-y-2 border-t border-gray-100 pt-4">
+                <form method="POST" :action="`/gallery/${current.id}/meta`" @submit.prevent="saveMeta($event)" class="mt-4 space-y-2 border-t border-gray-100 dark:border-gray-800 pt-4">
                     @csrf @method('PUT')
                     <input type="text" name="name" x-model="current.name" placeholder="{{ __('gallery.meta_name') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="text" name="camera" x-model="current.camera" list="known-cameras" placeholder="{{ __('gallery.meta_camera') }}" class="w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
@@ -350,24 +350,24 @@
                         @endforeach
                     </datalist>
                     <div class="grid grid-cols-2 gap-2">
-                        <input type="date" name="date" :value="current.dateiso" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <input type="time" name="time" :value="current.time" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="date" name="date" :value="current.dateiso" class="rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="time" name="time" :value="current.time" class="rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
                     <div class="grid grid-cols-2 gap-2">
-                        <input type="number" step="any" name="latitude" x-model="current.lat" placeholder="lat" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <input type="number" step="any" name="longitude" x-model="current.lng" placeholder="lng" class="rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="number" step="any" name="latitude" x-model="current.lat" placeholder="lat" class="rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="number" step="any" name="longitude" x-model="current.lng" placeholder="lng" class="rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </div>
                     <button type="button" @click="window.dispatchEvent(new CustomEvent('open-location-picker', { detail: { context: 'single', lat: current.lat, lng: current.lng } }))"
-                        class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"><span class="inline-flex items-center justify-center gap-1.5"><x-icon name="map-pin" />{{ __('gallery.change_location') }}</span></button>
-                    <button type="submit" class="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.save_meta') }}</button>
+                        class="w-full rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><span class="inline-flex items-center justify-center gap-1.5"><x-icon name="map-pin" />{{ __('gallery.change_location') }}</span></button>
+                    <button type="submit" class="w-full rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('gallery.save_meta') }}</button>
                 </form>
                 </div>
 
                 <div class="mt-4">
-                    <p class="mb-1 text-xs font-medium text-gray-500">{{ __('gallery.download') }}</p>
+                    <p class="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('gallery.download') }}</p>
                     <div class="grid grid-cols-2 gap-2">
                         <a :href="current.original" class="rounded-md bg-gray-800 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-700">{{ __('gallery.download_original') }}</a>
-                        <a :href="`/gallery/${current.id}/download/edited`" class="rounded-md border border-gray-300 px-4 py-2 text-center text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('gallery.download_edited') }}</a>
+                        <a :href="`/gallery/${current.id}/download/edited`" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-center text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('gallery.download_edited') }}</a>
                     </div>
                 </div>
             </aside>

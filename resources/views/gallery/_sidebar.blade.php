@@ -16,23 +16,23 @@
      rail itself is hidden < md so it never stacks as a full-width block). --}}
 <div class="md:hidden">
     <button type="button" @click="$store.nav.toggleSidebar()"
-        class="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 shadow-sm">
-        <x-icon name="bars-3" class="h-4 w-4 text-gray-400" />
+        class="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm">
+        <x-icon name="bars-3" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
         <span>{{ $active['label'] ?? __('common.sections') }}</span>
     </button>
 </div>
 
 {{-- Desktop rail --}}
-<aside class="hidden shrink-0 self-start rounded-lg border border-gray-200 bg-white p-2 shadow-sm md:block md:w-52">
+<aside class="hidden shrink-0 self-start rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 shadow-sm md:block md:w-52">
     <nav class="space-y-1 text-sm">
         @foreach ($items as $item)
             <a href="{{ $item['url'] }}"
                 @class([
                     'flex min-h-11 items-center gap-2 rounded-md px-3 font-medium',
-                    'bg-gray-100 text-gray-900' => $item['active'],
-                    'text-gray-600 hover:bg-gray-50 hover:text-gray-900' => ! $item['active'],
+                    'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' => $item['active'],
+                    'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white' => ! $item['active'],
                 ])>
-                <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400" />
+                <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
                 {{ $item['label'] }}
             </a>
         @endforeach
@@ -46,10 +46,10 @@
             <a href="{{ $item['url'] }}" @click="$store.nav.closeAll()"
                 @class([
                     'flex min-h-11 items-center gap-2 rounded-md px-3 font-medium',
-                    'bg-gray-100 text-gray-900' => $item['active'],
-                    'text-gray-600 hover:bg-gray-50 hover:text-gray-900' => ! $item['active'],
+                    'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' => $item['active'],
+                    'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white' => ! $item['active'],
                 ])>
-                <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400" />
+                <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
                 {{ $item['label'] }}
             </a>
         @endforeach

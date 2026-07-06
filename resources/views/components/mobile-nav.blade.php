@@ -19,29 +19,47 @@
                 <a href="{{ $item['url'] }}" @click="$store.nav.closeAll()"
                     @class([
                         'flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium',
-                        'bg-gray-100 text-gray-900' => $item['active'],
-                        'text-gray-700 hover:bg-gray-50' => ! $item['active'],
+                        'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' => $item['active'],
+                        'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800' => ! $item['active'],
                     ])>
-                    <x-icon :name="$item['icon']" class="h-5 w-5 text-gray-400" />
+                    <x-icon :name="$item['icon']" class="h-5 w-5 text-gray-400 dark:text-gray-500" />
                     {{ $item['label'] }}
                     @if ($item['badge'] > 0)
-                        <span class="ml-auto min-w-[1.1rem] rounded-full bg-gray-900 px-1.5 text-center text-[10px] font-semibold leading-4 text-white"
+                        <span class="ml-auto min-w-[1.1rem] rounded-full bg-gray-900 dark:bg-gray-100 px-1.5 text-center text-[10px] font-semibold leading-4 text-white dark:text-gray-900"
                             title="{{ __('downloads.new_ready') }}">{{ $item['badge'] > 99 ? '99+' : $item['badge'] }}</span>
                     @endif
                 </a>
             @endforeach
         </nav>
 
-        <div class="mt-4 space-y-1 border-t border-gray-100 pt-3">
-            <a href="{{ route('profile') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                <x-icon name="contacts" class="h-5 w-5 text-gray-400" />{{ __('messages.menu.profile') }}
+        <div class="mt-4 space-y-1 border-t border-gray-100 dark:border-gray-800 pt-3">
+            <a href="{{ route('profile') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                <x-icon name="contacts" class="h-5 w-5 text-gray-400 dark:text-gray-500" />{{ __('messages.menu.profile') }}
             </a>
-            <a href="{{ route('settings') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                <x-icon name="ellipsis" class="h-5 w-5 text-gray-400" />{{ __('messages.menu.settings') }}
+            <a href="{{ route('settings') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                <x-icon name="ellipsis" class="h-5 w-5 text-gray-400 dark:text-gray-500" />{{ __('messages.menu.settings') }}
             </a>
         </div>
 
-        <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+        @php $llTheme = \App\Models\UserSetting::for((int) auth()->id())->theme ?? 'system'; @endphp
+        <div class="mt-3 flex gap-1 border-t border-gray-100 dark:border-gray-800 pt-3">
+            @foreach (['light' => 'sun', 'dark' => 'moon', 'system' => 'computer-desktop'] as $mode => $icon)
+                <form method="POST" action="{{ route('theme.update') }}" class="flex-1">
+                    @csrf
+                    <input type="hidden" name="theme" value="{{ $mode }}">
+                    <button type="submit" title="{{ __('messages.menu.theme_'.$mode) }}"
+                        @class([
+                            'flex min-h-11 w-full items-center justify-center rounded-md',
+                            'bg-gray-800 text-white' => $llTheme === $mode,
+                            'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' => $llTheme !== $mode,
+                        ])>
+                        <x-icon :name="$icon" class="h-5 w-5" />
+                    </button>
+                </form>
+            @endforeach
+        </div>
+
+        <div class="mt-3 flex items-center justify-between border-t border-gray-100 dark:border-gray-800 pt-3">
             <div class="flex gap-1">
                 @foreach (config('locales.languages') as $code => $label)
                     <form method="POST" action="{{ route('locale.update') }}">
@@ -51,14 +69,14 @@
                             @class([
                                 'rounded px-3 py-2 text-xs font-medium',
                                 'bg-gray-800 text-white' => app()->getLocale() === $code,
-                                'text-gray-600 hover:bg-gray-100' => app()->getLocale() !== $code,
+                                'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' => app()->getLocale() !== $code,
                             ])>{{ strtoupper($code) }}</button>
                     </form>
                 @endforeach
             </div>
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
-                <button type="submit" class="rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('messages.menu.logout') }}</button>
+                <button type="submit" class="rounded-md px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('messages.menu.logout') }}</button>
             </form>
         </div>
     </x-sheet>
