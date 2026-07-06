@@ -103,7 +103,9 @@ class MailComposeController extends Controller
     public function send(Request $request, SmtpSender $sender, MailSource $source): JsonResponse
     {
         $data = $this->validated($request);
-        $account = $this->account($request, $data['account_id']);
+        // The integer rule accepts numeric strings without casting them; the
+        // compose client sends the id as a string, so cast before the typed call.
+        $account = $this->account($request, (int) $data['account_id']);
 
         if (! $account->smtpConfigured()) {
             return response()->json(['ok' => false, 'message' => __('mail.smtp_not_configured')], 422);
@@ -130,7 +132,7 @@ class MailComposeController extends Controller
     public function draft(Request $request, SmtpSender $sender, MailSource $source): JsonResponse
     {
         $data = $this->validated($request);
-        $account = $this->account($request, $data['account_id']);
+        $account = $this->account($request, (int) $data['account_id']);
         $identity = $this->identity($account, $data);
         $cfg = $this->cfgFor($account, $identity);
         $raw = $sender->build($cfg, $this->message($request, $cfg, $data))->toString();
