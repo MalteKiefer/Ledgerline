@@ -94,8 +94,10 @@ Remote-Shell = **fish** → in `bash -lc '…'` wrappen.
 ```
 ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus \
   bash -lc "'cd /srv/ledgerline && git fetch -q --tags && git checkout -q vX.Y.Z \
-  && IMAGE_TAG=vX.Y.Z docker compose build app && IMAGE_TAG=vX.Y.Z docker compose up -d app'"
+  && IMAGE_TAG=vX.Y.Z docker compose build app && IMAGE_TAG=vX.Y.Z docker compose up -d'"
 ```
+- **IMMER `up -d` ohne Service-Namen** — app/worker/scheduler teilen `ledgerline:${IMAGE_TAG}`; `up -d app` ließ worker+scheduler auf altem Image zurück (bis v1.299.1 liefen 3 Versionen parallel). Danach mit `docker compose ps` prüfen: alle drei auf dem neuen Tag.
+- Nach dem Deploy alte Images löschen (nur aktuelles + vorheriges Tag behalten): `docker images --format "{{.Repository}}:{{.Tag}}" | grep "^ledgerline:" | grep -v -E "vNEU|vVORHER" | xargs -r docker rmi`.
 - **NIE `docker compose pull`** (lokal gebautes Image). Migrationen laufen automatisch beim App-Start.
 - Verify: `curl -s -o /dev/null -w "%{http_code}" https://home.kiefer-networks.de/up` → **200**.
 - Infra: Debian 13, Docker; `/srv/ledgerline` Port **8300** (bind 127.0.0.1), Domain **home.kiefer-networks.de** (DNS IPv6-only). Caddy läuft auf dem HOST (`systemctl restart caddy`, NICHT reload — admin-API aus). Build-DNS-Quirk: compose `build.network: host` (netbird-Resolver). App-Cap `APP_MEMORY_LIMIT=8g`, Worker skalieren `--scale worker=10`. ML-Service (immich) im `ml`-Profil. Details: memory `ledgerline-docker-selfhost.md`. Server ist single-user, führt KEINE Tests.

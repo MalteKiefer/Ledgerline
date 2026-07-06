@@ -42,6 +42,82 @@ class ContactsFeatureTest extends TestCase
         $this->assertDatabaseHas('dav_changes', ['operation' => 1]);
     }
 
+    public function test_favorite_toggle_persists_and_filters(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Starred'])->assertStatus(201);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Plain'])->assertStatus(201);
+        $starred = Contact::where('fn', 'Starred')->firstOrFail();
+
+        $this->patchJson(route('contacts.favorite', $starred), ['favorite' => true])
+            ->assertOk()->assertJsonPath('favorite', true);
+
+        $starred->refresh();
+        $this->assertTrue($starred->favorite);
+        $this->assertStringContainsString('X-LL-FAVORITE:1', $starred->vcard);
+
+        // The favorites filter returns only the starred card.
+        $names = collect($this->getJson(route('contacts.data', ['favorites' => 1]))->json('contacts'))->pluck('fn');
+        $this->assertSame(['Starred'], $names->all());
+
+        $this->patchJson(route('contacts.favorite', $starred), ['favorite' => false])
+            ->assertOk()->assertJsonPath('favorite', false);
+        $this->assertFalse($starred->fresh()->favorite);
+    }
+
+    public function test_store_round_trips_addresses_related_and_custom_fields(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Partner'])->assertStatus(201);
+        $partner = Contact::firstOrFail();
+
+        $this->postJson(route('contacts.store'), [
+            'book_id' => $book->id, 'fn' => 'Jane',
+            'addresses' => [['type' => 'home', 'street' => 'Main St 1', 'zip' => '10115', 'city' => 'Berlin', 'country' => 'Germany']],
+            'related' => [
+                ['type' => 'spouse', 'uid' => $partner->uid],
+                ['type' => 'friend', 'value' => 'Max'],
+            ],
+            'custom_fields' => [['label' => 'Insurance', 'value' => 'XY-1']],
+            'favorite' => true,
+        ])->assertStatus(201);
+
+        $jane = Contact::where('fn', 'Jane')->firstOrFail();
+        $show = $this->getJson(route('contacts.show', $jane))->assertOk()->json();
+
+        $this->assertSame('Main St 1', $show['addresses'][0]['street']);
+        $this->assertSame('Berlin', $show['addresses'][0]['city']);
+        // The linked relation resolves to the partner contact's id + current name.
+        $linked = collect($show['related'])->firstWhere('uid', $partner->uid);
+        $this->assertSame($partner->id, $linked['contact_id']);
+        $this->assertSame('Partner', $linked['name']);
+        $free = collect($show['related'])->firstWhere('value', 'Max');
+        $this->assertNull($free['contact_id']);
+        $this->assertSame('Max', $free['name']);
+        $this->assertSame([['label' => 'Insurance', 'value' => 'XY-1']], $show['custom_fields']);
+        $this->assertTrue($show['favorite']);
+        $this->assertTrue($jane->favorite);
+    }
+
+    public function test_geocode_is_owner_only_and_404s_without_an_address(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'NoAddress'])->assertStatus(201);
+        $contact = Contact::firstOrFail();
+
+        // No postal address on the card -> 404, no geocoder call.
+        $this->getJson(route('contacts.geo', $contact))->assertNotFound();
+
+        // Another user's contact is forbidden.
+        $this->signIn();
+        $this->getJson(route('contacts.geo', $contact))->assertForbidden();
+    }
+
     public function test_update_keeps_the_uid_and_delete_removes(): void
     {
         $user = $this->signIn();

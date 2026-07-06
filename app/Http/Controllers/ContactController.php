@@ -11,6 +11,7 @@ use App\Models\UserSetting;
 use App\Services\Contacts\ContactImporter;
 use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\VCardService;
+use App\Services\Files\ReverseGeocoder;
 use App\Support\ImageManagerFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -41,6 +42,7 @@ class ContactController extends Controller
         $q = trim((string) $request->query('q'));
         $bookId = $request->query('book');
         $groupId = $request->query('group');
+        $favorites = $request->boolean('favorites');
 
         // Sort by the chosen name, falling back to the formatted name when that
         // component is blank (e.g. imported cards with only FN); ties broken by
@@ -53,6 +55,7 @@ class ContactController extends Controller
             ->whereIn('address_book_id', $bookIds)
             ->when($bookId, fn ($x) => $x->where('address_book_id', $bookId))
             ->when($groupId, fn ($x) => $x->whereHas('groups', fn ($g) => $g->where('contact_groups.id', $groupId)))
+            ->when($favorites, fn ($x) => $x->where('favorite', true))
             // Search across every field: the denormalised columns for precision
             // plus the raw vCard so notes, title, nickname, addresses, URLs and
             // phone numbers are all matched too. lower(...) both sides makes it
@@ -79,6 +82,7 @@ class ContactController extends Controller
                 'emails' => $c->emails ?? [],
                 'phones' => $c->phones ?? [],
                 'has_photo' => $c->has_photo,
+                'favorite' => $c->favorite,
                 'avatar' => $this->avatarUrl($c),
             ]);
 
@@ -114,6 +118,7 @@ class ContactController extends Controller
             ->get()
             ->map(fn (Contact $c): array => [
                 'id' => $c->id,
+                'uid' => $c->uid,
                 'name' => $c->fn ?: trim(((string) $c->first_name).' '.((string) $c->last_name)),
                 'avatar' => $this->avatarUrl($c),
             ])
@@ -142,11 +147,78 @@ class ContactController extends Controller
     public function show(Contact $contact, VCardService $vcards): JsonResponse
     {
         $this->authorizeContact($contact);
+        $data = $vcards->parse($contact->vcard);
+        $data['related'] = $this->resolveRelated($data['related'] ?? []);
 
         return response()->json(array_merge(
-            $vcards->parse($contact->vcard),
+            $data,
             ['id' => $contact->id, 'book' => $contact->address_book_id, 'group_ids' => $contact->groups()->pluck('contact_groups.id')],
         ));
+    }
+
+    /** Flip the favorite star (rebuilds the vCard so DAV clients sync it too). */
+    public function favorite(Request $request, Contact $contact, ContactWriter $writer, VCardService $vcards): JsonResponse
+    {
+        $this->authorizeContact($contact);
+        $favorite = $request->validate(['favorite' => ['required', 'boolean']])['favorite'];
+
+        $data = $vcards->parse($contact->vcard);
+        $data['favorite'] = $favorite;
+        $writer->update($contact, $data, $contact->groups()->pluck('contact_groups.id')->all());
+
+        return response()->json(['ok' => true, 'favorite' => (bool) $favorite]);
+    }
+
+    /**
+     * Geocode one of the contact's postal addresses for the map preview. Uses
+     * the cached, rate-limited Nominatim client; returns 404 when the address
+     * cannot be resolved.
+     */
+    public function geocode(Request $request, Contact $contact, VCardService $vcards, ReverseGeocoder $geocoder): JsonResponse
+    {
+        $this->authorizeContact($contact);
+        $index = (int) $request->query('address', 0);
+
+        $address = ($vcards->parse($contact->vcard)['addresses'] ?? [])[$index] ?? null;
+        abort_unless(is_array($address), 404);
+
+        $query = implode(', ', array_filter([
+            trim(implode(' ', array_filter([$address['street'] ?? null, $address['ext'] ?? null]))),
+            trim(implode(' ', array_filter([$address['zip'] ?? null, $address['city'] ?? null]))),
+            $address['region'] ?? null,
+            $address['country'] ?? null,
+        ], fn (?string $v): bool => $v !== null && trim($v) !== ''));
+        abort_if($query === '', 404);
+
+        $match = $geocoder->search($query)[0] ?? null;
+        abort_unless($match !== null, 404);
+
+        return response()->json($match);
+    }
+
+    /**
+     * Attach the linked contact's current name (and id) to RELATED entries that
+     * point at another card via urn:uuid, so the UI can render and open them.
+     *
+     * @param  list<array{type: ?string, value: ?string, uid: ?string}>  $related
+     * @return list<array{type: ?string, value: ?string, uid: ?string, contact_id: ?string, name: ?string}>
+     */
+    private function resolveRelated(array $related): array
+    {
+        $uids = array_values(array_filter(array_column($related, 'uid')));
+        $bookIds = AddressBook::where('user_id', auth()->id())->pluck('id');
+        $byUid = $uids === []
+            ? collect()
+            : Contact::whereIn('address_book_id', $bookIds)->whereIn('uid', $uids)->get()->keyBy('uid');
+
+        return array_map(function (array $r) use ($byUid): array {
+            $match = $r['uid'] !== null ? $byUid->get($r['uid']) : null;
+
+            return $r + [
+                'contact_id' => $match?->id,
+                'name' => $match?->fn ?: ($r['value'] ?? null),
+            ];
+        }, $related);
     }
 
     public function store(Request $request, ContactWriter $writer): JsonResponse
@@ -262,6 +334,22 @@ class ContactController extends Controller
             'emails' => ['array'],
             'phones' => ['array'],
             'urls' => ['array'],
+            'addresses' => ['array'],
+            'addresses.*.type' => ['nullable', 'string', 'max:32'],
+            'addresses.*.ext' => ['nullable', 'string', 'max:255'],
+            'addresses.*.street' => ['nullable', 'string', 'max:255'],
+            'addresses.*.city' => ['nullable', 'string', 'max:255'],
+            'addresses.*.region' => ['nullable', 'string', 'max:255'],
+            'addresses.*.zip' => ['nullable', 'string', 'max:32'],
+            'addresses.*.country' => ['nullable', 'string', 'max:255'],
+            'related' => ['array'],
+            'related.*.type' => ['nullable', 'string', 'max:32'],
+            'related.*.value' => ['nullable', 'string', 'max:255'],
+            'related.*.uid' => ['nullable', 'string', 'max:64'],
+            'custom_fields' => ['array'],
+            'custom_fields.*.label' => ['nullable', 'string', 'max:64'],
+            'custom_fields.*.value' => ['nullable', 'string', 'max:1000'],
+            'favorite' => ['nullable', 'boolean'],
             'group_ids' => ['array'],
             'group_ids.*' => ['string'],
         ]);
@@ -269,7 +357,9 @@ class ContactController extends Controller
 
     private function authorizeContact(Contact $contact): void
     {
-        abort_unless($contact->addressBook->user_id === auth()->id(), 403);
+        // The book relation is owner-scoped, so another user's contact resolves
+        // to a null book — that must read as forbidden, not a 500.
+        abort_unless($contact->addressBook?->user_id === auth()->id(), 403);
     }
 
     /**

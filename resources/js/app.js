@@ -373,7 +373,9 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     ...shareMixin(cfg),
     cfg,
     books: [], groups: [], contacts: [], loading: true,
-    book: '', group: '', q: '',
+    book: '', group: '', q: '', favorites: false,
+    relatedIndex: null, relatedSuggestions: [],
+    mapModal: { open: false, loading: false, error: false, display: '', osmUrl: '' }, _map: null,
     sort: 'first_name', displayFormat: 'first_last', _settingsReady: false,
     importing: false, importResult: '',
     editor: false, form: {},
@@ -389,6 +391,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         this.$watch('q', () => this.load());
         this.$watch('book', () => this.load());
         this.$watch('group', () => this.load());
+        this.$watch('favorites', () => this.load());
     },
 
     // --- group combobox (multi-select with autocomplete) ---
@@ -426,6 +429,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         if (this.book) u.searchParams.set('book', this.book);
         if (this.group) u.searchParams.set('group', this.group);
         if (this.q) u.searchParams.set('q', this.q);
+        if (this.favorites) u.searchParams.set('favorites', '1');
         try {
             const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (r.ok) {
@@ -466,7 +470,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     blank() {
         const ownedBooks = this.books.filter((b) => b.owned);
         const preferred = ownedBooks.find((b) => b.id === this.book) ? this.book : ownedBooks[0]?.id;
-        return { id: null, book_id: preferred, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', anniversaries: [], note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null };
+        return { id: null, book_id: preferred, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', anniversaries: [], note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null, addresses: [], related: [], custom_fields: [], favorite: false };
     },
 
     async openEditor(id) {
@@ -481,6 +485,10 @@ Alpine.data('contactsPage', (cfg = {}) => ({
             phones: d.phones?.length ? d.phones : [{ value: '', type: 'cell' }],
             urls: d.urls || [], group_ids: d.group_ids || [],
             avatar: this.contacts.find((c) => c.id === id)?.avatar || null,
+            addresses: (d.addresses || []).map((a) => ({ type: a.type || 'home', street: a.street || '', ext: a.ext || '', zip: a.zip || '', city: a.city || '', region: a.region || '', country: a.country || '' })),
+            related: (d.related || []).map((r) => ({ type: r.type || 'other', name: r.name || r.value || '', uid: r.uid || null })),
+            custom_fields: (d.custom_fields || []).map((f) => ({ label: f.label || '', value: f.value || '' })),
+            favorite: !! d.favorite,
         };
         this.editor = true;
     },
@@ -491,6 +499,13 @@ Alpine.data('contactsPage', (cfg = {}) => ({
             org: this.form.org, title: this.form.title, nickname: this.form.nickname, bday: this.form.bday, anniversaries: this.form.anniversaries.filter((a) => a.date), note: this.form.note,
             emails: this.form.emails.filter((e) => e.value), phones: this.form.phones.filter((p) => p.value),
             urls: this.form.urls, group_ids: this.form.group_ids,
+            addresses: this.form.addresses.filter((a) => (a.street + a.ext + a.zip + a.city + a.region + a.country).trim() !== ''),
+            // A linked relation travels by the target card's UID; free text by name.
+            related: this.form.related
+                .filter((r) => r.uid || (r.name || '').trim() !== '')
+                .map((r) => ({ type: r.type, uid: r.uid, value: r.uid ? null : r.name.trim() })),
+            custom_fields: this.form.custom_fields.filter((f) => (f.value || '').trim() !== ''),
+            favorite: !! this.form.favorite,
         };
     },
 
@@ -499,6 +514,71 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         await this._json(id ? cfg.contactBase + '/' + id : cfg.storeUrl, id ? 'PUT' : 'POST', this.payload());
         this.editor = false; this.load();
     },
+
+    async toggleFavorite(c) {
+        c.favorite = ! c.favorite; // optimistic; corrected below on failure
+        try {
+            const r = await this._json(cfg.contactBase + '/' + c.id + '/favorite', 'PATCH', { favorite: c.favorite });
+            if (r && typeof r.favorite === 'boolean') c.favorite = r.favorite;
+        } catch (e) { c.favorite = ! c.favorite; }
+        if (this.favorites) this.load(); // list may lose the row when filtering favorites
+    },
+
+    // --- related-contact autocomplete (links by the target card's UID) ---
+    async relatedSearch(i) {
+        this.relatedIndex = i;
+        const r = this.form.related[i];
+        r.uid = null; // typing breaks an existing link; picking below relinks
+        const q = (r.name || '').trim();
+        if (q.length < 2) { this.relatedSuggestions = []; return; }
+        try {
+            const u = new URL(cfg.suggestUrl, location.origin);
+            u.searchParams.set('q', q);
+            const res = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (res.ok) {
+                this.relatedSuggestions = ((await res.json()).contacts ?? [])
+                    .filter((s) => s.uid && s.id !== this.form.id);
+            }
+        } catch (e) { this.relatedSuggestions = []; }
+    },
+    pickRelated(i, s) {
+        this.form.related[i].name = s.name;
+        this.form.related[i].uid = s.uid;
+        this.relatedSuggestions = [];
+        this.relatedIndex = null;
+    },
+
+    // --- address map preview (server-side geocode, Leaflet lazy-loaded) ---
+    async showMap(i) {
+        if (! this.form.id) return;
+        this.mapModal = { open: true, loading: true, error: false, display: '', osmUrl: '' };
+        this.destroyMap();
+        try {
+            const u = new URL(cfg.contactBase + '/' + this.form.id + '/geo', location.origin);
+            u.searchParams.set('address', i);
+            const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! r.ok) { this.mapModal.loading = false; this.mapModal.error = true; return; }
+            const d = await r.json();
+            this.mapModal.loading = false;
+            this.mapModal.display = d.display;
+            this.mapModal.osmUrl = `https://www.openstreetmap.org/?mlat=${d.lat}&mlon=${d.lon}#map=17/${d.lat}/${d.lon}`;
+            const L = await loadLeaflet();
+            await this.$nextTick();
+            const el = this.$refs.contactMap;
+            if (! el || ! this.mapModal.open) return;
+            this._map = L.map(el).setView([d.lat, d.lon], 16);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+            }).addTo(this._map);
+            L.marker([d.lat, d.lon]).addTo(this._map);
+            setTimeout(() => this._map?.invalidateSize(), 50);
+        } catch (e) {
+            this.mapModal.loading = false;
+            this.mapModal.error = true;
+        }
+    },
+    closeMap() { this.mapModal.open = false; this.destroyMap(); },
+    destroyMap() { if (this._map) { this._map.remove(); this._map = null; } },
 
     destroy() {
         if (! this.form.id) return;

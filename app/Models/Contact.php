@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 #[ObservedBy(ContactObserver::class)]
 #[Fillable([
     'address_book_id', 'uri', 'etag', 'uid', 'vcard',
-    'fn', 'first_name', 'last_name', 'org', 'emails', 'phones', 'has_photo',
+    'fn', 'first_name', 'last_name', 'org', 'emails', 'phones', 'has_photo', 'favorite',
 ])]
 class Contact extends Model
 {
@@ -28,6 +28,7 @@ class Contact extends Model
             'emails' => 'array',
             'phones' => 'array',
             'has_photo' => 'boolean',
+            'favorite' => 'boolean',
         ];
     }
 

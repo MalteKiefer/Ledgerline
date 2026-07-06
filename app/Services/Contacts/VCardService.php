@@ -50,6 +50,56 @@ class VCardService
             $card->add($group.'.X-ABLABEL', $label !== '' ? $label : 'Anniversary');
         }
 
+        // Postal addresses. ADR parts (RFC 6350): PO box; extended; street;
+        // locality; region; postal code; country.
+        foreach ($data['addresses'] ?? [] as $a) {
+            if (! is_array($a)) {
+                continue;
+            }
+            $parts = [
+                '', (string) ($a['ext'] ?? ''), (string) ($a['street'] ?? ''),
+                (string) ($a['city'] ?? ''), (string) ($a['region'] ?? ''),
+                (string) ($a['zip'] ?? ''), (string) ($a['country'] ?? ''),
+            ];
+            if (trim(implode('', $parts)) === '') {
+                continue;
+            }
+            $card->add('ADR', $parts, $this->typeParam($a));
+        }
+
+        // Related people/contacts. A link to another contact travels as a
+        // urn:uuid pointing at that card's UID; free-text names as VALUE=text.
+        foreach ($data['related'] ?? [] as $r) {
+            if (! is_array($r)) {
+                continue;
+            }
+            $type = trim((string) ($r['type'] ?? ''));
+            $uid = trim((string) ($r['uid'] ?? ''));
+            $value = trim((string) ($r['value'] ?? ''));
+            if ($uid !== '') {
+                $card->add('RELATED', 'urn:uuid:'.$uid, $type !== '' ? ['TYPE' => $type] : []);
+            } elseif ($value !== '') {
+                $params = ['VALUE' => 'text'] + ($type !== '' ? ['TYPE' => $type] : []);
+                $card->add('RELATED', $value, $params);
+            }
+        }
+
+        // Free-form labelled fields, grouped like the anniversaries above so
+        // the label survives round-trips (itemN.X-LL-FIELD + itemN.X-ABLabel).
+        foreach ($data['custom_fields'] ?? [] as $f) {
+            $value = is_array($f) ? trim((string) ($f['value'] ?? '')) : '';
+            if ($value === '') {
+                continue;
+            }
+            $group = 'item'.(++$i);
+            $card->add($group.'.X-LL-FIELD', $value);
+            $card->add($group.'.X-ABLABEL', trim((string) ($f['label'] ?? '')) ?: 'Field');
+        }
+
+        if (! empty($data['favorite'])) {
+            $card->add('X-LL-FAVORITE', '1');
+        }
+
         foreach ($data['emails'] ?? [] as $e) {
             $value = is_array($e) ? ($e['value'] ?? '') : $e;
             if (filled($value)) {
@@ -113,7 +163,96 @@ class VCardService
             'urls' => array_map(fn ($u) => trim((string) $u), iterator_to_array($card->URL ?? [])),
             'categories' => isset($card->CATEGORIES) ? $card->CATEGORIES->getParts() : [],
             'photo' => $this->photoUri($card),
+            'addresses' => $this->addresses($card),
+            'related' => $this->related($card),
+            'custom_fields' => $this->customFields($card),
+            'favorite' => $this->favorite($card),
         ];
+    }
+
+    /**
+     * @return list<array{type: ?string, ext: ?string, street: ?string, city: ?string, region: ?string, zip: ?string, country: ?string}>
+     */
+    private function addresses(VCard $card): array
+    {
+        $out = [];
+        foreach ($card->ADR ?? [] as $adr) {
+            $p = $adr->getParts();
+            $entry = [
+                'type' => $adr['TYPE'] !== null ? (string) $adr['TYPE'] : null,
+                'ext' => $this->part($p, 1),
+                'street' => $this->part($p, 2),
+                'city' => $this->part($p, 3),
+                'region' => $this->part($p, 4),
+                'zip' => $this->part($p, 5),
+                'country' => $this->part($p, 6),
+            ];
+            if (implode('', array_map('strval', array_diff_key($entry, ['type' => '']))) !== '') {
+                $out[] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{type: ?string, value: ?string, uid: ?string}>
+     */
+    private function related(VCard $card): array
+    {
+        $out = [];
+        foreach ($card->RELATED ?? [] as $rel) {
+            $raw = trim((string) $rel);
+            if ($raw === '') {
+                continue;
+            }
+            $uid = str_starts_with(strtolower($raw), 'urn:uuid:') ? substr($raw, 9) : null;
+            $out[] = [
+                'type' => $rel['TYPE'] !== null ? (string) $rel['TYPE'] : null,
+                'value' => $uid === null ? $raw : null,
+                'uid' => $uid,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<array{label: ?string, value: string}>
+     */
+    private function customFields(VCard $card): array
+    {
+        $out = [];
+        foreach ($card->children() as $prop) {
+            if (strtoupper($prop->name) !== 'X-LL-FIELD' || ! $prop->group) {
+                continue;
+            }
+            $value = $this->s($prop);
+            if ($value === null) {
+                continue;
+            }
+            $label = null;
+            foreach ($card->children() as $sibling) {
+                if ($sibling->group === $prop->group && strtoupper($sibling->name) === 'X-ABLABEL') {
+                    $label = $this->s($sibling);
+                    break;
+                }
+            }
+            $out[] = ['label' => $label, 'value' => $value];
+        }
+
+        return $out;
+    }
+
+    private function favorite(VCard $card): bool
+    {
+        foreach ($card->children() as $prop) {
+            if (strtoupper($prop->name) === 'X-LL-FAVORITE') {
+                return trim((string) $prop) === '1';
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -148,14 +287,14 @@ class VCardService
     }
 
     /**
-     * @return array{fn: ?string, first_name: ?string, last_name: ?string, org: ?string, emails: list<string>, phones: list<string>, has_photo: bool}
+     * @return array{fn: ?string, first_name: ?string, last_name: ?string, org: ?string, emails: list<string>, phones: list<string>, has_photo: bool, favorite: bool}
      */
     public function denormalize(string $vcard): array
     {
         try {
             $card = Reader::read($vcard, Reader::OPTION_FORGIVING);
         } catch (Throwable) {
-            return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false];
+            return ['fn' => null, 'first_name' => null, 'last_name' => null, 'org' => null, 'emails' => [], 'phones' => [], 'has_photo' => false, 'favorite' => false];
         }
 
         $n = isset($card->N) ? $card->N->getParts() : [];
@@ -169,6 +308,7 @@ class VCardService
             'emails' => array_map(fn ($e) => trim((string) $e), iterator_to_array($card->EMAIL ?? [])),
             'phones' => array_map(fn ($t) => trim((string) $t), iterator_to_array($card->TEL ?? [])),
             'has_photo' => $this->photoUri($card) !== null,
+            'favorite' => $this->favorite($card),
         ];
     }
 

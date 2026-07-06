@@ -184,6 +184,8 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->name('contacts.destroy');
     Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->name('contacts.avatar');
     Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->name('contacts.avatar.upload');
+    Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->name('contacts.favorite');
+    Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->middleware('throttle:30,1')->name('contacts.geo');
     Route::post('/address-books', [AddressBookController::class, 'store'])->name('address-books.store');
     Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->name('address-books.update');
     Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->name('address-books.destroy');
