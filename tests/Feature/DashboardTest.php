@@ -36,7 +36,6 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertSee(route('files.index'))
             ->assertSee(route('notes.index'))
-            ->assertSee(route('bookmarks.index'))
-            ->assertSee(route('mail.index'));
+            ->assertSee(route('bookmarks.index'));
     }
 }

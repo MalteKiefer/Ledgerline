@@ -29,7 +29,7 @@
                     this.testDetail = (data && data.errors) ? Object.values(data.errors).flat().join('\n') : '';
                 }
             } catch (err) {
-                this.testOk = false; this.testMsg = @js(__('mail.connect_failed'));
+                this.testOk = false; this.testMsg = @js(__('settings.backup_connect_failed'));
             } finally { this.testing = false; }
         },
     }" class="space-y-3">

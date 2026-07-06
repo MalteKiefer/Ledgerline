@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Bookmark;
-use App\Models\MailAccount;
 use App\Models\Note;
 use App\Models\Person;
 use App\Models\Photo;
@@ -102,23 +101,6 @@ class UserIsolationTest extends TestCase
         $this->assertSame(0, Photo::count());
         $this->assertSame(0, Person::count());
         $this->assertSame($alice->id, Photo::withoutGlobalScopes()->first()->uploaded_by);
-    }
-
-    public function test_mail_accounts_are_private(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $this->actingAs($alice);
-        $this->postJson(route('mail.accounts.store'), [
-            'name' => 'Work', 'host' => 'imap.example.com', 'port' => 993,
-            'encryption' => 'ssl', 'username' => 'a@x.test', 'password' => 'secret',
-        ])->assertSuccessful();
-        $this->assertSame(1, MailAccount::count());
-
-        $this->actingAs($bob);
-        $this->assertSame(0, MailAccount::count());
-        $this->getJson(route('mail.accounts'))->assertOk()->assertJsonMissing(['name' => 'Work']);
     }
 
     public function test_owner_is_set_automatically_on_create(): void
