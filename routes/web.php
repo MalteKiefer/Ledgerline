@@ -178,7 +178,9 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->middleware('throttle:60,1')->name('contacts.duplicates.data');
     Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:60,1')->name('contacts.duplicates.merge');
     Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:60,1')->name('contacts.duplicates.dismiss');
+    Route::get('/contacts/new', [ContactController::class, 'create'])->name('contacts.create');
     Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
+    Route::get('/contacts/{contact}/edit', [ContactController::class, 'edit'])->name('contacts.edit');
     Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
     Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
     Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->name('contacts.destroy');

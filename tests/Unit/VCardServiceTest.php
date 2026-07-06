@@ -77,6 +77,38 @@ class VCardServiceTest extends TestCase
         $this->assertFalse($svc->denormalize($plain)['favorite']);
     }
 
+    public function test_packed_street_component_is_split_into_structured_fields(): void
+    {
+        // Apple/Google exports pack the whole address into the street part.
+        $svc = new VCardService;
+        $vcard = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Peter\r\n"
+            ."ADR;TYPE=HOME,pref:;;Pechgraben 57\\nNeudrossenfeld\\n95512\\nDeutschland;;;;\r\n"
+            ."END:VCARD\r\n";
+
+        $a = $svc->parse($vcard)['addresses'][0];
+        $this->assertSame('Pechgraben 57', $a['street']);
+        $this->assertSame('Neudrossenfeld', $a['city']);
+        $this->assertSame('95512', $a['zip']);
+        $this->assertSame('Deutschland', $a['country']);
+
+        // "Zip City" on one line also splits.
+        $vcard2 = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X\r\n"
+            ."ADR:;;Main St 1\\n10115 Berlin\\nGermany;;;;\r\nEND:VCARD\r\n";
+        $b = $svc->parse($vcard2)['addresses'][0];
+        $this->assertSame('Main St 1', $b['street']);
+        $this->assertSame('10115', $b['zip']);
+        $this->assertSame('Berlin', $b['city']);
+        $this->assertSame('Germany', $b['country']);
+
+        // Properly structured ADR stays untouched.
+        $vcard3 = "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Y\r\n"
+            ."ADR:;;Some St 2;Town;;12345;US;\r\nEND:VCARD\r\n";
+        $c = $svc->parse($vcard3)['addresses'][0];
+        $this->assertSame('Some St 2', $c['street']);
+        $this->assertSame('Town', $c['city']);
+        $this->assertSame('12345', $c['zip']);
+    }
+
     public function test_custom_fields_and_anniversaries_share_the_item_group_counter(): void
     {
         $svc = new VCardService;

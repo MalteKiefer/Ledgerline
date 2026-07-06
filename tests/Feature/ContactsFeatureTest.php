@@ -103,6 +103,21 @@ class ContactsFeatureTest extends TestCase
         $this->assertTrue($jane->favorite);
     }
 
+    public function test_editor_pages_render_and_are_owner_scoped(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Jane'])->assertStatus(201);
+        $contact = Contact::firstOrFail();
+
+        $this->get(route('contacts.create'))->assertOk()->assertSee('contactEditorPage', false);
+        $this->get(route('contacts.edit', $contact))->assertOk()->assertSee('contactEditorPage', false);
+
+        // Another user cannot open the edit page.
+        $this->signIn();
+        $this->get(route('contacts.edit', $contact))->assertForbidden();
+    }
+
     public function test_geocode_is_owner_only_and_404s_without_an_address(): void
     {
         $user = $this->signIn();
