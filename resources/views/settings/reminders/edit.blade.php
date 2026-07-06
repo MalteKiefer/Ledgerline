@@ -6,9 +6,6 @@
     <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.reminders_heading') }}</h1>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.reminders_subheading') }}</p>
 
-    @if (session('status'))
-        <div class="mt-4 rounded-md bg-green-50 dark:bg-green-950 px-4 py-3 text-sm text-green-700 dark:text-green-300">{{ session('status') }}</div>
-    @endif
 
     <form method="POST" action="{{ route('settings.reminders.update') }}" class="mt-6 max-w-lg rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         @csrf
