@@ -32,7 +32,7 @@ use Throwable;
  *   in_reply_to (?string message-id), references (?string),
  *   from_name (?string override), from_email (string).
  */
-final class SmtpSender
+class SmtpSender
 {
     /**
      * Build, send, and return the raw MIME of the sent message.
@@ -54,6 +54,29 @@ final class SmtpSender
         // toString() reflects the fully-serialised message (Message-ID, Date,
         // etc. are populated during send) so it can be appended to Sent.
         return $email->toString();
+    }
+
+    /**
+     * Verify an SMTP config by opening + authenticating the transport (no mail
+     * is sent). Throws a RuntimeException with the server's reason on failure.
+     *
+     * @param  array<string,mixed>  $cfg
+     */
+    public function verify(array $cfg): void
+    {
+        $transport = $this->transport($cfg);
+
+        try {
+            $transport->start(); // connect + EHLO + STARTTLS + AUTH
+        } catch (Throwable $e) {
+            throw new RuntimeException('SMTP connection failed: '.$e->getMessage(), 0, $e);
+        } finally {
+            try {
+                $transport->stop();
+            } catch (Throwable) {
+                // already closed / never opened
+            }
+        }
     }
 
     /**

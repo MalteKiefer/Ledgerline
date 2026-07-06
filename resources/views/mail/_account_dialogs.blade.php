@@ -1,10 +1,10 @@
 {{-- Add / edit account modal (used inside a vaultMail x-data scope). --}}
 <template x-teleport="body">
-    <div x-show="dialogOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="dialogOpen = false">
+    <div x-show="dialogOpen" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center" role="dialog" aria-modal="true" @keydown.escape.window="dialogOpen = false">
         <div class="absolute inset-0 bg-gray-900/40" @click="dialogOpen = false"></div>
-        <div class="relative w-full max-w-lg rounded-lg bg-white p-6 shadow-xl dark:bg-gray-900">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="editingId ? @js(__('mail.edit_title')) : @js(__('mail.add_title'))"></h3>
-            <div class="mt-4 space-y-3">
+        <div class="relative my-8 flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg bg-white shadow-xl dark:bg-gray-900">
+            <h3 class="shrink-0 border-b border-gray-100 px-6 py-4 text-base font-semibold text-gray-900 dark:border-gray-800 dark:text-gray-100" x-text="editingId ? @js(__('mail.edit_title')) : @js(__('mail.add_title'))"></h3>
+            <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
                 <div>
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('mail.field_name') }}</label>
                     <input type="text" x-model="form.name" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
@@ -21,10 +21,10 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('mail.field_encryption') }}</label>
-                    <select x-model="form.encryption" @change="form.port = form.encryption === 'starttls' ? 143 : 993"
+                    <select x-model="form.encryption" @change="form.port = imapPortFor(form.encryption)"
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <option value="ssl">{{ __('mail.encryption_ssl') }}</option>
-                        <option value="starttls">{{ __('mail.encryption_starttls') }}</option>
+                        <option value="ssl">{{ __('mail.encryption_ssl_imap') }}</option>
+                        <option value="starttls">{{ __('mail.encryption_starttls_imap') }}</option>
                     </select>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
@@ -63,10 +63,10 @@
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('mail.smtp_encryption') }}</label>
-                            <select x-model="form.smtp_encryption" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                                <option value="ssl">{{ __('mail.encryption_ssl') }}</option>
-                                <option value="starttls">{{ __('mail.encryption_starttls') }}</option>
-                                <option value="none">{{ __('mail.encryption_none') }}</option>
+                            <select x-model="form.smtp_encryption" @change="form.smtp_port = smtpPortFor(form.smtp_encryption)" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                <option value="ssl">{{ __('mail.encryption_ssl_smtp') }}</option>
+                                <option value="starttls">{{ __('mail.encryption_starttls_smtp') }}</option>
+                                <option value="none">{{ __('mail.encryption_none_smtp') }}</option>
                             </select>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
@@ -154,10 +154,36 @@
 
                 <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('mail.security_note') }}</p>
                 <p x-show="error" x-cloak class="text-xs text-red-600 dark:text-red-400" x-text="error"></p>
+
+                {{-- Connection test result --}}
+                <template x-if="testResult">
+                    <div class="space-y-1.5 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3 text-xs">
+                        <div class="flex items-start gap-2">
+                            <x-icon ::name="testResult.imap.ok ? 'check-circle' : 'x-circle'" class="h-4 w-4 shrink-0" ::class="testResult.imap.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'" />
+                            <div class="min-w-0">
+                                <span class="font-medium text-gray-700 dark:text-gray-300">{{ __('mail.test_imap') }}:</span>
+                                <span x-text="testResult.imap.ok ? @js(__('mail.test_ok')) : (testResult.imap.error || @js(__('mail.test_failed')))" ::class="testResult.imap.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'"></span>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <x-icon ::name="!testResult.smtp.configured ? 'info' : (testResult.smtp.ok ? 'check-circle' : 'x-circle')" class="h-4 w-4 shrink-0" ::class="!testResult.smtp.configured ? 'text-gray-400' : (testResult.smtp.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')" />
+                            <div class="min-w-0">
+                                <span class="font-medium text-gray-700 dark:text-gray-300">{{ __('mail.test_smtp') }}:</span>
+                                <span x-text="!testResult.smtp.configured ? @js(__('mail.test_smtp_unconfigured')) : (testResult.smtp.ok ? @js(__('mail.test_ok')) : (testResult.smtp.error || @js(__('mail.test_failed'))))"
+                                    ::class="!testResult.smtp.configured ? 'text-gray-500 dark:text-gray-400' : (testResult.smtp.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400')"></span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
-            <div class="mt-5 flex justify-end gap-3">
-                <button type="button" @click="dialogOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
-                <button type="button" @click="saveAccount()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('mail.save') }}</button>
+            <div class="flex shrink-0 items-center justify-between gap-3 border-t border-gray-100 px-6 py-4 dark:border-gray-800">
+                <button type="button" @click="testAccount()" :disabled="testing" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+                    <x-icon name="arrow-path" class="h-4 w-4" ::class="testing && 'animate-spin'" />{{ __('mail.test_connection') }}
+                </button>
+                <div class="flex gap-3">
+                    <button type="button" @click="dialogOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="saveAccount()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('mail.save') }}</button>
+                </div>
             </div>
         </div>
     </div>

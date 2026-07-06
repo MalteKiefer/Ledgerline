@@ -3811,6 +3811,8 @@ Alpine.data('vaultMail', (labels = {}) => ({
     form: { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true, smtp_host: '', smtp_port: '', smtp_encryption: 'starttls', smtp_username: '', smtp_password: '', from_name: '', reply_to: '', signature: '', hasSmtpPassword: false },
     deleteOpen: false,
     deleteId: null,
+    testing: false,
+    testResult: null, // { imap:{ok,error}, smtp:{ok,error,configured} }
     // Identity management (inside the account edit dialog).
     identityForm: { open: false, id: null, from_name: '', from_email: '', reply_to: '', signature: '', is_default: false, error: '' },
     cacheVersion: 0, // bumped on background sync to re-read cached stats
@@ -4134,6 +4136,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         this.form = { name: '', host: '', port: 993, encryption: 'ssl', username: '', password: '', validateCert: true, smtp_host: '', smtp_port: '', smtp_encryption: 'starttls', smtp_username: '', smtp_password: '', from_name: '', reply_to: '', signature: '', hasSmtpPassword: false };
         this.error = '';
         this.identityForm.open = false;
+        this.testResult = null;
         this.dialogOpen = true;
     },
 
@@ -4149,6 +4152,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
             reply_to: a.replyTo ?? '', signature: a.signature ?? '', hasSmtpPassword: !! a.hasSmtpPassword,
         };
         this.error = '';
+        this.testResult = null;
         this.dialogOpen = true;
     },
 
@@ -4176,6 +4180,30 @@ Alpine.data('vaultMail', (labels = {}) => ({
             this.dialogOpen = false;
         } catch (e) { this.error = labels.saveFailed; }
     },
+
+    // Test the IMAP + SMTP connection for the current dialog fields (no save).
+    async testAccount() {
+        const f = this.form;
+        if (! f.host.trim() || ! f.username.trim()) { this.error = labels.saveFailed; return; }
+        this.testing = true; this.testResult = null; this.error = '';
+        const body = {
+            account_id: this.editingId || null,
+            name: f.name.trim() || f.host.trim(), host: f.host.trim(), port: Number(f.port) || 993,
+            encryption: f.encryption, username: f.username.trim(), password: f.password, validate_cert: !! f.validateCert,
+            smtp_host: f.smtp_host?.trim() || null, smtp_port: f.smtp_port ? Number(f.smtp_port) : null,
+            smtp_encryption: f.smtp_encryption || null, smtp_username: f.smtp_username?.trim() || null,
+            smtp_password: f.smtp_password || null,
+        };
+        try {
+            const res = await fetch('/mail/accounts/test', { method: 'POST', headers: this._headers(), body: JSON.stringify(body) });
+            if (! res.ok) { this.error = labels.saveFailed; return; }
+            this.testResult = await res.json();
+        } catch (e) { this.error = labels.saveFailed; } finally { this.testing = false; }
+    },
+
+    // Standard IMAP/SMTP ports per encryption, so switching sets a sane default.
+    imapPortFor(enc) { return enc === 'starttls' ? 143 : 993; },
+    smtpPortFor(enc) { return enc === 'ssl' ? 465 : (enc === 'none' ? 25 : 587); },
 
     // ---- Sender identities (inside the account edit dialog) -----------------
     // The account being edited; identities are read/written through it.
