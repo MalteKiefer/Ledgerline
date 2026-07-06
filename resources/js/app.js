@@ -5550,3 +5550,11 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').catch(() => {});
     });
 }
+
+// Theme "system": follow OS scheme changes live (the head bootstrap only ran
+// at load). Explicit light/dark settings ignore the OS.
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (document.documentElement.dataset.theme === 'system') {
+        document.documentElement.classList.toggle('dark', e.matches);
+    }
+});

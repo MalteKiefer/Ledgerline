@@ -9,13 +9,13 @@
 --}}
 @php
     $initial = strtoupper(mb_substr($user->name ?? '?', 0, 1));
-    $initialClasses = $size.' inline-flex items-center justify-center rounded-full bg-gray-300 text-sm font-medium text-gray-700';
+    $initialClasses = $size.' inline-flex items-center justify-center rounded-full bg-gray-300 text-sm font-medium text-gray-700 dark:text-gray-300';
 @endphp
 
 @if (! empty($user->avatar))
     <span x-data="{ broken: false }" class="inline-flex">
         <img src="{{ route('profile.avatar') }}" alt="{{ $user->name }}" x-on:error="broken = true" x-show="! broken"
-            {{ $attributes->merge(['class' => $size.' rounded-full bg-gray-200 object-cover']) }}>
+            {{ $attributes->merge(['class' => $size.' rounded-full bg-gray-200 dark:bg-gray-700 object-cover']) }}>
         <span x-show="broken" x-cloak aria-hidden="true" class="{{ $initialClasses }}">{{ $initial }}</span>
     </span>
 @else

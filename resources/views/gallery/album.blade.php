@@ -25,8 +25,8 @@
         <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="flex items-center gap-2">
-                    <a href="{{ route('gallery.albums') }}" class="text-gray-400 hover:text-gray-700"><x-icon name="chevron-left" class="h-5 w-5" /></a>
-                    <h1 class="text-2xl font-semibold text-gray-900" x-text="album.name"></h1>
+                    <a href="{{ route('gallery.albums') }}" class="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="chevron-left" class="h-5 w-5" /></a>
+                    <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100" x-text="album.name"></h1>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <x-button variant="secondary" icon="plus" x-show="album.can_edit" @click="openPicker()">{{ __('gallery.album_add_photos') }}</x-button>
@@ -37,12 +37,12 @@
             </div>
 
             <template x-if="!loading && !photos.length">
-                <div class="mt-8 rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500">{{ __('gallery.album_empty') }}</div>
+                <div class="mt-8 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.album_empty') }}</div>
             </template>
 
             <div class="mt-6 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
                 <template x-for="ph in photos" :key="ph.id">
-                    <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100">
+                    <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
                         <a :href="'/gallery/' + ph.id + '/original'"><img :src="ph.thumb" alt="" class="h-full w-full object-cover" loading="lazy"></a>
                         <button type="button" x-show="album.can_edit" @click="removePhoto(ph.id)"
                             class="absolute right-1 top-1 hidden rounded-full bg-gray-900/80 p-1 text-white group-hover:block" title="{{ __('gallery.album_remove') }}">
@@ -58,10 +58,10 @@
         {{-- Add-photos picker --}}
         <div x-show="picker.open" x-cloak class="fixed inset-0 z-[65] flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="picker.open=false">
             <div class="absolute inset-0 bg-gray-900/50" @click="picker.open=false"></div>
-            <div class="relative my-10 w-full max-w-2xl rounded-lg bg-white p-5 shadow-xl">
+            <div class="relative my-10 w-full max-w-2xl rounded-lg bg-white dark:bg-gray-900 p-5 shadow-xl">
                 <div class="flex items-center justify-between">
-                    <h3 class="text-base font-semibold text-gray-900">{{ __('gallery.album_add_photos') }}</h3>
-                    <button type="button" @click="picker.open=false" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.album_add_photos') }}</h3>
+                    <button type="button" @click="picker.open=false" class="text-gray-400 dark:text-gray-500 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
                 </div>
                 <div class="mt-4 grid max-h-[60vh] grid-cols-4 gap-2 overflow-y-auto sm:grid-cols-6">
                     <template x-for="p in picker.list" :key="p.id">
@@ -82,7 +82,7 @@
         {{-- Rename modal --}}
         <div x-show="renameModal.open" x-cloak class="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4" @keydown.escape.window="renameModal.open=false">
             <div class="absolute inset-0 bg-gray-900/40" @click="renameModal.open=false"></div>
-            <div class="relative my-16 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+            <div class="relative my-16 w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-5 shadow-xl">
                 <form @submit.prevent="saveRename()">
                     <input x-model="renameModal.value" class="w-full rounded-md border-gray-300 text-sm">
                     <div class="mt-4 flex justify-end gap-2">

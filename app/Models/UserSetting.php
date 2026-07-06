@@ -31,6 +31,7 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_columns',
     'file_max_versions',
     'mail_sync_minutes',
+    'theme',
 ])]
 class UserSetting extends Model
 {
@@ -51,6 +52,7 @@ class UserSetting extends Model
         'gallery_columns' => 6,
         'file_max_versions' => 10,
         'mail_sync_minutes' => 5,
+        'theme' => 'system',
     ];
 
     protected function casts(): array

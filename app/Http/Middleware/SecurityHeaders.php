@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Support\ThemeBootstrap;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -78,11 +79,11 @@ final class SecurityHeaders
             "object-src 'self' blob:",
             "frame-ancestors 'none'",
             "form-action 'self'",
-            // No inline scripts or event handlers are emitted anywhere, so
-            // 'unsafe-inline' is dropped. 'unsafe-eval' remains because stock
-            // Alpine evaluates x-* expressions via the Function constructor;
-            // cross-origin scripts stay forbidden ('self' only).
-            "script-src 'self' 'unsafe-eval'",
+            // The only inline script is the theme bootstrap (allowed via its
+            // exact hash), so 'unsafe-inline' stays dropped. 'unsafe-eval'
+            // remains because stock Alpine evaluates x-* expressions via the
+            // Function constructor; cross-origin scripts stay forbidden.
+            "script-src 'self' 'unsafe-eval' ".ThemeBootstrap::cspHash(),
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: blob: https:",
             "font-src 'self' data:",

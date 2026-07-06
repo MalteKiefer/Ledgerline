@@ -12,11 +12,11 @@
         <label class="mb-3 flex w-max cursor-pointer items-center gap-2">
             <input type="checkbox" @click="toggleDay('{{ $day }}')" :checked="dayFullySelected('{{ $day }}')"
                 class="rounded border-gray-300 text-gray-800 focus:ring-gray-500" aria-label="{{ __('gallery.select_day') }}">
-            <span class="text-sm font-semibold text-gray-700">{{ \Illuminate\Support\Carbon::parse($day)->isoFormat('LL') }}</span>
+            <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">{{ \Illuminate\Support\Carbon::parse($day)->isoFormat('LL') }}</span>
         </label>
         <div class="grid gap-2 grid-cols-3 sm:[grid-template-columns:repeat(var(--gallery-cols,6),minmax(0,1fr))]" data-day-grid>
             @foreach ($dayPhotos as $photo)
-                <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100">
+                <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
                     @if ($photo->isReady())
                         <button type="button" data-photo
                             data-id="{{ $photo->id }}"
@@ -76,12 +76,12 @@
                                 ])>@if ($photo->isFavorite())<x-icon name="heart-solid" />@else<x-icon name="heart" />@endif</button>
                         </form>
                     @elseif ($photo->status === 'failed')
-                        <div class="flex h-full w-full items-center justify-center bg-red-50 text-center text-xs text-red-500">{{ __('gallery.failed') }}</div>
+                        <div class="flex h-full w-full items-center justify-center bg-red-50 dark:bg-red-950 text-center text-xs text-red-500">{{ __('gallery.failed') }}</div>
                         <input type="checkbox" value="{{ $photo->id }}" data-select
                             @click="toggleSelect($event, {{ $photo->id }})" :checked="selected.includes({{ $photo->id }})"
                             class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 focus:ring-gray-500">
                     @else
-                        <div class="flex h-full w-full animate-pulse items-center justify-center bg-gray-200 text-xs text-gray-400">{{ __('gallery.processing') }}</div>
+                        <div class="flex h-full w-full animate-pulse items-center justify-center bg-gray-200 dark:bg-gray-700 text-xs text-gray-400 dark:text-gray-500">{{ __('gallery.processing') }}</div>
                         <input type="checkbox" value="{{ $photo->id }}" data-select
                             @click="toggleSelect($event, {{ $photo->id }})" :checked="selected.includes({{ $photo->id }})"
                             class="absolute left-1.5 top-1.5 rounded border-gray-300 text-gray-800 opacity-0 focus:ring-gray-500 group-hover:opacity-100"

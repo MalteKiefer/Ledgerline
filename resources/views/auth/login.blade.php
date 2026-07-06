@@ -1,12 +1,12 @@
 <x-layouts.guest :title="__('pages.login.title')">
-    <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 class="text-center text-xl font-semibold text-gray-900">Ledgerline</h1>
-        <p class="mt-2 text-center text-sm text-gray-600">
+    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+        <h1 class="text-center text-xl font-semibold text-gray-900 dark:text-gray-100">Ledgerline</h1>
+        <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
             {{ __('pages.login.subtitle') }}
         </p>
 
         @error('pocketid')
-            <div class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300"
                 role="alert">
                 {{ $message }}
             </div>

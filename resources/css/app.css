@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Class-driven dark mode: `dark:` utilities apply inside <html class="dark">.
+   The class is set server-side (user setting) or by the theme bootstrap script
+   when the setting is "system". */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Locally-bundled form-control base styles (no CDN). Gives inputs, selects and
    textareas consistent padding, borders and focus rings. */
 @plugin '@tailwindcss/forms';
@@ -10,6 +15,25 @@
 /* Hide Alpine-controlled elements until Alpine has initialised them. */
 [x-cloak] {
     display: none !important;
+}
+
+/* Dark mode base: native dark widgets (scrollbars, date pickers) and one
+   global override for form controls so every input/select/textarea in the
+   app inherits dark styling without per-element utility classes. */
+.dark {
+    color-scheme: dark;
+}
+.dark :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']), select, textarea) {
+    background-color: var(--color-gray-800);
+    border-color: var(--color-gray-700);
+    color: var(--color-gray-100);
+}
+.dark :is(input, select, textarea)::placeholder {
+    color: var(--color-gray-500);
+}
+.dark input[type='checkbox'] {
+    background-color: var(--color-gray-800);
+    border-color: var(--color-gray-600);
 }
 
 /*
