@@ -88,7 +88,7 @@
                             <div class="flex items-start justify-center border-b border-r border-gray-100 dark:border-gray-800 pt-1 text-[11px] text-gray-400 dark:text-gray-500" x-text="wk.week"></div>
                         </template>
                         <template x-for="(d,i) in wk.days" :key="'d'+wi+'-'+i">
-                            <div @click="openNew(d)"
+                            <div @click="openNew(d)" :data-date="ymd(d)"
                                 class="min-h-[92px] cursor-pointer border-b border-r border-gray-100 dark:border-gray-800 p-1 last:border-r-0 hover:bg-gray-50 dark:hover:bg-gray-800"
                                 :class="inMonth(d)?'':'bg-gray-50/60 dark:bg-gray-950/60'">
                                 <div class="text-right">
@@ -98,8 +98,9 @@
                                 </div>
                                 <div class="mt-0.5 space-y-0.5">
                                     <template x-for="e in eventsOn(d).slice(0,3)" :key="e.id+'-'+e.instance">
-                                        <button @click.stop="openEditor(e.id)"
+                                        <button @click.stop="evClick(e.id)" @pointerdown="monthDragStart($event, e)"
                                             class="block w-full truncate rounded px-1 py-0.5 text-left text-[11px] text-white"
+                                            :class="draggable(e) && 'cursor-grab'"
                                             :style="`background:${e.color}`">
                                             <span x-show="!e.all_day" x-text="fmtTime(e.start)+' '"></span><span x-text="e.title||'—'"></span>
                                         </button>
@@ -152,9 +153,13 @@
                                             <div class="absolute inset-x-0 border-t border-gray-100 dark:border-gray-800" :style="`top:${h*hourPx}px`"></div>
                                         </template>
                                         <template x-for="e in timedEventsOn(d)" :key="e.id+'-'+e.instance">
-                                            <button @click.stop="openEditor(e.id)" class="absolute inset-x-0.5 overflow-hidden rounded px-1 text-left text-[10px] leading-tight text-white" :style="eventStyle(e)+`;background:${e.color}`">
+                                            <button @click.stop="evClick(e.id)" @pointerdown.stop="dragStart($event, e)"
+                                                class="absolute inset-x-0.5 select-none overflow-hidden rounded px-1 text-left text-[10px] leading-tight text-white"
+                                                :class="draggable(e) && (drag?.e===e ? 'cursor-grabbing opacity-80 ring-1 ring-white/60' : 'cursor-grab')"
+                                                :style="eventStyle(e)+`;background:${e.color}`">
                                                 <span class="font-medium" x-text="fmtTime(e.start)"></span>
                                                 <span class="block truncate" x-text="e.title||'—'"></span>
+                                                <span x-show="draggable(e)" class="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"></span>
                                             </button>
                                         </template>
                                     </div>
@@ -189,9 +194,13 @@
                                 <div class="absolute inset-x-0 border-t border-gray-100 dark:border-gray-800" :style="`top:${h*hourPx}px`"></div>
                             </template>
                             <template x-for="e in timedEventsOn(cursor)" :key="e.id+'-'+e.instance">
-                                <button @click.stop="openEditor(e.id)" class="absolute inset-x-1 overflow-hidden rounded px-1.5 text-left text-xs leading-tight text-white" :style="eventStyle(e)+`;background:${e.color}`">
+                                <button @click.stop="evClick(e.id)" @pointerdown.stop="dragStart($event, e)"
+                                    class="absolute inset-x-1 select-none overflow-hidden rounded px-1.5 text-left text-xs leading-tight text-white"
+                                    :class="draggable(e) && (drag?.e===e ? 'cursor-grabbing opacity-80 ring-1 ring-white/60' : 'cursor-grab')"
+                                    :style="eventStyle(e)+`;background:${e.color}`">
                                     <span class="font-medium" x-text="fmtTime(e.start)"></span>
                                     <span class="block truncate" x-text="e.title||'—'"></span>
+                                    <span x-show="draggable(e)" class="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"></span>
                                 </button>
                             </template>
                         </div>

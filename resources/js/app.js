@@ -1110,6 +1110,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         return `top:${top}px;height:${height}px`;
     },
     openNewAt(d, ev) {
+        if (this._suppressClick) return; // tail end of a drag, not a click
         if (! this.calendars.some((c) => ! c.read_only)) return;
         const rect = ev.currentTarget.getBoundingClientRect();
         let min = Math.round(((ev.clientY - rect.top) / this.hourPx * 60) / 15) * 15;
@@ -1120,6 +1121,106 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         const writable = this.calendars.find((c) => ! c.read_only);
         this.form = { id: null, calendar_id: writable?.id, summary: '', start: fmt(start), end: fmt(end), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminder_minutes: '', read_only: false };
         this.editor = true;
+    },
+
+    // ---- drag & drop (move/resize; mouse + pen — touch keeps scrolling) ----
+    drag: null, _suppressClick: false,
+
+    draggable(e) {
+        if (e.recurring) return false; // series need RECURRENCE-ID exceptions
+        const cal = this.calendars.find((c) => c.id === e.calendar_id);
+        return !! cal && ! cal.read_only;
+    },
+    /** 'YYYY-MM-DD HH:MM:00' local wall-clock (matches the data feed format). */
+    fmtLocal(d) {
+        return `${this.ymd(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
+    },
+    /** Open the editor unless the click is the tail end of a drag. */
+    evClick(id) { if (! this._suppressClick) this.openEditor(id); },
+
+    /** Week/day hour grids: drag body = move (week: across days too), drag the
+        bottom edge = resize. Snaps to 15 minutes. */
+    dragStart(ev, e) {
+        if (ev.pointerType === 'touch' || ev.button !== 0 || ! this.draggable(e)) return;
+        const el = ev.currentTarget;
+        const rect = el.getBoundingClientRect();
+        const start = this.parse(e.start);
+        this.drag = {
+            e, mode: ev.clientY > rect.bottom - 8 ? 'resize' : 'move',
+            startX: ev.clientX, startY: ev.clientY,
+            colWidth: el.parentElement.getBoundingClientRect().width,
+            week: this.view === 'week',
+            origStart: start,
+            origEnd: e.end ? this.parse(e.end) : new Date(start.getTime() + this.defaultMinutes * 60000),
+            moved: false,
+        };
+        const move = (m) => this.dragMove(m);
+        const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); this.dragEnd(); };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    },
+    dragMove(ev) {
+        const d = this.drag; if (! d) return;
+        const dy = ev.clientY - d.startY;
+        const dx = ev.clientX - d.startX;
+        if (! d.moved && Math.abs(dy) < 4 && Math.abs(dx) < 4) return;
+        d.moved = true;
+        const stepMin = Math.round((dy / this.hourPx * 60) / 15) * 15;
+        const dayShift = d.week ? Math.round(dx / d.colWidth) : 0;
+        if (d.mode === 'move') {
+            const dur = d.origEnd - d.origStart;
+            const ns = new Date(d.origStart.getTime() + stepMin * 60000 + dayShift * 86400000);
+            d.e.start = this.fmtLocal(ns);
+            d.e.end = this.fmtLocal(new Date(ns.getTime() + dur));
+        } else {
+            let ne = new Date(d.origEnd.getTime() + stepMin * 60000);
+            if (ne - d.origStart < 15 * 60000) ne = new Date(d.origStart.getTime() + 15 * 60000);
+            d.e.end = this.fmtLocal(ne);
+        }
+    },
+    async dragEnd() {
+        const d = this.drag; this.drag = null;
+        if (! d || ! d.moved) return; // plain click -> evClick opens the editor
+        this._suppressClick = true;
+        setTimeout(() => { this._suppressClick = false; }, 50);
+        try {
+            await this._json(cfg.eventBase + '/' + d.e.id + '/move', 'PATCH', { start: d.e.start, end: d.e.end });
+        } finally { this.load(); } // reload reconciles (or reverts on failure)
+    },
+
+    /** Month grid: drag a chip onto another day cell; time and duration are
+        kept, only the date shifts. */
+    monthDragStart(ev, e) {
+        if (ev.pointerType === 'touch' || ev.button !== 0 || ! this.draggable(e)) return;
+        const d = { e, startX: ev.clientX, startY: ev.clientY, moved: false };
+        const move = (m) => {
+            if (! d.moved && (Math.abs(m.clientX - d.startX) > 4 || Math.abs(m.clientY - d.startY) > 4)) {
+                d.moved = true;
+                document.body.style.cursor = 'grabbing';
+            }
+        };
+        const up = async (u) => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            document.body.style.cursor = '';
+            if (! d.moved) return;
+            this._suppressClick = true;
+            setTimeout(() => { this._suppressClick = false; }, 50);
+            const cell = document.elementFromPoint(u.clientX, u.clientY)?.closest('[data-date]');
+            if (! cell) return;
+            const from = this.ymd(this.parse(d.e.start));
+            const to = cell.dataset.date;
+            if (from === to) return;
+            const shift = this.parse(to) - this.parse(from);
+            const ns = new Date(this.parse(d.e.start).getTime() + shift);
+            const ne = d.e.end ? new Date(this.parse(d.e.end).getTime() + shift) : null;
+            const fmt = (x) => (d.e.all_day ? this.ymd(x) : this.fmtLocal(x));
+            try {
+                await this._json(cfg.eventBase + '/' + d.e.id + '/move', 'PATCH', { start: fmt(ns), end: ne ? fmt(ne) : null });
+            } finally { this.load(); }
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
     },
 
     // ---- formatting (locale-aware) -----------------------------------------
@@ -1147,6 +1248,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     },
 
     openNew(d) {
+        if (this._suppressClick) return; // tail end of a drag, not a click
         if (! this.calendars.some((c) => ! c.read_only)) return;
         this.form = this.blank(d); this.editor = true;
     },
