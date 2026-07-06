@@ -156,6 +156,27 @@ class ContactsFeatureTest extends TestCase
         $this->get(route('contacts.view', $contact))->assertForbidden();
     }
 
+    public function test_show_links_a_gallery_person_when_one_is_linked(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Jane'])->assertStatus(201);
+        $contact = Contact::firstOrFail();
+
+        // No linked person -> null.
+        $this->getJson(route('contacts.show', $contact))->assertOk()->assertJsonPath('person', null);
+
+        $person = Person::create(['name' => 'Jane', 'contact_id' => $contact->id]);
+        $this->getJson(route('contacts.show', $contact))
+            ->assertOk()
+            ->assertJsonPath('person.id', $person->id)
+            ->assertJsonPath('person.url', route('gallery.people.show', $person));
+
+        // Hidden people do not surface.
+        $person->update(['hidden_at' => now()]);
+        $this->getJson(route('contacts.show', $contact))->assertOk()->assertJsonPath('person', null);
+    }
+
     public function test_geocode_is_owner_only_and_404s_without_an_address(): void
     {
         $user = $this->signIn();

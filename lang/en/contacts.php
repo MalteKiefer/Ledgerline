@@ -46,6 +46,7 @@ return [
         'back' => 'Back to contacts',
         'edit' => 'Edit',
         'saved' => 'Saved.',
+        'show_photos' => 'Show photos of this person',
         'website' => 'Website',
         'label_home' => 'Home',
         'label_work' => 'Work',

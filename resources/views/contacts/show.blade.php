@@ -36,6 +36,10 @@
                         <x-icon x-show="c.favorite" x-cloak name="star-solid" class="h-4 w-4 shrink-0 text-gray-500" />
                     </p>
                     <p class="truncate text-sm text-gray-500" x-text="[c.org, c.title].filter(Boolean).join(' · ')"></p>
+                    <a x-show="c.person" x-cloak :href="c.person?.url"
+                        class="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 underline hover:text-gray-900">
+                        <x-icon name="photo" class="h-3.5 w-3.5" />{{ __('contacts.ui.show_photos') }}
+                    </a>
                 </div>
             </div>
 

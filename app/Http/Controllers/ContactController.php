@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
+use App\Models\Person;
 use App\Models\UserSetting;
 use App\Services\Contacts\ContactImporter;
 use App\Services\Contacts\ContactWriter;
@@ -172,9 +173,19 @@ class ContactController extends Controller
         $data = $vcards->parse($contact->vcard);
         $data['related'] = $this->resolveRelated($data['related'] ?? []);
 
+        // A gallery person linked to this card (people.contact_id) lets the
+        // detail page offer "show this person's photos".
+        $person = Person::query()->where('contact_id', $contact->id)
+            ->whereNull('hidden_at')->orderByDesc('faces_count')->first();
+
         return response()->json(array_merge(
             $data,
-            ['id' => $contact->id, 'book' => $contact->address_book_id, 'group_ids' => $contact->groups()->pluck('contact_groups.id')],
+            [
+                'id' => $contact->id,
+                'book' => $contact->address_book_id,
+                'group_ids' => $contact->groups()->pluck('contact_groups.id'),
+                'person' => $person ? ['id' => $person->id, 'url' => route('gallery.people.show', $person)] : null,
+            ],
         ));
     }
 
