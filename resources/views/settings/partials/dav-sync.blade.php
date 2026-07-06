@@ -18,7 +18,7 @@
     @if ($credential === null)
         <form method="POST" action="{{ route('settings.contacts.generate') }}" class="mt-4">
             @csrf
-            <x-button variant="primary">{{ __('contacts.enable') }}</x-button>
+            <x-button type="submit" variant="primary">{{ __('contacts.enable') }}</x-button>
         </form>
     @else
         <dl class="mt-4 grid gap-2 text-sm sm:grid-cols-[8rem_1fr]">
@@ -48,7 +48,7 @@
 
         <form method="POST" action="{{ route('settings.contacts.generate') }}" class="mt-5">
             @csrf
-            <x-button variant="secondary">{{ __('contacts.regenerate') }}</x-button>
+            <x-button type="submit" variant="secondary">{{ __('contacts.regenerate') }}</x-button>
         </form>
     @endif
 </section>
