@@ -75,6 +75,7 @@ return [
         'map_title' => 'Address on map',
         'map_not_found' => 'Address could not be located.',
         'map_open_osm' => 'Open in OpenStreetMap',
+        'map_chooser_title' => 'Open address in a new window with',
         'related' => 'Related contacts',
         'related_add' => 'Relation',
         'related_name' => 'Name or contact',

@@ -803,6 +803,30 @@ Alpine.data('contactViewPage', (cfg = {}) => ({
         this.loadGeos();
     },
 
+    // --- external map provider chooser (click on the address text) ---
+    mapChooser: { open: false, index: null },
+    openMapChooser(i) { this.mapChooser = { open: true, index: i }; },
+    providerUrl(p) {
+        const i = this.mapChooser.index;
+        const a = (this.c.addresses || [])[i] || {};
+        const g = this.geo[i];
+        const q = encodeURIComponent(this.addressLines(a).replace(/\n/g, ', '));
+        // Prefer the geocoded coordinates when we have them; fall back to a
+        // free-text search with the formatted address.
+        switch (p) {
+            case 'apple': return g ? `https://maps.apple.com/?ll=${g.lat},${g.lon}&q=${q}` : `https://maps.apple.com/?q=${q}`;
+            case 'google': return g ? `https://www.google.com/maps/search/?api=1&query=${g.lat}%2C${g.lon}` : `https://www.google.com/maps/search/?api=1&query=${q}`;
+            case 'here': return g ? `https://wego.here.com/?map=${g.lat},${g.lon},16` : `https://wego.here.com/search/${q}`;
+            default: return g
+                ? `https://www.openstreetmap.org/?mlat=${g.lat}&mlon=${g.lon}#map=17/${g.lat}/${g.lon}`
+                : `https://www.openstreetmap.org/search?query=${q}`;
+        }
+    },
+    openProvider(p) {
+        window.open(this.providerUrl(p), '_blank', 'noopener');
+        this.mapChooser.open = false;
+    },
+
     // Geocode every address (cached server-side) and render a small static
     // map thumbnail beside it; clicking the thumbnail opens the big modal.
     async loadGeos() {

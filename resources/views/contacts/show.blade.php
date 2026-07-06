@@ -86,10 +86,10 @@
                         <dt class="text-xs text-gray-400">{{ __('contacts.ui.addresses') }}</dt>
                         <template x-for="(a,i) in c.addresses" :key="'ad'+i">
                             <dd class="mt-2 flex items-start justify-between gap-3">
-                                <div class="min-w-0">
-                                    <span class="block whitespace-pre-line text-gray-900" x-text="addressLines(a)"></span>
+                                <button type="button" @click="openMapChooser(i)" class="min-w-0 text-left" title="{{ __('contacts.ui.map_chooser_title') }}">
+                                    <span class="block whitespace-pre-line text-gray-900 hover:underline" x-text="addressLines(a)"></span>
                                     <span class="mt-0.5 block text-xs text-gray-400" x-text="label(a.type)"></span>
-                                </div>
+                                </button>
                                 <button type="button" x-show="geo[i]" x-cloak @click="showMap(i)"
                                     class="relative h-20 w-28 shrink-0 overflow-hidden rounded-md ring-1 ring-gray-200 hover:ring-gray-400"
                                     title="{{ __('contacts.ui.address_map') }}">
@@ -157,6 +157,27 @@
                     </div>
                 </template>
             </dl>
+        </div>
+
+        {{-- Map provider chooser (opens the address externally in a new window) --}}
+        <div x-show="mapChooser.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="mapChooser.open=false">
+            <div class="absolute inset-0 bg-gray-900/50" @click="mapChooser.open=false"></div>
+            <div class="relative my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900">{{ __('contacts.ui.map_chooser_title') }}</h3>
+                <div class="mt-4 space-y-1">
+                    {{-- Alphabetical: Apple Maps, Google Maps, HERE WeGo, OpenStreetMap --}}
+                    <template x-for="p in [['apple','Apple Maps'],['google','Google Maps'],['here','HERE WeGo'],['osm','OpenStreetMap']]" :key="p[0]">
+                        <button type="button" @click="openProvider(p[0])"
+                            class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">
+                            <x-icon name="map-pin" class="h-4 w-4 text-gray-400" />
+                            <span x-text="p[1]"></span>
+                        </button>
+                    </template>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button type="button" @click="mapChooser.open=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('contacts.ui.cancel') }}</button>
+                </div>
+            </div>
         </div>
 
         {{-- Address map preview --}}
