@@ -5518,3 +5518,11 @@ Alpine.data('bookmarks', (labels = {}) => ({
 }));
 
 Alpine.start();
+
+// PWA: register the service worker (network-first navigations with an offline
+// fallback; hashed build assets cached). Registration failures are non-fatal.
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+}
