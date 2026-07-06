@@ -445,9 +445,9 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         this.load();
     },
 
-    /** The editor lives on its own page now; the list only navigates there. */
+    /** Rows open the read-only detail page; "new" goes straight to the editor. */
     openEditor(id) {
-        window.location.href = id ? cfg.contactBase + '/' + id + '/edit' : cfg.createUrl;
+        window.location.href = id ? cfg.contactBase + '/' + id + '/view' : cfg.createUrl;
     },
 
     async toggleFavorite(c) {
@@ -541,22 +541,26 @@ Alpine.data('contactEditorPage', (cfg = {}) => ({
         this.form = {
             id: d.id, book_id: d.book, fn: d.fn || '', first_name: d.first_name || '', last_name: d.last_name || '',
             org: d.org || '', title: d.title || '', nickname: d.nickname || '', bday: d.bday || '', anniversaries: d.anniversaries || [], note: d.note || '',
-            emails: d.emails?.length ? d.emails : [{ value: '', type: 'home' }],
-            phones: d.phones?.length ? d.phones : [{ value: '', type: 'cell' }],
-            urls: d.urls || [], group_ids: d.group_ids || [],
+            // Imported TYPE params can be compounds like "HOME,pref" or
+            // "CELL,VOICE" — normalise to the label selects' options.
+            emails: d.emails?.length ? d.emails.map((e) => ({ value: e.value || '', type: this.typeToken(e.type, 'home') })) : [{ value: '', type: 'home' }],
+            phones: d.phones?.length ? d.phones.map((p) => ({ value: p.value || '', type: this.typeToken(p.type, 'cell', true) })) : [{ value: '', type: 'cell' }],
+            urls: (d.urls || []).map((u) => ({ value: u.value || '', type: this.typeToken(u.type, 'home') })),
+            group_ids: d.group_ids || [],
             avatar: d.photo || null, // parse() returns the PHOTO data: URI directly
-            // Imported TYPE params can be compounds like "HOME,pref" — normalise
-            // to the editor's home/work/other options so the select has a match.
-            addresses: (d.addresses || []).map((a) => ({ type: this.addressType(a.type), street: a.street || '', ext: a.ext || '', zip: a.zip || '', city: a.city || '', region: a.region || '', country: a.country || '' })),
+            addresses: (d.addresses || []).map((a) => ({ type: this.typeToken(a.type, 'home'), street: a.street || '', ext: a.ext || '', zip: a.zip || '', city: a.city || '', region: a.region || '', country: a.country || '' })),
             related: (d.related || []).map((r) => ({ type: r.type || 'other', name: r.name || r.value || '', uid: r.uid || null })),
             custom_fields: (d.custom_fields || []).map((f) => ({ label: f.label || '', value: f.value || '' })),
             favorite: !! d.favorite,
         };
     },
 
-    addressType(raw) {
-        const t = (raw || 'home').toLowerCase();
-        return t.includes('work') ? 'work' : (t.includes('home') ? 'home' : 'other');
+    typeToken(raw, def = 'other', allowCell = false) {
+        const t = (raw || '').toLowerCase();
+        if (allowCell && (t.includes('cell') || t.includes('mobile'))) return 'cell';
+        if (t.includes('work')) return 'work';
+        if (t.includes('home')) return 'home';
+        return t ? 'other' : def;
     },
 
     // --- group combobox (multi-select with autocomplete) ---
@@ -582,7 +586,7 @@ Alpine.data('contactEditorPage', (cfg = {}) => ({
             book_id: this.form.book_id, fn: this.form.fn, first_name: this.form.first_name, last_name: this.form.last_name,
             org: this.form.org, title: this.form.title, nickname: this.form.nickname, bday: this.form.bday, anniversaries: this.form.anniversaries.filter((a) => a.date), note: this.form.note,
             emails: this.form.emails.filter((e) => e.value), phones: this.form.phones.filter((p) => p.value),
-            urls: this.form.urls, group_ids: this.form.group_ids,
+            urls: this.form.urls.filter((u) => u.value), group_ids: this.form.group_ids,
             addresses: this.form.addresses.filter((a) => (a.street + a.ext + a.zip + a.city + a.region + a.country).trim() !== ''),
             // A linked relation travels by the target card's UID; free text by name.
             related: this.form.related
@@ -594,9 +598,17 @@ Alpine.data('contactEditorPage', (cfg = {}) => ({
     },
 
     async save() {
-        const id = this.form.id;
-        await this._json(id ? cfg.contactBase + '/' + id : cfg.storeUrl, id ? 'PUT' : 'POST', this.payload());
-        window.location.href = cfg.indexUrl;
+        // Saving keeps the editor open: an update reloads the (normalised)
+        // card in place, a new contact moves to its edit URL.
+        if (this.saving) return;
+        this.saving = true;
+        try {
+            const id = this.form.id;
+            const res = await this._json(id ? cfg.contactBase + '/' + id : cfg.storeUrl, id ? 'PUT' : 'POST', this.payload());
+            const d = await res.json().catch(() => ({}));
+            if (! id && d.id) { window.location.href = cfg.contactBase + '/' + d.id + '/edit'; return; }
+            if (id && res.ok) { await this.loadContact(id); window.llToast?.(cfg.savedToast); }
+        } finally { this.saving = false; }
     },
 
     async destroy() {
@@ -749,6 +761,89 @@ Alpine.data('contactEditorPage', (cfg = {}) => ({
     async _json(url, method, body) {
         return apiJson(url, method, body, cfg.token);
     },
+}));
+
+/**
+ * Read-only contact detail page (/contacts/{id}/view). Shows every card field
+ * Google-style; editing happens on the separate edit page. Hosts the same
+ * per-address map preview as the editor.
+ */
+Alpine.data('contactViewPage', (cfg = {}) => ({
+    cfg,
+    c: { emails: [], phones: [], urls: [], addresses: [], related: [], custom_fields: [], anniversaries: [], group_ids: [] },
+    groups: [],
+    mapModal: { open: false, loading: false, error: false, display: '', osmUrl: '' }, _map: null,
+
+    async init() {
+        const r = await fetch(cfg.contactBase + '/' + cfg.contactId, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        if (! r.ok) { window.location.href = cfg.indexUrl; return; }
+        this.c = await r.json();
+        try {
+            const g = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (g.ok) this.groups = (await g.json()).groups ?? [];
+        } catch (e) { /* groups stay empty */ }
+    },
+
+    displayName() {
+        const name = `${this.c.first_name || ''} ${this.c.last_name || ''}`.trim();
+        return name || this.c.fn || '—';
+    },
+    initials() {
+        const letters = (((this.c.first_name || '')[0] || '') + ((this.c.last_name || '')[0] || '')).toUpperCase();
+        return letters || ((this.c.fn || '').trim()[0] || '').toUpperCase();
+    },
+    label(raw) {
+        const t = (raw || '').toLowerCase();
+        const token = (t.includes('cell') || t.includes('mobile')) ? 'cell'
+            : t.includes('work') ? 'work' : t.includes('home') ? 'home' : (t ? 'other' : '');
+        return token ? (cfg.labels[token] || '') : '';
+    },
+    relatedLabel(t) { return cfg.relatedTypes[(t || '').toLowerCase()] || (t || ''); },
+    addressLines(a) {
+        return [
+            [a.street, a.ext].filter(Boolean).join(', '),
+            [a.zip, a.city].filter(Boolean).join(' '),
+            a.region,
+            a.country,
+        ].filter(Boolean).join('\n');
+    },
+    prettyDate(d) {
+        const parsed = new Date(d);
+        return isNaN(parsed) ? (d || '') : parsed.toLocaleDateString();
+    },
+    groupNames() {
+        return (this.c.group_ids || []).map((id) => this.groups.find((g) => g.id === id)?.name).filter(Boolean);
+    },
+
+    async showMap(i) {
+        this.mapModal = { open: true, loading: true, error: false, display: '', osmUrl: '' };
+        this.destroyMap();
+        try {
+            const u = new URL(cfg.contactBase + '/' + cfg.contactId + '/geo', location.origin);
+            u.searchParams.set('address', i);
+            const r = await fetch(u, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! r.ok) { this.mapModal.loading = false; this.mapModal.error = true; return; }
+            const d = await r.json();
+            this.mapModal.loading = false;
+            this.mapModal.display = d.display;
+            this.mapModal.osmUrl = `https://www.openstreetmap.org/?mlat=${d.lat}&mlon=${d.lon}#map=17/${d.lat}/${d.lon}`;
+            const L = await loadLeaflet();
+            await this.$nextTick();
+            const el = this.$refs.contactMap;
+            if (! el || ! this.mapModal.open) return;
+            this._map = L.map(el).setView([d.lat, d.lon], 16);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+            }).addTo(this._map);
+            L.marker([d.lat, d.lon]).addTo(this._map);
+            setTimeout(() => this._map?.invalidateSize(), 50);
+        } catch (e) {
+            this.mapModal.loading = false;
+            this.mapModal.error = true;
+        }
+    },
+    closeMap() { this.mapModal.open = false; this.destroyMap(); },
+    destroyMap() { if (this._map) { this._map.remove(); this._map = null; } },
 }));
 
 /**
