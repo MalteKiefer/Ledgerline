@@ -157,6 +157,26 @@ class MailIdentitiesTest extends TestCase
         $this->assertStringContainsString('noreply@example.com', (string) $raw);
     }
 
+    public function test_sending_accepts_string_ids_from_the_client(): void
+    {
+        // The compose client posts ids as JSON strings; the integer rule lets
+        // them through uncast, which used to TypeError on the typed helper.
+        $user = $this->signIn();
+        $account = $this->makeAccount($user);
+        $identity = $account->identities()->create(['from_email' => 'me@example.com', 'is_default' => true]);
+
+        $this->mock(MailSource::class, function ($mock): void {
+            $mock->shouldReceive('appendMessage');
+        });
+
+        $this->postJson(route('mail.draft'), [
+            'account_id' => (string) $account->id,
+            'identity_id' => (string) $identity->id,
+            'to' => ['someone@example.com'],
+            'subject' => 'Hi', 'body' => 'Body',
+        ])->assertOk()->assertJsonPath('ok', true);
+    }
+
     public function test_sending_with_a_foreign_identity_is_rejected(): void
     {
         $user = $this->signIn();
