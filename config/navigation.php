@@ -13,7 +13,6 @@ return [
     // The five most-used destinations: direct links on desktop, the five slots
     // of the mobile bottom bar.
     'primary' => [
-        ['label' => 'messages.nav.mail', 'route' => 'mail.index', 'pattern' => 'mail.*', 'icon' => 'envelope'],
         ['label' => 'messages.nav.calendar', 'route' => 'calendar.index', 'pattern' => 'calendar.*', 'icon' => 'calendar'],
         ['label' => 'messages.nav.contacts', 'route' => 'contacts.index', 'pattern' => 'contacts.*', 'icon' => 'contacts'],
         ['label' => 'messages.nav.gallery', 'route' => 'gallery.index', 'pattern' => 'gallery.*', 'icon' => 'photo'],

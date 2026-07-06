@@ -5,7 +5,6 @@ use App\Support\UserData\CalendarData;
 use App\Support\UserData\ContactsData;
 use App\Support\UserData\FilesData;
 use App\Support\UserData\GalleryData;
-use App\Support\UserData\MailData;
 use App\Support\UserData\NotesData;
 use App\Support\UserData\PaperlessData;
 use App\Support\UserData\SettingsData;
@@ -22,7 +21,6 @@ return [
         CalendarData::class,
         FilesData::class,
         GalleryData::class,
-        MailData::class,
         PaperlessData::class,
         SettingsData::class,
     ],

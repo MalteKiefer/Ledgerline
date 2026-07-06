@@ -17,13 +17,6 @@ use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
-use App\Http\Controllers\MailAccountController;
-use App\Http\Controllers\MailArchiveController;
-use App\Http\Controllers\MailComposeController;
-use App\Http\Controllers\MailIdentityController;
-use App\Http\Controllers\MailReaderController;
-use App\Http\Controllers\MailSignatureController;
-use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NoteController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
@@ -38,7 +31,6 @@ use App\Http\Controllers\Settings\ContactsController as SettingsContactsControll
 use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
-use App\Http\Controllers\Settings\MailController as SettingsMailController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
 use App\Http\Controllers\Settings\RemindersController as SettingsRemindersController;
@@ -138,10 +130,6 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/gallery/detect-faces', [SettingsGalleryController::class, 'detectFaces'])->name('settings.gallery.detect-faces');
         Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
         Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
-
-        // Mail settings (accounts + background-sync interval).
-        Route::get('/settings/mail', [SettingsMailController::class, 'edit'])->name('settings.mail.edit');
-        Route::put('/settings/mail', [SettingsMailController::class, 'update'])->name('settings.mail.update');
 
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
@@ -353,56 +341,6 @@ Route::middleware('auth')->group(function (): void {
     Route::patch('/bookmarks/{bookmark}', [BookmarkController::class, 'patch'])->withTrashed()->name('bookmarks.patch');
     Route::delete('/bookmarks/{bookmark}', [BookmarkController::class, 'destroy'])->withTrashed()->name('bookmarks.destroy');
     Route::delete('/bookmarks/trash/all', [BookmarkController::class, 'emptyTrash'])->name('bookmarks.trash.empty');
-    Route::view('/mail', 'mail.index')->name('mail.index');
-    // Composing / sending over SMTP.
-    Route::post('/mail/send', [MailComposeController::class, 'send'])->middleware('throttle:60,1')->name('mail.send');
-    Route::post('/mail/draft', [MailComposeController::class, 'draft'])->middleware('throttle:60,1')->name('mail.draft');
-    // Recipient autocomplete from the user's contacts (name + email).
-    Route::get('/mail/recipients', [MailComposeController::class, 'recipients'])->middleware('throttle:60,1')->name('mail.recipients');
-    // Mail accounts: plain rows (password encrypted at rest), JSON API.
-    Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts');
-    Route::get('/mail/accounts/new', [MailAccountController::class, 'createPage'])->name('mail.accounts.create');
-    Route::get('/mail/accounts/{account}/edit', [MailAccountController::class, 'editPage'])->name('mail.accounts.edit-page');
-    Route::post('/mail/accounts', [MailAccountController::class, 'store'])->name('mail.accounts.store');
-    Route::post('/mail/accounts/test', [MailAccountController::class, 'test'])->middleware('throttle:20,1')->name('mail.accounts.test');
-    Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->name('mail.accounts.update');
-    Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->name('mail.accounts.destroy');
-    // Sender identities per account (owner-scoped through the parent account).
-    Route::get('/mail/signatures', [MailSignatureController::class, 'page'])->name('mail.signatures');
-    Route::get('/mail/signatures/data', [MailSignatureController::class, 'index'])->middleware('throttle:60,1')->name('mail.signatures.data');
-    Route::post('/mail/signatures', [MailSignatureController::class, 'store'])->middleware('throttle:60,1')->name('mail.signatures.store');
-    Route::put('/mail/signatures/{signature}', [MailSignatureController::class, 'update'])->middleware('throttle:60,1')->name('mail.signatures.update');
-    Route::delete('/mail/signatures/{signature}', [MailSignatureController::class, 'destroy'])->middleware('throttle:60,1')->name('mail.signatures.destroy');
-    Route::get('/mail/identities', [MailIdentityController::class, 'page'])->name('mail.identities.page');
-    Route::get('/mail/identities/data', [MailIdentityController::class, 'all'])->middleware('throttle:60,1')->name('mail.identities.all');
-    Route::get('/mail/accounts/{account}/identities', [MailIdentityController::class, 'index'])->middleware('throttle:60,1')->name('mail.identities.index');
-    Route::post('/mail/accounts/{account}/identities', [MailIdentityController::class, 'store'])->middleware('throttle:60,1')->name('mail.identities.store');
-    Route::put('/mail/accounts/{account}/identities/{identity}', [MailIdentityController::class, 'update'])->middleware('throttle:60,1')->name('mail.identities.update');
-    Route::delete('/mail/accounts/{account}/identities/{identity}', [MailIdentityController::class, 'destroy'])->middleware('throttle:60,1')->name('mail.identities.destroy');
-    Route::post('/mail/stats', [MailStatsController::class, 'show'])->name('mail.stats');
-    Route::post('/mail/folders', [MailReaderController::class, 'folders'])->middleware('throttle:60,1')->name('mail.folders');
-    Route::post('/mail/folder/create', [MailReaderController::class, 'createFolder'])->middleware('throttle:60,1')->name('mail.folder.create');
-    Route::post('/mail/folder/empty', [MailReaderController::class, 'emptyFolder'])->middleware('throttle:60,1')->name('mail.folder.empty');
-    Route::post('/mail/messages', [MailReaderController::class, 'messages'])->middleware('throttle:60,1')->name('mail.messages');
-    Route::post('/mail/message', [MailReaderController::class, 'message'])->middleware('throttle:60,1')->name('mail.message');
-    // Read an already-archived message straight from S3 (fast) + opportunistic archiving on live read.
-    Route::post('/mail/message/cached/{account}', [MailArchiveController::class, 'cached'])->middleware('throttle:60,1')->name('mail.message.cached');
-    Route::post('/mail/message/archive/{account}', [MailArchiveController::class, 'archiveOne'])->middleware('throttle:60,1')->name('mail.message.archive');
-    Route::post('/mail/message/attachment', [MailReaderController::class, 'attachment'])->middleware('throttle:30,1')->name('mail.message.attachment');
-    Route::post('/mail/message/action', [MailReaderController::class, 'action'])->middleware('throttle:60,1')->name('mail.message.action');
-    Route::post('/mail/message/transfer', [MailReaderController::class, 'transfer'])->middleware('throttle:30,1')->name('mail.message.transfer');
-
-    // Local mail archive: browse, view, restore (re-append to server), delete.
-    Route::get('/mail/archive/{account}', [MailArchiveController::class, 'index'])->name('mail.archive');
-    Route::get('/mail/archive/{account}/search', [MailArchiveController::class, 'search'])->name('mail.archive.search');
-    Route::get('/mail/archive/message/{message}', [MailArchiveController::class, 'show'])->name('mail.archive.show');
-    Route::get('/mail/archive/message/{message}/download', [MailArchiveController::class, 'download'])->name('mail.archive.download');
-    Route::post('/mail/archive/{account}/download-selection', [MailArchiveController::class, 'downloadMany'])->middleware('throttle:30,1')->name('mail.archive.download-many');
-    Route::get('/mail/archive/{account}/download', [MailArchiveController::class, 'downloadArchive'])->middleware('throttle:10,1')->name('mail.archive.download-all');
-    Route::get('/mail/archive/message/{message}/attachment/{index}', [MailArchiveController::class, 'attachment'])->whereNumber('index')->name('mail.archive.attachment');
-    Route::post('/mail/archive/message/{message}/restore', [MailArchiveController::class, 'restore'])->name('mail.archive.restore');
-    Route::delete('/mail/archive/message/{message}', [MailArchiveController::class, 'destroy'])->name('mail.archive.destroy');
-
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');

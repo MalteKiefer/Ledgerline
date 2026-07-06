@@ -30,8 +30,6 @@ return [
         'notes_ready' => 'Notizen öffnen.',
         'bookmarks' => 'Lesezeichen',
         'bookmarks_ready' => 'Lesezeichen öffnen.',
-        'mail' => 'Mailkonten',
-        'mail_ready' => 'IMAP-Konten verwalten.',
     ],
     'profile' => [
         'title' => 'Profil',
