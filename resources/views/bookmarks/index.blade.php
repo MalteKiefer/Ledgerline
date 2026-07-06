@@ -5,6 +5,7 @@
         deleteConfirm: @js(__('bookmarks.delete_confirm')),
         emptyTrashConfirm: @js(__('bookmarks.empty_trash_confirm')),
         importResult: @js(__('bookmarks.import_result')),
+        urlRequired: @js(__('bookmarks.url_required')),
      })">
 
     <template x-if="state === 'error'">

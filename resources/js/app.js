@@ -5660,7 +5660,9 @@ Alpine.data('bookmarks', (labels = {}) => ({
     error: '',
     newFolderName: '',
     editorOpen: false,
-    editing: null,
+    // Kept a non-null blank so the teleported editor's x-model bindings never
+    // read from null before a bookmark is opened.
+    editing: { id: null, folderId: null, title: '', url: '', description: '', tags: [], favorite: false, readLater: false },
     tagsValue: '',
     importing: false, importResult: '',
     fetchingMeta: false,
@@ -5747,11 +5749,14 @@ Alpine.data('bookmarks', (labels = {}) => ({
         this.tagsValue = (this.editing.tags || []).join(', ');
         this.editorOpen = true;
     },
-    closeEditor() { this.editorOpen = false; this.editing = null; },
+    closeEditor() { this.editorOpen = false; this.editing = { id: null, folderId: null, title: '', url: '', description: '', tags: [], favorite: false, readLater: false }; },
 
     async saveBookmark() {
         const e = this.editing;
-        if (! e || ! (e.title || '').trim() || ! (e.url || '').trim()) return;
+        if (! e || ! (e.url || '').trim()) { this.error = labels.urlRequired; return; }
+        // Fall back to the host as the title so a bookmark is never untitled.
+        if (! (e.title || '').trim()) e.title = this.host(e.url) || e.url;
+        this.error = '';
         e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
         const body = { bookmark_folder_id: e.folderId ?? null, title: e.title, url: e.url, description: e.description, tags: e.tags, favorite: !! e.favorite };
         try {

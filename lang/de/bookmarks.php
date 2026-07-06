@@ -47,4 +47,5 @@ return [
     'export' => 'Lesezeichen exportieren (.html)',
     'import_result' => ':created importiert, :skipped übersprungen',
     'fetch_meta' => 'Titel und Beschreibung von der Seite laden',
+    'url_required' => 'Bitte eine URL angeben.',
 ];
