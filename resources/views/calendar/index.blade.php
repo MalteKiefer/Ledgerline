@@ -50,11 +50,11 @@
         {{-- Main --}}
         <div class="min-w-0 flex-1">
             {{-- Timezone mismatch prompt --}}
-            <div x-show="tzMismatch" x-cloak class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <div x-show="tzMismatch" x-cloak class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
                 <span x-text="'{{ __('calendar.ui.tz_detected') }}'.replace(':tz', tzMismatch)"></span>
                 <span class="flex gap-2">
                     <button @click="acceptTimezone()" class="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-700">{{ __('calendar.ui.tz_switch') }}</button>
-                    <button @click="dismissTimezone()" class="rounded-md border border-amber-300 px-2.5 py-1 text-xs text-amber-800 hover:bg-amber-100">{{ __('calendar.ui.tz_keep') }}</button>
+                    <button @click="dismissTimezone()" class="rounded-md border border-amber-300 px-2.5 py-1 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-900">{{ __('calendar.ui.tz_keep') }}</button>
                 </span>
             </div>
             {{-- Toolbar --}}
@@ -74,7 +74,7 @@
             </div>
 
             {{-- Month --}}
-            <div x-show="view==='month'" class="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white">
+            <div x-show="view==='month'" class="mt-4 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                 <div class="grid border-b border-gray-200 dark:border-gray-800 text-center text-xs font-medium text-gray-500 dark:text-gray-400"
                     :style="`grid-template-columns:${weekNumbers?'2.5rem ':''}repeat(7,minmax(0,1fr))`">
                     <template x-if="weekNumbers"><div class="py-2 text-gray-400 dark:text-gray-500">{{ __('calendar.ui.week_abbr') }}</div></template>
@@ -90,7 +90,7 @@
                         <template x-for="(d,i) in wk.days" :key="'d'+wi+'-'+i">
                             <div @click="openNew(d)"
                                 class="min-h-[92px] cursor-pointer border-b border-r border-gray-100 dark:border-gray-800 p-1 last:border-r-0 hover:bg-gray-50 dark:hover:bg-gray-800"
-                                :class="inMonth(d)?'':'bg-gray-50/60'">
+                                :class="inMonth(d)?'':'bg-gray-50/60 dark:bg-gray-950/60'">
                                 <div class="text-right">
                                     <span class="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs"
                                         :class="isToday(d)?'bg-gray-900 dark:bg-gray-100 dark:text-gray-900 text-white':(inMonth(d)?'text-gray-700 dark:text-gray-300':'text-gray-400 dark:text-gray-500')"
@@ -115,7 +115,7 @@
             </div>
 
             {{-- Week (hour grid, Google-style) --}}
-            <div x-show="view==='week'" class="mt-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white">
+            <div x-show="view==='week'" class="mt-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                 <div class="overflow-x-auto">
                     <div class="min-w-[48rem]">
                         {{-- Day headers --}}
@@ -127,7 +127,7 @@
                             </template>
                         </div>
                         {{-- All-day strip --}}
-                        <div class="grid border-b border-gray-200 dark:border-gray-800 bg-gray-50/50" style="grid-template-columns:3.5rem repeat(7,minmax(0,1fr))">
+                        <div class="grid border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50" style="grid-template-columns:3.5rem repeat(7,minmax(0,1fr))">
                             <div class="px-1 py-1 text-[10px] text-gray-400 dark:text-gray-500">{{ __('calendar.ui.all_day') }}</div>
                             <template x-for="(d,i) in weekDays()" :key="'wa'+i">
                                 <div class="min-h-[1.5rem] space-y-0.5 border-l border-gray-100 dark:border-gray-800 p-0.5">
@@ -166,10 +166,10 @@
             </div>
 
             {{-- Day (hour grid) --}}
-            <div x-show="view==='day'" class="mt-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white">
+            <div x-show="view==='day'" class="mt-4 overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                 <div class="min-w-[360px]">
                 {{-- All-day strip --}}
-                <div class="flex border-b border-gray-200 dark:border-gray-800 bg-gray-50/50">
+                <div class="flex border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
                     <div class="w-14 shrink-0 px-1 py-1 text-[10px] text-gray-400 dark:text-gray-500">{{ __('calendar.ui.all_day') }}</div>
                     <div class="min-h-[1.5rem] flex-1 space-y-0.5 p-0.5">
                         <template x-for="e in allDayOn(cursor)" :key="e.id+'-'+e.instance">
@@ -201,7 +201,7 @@
             </div>
 
             {{-- Agenda --}}
-            <div x-show="view==='agenda'" class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white">
+            <div x-show="view==='agenda'" class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                 <ul class="divide-y divide-gray-100 dark:divide-gray-800">
                     <template x-for="e in agenda()" :key="e.id+'-'+e.instance">
                         <li>
@@ -310,7 +310,7 @@
                         <label class="text-xs text-gray-500 dark:text-gray-400">{{ __('calendar.ui.color') }}</label>
                         <div class="mt-1 flex flex-wrap items-center gap-2">
                             <template x-for="col in palette" :key="col">
-                                <button type="button" @click="calModal.color=col" class="h-6 w-6 rounded-full ring-2 ring-offset-1" :style="`background:${col}`" :class="calModal.color===col ? 'ring-gray-900' : 'ring-transparent'"></button>
+                                <button type="button" @click="calModal.color=col" class="h-6 w-6 rounded-full ring-2 ring-offset-1 dark:ring-offset-gray-900" :style="`background:${col}`" :class="calModal.color===col ? 'ring-gray-900 dark:ring-gray-100' : 'ring-transparent'"></button>
                             </template>
                             <input type="color" x-model="calModal.color" class="h-8 w-10 cursor-pointer rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-0.5">
                         </div>
