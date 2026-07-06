@@ -1,6 +1,13 @@
 {{-- Contacts sidebar body (books, groups, import/export). Rendered inside both
      the desktop rail and the mobile slide-over; shares the contactsPage scope. --}}
 <div>
+    <button @click="favorites = ! favorites" class="flex items-center gap-2 text-sm" :class="favorites ? 'font-semibold text-gray-900' : 'text-gray-600 hover:text-gray-900'">
+        <x-icon x-show="! favorites" name="star" class="h-4 w-4" />
+        <x-icon x-show="favorites" x-cloak name="star-solid" class="h-4 w-4" />
+        {{ __('contacts.ui.favorites') }}
+    </button>
+</div>
+<div>
     <div class="flex items-center justify-between">
         <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.ui.books') }}</h2>
         <button @click="addBook()" class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.new_book') }}"><x-icon name="plus" class="h-4 w-4" /></button>

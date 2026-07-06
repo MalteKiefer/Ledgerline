@@ -33,6 +33,65 @@ class VCardServiceTest extends TestCase
         $this->assertNotEmpty($parsed['uid']);
     }
 
+    public function test_addresses_related_custom_fields_and_favorite_round_trip(): void
+    {
+        $svc = new VCardService;
+        $vcard = $svc->build([
+            'fn' => 'Jane Doe',
+            'addresses' => [[
+                'type' => 'home', 'ext' => 'Apt 4', 'street' => 'Main St 1',
+                'city' => 'Berlin', 'region' => 'BE', 'zip' => '10115', 'country' => 'Germany',
+            ]],
+            'related' => [
+                ['type' => 'spouse', 'uid' => 'partner-uid-1'],
+                ['type' => 'friend', 'value' => 'Max Mustermann'],
+            ],
+            'custom_fields' => [['label' => 'Insurance no.', 'value' => 'XY-123']],
+            'favorite' => true,
+        ]);
+
+        $parsed = $svc->parse($vcard);
+
+        $this->assertCount(1, $parsed['addresses']);
+        $this->assertSame('Main St 1', $parsed['addresses'][0]['street']);
+        $this->assertSame('Apt 4', $parsed['addresses'][0]['ext']);
+        $this->assertSame('Berlin', $parsed['addresses'][0]['city']);
+        $this->assertSame('BE', $parsed['addresses'][0]['region']);
+        $this->assertSame('10115', $parsed['addresses'][0]['zip']);
+        $this->assertSame('Germany', $parsed['addresses'][0]['country']);
+        $this->assertSame('home', strtolower((string) $parsed['addresses'][0]['type']));
+
+        $this->assertCount(2, $parsed['related']);
+        $this->assertSame('partner-uid-1', $parsed['related'][0]['uid']);
+        $this->assertNull($parsed['related'][0]['value']);
+        $this->assertSame('Max Mustermann', $parsed['related'][1]['value']);
+        $this->assertNull($parsed['related'][1]['uid']);
+
+        $this->assertSame([['label' => 'Insurance no.', 'value' => 'XY-123']], $parsed['custom_fields']);
+        $this->assertTrue($parsed['favorite']);
+        $this->assertTrue($svc->denormalize($vcard)['favorite']);
+
+        // Absent favorite parses (and denormalises) to false.
+        $plain = $svc->build(['fn' => 'X']);
+        $this->assertFalse($svc->parse($plain)['favorite']);
+        $this->assertFalse($svc->denormalize($plain)['favorite']);
+    }
+
+    public function test_custom_fields_and_anniversaries_share_the_item_group_counter(): void
+    {
+        $svc = new VCardService;
+        $vcard = $svc->build([
+            'fn' => 'X',
+            'anniversaries' => [['date' => '2020-01-02', 'label' => 'Wedding']],
+            'custom_fields' => [['label' => 'Nick', 'value' => 'Zed']],
+        ]);
+
+        // Both grouped properties must survive one another (distinct itemN groups).
+        $parsed = $svc->parse($vcard);
+        $this->assertSame('2020-01-02', $parsed['anniversaries'][0]['date']);
+        $this->assertSame([['label' => 'Nick', 'value' => 'Zed']], $parsed['custom_fields']);
+    }
+
     public function test_build_reuses_uid_on_update(): void
     {
         $svc = new VCardService;

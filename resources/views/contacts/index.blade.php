@@ -10,6 +10,7 @@
         'importUrl' => route('contacts.import'),
         'exportUrl' => route('contacts.export'),
         'settingsUrl' => route('contacts.settings'),
+        'suggestUrl' => route('contacts.suggest'),
         'importResultLabel' => __('contacts.ui.import_result'),
         'galleryPickerUrl' => route('gallery.picker'),
         'peopleUrl' => route('gallery.people.data'),
@@ -95,6 +96,12 @@
                             <p class="truncate text-sm font-medium text-gray-900" x-text="displayName(c)"></p>
                             <p class="truncate text-xs text-gray-500" x-text="(c.org || '') + (c.emails[0] ? ' · '+c.emails[0] : '')"></p>
                         </div>
+                        <button type="button" @click.stop="toggleFavorite(c)"
+                            class="inline-flex min-h-9 min-w-9 shrink-0 items-center justify-center text-gray-400 hover:text-gray-700"
+                            :title="c.favorite ? '{{ __('contacts.ui.favorite_remove') }}' : '{{ __('contacts.ui.favorite_add') }}'">
+                            <x-icon x-show="! c.favorite" name="star" class="h-4 w-4" />
+                            <x-icon x-show="c.favorite" x-cloak name="star-solid" class="h-4 w-4" />
+                        </button>
                     </li>
                 </template>
             </ul>
@@ -104,7 +111,15 @@
         <div x-show="editor" x-cloak class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="editor=false">
             <div class="absolute inset-0 bg-gray-900/40" @click="editor=false"></div>
             <div class="relative my-8 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-                <h3 class="text-base font-semibold text-gray-900" x-text="form.id ? '{{ __('contacts.ui.edit_contact') }}' : '{{ __('contacts.ui.new_contact') }}'"></h3>
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-semibold text-gray-900" x-text="form.id ? '{{ __('contacts.ui.edit_contact') }}' : '{{ __('contacts.ui.new_contact') }}'"></h3>
+                    <button type="button" @click="form.favorite = ! form.favorite"
+                        class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 hover:text-gray-700"
+                        :title="form.favorite ? '{{ __('contacts.ui.favorite_remove') }}' : '{{ __('contacts.ui.favorite_add') }}'">
+                        <x-icon x-show="! form.favorite" name="star" class="h-5 w-5" />
+                        <x-icon x-show="form.favorite" x-cloak name="star-solid" class="h-5 w-5" />
+                    </button>
+                </div>
                 <div class="mt-4 space-y-3">
                     <div class="flex items-center gap-3">
                         <div class="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200">
@@ -141,6 +156,76 @@
                             </div>
                         </template>
                         <button type="button" @click="form.anniversaries.push({date:'',label:''})" class="mt-1 text-xs text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><x-icon name="plus" class="h-3 w-3" /> {{ __('contacts.ui.anniversary') }}</button>
+                    </div>
+                    {{-- Postal addresses --}}
+                    <div>
+                        <span class="text-xs text-gray-500">{{ __('contacts.ui.addresses') }}</span>
+                        <template x-for="(a,i) in form.addresses" :key="'ad'+i">
+                            <div class="mt-1 space-y-1 rounded-md border border-gray-200 p-2">
+                                <div class="flex items-center gap-2">
+                                    <select x-model="form.addresses[i].type" class="rounded-md border-gray-300 py-1 text-xs">
+                                        <option value="home">{{ __('contacts.ui.address_type_home') }}</option>
+                                        <option value="work">{{ __('contacts.ui.address_type_work') }}</option>
+                                        <option value="other">{{ __('contacts.ui.address_type_other') }}</option>
+                                    </select>
+                                    <span class="ml-auto flex items-center gap-1">
+                                        <button type="button" x-show="form.id" @click="showMap(i)" class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.address_map') }}"><x-icon name="map-pin" class="h-4 w-4" /></button>
+                                        <button type="button" @click="form.addresses.splice(i,1)" class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                                    </span>
+                                </div>
+                                <input x-model="form.addresses[i].street" placeholder="{{ __('contacts.ui.address_street') }}" class="w-full rounded-md border-gray-300 text-sm">
+                                <input x-model="form.addresses[i].ext" placeholder="{{ __('contacts.ui.address_ext') }}" class="w-full rounded-md border-gray-300 text-sm">
+                                <div class="grid grid-cols-3 gap-1">
+                                    <input x-model="form.addresses[i].zip" placeholder="{{ __('contacts.ui.address_zip') }}" class="rounded-md border-gray-300 text-sm">
+                                    <input x-model="form.addresses[i].city" placeholder="{{ __('contacts.ui.address_city') }}" class="col-span-2 rounded-md border-gray-300 text-sm">
+                                </div>
+                                <div class="grid grid-cols-2 gap-1">
+                                    <input x-model="form.addresses[i].region" placeholder="{{ __('contacts.ui.address_region') }}" class="rounded-md border-gray-300 text-sm">
+                                    <input x-model="form.addresses[i].country" placeholder="{{ __('contacts.ui.address_country') }}" class="rounded-md border-gray-300 text-sm">
+                                </div>
+                            </div>
+                        </template>
+                        <button type="button" @click="form.addresses.push({type:'home',street:'',ext:'',zip:'',city:'',region:'',country:''})" class="mt-1 text-xs text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><x-icon name="plus" class="h-3 w-3" /> {{ __('contacts.ui.address') }}</button>
+                    </div>
+                    {{-- Related contacts --}}
+                    <div>
+                        <span class="text-xs text-gray-500">{{ __('contacts.ui.related') }}</span>
+                        <template x-for="(r,i) in form.related" :key="'r'+i">
+                            <div class="mt-1 flex items-center gap-2">
+                                <select x-model="form.related[i].type" class="shrink-0 rounded-md border-gray-300 py-1 text-xs">
+                                    @foreach (['spouse','child','parent','sibling','friend','colleague','assistant','manager','other'] as $rt)
+                                        <option value="{{ $rt }}">{{ __('contacts.ui.related_type_'.$rt) }}</option>
+                                    @endforeach
+                                </select>
+                                <div class="relative min-w-0 flex-1">
+                                    <input x-model="form.related[i].name" @input.debounce.250ms="relatedSearch(i)" @focus="relatedIndex=i"
+                                        placeholder="{{ __('contacts.ui.related_name') }}" class="w-full rounded-md border-gray-300 text-sm"
+                                        :class="form.related[i].uid && 'font-medium'">
+                                    <div x-show="relatedIndex===i && relatedSuggestions.length" x-cloak @click.outside="relatedSuggestions=[]"
+                                        class="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                        <template x-for="s in relatedSuggestions" :key="s.id">
+                                            <button type="button" @click="pickRelated(i, s)" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-50">
+                                                <span x-text="s.name"></span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                                <button type="button" @click="form.related.splice(i,1)" class="shrink-0 text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                            </div>
+                        </template>
+                        <button type="button" @click="form.related.push({type:'friend',name:'',uid:null})" class="mt-1 text-xs text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><x-icon name="plus" class="h-3 w-3" /> {{ __('contacts.ui.related_add') }}</button>
+                    </div>
+                    {{-- Custom labelled fields --}}
+                    <div>
+                        <span class="text-xs text-gray-500">{{ __('contacts.ui.custom_fields') }}</span>
+                        <template x-for="(f,i) in form.custom_fields" :key="'cf'+i">
+                            <div class="mt-1 flex items-center gap-2">
+                                <input x-model="form.custom_fields[i].label" placeholder="{{ __('contacts.ui.custom_field_label') }}" class="w-1/3 rounded-md border-gray-300 text-sm">
+                                <input x-model="form.custom_fields[i].value" placeholder="{{ __('contacts.ui.custom_field_value') }}" class="min-w-0 flex-1 rounded-md border-gray-300 text-sm">
+                                <button type="button" @click="form.custom_fields.splice(i,1)" class="shrink-0 text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                            </div>
+                        </template>
+                        <button type="button" @click="form.custom_fields.push({label:'',value:''})" class="mt-1 text-xs text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><x-icon name="plus" class="h-3 w-3" /> {{ __('contacts.ui.custom_field_add') }}</button>
                     </div>
                     <textarea x-model="form.note" placeholder="{{ __('contacts.ui.note') }}" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
                     {{-- Groups: multi-select with autocomplete --}}
@@ -208,6 +293,27 @@
                 <div class="mt-4 flex justify-end gap-2">
                     <button type="button" @click="confirmModal.open=false" class="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">{{ __('contacts.ui.cancel') }}</button>
                     <button type="button" @click="doConfirm()" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">{{ __('contacts.ui.delete') }}</button>
+                </div>
+            </div>
+        </div>
+
+        {{-- Address map preview --}}
+        <div x-show="mapModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="closeMap()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="closeMap()"></div>
+            <div class="relative my-16 w-full max-w-xl rounded-lg bg-white p-5 shadow-xl">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-semibold text-gray-900">{{ __('contacts.ui.map_title') }}</h3>
+                    <button type="button" @click="closeMap()" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                </div>
+                <p x-show="mapModal.error" x-cloak class="mt-4 text-sm text-gray-500">{{ __('contacts.ui.map_not_found') }}</p>
+                <p x-show="mapModal.loading" x-cloak class="mt-4 text-sm text-gray-400">…</p>
+                <div x-show="! mapModal.error && ! mapModal.loading" class="mt-4">
+                    <div x-ref="contactMap" class="h-72 w-full overflow-hidden rounded-md ring-1 ring-gray-200"></div>
+                    <p class="mt-2 truncate text-xs text-gray-500" x-text="mapModal.display"></p>
+                    <a x-show="mapModal.osmUrl" :href="mapModal.osmUrl" target="_blank" rel="noopener"
+                        class="mt-1 inline-flex items-center gap-1 text-xs text-gray-600 underline hover:text-gray-900">
+                        <x-icon name="map-pin" class="h-3.5 w-3.5" />{{ __('contacts.ui.map_open_osm') }}
+                    </a>
                 </div>
             </div>
         </div>

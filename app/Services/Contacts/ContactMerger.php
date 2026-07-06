@@ -44,6 +44,11 @@ class ContactMerger
                 'phones' => $this->unionContacts($all, 'phones'),
                 'urls' => $this->unionUrls($all),
                 'anniversaries' => $this->unionAnniversaries($all),
+                'addresses' => $this->unionAddresses($all),
+                'related' => $this->unionRelated($all),
+                'custom_fields' => $this->unionCustomFields($all),
+                // Any duplicate being a favorite keeps the merged card starred.
+                'favorite' => $all->contains(fn (Contact $c) => (bool) ($this->vcards->parse($c->vcard)['favorite'] ?? false)),
                 // Primary photo wins; otherwise the first duplicate that has one.
                 'photo' => $primaryData['photo'] ?? $this->firstPhoto($others),
             ];
@@ -146,6 +151,75 @@ class ContactMerger
                 }
                 $seen[$key] = true;
                 $out[] = ['date' => $date, 'label' => $ann['label'] ?? null];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  Collection<int, Contact>  $all
+     * @return list<array<string, ?string>>
+     */
+    private function unionAddresses(Collection $all): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($all as $c) {
+            foreach ($this->vcards->parse($c->vcard)['addresses'] ?? [] as $a) {
+                $key = strtolower(implode('|', [
+                    (string) ($a['street'] ?? ''), (string) ($a['zip'] ?? ''),
+                    (string) ($a['city'] ?? ''), (string) ($a['country'] ?? ''),
+                ]));
+                if (trim($key, '|') === '' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = $a;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  Collection<int, Contact>  $all
+     * @return list<array{type: ?string, value: ?string, uid: ?string}>
+     */
+    private function unionRelated(Collection $all): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($all as $c) {
+            foreach ($this->vcards->parse($c->vcard)['related'] ?? [] as $r) {
+                $key = strtolower(((string) ($r['uid'] ?? '')).'|'.((string) ($r['value'] ?? '')));
+                if ($key === '|' || isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = $r;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  Collection<int, Contact>  $all
+     * @return list<array{label: ?string, value: string}>
+     */
+    private function unionCustomFields(Collection $all): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($all as $c) {
+            foreach ($this->vcards->parse($c->vcard)['custom_fields'] ?? [] as $f) {
+                $key = strtolower(((string) ($f['label'] ?? '')).'|'.$f['value']);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $out[] = $f;
             }
         }
 
