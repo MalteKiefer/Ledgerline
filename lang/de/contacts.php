@@ -46,6 +46,7 @@ return [
         'back' => 'Zurück zu Kontakten',
         'edit' => 'Bearbeiten',
         'saved' => 'Gespeichert.',
+        'show_photos' => 'Bilder dieser Person anzeigen',
         'website' => 'Webseite',
         'label_home' => 'Privat',
         'label_work' => 'Arbeit',
