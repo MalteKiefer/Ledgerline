@@ -39,7 +39,15 @@ class CalendarWriter
     public function update(CalendarObject $object, array $data): CalendarObject
     {
         $ics = $this->ical->buildEvent($data, $this->ical->uid($object->ics));
+        // A series edit keeps its per-occurrence exceptions (unless the rule changed).
+        $ics = $this->ical->carryExceptions($object->ics, $ics);
 
+        return $this->persister->persistUpdate($object, $ics);
+    }
+
+    /** Persist a raw ICS produced by an exception edit (EXDATE / RECURRENCE-ID). */
+    public function updateRaw(CalendarObject $object, string $ics): CalendarObject
+    {
         return $this->persister->persistUpdate($object, $ics);
     }
 

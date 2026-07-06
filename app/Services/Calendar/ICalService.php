@@ -33,7 +33,9 @@ class ICalService
             return $empty;
         }
 
-        $comp = $vcal->VEVENT[0] ?? $vcal->VTODO[0] ?? null;
+        // With recurrence overrides present, the denormalised columns mirror
+        // the master VEVENT (the one without a RECURRENCE-ID).
+        $comp = (isset($vcal->VEVENT) ? $this->masterEvent($vcal) : null) ?? $vcal->VEVENT[0] ?? $vcal->VTODO[0] ?? null;
         if ($comp === null) {
             return $empty;
         }
@@ -74,26 +76,59 @@ class ICalService
         return (new \DateTimeImmutable('@'.$dt->getTimestamp()))->format('Y-m-d H:i:s');
     }
 
-    /** Lead minutes of the first VALARM's relative TRIGGER (null if none/absolute). */
+    /**
+     * Largest lead of the component's relative VALARM triggers (null if none).
+     * The column drives the reminder scan; the max lead makes its expansion
+     * window wide enough for every alarm of the event.
+     */
     private function alarmMinutes(object $comp): ?int
     {
-        if (! isset($comp->VALARM[0]->TRIGGER)) {
-            return null;
-        }
-        $trigger = $comp->VALARM[0]->TRIGGER;
-        // Only relative (duration) triggers are supported; absolute DATE-TIME is ignored.
-        if (isset($trigger['VALUE']) && strtoupper((string) $trigger['VALUE']) === 'DATE-TIME') {
-            return null;
-        }
-        try {
-            $interval = DateTimeParser::parseDuration((string) $trigger);
-        } catch (Throwable) {
-            return null;
-        }
-        $minutes = ($interval->d * 1440) + ($interval->h * 60) + $interval->i;
+        $leads = $this->componentLeads($comp);
 
-        // A negative duration (invert=1) means "before"; that's the reminder lead.
-        return $interval->invert === 1 ? $minutes : 0;
+        return $leads === [] ? null : max($leads);
+    }
+
+    /**
+     * All relative VALARM leads (minutes before start) of an event, sorted
+     * descending and de-duplicated. Absolute DATE-TIME triggers are ignored.
+     *
+     * @return list<int>
+     */
+    public function alarmLeads(string $ics): array
+    {
+        try {
+            $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
+        } catch (Throwable) {
+            return [];
+        }
+        $comp = $vcal->VEVENT[0] ?? $vcal->VTODO[0] ?? null;
+
+        return $comp === null ? [] : $this->componentLeads($comp);
+    }
+
+    /** @return list<int> */
+    private function componentLeads(object $comp): array
+    {
+        $leads = [];
+        foreach ($comp->VALARM ?? [] as $alarm) {
+            if (! isset($alarm->TRIGGER)) {
+                continue;
+            }
+            $trigger = $alarm->TRIGGER;
+            if (isset($trigger['VALUE']) && strtoupper((string) $trigger['VALUE']) === 'DATE-TIME') {
+                continue;
+            }
+            try {
+                $interval = DateTimeParser::parseDuration((string) $trigger);
+            } catch (Throwable) {
+                continue;
+            }
+            $minutes = ($interval->d * 1440) + ($interval->h * 60) + $interval->i;
+            $leads[] = $interval->invert === 1 ? $minutes : 0;
+        }
+        rsort($leads);
+
+        return array_values(array_unique($leads));
     }
 
     /**
@@ -224,21 +259,169 @@ class ICalService
                 $vevent->add('RRULE', $rrule);
             }
         }
-        // Reminder: minutes-before as a VALARM DISPLAY trigger.
+        // Reminders: one VALARM DISPLAY trigger per lead. The legacy single
+        // 'reminder_minutes' key is folded in for older call paths.
+        $leads = array_map('intval', array_filter((array) ($data['reminders'] ?? []), fn ($m) => $m !== null && $m !== ''));
         if (filled($data['reminder_minutes'] ?? null)) {
+            $leads[] = (int) $data['reminder_minutes'];
+        }
+        foreach (array_slice(array_unique($leads), 0, 5) as $lead) {
             $alarm = $vevent->add('VALARM', ['ACTION' => 'DISPLAY', 'DESCRIPTION' => 'Reminder']);
-            $alarm->add('TRIGGER', '-PT'.(int) $data['reminder_minutes'].'M');
+            $alarm->add('TRIGGER', '-PT'.max(0, $lead).'M');
         }
 
         return $vcal->serialize();
     }
 
     /**
+     * Exclude one occurrence of a recurring event: appends an EXDATE matching
+     * the master DTSTART's value type/zone and drops any override VEVENT that
+     * addressed the same occurrence.
+     */
+    public function addExdate(string $ics, string $occurrenceStart): string
+    {
+        $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
+        $master = $this->masterEvent($vcal);
+        if ($master === null || ! isset($master->RRULE)) {
+            return $ics;
+        }
+
+        $occurrence = $this->occurrenceValue($master, $occurrenceStart);
+        $allDay = ! $master->DTSTART->hasTime();
+        $master->add('EXDATE', $occurrence, $allDay ? ['VALUE' => 'DATE'] : []);
+        $this->removeOverride($vcal, $occurrence);
+
+        return $vcal->serialize();
+    }
+
+    /**
+     * Add or replace the override VEVENT (RECURRENCE-ID) for one occurrence of
+     * a recurring event. $data carries the changed editor fields; anything not
+     * provided falls back to the master's value.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function setOverride(string $ics, string $occurrenceStart, array $data): string
+    {
+        $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
+        $master = $this->masterEvent($vcal);
+        if ($master === null || ! isset($master->RRULE)) {
+            return $ics;
+        }
+
+        $occurrence = $this->occurrenceValue($master, $occurrenceStart);
+        $this->removeOverride($vcal, $occurrence);
+
+        $allDay = ! $master->DTSTART->hasTime();
+        $tz = $master->DTSTART->getDateTime()->getTimezone();
+
+        $override = $vcal->add('VEVENT', ['UID' => (string) $master->UID]);
+        $override->add('RECURRENCE-ID', $occurrence, $allDay ? ['VALUE' => 'DATE'] : []);
+        $override->add('SUMMARY', (string) ($data['summary'] ?? (string) $master->SUMMARY));
+
+        try {
+            $start = new \DateTimeImmutable((string) $data['start'], $tz);
+            $end = new \DateTimeImmutable((string) ($data['end'] ?? $data['start']), $tz);
+        } catch (Throwable) {
+            $start = $occurrence;
+            $end = $occurrence;
+        }
+        if ($allDay) {
+            $override->add('DTSTART', $start, ['VALUE' => 'DATE']);
+            $override->add('DTEND', $end->modify('+1 day'), ['VALUE' => 'DATE']);
+        } else {
+            $override->add('DTSTART', $start);
+            $override->add('DTEND', $end);
+        }
+
+        foreach (['location' => 'LOCATION', 'description' => 'DESCRIPTION'] as $key => $prop) {
+            $value = $data[$key] ?? (isset($master->$prop) ? (string) $master->$prop : null);
+            if (filled($value)) {
+                $override->add($prop, (string) $value);
+            }
+        }
+
+        return $vcal->serialize();
+    }
+
+    /**
+     * Carry recurrence exceptions (EXDATE + override VEVENTs) from the stored
+     * ICS onto a freshly rebuilt one. Editing the series must not silently
+     * drop its exceptions — unless the recurrence rule itself changed, in
+     * which case the old exceptions no longer address valid occurrences.
+     */
+    public function carryExceptions(string $oldIcs, string $newIcs): string
+    {
+        try {
+            $old = Reader::read($oldIcs, Reader::OPTION_FORGIVING);
+            $new = Reader::read($newIcs, Reader::OPTION_FORGIVING);
+        } catch (Throwable) {
+            return $newIcs;
+        }
+        $oldMaster = isset($old->VEVENT) ? $this->masterEvent($old) : null;
+        $newMaster = isset($new->VEVENT) ? $this->masterEvent($new) : null;
+        if ($oldMaster === null || $newMaster === null || ! isset($oldMaster->RRULE, $newMaster->RRULE)) {
+            return $newIcs;
+        }
+        if ((string) $oldMaster->RRULE !== (string) $newMaster->RRULE) {
+            return $newIcs; // rule changed → old occurrences are meaningless
+        }
+
+        foreach ($oldMaster->EXDATE ?? [] as $exdate) {
+            $newMaster->add(clone $exdate);
+        }
+        foreach ($old->VEVENT as $vevent) {
+            if (isset($vevent->{'RECURRENCE-ID'})) {
+                $new->add(clone $vevent);
+            }
+        }
+
+        return $new->serialize();
+    }
+
+    /** The master VEVENT (the one without a RECURRENCE-ID). */
+    private function masterEvent(VCalendar $vcal): ?object
+    {
+        foreach ($vcal->VEVENT ?? [] as $vevent) {
+            if (! isset($vevent->{'RECURRENCE-ID'})) {
+                return $vevent;
+            }
+        }
+
+        return null;
+    }
+
+    /** Parse a feed-format occurrence start into the master DTSTART's zone. */
+    private function occurrenceValue(object $master, string $occurrenceStart): \DateTimeImmutable
+    {
+        $allDay = ! $master->DTSTART->hasTime();
+        $zone = $allDay ? null : $master->DTSTART->getDateTime()->getTimezone();
+        // Timed feed values are UTC wall-clock; convert into the event's zone
+        // so the RECURRENCE-ID/EXDATE matches the generated occurrence exactly.
+        $utc = new \DateTimeImmutable($occurrenceStart, new \DateTimeZone('UTC'));
+
+        return $allDay ? new \DateTimeImmutable($utc->format('Y-m-d')) : $utc->setTimezone($zone);
+    }
+
+    private function removeOverride(VCalendar $vcal, \DateTimeImmutable $occurrence): void
+    {
+        foreach (iterator_to_array($vcal->VEVENT ?? []) as $vevent) {
+            if (isset($vevent->{'RECURRENCE-ID'})
+                && $vevent->{'RECURRENCE-ID'}->getDateTime()->getTimestamp() === $occurrence->getTimestamp()) {
+                $vcal->remove($vevent);
+            }
+        }
+    }
+
+    /**
      * Expand a (possibly recurring) event's instances overlapping [from, to].
      * Timed instances are rendered as wall-clock in $displayTz (default UTC);
-     * all-day instances keep their bare date regardless of zone.
+     * all-day instances keep their bare date regardless of zone. Each recurring
+     * instance also carries its occurrence id (the original scheduled start, in
+     * UTC feed format) so exceptions can address it, even when an override
+     * VEVENT has moved the instance elsewhere.
      *
-     * @return list<array{start: string, end: ?string}>
+     * @return list<array{start: string, end: ?string, recurrence_id: ?string}>
      */
     public function expand(string $ics, DateTimeInterface $from, DateTimeInterface $to, string $displayTz = 'UTC'): array
     {
@@ -247,36 +430,50 @@ class ICalService
         } catch (Throwable) {
             return [];
         }
-        if (! isset($vcal->VEVENT)) {
+        $master = isset($vcal->VEVENT) ? $this->masterEvent($vcal) : null;
+        if ($master === null || ! isset($master->DTSTART)) {
             return [];
         }
 
-        $allDay = isset($vcal->VEVENT[0]->DTSTART) && ! $vcal->VEVENT[0]->DTSTART->hasTime();
+        $allDay = ! $master->DTSTART->hasTime();
         $zone = $allDay ? null : $this->displayZone($displayTz);
         $fmt = fn (?DateTimeInterface $d): ?string => $d === null ? null
             : ($zone === null ? $d->format('Y-m-d H:i:s') : \DateTimeImmutable::createFromInterface($d)->setTimezone($zone)->format('Y-m-d H:i:s'));
+        // Occurrence ids travel in UTC (all-day: the bare date) so the
+        // exception endpoints can round-trip them without knowing the zone.
+        $rid = fn (DateTimeInterface $d): string => $allDay
+            ? $d->format('Y-m-d')
+            : \DateTimeImmutable::createFromInterface($d)->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
         $out = [];
         try {
-            if (isset($vcal->VEVENT[0]->RRULE)) {
-                $it = new EventIterator($vcal, (string) $vcal->VEVENT[0]->UID);
+            if (isset($master->RRULE)) {
+                $it = new EventIterator($vcal, (string) $master->UID);
                 $it->fastForward($from);
                 $limit = 0;
                 while ($it->valid() && $it->getDTStart() <= $to && $limit++ < 750) {
-                    $out[] = ['start' => $fmt($it->getDTStart()), 'end' => $fmt($it->getDTEnd())];
+                    // The expanded object's RECURRENCE-ID is the ORIGINAL
+                    // occurrence, also for instances an override has moved.
+                    $obj = $it->getEventObject();
+                    $occurrence = isset($obj->{'RECURRENCE-ID'}) ? $obj->{'RECURRENCE-ID'}->getDateTime() : $it->getDTStart();
+                    $out[] = [
+                        'start' => $fmt($it->getDTStart()),
+                        'end' => $fmt($it->getDTEnd()),
+                        'recurrence_id' => $rid($occurrence),
+                    ];
                     $it->next();
                 }
             } else {
-                $s = $vcal->VEVENT[0]->DTSTART->getDateTime();
+                $s = $master->DTSTART->getDateTime();
                 if ($s >= $from && $s <= $to) {
-                    $e = isset($vcal->VEVENT[0]->DTEND) ? $vcal->VEVENT[0]->DTEND->getDateTime() : null;
-                    $out[] = ['start' => $fmt($s), 'end' => $fmt($e)];
+                    $e = isset($master->DTEND) ? $master->DTEND->getDateTime() : null;
+                    $out[] = ['start' => $fmt($s), 'end' => $fmt($e), 'recurrence_id' => null];
                 }
             }
         } catch (Throwable) {
             // malformed recurrence: fall back to the single stored start
             if ($this->denormalize($ics)['starts_at'] !== null) {
-                $out[] = ['start' => $this->denormalize($ics)['starts_at'], 'end' => $this->denormalize($ics)['ends_at']];
+                $out[] = ['start' => $this->denormalize($ics)['starts_at'], 'end' => $this->denormalize($ics)['ends_at'], 'recurrence_id' => null];
             }
         }
 
@@ -293,7 +490,7 @@ class ICalService
     {
         try {
             $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
-            $vevent = $vcal->VEVENT[0] ?? null;
+            $vevent = isset($vcal->VEVENT) ? ($this->masterEvent($vcal) ?? $vcal->VEVENT[0]) : null;
         } catch (Throwable) {
             $vevent = null;
         }

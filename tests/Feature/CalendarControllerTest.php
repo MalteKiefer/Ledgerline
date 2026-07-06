@@ -96,6 +96,146 @@ class CalendarControllerTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_multiple_reminders_round_trip(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Flight',
+            'start' => '2026-09-01T10:00',
+            'end' => '2026-09-01T12:00',
+            'reminders' => [10, 60, 1440],
+        ])->assertCreated();
+
+        $object = CalendarObject::firstOrFail();
+        $this->assertSame(3, substr_count($object->ics, 'BEGIN:VALARM'));
+        $this->assertSame(1440, $object->alarm_minutes); // max lead drives the scan window
+
+        $show = $this->getJson(route('calendar.events.show', $object))->assertOk()->json();
+        $this->assertSame([1440, 60, 10], $show['reminders']);
+    }
+
+    public function test_deleting_one_occurrence_writes_an_exdate(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Standup',
+            'start' => '2026-09-01T09:00',
+            'end' => '2026-09-01T09:15',
+            'rrule' => 'FREQ=DAILY;COUNT=5',
+        ])->assertCreated();
+        $object = CalendarObject::firstOrFail();
+
+        $this->deleteJson(route('calendar.events.instance.destroy', $object), [
+            'recurrence_id' => '2026-09-02 09:00:00',
+        ])->assertOk();
+
+        $this->assertStringContainsString('EXDATE', $object->fresh()->ics);
+        // The Sep 2 instance is gone from the feed; the other four remain.
+        $starts = collect($this->getJson(route('calendar.data', ['from' => '2026-09-01', 'to' => '2026-09-07']))
+            ->json('events'))->pluck('start');
+        $this->assertCount(4, $starts);
+        $this->assertFalse($starts->contains(fn ($x) => str_starts_with($x, '2026-09-02')));
+    }
+
+    public function test_editing_one_occurrence_writes_an_override(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Standup',
+            'start' => '2026-09-01T09:00',
+            'end' => '2026-09-01T09:15',
+            'rrule' => 'FREQ=DAILY;COUNT=3',
+        ])->assertCreated();
+        $object = CalendarObject::firstOrFail();
+
+        $this->putJson(route('calendar.events.instance.update', $object), [
+            'recurrence_id' => '2026-09-02 09:00:00',
+            'summary' => 'Standup (moved)',
+            'start' => '2026-09-02 14:00:00',
+            'end' => '2026-09-02 14:30:00',
+        ])->assertOk();
+
+        $this->assertStringContainsString('RECURRENCE-ID', $object->fresh()->ics);
+
+        $events = collect($this->getJson(route('calendar.data', ['from' => '2026-09-01', 'to' => '2026-09-04']))->json('events'));
+        $this->assertCount(3, $events);
+        $moved = $events->first(fn ($e) => str_starts_with($e['start'], '2026-09-02 14:00'));
+        $this->assertNotNull($moved);
+        // The override still carries its ORIGINAL occurrence id, so it stays addressable.
+        $this->assertSame('2026-09-02 09:00:00', $moved['recurrence_id']);
+
+        // Dragging that same occurrence again reuses move() with the recurrence id.
+        $this->patchJson(route('calendar.events.move', $object), [
+            'recurrence_id' => '2026-09-02 09:00:00',
+            'start' => '2026-09-02 16:00:00',
+            'end' => '2026-09-02 16:30:00',
+        ])->assertOk();
+        $events = collect($this->getJson(route('calendar.data', ['from' => '2026-09-01', 'to' => '2026-09-04']))->json('events'));
+        $this->assertNotNull($events->first(fn ($e) => str_starts_with($e['start'], '2026-09-02 16:00')));
+        $this->assertSame(1, substr_count($object->fresh()->ics, 'RECURRENCE-ID')); // replaced, not duplicated
+    }
+
+    public function test_series_edit_keeps_exceptions_unless_the_rule_changes(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Standup',
+            'start' => '2026-09-01T09:00',
+            'end' => '2026-09-01T09:15',
+            'rrule' => 'FREQ=DAILY;COUNT=5',
+        ])->assertCreated();
+        $object = CalendarObject::firstOrFail();
+        $this->deleteJson(route('calendar.events.instance.destroy', $object), [
+            'recurrence_id' => '2026-09-02 09:00:00',
+        ])->assertOk();
+
+        // Rename the series: the EXDATE survives.
+        $this->putJson(route('calendar.events.update', $object), [
+            'calendar_id' => $calendar->id, 'summary' => 'Daily sync',
+            'start' => '2026-09-01T09:00', 'end' => '2026-09-01T09:15',
+            'rrule' => 'FREQ=DAILY;COUNT=5',
+        ])->assertOk();
+        $this->assertStringContainsString('EXDATE', $object->fresh()->ics);
+
+        // Change the rule: stale exceptions are dropped.
+        $this->putJson(route('calendar.events.update', $object), [
+            'calendar_id' => $calendar->id, 'summary' => 'Daily sync',
+            'start' => '2026-09-01T09:00', 'end' => '2026-09-01T09:15',
+            'rrule' => 'FREQ=WEEKLY;COUNT=5',
+        ])->assertOk();
+        $this->assertStringNotContainsString('EXDATE', $object->fresh()->ics);
+    }
+
+    public function test_multi_day_events_span_the_feed(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Conference',
+            'start' => '2026-09-01',
+            'end' => '2026-09-03',
+            'all_day' => true,
+        ])->assertCreated();
+
+        $e = $this->getJson(route('calendar.data', ['from' => '2026-08-30', 'to' => '2026-09-10']))->json('events.0');
+        $this->assertSame('2026-09-01 00:00:00', $e['start']);
+        $this->assertSame('2026-09-04 00:00:00', $e['end']); // exclusive DTEND: 3 covered days
+    }
+
     public function test_it_creates_an_event(): void
     {
         $user = $this->signIn();

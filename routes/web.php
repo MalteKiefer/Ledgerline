@@ -335,6 +335,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/calendar/events/{object}', [CalendarController::class, 'show'])->name('calendar.events.show');
     Route::put('/calendar/events/{object}', [CalendarController::class, 'update'])->name('calendar.events.update');
     Route::patch('/calendar/events/{object}/move', [CalendarController::class, 'move'])->middleware('throttle:120,1')->name('calendar.events.move');
+    Route::put('/calendar/events/{object}/instance', [CalendarController::class, 'updateInstance'])->name('calendar.events.instance.update');
+    Route::delete('/calendar/events/{object}/instance', [CalendarController::class, 'destroyInstance'])->name('calendar.events.instance.destroy');
     Route::delete('/calendar/events/{object}', [CalendarController::class, 'destroy'])->name('calendar.events.destroy');
     // Bookmarks: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');

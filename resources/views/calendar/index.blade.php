@@ -98,11 +98,11 @@
                                 </div>
                                 <div class="mt-0.5 space-y-0.5">
                                     <template x-for="e in eventsOn(d).slice(0,3)" :key="e.id+'-'+e.instance">
-                                        <button @click.stop="evClick(e.id)" @pointerdown="monthDragStart($event, e)"
+                                        <button @click.stop="evClick(e)" @pointerdown="monthDragStart($event, e)"
                                             class="block w-full truncate rounded px-1 py-0.5 text-left text-[11px] text-white"
                                             :class="draggable(e) && 'cursor-grab'"
                                             :style="`background:${e.color}`">
-                                            <span x-show="!e.all_day" x-text="fmtTime(e.start)+' '"></span><span x-text="e.title||'—'"></span>
+                                            <span x-show="!e.all_day && startsOn(e, d)" x-text="fmtTime(e.start)+' '"></span><span x-text="e.title||'—'"></span>
                                         </button>
                                     </template>
                                     <template x-if="eventsOn(d).length>3">
@@ -133,7 +133,7 @@
                             <template x-for="(d,i) in weekDays()" :key="'wa'+i">
                                 <div class="min-h-[1.5rem] space-y-0.5 border-l border-gray-100 dark:border-gray-800 p-0.5">
                                     <template x-for="e in allDayOn(d)" :key="e.id+'-'+e.instance">
-                                        <button @click.stop="openEditor(e.id)" class="block w-full truncate rounded px-1 text-left text-[10px] text-white" :style="`background:${e.color}`" x-text="e.title||'—'"></button>
+                                        <button @click.stop="evClick(e)" class="block w-full truncate rounded px-1 text-left text-[10px] text-white" :style="`background:${e.color}`" x-text="e.title||'—'"></button>
                                     </template>
                                 </div>
                             </template>
@@ -153,10 +153,10 @@
                                             <div class="absolute inset-x-0 border-t border-gray-100 dark:border-gray-800" :style="`top:${h*hourPx}px`"></div>
                                         </template>
                                         <template x-for="e in timedEventsOn(d)" :key="e.id+'-'+e.instance">
-                                            <button @click.stop="evClick(e.id)" @pointerdown.stop="dragStart($event, e)"
+                                            <button @click.stop="evClick(e)" @pointerdown.stop="dragStart($event, e)"
                                                 class="absolute inset-x-0.5 select-none overflow-hidden rounded px-1 text-left text-[10px] leading-tight text-white"
                                                 :class="draggable(e) && (drag?.e===e ? 'cursor-grabbing opacity-80 ring-1 ring-white/60' : 'cursor-grab')"
-                                                :style="eventStyle(e)+`;background:${e.color}`">
+                                                :style="eventStyle(e, d)+`;background:${e.color}`">
                                                 <span class="font-medium" x-text="fmtTime(e.start)"></span>
                                                 <span class="block truncate" x-text="e.title||'—'"></span>
                                                 <span x-show="draggable(e)" class="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"></span>
@@ -178,7 +178,7 @@
                     <div class="w-14 shrink-0 px-1 py-1 text-[10px] text-gray-400 dark:text-gray-500">{{ __('calendar.ui.all_day') }}</div>
                     <div class="min-h-[1.5rem] flex-1 space-y-0.5 p-0.5">
                         <template x-for="e in allDayOn(cursor)" :key="e.id+'-'+e.instance">
-                            <button @click.stop="openEditor(e.id)" class="block w-full truncate rounded px-1 text-left text-[11px] text-white" :style="`background:${e.color}`" x-text="e.title||'—'"></button>
+                            <button @click.stop="evClick(e)" class="block w-full truncate rounded px-1 text-left text-[11px] text-white" :style="`background:${e.color}`" x-text="e.title||'—'"></button>
                         </template>
                     </div>
                 </div>
@@ -194,10 +194,10 @@
                                 <div class="absolute inset-x-0 border-t border-gray-100 dark:border-gray-800" :style="`top:${h*hourPx}px`"></div>
                             </template>
                             <template x-for="e in timedEventsOn(cursor)" :key="e.id+'-'+e.instance">
-                                <button @click.stop="evClick(e.id)" @pointerdown.stop="dragStart($event, e)"
+                                <button @click.stop="evClick(e)" @pointerdown.stop="dragStart($event, e)"
                                     class="absolute inset-x-1 select-none overflow-hidden rounded px-1.5 text-left text-xs leading-tight text-white"
                                     :class="draggable(e) && (drag?.e===e ? 'cursor-grabbing opacity-80 ring-1 ring-white/60' : 'cursor-grab')"
-                                    :style="eventStyle(e)+`;background:${e.color}`">
+                                    :style="eventStyle(e, cursor)+`;background:${e.color}`">
                                     <span class="font-medium" x-text="fmtTime(e.start)"></span>
                                     <span class="block truncate" x-text="e.title||'—'"></span>
                                     <span x-show="draggable(e)" class="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"></span>
@@ -214,7 +214,7 @@
                 <ul class="divide-y divide-gray-100 dark:divide-gray-800">
                     <template x-for="e in agenda()" :key="e.id+'-'+e.instance">
                         <li>
-                            <button @click="openEditor(e.id)" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
+                            <button @click="evClick(e)" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
                                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="`background:${e.color}`"></span>
                                 <span class="w-40 shrink-0 text-sm text-gray-500 dark:text-gray-400" x-text="new Date(e.start.replace(' ','T')).toLocaleString(locale,{weekday:'short',day:'numeric',month:'short',hour:e.all_day?undefined:'2-digit',minute:e.all_day?undefined:'2-digit'})"></span>
                                 <span class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="e.title||'—'"></span>
@@ -258,30 +258,81 @@
                     </div>
                     <input x-model="form.location" placeholder="{{ __('calendar.ui.location') }}" class="w-full rounded-md border-gray-300 text-sm">
                     <textarea x-model="form.description" placeholder="{{ __('calendar.ui.description') }}" rows="2" class="w-full rounded-md border-gray-300 text-sm"></textarea>
-                    <div class="grid grid-cols-2 gap-2">
-                        <label class="text-xs text-gray-500 dark:text-gray-400">{{ __('calendar.ui.repeat') }}
-                            <select x-model="form.rrule" class="mt-0.5 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm">
-                                <option value="">{{ __('calendar.ui.repeats.none') }}</option>
-                                <option value="FREQ=DAILY">{{ __('calendar.ui.repeats.daily') }}</option>
-                                <option value="FREQ=WEEKLY">{{ __('calendar.ui.repeats.weekly') }}</option>
-                                <option value="FREQ=MONTHLY">{{ __('calendar.ui.repeats.monthly') }}</option>
-                                <option value="FREQ=YEARLY">{{ __('calendar.ui.repeats.yearly') }}</option>
-                                <template x-if="form.rrule && !['FREQ=DAILY','FREQ=WEEKLY','FREQ=MONTHLY','FREQ=YEARLY'].includes(form.rrule)">
-                                    <option :value="form.rrule" x-text="form.rrule"></option>
-                                </template>
-                            </select>
-                        </label>
-                        <label class="text-xs text-gray-500 dark:text-gray-400">{{ __('calendar.ui.reminder') }}
-                            <select x-model="form.reminder_minutes" class="mt-0.5 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm">
-                                <option value="">{{ __('calendar.ui.reminders.none') }}</option>
-                                <option value="0">{{ __('calendar.ui.reminders.at_time') }}</option>
-                                <option value="5">{{ __('calendar.ui.reminders.5') }}</option>
-                                <option value="15">{{ __('calendar.ui.reminders.15') }}</option>
-                                <option value="30">{{ __('calendar.ui.reminders.30') }}</option>
-                                <option value="60">{{ __('calendar.ui.reminders.60') }}</option>
-                                <option value="1440">{{ __('calendar.ui.reminders.1440') }}</option>
-                            </select>
-                        </label>
+                    {{-- Recurrence builder --}}
+                    <div class="rounded-md border border-gray-200 dark:border-gray-800 p-2">
+                        <template x-if="rec.custom">
+                            <div>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">{{ __('calendar.ui.custom_rule') }}</span>
+                                <p class="mt-0.5 break-all font-mono text-[11px] text-gray-700 dark:text-gray-300" x-text="rec.custom"></p>
+                                <button type="button" @click="rec = parseRrule('')" class="mt-1 text-xs text-red-600 dark:text-red-400 hover:underline">{{ __('calendar.ui.rule_clear') }}</button>
+                            </div>
+                        </template>
+                        <template x-if="! rec.custom">
+                            <div class="space-y-2">
+                                <div class="flex flex-wrap items-center gap-2 text-sm">
+                                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ __('calendar.ui.repeat') }}</span>
+                                    <select x-model="rec.freq" class="rounded-md border-gray-300 py-1 text-sm">
+                                        <option value="">{{ __('calendar.ui.repeats.none') }}</option>
+                                        <option value="DAILY">{{ __('calendar.ui.repeats.daily') }}</option>
+                                        <option value="WEEKLY">{{ __('calendar.ui.repeats.weekly') }}</option>
+                                        <option value="MONTHLY">{{ __('calendar.ui.repeats.monthly') }}</option>
+                                        <option value="YEARLY">{{ __('calendar.ui.repeats.yearly') }}</option>
+                                    </select>
+                                    <template x-if="rec.freq">
+                                        <span class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                                            {{ __('calendar.ui.every') }}
+                                            <input type="number" min="1" max="99" x-model.number="rec.interval" class="w-14 rounded-md border-gray-300 py-1 text-sm">
+                                            <span x-text="{DAILY:@js(__('calendar.ui.unit_days')),WEEKLY:@js(__('calendar.ui.unit_weeks')),MONTHLY:@js(__('calendar.ui.unit_months')),YEARLY:@js(__('calendar.ui.unit_years'))}[rec.freq]"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                                <div x-show="rec.freq==='WEEKLY'" class="flex flex-wrap gap-1">
+                                    <template x-for="w in weekdayOptions()" :key="w.code">
+                                        <button type="button" @click="toggleByday(w.code)"
+                                            :class="rec.byday.includes(w.code) ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                                            class="rounded-full px-2.5 py-1 text-xs font-medium" x-text="w.label"></button>
+                                    </template>
+                                </div>
+                                <div x-show="rec.freq==='MONTHLY'" class="flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-400">
+                                    <label class="flex items-center gap-1.5"><input type="radio" value="bymonthday" x-model="rec.monthlyMode" class="border-gray-300"> {{ __('calendar.ui.monthly_bymonthday') }}</label>
+                                    <label class="flex items-center gap-1.5"><input type="radio" value="byday" x-model="rec.monthlyMode" class="border-gray-300"> {{ __('calendar.ui.monthly_byday') }}</label>
+                                </div>
+                                <div x-show="rec.freq" class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                    {{ __('calendar.ui.ends') }}
+                                    <select x-model="rec.ends" class="rounded-md border-gray-300 py-1 text-sm">
+                                        <option value="never">{{ __('calendar.ui.ends_never') }}</option>
+                                        <option value="until">{{ __('calendar.ui.ends_until') }}</option>
+                                        <option value="count">{{ __('calendar.ui.ends_count') }}</option>
+                                    </select>
+                                    <input x-show="rec.ends==='until'" type="date" x-model="rec.until" class="rounded-md border-gray-300 py-1 text-sm">
+                                    <span x-show="rec.ends==='count'" class="flex items-center gap-1">
+                                        <input type="number" min="1" max="999" x-model.number="rec.count" class="w-16 rounded-md border-gray-300 py-1 text-sm">
+                                        {{ __('calendar.ui.count_times') }}
+                                    </span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    {{-- Reminders (multiple) --}}
+                    <div>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ __('calendar.ui.reminder') }}</span>
+                        <template x-for="(m,i) in form.reminders" :key="'rm'+i">
+                            <div class="mt-1 flex items-center gap-2">
+                                <select x-model="form.reminders[i]" class="min-w-0 flex-1 rounded-md border-gray-300 py-1.5 text-sm">
+                                    <option value="0">{{ __('calendar.ui.reminders.at_time') }}</option>
+                                    <option value="5">{{ __('calendar.ui.reminders.5') }}</option>
+                                    <option value="15">{{ __('calendar.ui.reminders.15') }}</option>
+                                    <option value="30">{{ __('calendar.ui.reminders.30') }}</option>
+                                    <option value="60">{{ __('calendar.ui.reminders.60') }}</option>
+                                    <option value="120">{{ __('calendar.ui.reminders.120') }}</option>
+                                    <option value="1440">{{ __('calendar.ui.reminders.1440') }}</option>
+                                    <option value="2880">{{ __('calendar.ui.reminders.2880') }}</option>
+                                    <option value="10080">{{ __('calendar.ui.reminders.10080') }}</option>
+                                </select>
+                                <button type="button" @click="form.reminders.splice(i,1)" class="shrink-0 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                            </div>
+                        </template>
+                        <button type="button" x-show="form.reminders.length < 5" @click="form.reminders.push('15')" class="mt-1 inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"><x-icon name="plus" class="h-3 w-3" /> {{ __('calendar.ui.reminder_add') }}</button>
                     </div>
                     <template x-if="!form.read_only">
                         <select x-model="form.calendar_id" class="w-full rounded-md border-gray-300 dark:border-gray-700 text-sm">
@@ -357,7 +408,24 @@
 
         @include('partials.share-modal')
 
-        {{-- Confirm modal (delete calendar / event) --}}
+                {{-- Scope modal: apply to this occurrence or the whole series --}}
+        <div x-show="scopeModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="scopeModal.open=false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="scopeModal.open=false"></div>
+            <div class="relative my-24 w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-5 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="scopeModal.deleting ? @js(__('calendar.ui.scope_delete_title')) : @js(__('calendar.ui.scope_title'))"></h3>
+                <div class="mt-4 space-y-2">
+                    <button type="button" @click="scopeModal.deleting ? destroyInstance() : saveInstance()"
+                        class="w-full rounded-md border border-gray-300 dark:border-gray-700 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('calendar.ui.scope_this') }}</button>
+                    <button type="button" @click="scopeModal.deleting ? destroySeries() : saveSeries()"
+                        class="w-full rounded-md border border-gray-300 dark:border-gray-700 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('calendar.ui.scope_series') }}</button>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button type="button" @click="scopeModal.open=false" class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('calendar.ui.cancel') }}</button>
+                </div>
+            </div>
+        </div>
+
+{{-- Confirm modal (delete calendar / event) --}}
         <div x-show="confirmModal.open" x-cloak class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-4" role="dialog" @keydown.escape.window="confirmModal.open=false">
             <div class="absolute inset-0 bg-gray-900/40" @click="confirmModal.open=false"></div>
             <div class="relative my-24 w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-5 shadow-xl">

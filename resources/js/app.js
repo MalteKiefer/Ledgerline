@@ -1073,12 +1073,22 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     // ---- layout helpers -----------------------------------------------------
     parse(s) { return s ? new Date(s.replace(' ', 'T')) : null; },
     visibleEvents() { return this.events.filter((e) => ! this.hidden.has(e.calendar_id)); },
+    /** Events touching day d — multi-day spans appear on every covered day. */
     eventsOn(d) {
-        const key = this.ymd(d);
+        const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart.getTime() + 86400000);
         return this.visibleEvents()
-            .filter((e) => this.ymd(this.parse(e.start)) === key)
+            .filter((e) => {
+                const s = this.parse(e.start);
+                if (! s) return false;
+                // All-day DTEND is exclusive; timed events without an end are points.
+                const en = e.end ? this.parse(e.end) : s;
+                return s < dayEnd && (en > dayStart || (+en === +s && s >= dayStart));
+            })
             .sort((a, b) => (a.all_day === b.all_day ? a.start.localeCompare(b.start) : (a.all_day ? -1 : 1)));
     },
+    /** First visible day of the event (time label only shown there). */
+    startsOn(e, d) { return this.ymd(this.parse(e.start)) === this.ymd(d); },
     agenda() {
         return this.visibleEvents().slice().sort((a, b) => a.start.localeCompare(b.start));
     },
@@ -1098,15 +1108,19 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     fmtHour(h) { return String(h).padStart(2, '0') + ':00'; },
     timedEventsOn(d) { return this.eventsOn(d).filter((e) => ! e.all_day); },
     allDayOn(d) { return this.eventsOn(d).filter((e) => e.all_day); },
-    eventStyle(e) {
+    /** Position within day d's hour grid, clipped to that day for multi-day spans. */
+    eventStyle(e, d) {
         const s = this.parse(e.start);
         if (! s) return 'display:none';
-        const end = e.end ? this.parse(e.end) : null;
-        const startMin = s.getHours() * 60 + s.getMinutes();
-        let dur = end ? (end - s) / 60000 : this.defaultMinutes;
-        if (! (dur > 0)) dur = 30;
+        let end = e.end ? this.parse(e.end) : new Date(s.getTime() + this.defaultMinutes * 60000);
+        if (! (end > s)) end = new Date(s.getTime() + 30 * 60000);
+        const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart.getTime() + 86400000);
+        const segS = s < dayStart ? dayStart : s;
+        const segE = end > dayEnd ? dayEnd : end;
+        const startMin = (segS - dayStart) / 60000;
         const top = (startMin / 60) * this.hourPx;
-        const height = Math.max((dur / 60) * this.hourPx, 16);
+        const height = Math.max(((segE - segS) / 60000 / 60) * this.hourPx, 16);
         return `top:${top}px;height:${height}px`;
     },
     openNewAt(d, ev) {
@@ -1119,7 +1133,9 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         const end = new Date(start.getTime() + this.defaultMinutes * 60000);
         const fmt = (x) => `${this.ymd(x)}T${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
         const writable = this.calendars.find((c) => ! c.read_only);
-        this.form = { id: null, calendar_id: writable?.id, summary: '', start: fmt(start), end: fmt(end), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminder_minutes: '', read_only: false };
+        this.form = { id: null, calendar_id: writable?.id, summary: '', start: fmt(start), end: fmt(end), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminders: [], read_only: false };
+        this.rec = this.parseRrule('');
+        this.instanceCtx = null;
         this.editor = true;
     },
 
@@ -1127,7 +1143,8 @@ Alpine.data('calendarPage', (cfg = {}) => ({
     drag: null, _suppressClick: false,
 
     draggable(e) {
-        if (e.recurring) return false; // series need RECURRENCE-ID exceptions
+        // Recurring instances are draggable too — the drop writes a
+        // RECURRENCE-ID override for just that occurrence.
         const cal = this.calendars.find((c) => c.id === e.calendar_id);
         return !! cal && ! cal.read_only;
     },
@@ -1136,7 +1153,7 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         return `${this.ymd(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`;
     },
     /** Open the editor unless the click is the tail end of a drag. */
-    evClick(id) { if (! this._suppressClick) this.openEditor(id); },
+    evClick(e) { if (! this._suppressClick) this.openEditor(e.id ?? e, e.id ? e : null); },
 
     /** Week/day hour grids: drag body = move (week: across days too), drag the
         bottom edge = resize. Snaps to 15 minutes. */
@@ -1184,7 +1201,10 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         this._suppressClick = true;
         setTimeout(() => { this._suppressClick = false; }, 50);
         try {
-            await this._json(cfg.eventBase + '/' + d.e.id + '/move', 'PATCH', { start: d.e.start, end: d.e.end });
+            await this._json(cfg.eventBase + '/' + d.e.id + '/move', 'PATCH', {
+                start: d.e.start, end: d.e.end,
+                recurrence_id: d.e.recurring ? d.e.recurrence_id : null,
+            });
         } finally { this.load(); } // reload reconciles (or reverts on failure)
     },
 
@@ -1216,7 +1236,10 @@ Alpine.data('calendarPage', (cfg = {}) => ({
             const ne = d.e.end ? new Date(this.parse(d.e.end).getTime() + shift) : null;
             const fmt = (x) => (d.e.all_day ? this.ymd(x) : this.fmtLocal(x));
             try {
-                await this._json(cfg.eventBase + '/' + d.e.id + '/move', 'PATCH', { start: fmt(ns), end: ne ? fmt(ne) : null });
+                await this._json(cfg.eventBase + '/' + d.e.id + '/move', 'PATCH', {
+                    start: fmt(ns), end: ne ? fmt(ne) : null,
+                    recurrence_id: d.e.recurring ? d.e.recurrence_id : null,
+                });
             } finally { this.load(); }
         };
         window.addEventListener('pointermove', move);
@@ -1244,29 +1267,45 @@ Alpine.data('calendarPage', (cfg = {}) => ({
         const startAt = new Date(day); startAt.setHours(9, 0, 0, 0);
         const endAt = new Date(startAt.getTime() + this.defaultMinutes * 60000);
         const fmt = (x) => `${this.ymd(x)}T${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
-        return { id: null, calendar_id: writable?.id, summary: '', start: fmt(startAt), end: fmt(endAt), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminder_minutes: '', read_only: false };
+        return { id: null, calendar_id: writable?.id, summary: '', start: fmt(startAt), end: fmt(endAt), all_day: false, timezone: this.effectiveTz(), location: '', description: '', rrule: '', reminders: [], read_only: false };
     },
 
     openNew(d) {
         if (this._suppressClick) return; // tail end of a drag, not a click
         if (! this.calendars.some((c) => ! c.read_only)) return;
-        this.form = this.blank(d); this.editor = true;
+        this.form = this.blank(d);
+        this.rec = this.parseRrule('');
+        this.instanceCtx = null;
+        this.editor = true;
     },
 
-    async openEditor(id) {
+    /** @param instance the clicked feed instance (recurring context) or null */
+    async openEditor(id, instance = null) {
         const r = await fetch(cfg.eventBase + '/' + id, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
         if (! r.ok) return;
         const d = await r.json();
+        const recurring = !! d.rrule;
+        // For a series the time fields show the CLICKED instance; "whole
+        // series" saves apply the delta to the master start.
+        const fmtIn = (v) => (v ? (d.all_day ? v.slice(0, 10) : v.slice(0, 16).replace(' ', 'T')) : '');
+        this.instanceCtx = recurring && instance ? {
+            recurrence_id: instance.recurrence_id,
+            start: instance.start, end: instance.end,
+            masterStart: d.start || '', masterEnd: d.end || '',
+        } : null;
         this.form = {
             id: d.id, calendar_id: d.calendar_id, summary: d.summary || '',
-            start: d.start || '', end: d.end || '', all_day: !! d.all_day,
+            start: this.instanceCtx ? fmtIn(instance.start) : (d.start || ''),
+            end: this.instanceCtx ? fmtIn(instance.end) : (d.end || ''),
+            all_day: !! d.all_day,
             timezone: d.timezone || this.effectiveTz(),
             location: d.location || '', description: d.description || '', rrule: d.rrule || '',
-            reminder_minutes: d.reminder_minutes != null ? String(d.reminder_minutes) : '',
+            reminders: (d.reminders || []).map(String),
             // Birthday/anniversary/holiday calendars are read-only — open such an
             // event for viewing only (no save/delete, calendar shown as text).
             read_only: !! this.calendars.find((c) => c.id === d.calendar_id)?.read_only,
         };
+        this.rec = this.parseRrule(this.form.rrule);
         this.editor = true;
     },
 
@@ -1283,25 +1322,117 @@ Alpine.data('calendarPage', (cfg = {}) => ({
             end: this.form.all_day ? (this.form.end || this.form.start).slice(0, 10) : this.form.end,
             all_day: this.form.all_day, location: this.form.location, description: this.form.description,
             timezone: this.form.all_day ? null : (this.form.timezone || null),
-            rrule: this.form.rrule || null,
-            reminder_minutes: this.form.reminder_minutes === '' ? null : Number(this.form.reminder_minutes),
+            rrule: this.buildRrule(this.rec) || null,
+            reminders: this.form.reminders.filter((m) => m !== '').map(Number),
         };
+    },
+
+    // ---- recurrence builder (structured RRULE) ------------------------------
+    rec: { freq: '', interval: 1, byday: [], monthlyMode: 'bymonthday', ends: 'never', until: '', count: 5, custom: null },
+    instanceCtx: null,
+    scopeModal: { open: false, deleting: false },
+
+    /** Parse an RRULE into builder state; unsupported parts become "custom". */
+    parseRrule(rrule) {
+        const base = { freq: '', interval: 1, byday: [], monthlyMode: 'bymonthday', ends: 'never', until: '', count: 5, custom: null };
+        if (! rrule) return base;
+        const parts = {};
+        for (const kv of rrule.toUpperCase().split(';')) {
+            const [k, v] = kv.split('=');
+            if (k) parts[k] = v || '';
+        }
+        const known = ['FREQ', 'INTERVAL', 'BYDAY', 'UNTIL', 'COUNT'];
+        if (! parts.FREQ || Object.keys(parts).some((k) => ! known.includes(k))
+            || ! ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(parts.FREQ)
+            || (parts.BYDAY && parts.FREQ === 'MONTHLY' && ! /^(-?[1-4])(MO|TU|WE|TH|FR|SA|SU)$/.test(parts.BYDAY))) {
+            return { ...base, custom: rrule }; // keep verbatim, edit disabled
+        }
+        const out = { ...base, freq: parts.FREQ, interval: Math.max(1, parseInt(parts.INTERVAL || '1', 10) || 1) };
+        if (parts.BYDAY && parts.FREQ === 'WEEKLY') out.byday = parts.BYDAY.split(',').filter(Boolean);
+        if (parts.BYDAY && parts.FREQ === 'MONTHLY') { out.monthlyMode = 'byday'; out.byday = [parts.BYDAY]; }
+        if (parts.UNTIL) { out.ends = 'until'; out.until = parts.UNTIL.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'); }
+        else if (parts.COUNT) { out.ends = 'count'; out.count = Math.max(1, parseInt(parts.COUNT, 10) || 1); }
+        return out;
+    },
+    buildRrule(rec) {
+        if (rec.custom) return rec.custom;
+        if (! rec.freq) return '';
+        const parts = ['FREQ=' + rec.freq];
+        if (rec.interval > 1) parts.push('INTERVAL=' + rec.interval);
+        if (rec.freq === 'WEEKLY' && rec.byday.length) parts.push('BYDAY=' + rec.byday.join(','));
+        if (rec.freq === 'MONTHLY' && rec.monthlyMode === 'byday') parts.push('BYDAY=' + this.monthlyByday());
+        if (rec.ends === 'until' && rec.until) parts.push('UNTIL=' + rec.until.replaceAll('-', '') + 'T235959Z');
+        if (rec.ends === 'count') parts.push('COUNT=' + Math.max(1, rec.count));
+        return parts.join(';');
+    },
+    /** "2TU"-style token for the start date (its weekday + which one of the month). */
+    monthlyByday() {
+        const d = this.parse(this.form.start) || new Date();
+        const codes = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+        return Math.ceil(d.getDate() / 7) + codes[d.getDay()];
+    },
+    weekdayOptions() {
+        const codes = this.weekStart === 'sunday'
+            ? ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] : ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+        const ref = this.startOfWeek(new Date());
+        return codes.map((code, i) => ({ code, label: this.addDays(ref, i).toLocaleDateString(this.locale, { weekday: 'short' }) }));
+    },
+    toggleByday(code) {
+        const i = this.rec.byday.indexOf(code);
+        i >= 0 ? this.rec.byday.splice(i, 1) : this.rec.byday.push(code);
     },
 
     async save() {
         if (! this.form.summary || ! this.form.calendar_id) return;
+        // Editing an instance of a series → ask for the scope first.
+        if (this.form.id && this.instanceCtx) { this.scopeModal = { open: true, deleting: false }; return; }
+        await this.saveSeries();
+    },
+    async saveSeries() {
         const id = this.form.id;
-        await this._json(id ? cfg.eventBase + '/' + id : cfg.eventsUrl, id ? 'PUT' : 'POST', this.payload());
-        this.editor = false; this.load();
+        const p = this.payload();
+        if (id && this.instanceCtx) {
+            // "Whole series": apply the instance-field delta to the master start
+            // so shifting one occurrence's time shifts the pattern, like Google.
+            const dStart = this.parse(this.form.start) - this.parse(this.instanceCtx.start.slice(0, 16).replace(' ', 'T'));
+            const dur = this.form.end ? this.parse(this.form.end) - this.parse(this.form.start) : null;
+            const ms = this.parse(this.instanceCtx.masterStart);
+            const ns = new Date(ms.getTime() + dStart);
+            const fmt = (x) => this.form.all_day ? this.ymd(x) : `${this.ymd(x)}T${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`;
+            p.start = fmt(ns);
+            p.end = dur !== null ? fmt(new Date(ns.getTime() + dur)) : null;
+        }
+        await this._json(id ? cfg.eventBase + '/' + id : cfg.eventsUrl, id ? 'PUT' : 'POST', p);
+        this.editor = false; this.scopeModal.open = false; this.load();
+    },
+    async saveInstance() {
+        const p = this.payload();
+        await this._json(cfg.eventBase + '/' + this.form.id + '/instance', 'PUT', {
+            recurrence_id: this.instanceCtx.recurrence_id,
+            summary: p.summary, start: p.start, end: p.end,
+            location: p.location, description: p.description,
+        });
+        this.editor = false; this.scopeModal.open = false; this.load();
     },
 
     destroy() {
         if (! this.form.id) return;
+        if (this.instanceCtx) { this.scopeModal = { open: true, deleting: true }; return; }
         const id = this.form.id;
         this.openConfirm(cfg.confirmDelete, async () => {
             await this._json(cfg.eventBase + '/' + id, 'DELETE');
             this.editor = false; this.load();
         });
+    },
+    async destroySeries() {
+        await this._json(cfg.eventBase + '/' + this.form.id, 'DELETE');
+        this.editor = false; this.scopeModal.open = false; this.load();
+    },
+    async destroyInstance() {
+        await this._json(cfg.eventBase + '/' + this.form.id + '/instance', 'DELETE', {
+            recurrence_id: this.instanceCtx.recurrence_id,
+        });
+        this.editor = false; this.scopeModal.open = false; this.load();
     },
 
     async importFile(ev) {
