@@ -5662,6 +5662,8 @@ Alpine.data('bookmarks', (labels = {}) => ({
     editorOpen: false,
     editing: null,
     tagsValue: '',
+    importing: false, importResult: '',
+    fetchingMeta: false,
 
     async init() { await this.load(); },
 
@@ -5714,11 +5716,15 @@ Alpine.data('bookmarks', (labels = {}) => ({
         return [...set].sort((a, b) => a.localeCompare(b));
     },
     get trashCount() { return this.bookmarks.filter((b) => b.trashed).length; },
+    get readLaterCount() { return this.bookmarks.filter((b) => ! b.trashed && b.readLater && ! b.read).length; },
+    get deadCount() { return this.bookmarks.filter((b) => ! b.trashed && b.dead).length; },
 
     get filtered() {
         const q = this.query.trim().toLowerCase();
         let list = this.bookmarks.filter((b) => this.view === 'trash' ? b.trashed : ! b.trashed);
         if (this.view === 'favorites') list = list.filter((b) => b.favorite);
+        else if (this.view === 'readlater') list = list.filter((b) => b.readLater && ! b.read);
+        else if (this.view === 'dead') list = list.filter((b) => b.dead);
         else if (this.view !== 'all' && this.view !== 'trash') list = list.filter((b) => b.folderId === this.view);
         if (this.activeTag !== '') list = list.filter((b) => (b.tags ?? []).includes(this.activeTag));
         if (q !== '') {
@@ -5732,7 +5738,7 @@ Alpine.data('bookmarks', (labels = {}) => ({
 
     newBookmark() {
         const folderId = (this.view !== 'all' && this.view !== 'favorites' && this.view !== 'trash') ? this.view : null;
-        this.editing = { id: null, folderId, title: '', url: '', description: '', tags: [], favorite: false };
+        this.editing = { id: null, folderId, title: '', url: '', description: '', tags: [], favorite: false, readLater: this.view === 'readlater' };
         this.tagsValue = '';
         this.editorOpen = true;
     },
@@ -5749,11 +5755,46 @@ Alpine.data('bookmarks', (labels = {}) => ({
         e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
         const body = { bookmark_folder_id: e.folderId ?? null, title: e.title, url: e.url, description: e.description, tags: e.tags, favorite: !! e.favorite };
         try {
-            const b = e.id ? await this._api('PUT', `/bookmarks/${e.id}`, body) : await this._api('POST', '/bookmarks', body);
+            let b = e.id ? await this._api('PUT', `/bookmarks/${e.id}`, body) : await this._api('POST', '/bookmarks', body);
+            // read_later is a PATCH concern (it also resets read_at) — sync it
+            // when the checkbox differs from the stored state.
+            if (!! e.readLater !== !! b.readLater) b = await this._api('PATCH', `/bookmarks/${b.id}`, { read_later: !! e.readLater });
             this._replace(b);
             this.closeEditor();
         } catch (err) { this.error = labels.saveFailed; }
     },
+
+    // ---- metadata prefill / import / read-later ----------------------------
+    async fetchMeta() {
+        const url = (this.editing?.url || '').trim();
+        if (! url || this.fetchingMeta) return;
+        this.fetchingMeta = true;
+        try {
+            const d = await this._api('POST', '/bookmarks/fetch-meta', { url });
+            if (d.title && ! (this.editing.title || '').trim()) this.editing.title = d.title;
+            if (d.description && ! (this.editing.description || '').trim()) this.editing.description = d.description;
+        } catch (e) { /* leave fields as typed */ } finally { this.fetchingMeta = false; }
+    },
+    async importFile(ev) {
+        const f = ev.target.files[0]; if (! f) return;
+        const fd = new FormData(); fd.append('file', f);
+        this.importing = true; this.importResult = '';
+        try {
+            const res = await fetch('/bookmarks/import', {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
+                body: fd,
+            });
+            if (res.ok) {
+                const d = await res.json();
+                this.importResult = (labels.importResult || ':created / :skipped').replace(':created', d.created).replace(':skipped', d.skipped);
+                setTimeout(() => { this.importResult = ''; }, 8000);
+                await this.load();
+            } else { this.error = labels.saveFailed; }
+        } catch (e) { this.error = labels.saveFailed; } finally { this.importing = false; ev.target.value = ''; }
+    },
+    async toggleReadLater(b) { await this._patch(b, { read_later: ! b.readLater }); },
+    async markRead(b) { await this._patch(b, { read: true }); },
 
     async _patch(b, changes) {
         try { this._replace(await this._api('PATCH', `/bookmarks/${b.id}`, changes)); }

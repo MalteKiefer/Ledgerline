@@ -37,6 +37,7 @@ Schedule::command('mail:sync')->hourly()->withoutOverlapping();
 
 // Remove expired download exports (past their retention window) and their zips.
 Schedule::command('exports:prune')->daily()->withoutOverlapping();
+Schedule::command('bookmarks:check-links')->weekly()->withoutOverlapping();
 
 // Fail exports left stuck building by a dead worker so they get pruned.
 Schedule::command('exports:recover-stuck')->hourly()->withoutOverlapping();

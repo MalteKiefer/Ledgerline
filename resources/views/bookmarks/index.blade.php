@@ -4,6 +4,7 @@
         deleteFolderConfirm: @js(__('bookmarks.delete_folder_confirm')),
         deleteConfirm: @js(__('bookmarks.delete_confirm')),
         emptyTrashConfirm: @js(__('bookmarks.empty_trash_confirm')),
+        importResult: @js(__('bookmarks.import_result')),
      })">
 
     <template x-if="state === 'error'">
@@ -46,10 +47,13 @@
                     <template x-for="b in filtered" :key="b.id">
                         <li class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm">
                             <template x-if="host(b.url)">
-                                <img :src="`https://${host(b.url)}/favicon.ico`" alt="" referrerpolicy="no-referrer" x-on:error="$el.style.display='none'" class="mt-0.5 h-5 w-5 shrink-0 rounded">
+                                <img :src="'{{ route('bookmarks.favicon') }}?host='+encodeURIComponent(host(b.url))" alt="" x-on:error="$el.style.display='none'" class="mt-0.5 h-5 w-5 shrink-0 rounded">
                             </template>
                             <div class="min-w-0 flex-1">
-                                <a :href="b.url" target="_blank" rel="noopener" class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100 hover:underline" x-text="b.title"></a>
+                                <span class="flex items-center gap-1.5">
+                                    <a :href="b.url" target="_blank" rel="noopener" @click="view === 'readlater' && markRead(b)" class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100 hover:underline" x-text="b.title"></a>
+                                    <span x-show="b.dead" x-cloak class="shrink-0 rounded bg-red-50 dark:bg-red-950 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300" title="{{ __('bookmarks.dead_hint') }}">{{ __('bookmarks.dead') }}</span>
+                                </span>
                                 <p class="truncate text-xs text-gray-400 dark:text-gray-500" x-text="b.url"></p>
                                 <p x-show="b.description" class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="b.description"></p>
                                 <div class="mt-1 flex flex-wrap items-center gap-1.5">
@@ -57,6 +61,7 @@
                                 </div>
                             </div>
                             <div class="flex shrink-0 items-center gap-1">
+                                <button type="button" @click="toggleReadLater(b)" :title="b.readLater ? @js(__('bookmarks.read_later_remove')) : @js(__('bookmarks.read_later_add'))" class="rounded p-1" :class="b.readLater && ! b.read ? 'text-gray-900 dark:text-gray-100' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400'"><x-icon name="clock" class="h-4 w-4" /></button>
                                 <button type="button" @click="toggleFavorite(b)" :title="b.favorite ? @js(__('bookmarks.unfavorite')) : @js(__('bookmarks.favorite'))" class="rounded p-1" :class="b.favorite ? 'text-red-500' : 'text-gray-300 hover:text-gray-500'"><x-icon name="heart" class="h-4 w-4" /></button>
                                 <template x-if="view !== 'trash'">
                                     <span class="flex items-center gap-1">
@@ -92,7 +97,13 @@
                 <div class="min-h-0 flex-1 space-y-4 overflow-auto p-5" x-show="editing">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('bookmarks.url') }}</label>
-                        <input type="url" x-model="editing.url" placeholder="https://…" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                        <div class="mt-1 flex items-center gap-2">
+                            <input type="url" x-model="editing.url" placeholder="https://…" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                            <button type="button" @click="fetchMeta()" :disabled="fetchingMeta || !(editing.url||'').startsWith('http')" title="{{ __('bookmarks.fetch_meta') }}"
+                                class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
+                                <x-icon name="arrow-path" class="h-4 w-4" x-bind:class="fetchingMeta && 'animate-spin'" />
+                            </button>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('bookmarks.field_title') }}</label>
@@ -115,10 +126,16 @@
                             <input type="text" x-model="tagsValue" placeholder="{{ __('bookmarks.tags_placeholder') }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                         </div>
                     </div>
-                    <label class="flex items-center gap-2">
-                        <input type="checkbox" x-model="editing.favorite" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
-                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('bookmarks.field_favorite') }}</span>
-                    </label>
+                    <div class="flex flex-wrap gap-4">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" x-model="editing.favorite" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                            <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('bookmarks.field_favorite') }}</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" x-model="editing.readLater" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                            <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('bookmarks.read_later') }}</span>
+                        </label>
+                    </div>
                 </div>
                 <div class="flex items-center justify-end gap-3 border-t border-gray-100 dark:border-gray-800 px-5 py-3">
                     <button type="button" @click="closeEditor()" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('bookmarks.cancel') }}</button>

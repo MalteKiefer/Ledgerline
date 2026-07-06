@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /** A bookmark, private to its owning user. Trashing is Laravel soft-deletion. */
-#[Fillable(['bookmark_folder_id', 'title', 'url', 'description', 'tags', 'favorite'])]
+#[Fillable(['bookmark_folder_id', 'title', 'url', 'description', 'tags', 'favorite', 'read_later', 'read_at', 'last_checked_at', 'dead_at'])]
 class Bookmark extends Model
 {
     use OwnsUserData;
@@ -22,6 +22,10 @@ class Bookmark extends Model
         return [
             'tags' => 'array',
             'favorite' => 'boolean',
+            'read_later' => 'boolean',
+            'read_at' => 'datetime',
+            'last_checked_at' => 'datetime',
+            'dead_at' => 'datetime',
         ];
     }
 
