@@ -47,4 +47,5 @@ return [
     'export' => 'Export bookmarks (.html)',
     'import_result' => ':created imported, :skipped skipped',
     'fetch_meta' => 'Fetch title and description from the page',
+    'url_required' => 'Please enter a URL.',
 ];
