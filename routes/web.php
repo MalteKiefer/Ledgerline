@@ -361,6 +361,7 @@ Route::middleware('auth')->group(function (): void {
     // Mail accounts: plain rows (password encrypted at rest), JSON API.
     Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->name('mail.accounts.store');
+    Route::post('/mail/accounts/test', [MailAccountController::class, 'test'])->middleware('throttle:20,1')->name('mail.accounts.test');
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->name('mail.accounts.destroy');
     // Sender identities per account (owner-scoped through the parent account).

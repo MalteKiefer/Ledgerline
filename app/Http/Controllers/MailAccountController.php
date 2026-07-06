@@ -8,6 +8,9 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailIdentity;
 use App\Models\MailMessage;
+use App\Services\Mail\ImapCredentials;
+use App\Services\Mail\ImapReader;
+use App\Services\Mail\SmtpSender;
 use App\Support\BlobStore;
 use App\Support\KeepBlankSecrets;
 use App\Support\OutboundUrl;
@@ -79,6 +82,65 @@ class MailAccountController extends Controller
         $account->delete();
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Test the IMAP (and, when configured, SMTP) connection for the submitted
+     * account details without saving. When editing an existing account, blank
+     * password fields fall back to the stored ones so the user need not retype.
+     */
+    public function test(Request $request, ImapReader $reader, SmtpSender $smtp): JsonResponse
+    {
+        $data = $this->validated($request, requirePassword: false);
+
+        // Blank password fields reuse the stored ones of the edited account.
+        if (filled($request->input('account_id'))) {
+            $existing = MailAccount::withoutGlobalScopes()->find($request->input('account_id'));
+            if ($existing !== null && (int) $existing->user_id === (int) $request->user()->id) {
+                if (empty($data['password'])) {
+                    $data['password'] = (string) $existing->password;
+                }
+                if (empty($data['smtp_password'])) {
+                    $data['smtp_password'] = (string) $existing->smtp_password;
+                }
+            }
+        }
+
+        // IMAP.
+        $imap = ['ok' => false, 'error' => null];
+        try {
+            $reader->listFolders(new ImapCredentials(
+                host: $data['host'], port: (int) $data['port'], encryption: $data['encryption'],
+                username: $data['username'], password: (string) ($data['password'] ?? ''),
+                validateCert: (bool) ($data['validate_cert'] ?? true),
+            ));
+            $imap['ok'] = true;
+        } catch (\Throwable $e) {
+            $imap['error'] = $this->reason($e);
+        }
+
+        // SMTP — only when a sending host/credentials resolve (via IMAP fallback).
+        $account = (new MailAccount)->forceFill($data);
+        $smtpResult = ['ok' => false, 'error' => null, 'configured' => $account->smtpConfigured()];
+        if ($smtpResult['configured']) {
+            try {
+                $smtp->verify($account->smtpConfig());
+                $smtpResult['ok'] = true;
+            } catch (\Throwable $e) {
+                $smtpResult['error'] = $this->reason($e);
+            }
+        }
+
+        return response()->json(['imap' => $imap, 'smtp' => $smtpResult]);
+    }
+
+    /** The server's own message (chained cause), trimmed for display. */
+    private function reason(\Throwable $e): string
+    {
+        $reason = trim(($e->getPrevious() ?? $e)->getMessage());
+        $reason = preg_replace('/\s+/', ' ', $reason) ?? $reason;
+
+        return mb_substr($reason, 0, 200);
     }
 
     /** Reject IMAP/SMTP hosts resolving to the cloud-metadata/link-local range. */
