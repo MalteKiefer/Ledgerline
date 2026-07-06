@@ -8,6 +8,7 @@ use App\Models\MailAccount;
 use App\Models\MailFolder;
 use App\Models\MailIdentity;
 use App\Models\MailMessage;
+use App\Models\MailSignature;
 use App\Services\Mail\ImapCredentials;
 use App\Services\Mail\ImapReader;
 use App\Services\Mail\SmtpSender;
@@ -28,6 +29,8 @@ class MailAccountController extends Controller
     {
         return response()->json([
             'accounts' => MailAccount::with('identities')->orderBy('name')->get()->map(fn (MailAccount $a) => $this->toArray($a)),
+            'signatures' => MailSignature::orderByDesc('is_default')->orderBy('name')->get()
+                ->map(fn (MailSignature $x) => ['id' => $x->id, 'name' => $x->name, 'html' => $x->html, 'isDefault' => $x->is_default])->values(),
         ]);
     }
 
@@ -201,6 +204,7 @@ class MailAccountController extends Controller
                 'fromEmail' => $i->from_email,
                 'replyTo' => $i->reply_to,
                 'signature' => $i->signature,
+                'signatureId' => $i->signature_id,
                 'isDefault' => $i->is_default,
             ])->values(),
         ];

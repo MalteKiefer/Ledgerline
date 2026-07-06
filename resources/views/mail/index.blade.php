@@ -560,6 +560,19 @@
                             </select>
                         </div>
                     </template>
+                    {{-- Signature picker (shown when the user has any reusable signatures). --}}
+                    <template x-if="signatures.length">
+                        <div class="flex items-center gap-2">
+                            <label class="w-12 shrink-0 text-sm text-gray-500 dark:text-gray-400">{{ __('mail.signature') }}</label>
+                            <select x-model.number="compose.signatureId" @change="onComposeSignatureChange()" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 text-sm">
+                                <option :value="null">{{ __('mail.signature_none') }}</option>
+                                <template x-for="s in signatures" :key="s.id">
+                                    <option :value="s.id" x-text="s.name"></option>
+                                </template>
+                            </select>
+                            <a href="{{ route('mail.signatures') }}" target="_blank" class="shrink-0 text-xs text-gray-500 dark:text-gray-400 hover:underline">{{ __('mail.manage') }}</a>
+                        </div>
+                    </template>
                     <div x-show="compose.accountId && ! (_account(compose.accountId)?.smtpConfigured)" x-cloak
                         class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                         <x-icon name="exclamation-triangle" class="mt-0.5 h-4 w-4 shrink-0" />
@@ -594,7 +607,7 @@
                         <input type="text" x-model="compose.subject" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 text-sm">
                     </div>
 
-                    @include('mail._compose_editor')
+                    @include('mail._rich_editor', ['bind' => 'compose.body'])
 
                     {{-- Attachments --}}
                     <div>

@@ -6,9 +6,11 @@ namespace App\Http\Controllers;
 
 use App\Models\MailAccount;
 use App\Models\MailIdentity;
+use App\Models\MailSignature;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\View\View;
 
 /**
  * Sender identities for a mail account. Identities have no user_id: ownership is
@@ -17,6 +19,29 @@ use Illuminate\Support\Facades\DB;
  */
 class MailIdentityController extends Controller
 {
+    /** Dedicated management page for all of the user's identities. */
+    public function page(): View
+    {
+        return view('mail.identities');
+    }
+
+    /** Every identity across the user's accounts, with account + signature info. */
+    public function all(Request $request): JsonResponse
+    {
+        $accounts = MailAccount::with('identities')->orderBy('name')->get();
+        $signatures = MailSignature::orderBy('name')->get(['id', 'name']);
+
+        return response()->json([
+            'accounts' => $accounts->map(fn (MailAccount $a) => [
+                'id' => $a->id,
+                'name' => $a->name,
+                'username' => $a->username,
+                'identities' => $a->identities->map(fn (MailIdentity $i) => $this->toArray($i))->values(),
+            ])->values(),
+            'signatures' => $signatures->map(fn (MailSignature $s) => ['id' => $s->id, 'name' => $s->name])->values(),
+        ]);
+    }
+
     public function index(Request $request, int $account): JsonResponse
     {
         $mailAccount = $this->account($request, $account);
@@ -46,6 +71,7 @@ class MailIdentityController extends Controller
                 'from_email' => $data['from_email'],
                 'reply_to' => $data['reply_to'] ?? null,
                 'signature' => $data['signature'] ?? null,
+                'signature_id' => $this->ownedSignatureId($data['signature_id'] ?? null),
                 'is_default' => $isDefault,
             ]);
         });
@@ -73,6 +99,7 @@ class MailIdentityController extends Controller
                 'from_email' => $data['from_email'],
                 'reply_to' => $data['reply_to'] ?? null,
                 'signature' => $data['signature'] ?? null,
+                'signature_id' => $this->ownedSignatureId($data['signature_id'] ?? null),
                 'is_default' => $data['is_default'],
             ]);
         });
@@ -129,8 +156,19 @@ class MailIdentityController extends Controller
             'from_email' => ['required', 'email', 'max:255'],
             'reply_to' => ['nullable', 'email', 'max:255'],
             'signature' => ['nullable', 'string', 'max:5000'],
+            'signature_id' => ['nullable', 'integer', 'exists:mail_signatures,id'],
             'is_default' => ['sometimes', 'boolean'],
         ]);
+    }
+
+    /** Only accept a signature id the current user owns (else null). */
+    private function ownedSignatureId(mixed $id): ?int
+    {
+        if (empty($id)) {
+            return null;
+        }
+
+        return MailSignature::query()->whereKey($id)->exists() ? (int) $id : null;
     }
 
     /** @return array<string,mixed> */
@@ -142,6 +180,7 @@ class MailIdentityController extends Controller
             'fromEmail' => $i->from_email,
             'replyTo' => $i->reply_to,
             'signature' => $i->signature,
+            'signatureId' => $i->signature_id,
             'isDefault' => $i->is_default,
         ];
     }

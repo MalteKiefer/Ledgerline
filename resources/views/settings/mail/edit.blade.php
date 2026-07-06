@@ -7,6 +7,16 @@
     </p>
     <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.mail_heading') }}</h1>
 
+    {{-- Identity + signature management --}}
+    <div class="mt-4 flex flex-wrap gap-2">
+        <a href="{{ route('mail.identities.page') }}" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <x-icon name="user" class="h-4 w-4" />{{ __('mail.identities_heading') }}
+        </a>
+        <a href="{{ route('mail.signatures') }}" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <x-icon name="pencil" class="h-4 w-4" />{{ __('mail.signatures_heading') }}
+        </a>
+    </div>
+
     {{-- Background-sync interval --}}
     <form method="POST" action="{{ route('settings.mail.update') }}" class="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
         @csrf
