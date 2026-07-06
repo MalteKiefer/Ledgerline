@@ -167,7 +167,19 @@ class BookmarkController extends Controller
     {
         $host = (string) $request->query('host', '');
         $icon = $favicons->fetch($host);
-        abort_if($icon === null, 404);
+
+        // Hosts without a favicon return a cached 1x1 transparent PNG instead of
+        // a 404, so the <img> never logs a console error for a missing icon.
+        if ($icon === null) {
+            $pixel = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+
+            return response($pixel, 200, [
+                'Content-Type' => 'image/png',
+                'X-Content-Type-Options' => 'nosniff',
+                'Content-Security-Policy' => "default-src 'none'; sandbox",
+                'Cache-Control' => 'public, max-age=86400',
+            ]);
+        }
 
         return response(BlobStore::disk()->get($icon['path']), 200, [
             'Content-Type' => $icon['mime'],

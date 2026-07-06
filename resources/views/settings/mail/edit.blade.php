@@ -47,8 +47,8 @@
                 <div class="flex items-center gap-2">
                     <button type="button" x-show="manifest.accounts.length" @click="refreshAll()" :disabled="refreshingAll || busyId" title="{{ __('mail.refresh_all') }}" aria-label="{{ __('mail.refresh_all') }}"
                         class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"><x-icon name="arrow-path" class="h-5 w-5" ::class="refreshingAll ? 'animate-spin' : ''" /></button>
-                    <button type="button" @click="openAdd()" title="{{ __('mail.add_account') }}" aria-label="{{ __('mail.add_account') }}"
-                        class="rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="plus" class="h-5 w-5" /></button>
+                    <a href="{{ route('mail.accounts.create') }}" title="{{ __('mail.add_account') }}" aria-label="{{ __('mail.add_account') }}"
+                        class="inline-flex rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="plus" class="h-5 w-5" /></a>
                 </div>
             </div>
 
@@ -74,9 +74,9 @@
                                 <div class="relative" @click.outside="menu = false">
                                     <button type="button" @click="menu = ! menu" class="rounded p-1.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600"><x-icon name="ellipsis" /></button>
                                     <div x-show="menu" x-cloak class="absolute right-0 z-20 mt-1 w-40 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 text-left text-sm shadow-lg">
-                                        <button type="button" @click="openEdit(a); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" />{{ __('mail.edit') }}</button>
+                                        <a :href="'/mail/accounts/' + a.id + '/edit'" @click="menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" />{{ __('mail.edit') }}</a>
                                         <a :href="'/mail/archive/' + a.id + '/download'" @click="menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50"><x-icon name="arrow-down-tray" />{{ __('mail.download_archive') }}</a>
-                                        <button type="button" @click="confirmDelete(a); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="trash" />{{ __('mail.delete') }}</button>
+                                        <a :href="'/mail/accounts/' + a.id + '/edit'" @click="menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="trash" />{{ __('mail.delete') }}</a>
                                     </div>
                                 </div>
                             </div>
@@ -122,6 +122,5 @@
           </div>
         </template>
 
-        @include('mail._account_dialogs')
     </div>
 </x-layouts.app>

@@ -234,4 +234,10 @@ return [
     'identity_signature_none' => 'Keine',
     'back_to_mail' => 'Zurück zu Mail',
     'saved' => 'Gespeichert.',
+    'section_general' => 'Allgemein',
+    'section_imap' => 'Posteingang (IMAP)',
+    'section_smtp' => 'Postausgang (SMTP)',
+    'section_sender' => 'Absender-Standardwerte',
+    'back_to_settings' => 'Zurück zu Mail-Einstellungen',
+    'identities_after_save' => 'Konto zuerst speichern, um Identitäten und Signaturen hinzuzufügen.',
 ];

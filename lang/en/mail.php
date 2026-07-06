@@ -234,4 +234,10 @@ return [
     'identity_signature_none' => 'None',
     'back_to_mail' => 'Back to mail',
     'saved' => 'Saved.',
+    'section_general' => 'General',
+    'section_imap' => 'Incoming mail (IMAP)',
+    'section_smtp' => 'Outgoing mail (SMTP)',
+    'section_sender' => 'Sender defaults',
+    'back_to_settings' => 'Back to mail settings',
+    'identities_after_save' => 'Save the account first to add identities and signatures.',
 ];

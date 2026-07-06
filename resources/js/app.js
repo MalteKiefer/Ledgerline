@@ -5973,6 +5973,68 @@ Alpine.data('mailIdentities', (labels = {}) => ({
     },
 }));
 
+/**
+ * Dedicated mail account settings page (add/edit). Clean sectioned form with an
+ * IMAP + SMTP connection test; identities and signatures are managed on their
+ * own pages (linked from here). Replaces the cramped account modal.
+ */
+Alpine.data('mailAccountEdit', (cfg = {}) => ({
+    cfg,
+    id: cfg.account?.id ?? null,
+    form: {
+        name: cfg.account?.name ?? '', host: cfg.account?.host ?? '', port: cfg.account?.port ?? 993,
+        encryption: cfg.account?.encryption ?? 'ssl', username: cfg.account?.username ?? '', password: '',
+        validate_cert: cfg.account ? (cfg.account.validateCert !== false) : true,
+        smtp_host: cfg.account?.smtpHost ?? '', smtp_port: cfg.account?.smtpPort ?? '',
+        smtp_encryption: cfg.account?.smtpEncryption ?? 'ssl',
+        smtp_username: cfg.account?.smtpUsername ?? '', smtp_password: '',
+        from_name: cfg.account?.fromName ?? '', reply_to: cfg.account?.replyTo ?? '',
+        hasSmtpPassword: !! cfg.account?.hasSmtpPassword,
+    },
+    saving: false, testing: false, testResult: null, error: '',
+    imapPortFor(enc) { return enc === 'starttls' ? 143 : 993; },
+    smtpPortFor(enc) { return enc === 'ssl' ? 465 : (enc === 'none' ? 25 : 587); },
+
+    _body() {
+        const f = this.form;
+        return {
+            name: f.name.trim() || f.host.trim(), host: f.host.trim(), port: Number(f.port) || 993,
+            encryption: f.encryption, username: f.username.trim(), password: f.password, validate_cert: !! f.validate_cert,
+            smtp_host: f.smtp_host?.trim() || null, smtp_port: f.smtp_port ? Number(f.smtp_port) : null,
+            smtp_encryption: f.smtp_encryption || null, smtp_username: f.smtp_username?.trim() || null,
+            smtp_password: f.smtp_password || null, from_name: f.from_name?.trim() || null,
+            reply_to: f.reply_to?.trim() || null,
+        };
+    },
+    async save() {
+        if (this.saving) return;
+        if (! this.form.host.trim() || ! this.form.username.trim() || (! this.id && ! this.form.password)) { this.error = cfg.saveFailed; return; }
+        this.saving = true; this.error = '';
+        try {
+            const url = this.id ? `/mail/accounts/${this.id}` : '/mail/accounts';
+            const res = await fetch(url, { method: this.id ? 'PUT' : 'POST', headers: jsonHeaders(), body: JSON.stringify(this._body()) });
+            if (! res.ok) { this.error = cfg.saveFailed; return; }
+            window.location.href = cfg.settingsUrl;
+        } catch (e) { this.error = cfg.saveFailed; } finally { this.saving = false; }
+    },
+    async testConnection() {
+        if (! this.form.host.trim() || ! this.form.username.trim()) { this.error = cfg.saveFailed; return; }
+        this.testing = true; this.testResult = null; this.error = '';
+        try {
+            const res = await fetch('/mail/accounts/test', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ ...this._body(), account_id: this.id }) });
+            if (! res.ok) { this.error = cfg.saveFailed; return; }
+            this.testResult = await res.json();
+        } catch (e) { this.error = cfg.saveFailed; } finally { this.testing = false; }
+    },
+    async destroy(keepArchive) {
+        if (! this.id) return;
+        try {
+            await fetch(`/mail/accounts/${this.id}?keep_archive=${keepArchive ? 1 : 0}`, { method: 'DELETE', headers: jsonHeaders() });
+            window.location.href = cfg.settingsUrl;
+        } catch (e) { this.error = cfg.saveFailed; }
+    },
+}));
+
 Alpine.start();
 
 // PWA: register the service worker (network-first navigations with an offline
