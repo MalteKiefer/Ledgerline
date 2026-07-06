@@ -46,6 +46,14 @@ class ContactController extends Controller
         return view('contacts.edit', ['contactId' => $contact->id]);
     }
 
+    /** Read-only detail page; editing is a separate step (Google-style). */
+    public function view(Contact $contact): View
+    {
+        $this->authorizeContact($contact);
+
+        return view('contacts.show', ['contactId' => $contact->id]);
+    }
+
     public function data(Request $request, VCardService $vcards): JsonResponse
     {
         $userId = $request->user()->id;
@@ -244,10 +252,13 @@ class ContactController extends Controller
         return response()->json(['id' => $contact->id], 201);
     }
 
-    public function update(Request $request, Contact $contact, ContactWriter $writer): JsonResponse
+    public function update(Request $request, Contact $contact, VCardService $vcards, ContactWriter $writer): JsonResponse
     {
         $this->authorizeContact($contact);
         $data = $this->validated($request);
+        // The editor never posts the photo — carry the existing one over, or the
+        // rebuilt vCard silently drops it.
+        $data['photo'] = $vcards->parse($contact->vcard)['photo'] ?? null;
         $writer->update($contact, $data, $data['group_ids'] ?? []);
 
         return response()->json(['ok' => true]);

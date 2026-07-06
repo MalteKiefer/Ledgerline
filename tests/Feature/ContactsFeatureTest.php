@@ -9,6 +9,7 @@ use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\Person;
+use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\DavCredentialService;
 use App\Services\Contacts\VCardService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -116,6 +117,43 @@ class ContactsFeatureTest extends TestCase
         // Another user cannot open the edit page.
         $this->signIn();
         $this->get(route('contacts.edit', $contact))->assertForbidden();
+    }
+
+    public function test_updating_a_contact_keeps_its_photo(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Jane'])->assertStatus(201);
+        $contact = Contact::firstOrFail();
+
+        // Attach a photo the way the avatar endpoint does (vCard PHOTO data URI).
+        $vcards = app(VCardService::class);
+        $data = $vcards->parse($contact->vcard);
+        $data['photo'] = 'data:image/jpeg;base64,'.base64_encode('img-bytes');
+        app(ContactWriter::class)->update($contact, $data, []);
+        $this->assertTrue($contact->fresh()->has_photo);
+
+        // A regular editor save (no photo in the payload) must not drop it.
+        $this->putJson(route('contacts.update', $contact), ['fn' => 'Jane Renamed'])->assertOk();
+
+        $contact->refresh();
+        $this->assertSame('Jane Renamed', $contact->fn);
+        $this->assertTrue($contact->has_photo);
+        $this->assertStringContainsString('PHOTO', $contact->vcard);
+    }
+
+    public function test_view_page_renders_and_is_owner_scoped(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'Jane'])->assertStatus(201);
+        $contact = Contact::firstOrFail();
+
+        $this->get(route('contacts.view', $contact))->assertOk()->assertSee('contactViewPage', false);
+
+        $this->signIn();
+        $this->get(route('contacts.view', $contact))->assertForbidden();
     }
 
     public function test_geocode_is_owner_only_and_404s_without_an_address(): void

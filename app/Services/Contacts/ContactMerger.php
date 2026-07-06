@@ -42,7 +42,7 @@ class ContactMerger
                 'note' => $this->mergeNotes($all),
                 'emails' => $this->unionContacts($all, 'emails'),
                 'phones' => $this->unionContacts($all, 'phones'),
-                'urls' => $this->unionUrls($all),
+                'urls' => $this->unionContacts($all, 'urls'),
                 'anniversaries' => $this->unionAnniversaries($all),
                 'addresses' => $this->unionAddresses($all),
                 'related' => $this->unionRelated($all),
@@ -119,16 +119,6 @@ class ContactMerger
         }
 
         return $out;
-    }
-
-    /**
-     * @param  Collection<int, Contact>  $all
-     * @return list<string>
-     */
-    private function unionUrls(Collection $all): array
-    {
-        return $all->flatMap(fn (Contact $c) => $this->vcards->parse($c->vcard)['urls'] ?? [])
-            ->map(fn ($u) => trim((string) $u))->filter()->unique()->values()->all();
     }
 
     /**

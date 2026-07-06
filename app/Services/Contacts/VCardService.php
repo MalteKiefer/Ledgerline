@@ -115,7 +115,7 @@ class VCardService
         foreach ($data['urls'] ?? [] as $u) {
             $value = is_array($u) ? ($u['value'] ?? '') : $u;
             if (filled($value)) {
-                $card->add('URL', (string) $value);
+                $card->add('URL', (string) $value, $this->typeParam($u));
             }
         }
 
@@ -160,7 +160,7 @@ class VCardService
             'note' => $this->s($card->NOTE ?? null),
             'emails' => $this->multi($card->EMAIL ?? []),
             'phones' => $this->multi($card->TEL ?? []),
-            'urls' => array_map(fn ($u) => trim((string) $u), iterator_to_array($card->URL ?? [])),
+            'urls' => $this->multi($card->URL ?? []),
             'categories' => isset($card->CATEGORIES) ? $card->CATEGORIES->getParts() : [],
             'photo' => $this->photoUri($card),
             'addresses' => $this->addresses($card),

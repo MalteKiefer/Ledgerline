@@ -124,6 +124,23 @@ class VCardServiceTest extends TestCase
         $this->assertSame([['label' => 'Nick', 'value' => 'Zed']], $parsed['custom_fields']);
     }
 
+    public function test_urls_round_trip_with_type_labels(): void
+    {
+        $svc = new VCardService;
+        $vcard = $svc->build([
+            'fn' => 'X',
+            'urls' => [
+                ['value' => 'https://example.com', 'type' => 'work'],
+                ['value' => 'https://blog.example.com', 'type' => 'home'],
+            ],
+        ]);
+
+        $urls = $svc->parse($vcard)['urls'];
+        $this->assertSame('https://example.com', $urls[0]['value']);
+        $this->assertSame('work', strtolower((string) $urls[0]['type']));
+        $this->assertSame('home', strtolower((string) $urls[1]['type']));
+    }
+
     public function test_build_reuses_uid_on_update(): void
     {
         $svc = new VCardService;
