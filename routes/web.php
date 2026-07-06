@@ -184,6 +184,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/contacts/{contact}/view', [ContactController::class, 'view'])->name('contacts.view');
     Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
     Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
+    Route::delete('/contacts', [ContactController::class, 'bulkDestroy'])->name('contacts.bulk-destroy');
     Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->name('contacts.destroy');
     Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->name('contacts.avatar');
     Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->name('contacts.avatar.upload');

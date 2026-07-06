@@ -9,11 +9,13 @@ use App\Models\AddressBook;
 use App\Models\Contact;
 use App\Models\ContactGroup;
 use App\Models\Person;
+use App\Models\User;
 use App\Services\Contacts\ContactWriter;
 use App\Services\Contacts\DavCredentialService;
 use App\Services\Contacts\VCardService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -175,6 +177,30 @@ class ContactsFeatureTest extends TestCase
         // Hidden people do not surface.
         $person->update(['hidden_at' => now()]);
         $this->getJson(route('contacts.show', $contact))->assertOk()->assertJsonPath('person', null);
+    }
+
+    public function test_bulk_destroy_deletes_own_contacts_and_ignores_foreign_ids(): void
+    {
+        $user = $this->signIn();
+        $book = $this->book($user->id);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'A'])->assertStatus(201);
+        $this->postJson(route('contacts.store'), ['book_id' => $book->id, 'fn' => 'B'])->assertStatus(201);
+        $mine = Contact::pluck('id')->all();
+
+        $other = User::factory()->create();
+        $otherBook = $this->book($other->id);
+        $foreign = Contact::withoutGlobalScopes()->create([
+            'address_book_id' => $otherBook->id, 'uri' => 'x.vcf', 'etag' => 'e',
+            'vcard' => "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Foreign\r\nEND:VCARD\r\n", 'fn' => 'Foreign',
+        ]);
+
+        $this->deleteJson(route('contacts.bulk-destroy'), ['ids' => array_merge($mine, [$foreign->id])])
+            ->assertOk()->assertJsonPath('deleted', 2);
+
+        $this->assertSame(0, Contact::whereIn('id', $mine)->count());
+        $this->assertNotNull(Contact::withoutGlobalScopes()->find($foreign->id));
+        // Deletions are logged for DAV sync.
+        $this->assertSame(2, DB::table('dav_changes')->where('operation', 3)->count());
     }
 
     public function test_geocode_is_owner_only_and_404s_without_an_address(): void

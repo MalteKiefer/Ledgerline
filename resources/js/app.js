@@ -373,7 +373,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     ...shareMixin(cfg),
     cfg,
     books: [], groups: [], contacts: [], loading: true,
-    book: '', group: '', q: '', favorites: false,
+    book: '', group: '', q: '', favorites: false, selected: [],
     sort: 'first_name', displayFormat: 'first_last', _settingsReady: false,
     importing: false, importResult: '',
     nameModal: { open: false, title: '', value: '', onsubmit: null },
@@ -414,8 +414,25 @@ Alpine.data('contactsPage', (cfg = {}) => ({
                 const d = await r.json();
                 this.books = d.books; this.groups = d.groups; this.contacts = d.contacts;
                 if (d.settings) { this.sort = d.settings.sort; this.displayFormat = d.settings.display_format; this._settingsReady = true; }
+                // Drop selections that fell out of the current filter/list.
+                const ids = new Set(this.contacts.map((c) => c.id));
+                this.selected = this.selected.filter((id) => ids.has(id));
             }
         } catch (e) { /* keep */ } finally { this.loading = false; }
+    },
+
+    // --- multiselect + bulk delete ---
+    toggleAll() {
+        this.selected = this.selected.length === this.contacts.length ? [] : this.contacts.map((c) => c.id);
+    },
+    bulkDelete() {
+        if (! this.selected.length) return;
+        const ids = [...this.selected];
+        this.openConfirm(cfg.deleteSelectedConfirm.replace(':count', ids.length), async () => {
+            await this._json(cfg.bulkDestroyUrl, 'DELETE', { ids });
+            this.selected = [];
+            this.load();
+        });
     },
 
     /** Format a contact's name per the chosen display format, with sensible fallbacks. */
