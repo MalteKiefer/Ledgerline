@@ -30,6 +30,7 @@ use Illuminate\Support\Carbon;
     'payload',
     'error',
     'expires_at',
+    'seen_at',
 ])]
 class Export extends Model
 {
@@ -51,6 +52,31 @@ class Export extends Model
     }
 
     /**
+     * Ready exports the user has not seen on the Downloads page yet. Rendered
+     * as a badge on the nav so a finished background export is noticed on the
+     * next page load without polling.
+     */
+    public static function unseenReadyCount(int $userId): int
+    {
+        return static::withoutGlobalScopes()
+            ->where('user_id', $userId)
+            ->where('status', 'ready')
+            ->whereNull('seen_at')
+            ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now()))
+            ->count();
+    }
+
+    /** Mark all of the user's ready exports as seen (Downloads page visited). */
+    public static function markSeenFor(int $userId): void
+    {
+        static::withoutGlobalScopes()
+            ->where('user_id', $userId)
+            ->where('status', 'ready')
+            ->whereNull('seen_at')
+            ->update(['seen_at' => Carbon::now()]);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -62,6 +88,7 @@ class Export extends Model
             'files' => 'array',
             'payload' => 'array',
             'expires_at' => 'datetime',
+            'seen_at' => 'datetime',
         ];
     }
 

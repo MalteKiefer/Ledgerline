@@ -28,8 +28,11 @@
                 <div class="flex items-center gap-1">
                     @auth
                         <button type="button" @click="$store.nav.toggleNav()" aria-label="{{ __('pages.menu.toggle_menu') }}"
-                            class="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 hover:bg-gray-50">
+                            class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 hover:bg-gray-50">
                             <x-icon name="bars-3" class="h-6 w-6" />
+                            @if (\App\Models\Export::unseenReadyCount((int) auth()->id()) > 0)
+                                <span class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-gray-900" title="{{ __('downloads.new_ready') }}"></span>
+                            @endif
                         </button>
                     @endauth
                     <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900">Ledgerline</a>
