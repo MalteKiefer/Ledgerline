@@ -10,13 +10,17 @@ use App\Dav\CalDavBackend;
 use App\Dav\Files\FileDavBackend;
 use App\Dav\Files\FilesRoot;
 use App\Dav\PrincipalBackend;
+use Illuminate\Support\Facades\DB;
 use Sabre\CalDAV\CalendarRoot;
 use Sabre\CalDAV\Plugin as CalDAVPlugin;
 use Sabre\CardDAV\AddressBookRoot;
 use Sabre\CardDAV\Plugin as CardDAVPlugin;
 use Sabre\DAV\Auth\Plugin as AuthPlugin;
+use Sabre\DAV\Locks\Backend\PDO as LocksBackend;
+use Sabre\DAV\Locks\Plugin as LocksPlugin;
 use Sabre\DAV\Server;
 use Sabre\DAV\Sync\Plugin as SyncPlugin;
+use Sabre\DAV\TemporaryFileFilterPlugin;
 use Sabre\DAVACL\Plugin as AclPlugin;
 use Sabre\DAVACL\PrincipalCollection;
 
@@ -49,6 +53,13 @@ class DavController extends Controller
         $server->addPlugin(new CardDAVPlugin);
         $server->addPlugin(new CalDAVPlugin);
         $server->addPlugin(new SyncPlugin);
+
+        // macOS Finder (and other read-write WebDAV clients) require DAV class-2
+        // locking; back it with the app DB so locks persist and are shared. The
+        // temp-file filter swallows Finder's junk probe files (.DS_Store, ._*,
+        // .ql_*) so mounting does not error.
+        $server->addPlugin(new LocksPlugin(new LocksBackend(DB::connection()->getPdo())));
+        $server->addPlugin(new TemporaryFileFilterPlugin(sys_get_temp_dir().'/ll-webdav'));
 
         $server->start();
         exit;
