@@ -283,6 +283,28 @@ class ContactController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Bulk-delete selected contacts (multiselect on the list). Goes through
+     * ContactWriter per card so DAV sync tombstones are logged; ids outside the
+     * user's own address books are silently ignored.
+     */
+    public function bulkDestroy(Request $request, ContactWriter $writer): JsonResponse
+    {
+        $ids = $request->validate([
+            'ids' => ['required', 'array', 'max:500'],
+            'ids.*' => ['string'],
+        ])['ids'];
+
+        $bookIds = AddressBook::where('user_id', $request->user()->id)->pluck('id');
+        $contacts = Contact::whereIn('id', $ids)->whereIn('address_book_id', $bookIds)->get();
+
+        foreach ($contacts as $contact) {
+            $writer->delete($contact);
+        }
+
+        return response()->json(['deleted' => $contacts->count()]);
+    }
+
     /** Set the contact's PHOTO from an uploaded image (capped, base64 in the vCard). */
     public function avatar(Request $request, Contact $contact, ContactWriter $writer, VCardService $vcards): JsonResponse
     {

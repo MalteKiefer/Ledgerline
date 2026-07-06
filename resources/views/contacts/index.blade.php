@@ -23,6 +23,8 @@
         'publicStoreUrl' => route('public-share.store'),
         'publicBase' => url('shares/public'),
         'token' => csrf_token(),
+        'bulkDestroyUrl' => route('contacts.bulk-destroy'),
+        'deleteSelectedConfirm' => __('contacts.ui.delete_selected_confirm'),
         'newBook' => __('contacts.ui.new_book'),
         'newGroup' => __('contacts.ui.new_group'),
         'bookBase' => url('address-books'),
@@ -77,9 +79,19 @@
                 <p class="mt-8 text-center text-sm text-gray-500">{{ __('contacts.ui.empty') }}</p>
             </template>
 
+            {{-- Bulk selection bar --}}
+            <div x-show="selected.length" x-cloak class="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm">
+                <span class="font-medium text-gray-900" x-text="@js(__('contacts.ui.selected_count')).replace(':count', selected.length)"></span>
+                <button type="button" @click="toggleAll()" class="text-gray-600 hover:text-gray-900">{{ __('contacts.ui.select_all') }}</button>
+                <button type="button" @click="selected = []" class="text-gray-600 hover:text-gray-900">{{ __('contacts.ui.clear_selection') }}</button>
+                <x-button variant="danger" icon="trash" class="ml-auto !px-3 !py-1.5 !text-xs" @click="bulkDelete()">{{ __('contacts.ui.delete_selected') }}</x-button>
+            </div>
+
             <ul class="mt-4 divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
                 <template x-for="c in contacts" :key="c.id">
                     <li class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer" @click="openEditor(c.id)">
+                        <input type="checkbox" :value="c.id" x-model="selected" @click.stop
+                            class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-gray-500">
                         <div class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 text-xs font-medium text-gray-500 ring-1 ring-gray-200">
                             <template x-if="c.avatar"><img :src="c.avatar" alt="" class="h-full w-full object-cover"></template>
                             <template x-if="! c.avatar && initials(c)"><span x-text="initials(c)"></span></template>
