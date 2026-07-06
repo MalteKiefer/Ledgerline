@@ -86,6 +86,7 @@ class CalendarController extends Controller
                     'end' => $instance['end'],
                     'all_day' => $object->all_day,
                     'recurring' => $object->rrule !== null,
+                    'recurrence_id' => $instance['recurrence_id'],
                     'color' => $colors[$object->calendar_id] ?? Calendar::DEFAULT_COLOR,
                 ];
             }
@@ -157,12 +158,24 @@ class CalendarController extends Controller
     {
         $this->authorizeObject($object);
         abort_if(! $object->calendar->isWritableByUser(), 403);
-        abort_if($object->rrule !== null, 422, 'Recurring events cannot be dragged.');
 
         $data = $request->validate([
             'start' => ['required', 'string', 'max:32', 'date'],
             'end' => ['nullable', 'string', 'max:32', 'date'],
+            'recurrence_id' => ['nullable', 'string', 'max:32'],
         ]);
+
+        // Dragging one instance of a series writes a RECURRENCE-ID override.
+        if ($object->rrule !== null) {
+            abort_unless(filled($data['recurrence_id'] ?? null), 422, 'A series instance needs its recurrence id.');
+            $ics = $ical->setOverride($object->ics, $data['recurrence_id'], [
+                'start' => $data['start'],
+                'end' => $data['end'] ?? null,
+            ]);
+            $writer->updateRaw($object, $ics);
+
+            return response()->json(['ok' => true]);
+        }
 
         $detail = $this->detail($object, $ical);
         $writer->update($object, array_merge($detail, [
@@ -170,6 +183,51 @@ class CalendarController extends Controller
             'start' => $data['start'],
             'end' => $data['end'] ?? null,
         ]));
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Edit a single occurrence of a recurring event ("only this event"):
+     * writes a RECURRENCE-ID override VEVENT with the changed fields.
+     */
+    public function updateInstance(Request $request, CalendarObject $object, ICalService $ical, CalendarWriter $writer): JsonResponse
+    {
+        $this->authorizeObject($object);
+        abort_if(! $object->calendar->isWritableByUser(), 403);
+        abort_if($object->rrule === null, 422, 'Not a recurring event.');
+
+        $data = $request->validate([
+            'recurrence_id' => ['required', 'string', 'max:32'],
+            'summary' => ['required', 'string', 'max:255'],
+            'start' => ['required', 'string', 'max:32', 'date'],
+            'end' => ['nullable', 'string', 'max:32', 'date'],
+            'location' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $ics = $ical->setOverride($object->ics, $data['recurrence_id'], $data);
+        $writer->updateRaw($object, $ics);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Delete a single occurrence of a recurring event ("only this event"):
+     * adds an EXDATE (and drops any override addressing that occurrence).
+     */
+    public function destroyInstance(Request $request, CalendarObject $object, ICalService $ical, CalendarWriter $writer): JsonResponse
+    {
+        $this->authorizeObject($object);
+        abort_if(! $object->calendar->isWritableByUser(), 403);
+        abort_if($object->rrule === null, 422, 'Not a recurring event.');
+
+        $data = $request->validate([
+            'recurrence_id' => ['required', 'string', 'max:32'],
+        ]);
+
+        $ics = $ical->addExdate($object->ics, $data['recurrence_id']);
+        $writer->updateRaw($object, $ics);
 
         return response()->json(['ok' => true]);
     }
@@ -364,6 +422,7 @@ class CalendarController extends Controller
             'description' => isset($vevent->DESCRIPTION) ? (string) $vevent->DESCRIPTION : null,
             'rrule' => $object->rrule,
             'reminder_minutes' => $object->alarm_minutes,
+            'reminders' => $ical->alarmLeads($object->ics),
         ];
     }
 
@@ -394,6 +453,8 @@ class CalendarController extends Controller
             'description' => ['nullable', 'string', 'max:5000'],
             'rrule' => ['nullable', 'string', 'max:255'],
             'reminder_minutes' => ['nullable', 'integer', 'min:0', 'max:40320'],
+            'reminders' => ['array', 'max:5'],
+            'reminders.*' => ['integer', 'min:0', 'max:40320'],
         ]);
     }
 

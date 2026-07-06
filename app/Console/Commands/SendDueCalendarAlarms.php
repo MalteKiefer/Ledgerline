@@ -43,40 +43,46 @@ class SendDueCalendarAlarms extends Command
             ->get();
 
         foreach ($objects as $object) {
-            $lead = (int) $object->alarm_minutes;
+            // Every relative VALARM fires independently. alarm_minutes holds
+            // the largest lead, so the expansion window covers all of them.
+            $leads = $ical->alarmLeads($object->ics) ?: [(int) $object->alarm_minutes];
             $windowStart = (clone $now)->subDay();
-            $windowEnd = (clone $now)->addMinutes($lead);
+            $windowEnd = (clone $now)->addMinutes(max($leads));
 
             foreach ($ical->expand($object->ics, $windowStart, $windowEnd) as $instance) {
                 $start = Carbon::parse($instance['start']);
-                $fireAt = (clone $start)->subMinutes($lead);
 
-                // Only alarms whose time has just passed (not future, not ancient).
-                if ($fireAt->greaterThan($now) || $fireAt->lessThan((clone $now)->subDay())) {
-                    continue;
+                foreach ($leads as $lead) {
+                    $fireAt = (clone $start)->subMinutes($lead);
+
+                    // Only alarms whose time has just passed (not future, not ancient).
+                    if ($fireAt->greaterThan($now) || $fireAt->lessThan((clone $now)->subDay())) {
+                        continue;
+                    }
+
+                    // Fire once per (object, occurrence, lead). The unique index
+                    // makes the insert the dedup gate under concurrent runs.
+                    $inserted = DB::table('calendar_alarm_log')->insertOrIgnore([
+                        'calendar_object_id' => $object->id,
+                        'occurrence_at' => $start->format('Y-m-d H:i:s'),
+                        'lead_minutes' => $lead,
+                        'fired_at' => $now->format('Y-m-d H:i:s'),
+                    ]);
+                    if ($inserted === 0) {
+                        continue;
+                    }
+
+                    $ownerId = (int) $object->calendar->user_id;
+                    $ownerTz = UserSetting::for($ownerId)->calendar_timezone ?: config('app.timezone');
+                    $when = $start->timezone($ownerTz)->format('Y-m-d H:i');
+                    $notifier->send(
+                        $channels,
+                        (string) ($object->summary ?: __('calendar.ui.new_event')),
+                        __('reminders.body', ['time' => $when]),
+                        ['category' => 'reminder', 'priority' => 'high', 'user_id' => $ownerId],
+                    );
+                    $sent++;
                 }
-
-                // Fire once per (object, occurrence). The unique index makes the
-                // insert the dedup gate under concurrent runs.
-                $inserted = DB::table('calendar_alarm_log')->insertOrIgnore([
-                    'calendar_object_id' => $object->id,
-                    'occurrence_at' => $start->format('Y-m-d H:i:s'),
-                    'fired_at' => $now->format('Y-m-d H:i:s'),
-                ]);
-                if ($inserted === 0) {
-                    continue;
-                }
-
-                $ownerId = (int) $object->calendar->user_id;
-                $ownerTz = UserSetting::for($ownerId)->calendar_timezone ?: config('app.timezone');
-                $when = $start->timezone($ownerTz)->format('Y-m-d H:i');
-                $notifier->send(
-                    $channels,
-                    (string) ($object->summary ?: __('calendar.ui.new_event')),
-                    __('reminders.body', ['time' => $when]),
-                    ['category' => 'reminder', 'priority' => 'high', 'user_id' => $ownerId],
-                );
-                $sent++;
             }
         }
 
