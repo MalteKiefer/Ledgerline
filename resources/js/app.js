@@ -3801,6 +3801,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
     standalone: labels.standalone === true, // /mail reader page (auto-open + switcher)
     accountMenuOpen: false,
     manifest: { v: 1, accounts: [] },
+    signatures: [], // user's reusable HTML signatures
     version: 0,
     error: '',
     busyId: null, // account id currently refreshing
@@ -3827,7 +3828,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
 
     // ---- Compose / send -----------------------------------------------------
     compose: {
-        open: false, accountId: null, identityId: null, to: '', cc: '', bcc: '', showCc: false, subject: '',
+        open: false, accountId: null, identityId: null, signatureId: null, to: '', cc: '', bcc: '', showCc: false, subject: '',
         body: '', uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
     },
     attachPicker: { open: false, source: 'gallery', items: [], chosen: [], loading: false, q: '', _allFiles: [] },
@@ -3841,8 +3842,18 @@ Alpine.data('vaultMail', (labels = {}) => ({
     _defaultIdentity(acc) { const list = this._identities(acc); return list.find((i) => i.isDefault) || list[0] || null; },
     // Resolve an identity by id within an account.
     _identity(acc, id) { return this._identities(acc).find((i) => i.id === id) || null; },
-    // Signature block from a signature string (identity- or account-level).
-    _signatureHtml(sig) { return sig ? '<br><br>-- <br>' + String(sig).replace(/\n/g, '<br>') : ''; },
+    // A reusable signature's HTML by id (null when none/absent).
+    _signatureById(id) { return (this.signatures.find((x) => x.id === id) || null); },
+    _defaultSignature() { return this.signatures.find((x) => x.isDefault) || null; },
+    // Wrap signature HTML in a marker block so switching can replace just it.
+    // Legacy plain-text signatures (identity/account level) are line-broken.
+    _sigBlock(html) {
+        const inner = html && String(html).trim() !== '' ? String(html) : '';
+        return inner === '' ? '' : '<br><br><div data-ll-sig="1">' + inner + '</div>';
+    },
+    _legacyBlock(text) {
+        return text ? '<div data-ll-sig="1">-- <br>' + String(text).replace(/\n/g, '<br>') + '</div>' : '';
+    }, 
     // Parse a comma-separated recipients string into bare addresses. Accepts
     // either "email" or "Name <email>" tokens and extracts the address so the
     // backend's per-address 'email' validation always receives bare emails.
@@ -3853,40 +3864,58 @@ Alpine.data('vaultMail', (labels = {}) => ({
             return (m ? m[1] : t).trim();
         }).filter(Boolean);
     },
+    // The signature id an identity should start with: its linked signature,
+    // else the user's default signature (null if none exist).
+    _identitySignatureId(identity) {
+        if (identity && identity.signatureId && this._signatureById(identity.signatureId)) return identity.signatureId;
+        return this._defaultSignature()?.id ?? null;
+    },
     _blankCompose() {
         const acc = this._account(this.reader.account?.id);
         const identity = this._defaultIdentity(acc);
+        const sigId = this._identitySignatureId(identity);
+        const sig = this._signatureById(sigId);
+        // Prefer a reusable HTML signature; fall back to the legacy text one.
+        const body = sig ? this._sigBlock(sig.html) : this._legacyBlock(identity?.signature ?? acc?.signature);
         return {
-            open: true, accountId: acc?.id ?? null, identityId: identity?.id ?? null, to: '', cc: '', bcc: '', showCc: false, subject: '',
-            body: this._signatureHtml(identity?.signature ?? acc?.signature), uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
+            open: true, accountId: acc?.id ?? null, identityId: identity?.id ?? null, signatureId: sigId,
+            to: '', cc: '', bcc: '', showCc: false, subject: '',
+            body, uploads: [], refs: [], inReplyTo: '', references: '', sending: false, error: '',
         };
     },
     newCompose() { this.compose = this._blankCompose(); },
 
-    // The signature of the identity currently chosen in the compose modal
-    // (falls back to the account's legacy signature when it has no identities).
-    _composeSignature(c) {
+    // HTML for the compose's currently chosen signature (id → html), falling
+    // back to the identity's legacy text signature when no reusable one is set.
+    _composeSignatureHtml(c) {
+        const sig = this._signatureById(c.signatureId);
+        if (sig) return this._sigBlock(sig.html);
         const acc = this._account(c.accountId);
         const identity = this._identity(acc, c.identityId) || this._defaultIdentity(acc);
-        return identity ? identity.signature : (acc?.signature ?? null);
+        return this._legacyBlock(identity?.signature ?? acc?.signature);
     },
-    // Account changed in compose: pick that account's default identity and swap
-    // its signature into the body (replacing any previous signature block).
+    // Account changed: pick that account's default identity + its signature.
     onComposeAccountChange() {
         const acc = this._account(this.compose.accountId);
-        this.compose.identityId = this._defaultIdentity(acc)?.id ?? null;
+        const identity = this._defaultIdentity(acc);
+        this.compose.identityId = identity?.id ?? null;
+        this.compose.signatureId = this._identitySignatureId(identity);
         this._swapSignature();
     },
-    // Identity changed in compose: swap its signature into the body.
-    onComposeIdentityChange() { this._swapSignature(); },
-    // Replace the trailing signature block (from the last "-- " marker) with the
-    // current identity's signature, so switching identity updates the sig.
+    // Identity changed: adopt its linked signature, then swap it in.
+    onComposeIdentityChange() {
+        const acc = this._account(this.compose.accountId);
+        this.compose.signatureId = this._identitySignatureId(this._identity(acc, this.compose.identityId));
+        this._swapSignature();
+    },
+    // Signature dropdown changed: just swap the block.
+    onComposeSignatureChange() { this._swapSignature(); },
+    // Replace the trailing signature block (the last data-ll-sig wrapper, plus
+    // its leading <br><br>) with the current signature.
     _swapSignature() {
-        const sig = this._signatureHtml(this._composeSignature(this.compose));
-        const marker = '<br><br>-- <br>';
-        const idx = this.compose.body.lastIndexOf(marker);
-        if (idx >= 0) this.compose.body = this.compose.body.slice(0, idx) + sig;
-        else this.compose.body = this.compose.body + sig;
+        const block = this._composeSignatureHtml(this.compose);
+        const stripped = this.compose.body.replace(/(<br><br>)?<div data-ll-sig="1">[\s\S]*?<\/div>\s*$/, '');
+        this.compose.body = stripped + block;
     },
 
     reply(all = false) {
@@ -3902,7 +3931,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         c.subject = /^re:/i.test(m.subject || '') ? m.subject : 'Re: ' + (m.subject || '');
         c.inReplyTo = m.messageId || '';
         c.references = m.messageId || '';
-        c.body = this._signatureHtml(this._composeSignature(c)) + this._quote(m);
+        c.body = this._composeSignatureHtml(c) + this._quote(m);
         this.compose = c;
     },
     forward() {
@@ -3910,7 +3939,7 @@ Alpine.data('vaultMail', (labels = {}) => ({
         if (! m) return;
         const c = this._blankCompose();
         c.subject = /^fwd:/i.test(m.subject || '') ? m.subject : 'Fwd: ' + (m.subject || '');
-        c.body = this._signatureHtml(this._composeSignature(c)) + this._quote(m, true);
+        c.body = this._composeSignatureHtml(c) + this._quote(m, true);
         this.compose = c;
     },
     _quote(m, forward = false) {
@@ -4107,7 +4136,9 @@ Alpine.data('vaultMail', (labels = {}) => ({
         try {
             const res = await fetch('/mail/accounts', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) { this.state = 'error'; return; }
-            this.manifest = { v: 1, accounts: (await res.json()).accounts ?? [] };
+            const payload = await res.json();
+            this.manifest = { v: 1, accounts: payload.accounts ?? [] };
+            this.signatures = payload.signatures ?? [];
             this.state = 'ready';
             // On the standalone reader page (/mail), open an account straight
             // away: the last one used in this browser, else the first.
@@ -5845,6 +5876,100 @@ Alpine.data('bookmarks', (labels = {}) => ({
         if (! confirm(labels.emptyTrashConfirm)) return;
         try { await this._api('DELETE', '/bookmarks/trash/all'); this.bookmarks = this.bookmarks.filter((b) => ! b.trashed); }
         catch (e) { this.error = labels.saveFailed; }
+    },
+}));
+
+/**
+ * Mail signatures management page: list + rich-text editor for reusable HTML
+ * signatures (unlimited, one default).
+ */
+Alpine.data('mailSignatures', (labels = {}) => ({
+    signatures: [], editing: null, sigForm: { name: '', html: '', is_default: false }, saving: false, error: '',
+    async init() {
+        try {
+            const r = await fetch('/mail/signatures/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.signatures = (await r.json()).signatures ?? [];
+        } catch (e) { /* empty */ }
+    },
+    openNew() { this.editing = { id: null }; this.sigForm = { name: '', html: '', is_default: this.signatures.length === 0 }; this.error = ''; },
+    openEdit(s) { this.editing = { id: s.id }; this.sigForm = { name: s.name || '', html: s.html || '', is_default: !! s.isDefault }; this.error = ''; },
+    async save() {
+        if (this.saving) return;
+        if (! this.sigForm.name.trim()) { this.error = labels.saveFailed; return; }
+        this.saving = true;
+        const body = { name: this.sigForm.name.trim(), html: this.sigForm.html || null, is_default: !! this.sigForm.is_default };
+        try {
+            const url = this.editing.id ? `/mail/signatures/${this.editing.id}` : '/mail/signatures';
+            const res = await fetch(url, { method: this.editing.id ? 'PUT' : 'POST', headers: jsonHeaders(), body: JSON.stringify(body) });
+            if (! res.ok) { this.error = labels.saveFailed; return; }
+            await this.init();
+            window.llToast?.(labels.saved);
+            this.editing = null;
+        } catch (e) { this.error = labels.saveFailed; } finally { this.saving = false; }
+    },
+    async destroy() {
+        if (! this.editing?.id) { this.editing = null; return; }
+        if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
+        try {
+            await fetch(`/mail/signatures/${this.editing.id}`, { method: 'DELETE', headers: jsonHeaders() });
+            await this.init();
+            this.editing = null;
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+}));
+
+/**
+ * Mail identities management page: all identities grouped by account, each
+ * editable with an optional linked signature. At least one identity per account.
+ */
+Alpine.data('mailIdentities', (labels = {}) => ({
+    accounts: [], signatures: [], editing: null,
+    form: { from_name: '', from_email: '', reply_to: '', signature_id: null, is_default: false }, saving: false, error: '',
+    async init() { await this.load(); },
+    async load() {
+        try {
+            const r = await fetch('/mail/identities/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) { const d = await r.json(); this.accounts = d.accounts ?? []; this.signatures = d.signatures ?? []; }
+        } catch (e) { /* empty */ }
+    },
+    sigName(id) { return this.signatures.find((s) => s.id === id)?.name || null; },
+    openNew(accountId) {
+        const acc = this.accounts.find((a) => a.id === accountId);
+        this.editing = { accountId, id: null };
+        this.form = { from_name: '', from_email: acc?.username || '', reply_to: '', signature_id: null, is_default: false };
+        this.error = '';
+    },
+    openEdit(accountId, i) {
+        this.editing = { accountId, id: i.id };
+        this.form = { from_name: i.fromName || '', from_email: i.fromEmail || '', reply_to: i.replyTo || '', signature_id: i.signatureId ?? null, is_default: !! i.isDefault };
+        this.error = '';
+    },
+    async save() {
+        if (this.saving) return;
+        if (! this.form.from_email.trim()) { this.error = labels.saveFailed; return; }
+        this.saving = true;
+        const body = {
+            from_name: this.form.from_name.trim() || null, from_email: this.form.from_email.trim(),
+            reply_to: this.form.reply_to.trim() || null, signature_id: this.form.signature_id || null, is_default: !! this.form.is_default,
+        };
+        try {
+            const base = `/mail/accounts/${this.editing.accountId}/identities`;
+            const url = this.editing.id ? `${base}/${this.editing.id}` : base;
+            const res = await fetch(url, { method: this.editing.id ? 'PUT' : 'POST', headers: jsonHeaders(), body: JSON.stringify(body) });
+            if (! res.ok) { this.error = labels.saveFailed; return; }
+            await this.load();
+            window.llToast?.(labels.saved);
+            this.editing = null;
+        } catch (e) { this.error = labels.saveFailed; } finally { this.saving = false; }
+    },
+    async destroy(accountId, i) {
+        const acc = this.accounts.find((a) => a.id === accountId);
+        if (! acc || acc.identities.length <= 1) return;
+        if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
+        try {
+            await fetch(`/mail/accounts/${accountId}/identities/${i.id}`, { method: 'DELETE', headers: jsonHeaders() });
+            await this.load();
+        } catch (e) { this.error = labels.saveFailed; }
     },
 }));
 

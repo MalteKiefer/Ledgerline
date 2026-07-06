@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * reached only through an owned account, so ownership is enforced at the
  * controller via the parent account's isOwnedBy() — there is no user_id column.
  */
-#[Fillable(['mail_account_id', 'from_name', 'from_email', 'reply_to', 'signature', 'is_default'])]
+#[Fillable(['mail_account_id', 'from_name', 'from_email', 'reply_to', 'signature', 'signature_id', 'is_default'])]
 class MailIdentity extends Model
 {
     protected function casts(): array
@@ -28,5 +28,11 @@ class MailIdentity extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(MailAccount::class, 'mail_account_id');
+    }
+
+    /** @return BelongsTo<MailSignature, $this> */
+    public function signatureModel(): BelongsTo
+    {
+        return $this->belongsTo(MailSignature::class, 'signature_id');
     }
 }

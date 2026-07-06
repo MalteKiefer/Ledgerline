@@ -22,6 +22,7 @@ use App\Http\Controllers\MailArchiveController;
 use App\Http\Controllers\MailComposeController;
 use App\Http\Controllers\MailIdentityController;
 use App\Http\Controllers\MailReaderController;
+use App\Http\Controllers\MailSignatureController;
 use App\Http\Controllers\MailStatsController;
 use App\Http\Controllers\NoteController;
 use App\Http\Controllers\NotificationController;
@@ -365,6 +366,13 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->name('mail.accounts.update');
     Route::delete('/mail/accounts/{account}', [MailAccountController::class, 'destroy'])->name('mail.accounts.destroy');
     // Sender identities per account (owner-scoped through the parent account).
+    Route::get('/mail/signatures', [MailSignatureController::class, 'page'])->name('mail.signatures');
+    Route::get('/mail/signatures/data', [MailSignatureController::class, 'index'])->middleware('throttle:60,1')->name('mail.signatures.data');
+    Route::post('/mail/signatures', [MailSignatureController::class, 'store'])->middleware('throttle:60,1')->name('mail.signatures.store');
+    Route::put('/mail/signatures/{signature}', [MailSignatureController::class, 'update'])->middleware('throttle:60,1')->name('mail.signatures.update');
+    Route::delete('/mail/signatures/{signature}', [MailSignatureController::class, 'destroy'])->middleware('throttle:60,1')->name('mail.signatures.destroy');
+    Route::get('/mail/identities', [MailIdentityController::class, 'page'])->name('mail.identities.page');
+    Route::get('/mail/identities/data', [MailIdentityController::class, 'all'])->middleware('throttle:60,1')->name('mail.identities.all');
     Route::get('/mail/accounts/{account}/identities', [MailIdentityController::class, 'index'])->middleware('throttle:60,1')->name('mail.identities.index');
     Route::post('/mail/accounts/{account}/identities', [MailIdentityController::class, 'store'])->middleware('throttle:60,1')->name('mail.identities.store');
     Route::put('/mail/accounts/{account}/identities/{identity}', [MailIdentityController::class, 'update'])->middleware('throttle:60,1')->name('mail.identities.update');
