@@ -16,4 +16,21 @@
             <x-button variant="primary" type="submit">{{ __('common.save') }}</x-button>
         </div>
     </form>
+
+    {{-- WebDAV access (same DAV login as Contacts/Calendar) --}}
+    <div class="mt-6 max-w-lg rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.files_webdav_heading') }}</h2>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.files_webdav_hint') }}</p>
+        @if ($davUsername)
+            <dl class="mt-3 grid gap-2 text-sm sm:grid-cols-[8rem_1fr]">
+                <dt class="text-gray-500 dark:text-gray-400">{{ __('contacts.webdav_url') }}</dt>
+                <dd class="select-all break-all font-mono text-gray-900 dark:text-gray-100">{{ rtrim(url('/dav'), '/') }}/files/{{ $davUsername }}/</dd>
+                <dt class="text-gray-500 dark:text-gray-400">{{ __('contacts.username') }}</dt>
+                <dd class="select-all font-mono text-gray-900 dark:text-gray-100">{{ $davUsername }}</dd>
+            </dl>
+        @endif
+        <a href="{{ route('settings.contacts.edit') }}" class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+            {{ __('settings.files_webdav_manage') }}
+        </a>
+    </div>
 </x-layouts.app>
