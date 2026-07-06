@@ -9,6 +9,7 @@ return [
     'refresh' => 'Refresh',
     'settings' => 'Download settings',
     'queued_toast' => 'Export started — it will appear under Downloads when ready.',
+    'new_ready' => 'New downloads ready',
 
     'title' => [
         'gallery' => '{1}:count photo|[2,*]:count photos',

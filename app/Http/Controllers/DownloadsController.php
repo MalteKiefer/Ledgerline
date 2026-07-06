@@ -22,14 +22,19 @@ class DownloadsController extends Controller
 {
     use RespondsFlexibly;
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        Export::markSeenFor($request->user()->id);
+
         return view('downloads.index');
     }
 
     /** JSON list for the reload-free page (polled while exports are building). */
     public function data(Request $request): JsonResponse
     {
+        // Exports finishing while the user is on the page count as seen too.
+        Export::markSeenFor($request->user()->id);
+
         $exports = Export::query()
             ->forUser($request->user()->id)
             ->active()

@@ -170,6 +170,47 @@ class ExportTest extends TestCase
         $this->get(route('downloads.part', ['export' => $other->id, 'index' => 0]))->assertNotFound();
     }
 
+    public function test_unseen_ready_exports_badge_and_clearing(): void
+    {
+        $user = $this->signIn();
+
+        $export = Export::create([
+            'user_id' => $user->id, 'source' => 'files', 'title' => 'x', 'status' => 'ready',
+            'files' => [], 'expires_at' => now()->addDay(),
+        ]);
+        Export::create([
+            'user_id' => $user->id, 'source' => 'files', 'title' => 'building', 'status' => 'processing',
+        ]);
+        Export::create([
+            'user_id' => 99999, 'source' => 'files', 'title' => 'foreign', 'status' => 'ready',
+            'expires_at' => now()->addDay(),
+        ]);
+
+        // Only the own, ready, unseen export counts.
+        $this->assertSame(1, Export::unseenReadyCount($user->id));
+
+        // Visiting the Downloads page marks it seen and clears the badge.
+        $this->get(route('downloads.index'))->assertOk();
+        $this->assertNotNull($export->fresh()->seen_at);
+        $this->assertSame(0, Export::unseenReadyCount($user->id));
+
+        // The foreign user's badge is untouched.
+        $this->assertSame(1, Export::unseenReadyCount(99999));
+    }
+
+    public function test_nav_shows_downloads_badge_for_unseen_ready_export(): void
+    {
+        $user = $this->signIn();
+        Export::create([
+            'user_id' => $user->id, 'source' => 'files', 'title' => 'x', 'status' => 'ready',
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $this->get(route('files.index'))
+            ->assertOk()
+            ->assertSee(__('downloads.new_ready'));
+    }
+
     public function test_prune_removes_expired_exports_and_their_files(): void
     {
         Storage::fake('files');

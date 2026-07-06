@@ -3,11 +3,13 @@
      same config/navigation.php as the desktop x-nav. --}}
 @auth
     @php
+        $dlBadge = \App\Models\Export::unseenReadyCount((int) auth()->id());
         $resolve = fn ($items) => collect($items)->map(fn ($i) => [
             'label' => __($i['label']),
             'url' => route($i['route']),
             'active' => request()->routeIs($i['pattern']),
             'icon' => $i['icon'],
+            'badge' => $i['route'] === 'downloads.index' ? $dlBadge : 0,
         ]);
         $links = $resolve(config('navigation.primary'))->concat($resolve(config('navigation.more')));
     @endphp
@@ -22,6 +24,10 @@
                     ])>
                     <x-icon :name="$item['icon']" class="h-5 w-5 text-gray-400" />
                     {{ $item['label'] }}
+                    @if ($item['badge'] > 0)
+                        <span class="ml-auto min-w-[1.1rem] rounded-full bg-gray-900 px-1.5 text-center text-[10px] font-semibold leading-4 text-white"
+                            title="{{ __('downloads.new_ready') }}">{{ $item['badge'] > 99 ? '99+' : $item['badge'] }}</span>
+                    @endif
                 </a>
             @endforeach
         </nav>
