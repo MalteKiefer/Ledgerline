@@ -56,8 +56,13 @@ class AppServiceProvider extends ServiceProvider
         // person's cover face).
         Event::listen(PersonNamed::class, LinkPersonContact::class);
 
-        // Rate-limit the unauthenticated CardDAV endpoint (bcrypt per request).
-        RateLimiter::for('dav', fn ($request) => Limit::perMinute(60)->by($request->ip()));
+        // Rate-limit the DAV endpoint. Unauthenticated challenges stay tight to
+        // blunt bcrypt brute-forcing; authenticated clients (esp. macOS Finder,
+        // which fires hundreds of PROPFIND/LOCK/PUT per copy) get generous
+        // headroom keyed by credential + IP, or they hit 429 → Finder error -50.
+        RateLimiter::for('dav', fn ($request) => $request->getUser() !== null
+            ? Limit::perMinute(2000)->by($request->getUser().'|'.$request->ip())
+            : Limit::perMinute(60)->by($request->ip()));
 
         // Only members of the configured Pocket-ID admin group (if any) may
         // manage the non-personal, workspace-wide settings.
