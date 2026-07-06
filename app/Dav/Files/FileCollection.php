@@ -153,7 +153,9 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget, I
 
     public function getLastModified(): ?int
     {
-        return null;
+        // macOS webdavfs requires getlastmodified on collections or it stalls
+        // after PROPFIND; the root has no own row, so fall back to now.
+        return time();
     }
 
     // ---- ACL: owner-only ----

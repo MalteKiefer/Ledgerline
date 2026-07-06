@@ -8,9 +8,6 @@
     <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('downloads.settings_page.heading') }}</h1>
     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('downloads.settings_page.subheading') }}</p>
 
-    @if (session('status'))
-        <div class="mt-4 rounded-md bg-green-50 dark:bg-green-950 px-4 py-3 text-sm text-green-700 dark:text-green-300">{{ session('status') }}</div>
-    @endif
 
     <form method="POST" action="{{ route('settings.downloads.update') }}" class="mt-6 space-y-4">
         @csrf

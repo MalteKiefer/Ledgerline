@@ -69,7 +69,7 @@ class FileNode extends File implements IACL
 
     public function getLastModified(): ?int
     {
-        return $this->file->updated_at?->getTimestamp();
+        return $this->file->updated_at?->getTimestamp() ?? time();
     }
 
     public function delete(): void
