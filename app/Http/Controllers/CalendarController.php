@@ -148,6 +148,32 @@ class CalendarController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Move or resize an event via drag & drop: only start/end change, every
+     * other property is carried over from the stored event. Recurring series
+     * are rejected — moving one instance needs RECURRENCE-ID exceptions.
+     */
+    public function move(Request $request, CalendarObject $object, ICalService $ical, CalendarWriter $writer): JsonResponse
+    {
+        $this->authorizeObject($object);
+        abort_if(! $object->calendar->isWritableByUser(), 403);
+        abort_if($object->rrule !== null, 422, 'Recurring events cannot be dragged.');
+
+        $data = $request->validate([
+            'start' => ['required', 'string', 'max:32', 'date'],
+            'end' => ['nullable', 'string', 'max:32', 'date'],
+        ]);
+
+        $detail = $this->detail($object, $ical);
+        $writer->update($object, array_merge($detail, [
+            'calendar_id' => $object->calendar_id,
+            'start' => $data['start'],
+            'end' => $data['end'] ?? null,
+        ]));
+
+        return response()->json(['ok' => true]);
+    }
+
     public function destroy(CalendarObject $object, CalendarWriter $writer): JsonResponse
     {
         $this->authorizeObject($object);

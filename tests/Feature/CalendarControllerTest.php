@@ -39,6 +39,63 @@ class CalendarControllerTest extends TestCase
             ->assertJsonPath('events', []);
     }
 
+    public function test_move_updates_start_and_end_and_keeps_everything_else(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Dentist',
+            'start' => '2026-09-01T10:00',
+            'end' => '2026-09-01T11:00',
+            'location' => 'Downtown',
+            'reminder_minutes' => 30,
+        ])->assertCreated();
+        $object = CalendarObject::firstOrFail();
+
+        $this->patchJson(route('calendar.events.move', $object), [
+            'start' => '2026-09-02 14:00:00',
+            'end' => '2026-09-02 15:30:00',
+        ])->assertOk();
+
+        $object->refresh();
+        // Time moved, the rest survived the rewrite.
+        $show = $this->getJson(route('calendar.events.show', $object))->assertOk()->json();
+        $this->assertStringContainsString('2026-09-02', $show['start']);
+        $this->assertStringContainsString('14:00', $show['start']);
+        $this->assertStringContainsString('15:30', $show['end']);
+        $this->assertSame('Dentist', $show['summary']);
+        $this->assertSame('Downtown', $show['location']);
+        $this->assertSame(30, $show['reminder_minutes']);
+    }
+
+    public function test_move_rejects_recurring_events_and_foreign_users(): void
+    {
+        $user = $this->signIn();
+        $calendar = $this->calendarFor($user);
+
+        $this->postJson(route('calendar.events.store'), [
+            'calendar_id' => $calendar->id,
+            'summary' => 'Standup',
+            'start' => '2026-09-01T09:00',
+            'end' => '2026-09-01T09:15',
+            'rrule' => 'FREQ=DAILY',
+        ])->assertCreated();
+        $recurring = CalendarObject::firstOrFail();
+
+        // Recurring series need exception handling, not a blind move.
+        $this->patchJson(route('calendar.events.move', $recurring), [
+            'start' => '2026-09-01 10:00:00',
+        ])->assertStatus(422);
+
+        // Another user cannot move it either.
+        $this->signIn();
+        $this->patchJson(route('calendar.events.move', $recurring), [
+            'start' => '2026-09-01 10:00:00',
+        ])->assertForbidden();
+    }
+
     public function test_it_creates_an_event(): void
     {
         $user = $this->signIn();
