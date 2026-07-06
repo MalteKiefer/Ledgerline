@@ -187,12 +187,62 @@ class VCardService
                 'zip' => $this->part($p, 5),
                 'country' => $this->part($p, 6),
             ];
+            $entry = $this->splitPackedStreet($entry);
             if (implode('', array_map('strval', array_diff_key($entry, ['type' => '']))) !== '') {
                 $out[] = $entry;
             }
         }
 
         return $out;
+    }
+
+    /**
+     * Apple/Google exports often pack the whole address into the street
+     * component as newline-separated lines ("Street\nCity\nZip\nCountry")
+     * leaving every other component empty. Split that back into structured
+     * fields so the editor and the geocoder get usable values.
+     *
+     * @param  array{type: ?string, ext: ?string, street: ?string, city: ?string, region: ?string, zip: ?string, country: ?string}  $entry
+     * @return array{type: ?string, ext: ?string, street: ?string, city: ?string, region: ?string, zip: ?string, country: ?string}
+     */
+    private function splitPackedStreet(array $entry): array
+    {
+        $street = (string) ($entry['street'] ?? '');
+        $othersEmpty = ($entry['city'] ?? null) === null && ($entry['zip'] ?? null) === null
+            && ($entry['region'] ?? null) === null && ($entry['country'] ?? null) === null;
+        if (! $othersEmpty || ! str_contains($street, "\n")) {
+            return $entry;
+        }
+
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r?\n/', $street) ?: [])));
+        if (count($lines) < 2) {
+            $entry['street'] = $lines[0] ?? null;
+
+            return $entry;
+        }
+
+        $entry['street'] = array_shift($lines);
+
+        // A trailing line without digits reads as the country.
+        if ($lines !== [] && ! preg_match('/\d/', end($lines))) {
+            $entry['country'] = array_pop($lines);
+        }
+
+        $cityParts = [];
+        foreach ($lines as $line) {
+            if (preg_match('/^(\d{3,10})\s+(.+)$/u', $line, $m)) {
+                // "12345 City" on one line.
+                $entry['zip'] = $m[1];
+                $cityParts[] = $m[2];
+            } elseif (preg_match('/^\d{3,10}(-\d+)?$/', $line)) {
+                $entry['zip'] = $line;
+            } else {
+                $cityParts[] = $line;
+            }
+        }
+        $entry['city'] = $cityParts !== [] ? implode(', ', $cityParts) : null;
+
+        return $entry;
     }
 
     /**

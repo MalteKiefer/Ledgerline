@@ -32,6 +32,20 @@ class ContactController extends Controller
         return view('contacts.index');
     }
 
+    /** Dedicated editor page for a new contact. */
+    public function create(): View
+    {
+        return view('contacts.edit', ['contactId' => null]);
+    }
+
+    /** Dedicated editor page for an existing contact. */
+    public function edit(Contact $contact): View
+    {
+        $this->authorizeContact($contact);
+
+        return view('contacts.edit', ['contactId' => $contact->id]);
+    }
+
     public function data(Request $request, VCardService $vcards): JsonResponse
     {
         $userId = $request->user()->id;

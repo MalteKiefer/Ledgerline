@@ -43,6 +43,7 @@ return [
         'anniversaries' => 'Anniversaries',
         'anniversary_label' => 'Label (e.g. Wedding)',
         'note' => 'Note',
+        'back' => 'Back to contacts',
         'favorites' => 'Favorites',
         'favorite_add' => 'Add to favorites',
         'favorite_remove' => 'Remove from favorites',

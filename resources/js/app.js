@@ -374,14 +374,10 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     cfg,
     books: [], groups: [], contacts: [], loading: true,
     book: '', group: '', q: '', favorites: false,
-    relatedIndex: null, relatedSuggestions: [],
-    mapModal: { open: false, loading: false, error: false, display: '', osmUrl: '' }, _map: null,
     sort: 'first_name', displayFormat: 'first_last', _settingsReady: false,
     importing: false, importResult: '',
-    editor: false, form: {},
     nameModal: { open: false, title: '', value: '', onsubmit: null },
     confirmModal: { open: false, message: '', onConfirm: null },
-    groupQuery: '', groupOpen: false,
 
     openConfirm(message, onConfirm) { this.confirmModal = { open: true, message, onConfirm }; },
     async doConfirm() { const cb = this.confirmModal.onConfirm; this.confirmModal.open = false; if (cb) await cb(); },
@@ -392,24 +388,6 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         this.$watch('book', () => this.load());
         this.$watch('group', () => this.load());
         this.$watch('favorites', () => this.load());
-    },
-
-    // --- group combobox (multi-select with autocomplete) ---
-    filteredGroups() {
-        const q = this.groupQuery.toLowerCase().trim();
-        const chosen = this.form.group_ids || [];
-        return this.groups.filter((g) => ! chosen.includes(g.id) && (q === '' || g.name.toLowerCase().includes(q)));
-    },
-    groupName(id) { return this.groups.find((g) => g.id === id)?.name || ''; },
-    addGroupChip(id) {
-        if (! this.form.group_ids) this.form.group_ids = [];
-        if (! this.form.group_ids.includes(id)) this.form.group_ids.push(id);
-        this.groupQuery = ''; this.groupOpen = false;
-    },
-    removeGroupChip(id) {
-        const arr = this.form.group_ids || [];
-        const i = arr.indexOf(id);
-        if (i >= 0) arr.splice(i, 1);
     },
 
     // --- reusable name modal (replaces window.prompt for books/groups) ---
@@ -467,16 +445,98 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         this.load();
     },
 
-    blank() {
-        const ownedBooks = this.books.filter((b) => b.owned);
-        const preferred = ownedBooks.find((b) => b.id === this.book) ? this.book : ownedBooks[0]?.id;
-        return { id: null, book_id: preferred, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', anniversaries: [], note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null, addresses: [], related: [], custom_fields: [], favorite: false };
+    /** The editor lives on its own page now; the list only navigates there. */
+    openEditor(id) {
+        window.location.href = id ? cfg.contactBase + '/' + id + '/edit' : cfg.createUrl;
     },
 
-    async openEditor(id) {
-        if (! id) { this.form = this.blank(); this.editor = true; return; }
+    async toggleFavorite(c) {
+        c.favorite = ! c.favorite; // optimistic; corrected below on failure
+        try {
+            const r = await this._json(cfg.contactBase + '/' + c.id + '/favorite', 'PATCH', { favorite: c.favorite });
+            if (r && typeof r.favorite === 'boolean') c.favorite = r.favorite;
+        } catch (e) { c.favorite = ! c.favorite; }
+        if (this.favorites) this.load(); // list may lose the row when filtering favorites
+    },
+
+    async importFile(ev) {
+        const f = ev.target.files[0]; if (! f) return;
+        const fd = new FormData(); fd.append('file', f); fd.append('book_id', this.book || this.books[0]?.id);
+        this.importing = true; this.importResult = '';
+        try {
+            const r = await fetch(cfg.importUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
+            if (r.ok) {
+                const d = await r.json();
+                this.importResult = (cfg.importResultLabel || '')
+                    .replace(':created', d.created ?? 0).replace(':updated', d.updated ?? 0).replace(':skipped', d.skipped ?? 0);
+                setTimeout(() => { this.importResult = ''; }, 8000);
+            }
+        } catch (e) { /* ignore */ } finally {
+            this.importing = false; this.load(); ev.target.value = '';
+        }
+    },
+
+    addBook() {
+        this.openNameModal(cfg.newBook, '', async (name) => { await this._json(cfg.booksUrl, 'POST', { name }); this.load(); });
+    },
+    addGroup() {
+        this.openNameModal(cfg.newGroup, '', async (name) => { await this._json(cfg.groupsUrl, 'POST', { name }); this.load(); });
+    },
+
+    renameBook(b) {
+        this.openNameModal(cfg.renameBook, b.name, async (name) => {
+            if (name === b.name) return;
+            await this._json(cfg.bookBase + '/' + b.id, 'PUT', { name }); this.load();
+        });
+    },
+    deleteBook(b) {
+        this.openConfirm(cfg.confirmDeleteBook, async () => {
+            if (this.book === b.id) this.book = '';
+            await this._json(cfg.bookBase + '/' + b.id, 'DELETE'); this.load();
+        });
+    },
+    deleteGroup(g) {
+        this.openConfirm(cfg.confirmDeleteGroup, async () => {
+            if (this.group === g.id) this.group = '';
+            await this._json(cfg.groupBase + '/' + g.id, 'DELETE'); this.load();
+        });
+    },
+
+    async _json(url, method, body) {
+        return apiJson(url, method, body, cfg.token);
+    },
+}));
+
+/**
+ * Dedicated contact editor page (/contacts/new, /contacts/{id}/edit). Loads the
+ * user's books + groups, then the contact (when editing), and saves back via the
+ * JSON API before returning to the list. Also hosts the avatar picker/crop and
+ * the per-address map preview.
+ */
+Alpine.data('contactEditorPage', (cfg = {}) => ({
+    cfg,
+    books: [], groups: [],
+    form: { emails: [], phones: [], anniversaries: [], addresses: [], related: [], custom_fields: [], group_ids: [] },
+    groupQuery: '', groupOpen: false,
+    relatedIndex: null, relatedSuggestions: [],
+    mapModal: { open: false, loading: false, error: false, display: '', osmUrl: '' }, _map: null,
+
+    async init() {
+        try {
+            const r = await fetch(cfg.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) { const d = await r.json(); this.books = d.books; this.groups = d.groups; }
+        } catch (e) { /* fields still usable */ }
+        if (cfg.contactId) { await this.loadContact(cfg.contactId); } else { this.form = this.blank(); }
+    },
+
+    blank() {
+        const owned = this.books.filter((b) => b.owned);
+        return { id: null, book_id: owned[0]?.id, fn: '', first_name: '', last_name: '', org: '', title: '', nickname: '', bday: '', anniversaries: [], note: '', emails: [{ value: '', type: 'home' }], phones: [{ value: '', type: 'cell' }], urls: [], group_ids: [], avatar: null, addresses: [], related: [], custom_fields: [], favorite: false };
+    },
+
+    async loadContact(id) {
         const r = await fetch(cfg.contactBase + '/' + id, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-        if (! r.ok) return;
+        if (! r.ok) { window.location.href = cfg.indexUrl; return; }
         const d = await r.json();
         this.form = {
             id: d.id, book_id: d.book, fn: d.fn || '', first_name: d.first_name || '', last_name: d.last_name || '',
@@ -484,13 +544,30 @@ Alpine.data('contactsPage', (cfg = {}) => ({
             emails: d.emails?.length ? d.emails : [{ value: '', type: 'home' }],
             phones: d.phones?.length ? d.phones : [{ value: '', type: 'cell' }],
             urls: d.urls || [], group_ids: d.group_ids || [],
-            avatar: this.contacts.find((c) => c.id === id)?.avatar || null,
+            avatar: d.photo || null, // parse() returns the PHOTO data: URI directly
             addresses: (d.addresses || []).map((a) => ({ type: a.type || 'home', street: a.street || '', ext: a.ext || '', zip: a.zip || '', city: a.city || '', region: a.region || '', country: a.country || '' })),
             related: (d.related || []).map((r) => ({ type: r.type || 'other', name: r.name || r.value || '', uid: r.uid || null })),
             custom_fields: (d.custom_fields || []).map((f) => ({ label: f.label || '', value: f.value || '' })),
             favorite: !! d.favorite,
         };
-        this.editor = true;
+    },
+
+    // --- group combobox (multi-select with autocomplete) ---
+    filteredGroups() {
+        const q = this.groupQuery.toLowerCase().trim();
+        const chosen = this.form.group_ids || [];
+        return this.groups.filter((g) => ! chosen.includes(g.id) && (q === '' || g.name.toLowerCase().includes(q)));
+    },
+    groupName(id) { return this.groups.find((g) => g.id === id)?.name || ''; },
+    addGroupChip(id) {
+        if (! this.form.group_ids) this.form.group_ids = [];
+        if (! this.form.group_ids.includes(id)) this.form.group_ids.push(id);
+        this.groupQuery = ''; this.groupOpen = false;
+    },
+    removeGroupChip(id) {
+        const arr = this.form.group_ids || [];
+        const i = arr.indexOf(id);
+        if (i >= 0) arr.splice(i, 1);
     },
 
     payload() {
@@ -512,16 +589,14 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     async save() {
         const id = this.form.id;
         await this._json(id ? cfg.contactBase + '/' + id : cfg.storeUrl, id ? 'PUT' : 'POST', this.payload());
-        this.editor = false; this.load();
+        window.location.href = cfg.indexUrl;
     },
 
-    async toggleFavorite(c) {
-        c.favorite = ! c.favorite; // optimistic; corrected below on failure
-        try {
-            const r = await this._json(cfg.contactBase + '/' + c.id + '/favorite', 'PATCH', { favorite: c.favorite });
-            if (r && typeof r.favorite === 'boolean') c.favorite = r.favorite;
-        } catch (e) { c.favorite = ! c.favorite; }
-        if (this.favorites) this.load(); // list may lose the row when filtering favorites
+    async destroy() {
+        if (! this.form.id) return;
+        if (! await this.$store.confirm.ask(cfg.confirmDelete)) return;
+        await this._json(cfg.contactBase + '/' + this.form.id, 'DELETE');
+        window.location.href = cfg.indexUrl;
     },
 
     // --- related-contact autocomplete (links by the target card's UID) ---
@@ -580,15 +655,6 @@ Alpine.data('contactsPage', (cfg = {}) => ({
     closeMap() { this.mapModal.open = false; this.destroyMap(); },
     destroyMap() { if (this._map) { this._map.remove(); this._map = null; } },
 
-    destroy() {
-        if (! this.form.id) return;
-        const id = this.form.id;
-        this.openConfirm(cfg.confirmDelete, async () => {
-            await this._json(cfg.contactBase + '/' + id, 'DELETE');
-            this.editor = false; this.load();
-        });
-    },
-
     // --- avatar picker (device / gallery / people / files) + crop ---
     avatarModal: { open: false, tab: 'upload', loading: false },
     galleryPhotos: [], peopleList: [], personPhotos: [], personSelected: null, filePhotos: [],
@@ -624,7 +690,7 @@ Alpine.data('contactsPage', (cfg = {}) => ({
             if (r.ok) this.peopleList = ((await r.json()).people ?? []).filter((p) => p.cover && p.name);
         } catch (e) { /* keep */ } finally { this.avatarModal.loading = false; }
     },
-    // Pick a person → filter to all photos they appear in, then choose one.
+    // Pick a person -> filter to all photos they appear in, then choose one.
     async pickPerson(person) {
         this.avatarModal.loading = true;
         this.personSelected = person;
@@ -669,51 +735,8 @@ Alpine.data('contactsPage', (cfg = {}) => ({
         const fd = new FormData(); fd.append('photo', blob, 'avatar.jpg');
         try {
             const r = await fetch(cfg.contactBase + '/' + this.form.id + '/avatar', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
-            if (r.ok) { const d = await r.json(); this.form.avatar = d.avatar + '?t=' + Date.now(); this.load(); this.closeAvatarModal(); }
+            if (r.ok) { const d = await r.json(); this.form.avatar = d.avatar + '?t=' + Date.now(); this.closeAvatarModal(); }
         } catch (e) { /* ignore */ } finally { this.saving = false; }
-    },
-
-    async importFile(ev) {
-        const f = ev.target.files[0]; if (! f) return;
-        const fd = new FormData(); fd.append('file', f); fd.append('book_id', this.book || this.books[0]?.id);
-        this.importing = true; this.importResult = '';
-        try {
-            const r = await fetch(cfg.importUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token }, body: fd });
-            if (r.ok) {
-                const d = await r.json();
-                this.importResult = (cfg.importResultLabel || '')
-                    .replace(':created', d.created ?? 0).replace(':updated', d.updated ?? 0).replace(':skipped', d.skipped ?? 0);
-                setTimeout(() => { this.importResult = ''; }, 8000);
-            }
-        } catch (e) { /* ignore */ } finally {
-            this.importing = false; this.load(); ev.target.value = '';
-        }
-    },
-
-    addBook() {
-        this.openNameModal(cfg.newBook, '', async (name) => { await this._json(cfg.booksUrl, 'POST', { name }); this.load(); });
-    },
-    addGroup() {
-        this.openNameModal(cfg.newGroup, '', async (name) => { await this._json(cfg.groupsUrl, 'POST', { name }); this.load(); });
-    },
-
-    renameBook(b) {
-        this.openNameModal(cfg.renameBook, b.name, async (name) => {
-            if (name === b.name) return;
-            await this._json(cfg.bookBase + '/' + b.id, 'PUT', { name }); this.load();
-        });
-    },
-    deleteBook(b) {
-        this.openConfirm(cfg.confirmDeleteBook, async () => {
-            if (this.book === b.id) this.book = '';
-            await this._json(cfg.bookBase + '/' + b.id, 'DELETE'); this.load();
-        });
-    },
-    deleteGroup(g) {
-        this.openConfirm(cfg.confirmDeleteGroup, async () => {
-            if (this.group === g.id) this.group = '';
-            await this._json(cfg.groupBase + '/' + g.id, 'DELETE'); this.load();
-        });
     },
 
     async _json(url, method, body) {

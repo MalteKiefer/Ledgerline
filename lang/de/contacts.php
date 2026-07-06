@@ -43,6 +43,7 @@ return [
         'anniversaries' => 'Jahrestage',
         'anniversary_label' => 'Bezeichnung (z. B. Hochzeit)',
         'note' => 'Notiz',
+        'back' => 'Zurück zu Kontakten',
         'favorites' => 'Favoriten',
         'favorite_add' => 'Zu Favoriten hinzufügen',
         'favorite_remove' => 'Aus Favoriten entfernen',
