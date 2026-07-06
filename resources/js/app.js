@@ -545,11 +545,18 @@ Alpine.data('contactEditorPage', (cfg = {}) => ({
             phones: d.phones?.length ? d.phones : [{ value: '', type: 'cell' }],
             urls: d.urls || [], group_ids: d.group_ids || [],
             avatar: d.photo || null, // parse() returns the PHOTO data: URI directly
-            addresses: (d.addresses || []).map((a) => ({ type: a.type || 'home', street: a.street || '', ext: a.ext || '', zip: a.zip || '', city: a.city || '', region: a.region || '', country: a.country || '' })),
+            // Imported TYPE params can be compounds like "HOME,pref" — normalise
+            // to the editor's home/work/other options so the select has a match.
+            addresses: (d.addresses || []).map((a) => ({ type: this.addressType(a.type), street: a.street || '', ext: a.ext || '', zip: a.zip || '', city: a.city || '', region: a.region || '', country: a.country || '' })),
             related: (d.related || []).map((r) => ({ type: r.type || 'other', name: r.name || r.value || '', uid: r.uid || null })),
             custom_fields: (d.custom_fields || []).map((f) => ({ label: f.label || '', value: f.value || '' })),
             favorite: !! d.favorite,
         };
+    },
+
+    addressType(raw) {
+        const t = (raw || 'home').toLowerCase();
+        return t.includes('work') ? 'work' : (t.includes('home') ? 'home' : 'other');
     },
 
     // --- group combobox (multi-select with autocomplete) ---
