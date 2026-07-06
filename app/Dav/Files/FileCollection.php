@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Dav\Files;
 
 use App\Models\FileFolder;
+use App\Models\FileVersion;
 use App\Models\StoredFile;
 use Illuminate\Support\Str;
 use Sabre\DAV\Collection;
@@ -12,6 +13,7 @@ use Sabre\DAV\Exception\Forbidden;
 use Sabre\DAV\Exception\NotFound;
 use Sabre\DAV\IMoveTarget;
 use Sabre\DAV\INode;
+use Sabre\DAV\IQuota;
 use Sabre\DAVACL\IACL;
 
 /**
@@ -19,7 +21,7 @@ use Sabre\DAVACL\IACL;
  * under a parent (a FileFolder id, or null for the user's root), and creates
  * child files/folders. Owner-scoped by user id; DAV has no Auth context.
  */
-abstract class FileCollection extends Collection implements IACL, IMoveTarget
+abstract class FileCollection extends Collection implements IACL, IMoveTarget, IQuota
 {
     public function __construct(
         protected readonly FileDavBackend $backend,
@@ -129,6 +131,29 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget
         }
 
         return false;
+    }
+
+    /**
+     * [usedBytes, availableBytes] for the whole account — macOS Finder needs
+     * this to mount and show free space. Without a configured quota, report a
+     * generous headroom so clients do not think the drive is full.
+     *
+     * @return array{0:int,1:int}
+     */
+    public function getQuotaInfo(): array
+    {
+        $used = (int) StoredFile::withoutGlobalScopes()->withTrashed()
+            ->where('user_id', $this->userId)->sum('size')
+            + (int) FileVersion::where('user_id', $this->userId)->sum('size');
+        $quota = (int) config('files.quota_mb', 0) * 1024 * 1024;
+        $available = $quota > 0 ? max(0, $quota - $used) : 100 * 1024 * 1024 * 1024; // 100 GB headroom
+
+        return [$used, $available];
+    }
+
+    public function getLastModified(): ?int
+    {
+        return null;
     }
 
     // ---- ACL: owner-only ----
