@@ -1,6 +1,14 @@
                 <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
                     <button type="button" @click="view = 'all'; activeTag = ''" class="block w-full rounded px-3 py-1.5 text-left" :class="view === 'all' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">{{ __('bookmarks.all') }}</button>
                     <button type="button" @click="view = 'favorites'; activeTag = ''" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left" :class="view === 'favorites' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"><x-icon name="heart" class="h-4 w-4" />{{ __('bookmarks.favorites') }}</button>
+                    <button type="button" @click="view = 'readlater'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'readlater' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                        <span class="flex items-center gap-2"><x-icon name="clock" class="h-4 w-4" />{{ __('bookmarks.read_later') }}</span>
+                        <span x-show="readLaterCount" class="text-xs text-gray-400 dark:text-gray-500" x-text="readLaterCount"></span>
+                    </button>
+                    <button type="button" x-show="deadCount" @click="view = 'dead'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'dead' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">
+                        <span class="flex items-center gap-2"><x-icon name="exclamation-triangle" class="h-4 w-4" />{{ __('bookmarks.dead_links') }}</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500" x-text="deadCount"></span>
+                    </button>
                     <button type="button" @click="view = 'trash'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">
                         <span class="flex items-center gap-2"><x-icon name="trash" class="h-4 w-4" />{{ __('bookmarks.trash') }}</span>
                         <span x-show="trashCount" class="text-xs text-gray-400 dark:text-gray-500" x-text="trashCount"></span>
@@ -28,4 +36,13 @@
                             <button type="button" @click="activeTag = (activeTag === t ? '' : t)" class="rounded px-2 py-0.5 text-xs" :class="activeTag === t ? 'bg-gray-800 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'" x-text="t"></button>
                         </template>
                     </div>
+                </div>
+
+                <div class="space-y-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
+                    <label class="block cursor-pointer rounded px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" :class="importing && 'pointer-events-none opacity-60'">
+                        {{ __('bookmarks.import') }}
+                        <input type="file" accept=".html,text/html" class="hidden" :disabled="importing" @change="importFile($event)">
+                    </label>
+                    <a href="{{ route('bookmarks.export') }}" class="block rounded px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('bookmarks.export') }}</a>
+                    <p x-show="importResult" x-cloak class="px-3 py-1 text-xs text-gray-500 dark:text-gray-400" x-text="importResult"></p>
                 </div>
