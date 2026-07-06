@@ -21,6 +21,22 @@ class MailAccountTestConnectionTest extends TestCase
         $this->post(route('mail.accounts.test'), [])->assertRedirect(route('login'));
     }
 
+    public function test_account_pages_render_and_are_owner_scoped(): void
+    {
+        $user = $this->signIn();
+        $this->get(route('mail.accounts.create'))->assertOk()->assertSee('mailAccountEdit', false);
+
+        $account = MailAccount::withoutGlobalScopes()->create([
+            'user_id' => $user->id, 'name' => 'Work', 'host' => 'imap.example.com', 'port' => 993,
+            'encryption' => 'ssl', 'username' => 'me@example.com', 'password' => 'secret',
+        ]);
+        $this->get(route('mail.accounts.edit-page', $account))->assertOk()->assertSee('imap.example.com', false);
+
+        // Another user cannot open the edit page.
+        $this->signIn();
+        $this->get(route('mail.accounts.edit-page', $account))->assertNotFound();
+    }
+
     public function test_a_successful_test_reports_both_imap_and_smtp_ok(): void
     {
         $this->signIn();

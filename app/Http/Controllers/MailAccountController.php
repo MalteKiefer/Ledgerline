@@ -18,6 +18,7 @@ use App\Support\OutboundUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\View\View;
 
 /**
  * Mail accounts as plain rows (the login password is encrypted at rest). Served
@@ -25,6 +26,20 @@ use Illuminate\Validation\Rule;
  */
 class MailAccountController extends Controller
 {
+    /** Dedicated page: add a new account. */
+    public function createPage(): View
+    {
+        return view('mail.account-edit', ['account' => null]);
+    }
+
+    /** Dedicated page: edit one account (per-account settings). */
+    public function editPage(MailAccount $account): View
+    {
+        abort_unless((int) $account->user_id === (int) auth()->id(), 403);
+
+        return view('mail.account-edit', ['account' => $this->toArray($account->load('identities'))]);
+    }
+
     public function index(): JsonResponse
     {
         return response()->json([

@@ -361,6 +361,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/mail/recipients', [MailComposeController::class, 'recipients'])->middleware('throttle:60,1')->name('mail.recipients');
     // Mail accounts: plain rows (password encrypted at rest), JSON API.
     Route::get('/mail/accounts', [MailAccountController::class, 'index'])->name('mail.accounts');
+    Route::get('/mail/accounts/new', [MailAccountController::class, 'createPage'])->name('mail.accounts.create');
+    Route::get('/mail/accounts/{account}/edit', [MailAccountController::class, 'editPage'])->name('mail.accounts.edit-page');
     Route::post('/mail/accounts', [MailAccountController::class, 'store'])->name('mail.accounts.store');
     Route::post('/mail/accounts/test', [MailAccountController::class, 'test'])->middleware('throttle:20,1')->name('mail.accounts.test');
     Route::put('/mail/accounts/{account}', [MailAccountController::class, 'update'])->name('mail.accounts.update');
