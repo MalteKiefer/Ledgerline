@@ -76,17 +76,21 @@
                         </template>
                     </div>
                 </template>
-                {{-- Addresses --}}
+                {{-- Addresses (with a small map thumbnail once geocoded) --}}
                 <template x-if="(c.addresses || []).length">
                     <div>
                         <dt class="text-xs text-gray-400">{{ __('contacts.ui.addresses') }}</dt>
                         <template x-for="(a,i) in c.addresses" :key="'ad'+i">
-                            <dd class="mt-1 flex items-start justify-between gap-3">
-                                <span class="whitespace-pre-line text-gray-900" x-text="addressLines(a)"></span>
-                                <span class="flex shrink-0 items-center gap-1">
-                                    <span class="text-xs text-gray-400" x-text="label(a.type)"></span>
-                                    <button type="button" @click="showMap(i)" class="inline-flex min-h-9 min-w-9 items-center justify-center text-gray-400 hover:text-gray-700" title="{{ __('contacts.ui.address_map') }}"><x-icon name="map-pin" class="h-4 w-4" /></button>
-                                </span>
+                            <dd class="mt-2 flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <span class="block whitespace-pre-line text-gray-900" x-text="addressLines(a)"></span>
+                                    <span class="mt-0.5 block text-xs text-gray-400" x-text="label(a.type)"></span>
+                                </div>
+                                <button type="button" x-show="geo[i]" x-cloak @click="showMap(i)"
+                                    class="relative h-20 w-28 shrink-0 overflow-hidden rounded-md ring-1 ring-gray-200 hover:ring-gray-400"
+                                    title="{{ __('contacts.ui.address_map') }}">
+                                    <div :data-mini-map="i" class="pointer-events-none h-full w-full"></div>
+                                </button>
                             </dd>
                         </template>
                     </div>
