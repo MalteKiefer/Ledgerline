@@ -7,6 +7,7 @@ return [
     'subheading' => 'Synchronisiere deine Kontakte per CardDAV auf Handy und Desktop-Clients.',
     'enable' => 'Kontakte aktivieren (Zugang erzeugen)',
     'regenerate' => 'Neues Passwort erzeugen',
+    'webdav_url' => 'WebDAV-URL (Dateien)',
     'dav_url' => 'CardDAV-URL',
     'username' => 'Benutzername',
     'password' => 'App-Passwort',

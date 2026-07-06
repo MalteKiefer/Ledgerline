@@ -7,6 +7,7 @@ return [
     'subheading' => 'Sync your contacts to phones and desktop clients over CardDAV.',
     'enable' => 'Enable contacts (generate login)',
     'regenerate' => 'Generate a new password',
+    'webdav_url' => 'WebDAV (files) URL',
     'dav_url' => 'CardDAV URL',
     'username' => 'Username',
     'password' => 'App password',

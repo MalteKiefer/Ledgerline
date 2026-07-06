@@ -24,6 +24,8 @@
         <dl class="mt-4 grid gap-2 text-sm sm:grid-cols-[8rem_1fr]">
             <dt class="text-gray-500 dark:text-gray-400">{{ __('contacts.dav_url') }}</dt>
             <dd class="select-all break-all font-mono text-gray-900 dark:text-gray-100">{{ $davUrl }}</dd>
+            <dt class="text-gray-500 dark:text-gray-400">{{ __('contacts.webdav_url') }}</dt>
+            <dd class="select-all break-all font-mono text-gray-900 dark:text-gray-100">{{ rtrim($davUrl, '/') }}/files/{{ $credential->username }}/</dd>
             <dt class="text-gray-500 dark:text-gray-400">{{ __('contacts.username') }}</dt>
             <dd class="select-all font-mono text-gray-900 dark:text-gray-100">{{ $credential->username }}</dd>
         </dl>
