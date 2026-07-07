@@ -3764,30 +3764,40 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             return parent;
         };
 
-        for (const item of items) {
-            this.uploads.push({ name: item.file.name, state: 'pending', progress: 0, error: '' });
-            // Mutate the REACTIVE array element (not the raw object) so Alpine
-            // sees the live progress updates.
-            const entry = this.uploads[this.uploads.length - 1];
-            try {
-                const id = await this._uploadOne(item.file, entry);
-                entry.state = 'done';
-                entry.progress = 100;
-                this.manifest.files.push({
-                    id: crypto.randomUUID(),
-                    blob: id,
-                    name: item.file.name,
-                    mime: item.file.type || 'application/octet-stream',
-                    size: item.file.size,
-                    folder: folderFor(item.path),
-                    created: new Date().toISOString(),
-                });
-            } catch (e) {
-                entry.state = 'error';
-                entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
-                    : (e && e.unreadable ? (labels.uploadUnreadable || labels.uploadFailed) : labels.uploadFailed);
+        // Show the whole batch immediately, then upload a few at a time. Concurrent
+        // in-flight XHRs keep transferring even when the tab is backgrounded/frozen
+        // (the browser freezes JS, not requests already in flight), whereas a
+        // sequential loop would stall between files until the tab is focused again.
+        const start = this.uploads.length;
+        for (const item of items) this.uploads.push({ name: item.file.name, state: 'pending', progress: 0, error: '' });
+
+        let next = 0;
+        const worker = async () => {
+            while (next < items.length) {
+                const idx = next++;
+                const item = items[idx];
+                const entry = this.uploads[start + idx]; // reactive element
+                try {
+                    const id = await this._uploadOne(item.file, entry);
+                    entry.state = 'done';
+                    entry.progress = 100;
+                    this.manifest.files.push({
+                        id: crypto.randomUUID(),
+                        blob: id,
+                        name: item.file.name,
+                        mime: item.file.type || 'application/octet-stream',
+                        size: item.file.size,
+                        folder: folderFor(item.path),
+                        created: new Date().toISOString(),
+                    });
+                } catch (e) {
+                    entry.state = 'error';
+                    entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
+                        : (e && e.unreadable ? (labels.uploadUnreadable || labels.uploadFailed) : labels.uploadFailed);
+                }
             }
-        }
+        };
+        await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
 
         this.uploadBatches--;
         await this.persist().catch(() => {});
@@ -4618,20 +4628,33 @@ Alpine.data('uploadLink', (config = {}, labels = {}) => ({
     },
 
     async _run(items) {
-        for (const it of items) {
-            const file = it.file;
-            this.items.push({ name: it.path || file.name, state: 'pending', progress: 0, error: '' });
-            const entry = this.items[this.items.length - 1];
-            const ext = (file.name.split('.').pop() || '').toLowerCase();
-            if (config.extensions && config.extensions.length && ! config.extensions.includes(ext)) {
-                entry.state = 'error'; entry.error = labels.typeNotAllowed; continue;
+        // Push all rows upfront so the tray shows the whole batch immediately.
+        const start = this.items.length;
+        for (const it of items) this.items.push({ name: it.path || it.file.name, state: 'pending', progress: 0, error: '' });
+
+        // Upload several at a time: with concurrent in-flight XHRs the transfers
+        // keep going even when the tab is backgrounded/frozen (the browser only
+        // freezes JS, not requests already in flight) instead of stalling
+        // between files as a sequential loop would.
+        let next = 0;
+        const worker = async () => {
+            while (next < items.length) {
+                const idx = next++;
+                const it = items[idx];
+                const file = it.file;
+                const entry = this.items[start + idx];
+                const ext = (file.name.split('.').pop() || '').toLowerCase();
+                if (config.extensions && config.extensions.length && ! config.extensions.includes(ext)) {
+                    entry.state = 'error'; entry.error = labels.typeNotAllowed; continue;
+                }
+                if (config.maxBytes && file.size > config.maxBytes) {
+                    entry.state = 'error'; entry.error = labels.tooLarge; continue;
+                }
+                try { await this._upload(file, entry, it.path); entry.state = 'done'; entry.progress = 100; }
+                catch (e) { entry.state = 'error'; entry.error = e && e.msg ? e.msg : labels.failed; }
             }
-            if (config.maxBytes && file.size > config.maxBytes) {
-                entry.state = 'error'; entry.error = labels.tooLarge; continue;
-            }
-            try { await this._upload(file, entry, it.path); entry.state = 'done'; entry.progress = 100; }
-            catch (e) { entry.state = 'error'; entry.error = e && e.msg ? e.msg : labels.failed; }
-        }
+        };
+        await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
         this.busy = false;
     },
 
