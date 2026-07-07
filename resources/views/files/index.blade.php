@@ -27,6 +27,7 @@
         archiveFailed: @js(__('files.archive_failed')),
         extractFailed: @js(__('files.extract_failed')),
         linkCopied: @js(__('files.link_copied')),
+        uploadUnreadable: @js(__('files.upload_unreadable')),
         types: @js($typeLabels),
         stale: @js(__('files.vault_stale')),
         saveFailed: @js(__('files.save_failed')),

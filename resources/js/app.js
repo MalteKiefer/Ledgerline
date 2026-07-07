@@ -3784,7 +3784,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 });
             } catch (e) {
                 entry.state = 'error';
-                entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed) : labels.uploadFailed;
+                entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
+                    : (e && e.unreadable ? (labels.uploadUnreadable || labels.uploadFailed) : labels.uploadFailed);
             }
         }
 
@@ -3817,10 +3818,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 if (xhr.status < 200 || xhr.status >= 300) { reject(new Error('upload failed')); return; }
                 try { resolve(JSON.parse(xhr.responseText).id); } catch (e) { reject(e); }
             };
-            xhr.onerror = () => reject(new Error('network'));
+            xhr.onerror = () => { const e = new Error('network'); e.unreadable = true; reject(e); };
             xhr.ontimeout = () => reject(new Error('timeout'));
             xhr.onabort = () => reject(new Error('abort'));
-            xhr.send(data);
+            try { xhr.send(data); } catch (e) { const err = new Error('read'); err.unreadable = true; reject(err); }
         });
     },
 
@@ -4617,9 +4618,9 @@ Alpine.data('uploadLink', (config = {}, labels = {}) => ({
                 else if (xhr.status === 422) err.msg = labels.typeNotAllowed;
                 reject(err);
             };
-            xhr.onerror = () => reject(new Error('network'));
+            xhr.onerror = () => { const e = new Error('network'); e.msg = labels.unreadable || labels.failed; reject(e); };
             xhr.ontimeout = () => reject(new Error('timeout'));
-            xhr.send(data);
+            try { xhr.send(data); } catch (e) { const err = new Error('read'); err.msg = labels.unreadable || labels.failed; reject(err); }
         });
     },
 }));

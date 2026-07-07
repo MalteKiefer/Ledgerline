@@ -8,6 +8,7 @@
             typeNotAllowed: @js(__('upload_links.type_not_allowed')),
             tooLarge: @js(__('upload_links.too_large')),
             failed: @js(__('upload_links.upload_failed')),
+            unreadable: @js(__('upload_links.unreadable')),
          })"
          @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false"
          @drop.prevent="dragging = false; add($event.dataTransfer.files)"

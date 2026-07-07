@@ -34,4 +34,5 @@ return [
     'exp_1w' => '1 Woche',
     'exp_30d' => '30 Tage',
     'exp_90d' => '90 Tage',
+    'unreadable' => 'Datei konnte nicht gelesen werden (vom System blockiert?)',
 ];
