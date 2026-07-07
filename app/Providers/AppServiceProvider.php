@@ -82,41 +82,67 @@ class AppServiceProvider extends ServiceProvider
         // manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
 
-        $this->applyFileSettingOverrides();
+        $this->applySettingOverrides();
     }
 
     /**
-     * Apply admin-configured global file limits over the config/env defaults.
-     * Cached (Files settings save clears it) so it adds no DB query per request
-     * — important for the high-frequency DAV endpoint. Null columns keep the
-     * config default.
+     * Admin-configured global overrides applied over the config/env defaults.
+     * Each entry: db column => [config key, type]. A null column keeps the
+     * built-in default. The Settings saves clear the cache key below.
+     *
+     * @var array<string, array{0: string, 1: string}>
      */
-    private function applyFileSettingOverrides(): void
+    public const SETTING_OVERRIDES = [
+        'files_quota_mb' => ['files.quota_mb', 'int'],
+        'files_max_upload_mb' => ['files.max_upload_mb', 'int'],
+        'files_trash_retention_days' => ['files.trash_retention_days', 'int'],
+        'files_archive_max_entries' => ['files.archive_max_entries', 'int'],
+        'files_archive_max_mb' => ['files.archive_max_mb', 'int'],
+        'files_blob_orphan_grace_hours' => ['files.blob_orphan_grace_hours', 'int'],
+        'gallery_ml_enabled' => ['gallery.ml_enabled', 'bool'],
+        'gallery_ml_url' => ['gallery.ml_url', 'string'],
+        'gallery_ml_clip_model' => ['gallery.ml_clip_model', 'string'],
+        'gallery_face_enabled' => ['gallery.face_enabled', 'bool'],
+        'gallery_face_model' => ['gallery.face_model', 'string'],
+        'gallery_ffmpeg_path' => ['gallery.ffmpeg_path', 'string'],
+        'gallery_exiftool_path' => ['gallery.exiftool_path', 'string'],
+        'gallery_duplicate_threshold' => ['gallery.duplicate_threshold', 'float'],
+        'gallery_phash_max_distance' => ['gallery.phash_max_distance', 'int'],
+        'gallery_face_min_score' => ['gallery.face_min_score', 'float'],
+        'gallery_face_min_size' => ['gallery.face_min_size', 'int'],
+        'gallery_face_cluster_threshold' => ['gallery.face_cluster_threshold', 'float'],
+        'gallery_face_min_per_person' => ['gallery.face_min_per_person', 'int'],
+        'gallery_geocode_interval_ms' => ['gallery.geocode_interval_ms', 'int'],
+    ];
+
+    public const OVERRIDES_CACHE_KEY = 'app-settings:overrides';
+
+    /**
+     * Overlay admin settings onto config. Cached (settings saves clear it) so it
+     * adds no DB query per request — important for the high-frequency DAV path.
+     */
+    private function applySettingOverrides(): void
     {
-        $values = Cache::remember('app-settings:files', 3600, function (): array {
+        $values = Cache::remember(self::OVERRIDES_CACHE_KEY, 3600, function (): array {
             if (! Schema::hasTable('app_settings')) {
                 return [];
             }
-            $row = DB::table('app_settings')->first([
-                'files_quota_mb', 'files_max_upload_mb', 'files_trash_retention_days',
-                'files_archive_max_entries', 'files_archive_max_mb', 'files_blob_orphan_grace_hours',
-            ]);
+            $row = DB::table('app_settings')->first(array_keys(self::SETTING_OVERRIDES));
 
             return $row ? array_filter((array) $row, fn ($v) => $v !== null) : [];
         });
 
-        $map = [
-            'files_quota_mb' => 'files.quota_mb',
-            'files_max_upload_mb' => 'files.max_upload_mb',
-            'files_trash_retention_days' => 'files.trash_retention_days',
-            'files_archive_max_entries' => 'files.archive_max_entries',
-            'files_archive_max_mb' => 'files.archive_max_mb',
-            'files_blob_orphan_grace_hours' => 'files.blob_orphan_grace_hours',
-        ];
-        foreach ($map as $col => $cfg) {
-            if (isset($values[$col])) {
-                config([$cfg => (int) $values[$col]]);
+        foreach (self::SETTING_OVERRIDES as $col => [$cfg, $type]) {
+            if (! isset($values[$col])) {
+                continue;
             }
+            $v = $values[$col];
+            config([$cfg => match ($type) {
+                'int' => (int) $v,
+                'float' => (float) $v,
+                'bool' => (bool) $v,
+                default => (string) $v,
+            }]);
         }
     }
 }

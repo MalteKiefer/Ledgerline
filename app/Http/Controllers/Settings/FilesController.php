@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Models\DavCredential;
 use App\Models\UserSetting;
+use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,7 +56,7 @@ class FilesController extends Controller
                 'files_blob_orphan_grace_hours' => ['nullable', 'integer', 'min:0', 'max:100000'],
             ]);
             AppSettings::current()->update($limits);
-            Cache::forget('app-settings:files');
+            Cache::forget(AppServiceProvider::OVERRIDES_CACHE_KEY);
         }
 
         return $this->savedRedirect('settings.files.edit', 'settings.files_saved');
