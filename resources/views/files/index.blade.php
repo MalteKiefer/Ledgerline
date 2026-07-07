@@ -14,6 +14,7 @@
         restoreUrl: '{{ url('/files/restore') }}',
         duplicateUrl: '{{ url('/files/duplicate') }}',
         bulkRenameUrl: '{{ url('/files/bulk-rename') }}',
+        favoriteUrl: '{{ url('/files/favorite') }}',
         token: '{{ csrf_token() }}',
      }, {
         archivedToast: @js(__('files.archived_toast')),
@@ -54,7 +55,7 @@
             <button type="button" @click="$store.nav.toggleSidebar()"
                 class="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm">
                 <x-icon name="bars-3" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                <span x-text="trashView ? @js(__('files.trash')) : @js(__('files.all_files'))"></span>
+                <span x-text="({files:@js(__('files.all_files')),favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></span>
             </button>
         </div>
         <aside class="hidden w-full shrink-0 space-y-4 self-start rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm md:block md:w-56">
@@ -69,7 +70,7 @@
         {{-- Header --}}
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <nav class="text-sm text-gray-500 dark:text-gray-400" x-show="! trashView">
+                <nav class="text-sm text-gray-500 dark:text-gray-400" x-show="view === 'files'">
                     <button type="button" @click="cwd = null" class="hover:underline">{{ __('files.all_files') }}</button>
                     <template x-for="crumb in breadcrumb" :key="crumb.id">
                         <span>
@@ -78,11 +79,11 @@
                         </span>
                     </template>
                 </nav>
-                <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100" x-text="trashView ? @js(__('files.trash')) : (currentFolderName ?? @js(__('messages.nav.files')))"></h1>
+                <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100" x-text="view === 'files' ? (currentFolderName ?? @js(__('messages.nav.files'))) : ({favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></h1>
             </div>
             {{-- Browser actions (hidden in the trash view); empty-trash shown there --}}
             <div class="flex flex-wrap items-center gap-2">
-                <template x-if="! trashView">
+                <template x-if="view === 'files'">
                     <div class="flex flex-wrap items-center gap-2">
                         {{-- New folder --}}
                         <form class="flex items-center gap-1" @submit.prevent="mkdir($refs.newFolder.value); $refs.newFolder.value = ''">
@@ -154,7 +155,7 @@
                     {{-- Parent-folder shortcut, like "cd .." — virtual row, never
                          part of rows(), so it is excluded from selection, actions
                          and export. Also a drop target to move items up. --}}
-                    <template x-if="! trashView && cwd !== null && query === '' && activeTag === ''">
+                    <template x-if="view === 'files' && cwd !== null && query === '' && activeTag === ''">
                         <tr class="cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800" @click="cwd = parentFolderId"
                             @dragover="if (dragItem) $event.preventDefault()" @drop.prevent="dropInto(parentFolderId)">
                             <td class="px-4 py-3"></td>
@@ -208,7 +209,11 @@
                                     <button type="button" @click="purge(row)" title="{{ __('files.delete_forever') }}" aria-label="{{ __('files.delete_forever') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"><x-icon name="trash" class="h-4 w-4" /></button>
                                 </div>
                                 <div x-show="! trashView" class="flex items-center justify-end gap-1">
-                                    {{-- Quick actions (icon-only): preview, info, download. --}}
+                                    {{-- Quick actions (icon-only): favourite, preview, info, download. --}}
+                                    <button type="button" x-show="row.kind === 'file'" @click="toggleFavorite(row)" :title="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))" :aria-label="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800" :class="row.favorite ? 'text-amber-500' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'">
+                                        <span x-show="row.favorite"><x-icon name="star-solid" class="h-4 w-4" /></span>
+                                        <span x-show="! row.favorite"><x-icon name="star" class="h-4 w-4" /></span>
+                                    </button>
                                     <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
                                     <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
