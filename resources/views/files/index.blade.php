@@ -18,6 +18,8 @@
         bulkRenameUrl: '{{ url('/files/bulk-rename') }}',
         favoriteUrl: '{{ url('/files/favorite') }}',
         publicLinkBase: '{{ url('/files/public-link') }}',
+        uploadLinksUrl: '{{ url('/files/upload-links') }}',
+        uploadLinkBase: '{{ url('/files/upload-links') }}',
         token: '{{ csrf_token() }}',
      }, {
         archivedToast: @js(__('files.archived_toast')),
@@ -665,6 +667,80 @@
                     <template x-if="! publicLink">
                         <button type="button" @click="createPublic()" :disabled="publicBusy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('files.create_link') }}</button>
                     </template>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Upload (file-request) links modal --}}
+    <template x-teleport="body">
+        <div x-show="uploadLinkOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="uploadLinkOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="uploadLinkOpen = false"></div>
+            <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('upload_links.heading') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('upload_links.desc') }}</p>
+
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label class="text-sm sm:col-span-2"><span class="text-gray-600 dark:text-gray-400">{{ __('upload_links.target_folder') }}</span>
+                        <select x-model="uploadLinkForm.folder_id" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                            <option value="">{{ __('files.all_files') }}</option>
+                            <template x-for="f in manifest.folders" :key="f.id"><option :value="f.id" x-text="f.name"></option></template>
+                        </select>
+                    </label>
+                    <label class="text-sm sm:col-span-2"><span class="text-gray-600 dark:text-gray-400">{{ __('upload_links.file_types') }}</span>
+                        <input type="text" x-model="uploadLinkForm.extensions" placeholder="pdf, jpg, png" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                        <span class="mt-0.5 block text-xs text-gray-400 dark:text-gray-500">{{ __('upload_links.file_types_hint') }}</span>
+                    </label>
+                    <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('upload_links.validity') }}</span>
+                        <select x-model="uploadLinkForm.expires_in" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                            <option value="">{{ __('upload_links.no_expiry') }}</option>
+                            <option value="3600">{{ __('upload_links.exp_1h') }}</option>
+                            <option value="86400">{{ __('upload_links.exp_1d') }}</option>
+                            <option value="604800">{{ __('upload_links.exp_1w') }}</option>
+                            <option value="2592000">{{ __('upload_links.exp_30d') }}</option>
+                            <option value="7776000">{{ __('upload_links.exp_90d') }}</option>
+                        </select>
+                    </label>
+                    <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('upload_links.max_file_size') }}</span>
+                        <input type="number" min="1" x-model="uploadLinkForm.max_file_mb" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                    </label>
+                    <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('upload_links.password_optional') }}</span>
+                        <input type="text" x-model="uploadLinkForm.password" autocomplete="off" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                    </label>
+                    <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('bookmarks.folder_name') }}</span>
+                        <input type="text" x-model="uploadLinkForm.label" placeholder="—" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                    </label>
+                </div>
+                <div class="mt-3 flex justify-end">
+                    <button type="button" @click="createUploadLink()" :disabled="uploadLinkBusy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('upload_links.create') }}</button>
+                </div>
+
+                {{-- Existing links --}}
+                <div class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('upload_links.existing') }}</p>
+                    <p x-show="! uploadLinks.length" class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ __('upload_links.none') }}</p>
+                    <div class="mt-2 max-h-56 space-y-2 overflow-y-auto">
+                        <template x-for="l in uploadLinks" :key="l.id">
+                            <div class="rounded-md border border-gray-200 dark:border-gray-800 p-2">
+                                <div class="flex items-center gap-2">
+                                    <input type="text" readonly :value="l.url" class="w-full rounded-md border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs shadow-sm">
+                                    <button type="button" @click="copyUploadLink(l.url)" class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" title="{{ __('upload_links.copy') }}"><x-icon name="clipboard" class="h-4 w-4" /></button>
+                                    <button type="button" @click="revokeUploadLink(l.id)" class="shrink-0 rounded-md border border-red-300 dark:border-red-800 p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950" title="{{ __('upload_links.revoke') }}"><x-icon name="trash" class="h-4 w-4" /></button>
+                                </div>
+                                <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                    <span x-text="uploadLinkFolderName(l.folderId)"></span>
+                                    <span x-show="l.extensions && l.extensions.length" x-text="l.extensions.map(e => '.'+e).join(' ')"></span>
+                                    <span x-show="l.hasPassword"><x-icon name="lock-closed" class="inline h-3.5 w-3.5" /></span>
+                                    <span x-show="l.expiresAt" x-text="new Date(l.expiresAt).toLocaleDateString()"></span>
+                                    <span x-text="'{{ __('upload_links.uploads_n') }}: ' + (l.uploads ?? 0)"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex justify-end">
+                    <button type="button" @click="uploadLinkOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
                 </div>
             </div>
         </div>
