@@ -3657,7 +3657,35 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Upload files (optionally with relative paths from a dropped folder),
     // recreating the folder chain in the manifest under the current folder.
     // Existing sibling folders are reused by name so re-drops don't duplicate.
+    // OS/editor junk that should never be uploaded — macOS, iOS, Windows, Linux
+    // and Android metadata, thumbnail, lock and temp files.
+    isJunkUpload(name) {
+        const path = name || '';
+        const n = path.split('/').pop();
+        // Anything inside a junk/system directory of a dropped folder.
+        if (/(^|\/)(__MACOSX|\.Spotlight-V100|\.Trashes|\.fseventsd|\.TemporaryItems|\.DocumentRevisions-V100|\$RECYCLE\.BIN|System Volume Information|\.thumbnails|LOST\.DIR|\.git)(\/|$)/i.test(path)) return true;
+        return (
+            // macOS / iOS
+            /^\.DS_Store$/i.test(n) || /^\._/.test(n) || /^\.localized$/i.test(n)
+            || /^\.AppleDouble$/i.test(n) || /^\.AppleDB$/i.test(n) || /^\.AppleDesktop$/i.test(n)
+            || /^\.apdisk$/i.test(n) || /^Icon\r?$/.test(n)
+            // Windows
+            || /^Thumbs\.db$/i.test(n) || /^ehthumbs\.db$/i.test(n) || /^ehthumbs_vista\.db$/i.test(n)
+            || /^desktop\.ini$/i.test(n) || /^\$RECYCLE\.BIN$/i.test(n) || /^~\$/.test(n) || /\.stackdump$/i.test(n)
+            // Linux
+            || /^\.directory$/i.test(n) || /^\.Trash-/i.test(n) || /^\.nfs[0-9a-f]+$/i.test(n)
+            || /^\.fuse_hidden/i.test(n) || /^\.~lock\./i.test(n)
+            // Android
+            || /^\.nomedia$/i.test(n) || /^\.pending-/i.test(n) || /^\.trashed-/i.test(n)
+            // Generic editor/browser temp + partial downloads
+            || /\.(tmp|temp|swp|swo|swn|crdownload|part|partial|bak|old)$/i.test(n)
+            || /~$/.test(n) || /^\.#/.test(n)
+        );
+    },
+
     async uploadItems(items) {
+        // Drop OS/editor junk (e.g. .DS_Store, ._*, Thumbs.db) silently.
+        items = (items || []).filter((it) => ! this.isJunkUpload(it.file?.name || it.path));
         if (! items.length) return;
         // A fresh batch when nothing is in flight clears the finished tray.
         if (this.uploadBatches === 0) this.uploads = [];
@@ -3711,6 +3739,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
         this.uploadBatches--;
         await this.persist().catch(() => {});
+        // Auto-dismiss the tray a few seconds after a clean finish (keep it open
+        // when something errored so the user sees which file failed).
+        if (this.uploadBatches === 0 && ! this.uploads.some((u) => u.state === 'error')) {
+            setTimeout(() => { if (! this.uploading) this.uploads = []; }, 4000);
+        }
     },
 
     // XHR upload of a single file, reporting byte progress into the tray entry.
@@ -3724,6 +3757,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             xhr.setRequestHeader('Accept', 'application/json');
             xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             entry.state = 'uploading';
+            xhr.timeout = 300000; // never let one request wedge the whole batch
             xhr.upload.onprogress = (ev) => {
                 if (ev.lengthComputable) entry.progress = Math.round((ev.loaded / ev.total) * 100);
             };
@@ -3733,6 +3767,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 try { resolve(JSON.parse(xhr.responseText).id); } catch (e) { reject(e); }
             };
             xhr.onerror = () => reject(new Error('network'));
+            xhr.ontimeout = () => reject(new Error('timeout'));
+            xhr.onabort = () => reject(new Error('abort'));
             xhr.send(data);
         });
     },
