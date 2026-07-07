@@ -35,4 +35,5 @@ return [
     'exp_30d' => '30 Tage',
     'exp_90d' => '90 Tage',
     'unreadable' => 'Datei konnte nicht gelesen werden (vom System blockiert?)',
+    'choose_folder' => 'Oder Ordner auswählen',
 ];

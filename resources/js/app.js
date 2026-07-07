@@ -4575,16 +4575,52 @@ Alpine.data('uploadLink', (config = {}, labels = {}) => ({
     get doneCount() { return this.items.filter((u) => u.state === 'done').length; },
     get errorCount() { return this.items.filter((u) => u.state === 'error').length; },
 
+    // From the file/folder picker: folder picks carry webkitRelativePath.
     add(fileList) {
-        const files = [...(fileList || [])];
-        if (! files.length) return;
-        this.busy = true;
-        this._run(files);
+        this._start([...(fileList || [])].map((f) => ({ file: f, path: f.webkitRelativePath || f.name })));
     },
 
-    async _run(files) {
-        for (const file of files) {
-            this.items.push({ name: file.name, state: 'pending', progress: 0, error: '' });
+    // From a drag-drop: walk dropped folders (and subfolders) via the entries API.
+    async dropped(event) {
+        const items = event.dataTransfer.items;
+        if (items && items.length && items[0] && items[0].webkitGetAsEntry) {
+            const out = [];
+            for (const it of [...items]) {
+                const entry = it.webkitGetAsEntry();
+                if (entry) await this._walk(entry, '', out);
+            }
+            this._start(out);
+        } else {
+            this._start([...event.dataTransfer.files].map((f) => ({ file: f, path: f.name })));
+        }
+    },
+
+    _walk(entry, prefix, out) {
+        return new Promise((resolve) => {
+            if (entry.isFile) {
+                entry.file((f) => { out.push({ file: f, path: prefix + f.name }); resolve(); }, () => resolve());
+                return;
+            }
+            const reader = entry.createReader();
+            const readBatch = () => reader.readEntries(async (batch) => {
+                if (! batch.length) { resolve(); return; }
+                for (const child of batch) await this._walk(child, prefix + entry.name + '/', out);
+                readBatch();
+            }, () => resolve());
+            readBatch();
+        });
+    },
+
+    _start(items) {
+        if (! items.length) return;
+        this.busy = true;
+        this._run(items);
+    },
+
+    async _run(items) {
+        for (const it of items) {
+            const file = it.file;
+            this.items.push({ name: it.path || file.name, state: 'pending', progress: 0, error: '' });
             const entry = this.items[this.items.length - 1];
             const ext = (file.name.split('.').pop() || '').toLowerCase();
             if (config.extensions && config.extensions.length && ! config.extensions.includes(ext)) {
@@ -4593,17 +4629,18 @@ Alpine.data('uploadLink', (config = {}, labels = {}) => ({
             if (config.maxBytes && file.size > config.maxBytes) {
                 entry.state = 'error'; entry.error = labels.tooLarge; continue;
             }
-            try { await this._upload(file, entry); entry.state = 'done'; entry.progress = 100; }
+            try { await this._upload(file, entry, it.path); entry.state = 'done'; entry.progress = 100; }
             catch (e) { entry.state = 'error'; entry.error = e && e.msg ? e.msg : labels.failed; }
         }
         this.busy = false;
     },
 
-    _upload(file, entry) {
+    _upload(file, entry, path) {
         return new Promise((resolve, reject) => {
             const data = new FormData();
             data.append('_token', config.token);
             data.append('file', file, file.name);
+            if (path && path.includes('/')) data.append('path', path);
             const xhr = new XMLHttpRequest();
             xhr.open('POST', config.url);
             xhr.setRequestHeader('Accept', 'application/json');

@@ -36,4 +36,5 @@ return [
     'exp_30d' => '30 days',
     'exp_90d' => '90 days',
     'unreadable' => 'File could not be read (blocked by your system?)',
+    'choose_folder' => 'Or choose a folder',
 ];
