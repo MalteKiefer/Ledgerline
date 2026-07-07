@@ -59,6 +59,7 @@ class FileController extends Controller
                 'folder' => $f->file_folder_id,
                 'trashed' => $f->deleted_at?->toIso8601String(),
                 'created' => $f->created_at?->toIso8601String(),
+                'favorite' => (bool) $f->favorite,
                 'tags' => $f->tags ?? [],
             ])->all(),
         ]);
@@ -81,6 +82,7 @@ class FileController extends Controller
             'files.*.folder' => ['nullable', 'uuid'],
             'files.*.tags' => ['array'],
             'files.*.trashed' => ['nullable'],
+            'files.*.favorite' => ['nullable', 'boolean'],
         ]);
 
         $folders = $data['folders'] ?? [];
@@ -151,6 +153,7 @@ class FileController extends Controller
                     'size' => $size,
                     'blob' => $f['blob'],
                     'tags' => Tags::normalize($f['tags'] ?? null),
+                    'favorite' => (bool) ($f['favorite'] ?? false),
                 ]);
                 $file->deleted_at = ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null;
                 $file->save();
@@ -534,6 +537,17 @@ class FileController extends Controller
             ->where('parent_id', $parentId)->pluck('name')->flip()->all();
 
         return ArchiveName::unique($name, $used, ' ', true);
+    }
+
+    /** Toggle the favourite flag on owned files (owner-scoped). */
+    public function favorite(Request $request): JsonResponse
+    {
+        $request->validate(['favorite' => ['required', 'boolean']]);
+        [$fileIds] = $this->ownedIds($request);
+        StoredFile::withoutGlobalScopes()->whereIn('id', $fileIds)
+            ->update(['favorite' => $request->boolean('favorite')]);
+
+        return response()->json(['ok' => true]);
     }
 
     /** Restore trashed files (owner-scoped). */

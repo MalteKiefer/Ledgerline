@@ -2947,7 +2947,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     tagsOpen: false,
     tagsValue: '',
     activeTag: '',
-    trashView: false, // showing the trash (soft-deleted files) instead of the browser
+    view: 'files', // files | favorites | recent | trash
     renameOpen: false,
     renameOpts: { find: '', replace: '', prefix: '', suffix: '' },
     infoOpen: false,
@@ -2971,9 +2971,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     async init() {
         window.addEventListener('paperless-sent', (e) => this.onPaperlessSent(e.detail));
         this.initDropzone();
-        // Switching between browser and trash clears any selection, so a stale
-        // pick doesn't keep the bulk bar / select-all checkbox active.
-        this.$watch('trashView', () => { this.selected = []; });
+        // Switching view clears any selection, so a stale pick doesn't keep the
+        // bulk bar / select-all checkbox active.
+        this.$watch('view', () => { this.selected = []; });
         await this.load();
     },
 
@@ -3097,8 +3097,14 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         return this.breadcrumb.length ? this.breadcrumb[this.breadcrumb.length - 1].name : null;
     },
 
+    get trashView() { return this.view === 'trash'; },
+
     get trashCount() {
         return this.manifest.files.filter((f) => f.trashed).length;
+    },
+
+    get favCount() {
+        return this.manifest.files.filter((f) => f.favorite && ! f.trashed).length;
     },
 
     get rows() {
@@ -3110,13 +3116,20 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             : this.sortKey === 'date' ? ((a, b) => new Date(a.created || 0) - new Date(b.created || 0))
                 : byName;
         const cmp = (a, b) => factor * (base(a, b) || byName(a, b));
+        const search = (list) => q === '' ? list : list.filter((x) => x.name.toLowerCase().includes(q));
 
-        // Trash view: a flat list of every soft-deleted file (folders are never
-        // trashed), searchable but not folder-scoped.
-        if (this.trashView) {
-            let files = this.manifest.files.filter((f) => f.trashed);
-            if (q !== '') files = files.filter((x) => x.name.toLowerCase().includes(q));
-            return files.map((f) => ({ ...f, kind: 'file' })).sort(cmp);
+        // Flat views (trash / favorites / recent): a tree-wide file list, not
+        // folder-scoped.
+        if (this.view === 'trash') {
+            return search(this.manifest.files.filter((f) => f.trashed)).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
+        }
+        if (this.view === 'favorites') {
+            return search(this.manifest.files.filter((f) => f.favorite && ! f.trashed)).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
+        }
+        if (this.view === 'recent') {
+            return search(this.manifest.files.filter((f) => ! f.trashed))
+                .map((f) => ({ ...f, kind: 'file' }))
+                .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0)).slice(0, 100);
         }
 
         // A text search or an active tag filter switches from folder browsing to
@@ -3493,6 +3506,18 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const ids = this.manifest.files.filter((f) => f.trashed).map((f) => f.id);
         if (! await this.filesPost(config.trashUrl, { file_ids: ids, permanent: true })) { window.llToast(labels.saveFailed); return; }
         await this.load();
+    },
+
+    // Toggle a file's favourite (optimistic; robust targeted endpoint).
+    async toggleFavorite(row) {
+        const f = this.manifest.files.find((x) => x.id === row.id);
+        if (! f) return;
+        const next = ! f.favorite;
+        f.favorite = next; // optimistic
+        if (! await this.filesPost(config.favoriteUrl, { file_ids: [row.id], favorite: next })) {
+            f.favorite = ! next; // revert
+            window.llToast(labels.saveFailed);
+        }
     },
 
     // Duplicate a row (or the selection). Files share the blob; folders copy deep.
