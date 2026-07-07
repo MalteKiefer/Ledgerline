@@ -25,19 +25,30 @@ class AuthBackend extends AbstractBasic
 
     protected function validateUserPass($username, $password): bool
     {
+        $key = self::authMarkerKey((string) $username, (string) $password);
+
+        // macOS webdavfs re-sends Basic auth on EVERY request (dozens per copy).
+        // bcrypt on each one dominates the latency (copies crawl), so cache the
+        // user id behind a real verification and skip the rehash while the marker
+        // is warm. A wrong password never has a marker → always full bcrypt, so
+        // brute-forcing gains nothing (and stays 60/min via the rate limiter).
+        $cached = Cache::get($key);
+        if ($cached !== null) {
+            $this->context->set((int) $cached);
+
+            return true;
+        }
+
         $credential = $this->credentials->verify((string) $username, (string) $password);
         if ($credential === null) {
             return false;
         }
 
-        // Remember who authenticated so the backends can scope to their data.
+        // Remember who authenticated so the backends can scope to their data, and
+        // drop the marker (also read by the DAV rate limiter to grant its
+        // generous quota only to genuinely-authenticated clients).
         $this->context->set((int) $credential->user_id);
-
-        // Drop a short-lived marker proving THIS (username, password) pair passed
-        // a real bcrypt check. The DAV rate limiter grants its generous quota
-        // only when this marker exists, so an attacker cannot forge a Basic
-        // header to escape the tight unauthenticated 60/min bucket.
-        Cache::put(self::authMarkerKey((string) $username, (string) $password), true, 300);
+        Cache::put($key, (int) $credential->user_id, 300);
 
         return true;
     }

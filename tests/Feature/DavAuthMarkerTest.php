@@ -29,6 +29,21 @@ class DavAuthMarkerTest extends TestCase
 
         // Correct password: marker set, so the rate limiter grants the high quota.
         $this->assertTrue($call->invoke($auth, 'dav-x', 'correct-horse'));
-        $this->assertTrue(Cache::get(AuthBackend::authMarkerKey('dav-x', 'correct-horse')));
+        $this->assertSame($user->id, Cache::get(AuthBackend::authMarkerKey('dav-x', 'correct-horse')));
+    }
+
+    public function test_warm_marker_authenticates_without_rehashing(): void
+    {
+        $user = User::factory()->create();
+        DavCredential::create(['user_id' => $user->id, 'username' => 'dav-y', 'password_hash' => bcrypt('pw')]);
+        $auth = app(AuthBackend::class);
+        $call = (new \ReflectionMethod($auth, 'validateUserPass'));
+        $call->setAccessible(true);
+
+        $this->assertTrue($call->invoke($auth, 'dav-y', 'pw')); // seeds the marker
+        DavCredential::where('username', 'dav-y')->delete(); // remove the row
+
+        // Still authenticates from the warm marker (no bcrypt, no DB row needed).
+        $this->assertTrue($call->invoke($auth, 'dav-y', 'pw'));
     }
 }
