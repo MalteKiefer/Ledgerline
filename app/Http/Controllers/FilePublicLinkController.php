@@ -8,6 +8,7 @@ use App\Models\FilePublicLink;
 use App\Models\StoredFile;
 use App\Support\BlobStore;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
@@ -103,7 +104,7 @@ class FilePublicLinkController extends Controller
     }
 
     /** Check the password and unlock the link for this session. */
-    public function unlock(Request $request, string $token): Response
+    public function unlock(Request $request, string $token): Response|RedirectResponse
     {
         $link = FilePublicLink::withoutGlobalScopes()->where('token', $token)->first();
         abort_if($link === null, 404);
