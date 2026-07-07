@@ -12,6 +12,7 @@ use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\UserSetting;
 use App\Services\Files\ArchiveManager;
+use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use App\Support\Tags;
 use Carbon\Carbon;
@@ -423,6 +424,116 @@ class FileController extends Controller
         $this->freeBlobs($blobs);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Duplicate owned files/folders in place. Files share the same blob (content
+     * is identical, blob delete is reference-counted), folders are copied
+     * recursively. Names are made unique among their siblings.
+     */
+    public function duplicate(Request $request): JsonResponse
+    {
+        [$fileIds, $folderIds] = $this->ownedIds($request);
+        $uid = $request->user()->id;
+
+        DB::transaction(function () use ($fileIds, $folderIds, $uid): void {
+            foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->get() as $f) {
+                $this->copyFile($f, $f->file_folder_id, $uid);
+            }
+            foreach ($folderIds as $fid) {
+                $folder = FileFolder::withoutGlobalScopes()->where('user_id', $uid)->find($fid);
+                if ($folder) {
+                    $this->copyFolder($folder, $folder->parent_id, $uid, true);
+                }
+            }
+        });
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function copyFile(StoredFile $src, ?string $folderId, int $uid, bool $unique = true): void
+    {
+        $name = $unique ? $this->uniqueFileName($src->name, $uid, $folderId, true) : $src->name;
+        $copy = new StoredFile;
+        $copy->forceFill([
+            'id' => (string) Str::uuid(), 'user_id' => $uid, 'file_folder_id' => $folderId,
+            'name' => $name, 'blob' => $src->blob, 'size' => (int) $src->size,
+            'mime' => $src->mime, 'tags' => $src->tags,
+        ])->save();
+    }
+
+    private function copyFolder(FileFolder $src, ?string $parentId, int $uid, bool $unique): void
+    {
+        $name = $unique ? $this->uniqueFolderName($src->name, $uid, $parentId) : $src->name;
+        $copy = new FileFolder;
+        $copy->forceFill(['id' => (string) Str::uuid(), 'user_id' => $uid, 'parent_id' => $parentId, 'name' => $name])->save();
+        foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('file_folder_id', $src->id)->get() as $f) {
+            $this->copyFile($f, $copy->id, $uid, false);
+        }
+        foreach (FileFolder::withoutGlobalScopes()->where('parent_id', $src->id)->get() as $sub) {
+            $this->copyFolder($sub, $copy->id, $uid, false);
+        }
+    }
+
+    /** Find/replace across the names of the selected owned files/folders. */
+    public function bulkRename(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'file_ids' => ['array', 'max:20000'], 'file_ids.*' => ['string'],
+            'folder_ids' => ['array', 'max:5000'], 'folder_ids.*' => ['string'],
+            'find' => ['nullable', 'string', 'max:255'],
+            'replace' => ['nullable', 'string', 'max:255'],
+            'prefix' => ['nullable', 'string', 'max:255'],
+            'suffix' => ['nullable', 'string', 'max:255'],
+        ]);
+        [$fileIds, $folderIds] = $this->ownedIds($request);
+        $find = (string) ($data['find'] ?? '');
+        $apply = function (string $name) use ($data, $find): string {
+            if ($find !== '') {
+                $name = str_replace($find, (string) ($data['replace'] ?? ''), $name);
+            }
+
+            return mb_substr(($data['prefix'] ?? '').$name.($data['suffix'] ?? ''), 0, 255);
+        };
+
+        DB::transaction(function () use ($fileIds, $folderIds, $apply): void {
+            foreach (StoredFile::withoutGlobalScopes()->whereIn('id', $fileIds)->get() as $f) {
+                $new = trim($apply($f->name));
+                if ($new !== '' && $new !== $f->name) {
+                    $f->forceFill(['name' => $new])->save();
+                }
+            }
+            foreach (FileFolder::withoutGlobalScopes()->whereIn('id', $folderIds)->get() as $f) {
+                $new = trim($apply($f->name));
+                if ($new !== '' && $new !== $f->name) {
+                    $f->forceFill(['name' => $new])->save();
+                }
+            }
+        });
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function uniqueFileName(string $name, int $uid, ?string $folderId, bool $copySuffix = false): string
+    {
+        $used = StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $uid)
+            ->where('file_folder_id', $folderId)->pluck('name')->flip()->all();
+        if ($copySuffix) {
+            $dot = strrpos($name, '.');
+            $stem = $dot === false ? $name : substr($name, 0, $dot);
+            $ext = $dot === false ? '' : substr($name, $dot);
+            $name = $stem.' '.__('files.copy_suffix').$ext;
+        }
+
+        return ArchiveName::unique($name, $used, ' ', true);
+    }
+
+    private function uniqueFolderName(string $name, int $uid, ?string $parentId): string
+    {
+        $used = FileFolder::withoutGlobalScopes()->where('user_id', $uid)
+            ->where('parent_id', $parentId)->pluck('name')->flip()->all();
+
+        return ArchiveName::unique($name, $used, ' ', true);
     }
 
     /** Restore trashed files (owner-scoped). */

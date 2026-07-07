@@ -12,6 +12,8 @@
         archiveUrl: '{{ url('/files/archive') }}',
         trashUrl: '{{ url('/files/trash') }}',
         restoreUrl: '{{ url('/files/restore') }}',
+        duplicateUrl: '{{ url('/files/duplicate') }}',
+        bulkRenameUrl: '{{ url('/files/bulk-rename') }}',
         token: '{{ csrf_token() }}',
      }, {
         archivedToast: @js(__('files.archived_toast')),
@@ -105,11 +107,21 @@
             </div>
         </div>
 
-        {{-- Search (client-side, over the decrypted manifest) --}}
-        <div class="mt-6">
+        {{-- Search (client-side, over the decrypted manifest) + sort --}}
+        <div class="mt-6 flex flex-wrap items-center gap-3">
             <input type="search" x-model="query" placeholder="{{ __('files.search') }}"
                 class="w-full sm:w-64 rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-            <span x-show="activeTag" x-cloak class="ml-3 inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-800 dark:text-blue-300">
+            <div class="flex items-center gap-1 text-sm">
+                <select x-model="sortKey" aria-label="{{ __('files.sort_by') }}" class="rounded-md border-gray-300 dark:border-gray-700 py-1.5 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <option value="name">{{ __('files.sort_name') }}</option>
+                    <option value="size">{{ __('files.sort_size') }}</option>
+                    <option value="date">{{ __('files.sort_date') }}</option>
+                </select>
+                <button type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'" :title="sortDir === 'asc' ? @js(__('files.sort_asc')) : @js(__('files.sort_desc'))" class="rounded-md border border-gray-300 dark:border-gray-700 p-1.5 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <span x-text="sortDir === 'asc' ? '↑' : '↓'"></span>
+                </button>
+            </div>
+            <span x-show="activeTag" x-cloak class="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-800 dark:text-blue-300">
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
                 <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
             </span>
@@ -208,6 +220,7 @@
                                         <div x-show="menu" x-cloak @click.outside="menu = false" @keydown.escape.window="menu = false" @scroll.window="menu = false" @resize.window="menu = false" :style="menuStyle" class="fixed z-[60] w-44 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 text-left text-sm shadow-lg">
                                             <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
+                                            <button type="button" @click="duplicate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="document-duplicate" />{{ __('files.duplicate') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
                                             <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
@@ -244,6 +257,8 @@
             </div>
         </div>
         <button type="button" @click="createArchive()" title="{{ __('files.archive_create') }}" aria-label="{{ __('files.archive_create') }}" class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="archive-box" class="h-5 w-5" /></button>
+        <button type="button" @click="duplicate(null)" title="{{ __('files.duplicate') }}" aria-label="{{ __('files.duplicate') }}" class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="document-duplicate" class="h-5 w-5" /></button>
+        <button type="button" @click="openBulkRename()" title="{{ __('files.bulk_rename') }}" aria-label="{{ __('files.bulk_rename') }}" class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-5 w-5" /></button>
         <button type="button" @click="openMove(null)" title="{{ __('files.move') }}" aria-label="{{ __('files.move') }}" class="rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="arrows-right-left" class="h-5 w-5" /></button>
         <button type="button" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 dark:text-red-300 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
     </div>
@@ -492,6 +507,32 @@
                     <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyDelete(true)" class="rounded-md border border-red-300 dark:border-red-800 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">{{ __('files.delete_forever') }}</button>
                     <button type="button" @click="applyDelete(false)" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move_to_trash') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Bulk rename modal --}}
+    <template x-teleport="body">
+        <div x-show="renameOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="renameOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="renameOpen = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.bulk_rename') }}</h3>
+                <div class="mt-4 grid gap-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('files.rename_find') }}</span>
+                            <input type="text" x-model="renameOpts.find" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm"></label>
+                        <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('files.rename_replace') }}</span>
+                            <input type="text" x-model="renameOpts.replace" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm"></label>
+                        <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('files.rename_prefix') }}</span>
+                            <input type="text" x-model="renameOpts.prefix" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm"></label>
+                        <label class="text-sm"><span class="text-gray-600 dark:text-gray-400">{{ __('files.rename_suffix') }}</span>
+                            <input type="text" x-model="renameOpts.suffix" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm"></label>
+                    </div>
+                </div>
+                <div class="mt-5 flex justify-end gap-3">
+                    <button type="button" @click="renameOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="applyBulkRename()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.rename_apply') }}</button>
                 </div>
             </div>
         </div>
