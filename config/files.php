@@ -63,4 +63,10 @@ return [
 
     'archive_max_mb' => (int) env('FILES_ARCHIVE_MAX_MB', 2048),
 
+    /*
+    | Grace window before an orphaned (never-synced) blob is swept by
+    | files:prune-trash. Was read by the command but previously undeclared.
+    */
+    'blob_orphan_grace_hours' => (int) env('FILES_BLOB_ORPHAN_GRACE_HOURS', 24),
+
 ];

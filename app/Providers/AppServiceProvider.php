@@ -12,9 +12,11 @@ use App\Models\User;
 use App\Search\SearchManager;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use SocialiteProviders\PocketID\Provider as PocketIdProvider;
@@ -79,5 +81,42 @@ class AppServiceProvider extends ServiceProvider
         // Only members of the configured Pocket-ID admin group (if any) may
         // manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
+
+        $this->applyFileSettingOverrides();
+    }
+
+    /**
+     * Apply admin-configured global file limits over the config/env defaults.
+     * Cached (Files settings save clears it) so it adds no DB query per request
+     * — important for the high-frequency DAV endpoint. Null columns keep the
+     * config default.
+     */
+    private function applyFileSettingOverrides(): void
+    {
+        $values = Cache::remember('app-settings:files', 3600, function (): array {
+            if (! Schema::hasTable('app_settings')) {
+                return [];
+            }
+            $row = DB::table('app_settings')->first([
+                'files_quota_mb', 'files_max_upload_mb', 'files_trash_retention_days',
+                'files_archive_max_entries', 'files_archive_max_mb', 'files_blob_orphan_grace_hours',
+            ]);
+
+            return $row ? array_filter((array) $row, fn ($v) => $v !== null) : [];
+        });
+
+        $map = [
+            'files_quota_mb' => 'files.quota_mb',
+            'files_max_upload_mb' => 'files.max_upload_mb',
+            'files_trash_retention_days' => 'files.trash_retention_days',
+            'files_archive_max_entries' => 'files.archive_max_entries',
+            'files_archive_max_mb' => 'files.archive_max_mb',
+            'files_blob_orphan_grace_hours' => 'files.blob_orphan_grace_hours',
+        ];
+        foreach ($map as $col => $cfg) {
+            if (isset($values[$col])) {
+                config([$cfg => (int) $values[$col]]);
+            }
+        }
     }
 }
