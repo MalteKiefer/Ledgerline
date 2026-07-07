@@ -2961,6 +2961,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     publicLink: null,
     publicOpts: { expires_in: '', password: '' },
     publicBusy: false,
+    uploadLinkOpen: false,
+    uploadLinks: [],
+    uploadLinkForm: { folder_id: '', label: '', extensions: '', expires_in: '', password: '', max_file_mb: '' },
+    uploadLinkBusy: false,
     migrateOpen: false,
     migrateRow: null,
     migrateDelete: true,
@@ -3199,6 +3203,50 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.infoRow = row;
         this.infoNote = row.note || '';
         this.infoOpen = true;
+    },
+
+    // ---- Upload (file-request) links ----
+    async openUploadLinks() {
+        this.uploadLinkForm = { folder_id: this.cwd || '', label: '', extensions: '', expires_in: '', password: '', max_file_mb: '' };
+        this.uploadLinkOpen = true;
+        try {
+            const r = await fetch(config.uploadLinksUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.uploadLinks = (await r.json()).links ?? [];
+        } catch (e) { /* keep list */ }
+    },
+    async createUploadLink() {
+        this.uploadLinkBusy = true;
+        try {
+            const f = this.uploadLinkForm;
+            const r = await fetch(config.uploadLinksUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({
+                    folder_id: f.folder_id || null,
+                    label: f.label || null,
+                    extensions: f.extensions || null,
+                    expires_in: f.expires_in ? Number(f.expires_in) : null,
+                    password: f.password || null,
+                    max_file_mb: f.max_file_mb ? Number(f.max_file_mb) : null,
+                }),
+            });
+            if (r.ok) { this.uploadLinks.unshift(await r.json()); this.uploadLinkForm.label = ''; this.uploadLinkForm.password = ''; }
+            else { window.llToast(labels.saveFailed); }
+        } catch (e) { window.llToast(labels.saveFailed); } finally { this.uploadLinkBusy = false; }
+    },
+    async revokeUploadLink(id) {
+        try {
+            const r = await fetch(`${config.uploadLinkBase}/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } });
+            if (r.ok) this.uploadLinks = this.uploadLinks.filter((l) => l.id !== id);
+        } catch (e) { window.llToast(labels.saveFailed); }
+    },
+    copyUploadLink(url) {
+        navigator.clipboard?.writeText(url).then(() => window.llToast(labels.linkCopied)).catch(() => {});
+    },
+    uploadLinkFolderName(id) {
+        if (! id) return labels.rootFolder;
+        const f = this.manifest.folders.find((x) => x.id === id);
+        return f ? f.name : labels.rootFolder;
     },
 
     // ---- Public download links ----
@@ -4513,6 +4561,68 @@ const FOLDER_ICONS = {
     moon: 'M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z',
     wifi: 'M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z',
 };
+
+/**
+ * Public "file request" upload page: a visitor can only upload files to a
+ * tokenised link. No listing, no browsing — just per-file progress + result.
+ */
+Alpine.data('uploadLink', (config = {}, labels = {}) => ({
+    items: [],
+    dragging: false,
+    busy: false,
+
+    get doneCount() { return this.items.filter((u) => u.state === 'done').length; },
+    get errorCount() { return this.items.filter((u) => u.state === 'error').length; },
+
+    add(fileList) {
+        const files = [...(fileList || [])];
+        if (! files.length) return;
+        this.busy = true;
+        this._run(files);
+    },
+
+    async _run(files) {
+        for (const file of files) {
+            this.items.push({ name: file.name, state: 'pending', progress: 0, error: '' });
+            const entry = this.items[this.items.length - 1];
+            const ext = (file.name.split('.').pop() || '').toLowerCase();
+            if (config.extensions && config.extensions.length && ! config.extensions.includes(ext)) {
+                entry.state = 'error'; entry.error = labels.typeNotAllowed; continue;
+            }
+            if (config.maxBytes && file.size > config.maxBytes) {
+                entry.state = 'error'; entry.error = labels.tooLarge; continue;
+            }
+            try { await this._upload(file, entry); entry.state = 'done'; entry.progress = 100; }
+            catch (e) { entry.state = 'error'; entry.error = e && e.msg ? e.msg : labels.failed; }
+        }
+        this.busy = false;
+    },
+
+    _upload(file, entry) {
+        return new Promise((resolve, reject) => {
+            const data = new FormData();
+            data.append('_token', config.token);
+            data.append('file', file, file.name);
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', config.url);
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.timeout = 600000;
+            entry.state = 'uploading';
+            xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) entry.progress = Math.round((ev.loaded / ev.total) * 100); };
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
+                const err = new Error('failed');
+                if (xhr.status === 413) err.msg = labels.tooLarge;
+                else if (xhr.status === 422) err.msg = labels.typeNotAllowed;
+                reject(err);
+            };
+            xhr.onerror = () => reject(new Error('network'));
+            xhr.ontimeout = () => reject(new Error('timeout'));
+            xhr.send(data);
+        });
+    },
+}));
 
 /**
  * Bookmarks + folders, driven client-side over a JSON API (no reloads).

@@ -39,6 +39,7 @@ use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodoController;
+use App\Http\Controllers\UploadLinkController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -72,6 +73,10 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // Public file download links (token, optional password gate).
     Route::get('/f/{token}', [FilePublicLinkController::class, 'download'])->name('file-link.download');
     Route::post('/f/{token}/unlock', [FilePublicLinkController::class, 'unlock'])->middleware('throttle:10,1')->name('file-link.unlock');
+    // Public file-request (upload) links: visitors can only upload.
+    Route::get('/u/{token}', [UploadLinkController::class, 'show'])->name('upload-link.show');
+    Route::post('/u/{token}/unlock', [UploadLinkController::class, 'unlock'])->middleware('throttle:10,1')->name('upload-link.unlock');
+    Route::post('/u/{token}', [UploadLinkController::class, 'upload'])->middleware('throttle:120,1')->name('upload-link.upload');
 });
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
@@ -269,6 +274,9 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
     Route::get('/files/thumb/{blob}', [FileController::class, 'thumb'])->name('files.thumb');
     Route::get('/files/search-content', [FileController::class, 'searchContent'])->middleware('throttle:120,1')->name('files.search-content');
+    Route::get('/files/upload-links', [UploadLinkController::class, 'index'])->name('files.upload-links.index');
+    Route::post('/files/upload-links', [UploadLinkController::class, 'store'])->middleware('throttle:30,1')->name('files.upload-links.store');
+    Route::delete('/files/upload-links/{link}', [UploadLinkController::class, 'destroy'])->name('files.upload-links.destroy');
     Route::get('/files/{file}/versions', [FileController::class, 'versions'])->name('files.versions');
     Route::get('/files/{file}/versions/{version}/download', [FileController::class, 'downloadVersion'])->name('files.versions.download');
     Route::post('/files/export', [FileController::class, 'queueExport'])->middleware('throttle:20,1')->name('files.export');

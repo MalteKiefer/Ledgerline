@@ -1,0 +1,38 @@
+<?php
+
+return [
+    'sidebar' => 'Upload link',
+    'title' => 'Upload files',
+    'intro' => 'Drop files here or choose them to upload. You cannot see any existing files.',
+    'allowed_types' => 'Allowed types',
+    'drop_or_choose' => 'Drop files here or click to choose',
+    'max_size' => 'Up to :mb MB per file',
+    'summary' => ':ok uploaded, :fail failed',
+    'type_not_allowed' => 'File type not allowed',
+    'too_large' => 'File too large',
+    'upload_failed' => 'Upload failed',
+    'expired' => 'This link has expired.',
+
+    // Owner modal
+    'heading' => 'Upload links',
+    'desc' => 'Create a link that lets others upload files into a folder. They can only upload — never see your files.',
+    'target_folder' => 'Save uploads to',
+    'file_types' => 'File types',
+    'file_types_hint' => 'Comma-separated extensions, e.g. pdf, jpg, png. Leave empty to allow any type.',
+    'any_type' => 'Any type',
+    'validity' => 'Valid for',
+    'no_expiry' => 'Never',
+    'password_optional' => 'Password (optional)',
+    'max_file_size' => 'Max file size (MB, optional)',
+    'create' => 'Create link',
+    'existing' => 'Active links',
+    'none' => 'No upload links yet.',
+    'copy' => 'Copy',
+    'revoke' => 'Revoke',
+    'uploads_n' => 'Uploads',
+    'exp_1h' => '1 hour',
+    'exp_1d' => '1 day',
+    'exp_1w' => '1 week',
+    'exp_30d' => '30 days',
+    'exp_90d' => '90 days',
+];
