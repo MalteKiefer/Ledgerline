@@ -36,6 +36,7 @@ use App\Http\Controllers\Settings\NotificationsController as SettingsNotificatio
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
 use App\Http\Controllers\Settings\RemindersController as SettingsRemindersController;
 use App\Http\Controllers\Settings\SettingsController;
+use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodoController;
@@ -131,6 +132,7 @@ Route::middleware('auth')->group(function (): void {
     // Non-personal, workspace-wide settings — restricted to the Pocket-ID admin
     // group (config services.pocketid.admin_group; open to all when unset).
     Route::middleware('can:manage-global-settings')->group(function (): void {
+        Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
         Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
         Route::put('/settings/gallery', [SettingsGalleryController::class, 'update'])->name('settings.gallery.update');
         Route::post('/settings/gallery/rescan', [SettingsGalleryController::class, 'rescan'])->name('settings.gallery.rescan');
