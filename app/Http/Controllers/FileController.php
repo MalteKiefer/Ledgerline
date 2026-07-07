@@ -11,6 +11,7 @@ use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\UserSetting;
+use App\Services\Files\ArchiveManager;
 use App\Support\BlobStore;
 use App\Support\Tags;
 use Carbon\Carbon;
@@ -381,6 +382,131 @@ class FileController extends Controller
         BuildExport::dispatch($export->id);
 
         return response()->json(['queued' => true, 'export_id' => $export->id], 202);
+    }
+
+    /**
+     * Delete owned files/folders. Targeted + owner scoped, so it never rides the
+     * whole fragile manifest. With `permanent` the rows and blobs are gone for
+     * good; otherwise files are soft-deleted (trash) and folders drop their rows
+     * with their files moved to root so they stay restorable.
+     */
+    public function trash(Request $request): JsonResponse
+    {
+        [$fileIds, $folderIds] = $this->ownedIds($request);
+        $permanent = $request->boolean('permanent');
+
+        $blobs = DB::transaction(function () use ($fileIds, $folderIds, $permanent): array {
+            $ids = $fileIds;
+            foreach ($folderIds as $fid) {
+                $subtree = $this->folderSubtree($fid);
+                $ids = array_merge($ids, StoredFile::withoutGlobalScopes()
+                    ->whereIn('file_folder_id', $subtree)->pluck('id')->all());
+                StoredFile::withoutGlobalScopes()->whereIn('file_folder_id', $subtree)
+                    ->update(['file_folder_id' => null]);
+                FileFolder::withoutGlobalScopes()->whereIn('id', $subtree)->delete();
+            }
+            $freed = [];
+            // Instance ->delete()/->forceDelete() (not builder) so SoftDeletes
+            // applies even though the owner global scope is stripped.
+            foreach (StoredFile::withoutGlobalScopes()->withTrashed()->whereIn('id', array_unique($ids))->get() as $file) {
+                if ($permanent) {
+                    $freed[] = $file->blob;
+                    $file->forceDelete();
+                } else {
+                    $file->delete();
+                }
+            }
+
+            return $freed;
+        });
+
+        $this->freeBlobs($blobs);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Restore trashed files (owner-scoped). */
+    public function restoreTrash(Request $request): JsonResponse
+    {
+        [$fileIds] = $this->ownedIds($request);
+        foreach (StoredFile::withoutGlobalScopes()->withTrashed()->whereIn('id', $fileIds)->get() as $file) {
+            $file->restore();
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Delete blobs no longer referenced by any (live or trashed) file. */
+    private function freeBlobs(array $blobs): void
+    {
+        foreach (array_unique(array_filter($blobs)) as $blob) {
+            if (! StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists()) {
+                $this->disk()->delete('files/'.$blob);
+            }
+        }
+    }
+
+    /** Validated, owner-scoped file/folder id lists from the request. */
+    private function ownedIds(Request $request): array
+    {
+        $data = $request->validate([
+            'file_ids' => ['array', 'max:20000'],
+            'file_ids.*' => ['string'],
+            'folder_ids' => ['array', 'max:5000'],
+            'folder_ids.*' => ['string'],
+        ]);
+        $uid = $request->user()->id;
+        $fileIds = StoredFile::ownedBy($uid)->withTrashed()
+            ->whereIn('id', array_values($data['file_ids'] ?? []))->pluck('id')->all();
+        $folderIds = FileFolder::ownedBy($uid)
+            ->whereIn('id', array_values($data['folder_ids'] ?? []))->pluck('id')->all();
+
+        return [$fileIds, $folderIds];
+    }
+
+    /** A folder id plus all of its descendant folder ids (owner already pinned). */
+    private function folderSubtree(string $rootId): array
+    {
+        $all = [$rootId];
+        $frontier = [$rootId];
+        while ($frontier !== []) {
+            $children = FileFolder::withoutGlobalScopes()->whereIn('parent_id', $frontier)->pluck('id')->all();
+            $frontier = array_values(array_diff($children, $all));
+            $all = array_merge($all, $frontier);
+        }
+
+        return $all;
+    }
+
+    /** Zip up the selected owned files/folders into a new file in the browser. */
+    public function createArchive(Request $request, ArchiveManager $archives): JsonResponse
+    {
+        $data = $request->validate([
+            'refs' => ['required', 'array', 'min:1', 'max:5000'],
+            'refs.*.kind' => ['required', Rule::in(['file', 'folder'])],
+            'refs.*.id' => ['required', 'string'],
+            'folder_id' => ['nullable', Rule::exists('file_folders', 'id')->where('user_id', $request->user()->id)],
+            'name' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        $archives->create($request->user()->id, $data['refs'], $data['folder_id'] ?? null, $data['name'] ?? null);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Extract an owned zip file into a new folder alongside it. */
+    public function extract(Request $request, StoredFile $file, ArchiveManager $archives): JsonResponse
+    {
+        abort_unless($file->isOwnedBy($request->user()->id), 403);
+        abort_unless(
+            str_ends_with(strtolower($file->name), '.zip') || $file->mime === 'application/zip',
+            422,
+            __('files.archive_invalid')
+        );
+
+        $count = $archives->extract($request->user()->id, $file);
+
+        return response()->json(['ok' => true, 'extracted' => $count]);
     }
 
     /** Delete a stored file's bytes (after its row was removed via sync). */

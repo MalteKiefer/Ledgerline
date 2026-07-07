@@ -266,6 +266,10 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/files/{file}/versions', [FileController::class, 'versions'])->name('files.versions');
     Route::get('/files/{file}/versions/{version}/download', [FileController::class, 'downloadVersion'])->name('files.versions.download');
     Route::post('/files/export', [FileController::class, 'queueExport'])->middleware('throttle:20,1')->name('files.export');
+    Route::post('/files/trash', [FileController::class, 'trash'])->middleware('throttle:120,1')->name('files.trash');
+    Route::post('/files/restore', [FileController::class, 'restoreTrash'])->middleware('throttle:120,1')->name('files.restore');
+    Route::post('/files/archive', [FileController::class, 'createArchive'])->middleware('throttle:20,1')->name('files.archive');
+    Route::post('/files/{file}/extract', [FileController::class, 'extract'])->middleware('throttle:20,1')->name('files.extract');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
 
     // Downloads center: asynchronous, worker-built export zips (gallery + files),

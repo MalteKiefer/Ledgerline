@@ -48,4 +48,19 @@ return [
 
     'quota_mb' => (int) env('FILES_QUOTA_MB', 0),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Archive (zip) limits
+    |--------------------------------------------------------------------------
+    |
+    | Caps for creating and extracting zip archives in the file browser, to
+    | bound memory/disk and blunt zip bombs. max_entries = number of files an
+    | archive may hold/extract; max_mb = total uncompressed bytes.
+    |
+    */
+
+    'archive_max_entries' => (int) env('FILES_ARCHIVE_MAX_ENTRIES', 5000),
+
+    'archive_max_mb' => (int) env('FILES_ARCHIVE_MAX_MB', 2048),
+
 ];

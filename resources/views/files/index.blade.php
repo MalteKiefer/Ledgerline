@@ -9,8 +9,15 @@
         rawBase: '{{ url('/files/raw') }}',
         blobBase: '{{ url('/files/blob') }}',
         versionsBase: '{{ url('/files') }}',
+        archiveUrl: '{{ url('/files/archive') }}',
+        trashUrl: '{{ url('/files/trash') }}',
+        restoreUrl: '{{ url('/files/restore') }}',
         token: '{{ csrf_token() }}',
      }, {
+        archivedToast: @js(__('files.archived_toast')),
+        extractedToast: @js(__('files.extracted_toast')),
+        archiveFailed: @js(__('files.archive_failed')),
+        extractFailed: @js(__('files.extract_failed')),
         types: @js($typeLabels),
         stale: @js(__('files.vault_stale')),
         saveFailed: @js(__('files.save_failed')),
@@ -205,6 +212,7 @@
                                             <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
                                             <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
+                                            <button type="button" x-show="isZip(row)" @click="extractArchive(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="folder-plus" />{{ __('files.extract_here') }}</button>
                                             <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="trash" />{{ __('common.delete') }}</button>
                                         </div>
                                         </template>
@@ -235,6 +243,7 @@
                 <button type="button" @click="bulkDownload('tarbz2'); fmt = false" class="block w-full px-3 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">TAR.BZ2</button>
             </div>
         </div>
+        <button type="button" @click="createArchive()" title="{{ __('files.archive_create') }}" aria-label="{{ __('files.archive_create') }}" class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="archive-box" class="h-5 w-5" /></button>
         <button type="button" @click="openMove(null)" title="{{ __('files.move') }}" aria-label="{{ __('files.move') }}" class="rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="arrows-right-left" class="h-5 w-5" /></button>
         <button type="button" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 dark:text-red-300 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
     </div>
@@ -476,12 +485,13 @@
             <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('common.confirm_title') }}</h3>
                 <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                    <span x-text="deleteRefs.map(r => r.name).join(', ')"></span> —
-                    <span x-text="deleteRefs.some(r => r.kind === 'folder') ? @js(__('files.delete_folder_confirm')) : @js(__('files.delete_file_confirm'))"></span>
+                    <span class="font-medium" x-text="deleteRefs.map(r => r.name).join(', ')"></span>
                 </p>
-                <div class="mt-5 flex justify-end gap-3">
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ __('files.delete_choice_hint') }}</p>
+                <div class="mt-5 flex flex-wrap justify-end gap-3">
                     <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
-                    <button type="button" @click="applyDelete()" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('common.delete') }}</button>
+                    <button type="button" @click="applyDelete(true)" class="rounded-md border border-red-300 dark:border-red-800 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">{{ __('files.delete_forever') }}</button>
+                    <button type="button" @click="applyDelete(false)" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.move_to_trash') }}</button>
                 </div>
             </div>
         </div>
