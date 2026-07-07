@@ -24,6 +24,8 @@
         migrateFailed: @js(__('files.migrate_failed')),
         restoreConfirm: @js(__('files.version_restore_confirm')),
         quotaExceeded: @js(__('files.quota_exceeded')),
+        purgeConfirm: @js(__('files.purge_confirm')),
+        emptyTrashConfirm: @js(__('files.empty_trash_confirm')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -37,11 +39,28 @@
     </template>
 
     <template x-if="state === 'ready'">
-      <div>
+      <div class="flex flex-col gap-4 md:flex-row">
+        {{-- Sidebar: mobile trigger + desktop rail + slide-over (like calendar/contacts) --}}
+        <div class="md:hidden">
+            <button type="button" @click="$store.nav.toggleSidebar()"
+                class="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm">
+                <x-icon name="bars-3" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                <span x-text="trashView ? @js(__('files.trash')) : @js(__('files.all_files'))"></span>
+            </button>
+        </div>
+        <aside class="hidden w-full shrink-0 space-y-4 self-start rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm md:block md:w-56">
+            @include('files._sidebar_content')
+        </aside>
+        <x-sheet side="left" store="sidebarOpen" :title="__('messages.nav.files')">
+            <div class="space-y-4">@include('files._sidebar_content')</div>
+        </x-sheet>
+
+        {{-- Main --}}
+        <div class="min-w-0 flex-1">
         {{-- Header --}}
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <nav class="text-sm text-gray-500 dark:text-gray-400">
+                <nav class="text-sm text-gray-500 dark:text-gray-400" x-show="! trashView">
                     <button type="button" @click="cwd = null" class="hover:underline">{{ __('files.all_files') }}</button>
                     <template x-for="crumb in breadcrumb" :key="crumb.id">
                         <span>
@@ -50,28 +69,32 @@
                         </span>
                     </template>
                 </nav>
-                <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100" x-text="currentFolderName ?? @js(__('messages.nav.files'))"></h1>
-                <div x-show="usage.quota > 0" x-cloak class="mt-2 max-w-xs">
-                    <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                        <div class="h-full bg-gray-700" :style="'width:'+Math.min(100, Math.round((usage.used/usage.quota)*100))+'%'"></div>
-                    </div>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used', ['used' => '__U__', 'total' => '__T__']) }}'.replace('__U__', fmtSize(usage.used)).replace('__T__', fmtSize(usage.quota))"></p>
-                </div>
+                <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100" x-text="trashView ? @js(__('files.trash')) : (currentFolderName ?? @js(__('messages.nav.files')))"></h1>
             </div>
+            {{-- Browser actions (hidden in the trash view); empty-trash shown there --}}
             <div class="flex flex-wrap items-center gap-2">
-                {{-- New folder --}}
-                <form class="flex items-center gap-1" @submit.prevent="mkdir($refs.newFolder.value); $refs.newFolder.value = ''">
-                    <input type="text" x-ref="newFolder" required placeholder="{{ __('files.new_folder') }}"
-                        class="w-full sm:w-40 rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <button type="submit" title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
-                        class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="folder-plus" class="h-5 w-5" /></button>
-                </form>
-                {{-- Upload --}}
-                <label title="{{ __('files.upload') }}" aria-label="{{ __('files.upload') }}"
-                    class="cursor-pointer rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700">
-                    <x-icon name="arrow-up-tray" class="h-5 w-5" />
-                    <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
-                </label>
+                <template x-if="! trashView">
+                    <div class="flex flex-wrap items-center gap-2">
+                        {{-- New folder --}}
+                        <form class="flex items-center gap-1" @submit.prevent="mkdir($refs.newFolder.value); $refs.newFolder.value = ''">
+                            <input type="text" x-ref="newFolder" required placeholder="{{ __('files.new_folder') }}"
+                                class="w-full sm:w-40 rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            <button type="submit" title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
+                                class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="folder-plus" class="h-5 w-5" /></button>
+                        </form>
+                        {{-- Upload --}}
+                        <label title="{{ __('files.upload') }}" aria-label="{{ __('files.upload') }}"
+                            class="cursor-pointer rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700">
+                            <x-icon name="arrow-up-tray" class="h-5 w-5" />
+                            <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
+                        </label>
+                    </div>
+                </template>
+                <template x-if="trashView && trashCount > 0">
+                    <button type="button" @click="emptyTrash()" class="inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
+                        <x-icon name="trash" class="h-4 w-4" />{{ __('files.empty_trash') }}
+                    </button>
+                </template>
             </div>
         </div>
 
@@ -90,7 +113,7 @@
         {{-- Browser --}}
         <div class="mt-4 overflow-visible rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
             <template x-if="rows.length === 0">
-                <p class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('files.empty_explorer') }}</p>
+                <p class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400" x-text="trashView ? @js(__('files.trash_empty')) : @js(__('files.empty_explorer'))"></p>
             </template>
             <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <table x-show="rows.length > 0" class="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
@@ -112,7 +135,7 @@
                     {{-- Parent-folder shortcut, like "cd .." — virtual row, never
                          part of rows(), so it is excluded from selection, actions
                          and export. Also a drop target to move items up. --}}
-                    <template x-if="cwd !== null && query === '' && activeTag === ''">
+                    <template x-if="! trashView && cwd !== null && query === '' && activeTag === ''">
                         <tr class="cursor-pointer text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800" @click="cwd = parentFolderId"
                             @dragover="if (dragItem) $event.preventDefault()" @drop.prevent="dropInto(parentFolderId)">
                             <td class="px-4 py-3"></td>
@@ -160,7 +183,12 @@
                                 </div>
                             </td>
                             <td class="px-4 py-3 text-right" @click.stop>
-                                <div class="flex items-center justify-end gap-1">
+                                {{-- Trash view: restore / delete-forever only --}}
+                                <div x-show="trashView" class="flex items-center justify-end gap-1">
+                                    <button type="button" @click="restore(row)" title="{{ __('files.restore') }}" aria-label="{{ __('files.restore') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                                    <button type="button" @click="purge(row)" title="{{ __('files.delete_forever') }}" aria-label="{{ __('files.delete_forever') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"><x-icon name="trash" class="h-4 w-4" /></button>
+                                </div>
+                                <div x-show="! trashView" class="flex items-center justify-end gap-1">
                                     {{-- Quick actions (icon-only): preview, info, download. --}}
                                     <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
@@ -189,7 +217,8 @@
             </table>
             </div>
         </div>
-      </div>
+        </div>{{-- /main --}}
+      </div>{{-- /flex row --}}
     </template>
 
     {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling. --}}

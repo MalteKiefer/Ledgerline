@@ -2946,6 +2946,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     tagsOpen: false,
     tagsValue: '',
     activeTag: '',
+    trashView: false, // showing the trash (soft-deleted files) instead of the browser
     infoOpen: false,
     infoRow: null,
     migrateOpen: false,
@@ -3090,11 +3091,23 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         return this.breadcrumb.length ? this.breadcrumb[this.breadcrumb.length - 1].name : null;
     },
 
+    get trashCount() {
+        return this.manifest.files.filter((f) => f.trashed).length;
+    },
+
     get rows() {
         const q = this.query.trim().toLowerCase();
         const tag = this.activeTag;
         const factor = this.sortDir === 'desc' ? -1 : 1;
         const cmp = (a, b) => factor * a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+
+        // Trash view: a flat list of every soft-deleted file (folders are never
+        // trashed), searchable but not folder-scoped.
+        if (this.trashView) {
+            let files = this.manifest.files.filter((f) => f.trashed);
+            if (q !== '') files = files.filter((x) => x.name.toLowerCase().includes(q));
+            return files.map((f) => ({ ...f, kind: 'file' })).sort(cmp);
+        }
 
         // A text search or an active tag filter switches from folder browsing to
         // a flat, tree-wide result set.
@@ -3410,44 +3423,71 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.deleteOpen = this.deleteRefs.length > 0;
     },
 
+    // Delete = move to trash (soft-delete): set a `trashed` timestamp so the file
+    // still syncs but hides from the browser and shows in the trash. Deleting a
+    // folder trashes its files (moved to root so they stay restorable) and drops
+    // the now-empty folder rows. Blobs are kept until the file is purged.
     async applyDelete() {
         const refs = this.deleteRefs;
         this.deleteOpen = false;
         this.deleteRefs = [];
         if (! refs.length) return;
 
-        const blobIds = [];
+        const nowIso = new Date().toISOString();
         const doomedFolders = new Set();
         for (const ref of refs) {
             if (ref.kind === 'file') {
                 const f = this.manifest.files.find((x) => x.id === ref.id);
-                if (f) blobIds.push(f.blob);
-                this.manifest.files = this.manifest.files.filter((x) => x.id !== ref.id);
+                if (f) f.trashed = nowIso;
             } else {
                 for (const id of this.subtree(ref.id)) doomedFolders.add(id);
             }
         }
         if (doomedFolders.size) {
             for (const f of this.manifest.files) {
-                if (f.folder != null && doomedFolders.has(f.folder)) blobIds.push(f.blob);
+                if (f.folder != null && doomedFolders.has(f.folder)) { f.folder = null; f.trashed = nowIso; }
             }
-            this.manifest.files = this.manifest.files.filter((f) => ! (f.folder != null && doomedFolders.has(f.folder)));
             this.manifest.folders = this.manifest.folders.filter((f) => ! doomedFolders.has(f.id));
         }
 
         this.selected = [];
         try {
             await this.persist();
-        } catch (e) {
-            return; // manifest not saved: keep the blobs
-        }
-        // Blobs are orphaned once the manifest no longer references them.
-        for (const id of blobIds) {
-            fetch(`${config.blobBase}/${id}`, {
-                method: 'DELETE',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            }).catch(() => {});
-        }
+        } catch (e) { /* manifest not saved: leave state as-is */ }
+    },
+
+    // Restore a trashed file back into the browser.
+    async restore(row) {
+        const f = this.manifest.files.find((x) => x.id === row.id);
+        if (f) f.trashed = null;
+        try { await this.persist(); } catch (e) { /* keep trashed on failure */ }
+    },
+
+    // Permanently delete one trashed file (row dropped from the manifest → the
+    // sync force-deletes it → its blob is freed).
+    async purge(row) {
+        if (! await this.$store.confirm.ask(labels.purgeConfirm || '')) return;
+        const f = this.manifest.files.find((x) => x.id === row.id);
+        const blob = f?.blob;
+        this.manifest.files = this.manifest.files.filter((x) => x.id !== row.id);
+        try { await this.persist(); } catch (e) { return; }
+        if (blob) fetch(`${config.blobBase}/${blob}`, {
+            method: 'DELETE',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+        }).catch(() => {});
+    },
+
+    // Permanently delete every trashed file.
+    async emptyTrash() {
+        if (! this.trashCount) return;
+        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
+        const blobs = this.manifest.files.filter((f) => f.trashed).map((f) => f.blob);
+        this.manifest.files = this.manifest.files.filter((f) => ! f.trashed);
+        try { await this.persist(); } catch (e) { return; }
+        for (const b of blobs) fetch(`${config.blobBase}/${b}`, {
+            method: 'DELETE',
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+        }).catch(() => {});
     },
 
     // Queue an async export of the selection (files + folders). A worker builds
