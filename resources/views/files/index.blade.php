@@ -153,7 +153,7 @@
                             @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-gray-400'); if (row.kind === 'folder' && dragItem) { dropInto(row.id); dragItem = null; }">
                             <button type="button" @click="row.kind === 'folder' ? (cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
                                 <template x-if="isImage(row)">
-                                    <img :src="thumbUrl(row)" loading="lazy" alt="" class="h-full w-full object-cover" @error="$event.target.style.display='none'">
+                                    <img :src="thumbUrl(row)" loading="lazy" alt="" class="h-full w-full object-cover" x-on:error="$event.target.style.display='none'">
                                 </template>
                                 <template x-if="! isImage(row)">
                                     <span class="text-gray-400 dark:text-gray-500">
