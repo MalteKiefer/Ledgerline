@@ -3716,8 +3716,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         };
 
         for (const item of items) {
-            const entry = { name: item.file.name, state: 'pending', progress: 0, error: '' };
-            this.uploads.push(entry);
+            this.uploads.push({ name: item.file.name, state: 'pending', progress: 0, error: '' });
+            // Mutate the REACTIVE array element (not the raw object) so Alpine
+            // sees the live progress updates.
+            const entry = this.uploads[this.uploads.length - 1];
             try {
                 const id = await this._uploadOne(item.file, entry);
                 entry.state = 'done';
