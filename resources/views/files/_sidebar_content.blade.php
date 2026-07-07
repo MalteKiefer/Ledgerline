@@ -1,0 +1,25 @@
+{{-- Files sidebar (shared by the desktop rail + mobile slide-over): switch
+     between the browser and the trash, plus storage usage. --}}
+<nav class="space-y-1">
+    <button type="button" @click="trashView = false; selected = []; $store.nav.closeAll && $store.nav.closeAll()"
+        :class="! trashView ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"
+        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
+        <x-icon name="folder" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+        <span>{{ __('files.all_files') }}</span>
+    </button>
+    <button type="button" @click="trashView = true; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
+        :class="trashView ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"
+        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
+        <x-icon name="trash" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+        <span class="flex-1 text-left">{{ __('files.trash') }}</span>
+        <span x-show="trashCount > 0" x-cloak x-text="trashCount" class="rounded-full bg-gray-200 dark:bg-gray-700 px-1.5 text-xs text-gray-600 dark:text-gray-300"></span>
+    </button>
+</nav>
+
+{{-- Storage usage --}}
+<div x-show="usage.quota > 0" x-cloak class="border-t border-gray-100 dark:border-gray-800 pt-3">
+    <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div class="h-full bg-gray-700" :style="'width:'+Math.min(100, Math.round((usage.used/usage.quota)*100))+'%'"></div>
+    </div>
+    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used', ['used' => '__U__', 'total' => '__T__']) }}'.replace('__U__', fmtSize(usage.used)).replace('__T__', fmtSize(usage.quota))"></p>
+</div>
