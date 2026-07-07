@@ -48,6 +48,8 @@ return [
     'recent' => 'Zuletzt',
     'favorite' => 'Favorit',
     'unfavorite' => 'Favorit entfernen',
+    'note' => 'Notiz',
+    'note_placeholder' => 'Notiz hinzufügen…',
     'all_files' => 'Alle Dateien',
     'drop_hint' => 'Dateien oder Ordner hierher ziehen zum Hochladen',
     'col_name' => 'Name',

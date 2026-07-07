@@ -470,6 +470,11 @@
                         <dd class="text-right text-gray-900 dark:text-gray-100" x-text="(infoRow?.tags ?? []).join(', ')"></dd>
                     </div>
                 </dl>
+                <div x-show="infoRow?.kind === 'file'" class="mt-4">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">{{ __('files.note') }}</label>
+                    <textarea x-model="infoNote" @blur="saveNote()" rows="3" placeholder="{{ __('files.note_placeholder') }}"
+                        class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500"></textarea>
+                </div>
                 <div class="mt-5 flex justify-end">
                     <button type="button" @click="infoOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
                 </div>

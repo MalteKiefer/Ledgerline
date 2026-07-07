@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * soft-deletion, but the client manifest owns the trashed timestamp, so the
  * sync sets deleted_at directly (see FileController::sync).
  */
-#[Fillable(['id', 'file_folder_id', 'name', 'mime', 'size', 'blob', 'tags', 'favorite'])]
+#[Fillable(['id', 'file_folder_id', 'name', 'mime', 'size', 'blob', 'tags', 'favorite', 'note'])]
 class StoredFile extends Model
 {
     use SharesWithUsers;

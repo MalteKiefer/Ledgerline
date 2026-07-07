@@ -269,6 +269,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/trash', [FileController::class, 'trash'])->middleware('throttle:120,1')->name('files.trash');
     Route::post('/files/restore', [FileController::class, 'restoreTrash'])->middleware('throttle:120,1')->name('files.restore');
     Route::post('/files/favorite', [FileController::class, 'favorite'])->middleware('throttle:120,1')->name('files.favorite');
+    Route::post('/files/{file}/note', [FileController::class, 'saveNote'])->middleware('throttle:120,1')->name('files.note');
     Route::post('/files/duplicate', [FileController::class, 'duplicate'])->middleware('throttle:60,1')->name('files.duplicate');
     Route::post('/files/bulk-rename', [FileController::class, 'bulkRename'])->middleware('throttle:60,1')->name('files.bulk-rename');
     Route::post('/files/archive', [FileController::class, 'createArchive'])->middleware('throttle:20,1')->name('files.archive');

@@ -60,6 +60,7 @@ class FileController extends Controller
                 'trashed' => $f->deleted_at?->toIso8601String(),
                 'created' => $f->created_at?->toIso8601String(),
                 'favorite' => (bool) $f->favorite,
+                'note' => $f->note,
                 'tags' => $f->tags ?? [],
             ])->all(),
         ]);
@@ -83,6 +84,7 @@ class FileController extends Controller
             'files.*.tags' => ['array'],
             'files.*.trashed' => ['nullable'],
             'files.*.favorite' => ['nullable', 'boolean'],
+            'files.*.note' => ['nullable', 'string', 'max:5000'],
         ]);
 
         $folders = $data['folders'] ?? [];
@@ -154,6 +156,7 @@ class FileController extends Controller
                     'blob' => $f['blob'],
                     'tags' => Tags::normalize($f['tags'] ?? null),
                     'favorite' => (bool) ($f['favorite'] ?? false),
+                    'note' => $f['note'] ?? null,
                 ]);
                 $file->deleted_at = ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null;
                 $file->save();
@@ -539,6 +542,16 @@ class FileController extends Controller
         return ArchiveName::unique($name, $used, ' ', true);
     }
 
+    /** Save the note/comment on an owned file. */
+    public function saveNote(Request $request, StoredFile $file): JsonResponse
+    {
+        abort_unless($file->isOwnedBy($request->user()->id), 403);
+        $data = $request->validate(['note' => ['nullable', 'string', 'max:5000']]);
+        $file->forceFill(['note' => $data['note'] ?? null])->save();
+
+        return response()->json(['ok' => true]);
+    }
+
     /** Toggle the favourite flag on owned files (owner-scoped). */
     public function favorite(Request $request): JsonResponse
     {
@@ -623,11 +636,7 @@ class FileController extends Controller
     public function extract(Request $request, StoredFile $file, ArchiveManager $archives): JsonResponse
     {
         abort_unless($file->isOwnedBy($request->user()->id), 403);
-        abort_unless(
-            str_ends_with(strtolower($file->name), '.zip') || $file->mime === 'application/zip',
-            422,
-            __('files.archive_invalid')
-        );
+        abort_unless(ArchiveManager::isExtractable($file->name, $file->mime), 422, __('files.archive_invalid'));
 
         $count = $archives->extract($request->user()->id, $file);
 

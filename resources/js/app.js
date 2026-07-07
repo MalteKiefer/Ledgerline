@@ -2952,6 +2952,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     renameOpts: { find: '', replace: '', prefix: '', suffix: '' },
     infoOpen: false,
     infoRow: null,
+    infoNote: '',
     migrateOpen: false,
     migrateRow: null,
     migrateDelete: true,
@@ -3186,7 +3187,21 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     openInfo(row) {
         this.infoRow = row;
+        this.infoNote = row.note || '';
         this.infoOpen = true;
+    },
+
+    // Save the note on the current info file (targeted endpoint + manifest sync).
+    async saveNote() {
+        const row = this.infoRow;
+        if (! row || row.kind !== 'file') return;
+        const note = this.infoNote.trim();
+        if ((row.note || '') === note) return;
+        const f = this.manifest.files.find((x) => x.id === row.id);
+        if (f) f.note = note; // optimistic
+        if (! await this.filesPost(`${config.versionsBase}/${row.id}/note`, { note })) {
+            window.llToast(labels.saveFailed);
+        }
     },
 
     // Direct children of a folder (files + subfolders), counted client-side —
@@ -3679,7 +3694,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     isZip(row) {
-        return row?.kind === 'file' && (row.mime === 'application/zip' || /\.zip$/i.test(row.name || ''));
+        return row?.kind === 'file' && (row.mime === 'application/zip'
+            || /\.(zip|tar|tgz|tbz2)$/i.test(row.name || '') || /\.tar\.(gz|bz2)$/i.test(row.name || ''));
     },
 
     // Zip the current selection into a new file in this folder (server-side).

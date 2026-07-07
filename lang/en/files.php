@@ -48,6 +48,8 @@ return [
     'recent' => 'Recent',
     'favorite' => 'Favorite',
     'unfavorite' => 'Remove favorite',
+    'note' => 'Note',
+    'note_placeholder' => 'Add a note…',
     'all_files' => 'All files',
     'drop_hint' => 'Drop files or folders here to upload',
     'col_name' => 'Name',
