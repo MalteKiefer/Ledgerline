@@ -114,11 +114,38 @@ class ArchiveManager
         }
     }
 
+    /** Extensions this extractor understands. */
+    public const EXTRACTABLE = ['zip', 'tar', 'gz', 'tgz', 'bz2', 'tbz2'];
+
+    public static function isExtractable(string $name, ?string $mime = null): bool
+    {
+        if ($mime === 'application/zip') {
+            return true;
+        }
+        $lower = strtolower($name);
+        foreach (['.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.tbz2'] as $ext) {
+            if (str_ends_with($lower, $ext)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
-     * Extract a zip file into a new folder (named after the archive) in the same
-     * folder as the archive. Returns the number of files extracted.
+     * Extract an archive (zip/tar/tar.gz/tar.bz2) into a new folder named after
+     * it, in the same folder. Returns the number of files extracted.
      */
     public function extract(int $userId, StoredFile $zip): int
+    {
+        $lower = strtolower($zip->name);
+        $isTar = str_ends_with($lower, '.tar') || str_ends_with($lower, '.tar.gz')
+            || str_ends_with($lower, '.tgz') || str_ends_with($lower, '.tar.bz2') || str_ends_with($lower, '.tbz2');
+
+        return $isTar ? $this->extractTar($userId, $zip) : $this->extractZip($userId, $zip);
+    }
+
+    private function extractZip(int $userId, StoredFile $zip): int
     {
         $local = DiskTempFile::pull($this->disk(), 'files/'.$zip->blob, 'llzx');
         $za = new ZipArchive;
@@ -183,6 +210,89 @@ class ArchiveManager
         } finally {
             @unlink($local);
         }
+    }
+
+    private function extractTar(int $userId, StoredFile $arc): int
+    {
+        // PharData detects the compression from the file extension, so give the
+        // pulled temp copy the archive's real extension.
+        $pulled = DiskTempFile::pull($this->disk(), 'files/'.$arc->blob, 'lltar');
+        preg_match('/(\.tar\.gz|\.tgz|\.tar\.bz2|\.tbz2|\.tar)$/i', $arc->name, $m);
+        $local = $pulled.($m[1] ?? '.tar');
+        rename($pulled, $local);
+        $dest = sys_get_temp_dir().'/llxtar-'.bin2hex(random_bytes(6));
+
+        try {
+            $phar = new \PharData($local);
+
+            $count = 0;
+            $total = 0;
+            foreach (new \RecursiveIteratorIterator($phar, \RecursiveIteratorIterator::LEAVES_ONLY) as $f) {
+                $count++;
+                $total += (int) $f->getSize();
+            }
+            abort_if($count > $this->maxEntries, 422, __('files.archive_too_many'));
+            abort_if($total > $this->maxBytes, 413, __('files.archive_too_large'));
+            $this->assertQuota($userId, $total);
+
+            // PharData::extractTo is traversal-safe; we also re-check each name.
+            @mkdir($dest, 0700, true);
+            $phar->extractTo($dest, null, true);
+
+            $base = ArchiveName::sanitize(preg_replace('/(\.tar\.gz|\.tgz|\.tar\.bz2|\.tbz2|\.tar)$/i', '', $arc->name) ?: 'archive');
+            $root = $this->makeFolder($userId, $this->uniqueFolderName($base, $userId, $arc->file_folder_id), $arc->file_folder_id);
+            $dirCache = ['' => $root->id];
+
+            $written = 0;
+            $rii = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($dest, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST
+            );
+            foreach ($rii as $item) {
+                $rel = substr($item->getPathname(), strlen($dest) + 1);
+                $segments = $this->safeSegments($rel);
+                if ($segments === null) {
+                    continue;
+                }
+                if ($item->isDir()) {
+                    $this->ensureDir($userId, $segments, $dirCache);
+
+                    continue;
+                }
+                $folderId = $this->ensureDir($userId, array_slice($segments, 0, -1), $dirCache);
+                $bytes = file_get_contents($item->getPathname());
+                if ($bytes === false) {
+                    continue;
+                }
+                $blob = (string) Str::uuid();
+                $this->disk()->put('files/'.$blob, $bytes);
+                $file = new StoredFile;
+                $file->forceFill([
+                    'id' => (string) Str::uuid(), 'user_id' => $userId, 'file_folder_id' => $folderId,
+                    'name' => end($segments), 'blob' => $blob, 'size' => strlen($bytes), 'mime' => $this->guessMime(end($segments)),
+                ])->save();
+                $written++;
+            }
+
+            return $written;
+        } finally {
+            @unlink($local);
+            $this->rrmdir($dest);
+        }
+    }
+
+    private function rrmdir(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+        foreach (new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        ) as $item) {
+            $item->isDir() ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+        }
+        @rmdir($dir);
     }
 
     /** Recursively add a folder's files to $entries under $prefix. */
