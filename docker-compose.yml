@@ -26,6 +26,10 @@ x-app-image: &app-image
     # hanging photo processing (renditions/metadata) for minutes. We always pass
     # explicit S3 keys, so IMDS is never needed — disable the probe outright.
     AWS_EC2_METADATA_DISABLED: "true"
+    # Let nginx accept large uploads (the base image defaults to 100M, which
+    # rejects big files with an HTTP/2 stream error). Keep in sync with the PHP
+    # post/upload limits and Caddy's request_body max_size.
+    NGINX_CLIENT_MAX_BODY_SIZE: "560M"
   restart: unless-stopped
   security_opt:
     - no-new-privileges:true

@@ -3782,7 +3782,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 const item = items[idx];
                 const entry = this.uploads[start + idx]; // reactive element
                 try {
-                    const id = await this._uploadOne(item.file, entry);
+                    // Large files go through chunked (S3 multipart) upload so they
+                    // clear the proxy/PHP body-size limits and GB files work.
+                    const id = item.file.size > 64 * 1024 * 1024
+                        ? await this._uploadChunked(item.file, entry)
+                        : await this._uploadOne(item.file, entry);
                     entry.state = 'done';
                     entry.progress = 100;
                     this.manifest.files.push({
@@ -3835,6 +3839,74 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             xhr.onerror = () => { const e = new Error('network'); e.unreadable = true; reject(e); };
             xhr.ontimeout = () => reject(new Error('timeout'));
             xhr.onabort = () => reject(new Error('abort'));
+            try { xhr.send(data); } catch (e) { const err = new Error('read'); err.unreadable = true; reject(err); }
+        });
+    },
+
+    // Chunked upload: slice the file and stream each part to object storage via
+    // the server's S3 multipart endpoints. Small requests → no body-size limits,
+    // and multi-GB files upload part by part. Returns the stored blob id.
+    async _uploadChunked(file, entry) {
+        entry.state = 'uploading';
+        const init = await fetch(config.chunkInitUrl, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+            body: JSON.stringify({ name: file.name, size: file.size }),
+        });
+        if (init.status === 413) { const e = new Error('quota'); e.quota = true; throw e; }
+        if (! init.ok) throw new Error('init failed');
+        const { token, id, partSize } = await init.json();
+        const total = Math.ceil(file.size / partSize);
+        const parts = [];
+        try {
+            for (let i = 0; i < total; i++) {
+                const startByte = i * partSize;
+                const blob = file.slice(startByte, Math.min(file.size, startByte + partSize));
+                const etag = await this._uploadPart(token, i + 1, blob, entry, startByte, file.size);
+                parts.push({ part: i + 1, etag });
+            }
+            const comp = await fetch(config.chunkCompleteUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ token, parts }),
+            });
+            if (! comp.ok) throw new Error('complete failed');
+            entry.progress = 100;
+            return (await comp.json()).id;
+        } catch (e) {
+            // Best-effort cleanup of the staged parts.
+            fetch(config.chunkAbortUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ token }),
+            }).catch(() => {});
+            throw e;
+        }
+    },
+
+    // Upload one part via XHR, reporting overall byte progress into the tray.
+    _uploadPart(token, part, blob, entry, offsetStart, totalSize) {
+        return new Promise((resolve, reject) => {
+            const data = new FormData();
+            data.append('_token', config.token);
+            data.append('token', token);
+            data.append('part', part);
+            data.append('chunk', blob, 'chunk');
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', config.chunkPartUrl);
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.timeout = 600000;
+            xhr.upload.onprogress = (ev) => {
+                if (ev.lengthComputable) entry.progress = Math.round(((offsetStart + ev.loaded) / totalSize) * 100);
+            };
+            xhr.onload = () => {
+                if (xhr.status === 413) { const err = new Error('quota'); err.quota = true; reject(err); return; }
+                if (xhr.status < 200 || xhr.status >= 300) { reject(new Error('part failed')); return; }
+                try { resolve(JSON.parse(xhr.responseText).etag); } catch (e) { reject(e); }
+            };
+            xhr.onerror = () => { const e = new Error('network'); e.unreadable = true; reject(e); };
+            xhr.ontimeout = () => reject(new Error('timeout'));
             try { xhr.send(data); } catch (e) { const err = new Error('read'); err.unreadable = true; reject(err); }
         });
     },

@@ -17,9 +17,11 @@ use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use App\Support\ImageManagerFactory;
 use App\Support\Tags;
+use Aws\S3\S3Client;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -235,6 +237,115 @@ class FileController extends Controller
         FileBlob::create(['blob' => $id, 'user_id' => $request->user()->id, 'created_at' => now()]);
 
         return response()->json(['id' => $id], 201);
+    }
+
+    // ---- Chunked (S3 multipart) upload for large files ----
+    // Each chunk is a small request, so it sidesteps the nginx/PHP body-size
+    // limits, and the parts stream straight to object storage — GB files work.
+
+    /** Part size the client should slice with (S3 requires >= 5 MiB per part). */
+    private const CHUNK_PART_SIZE = 8 * 1024 * 1024;
+
+    /** Begin a multipart upload; returns an opaque session token + the blob id. */
+    public function chunkInit(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:1024'],
+            'size' => ['required', 'integer', 'min:1', 'max:'.((int) config('files.max_upload_mb', 2048) * 1024 * 1024)],
+        ]);
+        abort_if($this->quotaExceeded($request->user()->id, (int) $data['size']), 413, __('files.quota_exceeded'));
+
+        $id = (string) Str::uuid();
+        $key = 'files/'.$id;
+        $res = $this->s3()->createMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $key]);
+
+        $token = (string) Str::uuid();
+        Cache::put($this->chunkKey($token), [
+            'uploadId' => $res['UploadId'], 'key' => $key, 'id' => $id, 'user' => (int) $request->user()->id,
+        ], now()->addHours(12));
+
+        return response()->json(['token' => $token, 'id' => $id, 'partSize' => self::CHUNK_PART_SIZE]);
+    }
+
+    /** Upload one part; returns its ETag for the completion call. */
+    public function chunkPart(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => ['required', 'string'],
+            'part' => ['required', 'integer', 'min:1', 'max:10000'],
+            'chunk' => ['required', 'file', 'max:'.((int) (self::CHUNK_PART_SIZE / 1024) + 1024)],
+        ]);
+        $s = $this->chunkSession($request);
+        $res = $this->s3()->uploadPart([
+            'Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId'],
+            'PartNumber' => (int) $request->input('part'),
+            'Body' => fopen($request->file('chunk')->getRealPath(), 'r'),
+        ]);
+
+        return response()->json(['part' => (int) $request->input('part'), 'etag' => $res['ETag']]);
+    }
+
+    /** Finish the upload and register the blob (same contract as upload()). */
+    public function chunkComplete(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => ['required', 'string'],
+            'parts' => ['required', 'array', 'min:1', 'max:10000'],
+            'parts.*.part' => ['required', 'integer', 'min:1'],
+            'parts.*.etag' => ['required', 'string'],
+        ]);
+        $s = $this->chunkSession($request);
+        $parts = collect($request->input('parts'))
+            ->map(fn ($p) => ['PartNumber' => (int) $p['part'], 'ETag' => $p['etag']])
+            ->sortBy('PartNumber')->values()->all();
+
+        $this->s3()->completeMultipartUpload([
+            'Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId'],
+            'MultipartUpload' => ['Parts' => $parts],
+        ]);
+        FileBlob::create(['blob' => $s['id'], 'user_id' => $s['user'], 'created_at' => now()]);
+        Cache::forget($this->chunkKey((string) $request->input('token')));
+
+        return response()->json(['id' => $s['id']], 201);
+    }
+
+    /** Abort a multipart upload and drop the staged parts. */
+    public function chunkAbort(Request $request): JsonResponse
+    {
+        $request->validate(['token' => ['required', 'string']]);
+        $s = $this->chunkSession($request);
+        try {
+            $this->s3()->abortMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId']]);
+        } catch (\Throwable) {
+            // best effort; the object-storage lifecycle rule reclaims stale parts
+        }
+        Cache::forget($this->chunkKey((string) $request->input('token')));
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function s3(): S3Client
+    {
+        return $this->disk()->getClient();
+    }
+
+    private function bucket(): string
+    {
+        return (string) config('filesystems.disks.'.config('files.disk').'.bucket');
+    }
+
+    private function chunkKey(string $token): string
+    {
+        return 'chunk-upload:'.$token;
+    }
+
+    /** Load + authorise a chunk session (must belong to the current user). */
+    private function chunkSession(Request $request): array
+    {
+        $s = Cache::get($this->chunkKey((string) $request->input('token')));
+        abort_if(! is_array($s) || (int) ($s['user'] ?? 0) !== (int) $request->user()->id, 404);
+
+        return $s;
     }
 
     /** Bytes the user currently occupies (live + trashed files + kept versions). */
