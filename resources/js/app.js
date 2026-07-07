@@ -3108,7 +3108,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         };
 
         const folders = inScope(this.manifest.folders.map((f) => ({ ...f, kind: 'folder' })));
-        const files = inScope(this.manifest.files.map((f) => ({ ...f, kind: 'file' })));
+        // Hide trashed files (e.g. deleted over WebDAV): data() returns them with
+        // a `trashed` timestamp so sync keeps their state, but they must not show.
+        const files = inScope(this.manifest.files.filter((f) => ! f.trashed).map((f) => ({ ...f, kind: 'file' })));
 
         return [...folders.sort(cmp), ...files.sort(cmp)];
     },
