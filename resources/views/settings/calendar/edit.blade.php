@@ -88,6 +88,16 @@
         </div>
     </form>
 
+    {{-- Refresh subscribed ICS calendars now (queued) --}}
+    <div class="mt-6 max-w-lg rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.calendar_refresh_heading') }}</h2>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.calendar_refresh_hint') }}</p>
+        <form method="POST" action="{{ route('settings.calendar.refresh-subscriptions') }}" class="mt-3">
+            @csrf
+            <x-button variant="secondary" type="submit">{{ __('settings.calendar_refresh_action') }}</x-button>
+        </form>
+    </div>
+
     {{-- CalDAV sync (same login as contacts) --}}
     <div class="mt-6">
         @include('settings.partials.dav-sync')

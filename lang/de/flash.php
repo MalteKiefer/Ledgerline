@@ -30,4 +30,5 @@ return [
     'photos_trashed' => ':count Foto(s) in den Papierkorb verschoben.',
     'mail_settings_saved' => 'Mail-Einstellungen gespeichert.',
     'paperless_settings_saved' => 'Paperless-Einstellungen gespeichert.',
+    'calendar_subscriptions_refreshing' => 'Abonnierte Kalender werden aktualisiert…',
 ];

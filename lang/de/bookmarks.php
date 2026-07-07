@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'link_check_queued' => 'Links werden geprüft…',
+    'check_links_now' => 'Links jetzt prüfen',
     'title' => 'Lesezeichen',
     'search' => 'Lesezeichen durchsuchen…',
     'new_bookmark' => 'Neues Lesezeichen',

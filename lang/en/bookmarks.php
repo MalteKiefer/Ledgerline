@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 return [
+    'link_check_queued' => 'Checking links…',
+    'check_links_now' => 'Check links now',
     'title' => 'Bookmarks',
     'search' => 'Search bookmarks…',
     'new_bookmark' => 'New bookmark',

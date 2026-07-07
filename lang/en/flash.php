@@ -30,4 +30,5 @@ return [
     'photos_trashed' => ':count photo(s) moved to trash.',
     'mail_settings_saved' => 'Mail settings saved.',
     'paperless_settings_saved' => 'Paperless settings saved.',
+    'calendar_subscriptions_refreshing' => 'Refreshing subscribed calendars…',
 ];

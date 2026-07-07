@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\PurgesOwnedTrash;
+use App\Jobs\RunCommand;
 use App\Models\Bookmark;
 use App\Models\BookmarkFolder;
 use App\Services\Bookmarks\FaviconFetcher;
@@ -122,6 +123,15 @@ class BookmarkController extends Controller
         $bookmark = Bookmark::create($this->validated($request));
 
         return response()->json($this->toArray($bookmark), 201);
+    }
+
+    /** Re-check every bookmark's URL now (queued), instead of waiting for the
+     *  weekly cron; the dead-link flags update as it runs. */
+    public function checkLinks(): JsonResponse
+    {
+        RunCommand::dispatch('bookmarks:check-links');
+
+        return response()->json(['ok' => true]);
     }
 
     public function update(Request $request, Bookmark $bookmark): JsonResponse
