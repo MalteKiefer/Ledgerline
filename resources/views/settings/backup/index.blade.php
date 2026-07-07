@@ -166,8 +166,27 @@
 
     {{-- Recent runs — live-updating (no page reload) --}}
     <section class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6"
-        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
+        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', decryptBase: '{{ route('settings.backup.runs.decrypt', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_runs_heading') }}</h2>
+        @error('passphrase')<p class="mt-2 rounded-md bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">{{ $message }}</p>@enderror
+
+        {{-- Decrypt an encrypted backup to a plaintext download (needs the passphrase) --}}
+        <template x-teleport="body">
+            <div x-show="decrypt.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="decrypt.open = false">
+                <div class="absolute inset-0 bg-gray-900/40" @click="decrypt.open = false"></div>
+                <form method="POST" :action="decryptAction" class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                    @csrf
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_decrypt') }}</h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_decrypt_hint') }}</p>
+                    <input type="password" name="passphrase" required autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
+                        class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <div class="mt-4 flex justify-end gap-2">
+                        <button type="button" @click="decrypt.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
+                        <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.backup_decrypt_download') }}</button>
+                    </div>
+                </form>
+            </div>
+        </template>
         <p x-show="runs.length === 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_no_runs') }}</p>
         <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <table x-show="runs.length > 0" x-cloak class="mt-3 w-full text-left text-sm">
@@ -200,6 +219,7 @@
                         <td class="py-1.5 pr-3 align-top text-gray-500 dark:text-gray-400" x-text="r.size ?? '—'"></td>
                         <td class="py-1.5 pr-3 align-top">
                             <a x-show="r.downloadable" :href="downloadUrl(r.id)" title="{{ __('settings.backup_download') }}" :aria-label="'{{ __('settings.backup_download') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
+                            <button x-show="r.encrypted" type="button" @click="openDecrypt(r.id)" title="{{ __('settings.backup_decrypt') }}" :aria-label="'{{ __('settings.backup_decrypt') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="lock-open" class="h-4 w-4" /></button>
                             <button x-show="r.cancellable" type="button" @click="cancel(r.id)" title="{{ __('settings.backup_cancel') }}" :aria-label="'{{ __('settings.backup_cancel') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             <span x-show="r.cancelling" class="inline-flex items-center gap-1.5">
                                 <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('settings.backup_cancelling') }}</span>

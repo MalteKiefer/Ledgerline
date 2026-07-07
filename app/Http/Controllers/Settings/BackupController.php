@@ -10,6 +10,7 @@ use App\Models\BackupDestination;
 use App\Models\BackupJob;
 use App\Models\BackupRun;
 use App\Rules\SafeUrl;
+use App\Services\Backup\ArchiveCipher;
 use App\Services\Backup\BackupDestinationFactory;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
@@ -162,6 +163,8 @@ class BackupController extends Controller
                 // Downloadable once finished successfully and the object still exists.
                 // A trailing "/" marks a folder mirror (files/gallery) — no single archive to download.
                 'downloadable' => $r->status === 'success' && $r->filename !== null && ! str_ends_with((string) $r->filename, '/'),
+                // Encrypted archives (.enc) can be decrypted to a plaintext download.
+                'encrypted' => $r->status === 'success' && str_ends_with((string) $r->filename, '.enc'),
                 'cancellable' => $r->status === 'running' && ! $r->cancel_requested,
                 'cancelling' => $r->status === 'running' && $r->cancel_requested,
             ]),
@@ -186,6 +189,54 @@ class BackupController extends Controller
                 fpassthru($stream);
                 fclose($stream);
             }
+        }, $name, ['Content-Type' => 'application/octet-stream']);
+    }
+
+    /**
+     * Fetch an encrypted (.enc) backup archive from its destination, decrypt it
+     * with the supplied passphrase and stream the plaintext archive back — the
+     * in-app equivalent of the backups:decrypt command, so recovering a backup
+     * no longer needs SSH. Nothing is written to live data; the user gets a
+     * decrypted archive to restore from.
+     */
+    public function decryptRun(Request $request, BackupRun $run, ArchiveCipher $cipher): StreamedResponse|RedirectResponse
+    {
+        abort_unless($run->status === 'success' && $run->filename && str_ends_with((string) $run->filename, '.enc'), 404);
+        $job = $run->job;
+        abort_unless($job !== null && $job->destination !== null, 404);
+        $data = $request->validate(['passphrase' => ['required', 'string', 'max:255']]);
+
+        $fs = $this->factory->make($job->destination);
+        abort_unless($fs->fileExists($run->filename), 404);
+
+        $enc = tempnam(sys_get_temp_dir(), 'llbenc');
+        $dec = tempnam(sys_get_temp_dir(), 'llbdec');
+        $stream = $fs->readStream($run->filename);
+        if ($stream === null) {
+            @unlink($enc);
+            @unlink($dec);
+            abort(404);
+        }
+        $out = fopen($enc, 'w');
+        stream_copy_to_stream($stream, $out);
+        fclose($out);
+        fclose($stream);
+
+        try {
+            $cipher->decryptFile($enc, $dec, $data['passphrase']);
+        } catch (\Throwable) {
+            @unlink($enc);
+            @unlink($dec);
+
+            return back()->withErrors(['passphrase' => __('settings.backup_decrypt_failed')]);
+        }
+        @unlink($enc);
+
+        $name = preg_replace('/\.enc$/', '', basename((string) $run->filename)) ?: 'backup';
+
+        return response()->streamDownload(function () use ($dec): void {
+            readfile($dec);
+            @unlink($dec);
         }, $name, ['Content-Type' => 'application/octet-stream']);
     }
 
