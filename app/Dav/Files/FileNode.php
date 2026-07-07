@@ -85,9 +85,10 @@ class FileNode extends File implements IACL
 
     public function delete(): void
     {
-        $blob = $this->file->blob;
-        $this->file->delete(); // soft-delete (trash)
-        $this->backend->releaseBlob($blob);
+        // Soft-delete (trash): keep the blob so the file can be restored from the
+        // web trash. The blob is freed only on permanent delete (empty trash) or
+        // by the orphan sweep.
+        $this->file->delete();
     }
 
     public function setName($name): void

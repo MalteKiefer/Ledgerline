@@ -2968,6 +2968,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     async init() {
         window.addEventListener('paperless-sent', (e) => this.onPaperlessSent(e.detail));
         this.initDropzone();
+        // Switching between browser and trash clears any selection, so a stale
+        // pick doesn't keep the bulk bar / select-all checkbox active.
+        this.$watch('trashView', () => { this.selected = []; });
         await this.load();
     },
 
