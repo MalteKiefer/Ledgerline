@@ -41,6 +41,12 @@ use Illuminate\Database\Eloquent\Model;
     'export_notify_ntfy',
     'export_notify_mail',
     'export_notify_webhook',
+    'files_quota_mb',
+    'files_max_upload_mb',
+    'files_trash_retention_days',
+    'files_archive_max_entries',
+    'files_archive_max_mb',
+    'files_blob_orphan_grace_hours',
 ])]
 class AppSettings extends Model
 {
@@ -80,6 +86,12 @@ class AppSettings extends Model
             'export_notify_ntfy' => 'boolean',
             'export_notify_mail' => 'boolean',
             'export_notify_webhook' => 'boolean',
+            'files_quota_mb' => 'integer',
+            'files_max_upload_mb' => 'integer',
+            'files_trash_retention_days' => 'integer',
+            'files_archive_max_entries' => 'integer',
+            'files_archive_max_mb' => 'integer',
+            'files_blob_orphan_grace_hours' => 'integer',
         ];
     }
 
