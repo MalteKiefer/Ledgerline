@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /** A bookmark folder, private to its owning user. */
-#[Fillable(['name'])]
+#[Fillable(['name', 'parent_id'])]
 class BookmarkFolder extends Model
 {
     use OwnsUserData;

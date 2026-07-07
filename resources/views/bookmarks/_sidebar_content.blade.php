@@ -17,10 +17,22 @@
 
                 <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
                     <p class="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('bookmarks.folders') }}</p>
-                    <template x-for="f in folders" :key="f.id">
-                        <div class="group flex items-center justify-between rounded px-3 py-1.5" :class="view === f.id ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800'">
-                            <button type="button" @click="view = f.id; activeTag = ''" class="min-w-0 flex-1 truncate text-left" :class="view === f.id ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'" x-text="f.name"></button>
-                            <button type="button" @click="deleteFolder(f)" title="{{ __('bookmarks.delete_folder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-red-600 md:opacity-0 md:group-hover:opacity-100"><x-icon name="trash" class="h-3.5 w-3.5" /></button>
+                    {{-- Root drop target: move an item out of any folder --}}
+                    <div @dragover.prevent="if (dragItem) $event.currentTarget.classList.add('ring-1','ring-gray-400')" @dragleave="$event.currentTarget.classList.remove('ring-1','ring-gray-400')"
+                        @drop.prevent="$event.currentTarget.classList.remove('ring-1','ring-gray-400'); onFolderDrop(null)"
+                        class="mx-1 rounded px-2 py-1 text-xs text-gray-400 dark:text-gray-500">{{ __('bookmarks.no_folder') }}</div>
+                    <template x-for="f in folderTree" :key="f.id">
+                        <div class="group flex items-center justify-between rounded" :class="view === f.id ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
+                            :style="'padding-left:' + (f.depth * 12) + 'px'"
+                            draggable="true" @dragstart.stop="dragItem = { type: 'folder', id: f.id }" @dragend="dragItem = null"
+                            @dragover.prevent="if (dragItem && dragItem.id !== f.id) $event.currentTarget.classList.add('ring-1','ring-gray-400')"
+                            @dragleave="$event.currentTarget.classList.remove('ring-1','ring-gray-400')"
+                            @drop.prevent="$event.currentTarget.classList.remove('ring-1','ring-gray-400'); onFolderDrop(f.id)">
+                            <button type="button" @click="view = f.id; activeTag = ''" class="min-w-0 flex-1 truncate px-3 py-1.5 text-left" :class="view === f.id ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'"><x-icon name="folder" class="mr-1 inline h-3.5 w-3.5 text-gray-400" /><span x-text="f.name"></span></button>
+                            <span class="flex shrink-0 items-center gap-0.5 pr-2">
+                                <button type="button" @click="addSubfolder(f)" title="{{ __('bookmarks.subfolder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-gray-700 dark:hover:text-gray-300 md:opacity-0 md:group-hover:opacity-100"><x-icon name="plus" class="h-3.5 w-3.5" /></button>
+                                <button type="button" @click="deleteFolder(f)" title="{{ __('bookmarks.delete_folder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-red-600 md:opacity-0 md:group-hover:opacity-100"><x-icon name="trash" class="h-3.5 w-3.5" /></button>
+                            </span>
                         </div>
                     </template>
                     <form class="mt-1 flex items-center gap-1 px-1" @submit.prevent="addFolder()">

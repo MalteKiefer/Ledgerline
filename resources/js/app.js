@@ -4399,6 +4399,7 @@ Alpine.data('bookmarks', (labels = {}) => ({
     tagsValue: '',
     importing: false, importResult: '',
     fetchingMeta: false,
+    dragItem: null, // { type: 'bookmark' | 'folder', id }
 
     async init() { await this.load(); },
 
@@ -4439,9 +4440,60 @@ Alpine.data('bookmarks', (labels = {}) => ({
         if (! confirm(labels.deleteFolderConfirm)) return;
         try {
             await this._api('DELETE', `/bookmarks/folders/${f.id}`);
-            this.folders = this.folders.filter((x) => x.id !== f.id);
-            this.bookmarks.forEach((b) => { if (b.folderId === f.id) b.folderId = null; });
+            // The FK is nullOnDelete, so subfolders become roots and their
+            // bookmarks lose the folder; reload to reflect the server truth.
+            await this.load();
             if (this.view === f.id) this.view = 'all';
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    async addSubfolder(parent) {
+        const name = (window.prompt(labels.subfolderPrompt || '') || '').trim();
+        if (! name) return;
+        try {
+            const f = await this._api('POST', '/bookmarks/folders', { name, parent_id: parent.id });
+            this.folders.push({ id: f.id, name: f.name, parent_id: f.parent_id });
+            this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    // Folders as a depth-annotated, pre-order flat list for indented rendering.
+    get folderTree() {
+        const byParent = {};
+        for (const f of this.folders) {
+            const p = f.parent_id ?? null;
+            (byParent[p] ??= []).push(f);
+        }
+        for (const k in byParent) byParent[k].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        const out = [];
+        const walk = (parent, depth) => {
+            for (const f of (byParent[parent] ?? [])) { out.push({ ...f, depth }); walk(f.id, depth + 1); }
+        };
+        walk(null, 0);
+        return out;
+    },
+
+    // ---- Drag & drop into folders ----
+    async onFolderDrop(folderId) {
+        const d = this.dragItem;
+        this.dragItem = null;
+        if (! d) return;
+        if (d.type === 'bookmark') await this.moveBookmarkToFolder(d.id, folderId);
+        else if (d.type === 'folder' && d.id !== folderId) await this.moveFolderTo(d.id, folderId);
+    },
+
+    async moveBookmarkToFolder(id, folderId) {
+        try {
+            const b = await this._api('POST', `/bookmarks/${id}/move`, { folder_id: folderId });
+            this._replace(b);
+        } catch (e) { this.error = labels.saveFailed; }
+    },
+
+    async moveFolderTo(id, parentId) {
+        try {
+            await this._api('POST', `/bookmarks/folders/${id}/move`, { parent_id: parentId });
+            const f = this.folders.find((x) => x.id === id);
+            if (f) f.parent_id = parentId;
         } catch (e) { this.error = labels.saveFailed; }
     },
 

@@ -2,6 +2,7 @@
   <div x-data="bookmarks({
         saveFailed: @js(__('bookmarks.save_failed')),
         deleteFolderConfirm: @js(__('bookmarks.delete_folder_confirm')),
+        subfolderPrompt: @js(__('bookmarks.subfolder_prompt')),
         deleteConfirm: @js(__('bookmarks.delete_confirm')),
         emptyTrashConfirm: @js(__('bookmarks.empty_trash_confirm')),
         importResult: @js(__('bookmarks.import_result')),
@@ -46,7 +47,8 @@
 
                 <ul class="mt-4 space-y-2">
                     <template x-for="b in filtered" :key="b.id">
-                        <li class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm">
+                        <li class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm"
+                            draggable="true" @dragstart="dragItem = { type: 'bookmark', id: b.id }" @dragend="dragItem = null" :class="dragItem && dragItem.type === 'bookmark' && dragItem.id === b.id ? 'opacity-50' : ''">
                             <template x-if="host(b.url)">
                                 <img :src="'{{ route('bookmarks.favicon') }}?host='+encodeURIComponent(host(b.url))" alt="" x-on:error="$el.style.display='none'" class="mt-0.5 h-5 w-5 shrink-0 rounded">
                             </template>
