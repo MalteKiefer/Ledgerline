@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Jobs\ExtractFileText;
+use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\UploadLink;
@@ -120,14 +121,18 @@ class UploadLinkController extends Controller
         $ownerId = (int) $link->user_id;
         abort_if($this->quotaExceeded($ownerId, (int) $file->getSize()), 413, __('files.quota_exceeded'));
 
+        // Preserve a dropped folder's structure under the link's target folder
+        // (owner-scoped, traversal-safe).
+        $folderId = $this->resolveUploadFolder($ownerId, $link->file_folder_id, (string) $request->input('path', ''));
+
         $blob = (string) Str::uuid();
         BlobStore::disk()->putFileAs('files', $file, $blob);
         $stored = new StoredFile;
         $stored->forceFill([
             'id' => (string) Str::uuid(),
             'user_id' => $ownerId,
-            'file_folder_id' => $link->file_folder_id,
-            'name' => $this->uniqueName($name, $ownerId, $link->file_folder_id),
+            'file_folder_id' => $folderId,
+            'name' => $this->uniqueName($name, $ownerId, $folderId),
             'blob' => $blob,
             'size' => (int) $file->getSize(),
             'mime' => $file->getMimeType() ?: 'application/octet-stream',
@@ -182,6 +187,37 @@ class UploadLinkController extends Controller
             + (int) FileVersion::where('user_id', $userId)->sum('size');
 
         return ($used + $incoming) > $quota;
+    }
+
+    /** Find/create the subfolder chain from a dropped relative path; returns the
+     *  leaf folder id (or the root when there is no subpath). */
+    private function resolveUploadFolder(int $ownerId, ?string $rootId, string $relPath): ?string
+    {
+        $relPath = str_replace('\\', '/', $relPath);
+        $parts = explode('/', $relPath);
+        array_pop($parts); // drop the filename
+        $parentId = $rootId;
+        foreach ($parts as $seg) {
+            if ($seg === '' || $seg === '.' || $seg === '..') {
+                continue; // never traverse up or emit empty segments
+            }
+            $name = ArchiveName::sanitize($seg);
+            if ($name === '') {
+                continue;
+            }
+            $existing = FileFolder::withoutGlobalScopes()->where('user_id', $ownerId)
+                ->where('parent_id', $parentId)->where('name', $name)->first();
+            if ($existing) {
+                $parentId = $existing->id;
+
+                continue;
+            }
+            $folder = new FileFolder;
+            $folder->forceFill(['id' => (string) Str::uuid(), 'user_id' => $ownerId, 'parent_id' => $parentId, 'name' => $name])->save();
+            $parentId = $folder->id;
+        }
+
+        return $parentId;
     }
 
     private function uniqueName(string $name, int $userId, ?string $folderId): string

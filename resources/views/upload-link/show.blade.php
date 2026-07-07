@@ -11,7 +11,7 @@
             unreadable: @js(__('upload_links.unreadable')),
          })"
          @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false"
-         @drop.prevent="dragging = false; add($event.dataTransfer.files)"
+         @drop.prevent="dragging = false; dropped($event)"
          class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
 
         <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="@js($label ?: __('upload_links.title'))"></h1>
@@ -28,6 +28,12 @@
             <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('upload_links.max_size', ['mb' => (int) $maxMb]) }}</span>
             <input type="file" multiple class="hidden" @change="add($event.target.files); $event.target.value = ''">
         </label>
+        <div class="mt-2 flex justify-center gap-4 text-xs">
+            <label class="cursor-pointer text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">
+                {{ __('upload_links.choose_folder') }}
+                <input type="file" webkitdirectory directory multiple class="hidden" @change="add($event.target.files); $event.target.value = ''">
+            </label>
+        </div>
 
         {{-- Per-file results --}}
         <div x-show="items.length" x-cloak class="mt-4 space-y-2">
