@@ -76,7 +76,7 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // Public file-request (upload) links: visitors can only upload.
     Route::get('/u/{token}', [UploadLinkController::class, 'show'])->name('upload-link.show');
     Route::post('/u/{token}/unlock', [UploadLinkController::class, 'unlock'])->middleware('throttle:10,1')->name('upload-link.unlock');
-    Route::post('/u/{token}', [UploadLinkController::class, 'upload'])->middleware('throttle:120,1')->name('upload-link.upload');
+    Route::post('/u/{token}', [UploadLinkController::class, 'upload'])->middleware('throttle:1200,1')->name('upload-link.upload');
 });
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
@@ -268,7 +268,7 @@ Route::middleware('auth')->group(function (): void {
     // Throttled to blunt a large-body upload flood (disk-fill / worker-hold),
     // while staying generous enough for a normal batch upload.
     Route::post('/files/upload', [FileController::class, 'upload'])
-        ->middleware('throttle:300,1')->name('files.upload');
+        ->middleware('throttle:1200,1')->name('files.upload');
     Route::post('/files/import', [FileController::class, 'import'])
         ->middleware('throttle:300,1')->name('files.import');
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');

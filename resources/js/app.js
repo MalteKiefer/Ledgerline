@@ -3019,22 +3019,26 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         await this.uploadItems(files);
     },
 
-    walkEntry(entry, prefix, out) {
-        return new Promise((resolve) => {
-            if (entry.isFile) {
-                entry.file((f) => { out.push({ file: f, path: prefix + f.name }); resolve(); }, () => resolve());
-                return;
-            }
-            const reader = entry.createReader();
-            const readBatch = () => reader.readEntries(async (batch) => {
-                if (! batch.length) { resolve(); return; }
-                for (const child of batch) {
-                    await this.walkEntry(child, prefix + entry.name + '/', out);
-                }
-                readBatch(); // readEntries yields in chunks; keep going until empty
-            }, () => resolve());
-            readBatch();
-        });
+    async walkEntry(entry, prefix, out) {
+        if (entry.isFile) {
+            const f = await new Promise((res) => entry.file(res, () => res(null)));
+            if (f) out.push({ file: f, path: prefix + f.name });
+            return;
+        }
+        // Read ALL child entries first (a tight readEntries loop, no per-file
+        // await in between): the DirectoryReader gets invalidated on large
+        // folders if you pause to read files between batches, which truncated
+        // big drops (~stopped after a few dozen files). Then recurse.
+        const reader = entry.createReader();
+        const children = [];
+        for (;;) {
+            const batch = await new Promise((res) => reader.readEntries(res, () => res([])));
+            if (! batch.length) break;
+            children.push(...batch);
+        }
+        for (const child of children) {
+            await this.walkEntry(child, prefix + entry.name + '/', out);
+        }
     },
 
     async load() {
@@ -4594,31 +4598,34 @@ Alpine.data('uploadLink', (config = {}, labels = {}) => ({
     async dropped(event) {
         const items = event.dataTransfer.items;
         if (items && items.length && items[0] && items[0].webkitGetAsEntry) {
+            // Capture every top-level entry SYNCHRONOUSLY — DataTransferItems are
+            // invalidated once the drop handler yields (awaits).
+            const entries = [...items].map((it) => it.webkitGetAsEntry()).filter(Boolean);
             const out = [];
-            for (const it of [...items]) {
-                const entry = it.webkitGetAsEntry();
-                if (entry) await this._walk(entry, '', out);
-            }
+            for (const entry of entries) await this._walk(entry, '', out);
             this._start(out);
         } else {
             this._start([...event.dataTransfer.files].map((f) => ({ file: f, path: f.name })));
         }
     },
 
-    _walk(entry, prefix, out) {
-        return new Promise((resolve) => {
-            if (entry.isFile) {
-                entry.file((f) => { out.push({ file: f, path: prefix + f.name }); resolve(); }, () => resolve());
-                return;
-            }
-            const reader = entry.createReader();
-            const readBatch = () => reader.readEntries(async (batch) => {
-                if (! batch.length) { resolve(); return; }
-                for (const child of batch) await this._walk(child, prefix + entry.name + '/', out);
-                readBatch();
-            }, () => resolve());
-            readBatch();
-        });
+    async _walk(entry, prefix, out) {
+        if (entry.isFile) {
+            const f = await new Promise((res) => entry.file(res, () => res(null)));
+            if (f) out.push({ file: f, path: prefix + f.name });
+            return;
+        }
+        // Drain the whole directory first (tight readEntries loop) before reading
+        // any files — the reader is invalidated on big folders otherwise, which
+        // truncated large drops.
+        const reader = entry.createReader();
+        const children = [];
+        for (;;) {
+            const batch = await new Promise((res) => reader.readEntries(res, () => res([])));
+            if (! batch.length) break;
+            children.push(...batch);
+        }
+        for (const child of children) await this._walk(child, prefix + entry.name + '/', out);
     },
 
     _start(items) {
