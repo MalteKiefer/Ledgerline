@@ -2934,6 +2934,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     cwd: null,
     query: '',
     sortDir: 'asc',
+    sortKey: 'name', // name | size | date
     renaming: null,   // item id currently renamed inline
     renameValue: '',
     moveRefs: [],     // [{kind, id}] for the move modal
@@ -2947,6 +2948,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     tagsValue: '',
     activeTag: '',
     trashView: false, // showing the trash (soft-deleted files) instead of the browser
+    renameOpen: false,
+    renameOpts: { find: '', replace: '', prefix: '', suffix: '' },
     infoOpen: false,
     infoRow: null,
     migrateOpen: false,
@@ -3102,7 +3105,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const q = this.query.trim().toLowerCase();
         const tag = this.activeTag;
         const factor = this.sortDir === 'desc' ? -1 : 1;
-        const cmp = (a, b) => factor * a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+        const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+        const base = this.sortKey === 'size' ? ((a, b) => (a.size || 0) - (b.size || 0))
+            : this.sortKey === 'date' ? ((a, b) => new Date(a.created || 0) - new Date(b.created || 0))
+                : byName;
+        const cmp = (a, b) => factor * (base(a, b) || byName(a, b));
 
         // Trash view: a flat list of every soft-deleted file (folders are never
         // trashed), searchable but not folder-scoped.
@@ -3485,6 +3492,39 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
         const ids = this.manifest.files.filter((f) => f.trashed).map((f) => f.id);
         if (! await this.filesPost(config.trashUrl, { file_ids: ids, permanent: true })) { window.llToast(labels.saveFailed); return; }
+        await this.load();
+    },
+
+    // Duplicate a row (or the selection). Files share the blob; folders copy deep.
+    async duplicate(row) {
+        const refs = row ? [{ kind: row.kind, id: row.id }] : this.selectionRefs;
+        if (! refs.length) return;
+        const body = {
+            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
+            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
+        };
+        if (! await this.filesPost(config.duplicateUrl, body)) { window.llToast(labels.duplicateFailed); return; }
+        this.selected = [];
+        await this.load();
+    },
+
+    openBulkRename() {
+        if (! this.selected.length) return;
+        this.renameOpts = { find: '', replace: '', prefix: '', suffix: '' };
+        this.renameOpen = true;
+    },
+
+    async applyBulkRename() {
+        const refs = this.selectionRefs;
+        this.renameOpen = false;
+        if (! refs.length) return;
+        const body = {
+            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
+            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
+            ...this.renameOpts,
+        };
+        if (! await this.filesPost(config.bulkRenameUrl, body)) { window.llToast(labels.renameFailed); return; }
+        this.selected = [];
         await this.load();
     },
 
