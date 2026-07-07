@@ -47,6 +47,20 @@ use Illuminate\Database\Eloquent\Model;
     'files_archive_max_entries',
     'files_archive_max_mb',
     'files_blob_orphan_grace_hours',
+    'gallery_ml_enabled',
+    'gallery_ml_url',
+    'gallery_ml_clip_model',
+    'gallery_face_enabled',
+    'gallery_face_model',
+    'gallery_ffmpeg_path',
+    'gallery_exiftool_path',
+    'gallery_duplicate_threshold',
+    'gallery_phash_max_distance',
+    'gallery_face_min_score',
+    'gallery_face_min_size',
+    'gallery_face_cluster_threshold',
+    'gallery_face_min_per_person',
+    'gallery_geocode_interval_ms',
 ])]
 class AppSettings extends Model
 {
@@ -92,6 +106,15 @@ class AppSettings extends Model
             'files_archive_max_entries' => 'integer',
             'files_archive_max_mb' => 'integer',
             'files_blob_orphan_grace_hours' => 'integer',
+            'gallery_ml_enabled' => 'boolean',
+            'gallery_face_enabled' => 'boolean',
+            'gallery_duplicate_threshold' => 'float',
+            'gallery_phash_max_distance' => 'integer',
+            'gallery_face_min_score' => 'float',
+            'gallery_face_min_size' => 'integer',
+            'gallery_face_cluster_threshold' => 'float',
+            'gallery_face_min_per_person' => 'integer',
+            'gallery_geocode_interval_ms' => 'integer',
         ];
     }
 

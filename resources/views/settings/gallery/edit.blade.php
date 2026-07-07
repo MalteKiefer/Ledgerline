@@ -95,6 +95,16 @@
                         <span class="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-red-700 dark:text-red-300">{{ __('settings.ffmpeg_missing') }}</span>
                     @endif
                 </p>
+                <input type="text" name="gallery_ffmpeg_path" value="{{ old('gallery_ffmpeg_path', $company->gallery_ffmpeg_path) }}"
+                    placeholder="{{ config('gallery.ffmpeg_path') }}" class="{{ $input }} mt-2 font-mono">
+                @error('gallery_ffmpeg_path')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
+            </div>
+            <div class="mt-4 sm:max-w-md">
+                <label for="gallery_exiftool_path" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.exiftool_path') }}</label>
+                <input type="text" id="gallery_exiftool_path" name="gallery_exiftool_path" value="{{ old('gallery_exiftool_path', $company->gallery_exiftool_path) }}"
+                    placeholder="{{ config('gallery.exiftool_path') }}" class="{{ $input }} font-mono">
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.exiftool_path_hint') }}</p>
+                @error('gallery_exiftool_path')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
             </div>
             <div class="mt-4 sm:max-w-xs">
                 <label for="gallery_video_frame" class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.video_frame') }}</label>
@@ -102,6 +112,51 @@
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.video_frame_hint') }}</p>
                 @error('gallery_video_frame')<p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
             </div>
+        </div>
+
+        {{-- ML + face recognition. Empty/"default" = the built-in config value. --}}
+        <div class="border-t border-gray-200 dark:border-gray-800 pt-6">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.ml_heading') }}</h2>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('settings.ml_hint') }}</p>
+            <div class="mt-3 grid gap-4 sm:grid-cols-2">
+                @foreach (['gallery_ml_enabled' => 'settings.ml_enabled', 'gallery_face_enabled' => 'settings.face_enabled'] as $field => $label)
+                    @php $cur = old($field, $company->{$field}); @endphp
+                    <label class="block text-sm">
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{{ __($label) }}</span>
+                        <select name="{{ $field }}" class="{{ $input }}">
+                            <option value="" @selected($cur === null)>{{ __('settings.ml_default') }}</option>
+                            <option value="1" @selected($cur === true)>{{ __('settings.ml_on') }}</option>
+                            <option value="0" @selected($cur === false)>{{ __('settings.ml_off') }}</option>
+                        </select>
+                    </label>
+                @endforeach
+            </div>
+
+            <details class="mt-4 rounded-md border border-gray-200 dark:border-gray-800 p-3">
+                <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.ml_advanced') }}</summary>
+                <div class="mt-3 grid gap-4 sm:grid-cols-2">
+                    @foreach ([
+                        'gallery_ml_url' => ['settings.ml_url', 'text', 'gallery.ml_url'],
+                        'gallery_ml_clip_model' => ['settings.ml_clip_model', 'text', 'gallery.ml_clip_model'],
+                        'gallery_face_model' => ['settings.face_model', 'text', 'gallery.face_model'],
+                        'gallery_duplicate_threshold' => ['settings.duplicate_threshold', 'number', 'gallery.duplicate_threshold'],
+                        'gallery_phash_max_distance' => ['settings.phash_max_distance', 'number', 'gallery.phash_max_distance'],
+                        'gallery_face_min_score' => ['settings.face_min_score', 'number', 'gallery.face_min_score'],
+                        'gallery_face_min_size' => ['settings.face_min_size', 'number', 'gallery.face_min_size'],
+                        'gallery_face_cluster_threshold' => ['settings.face_cluster_threshold', 'number', 'gallery.face_cluster_threshold'],
+                        'gallery_face_min_per_person' => ['settings.face_min_per_person', 'number', 'gallery.face_min_per_person'],
+                        'gallery_geocode_interval_ms' => ['settings.geocode_interval_ms', 'number', 'gallery.geocode_interval_ms'],
+                    ] as $field => [$label, $type, $cfg])
+                        <label class="block text-sm">
+                            <span class="font-medium text-gray-700 dark:text-gray-300">{{ __($label) }}</span>
+                            <input type="{{ $type }}" @if ($type === 'number') step="any" @endif name="{{ $field }}"
+                                value="{{ old($field, $company->{$field}) }}" placeholder="{{ __('settings.files_default_ph', ['n' => config($cfg)]) }}"
+                                class="{{ $input }} @if ($type === 'text') font-mono @endif">
+                            @error($field)<span class="mt-1 block text-xs text-red-600 dark:text-red-400">{{ $message }}</span>@enderror
+                        </label>
+                    @endforeach
+                </div>
+            </details>
         </div>
 
         <div>

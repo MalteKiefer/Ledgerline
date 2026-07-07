@@ -43,6 +43,22 @@ class GalleryRequest extends FormRequest
             'gallery_max_upload_mb' => ['required', 'integer', 'min:1', 'max:5120'],
             'gallery_video_frame' => ['required', 'integer', 'min:0', 'max:600'],
             'gallery_geocode_grid_km' => ['required', 'numeric', 'min:0', 'max:100'],
+
+            // ML + face recognition (nullable = use the built-in default).
+            'gallery_ml_enabled' => ['nullable', 'boolean'],
+            'gallery_ml_url' => ['nullable', 'string', 'max:255'],
+            'gallery_ml_clip_model' => ['nullable', 'string', 'max:255'],
+            'gallery_face_enabled' => ['nullable', 'boolean'],
+            'gallery_face_model' => ['nullable', 'string', 'max:255'],
+            'gallery_ffmpeg_path' => ['nullable', 'string', 'max:1024'],
+            'gallery_exiftool_path' => ['nullable', 'string', 'max:1024'],
+            'gallery_duplicate_threshold' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'gallery_phash_max_distance' => ['nullable', 'integer', 'min:0', 'max:64'],
+            'gallery_face_min_score' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'gallery_face_min_size' => ['nullable', 'integer', 'min:1', 'max:4096'],
+            'gallery_face_cluster_threshold' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'gallery_face_min_per_person' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'gallery_geocode_interval_ms' => ['nullable', 'integer', 'min:0', 'max:60000'],
         ];
     }
 }

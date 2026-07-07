@@ -13,6 +13,7 @@ use App\Jobs\ReadPhotoMetadata;
 use App\Jobs\RenamePhotos;
 use App\Models\AppSettings;
 use App\Models\Photo;
+use App\Providers\AppServiceProvider;
 use App\Services\Gallery\VideoProcessor;
 use App\Services\QueueStatus;
 use Closure;
@@ -23,6 +24,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Gallery settings: trip-grouping thresholds and independent maintenance jobs
@@ -57,6 +59,7 @@ class GalleryController extends Controller
     public function update(GalleryRequest $request): RedirectResponse
     {
         AppSettings::current()->update($request->validated());
+        Cache::forget(AppServiceProvider::OVERRIDES_CACHE_KEY);
 
         return $this->savedRedirect('settings.gallery.edit', 'flash.gallery_settings_saved');
     }
