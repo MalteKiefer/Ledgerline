@@ -32,6 +32,16 @@
     </button>
 </nav>
 
+{{-- New folder (creates in the current folder) --}}
+<div x-show="view === 'files'" class="border-t border-gray-100 dark:border-gray-800 pt-3">
+    <form class="flex items-center gap-1" @submit.prevent="mkdir(newFolderName); newFolderName = ''">
+        <input type="text" x-model="newFolderName" required placeholder="{{ __('files.new_folder') }}"
+            class="w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+        <button type="submit" title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
+            class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="folder-plus" class="h-5 w-5" /></button>
+    </form>
+</div>
+
 {{-- Storage usage --}}
 <div x-show="usage.quota > 0" x-cloak class="border-t border-gray-100 dark:border-gray-800 pt-3">
     <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">

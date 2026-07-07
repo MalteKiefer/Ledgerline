@@ -88,21 +88,12 @@
             {{-- Browser actions (hidden in the trash view); empty-trash shown there --}}
             <div class="flex flex-wrap items-center gap-2">
                 <template x-if="view === 'files'">
-                    <div class="flex flex-wrap items-center gap-2">
-                        {{-- New folder --}}
-                        <form class="flex items-center gap-1" @submit.prevent="mkdir($refs.newFolder.value); $refs.newFolder.value = ''">
-                            <input type="text" x-ref="newFolder" required placeholder="{{ __('files.new_folder') }}"
-                                class="w-full sm:w-40 rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                            <button type="submit" title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
-                                class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="folder-plus" class="h-5 w-5" /></button>
-                        </form>
-                        {{-- Upload --}}
-                        <label title="{{ __('files.upload') }}" aria-label="{{ __('files.upload') }}"
-                            class="cursor-pointer rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700">
-                            <x-icon name="arrow-up-tray" class="h-5 w-5" />
-                            <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
-                        </label>
-                    </div>
+                    {{-- Upload --}}
+                    <label title="{{ __('files.upload') }}" aria-label="{{ __('files.upload') }}"
+                        class="cursor-pointer rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700">
+                        <x-icon name="arrow-up-tray" class="h-5 w-5" />
+                        <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
+                    </label>
                 </template>
                 <template x-if="trashView && trashCount > 0">
                     <button type="button" @click="emptyTrash()" class="inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
