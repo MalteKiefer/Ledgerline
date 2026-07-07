@@ -7,6 +7,7 @@
         dataUrl: '{{ url('/files/data') }}',
         uploadUrl: '{{ url('/files/upload') }}',
         rawBase: '{{ url('/files/raw') }}',
+        thumbBase: '{{ url('/files/thumb') }}',
         blobBase: '{{ url('/files/blob') }}',
         versionsBase: '{{ url('/files') }}',
         archiveUrl: '{{ url('/files/archive') }}',
@@ -122,6 +123,11 @@
                     <span x-text="sortDir === 'asc' ? '↑' : '↓'"></span>
                 </button>
             </div>
+            {{-- List / grid toggle --}}
+            <div class="flex items-center gap-0.5 rounded-md border border-gray-300 dark:border-gray-700 p-0.5">
+                <button type="button" @click="setLayout('list')" :class="layout === 'list' ? 'bg-gray-800 text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_list') }}" aria-label="{{ __('files.view_list') }}" class="rounded p-1.5"><x-icon name="bars-3" class="h-4 w-4" /></button>
+                <button type="button" @click="setLayout('grid')" :class="layout === 'grid' ? 'bg-gray-800 text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_grid') }}" aria-label="{{ __('files.view_grid') }}" class="rounded p-1.5"><x-icon name="squares-2x2" class="h-4 w-4" /></button>
+            </div>
             <span x-show="activeTag" x-cloak class="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-800 dark:text-blue-300">
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
                 <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>
@@ -135,7 +141,54 @@
             <template x-if="rows.length === 0">
                 <p class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400" x-text="trashView ? @js(__('files.trash_empty')) : @js(__('files.empty_explorer'))"></p>
             </template>
-            <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            {{-- Grid view: image thumbnails, icon fallback --}}
+            <template x-if="layout === 'grid' && rows.length > 0">
+                <div class="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                    <template x-for="row in rows" :key="row.kind + row.id">
+                        <div class="group relative flex flex-col overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+                            :draggable="row.kind !== 'folder' || view === 'files' ? 'true' : 'false'"
+                            @dragstart="dragItem = { kind: row.kind, id: row.id }" @dragend="dragItem = null"
+                            @dragover.prevent="row.kind === 'folder' && dragItem && $event.currentTarget.classList.add('ring-2','ring-gray-400')"
+                            @dragleave="$event.currentTarget.classList.remove('ring-2','ring-gray-400')"
+                            @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-gray-400'); if (row.kind === 'folder' && dragItem) { dropInto(row.id); dragItem = null; }">
+                            <button type="button" @click="row.kind === 'folder' ? (cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
+                                <template x-if="isImage(row)">
+                                    <img :src="thumbUrl(row)" loading="lazy" alt="" class="h-full w-full object-cover" @error="$event.target.style.display='none'">
+                                </template>
+                                <template x-if="! isImage(row)">
+                                    <span class="text-gray-400 dark:text-gray-500">
+                                        <template x-if="row.kind === 'folder'"><span><x-icon name="folder" class="h-10 w-10" /></span></template>
+                                        <template x-if="row.kind !== 'folder'"><span><x-icon name="document-text" class="h-10 w-10" /></span></template>
+                                    </span>
+                                </template>
+                            </button>
+                            <div class="flex items-center gap-1 px-2 py-1.5">
+                                <button type="button" x-show="row.kind === 'file'" @click="toggleFavorite(row)" class="shrink-0" :class="row.favorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500'" :aria-label="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))">
+                                    <span x-show="row.favorite"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
+                                    <span x-show="! row.favorite"><x-icon name="star" class="h-3.5 w-3.5" /></span>
+                                </button>
+                                <span class="min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-300" :title="row.name" x-text="row.name"></span>
+                                <div class="relative shrink-0" x-data="{ menu: false, menuStyle: '', toggleMenu(e) { this.menu = ! this.menu; if (this.menu) { const r = e.currentTarget.getBoundingClientRect(); this.menuStyle = `top: ${r.bottom + 4}px; left: ${Math.max(8, r.right - 176)}px;`; } } }">
+                                    <button type="button" @click="toggleMenu($event)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" :aria-label="@js(__('files.actions'))"><x-icon name="ellipsis" class="h-4 w-4" /></button>
+                                    <template x-teleport="body">
+                                        <div x-show="menu" x-cloak @click.outside="menu = false" @scroll.window="menu = false" :style="menuStyle" class="fixed z-[60] w-44 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 text-left text-sm shadow-lg">
+                                            <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrow-down-tray" />{{ __('files.download') }}</button>
+                                            <button type="button" @click="openInfo(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="info" />{{ __('files.info') }}</button>
+                                            <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" />{{ __('files.rename') }}</button>
+                                            <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
+                                            <button type="button" @click="duplicate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="document-duplicate" />{{ __('files.duplicate') }}</button>
+                                            <button type="button" x-show="isZip(row)" @click="extractArchive(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="folder-plus" />{{ __('files.extract_here') }}</button>
+                                            <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="trash" />{{ __('common.delete') }}</button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <div x-show="layout === 'list'" class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
             <table x-show="rows.length > 0" class="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
                 <thead class="bg-gray-50 dark:bg-gray-800 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     <tr>

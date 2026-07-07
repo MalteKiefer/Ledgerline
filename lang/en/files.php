@@ -50,6 +50,8 @@ return [
     'unfavorite' => 'Remove favorite',
     'note' => 'Note',
     'note_placeholder' => 'Add a note…',
+    'view_list' => 'List view',
+    'view_grid' => 'Grid view',
     'all_files' => 'All files',
     'drop_hint' => 'Drop files or folders here to upload',
     'col_name' => 'Name',
