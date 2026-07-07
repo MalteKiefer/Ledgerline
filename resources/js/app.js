@@ -2935,6 +2935,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     query: '',
     sortDir: 'asc',
     sortKey: 'name', // name | size | date
+    layout: (typeof localStorage !== 'undefined' && localStorage.getItem('ll-files-layout')) || 'list', // list | grid
     renaming: null,   // item id currently renamed inline
     renameValue: '',
     moveRefs: [],     // [{kind, id}] for the move modal
@@ -3696,6 +3697,19 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     isZip(row) {
         return row?.kind === 'file' && (row.mime === 'application/zip'
             || /\.(zip|tar|tgz|tbz2)$/i.test(row.name || '') || /\.tar\.(gz|bz2)$/i.test(row.name || ''));
+    },
+
+    isImage(row) {
+        return row?.kind === 'file' && (row.mime || '').startsWith('image/');
+    },
+
+    thumbUrl(row) {
+        return `${config.thumbBase}/${row.blob}`;
+    },
+
+    setLayout(l) {
+        this.layout = l;
+        try { localStorage.setItem('ll-files-layout', l); } catch (e) { /* ignore */ }
     },
 
     // Zip the current selection into a new file in this folder (server-side).

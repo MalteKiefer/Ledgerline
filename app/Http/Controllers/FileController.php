@@ -14,6 +14,7 @@ use App\Models\UserSetting;
 use App\Services\Files\ArchiveManager;
 use App\Support\ArchiveName;
 use App\Support\BlobStore;
+use App\Support\ImageManagerFactory;
 use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Intervention\Image\Encoders\JpegEncoder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -552,6 +554,33 @@ class FileController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** A cached ~320px JPEG thumbnail for an owned image file (owner-scoped). */
+    public function thumb(string $blob, ImageManagerFactory $images): StreamedResponse
+    {
+        $file = StoredFile::withTrashed()->where('blob', $blob)->first();
+        abort_unless($file !== null, 404);
+        abort_unless(str_starts_with((string) $file->mime, 'image/'), 404);
+
+        $thumbPath = 'thumbs/'.$blob.'.jpg';
+        if (! $this->disk()->exists($thumbPath)) {
+            abort_unless($this->disk()->exists('files/'.$blob), 404);
+            try {
+                $img = $images->make()->decodeBinary($this->disk()->get('files/'.$blob));
+                $img->scaleDown(width: 320);
+                $this->disk()->put($thumbPath, (string) $img->encode(new JpegEncoder(quality: 72)));
+            } catch (\Throwable) {
+                abort(404);
+            }
+        }
+
+        return $this->disk()->response($thumbPath, 'thumb.jpg', [
+            'Content-Type' => 'image/jpeg',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
+            'Cache-Control' => 'private, max-age=86400',
+        ], 'inline');
+    }
+
     /** Toggle the favourite flag on owned files (owner-scoped). */
     public function favorite(Request $request): JsonResponse
     {
@@ -580,6 +609,7 @@ class FileController extends Controller
         foreach (array_unique(array_filter($blobs)) as $blob) {
             if (! StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists()) {
                 $this->disk()->delete('files/'.$blob);
+                $this->disk()->delete('thumbs/'.$blob.'.jpg');
             }
         }
     }
