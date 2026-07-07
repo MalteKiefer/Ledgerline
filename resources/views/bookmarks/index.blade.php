@@ -60,6 +60,13 @@
                                 <p class="truncate text-xs text-gray-400 dark:text-gray-500" x-text="b.url"></p>
                                 <p x-show="b.description" class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="b.description"></p>
                                 <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                                    {{-- Folder badge: which folder this bookmark is in --}}
+                                    <template x-if="b.folderId && folderById(b.folderId)">
+                                        <button type="button" @click="view = b.folderId; activeTag = ''" class="inline-flex items-center gap-1 rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
+                                            <svg class="h-3 w-3 shrink-0" :style="folderById(b.folderId).color ? ('color:'+folderById(b.folderId).color) : ''" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(folderById(b.folderId).icon)" /></svg>
+                                            <span x-text="folderById(b.folderId).name"></span>
+                                        </button>
+                                    </template>
                                     <template x-for="g in (b.tags ?? [])" :key="g"><button type="button" @click="activeTag = g" class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-600 dark:text-gray-400 hover:bg-gray-200" x-text="g"></button></template>
                                 </div>
                             </div>
@@ -86,6 +93,45 @@
             </section>
         </div>
       </div>
+    </template>
+
+    {{-- Folder editor modal (create / subfolder / edit + colour + icon) --}}
+    <template x-teleport="body">
+        <div x-show="folderEditor.open" x-cloak class="fixed inset-0 z-[1050] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="folderEditor.open = false">
+            <div class="absolute inset-0 bg-gray-900/50" @click="folderEditor.open = false"></div>
+            <div class="relative w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="folderEditor.id ? @js(__('bookmarks.folder_edit_title')) : @js(__('bookmarks.folder_new_title'))"></h3>
+                <div class="mt-4 space-y-4">
+                    <label class="block text-sm">
+                        <span class="text-gray-600 dark:text-gray-400">{{ __('bookmarks.folder_name') }}</span>
+                        <input type="text" x-model="folderEditor.name" @keydown.enter="saveFolder()" autofocus class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </label>
+                    <div>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ __('bookmarks.folder_color') }}</span>
+                        <div class="mt-1 flex flex-wrap gap-2">
+                            <button type="button" @click="folderEditor.color = ''" :class="! folderEditor.color ? 'ring-2 ring-offset-1 ring-gray-400' : ''" class="h-6 w-6 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" title="{{ __('bookmarks.folder_none') }}"></button>
+                            <template x-for="c in ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899','#6b7280']" :key="c">
+                                <button type="button" @click="folderEditor.color = c" :style="'background-color:'+c" :class="folderEditor.color === c ? 'ring-2 ring-offset-1 ring-gray-400' : ''" class="h-6 w-6 rounded-full"></button>
+                            </template>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ __('bookmarks.folder_icon') }}</span>
+                        <div class="mt-1 flex flex-wrap gap-1.5">
+                            <template x-for="ic in ['folder','star','heart','bookmark','briefcase','home','tag','globe','code']" :key="ic">
+                                <button type="button" @click="folderEditor.icon = ic" :class="folderEditor.icon === ic ? 'bg-gray-800 text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'" class="rounded p-1.5">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(ic)" /></svg>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 flex justify-end gap-3">
+                    <button type="button" @click="folderEditor.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
+                    <button type="button" @click="saveFolder()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('common.save') }}</button>
+                </div>
+            </div>
+        </div>
     </template>
 
     {{-- Editor modal --}}

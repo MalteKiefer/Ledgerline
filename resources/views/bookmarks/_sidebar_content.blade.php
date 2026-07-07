@@ -16,7 +16,10 @@
                 </div>
 
                 <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
-                    <p class="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('bookmarks.folders') }}</p>
+                    <div class="flex items-center justify-between px-3 py-1">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('bookmarks.folders') }}</p>
+                        <button type="button" @click="openFolderCreate(null)" title="{{ __('bookmarks.new_folder') }}" class="rounded p-0.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
+                    </div>
                     {{-- Root drop target: move an item out of any folder --}}
                     <div @dragover.prevent="if (dragItem) $event.currentTarget.classList.add('ring-1','ring-gray-400')" @dragleave="$event.currentTarget.classList.remove('ring-1','ring-gray-400')"
                         @drop.prevent="$event.currentTarget.classList.remove('ring-1','ring-gray-400'); onFolderDrop(null)"
@@ -28,17 +31,17 @@
                             @dragover.prevent="if (dragItem && dragItem.id !== f.id) $event.currentTarget.classList.add('ring-1','ring-gray-400')"
                             @dragleave="$event.currentTarget.classList.remove('ring-1','ring-gray-400')"
                             @drop.prevent="$event.currentTarget.classList.remove('ring-1','ring-gray-400'); onFolderDrop(f.id)">
-                            <button type="button" @click="view = f.id; activeTag = ''" class="min-w-0 flex-1 truncate px-3 py-1.5 text-left" :class="view === f.id ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'"><x-icon name="folder" class="mr-1 inline h-3.5 w-3.5 text-gray-400" /><span x-text="f.name"></span></button>
+                            <button type="button" @click="view = f.id; activeTag = ''" class="flex min-w-0 flex-1 items-center gap-1.5 truncate px-3 py-1.5 text-left" :class="view === f.id ? 'font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'">
+                                <svg class="h-3.5 w-3.5 shrink-0" :style="f.color ? ('color:' + f.color) : ''" :class="! f.color && 'text-gray-400'" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(f.icon)" /></svg>
+                                <span class="truncate" x-text="f.name"></span>
+                            </button>
                             <span class="flex shrink-0 items-center gap-0.5 pr-2">
                                 <button type="button" @click="addSubfolder(f)" title="{{ __('bookmarks.subfolder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-gray-700 dark:hover:text-gray-300 md:opacity-0 md:group-hover:opacity-100"><x-icon name="plus" class="h-3.5 w-3.5" /></button>
+                                <button type="button" @click="openFolderEdit(f)" title="{{ __('bookmarks.edit_folder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-gray-700 dark:hover:text-gray-300 md:opacity-0 md:group-hover:opacity-100"><x-icon name="pencil" class="h-3.5 w-3.5" /></button>
                                 <button type="button" @click="deleteFolder(f)" title="{{ __('bookmarks.delete_folder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-red-600 md:opacity-0 md:group-hover:opacity-100"><x-icon name="trash" class="h-3.5 w-3.5" /></button>
                             </span>
                         </div>
                     </template>
-                    <form class="mt-1 flex items-center gap-1 px-1" @submit.prevent="addFolder()">
-                        <input type="text" x-model="newFolderName" placeholder="{{ __('bookmarks.new_folder') }}" class="w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <button type="submit" title="{{ __('bookmarks.new_folder') }}" class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="plus" class="h-4 w-4" /></button>
-                    </form>
                 </div>
 
                 <div x-show="allTags.length" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
