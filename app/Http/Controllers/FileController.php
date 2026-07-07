@@ -251,7 +251,10 @@ class FileController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:1024'],
-            'size' => ['required', 'integer', 'min:1', 'max:'.((int) config('files.max_upload_mb', 2048) * 1024 * 1024)],
+            // max_upload_mb bounds a single POST body — irrelevant here since the
+            // file arrives in small parts. Bound by the S3 multipart ceiling
+            // instead (10 000 parts) so multi-GB uploads are allowed.
+            'size' => ['required', 'integer', 'min:1', 'max:'.(10000 * self::CHUNK_PART_SIZE)],
         ]);
         abort_if($this->quotaExceeded($request->user()->id, (int) $data['size']), 413, __('files.quota_exceeded'));
 
