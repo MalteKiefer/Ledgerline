@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Jobs\BuildExport;
+use App\Jobs\ExtractArchive;
 use App\Jobs\ExtractFileText;
 use App\Models\Export;
 use App\Models\FileBlob;
@@ -798,14 +799,29 @@ class FileController extends Controller
     }
 
     /** Extract an owned zip file into a new folder alongside it. */
-    public function extract(Request $request, StoredFile $file, ArchiveManager $archives): JsonResponse
+    public function extract(Request $request, StoredFile $file): JsonResponse
     {
         abort_unless($file->isOwnedBy($request->user()->id), 403);
         abort_unless(ArchiveManager::isExtractable($file->name, $file->mime), 422, __('files.archive_invalid'));
 
-        $count = $archives->extract($request->user()->id, $file);
+        // Unpack in the background (large archives would otherwise block the
+        // request and time out); the client polls extractStatus for progress.
+        $token = (string) Str::uuid();
+        Cache::put(ExtractArchive::statusKey($token), [
+            'state' => 'running', 'done' => 0, 'total' => 0,
+            'user' => (int) $request->user()->id, 'name' => $file->name,
+        ], now()->addHour());
+        ExtractArchive::dispatch($token, (int) $request->user()->id, $file->id, $file->name)->afterCommit();
 
-        return response()->json(['ok' => true, 'extracted' => $count]);
+        return response()->json(['token' => $token], 202);
+    }
+
+    public function extractStatus(Request $request, string $token): JsonResponse
+    {
+        $s = Cache::get(ExtractArchive::statusKey($token));
+        abort_if(! is_array($s) || (int) ($s['user'] ?? 0) !== (int) $request->user()->id, 404);
+
+        return response()->json($s);
     }
 
     /** Delete a stored file's bytes (after its row was removed via sync). */

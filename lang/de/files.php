@@ -71,6 +71,8 @@ return [
     'upload_done' => 'Upload abgeschlossen',
     'upload_dismiss' => 'Schließen',
     'upload_unreadable' => 'Datei konnte nicht gelesen werden (vom System blockiert?)',
+    'extract_busy' => 'Ein Entpacken läuft bereits',
+    'extracting' => 'Entpacke',
     'all_files' => 'Alle Dateien',
     'drop_hint' => 'Dateien oder Ordner hierher ziehen zum Hochladen',
     'col_name' => 'Name',

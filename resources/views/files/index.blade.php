@@ -24,12 +24,14 @@
         chunkPartUrl: '{{ url('/files/upload/part') }}',
         chunkCompleteUrl: '{{ url('/files/upload/complete') }}',
         chunkAbortUrl: '{{ url('/files/upload/abort') }}',
+        extractStatusBase: '{{ url('/files/extract') }}',
         token: '{{ csrf_token() }}',
      }, {
         archivedToast: @js(__('files.archived_toast')),
         extractedToast: @js(__('files.extracted_toast')),
         archiveFailed: @js(__('files.archive_failed')),
         extractFailed: @js(__('files.extract_failed')),
+        extractBusy: @js(__('files.extract_busy')),
         linkCopied: @js(__('files.link_copied')),
         uploadUnreadable: @js(__('files.upload_unreadable')),
         types: @js($typeLabels),
@@ -325,6 +327,15 @@
         <button type="button" @click="openBulkRename()" title="{{ __('files.bulk_rename') }}" aria-label="{{ __('files.bulk_rename') }}" class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-5 w-5" /></button>
         <button type="button" @click="openMove(null)" title="{{ __('files.move') }}" aria-label="{{ __('files.move') }}" class="rounded-md bg-gray-800 p-2 text-white hover:bg-gray-700"><x-icon name="arrows-right-left" class="h-5 w-5" /></button>
         <button type="button" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 dark:text-red-300 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
+    </div>
+
+    {{-- Extraction progress badge: archives unpack in the background --}}
+    <div x-show="extracting.active" x-cloak class="fixed bottom-5 left-5 z-[950] flex max-w-xs items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 shadow-xl">
+        <svg class="h-5 w-5 shrink-0 animate-spin text-gray-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+        <div class="min-w-0 text-sm">
+            <p class="truncate font-medium text-gray-800 dark:text-gray-200"><span>{{ __('files.extracting') }}</span> <span class="text-gray-500 dark:text-gray-400" x-text="extracting.name"></span></p>
+            <p x-show="extracting.total" x-cloak class="text-xs text-gray-500 dark:text-gray-400"><span x-text="extracting.done"></span> / <span x-text="extracting.total"></span></p>
+        </div>
     </div>
 
     {{-- Upload tray (Google/Proton style): fixed bottom-right, per-file state --}}
