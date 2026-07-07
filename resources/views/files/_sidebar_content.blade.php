@@ -47,10 +47,21 @@
     </form>
 </div>
 
-{{-- Storage usage --}}
-<div x-show="usage.quota > 0" x-cloak class="border-t border-gray-100 dark:border-gray-800 pt-3">
-    <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div class="h-full bg-gray-700" :style="'width:'+Math.min(100, Math.round((usage.used/usage.quota)*100))+'%'"></div>
-    </div>
-    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used', ['used' => '__U__', 'total' => '__T__']) }}'.replace('__U__', fmtSize(usage.used)).replace('__T__', fmtSize(usage.quota))"></p>
+{{-- Storage usage: show the bar + "used of total" when a quota is set,
+     otherwise just how much the user is using (quota 0 = unlimited). --}}
+<div x-show="usage" x-cloak class="border-t border-gray-100 dark:border-gray-800 pt-3">
+    <template x-if="usage.quota > 0">
+        <div>
+            <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <div class="h-full bg-gray-700" :style="'width:'+Math.min(100, Math.round((usage.used/usage.quota)*100))+'%'"></div>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="'{{ __('files.storage_used', ['used' => '__U__', 'total' => '__T__']) }}'.replace('__U__', fmtSize(usage.used)).replace('__T__', fmtSize(usage.quota))"></p>
+        </div>
+    </template>
+    <template x-if="! usage.quota">
+        <p class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <x-icon name="server" class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+            <span x-text="'{{ __('files.storage_used_only', ['used' => '__U__']) }}'.replace('__U__', fmtSize(usage.used))"></span>
+        </p>
+    </template>
 </div>
