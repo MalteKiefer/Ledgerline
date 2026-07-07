@@ -73,6 +73,7 @@ return [
     'upload_unreadable' => 'File could not be read (blocked by your system?)',
     'extract_busy' => 'An extraction is already running',
     'extracting' => 'Extracting',
+    'storage_used_only' => ':used used',
     'all_files' => 'All files',
     'drop_hint' => 'Drop files or folders here to upload',
     'col_name' => 'Name',
