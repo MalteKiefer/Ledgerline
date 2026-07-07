@@ -131,6 +131,21 @@ class FilesDavTest extends TestCase
         Storage::disk('files')->assertMissing('files/'.$blob);
     }
 
+    public function test_deleted_file_no_longer_appears_in_the_listing(): void
+    {
+        Storage::fake('files');
+        $user = User::factory()->create();
+        $home = $this->home($user);
+        $home->createFile('gone.txt', 'bye');
+
+        $home->getChild('gone.txt')->delete();
+
+        // Soft-deleted, but withoutGlobalScopes() must not resurface it.
+        $names = collect($home->getChildren())->map->getName()->all();
+        $this->assertNotContains('gone.txt', $names);
+        $this->assertFalse($home->childExists('gone.txt'));
+    }
+
     public function test_the_tree_is_owner_scoped(): void
     {
         Storage::fake('files');
