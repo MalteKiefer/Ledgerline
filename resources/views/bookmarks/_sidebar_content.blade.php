@@ -59,5 +59,6 @@
                         <input type="file" accept=".html,text/html" class="hidden" :disabled="importing" @change="importFile($event)">
                     </label>
                     <a href="{{ route('bookmarks.export') }}" class="block rounded px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('bookmarks.export') }}</a>
+                    <button type="button" @click="checkLinks()" :disabled="checking" class="block w-full rounded px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">{{ __('bookmarks.check_links_now') }}</button>
                     <p x-show="importResult" x-cloak class="px-3 py-1 text-xs text-gray-500 dark:text-gray-400" x-text="importResult"></p>
                 </div>

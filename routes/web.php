@@ -111,6 +111,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings', SettingsController::class)->name('settings');
     Route::get('/settings/calendar', [SettingsCalendarController::class, 'edit'])->name('settings.calendar.edit');
     Route::put('/settings/calendar', [SettingsCalendarController::class, 'update'])->name('settings.calendar.update');
+    Route::post('/settings/calendar/refresh-subscriptions', [SettingsCalendarController::class, 'refreshSubscriptions'])->middleware('throttle:10,1')->name('settings.calendar.refresh-subscriptions');
 
     // Per-user reminder defaults (which channels are pre-selected).
     Route::get('/settings/reminders', [SettingsRemindersController::class, 'edit'])->name('settings.reminders.edit');
@@ -119,6 +120,7 @@ Route::middleware('auth')->group(function (): void {
     // Per-user Files preferences (version-history depth).
     Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
     Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
+    Route::post('/settings/files/reindex', [SettingsFilesController::class, 'reindexText'])->middleware('throttle:5,1')->name('settings.files.reindex');
 
     // Paperless-ngx: per-user integration (each user's own instance URL + token).
     Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
@@ -370,6 +372,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/bookmarks/export', [BookmarkController::class, 'export'])->name('bookmarks.export');
     Route::post('/bookmarks/import', [BookmarkController::class, 'import'])->middleware('throttle:10,1')->name('bookmarks.import');
     Route::post('/bookmarks/fetch-meta', [BookmarkController::class, 'fetchMeta'])->middleware('throttle:30,1')->name('bookmarks.fetch-meta');
+    Route::post('/bookmarks/check-links', [BookmarkController::class, 'checkLinks'])->middleware('throttle:10,1')->name('bookmarks.check-links');
     Route::get('/bookmarks/favicon', [BookmarkController::class, 'favicon'])->middleware('throttle:120,1')->name('bookmarks.favicon');
     Route::post('/bookmarks', [BookmarkController::class, 'store'])->name('bookmarks.store');
     Route::put('/bookmarks/{bookmark}', [BookmarkController::class, 'update'])->name('bookmarks.update');

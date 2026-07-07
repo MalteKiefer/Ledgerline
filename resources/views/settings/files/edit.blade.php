@@ -44,6 +44,18 @@
         </div>
     </form>
 
+    @if ($isAdmin)
+        {{-- Rebuild the file full-text search index (admin, queued) --}}
+        <div class="mt-6 max-w-lg rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.files_reindex_heading') }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.files_reindex_hint') }}</p>
+            <form method="POST" action="{{ route('settings.files.reindex') }}" class="mt-3">
+                @csrf
+                <x-button variant="secondary" type="submit">{{ __('settings.files_reindex_action') }}</x-button>
+            </form>
+        </div>
+    @endif
+
     {{-- WebDAV access (same DAV login as Contacts/Calendar) --}}
     <div class="mt-6 max-w-lg rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.files_webdav_heading') }}</h2>

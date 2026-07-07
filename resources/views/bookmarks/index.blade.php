@@ -7,6 +7,7 @@
         emptyTrashConfirm: @js(__('bookmarks.empty_trash_confirm')),
         importResult: @js(__('bookmarks.import_result')),
         urlRequired: @js(__('bookmarks.url_required')),
+        linkCheckQueued: @js(__('bookmarks.link_check_queued')),
      })">
 
     <template x-if="state === 'error'">

@@ -8,6 +8,7 @@ use App\Http\Controllers\Concerns\ProvidesDavSync;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\CalendarRequest;
+use App\Jobs\RunCommand;
 use App\Models\UserSetting;
 use App\Services\Calendar\ContactDerivedCalendars;
 use App\Services\Calendar\HolidayCalendarBuilder;
@@ -44,6 +45,15 @@ class CalendarController extends Controller
         $holidays->sync(null, $userId);
 
         return $this->savedRedirect('settings.calendar.edit', 'flash.calendar_settings_saved');
+    }
+
+    /** Refresh every subscribed ICS calendar now (queued), instead of waiting
+     *  for the periodic cron. */
+    public function refreshSubscriptions(): RedirectResponse
+    {
+        RunCommand::dispatch('calendar:refresh-subscriptions', ['--force' => true]);
+
+        return $this->savedRedirect('settings.calendar.edit', 'flash.calendar_subscriptions_refreshing');
     }
 
     /**

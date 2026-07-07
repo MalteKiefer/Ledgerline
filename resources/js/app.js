@@ -4814,6 +4814,7 @@ Alpine.data('bookmarks', (labels = {}) => ({
     query: '',
     activeTag: '',
     error: '',
+    checking: false,
     newFolderName: '',
     editorOpen: false,
     // Kept a non-null blank so the teleported editor's x-model bindings never
@@ -4848,6 +4849,16 @@ Alpine.data('bookmarks', (labels = {}) => ({
         if (i >= 0) this.bookmarks[i] = b; else this.bookmarks.unshift(b);
     },
     host(url) { try { return new URL(url).host; } catch (e) { return ''; } },
+
+    // Re-check every bookmark URL now (queued on the server); the dead-link
+    // flags refresh on the next data load.
+    async checkLinks() {
+        if (this.checking) return;
+        this.checking = true;
+        try { await this._api('POST', '/bookmarks/check-links'); window.llToast(labels.linkCheckQueued); }
+        catch (e) { window.llToast(labels.saveFailed); }
+        finally { this.checking = false; }
+    },
 
     // Folder editor modal (create / subfolder / rename + colour + icon) —
     // replaces the old inline form and the window.prompt.
