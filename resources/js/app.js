@@ -3426,71 +3426,66 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.deleteOpen = this.deleteRefs.length > 0;
     },
 
-    // Delete = move to trash (soft-delete): set a `trashed` timestamp so the file
-    // still syncs but hides from the browser and shows in the trash. Deleting a
-    // folder trashes its files (moved to root so they stay restorable) and drops
-    // the now-empty folder rows. Blobs are kept until the file is purged.
-    async applyDelete() {
+    // POST a small ids payload to a targeted files endpoint (trash/restore).
+    // Returns true on success. These avoid the fragile whole-manifest sync, so a
+    // stale tab can't fail the operation with "save failed".
+    async filesPost(url, body) {
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify(body),
+            });
+            return res.ok;
+        } catch (e) { return false; }
+    },
+
+    // Delete via the modal: to the trash (soft) or permanently. Folders bring
+    // their files; the server keeps blobs for restore unless permanent.
+    async applyDelete(permanent = false) {
         const refs = this.deleteRefs;
         this.deleteOpen = false;
         this.deleteRefs = [];
         if (! refs.length) return;
-
-        const nowIso = new Date().toISOString();
-        const doomedFolders = new Set();
-        for (const ref of refs) {
-            if (ref.kind === 'file') {
-                const f = this.manifest.files.find((x) => x.id === ref.id);
-                if (f) f.trashed = nowIso;
-            } else {
-                for (const id of this.subtree(ref.id)) doomedFolders.add(id);
-            }
-        }
-        if (doomedFolders.size) {
-            for (const f of this.manifest.files) {
-                if (f.folder != null && doomedFolders.has(f.folder)) { f.folder = null; f.trashed = nowIso; }
-            }
-            this.manifest.folders = this.manifest.folders.filter((f) => ! doomedFolders.has(f.id));
-        }
-
+        const payload = {
+            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
+            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
+            permanent,
+        };
+        if (! await this.filesPost(config.trashUrl, payload)) { window.llToast(labels.saveFailed); return; }
         this.selected = [];
-        try {
-            await this.persist();
-        } catch (e) { /* manifest not saved: leave state as-is */ }
+        await this.load();
+    },
+
+    // Move an item straight to the trash (used by drag-and-drop onto the trash).
+    async trashItem(ref) {
+        const payload = { file_ids: [], folder_ids: [], permanent: false };
+        (ref.kind === 'folder' ? payload.folder_ids : payload.file_ids).push(ref.id);
+        if (! await this.filesPost(config.trashUrl, payload)) { window.llToast(labels.saveFailed); return; }
+        this.selected = [];
+        await this.load();
     },
 
     // Restore a trashed file back into the browser.
     async restore(row) {
-        const f = this.manifest.files.find((x) => x.id === row.id);
-        if (f) f.trashed = null;
-        try { await this.persist(); } catch (e) { /* keep trashed on failure */ }
+        if (! await this.filesPost(config.restoreUrl, { file_ids: [row.id] })) { window.llToast(labels.saveFailed); return; }
+        await this.load();
     },
 
-    // Permanently delete one trashed file (row dropped from the manifest → the
-    // sync force-deletes it → its blob is freed).
+    // Permanently delete one trashed file.
     async purge(row) {
         if (! await this.$store.confirm.ask(labels.purgeConfirm || '')) return;
-        const f = this.manifest.files.find((x) => x.id === row.id);
-        const blob = f?.blob;
-        this.manifest.files = this.manifest.files.filter((x) => x.id !== row.id);
-        try { await this.persist(); } catch (e) { return; }
-        if (blob) fetch(`${config.blobBase}/${blob}`, {
-            method: 'DELETE',
-            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-        }).catch(() => {});
+        if (! await this.filesPost(config.trashUrl, { file_ids: [row.id], permanent: true })) { window.llToast(labels.saveFailed); return; }
+        await this.load();
     },
 
     // Permanently delete every trashed file.
     async emptyTrash() {
         if (! this.trashCount) return;
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
-        const blobs = this.manifest.files.filter((f) => f.trashed).map((f) => f.blob);
-        this.manifest.files = this.manifest.files.filter((f) => ! f.trashed);
-        try { await this.persist(); } catch (e) { return; }
-        for (const b of blobs) fetch(`${config.blobBase}/${b}`, {
-            method: 'DELETE',
-            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-        }).catch(() => {});
+        const ids = this.manifest.files.filter((f) => f.trashed).map((f) => f.id);
+        if (! await this.filesPost(config.trashUrl, { file_ids: ids, permanent: true })) { window.llToast(labels.saveFailed); return; }
+        await this.load();
     },
 
     // Queue an async export of the selection (files + folders). A worker builds
@@ -3616,6 +3611,40 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     isPdf(row) {
         return row?.kind === 'file' && (row.mime === 'application/pdf' || /\.pdf$/i.test(row.name || ''));
+    },
+
+    isZip(row) {
+        return row?.kind === 'file' && (row.mime === 'application/zip' || /\.zip$/i.test(row.name || ''));
+    },
+
+    // Zip the current selection into a new file in this folder (server-side).
+    async createArchive() {
+        const refs = this.selectionRefs;
+        if (! refs.length) return;
+        try {
+            const res = await fetch(config.archiveUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ refs, folder_id: this.cwd }),
+            });
+            if (! res.ok) { const b = await res.json().catch(() => ({})); window.llToast(b.message || labels.archiveFailed); return; }
+            this.selected = [];
+            await this.load();
+            window.llToast(labels.archivedToast);
+        } catch (e) { window.llToast(labels.archiveFailed); }
+    },
+
+    // Extract a zip file into a new folder next to it (server-side).
+    async extractArchive(row) {
+        try {
+            const res = await fetch(`${config.versionsBase}/${row.id}/extract`, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+            });
+            if (! res.ok) { const b = await res.json().catch(() => ({})); window.llToast(b.message || labels.extractFailed); return; }
+            await this.load();
+            window.llToast(labels.extractedToast);
+        } catch (e) { window.llToast(labels.extractFailed); }
     },
 
     // Open the Paperless modal immediately, then decrypt the PDF in the
