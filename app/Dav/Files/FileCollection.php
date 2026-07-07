@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dav\Files;
 
+use App\Jobs\ExtractFileText;
 use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
@@ -93,6 +94,7 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget, I
             'size' => (int) ($this->backend->disk()->size('files/'.$blob) ?: 0),
             'mime' => $this->backend->guessMime((string) $name, $blob),
         ])->save();
+        ExtractFileText::dispatch($file->id, $blob)->afterCommit();
 
         return '"'.md5($blob.'-'.$file->size).'"';
     }

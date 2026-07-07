@@ -2936,6 +2936,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     sortDir: 'asc',
     sortKey: 'name', // name | size | date
     layout: (typeof localStorage !== 'undefined' && localStorage.getItem('ll-files-layout')) || 'list', // list | grid
+    contentMatchIds: [], // file ids matching a full-text (content) search
     renaming: null,   // item id currently renamed inline
     renameValue: '',
     moveRefs: [],     // [{kind, id}] for the move modal
@@ -2981,6 +2982,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         // Switching view clears any selection, so a stale pick doesn't keep the
         // bulk bar / select-all checkbox active.
         this.$watch('view', () => { this.selected = []; });
+        // Full-text (content/OCR) search: query the server as the term changes.
+        this.$watch('query', () => this.fetchContentMatches());
         await this.load();
     },
 
@@ -3145,7 +3148,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             let scoped = (q === '' && tag === '')
                 ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
                 : list;
-            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q));
+            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || this.contentMatchIds.includes(x.id));
             if (tag !== '') scoped = scoped.filter((x) => (x.tags ?? []).includes(tag));
             return scoped;
         };
@@ -3758,6 +3761,19 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     thumbUrl(row) {
         return `${config.thumbBase}/${row.blob}`;
+    },
+
+    _contentTimer: null,
+    fetchContentMatches() {
+        clearTimeout(this._contentTimer);
+        const q = this.query.trim();
+        if (q.length < 2) { this.contentMatchIds = []; return; }
+        this._contentTimer = setTimeout(async () => {
+            try {
+                const r = await fetch(`${config.searchContentUrl}?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (r.ok) this.contentMatchIds = (await r.json()).ids ?? [];
+            } catch (e) { /* keep previous */ }
+        }, 250);
     },
 
     setLayout(l) {

@@ -23,7 +23,8 @@ class FileSearchProvider extends AbstractSearchProvider
     public function search(string $term, int $limit): array
     {
         $query = StoredFile::query();
-        $this->matchAny($query, ['name'], $this->wildcard($term), $term);
+        // Match the file name/tags OR the extracted full-text content (OCR).
+        $this->matchAny($query, ['name', 'content'], $this->wildcard($term), $term);
 
         return $query
             ->orderByDesc('updated_at')
