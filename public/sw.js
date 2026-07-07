@@ -8,7 +8,7 @@
  *
  * Bump CACHE whenever the precached set changes; activate() drops old caches.
  */
-const CACHE = 'll-v1';
+const CACHE = 'll-v2';
 const PRECACHE = ['/offline.html', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -30,9 +30,17 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(req.url);
     if (url.origin !== location.origin) return;
 
-    // App navigations: try the network, fall back to the offline page.
+    // Public visitor pages (upload/download/share links) and DAV must never be
+    // handled by the app shell — let the browser fetch them directly.
+    if (/^\/(u|f|p|dav)\//.test(url.pathname)) return;
+
+    // App navigations: try the network, fall back to the offline page. Never
+    // pass a redirected response to a navigation (Chrome rejects those).
     if (req.mode === 'navigate') {
-        event.respondWith(fetch(req).catch(() => caches.match('/offline.html')));
+        event.respondWith(
+            fetch(req).then((res) => (res.redirected ? Response.redirect(res.url, 302) : res))
+                .catch(() => caches.match('/offline.html'))
+        );
         return;
     }
 
