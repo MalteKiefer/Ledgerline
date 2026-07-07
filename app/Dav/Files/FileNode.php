@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Dav\Files;
 
+use App\Jobs\ExtractFileText;
 use App\Models\StoredFile;
 use Sabre\DAV\Exception\Forbidden;
 use Sabre\DAV\File;
@@ -56,6 +57,7 @@ class FileNode extends File implements IACL
             'size' => $newSize,
             'mime' => $this->backend->guessMime($this->file->name, $blob),
         ])->save();
+        ExtractFileText::dispatch($this->file->id, $blob)->afterCommit();
         if ($old !== $blob) {
             $this->backend->releaseBlob($old);
         }

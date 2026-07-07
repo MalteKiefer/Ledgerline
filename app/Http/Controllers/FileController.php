@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Jobs\BuildExport;
+use App\Jobs\ExtractFileText;
 use App\Models\Export;
 use App\Models\FileBlob;
 use App\Models\FileFolder;
@@ -173,6 +174,11 @@ class FileController extends Controller
                         'size' => $oldMeta['size'], 'blob' => $oldBlob, 'created_at' => now(),
                     ]);
                     $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id, $keep));
+                }
+
+                // New or changed content → (re)extract searchable text off-path.
+                if ($oldBlob !== $f['blob']) {
+                    ExtractFileText::dispatch($file->id, $f['blob'])->afterCommit();
                 }
             }
 
@@ -579,6 +585,21 @@ class FileController extends Controller
             'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
             'Cache-Control' => 'private, max-age=86400',
         ], 'inline');
+    }
+
+    /** Ids of owned files whose extracted text matches the term (full-text). */
+    public function searchContent(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->query('q', ''));
+        if (mb_strlen($term) < 2) {
+            return response()->json(['ids' => []]);
+        }
+        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($term)).'%';
+        $ids = StoredFile::query()->whereNotNull('content')
+            ->whereRaw("LOWER(content) LIKE ? ESCAPE '\\'", [$like])
+            ->limit(500)->pluck('id')->all();
+
+        return response()->json(['ids' => $ids]);
     }
 
     /** Toggle the favourite flag on owned files (owner-scoped). */

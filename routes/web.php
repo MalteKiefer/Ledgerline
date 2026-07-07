@@ -268,6 +268,7 @@ Route::middleware('auth')->group(function (): void {
         ->middleware('throttle:300,1')->name('files.import');
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
     Route::get('/files/thumb/{blob}', [FileController::class, 'thumb'])->name('files.thumb');
+    Route::get('/files/search-content', [FileController::class, 'searchContent'])->middleware('throttle:120,1')->name('files.search-content');
     Route::get('/files/{file}/versions', [FileController::class, 'versions'])->name('files.versions');
     Route::get('/files/{file}/versions/{version}/download', [FileController::class, 'downloadVersion'])->name('files.versions.download');
     Route::post('/files/export', [FileController::class, 'queueExport'])->middleware('throttle:20,1')->name('files.export');

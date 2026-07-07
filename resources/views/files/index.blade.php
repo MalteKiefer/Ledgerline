@@ -8,6 +8,7 @@
         uploadUrl: '{{ url('/files/upload') }}',
         rawBase: '{{ url('/files/raw') }}',
         thumbBase: '{{ url('/files/thumb') }}',
+        searchContentUrl: '{{ url('/files/search-content') }}',
         blobBase: '{{ url('/files/blob') }}',
         versionsBase: '{{ url('/files') }}',
         archiveUrl: '{{ url('/files/archive') }}',
