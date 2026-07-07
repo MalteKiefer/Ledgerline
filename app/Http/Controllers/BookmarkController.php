@@ -29,7 +29,7 @@ class BookmarkController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'folders' => BookmarkFolder::orderBy('name')->get(['id', 'name']),
+            'folders' => BookmarkFolder::orderBy('name')->get(['id', 'name', 'parent_id']),
             'bookmarks' => Bookmark::orderByDesc('favorite')->orderByDesc('updated_at')->get()->map(fn (Bookmark $b) => $this->toArray($b)),
         ]);
     }
@@ -38,9 +38,53 @@ class BookmarkController extends Controller
 
     public function storeFolder(Request $request): JsonResponse
     {
-        $folder = BookmarkFolder::create($request->validate(['name' => ['required', 'string', 'max:120']]));
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'parent_id' => ['nullable', Rule::exists('bookmark_folders', 'id')->where('user_id', $request->user()->id)],
+        ]);
+        $folder = BookmarkFolder::create($data);
 
-        return response()->json(['id' => $folder->id, 'name' => $folder->name]);
+        return response()->json(['id' => $folder->id, 'name' => $folder->name, 'parent_id' => $folder->parent_id]);
+    }
+
+    /** Move a bookmark into a folder (or to no folder). */
+    public function moveBookmark(Request $request, Bookmark $bookmark): JsonResponse
+    {
+        $data = $request->validate([
+            'folder_id' => ['nullable', Rule::exists('bookmark_folders', 'id')->where('user_id', $request->user()->id)],
+        ]);
+        $bookmark->update(['bookmark_folder_id' => $data['folder_id'] ?? null]);
+
+        return response()->json($this->toArray($bookmark->refresh()));
+    }
+
+    /** Re-parent a folder (or move it to the root), guarding against cycles. */
+    public function moveFolder(Request $request, BookmarkFolder $folder): JsonResponse
+    {
+        $data = $request->validate([
+            'parent_id' => ['nullable', Rule::exists('bookmark_folders', 'id')->where('user_id', $request->user()->id)],
+        ]);
+        $parentId = $data['parent_id'] ?? null;
+
+        // A folder can't become its own ancestor.
+        abort_if($parentId !== null && $this->wouldCycle($request->user()->id, (int) $folder->id, (int) $parentId), 422, __('bookmarks.folder_cycle'));
+
+        $folder->update(['parent_id' => $parentId]);
+
+        return response()->json(['id' => $folder->id, 'name' => $folder->name, 'parent_id' => $folder->parent_id]);
+    }
+
+    /** True if making $parentId the parent of $folderId would create a cycle. */
+    private function wouldCycle(int $userId, int $folderId, int $parentId): bool
+    {
+        $parents = BookmarkFolder::where('user_id', $userId)->pluck('parent_id', 'id');
+        for ($cur = $parentId; $cur !== null; $cur = $parents[$cur] ?? null) {
+            if ((int) $cur === $folderId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function destroyFolder(BookmarkFolder $folder): JsonResponse

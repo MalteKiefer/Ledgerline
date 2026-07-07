@@ -48,4 +48,7 @@ return [
     'import_result' => ':created imported, :skipped skipped',
     'fetch_meta' => 'Fetch title and description from the page',
     'url_required' => 'Please enter a URL.',
+    'folder_cycle' => 'A folder cannot be moved into itself.',
+    'subfolder' => 'New subfolder',
+    'subfolder_prompt' => 'Subfolder name',
 ];

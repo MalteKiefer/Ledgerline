@@ -48,4 +48,7 @@ return [
     'import_result' => ':created importiert, :skipped übersprungen',
     'fetch_meta' => 'Titel und Beschreibung von der Seite laden',
     'url_required' => 'Bitte eine URL angeben.',
+    'folder_cycle' => 'Ein Ordner kann nicht in sich selbst verschoben werden.',
+    'subfolder' => 'Neuer Unterordner',
+    'subfolder_prompt' => 'Name des Unterordners',
 ];

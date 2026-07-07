@@ -349,6 +349,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/bookmarks/data', [BookmarkController::class, 'index'])->name('bookmarks.data');
     Route::post('/bookmarks/folders', [BookmarkController::class, 'storeFolder'])->name('bookmarks.folders.store');
     Route::delete('/bookmarks/folders/{folder}', [BookmarkController::class, 'destroyFolder'])->name('bookmarks.folders.destroy');
+    Route::post('/bookmarks/folders/{folder}/move', [BookmarkController::class, 'moveFolder'])->name('bookmarks.folders.move');
+    Route::post('/bookmarks/{bookmark}/move', [BookmarkController::class, 'moveBookmark'])->name('bookmarks.move');
     Route::get('/bookmarks/export', [BookmarkController::class, 'export'])->name('bookmarks.export');
     Route::post('/bookmarks/import', [BookmarkController::class, 'import'])->middleware('throttle:10,1')->name('bookmarks.import');
     Route::post('/bookmarks/fetch-meta', [BookmarkController::class, 'fetchMeta'])->middleware('throttle:30,1')->name('bookmarks.fetch-meta');
