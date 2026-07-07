@@ -154,14 +154,21 @@ class AppServiceProvider extends ServiceProvider
      */
     private function applySettingOverrides(): void
     {
-        $values = Cache::remember(self::OVERRIDES_CACHE_KEY, 3600, function (): array {
-            if (! Schema::hasTable('app_settings')) {
-                return [];
-            }
-            $row = DB::table('app_settings')->first(array_keys(self::SETTING_OVERRIDES));
+        // Wrapped: this runs in boot() for every context including the docker
+        // build's `package:discover`, where there is no database or cache — a
+        // failure there must not break the build; config just keeps its defaults.
+        try {
+            $values = Cache::remember(self::OVERRIDES_CACHE_KEY, 3600, function (): array {
+                if (! Schema::hasTable('app_settings')) {
+                    return [];
+                }
+                $row = DB::table('app_settings')->first(array_keys(self::SETTING_OVERRIDES));
 
-            return $row ? array_filter((array) $row, fn ($v) => $v !== null) : [];
-        });
+                return $row ? array_filter((array) $row, fn ($v) => $v !== null) : [];
+            });
+        } catch (\Throwable) {
+            return;
+        }
 
         foreach (self::SETTING_OVERRIDES as $col => [$cfg, $type]) {
             if (! isset($values[$col])) {
