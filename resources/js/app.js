@@ -2951,6 +2951,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     activeTag: '',
     view: 'files', // files | favorites | recent | trash
     newFolderName: '',
+    extracting: { active: false, name: '', done: 0, total: 0 },
     renameOpen: false,
     renameOpts: { find: '', replace: '', prefix: '', suffix: '' },
     infoOpen: false,
@@ -4002,15 +4003,45 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     // Extract a zip file into a new folder next to it (server-side).
     async extractArchive(row) {
+        if (this.extracting.active) { window.llToast(labels.extractBusy || labels.extractFailed); return; }
         try {
             const res = await fetch(`${config.versionsBase}/${row.id}/extract`, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
             });
             if (! res.ok) { const b = await res.json().catch(() => ({})); window.llToast(b.message || labels.extractFailed); return; }
-            await this.load();
-            window.llToast(labels.extractedToast);
+            const { token } = await res.json();
+            // Extraction runs in the background now (large archives would time the
+            // request out); show a live progress badge and poll until it finishes.
+            this.extracting = { active: true, name: row.name, done: 0, total: 0 };
+            this._pollExtract(token);
         } catch (e) { window.llToast(labels.extractFailed); }
+    },
+
+    async _pollExtract(token) {
+        for (;;) {
+            await new Promise((r) => setTimeout(r, 1200));
+            let s;
+            try {
+                const r = await fetch(`${config.extractStatusBase}/${token}/status`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (! r.ok) break; // session gone
+                s = await r.json();
+            } catch (e) { continue; }
+            this.extracting.done = s.done || 0;
+            this.extracting.total = s.total || 0;
+            if (s.state === 'done') {
+                this.extracting.active = false;
+                await this.load();
+                window.llToast(labels.extractedToast);
+                return;
+            }
+            if (s.state === 'failed') {
+                this.extracting.active = false;
+                window.llToast(s.error || labels.extractFailed);
+                return;
+            }
+        }
+        this.extracting.active = false;
     },
 
     // Open the Paperless modal immediately, then decrypt the PDF in the

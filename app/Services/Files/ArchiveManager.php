@@ -137,16 +137,16 @@ class ArchiveManager
      * Extract an archive (zip/tar/tar.gz/tar.bz2) into a new folder named after
      * it, in the same folder. Returns the number of files extracted.
      */
-    public function extract(int $userId, StoredFile $zip): int
+    public function extract(int $userId, StoredFile $zip, ?callable $onProgress = null): int
     {
         $lower = strtolower($zip->name);
         $isTar = str_ends_with($lower, '.tar') || str_ends_with($lower, '.tar.gz')
             || str_ends_with($lower, '.tgz') || str_ends_with($lower, '.tar.bz2') || str_ends_with($lower, '.tbz2');
 
-        return $isTar ? $this->extractTar($userId, $zip) : $this->extractZip($userId, $zip);
+        return $isTar ? $this->extractTar($userId, $zip, $onProgress) : $this->extractZip($userId, $zip, $onProgress);
     }
 
-    private function extractZip(int $userId, StoredFile $zip): int
+    private function extractZip(int $userId, StoredFile $zip, ?callable $onProgress = null): int
     {
         $local = DiskTempFile::pull($this->disk(), 'files/'.$zip->blob, 'llzx');
         $za = new ZipArchive;
@@ -204,6 +204,9 @@ class ArchiveManager
                     'mime' => $this->guessMime($name),
                 ])->save();
                 $count++;
+                if ($onProgress !== null) {
+                    $onProgress($count, $za->numFiles);
+                }
             }
             $za->close();
 
@@ -213,7 +216,7 @@ class ArchiveManager
         }
     }
 
-    private function extractTar(int $userId, StoredFile $arc): int
+    private function extractTar(int $userId, StoredFile $arc, ?callable $onProgress = null): int
     {
         // PharData detects the compression from the file extension, so give the
         // pulled temp copy the archive's real extension.
@@ -285,6 +288,9 @@ class ArchiveManager
                     'name' => end($segments), 'blob' => $blob, 'size' => strlen($bytes), 'mime' => $this->guessMime(end($segments)),
                 ])->save();
                 $written++;
+                if ($onProgress !== null) {
+                    $onProgress($written, count($lines));
+                }
             }
 
             return $written;

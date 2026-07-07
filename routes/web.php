@@ -296,6 +296,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/bulk-rename', [FileController::class, 'bulkRename'])->middleware('throttle:60,1')->name('files.bulk-rename');
     Route::post('/files/archive', [FileController::class, 'createArchive'])->middleware('throttle:20,1')->name('files.archive');
     Route::post('/files/{file}/extract', [FileController::class, 'extract'])->middleware('throttle:20,1')->name('files.extract');
+    Route::get('/files/extract/{token}/status', [FileController::class, 'extractStatus'])->name('files.extract.status');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->name('files.blob.destroy');
 
     // Downloads center: asynchronous, worker-built export zips (gallery + files),
