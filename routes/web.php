@@ -269,6 +269,10 @@ Route::middleware('auth')->group(function (): void {
     // while staying generous enough for a normal batch upload.
     Route::post('/files/upload', [FileController::class, 'upload'])
         ->middleware('throttle:1200,1')->name('files.upload');
+    Route::post('/files/upload/init', [FileController::class, 'chunkInit'])->middleware('throttle:600,1')->name('files.upload.init');
+    Route::post('/files/upload/part', [FileController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.upload.part');
+    Route::post('/files/upload/complete', [FileController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.upload.complete');
+    Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.upload.abort');
     Route::post('/files/import', [FileController::class, 'import'])
         ->middleware('throttle:300,1')->name('files.import');
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');

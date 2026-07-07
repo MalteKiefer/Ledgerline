@@ -20,6 +20,10 @@
         publicLinkBase: '{{ url('/files/public-link') }}',
         uploadLinksUrl: '{{ url('/files/upload-links') }}',
         uploadLinkBase: '{{ url('/files/upload-links') }}',
+        chunkInitUrl: '{{ url('/files/upload/init') }}',
+        chunkPartUrl: '{{ url('/files/upload/part') }}',
+        chunkCompleteUrl: '{{ url('/files/upload/complete') }}',
+        chunkAbortUrl: '{{ url('/files/upload/abort') }}',
         token: '{{ csrf_token() }}',
      }, {
         archivedToast: @js(__('files.archived_toast')),
