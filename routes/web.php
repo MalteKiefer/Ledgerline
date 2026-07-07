@@ -15,6 +15,7 @@ use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\FilePublicLinkController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NoteController;
@@ -68,6 +69,9 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // Password-gated album unlock; throttled to blunt brute-forcing the password.
     Route::post('/p/{publicShare:token}/album/unlock', [PublicShareController::class, 'albumUnlock'])
         ->middleware('throttle:10,1')->name('public-share.album.unlock');
+    // Public file download links (token, optional password gate).
+    Route::get('/f/{token}', [FilePublicLinkController::class, 'download'])->name('file-link.download');
+    Route::post('/f/{token}/unlock', [FilePublicLinkController::class, 'unlock'])->middleware('throttle:10,1')->name('file-link.unlock');
 });
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
@@ -271,6 +275,10 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/restore', [FileController::class, 'restoreTrash'])->middleware('throttle:120,1')->name('files.restore');
     Route::post('/files/favorite', [FileController::class, 'favorite'])->middleware('throttle:120,1')->name('files.favorite');
     Route::post('/files/{file}/note', [FileController::class, 'saveNote'])->middleware('throttle:120,1')->name('files.note');
+    Route::get('/files/{file}/public-link', [FilePublicLinkController::class, 'show'])->name('files.public-link.show');
+    Route::post('/files/{file}/public-link', [FilePublicLinkController::class, 'store'])->middleware('throttle:30,1')->name('files.public-link.store');
+    Route::post('/files/public-link/{link}/rotate', [FilePublicLinkController::class, 'rotate'])->middleware('throttle:30,1')->name('files.public-link.rotate');
+    Route::delete('/files/public-link/{link}', [FilePublicLinkController::class, 'destroy'])->name('files.public-link.destroy');
     Route::post('/files/duplicate', [FileController::class, 'duplicate'])->middleware('throttle:60,1')->name('files.duplicate');
     Route::post('/files/bulk-rename', [FileController::class, 'bulkRename'])->middleware('throttle:60,1')->name('files.bulk-rename');
     Route::post('/files/archive', [FileController::class, 'createArchive'])->middleware('throttle:20,1')->name('files.archive');

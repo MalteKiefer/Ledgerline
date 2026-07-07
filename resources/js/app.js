@@ -2954,6 +2954,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     infoOpen: false,
     infoRow: null,
     infoNote: '',
+    publicOpen: false,
+    publicRow: null,
+    publicLink: null,
+    publicOpts: { expires_in: '', password: '' },
+    publicBusy: false,
     migrateOpen: false,
     migrateRow: null,
     migrateDelete: true,
@@ -3190,6 +3195,54 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.infoRow = row;
         this.infoNote = row.note || '';
         this.infoOpen = true;
+    },
+
+    // ---- Public download links ----
+    async openPublicLink(row) {
+        this.publicRow = row;
+        this.publicLink = null;
+        this.publicOpts = { expires_in: '', password: '' };
+        this.publicOpen = true;
+        try {
+            const r = await fetch(`${config.versionsBase}/${row.id}/public-link`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.publicLink = (await r.json()).link;
+        } catch (e) { /* leave empty */ }
+    },
+
+    async createPublic() {
+        this.publicBusy = true;
+        try {
+            const r = await fetch(`${config.versionsBase}/${this.publicRow.id}/public-link`, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ expires_in: this.publicOpts.expires_in ? Number(this.publicOpts.expires_in) : null, password: this.publicOpts.password || null }),
+            });
+            if (r.ok) { this.publicLink = await r.json(); } else { window.llToast(labels.saveFailed); }
+        } catch (e) { window.llToast(labels.saveFailed); } finally { this.publicBusy = false; }
+    },
+
+    async rotatePublic() {
+        if (! this.publicLink) return;
+        try {
+            const r = await fetch(`${config.publicLinkBase}/${this.publicLink.id}/rotate`, {
+                method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+            });
+            if (r.ok) this.publicLink = await r.json();
+        } catch (e) { window.llToast(labels.saveFailed); }
+    },
+
+    async revokePublic() {
+        if (! this.publicLink) return;
+        try {
+            const r = await fetch(`${config.publicLinkBase}/${this.publicLink.id}`, {
+                method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+            });
+            if (r.ok) this.publicLink = null;
+        } catch (e) { window.llToast(labels.saveFailed); }
+    },
+
+    copyPublicLink() {
+        if (this.publicLink?.url) navigator.clipboard?.writeText(this.publicLink.url).then(() => window.llToast(labels.linkCopied)).catch(() => {});
     },
 
     // Save the note on the current info file (targeted endpoint + manifest sync).
@@ -3710,6 +3763,15 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     setLayout(l) {
         this.layout = l;
         try { localStorage.setItem('ll-files-layout', l); } catch (e) { /* ignore */ }
+    },
+
+    // Sort from a column header: same column flips direction, a new one starts
+    // ascending.
+    sortBy(key) {
+        if (this.sortKey === key) { this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'; } else { this.sortKey = key; this.sortDir = 'asc'; }
+    },
+    sortArrow(key) {
+        return this.sortKey === key ? (this.sortDir === 'asc' ? '↑' : '↓') : '';
     },
 
     // Zip the current selection into a new file in this folder (server-side).

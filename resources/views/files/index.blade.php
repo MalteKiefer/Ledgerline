@@ -16,12 +16,14 @@
         duplicateUrl: '{{ url('/files/duplicate') }}',
         bulkRenameUrl: '{{ url('/files/bulk-rename') }}',
         favoriteUrl: '{{ url('/files/favorite') }}',
+        publicLinkBase: '{{ url('/files/public-link') }}',
         token: '{{ csrf_token() }}',
      }, {
         archivedToast: @js(__('files.archived_toast')),
         extractedToast: @js(__('files.extracted_toast')),
         archiveFailed: @js(__('files.archive_failed')),
         extractFailed: @js(__('files.extract_failed')),
+        linkCopied: @js(__('files.link_copied')),
         types: @js($typeLabels),
         stale: @js(__('files.vault_stale')),
         saveFailed: @js(__('files.save_failed')),
@@ -194,12 +196,16 @@
                     <tr>
                         <th class="px-4 py-3"><input type="checkbox" @change="toggleAll($event)" aria-label="{{ __('files.select_all') }}" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500"></th>
                         <th class="px-4 py-3">
-                            <button type="button" @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'" class="uppercase hover:text-gray-700 dark:hover:text-gray-300">
-                                {{ __('files.col_name') }} <span x-text="sortDir === 'asc' ? '↑' : '↓'"></span>
+                            <button type="button" @click="sortBy('name')" class="uppercase hover:text-gray-700 dark:hover:text-gray-300">
+                                {{ __('files.col_name') }} <span x-text="sortArrow('name')"></span>
                             </button>
                         </th>
                         <th class="hidden px-4 py-3 sm:table-cell">{{ __('files.col_type') }}</th>
-                        <th class="hidden px-4 py-3 text-right sm:table-cell">{{ __('files.col_size') }}</th>
+                        <th class="hidden px-4 py-3 text-right sm:table-cell">
+                            <button type="button" @click="sortBy('size')" class="uppercase hover:text-gray-700 dark:hover:text-gray-300">
+                                {{ __('files.col_size') }} <span x-text="sortArrow('size')"></span>
+                            </button>
+                        </th>
                         <th class="hidden px-4 py-3 md:table-cell">{{ __('files.col_tags') }}</th>
                         <th class="px-4 py-3"></th>
                     </tr>
@@ -279,6 +285,7 @@
                                             <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                             <button type="button" @click="duplicate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="document-duplicate" />{{ __('files.duplicate') }}</button>
+                                            <button type="button" x-show="row.kind === 'file'" @click="openPublicLink(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="link" />{{ __('files.share_link') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
                                             <button type="button" x-show="row.kind !== 'folder'" @click="openVersions(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrow-path" />{{ __('files.versions') }}</button>
                                             <button type="button" x-show="isMarkdown(row)" @click="openMigrate(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="document-text" />{{ __('files.migrate_to_note') }}</button>
@@ -596,6 +603,60 @@
                 <div class="mt-5 flex justify-end gap-3">
                     <button type="button" @click="renameOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyBulkRename()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('files.rename_apply') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Public download link modal --}}
+    <template x-teleport="body">
+        <div x-show="publicOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="publicOpen = false">
+            <div class="absolute inset-0 bg-gray-900/40" @click="publicOpen = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.public_link') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400" x-text="publicRow?.name"></p>
+
+                <div x-show="! publicLink" class="mt-4 space-y-3">
+                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ __('files.public_link_desc') }}</p>
+                    <label class="block text-sm">
+                        <span class="text-gray-600 dark:text-gray-400">{{ __('files.expiry') }}</span>
+                        <select x-model="publicOpts.expires_in" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                            <option value="">{{ __('files.no_expiry') }}</option>
+                            <option value="3600">{{ __('files.exp_1h') }}</option>
+                            <option value="86400">{{ __('files.exp_1d') }}</option>
+                            <option value="604800">{{ __('files.exp_1w') }}</option>
+                            <option value="2592000">{{ __('files.exp_30d') }}</option>
+                        </select>
+                    </label>
+                    <label class="block text-sm">
+                        <span class="text-gray-600 dark:text-gray-400">{{ __('files.password_optional') }}</span>
+                        <input type="text" x-model="publicOpts.password" autocomplete="off" class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm">
+                    </label>
+                </div>
+
+                <div x-show="publicLink" class="mt-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                        <input type="text" readonly :value="publicLink?.url" class="w-full rounded-md border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs shadow-sm">
+                        <button type="button" @click="copyPublicLink()" class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" title="{{ __('files.copy') }}"><x-icon name="clipboard" class="h-4 w-4" /></button>
+                    </div>
+                    <div class="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
+                        <span x-show="publicLink?.hasPassword"><x-icon name="lock-closed" class="inline h-3.5 w-3.5" /></span>
+                        <span x-show="publicLink?.expiresAt" x-text="'{{ __('files.expiry') }}: ' + new Date(publicLink?.expiresAt).toLocaleString()"></span>
+                        <span x-text="'{{ __('files.downloads_n') }}: ' + (publicLink?.downloads ?? 0)"></span>
+                    </div>
+                </div>
+
+                <div class="mt-5 flex flex-wrap justify-end gap-3">
+                    <button type="button" @click="publicOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
+                    <template x-if="publicLink">
+                        <div class="flex gap-3">
+                            <button type="button" @click="revokePublic()" class="rounded-md border border-red-300 dark:border-red-800 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">{{ __('files.revoke_link') }}</button>
+                            <button type="button" @click="rotatePublic()" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('files.rotate_link') }}</button>
+                        </div>
+                    </template>
+                    <template x-if="! publicLink">
+                        <button type="button" @click="createPublic()" :disabled="publicBusy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('files.create_link') }}</button>
+                    </template>
                 </div>
             </div>
         </div>
