@@ -37,7 +37,10 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget, I
             ->where('parent_id', $this->parentId)->orderBy('name')->get()
             ->map(fn (FileFolder $f) => new FolderNode($this->backend, $this->userId, $this->principalUri, $f));
 
-        $files = StoredFile::withoutGlobalScopes()->where('user_id', $this->userId)
+        // whereNull('deleted_at') is explicit: withoutGlobalScopes() drops the
+        // SoftDeletes scope too, so trashed files would otherwise still be listed
+        // (a deleted file "reappears" in Finder).
+        $files = StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $this->userId)
             ->where('file_folder_id', $this->parentId)->orderBy('name')->get()
             ->map(fn (StoredFile $s) => new FileNode($this->backend, $s, $this->principalUri));
 
@@ -73,7 +76,7 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget, I
             return true;
         }
 
-        return StoredFile::withoutGlobalScopes()->where('user_id', $this->userId)
+        return StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $this->userId)
             ->where('file_folder_id', $this->parentId)->where('name', $name)->exists();
     }
 
@@ -160,7 +163,7 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget, I
         // epoch for an empty directory.
         $folder = FileFolder::withoutGlobalScopes()->where('user_id', $this->userId)
             ->where('parent_id', $this->parentId)->max('updated_at');
-        $file = StoredFile::withoutGlobalScopes()->where('user_id', $this->userId)
+        $file = StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $this->userId)
             ->where('file_folder_id', $this->parentId)->max('updated_at');
         $ts = max((int) strtotime((string) $folder), (int) strtotime((string) $file));
 
