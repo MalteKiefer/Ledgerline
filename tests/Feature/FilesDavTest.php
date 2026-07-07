@@ -80,6 +80,23 @@ class FilesDavTest extends TestCase
         Storage::disk('files')->assertExists('files/'.$file->blob);
     }
 
+    public function test_empty_put_does_not_wipe_existing_content(): void
+    {
+        Storage::fake('files');
+        $user = User::factory()->create();
+        $home = $this->home($user);
+        $home->createFile('a.txt', 'real content');
+        /** @var FileNode $node */
+        $node = $home->getChild('a.txt');
+
+        // macOS sends a trailing 0-byte PUT; it must not blank the file.
+        $node->put('');
+
+        $file = StoredFile::withoutGlobalScopes()->firstOrFail();
+        $this->assertSame(12, $file->size);
+        $this->assertSame('real content', stream_get_contents($home->getChild('a.txt')->get()));
+    }
+
     public function test_move_reparents_without_a_new_blob(): void
     {
         Storage::fake('files');
