@@ -222,7 +222,7 @@
     </template>
 
     {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling. --}}
-    <div x-show="selected.length" x-cloak x-transition
+    <div x-show="selected.length && ! trashView" x-cloak x-transition
         :class="(up.active || dl.active) ? 'bottom-72' : 'bottom-5'"
         class="fixed inset-x-0 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2 shadow-xl">
         <span class="text-sm font-medium text-gray-700 dark:text-gray-300"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>

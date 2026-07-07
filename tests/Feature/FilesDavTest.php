@@ -116,7 +116,7 @@ class FilesDavTest extends TestCase
         $this->assertSame($blob, $file->blob); // same blob, not re-uploaded
     }
 
-    public function test_delete_trashes_the_file_and_removes_the_orphan_blob(): void
+    public function test_delete_trashes_the_file_and_keeps_the_blob_for_restore(): void
     {
         Storage::fake('files');
         $user = User::factory()->create();
@@ -127,8 +127,10 @@ class FilesDavTest extends TestCase
 
         $home->getChild('a.txt')->delete();
 
+        // Soft-deleted (goes to the web trash) and the blob is kept so it can be
+        // restored — deleting over WebDAV must not permanently drop the bytes.
         $this->assertNotNull(StoredFile::withoutGlobalScopes()->withTrashed()->find($file->id)->deleted_at);
-        Storage::disk('files')->assertMissing('files/'.$blob);
+        Storage::disk('files')->assertExists('files/'.$blob);
     }
 
     public function test_deleted_file_no_longer_appears_in_the_listing(): void

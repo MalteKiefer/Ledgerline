@@ -48,10 +48,12 @@ class FolderNode extends FileCollection
 
     private function deleteTree(string $folderId): void
     {
+        // Trash the files (move to root + keep the blob) so they stay restorable
+        // from the web trash after the folder itself is gone; then drop the now
+        // empty subfolders (folders are not soft-deletable).
         foreach (StoredFile::withoutGlobalScopes()->where('file_folder_id', $folderId)->get() as $file) {
-            $blob = $file->blob;
+            $file->forceFill(['file_folder_id' => null])->save();
             $file->delete();
-            $this->backend->releaseBlob($blob);
         }
         foreach (FileFolder::withoutGlobalScopes()->where('parent_id', $folderId)->get() as $sub) {
             $this->deleteTree($sub->id);
