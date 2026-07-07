@@ -69,7 +69,7 @@ class AppServiceProvider extends ServiceProvider
             $user = $request->getUser();
             $pass = $request->getPassword();
             if ($user !== null && $pass !== null
-                && Cache::get(AuthBackend::authMarkerKey($user, $pass)) === true) {
+                && Cache::get(AuthBackend::authMarkerKey($user, $pass)) !== null) {
                 return Limit::perMinute(2000)->by('dav-user:'.$user);
             }
 
