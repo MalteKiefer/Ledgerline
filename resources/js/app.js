@@ -204,6 +204,14 @@ Alpine.data('backupRuns', (labels = {}) => ({
     expanded: {},
     pollUntil: 0, // keep polling until this timestamp (covers queue lag + run time)
     _timer: null,
+    decrypt: { open: false, id: null },
+
+    openDecrypt(id) {
+        this.decrypt = { open: true, id };
+    },
+    get decryptAction() {
+        return (labels.decryptBase || '').replace('__id__', this.decrypt.id);
+    },
 
     init() {
         this.load();
