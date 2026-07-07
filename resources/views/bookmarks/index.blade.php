@@ -117,18 +117,48 @@
                     </div>
                     <div>
                         <span class="text-sm text-gray-600 dark:text-gray-400">{{ __('bookmarks.folder_icon') }}</span>
-                        <div class="mt-1 flex flex-wrap gap-1.5">
-                            <template x-for="ic in ['folder','star','heart','bookmark','briefcase','home','tag','globe','code']" :key="ic">
+                        <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                            <template x-for="ic in allFolderIcons.slice(0, 11)" :key="ic">
                                 <button type="button" @click="folderEditor.icon = ic" :class="folderEditor.icon === ic ? 'bg-gray-800 text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'" class="rounded p-1.5">
                                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(ic)" /></svg>
                                 </button>
                             </template>
+                            {{-- Show the current icon too if it's beyond the first row --}}
+                            <template x-if="folderEditor.icon && ! allFolderIcons.slice(0, 11).includes(folderEditor.icon)">
+                                <button type="button" class="rounded bg-gray-800 p-1.5 text-white">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(folderEditor.icon)" /></svg>
+                                </button>
+                            </template>
+                            <button type="button" @click="moreIconsOpen = true" class="rounded border border-dashed border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('bookmarks.more_icons') }}</button>
                         </div>
                     </div>
                 </div>
                 <div class="mt-5 flex justify-end gap-3">
                     <button type="button" @click="folderEditor.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
                     <button type="button" @click="saveFolder()" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('common.save') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Full icon palette (secondary modal) --}}
+    <template x-teleport="body">
+        <div x-show="moreIconsOpen" x-cloak class="fixed inset-0 z-[1060] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="moreIconsOpen = false">
+            <div class="absolute inset-0 bg-gray-900/50" @click="moreIconsOpen = false"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('bookmarks.all_icons') }}</h3>
+                <div class="mt-4 grid max-h-[60vh] grid-cols-6 gap-1.5 overflow-y-auto sm:grid-cols-8">
+                    <button type="button" @click="folderEditor.icon = ''; moreIconsOpen = false" :class="! folderEditor.icon ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'" class="flex aspect-square items-center justify-center rounded" title="{{ __('bookmarks.folder_none') }}">
+                        <x-icon name="x-mark" class="h-5 w-5" />
+                    </button>
+                    <template x-for="ic in allFolderIcons" :key="ic">
+                        <button type="button" @click="folderEditor.icon = ic; moreIconsOpen = false" :class="folderEditor.icon === ic ? 'bg-gray-800 text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'" class="flex aspect-square items-center justify-center rounded">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="folderIconPath(ic)" /></svg>
+                        </button>
+                    </template>
+                </div>
+                <div class="mt-5 flex justify-end">
+                    <button type="button" @click="moreIconsOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
                 </div>
             </div>
         </div>

@@ -310,7 +310,7 @@
 
     {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling. --}}
     <div x-show="selected.length && ! trashView" x-cloak x-transition
-        :class="(up.active || dl.active) ? 'bottom-72' : 'bottom-5'"
+        :class="(uploads.length || dl.active) ? 'bottom-72' : 'bottom-5'"
         class="fixed inset-x-0 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2 shadow-xl">
         <span class="text-sm font-medium text-gray-700 dark:text-gray-300"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
         <div class="relative" x-data="{ fmt: false }" @click.outside="fmt = false">
@@ -329,16 +329,32 @@
         <button type="button" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 dark:text-red-300 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
     </div>
 
-    {{-- Upload progress --}}
-    <div x-show="up.active" x-cloak class="fixed bottom-5 right-5 z-[950] w-80 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl">
-        <div class="flex items-center justify-between px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-            <span>{{ __('files.uploading') }}</span>
-            <span class="text-gray-500 dark:text-gray-400"><span x-text="up.done"></span>/<span x-text="up.total"></span></span>
+    {{-- Upload tray (Google/Proton style): fixed bottom-right, per-file state --}}
+    <div x-show="uploads.length" x-cloak class="fixed bottom-5 right-5 z-[950] w-80 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl">
+        <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            <span x-show="uploading">{{ __('files.uploading') }} (<span x-text="uploadsDone"></span>/<span x-text="uploads.length"></span>)</span>
+            <span x-show="! uploading">{{ __('files.upload_done') }}</span>
+            <button type="button" x-show="! uploading" @click="dismissUploads()" class="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100">{{ __('files.upload_dismiss') }}</button>
         </div>
-        <div class="h-2 bg-gray-100 dark:bg-gray-800">
-            <div class="h-2 bg-gray-800 transition-all" :style="`width: ${up.total ? Math.round(up.done / up.total * 100) : 0}%`"></div>
+        <div class="max-h-64 space-y-2 overflow-y-auto p-3">
+            <template x-for="(u, i) in uploads" :key="i">
+                <div>
+                    <div class="flex items-center justify-between gap-2 text-xs">
+                        <span class="truncate text-gray-700 dark:text-gray-300" x-text="u.name"></span>
+                        <span class="shrink-0" :class="{'text-green-600 dark:text-green-400': u.state==='done', 'text-red-600 dark:text-red-400': u.state==='error', 'text-gray-500 dark:text-gray-400': u.state==='uploading'||u.state==='pending'}">
+                            <template x-if="u.state==='done'"><x-icon name="check" class="h-4 w-4" /></template>
+                            <template x-if="u.state==='error'"><x-icon name="x-mark" class="h-4 w-4" /></template>
+                            <span x-show="u.state==='uploading'" x-text="u.progress + '%'"></span>
+                            <span x-show="u.state==='pending'">…</span>
+                        </span>
+                    </div>
+                    <div class="mt-1 h-1.5 w-full rounded bg-gray-100 dark:bg-gray-800">
+                        <div class="h-1.5 rounded transition-all" :class="{'bg-green-500': u.state==='done', 'bg-red-500': u.state==='error', 'bg-gray-800': u.state==='uploading'||u.state==='pending'}"
+                            :style="`width: ${u.state==='pending' ? 4 : (u.state==='uploading' ? u.progress : 100)}%`"></div>
+                    </div>
+                </div>
+            </template>
         </div>
-        <p class="px-4 py-2 text-xs text-amber-700">{{ __('files.encrypting_keep_open') }}</p>
     </div>
 
     {{-- Download progress --}}

@@ -68,6 +68,8 @@ return [
     'exp_1d' => '1 Tag',
     'exp_1w' => '1 Woche',
     'exp_30d' => '30 Tage',
+    'upload_done' => 'Upload abgeschlossen',
+    'upload_dismiss' => 'Schließen',
     'all_files' => 'Alle Dateien',
     'drop_hint' => 'Dateien oder Ordner hierher ziehen zum Hochladen',
     'col_name' => 'Name',

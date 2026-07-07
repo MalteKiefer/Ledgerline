@@ -59,4 +59,6 @@ return [
     'folder_new_title' => 'Neuer Ordner',
     'folder_edit_title' => 'Ordner',
     'in_folder' => 'in',
+    'more_icons' => 'Weitere…',
+    'all_icons' => 'Symbol wählen',
 ];
