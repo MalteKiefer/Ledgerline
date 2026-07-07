@@ -4250,12 +4250,12 @@ Alpine.data('todos', (labels = {}) => ({
     async trashTask(t) { await this._patch(t, { trashed: true }); },
     async restoreTask(t) { await this._patch(t, { trashed: false }); },
     async deleteForever(t) {
-        if (! confirm(labels.deleteConfirm)) return;
+        if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
         try { await this._api('DELETE', `/todos/tasks/${t.id}`); this.tasks = this.tasks.filter((x) => x.id !== t.id); }
         catch (e) { this.error = labels.saveFailed; }
     },
     async emptyTrash() {
-        if (! confirm(labels.emptyTrashConfirm)) return;
+        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
         try { await this._api('DELETE', '/todos/trash'); this.tasks = this.tasks.filter((t) => ! t.trashed); }
         catch (e) { this.error = labels.saveFailed; }
     },
@@ -4375,12 +4375,12 @@ Alpine.data('notes', (labels = {}) => ({
         catch (e) { this.error = labels.saveFailed; }
     },
     async remove(n) {
-        if (! confirm(labels.deleteConfirm)) return;
+        if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
         try { await this._api('DELETE', `/notes/${n.id}`); this.notes = this.notes.filter((x) => x.id !== n.id); if (this.currentId === n.id) this.currentId = null; }
         catch (e) { this.error = labels.saveFailed; }
     },
     async emptyTrash() {
-        if (! confirm(labels.emptyTrashConfirm)) return;
+        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
         try { await this._api('DELETE', '/notes/trash/all'); this.notes = this.notes.filter((n) => ! n.trashed); }
         catch (e) { this.error = labels.saveFailed; }
     },
@@ -4395,6 +4395,20 @@ Alpine.data('notes', (labels = {}) => ({
         this.shareBusy = false;
     },
 }));
+
+// Monochrome icon paths a bookmark folder can be given (rendered inline so the
+// name can be data-driven, unlike the server-side <x-icon>).
+const FOLDER_ICONS = {
+    folder: 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z',
+    star: 'M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z',
+    heart: 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z',
+    bookmark: 'M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z',
+    briefcase: 'M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 6.15a2.18 2.18 0 01-.75.633m0 0a48.415 48.415 0 01-15.75 0m15.75 0v2.475M6.75 6.144a48.11 48.11 0 013.413-.387m0 0V4.933c0-.99.803-1.816 1.794-1.85 1.31-.045 2.617-.045 3.926 0 .99.034 1.794.86 1.794 1.85v.808m-9.021 0h9.021',
+    home: 'M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25',
+    tag: 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z',
+    globe: 'M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-2.998 0-5.74-.784-7.843-2.247m0 0A9.003 9.003 0 013 12c0-1.605.42-3.113 1.157-4.418',
+    code: 'M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5',
+};
 
 /**
  * Bookmarks + folders, driven client-side over a JSON API (no reloads).
@@ -4442,18 +4456,36 @@ Alpine.data('bookmarks', (labels = {}) => ({
     },
     host(url) { try { return new URL(url).host; } catch (e) { return ''; } },
 
-    async addFolder() {
-        const name = this.newFolderName.trim();
+    // Folder editor modal (create / subfolder / rename + colour + icon) —
+    // replaces the old inline form and the window.prompt.
+    folderEditor: { open: false, id: null, parentId: null, name: '', color: '', icon: '' },
+    openFolderCreate(parentId = null) {
+        this.folderEditor = { open: true, id: null, parentId, name: '', color: '', icon: '' };
+    },
+    openFolderEdit(f) {
+        this.folderEditor = { open: true, id: f.id, parentId: f.parent_id ?? null, name: f.name || '', color: f.color || '', icon: f.icon || '' };
+    },
+    async saveFolder() {
+        const e = this.folderEditor;
+        const name = (e.name || '').trim();
         if (! name) return;
         try {
-            const f = await this._api('POST', '/bookmarks/folders', { name });
-            this.folders.push({ id: f.id, name: f.name });
+            if (e.id) {
+                const f = await this._api('PUT', `/bookmarks/folders/${e.id}`, { name, color: e.color || null, icon: e.icon || null });
+                const i = this.folders.findIndex((x) => x.id === e.id);
+                if (i >= 0) this.folders[i] = f;
+            } else {
+                const f = await this._api('POST', '/bookmarks/folders', { name, parent_id: e.parentId, color: e.color || null, icon: e.icon || null });
+                this.folders.push(f);
+            }
             this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            this.newFolderName = '';
-        } catch (e) { this.error = labels.saveFailed; }
+            this.folderEditor.open = false;
+        } catch (err) { this.error = labels.saveFailed; }
     },
+    addSubfolder(parent) { this.openFolderCreate(parent.id); },
+
     async deleteFolder(f) {
-        if (! confirm(labels.deleteFolderConfirm)) return;
+        if (! await this.$store.confirm.ask(labels.deleteFolderConfirm)) return;
         try {
             await this._api('DELETE', `/bookmarks/folders/${f.id}`);
             // The FK is nullOnDelete, so subfolders become roots and their
@@ -4463,15 +4495,9 @@ Alpine.data('bookmarks', (labels = {}) => ({
         } catch (e) { this.error = labels.saveFailed; }
     },
 
-    async addSubfolder(parent) {
-        const name = (window.prompt(labels.subfolderPrompt || '') || '').trim();
-        if (! name) return;
-        try {
-            const f = await this._api('POST', '/bookmarks/folders', { name, parent_id: parent.id });
-            this.folders.push({ id: f.id, name: f.name, parent_id: f.parent_id });
-            this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        } catch (e) { this.error = labels.saveFailed; }
-    },
+    // Name of the folder a bookmark lives in (for the list badge).
+    folderById(id) { return this.folders.find((f) => f.id === id) || null; },
+    folderIconPath(name) { return FOLDER_ICONS[name] || FOLDER_ICONS.folder; },
 
     // Folders as a depth-annotated, pre-order flat list for indented rendering.
     get folderTree() {
@@ -4610,12 +4636,12 @@ Alpine.data('bookmarks', (labels = {}) => ({
     async trash(b) { await this._patch(b, { trashed: true }); },
     async restore(b) { await this._patch(b, { trashed: false }); },
     async remove(b) {
-        if (! confirm(labels.deleteConfirm)) return;
+        if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
         try { await this._api('DELETE', `/bookmarks/${b.id}`); this.bookmarks = this.bookmarks.filter((x) => x.id !== b.id); }
         catch (e) { this.error = labels.saveFailed; }
     },
     async emptyTrash() {
-        if (! confirm(labels.emptyTrashConfirm)) return;
+        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
         try { await this._api('DELETE', '/bookmarks/trash/all'); this.bookmarks = this.bookmarks.filter((b) => ! b.trashed); }
         catch (e) { this.error = labels.saveFailed; }
     },

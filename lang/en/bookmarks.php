@@ -51,4 +51,12 @@ return [
     'folder_cycle' => 'A folder cannot be moved into itself.',
     'subfolder' => 'New subfolder',
     'subfolder_prompt' => 'Subfolder name',
+    'edit_folder' => 'Edit folder',
+    'folder_name' => 'Name',
+    'folder_color' => 'Colour',
+    'folder_icon' => 'Icon',
+    'folder_none' => 'None',
+    'folder_new_title' => 'New folder',
+    'folder_edit_title' => 'Folder',
+    'in_folder' => 'in',
 ];

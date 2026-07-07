@@ -351,6 +351,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/bookmarks/folders', [BookmarkController::class, 'storeFolder'])->name('bookmarks.folders.store');
     Route::delete('/bookmarks/folders/{folder}', [BookmarkController::class, 'destroyFolder'])->name('bookmarks.folders.destroy');
     Route::post('/bookmarks/folders/{folder}/move', [BookmarkController::class, 'moveFolder'])->name('bookmarks.folders.move');
+    Route::put('/bookmarks/folders/{folder}', [BookmarkController::class, 'updateFolder'])->name('bookmarks.folders.update');
     Route::post('/bookmarks/{bookmark}/move', [BookmarkController::class, 'moveBookmark'])->name('bookmarks.move');
     Route::get('/bookmarks/export', [BookmarkController::class, 'export'])->name('bookmarks.export');
     Route::post('/bookmarks/import', [BookmarkController::class, 'import'])->middleware('throttle:10,1')->name('bookmarks.import');

@@ -51,4 +51,12 @@ return [
     'folder_cycle' => 'Ein Ordner kann nicht in sich selbst verschoben werden.',
     'subfolder' => 'Neuer Unterordner',
     'subfolder_prompt' => 'Name des Unterordners',
+    'edit_folder' => 'Ordner bearbeiten',
+    'folder_name' => 'Name',
+    'folder_color' => 'Farbe',
+    'folder_icon' => 'Symbol',
+    'folder_none' => 'Keine',
+    'folder_new_title' => 'Neuer Ordner',
+    'folder_edit_title' => 'Ordner',
+    'in_folder' => 'in',
 ];
