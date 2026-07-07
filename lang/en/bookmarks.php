@@ -59,4 +59,6 @@ return [
     'folder_new_title' => 'New folder',
     'folder_edit_title' => 'Folder',
     'in_folder' => 'in',
+    'more_icons' => 'More…',
+    'all_icons' => 'Choose an icon',
 ];
