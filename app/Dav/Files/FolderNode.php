@@ -31,7 +31,7 @@ class FolderNode extends FileCollection
 
     public function getLastModified(): ?int
     {
-        return $this->folder->updated_at?->getTimestamp() ?? time();
+        return $this->folder->updated_at?->getTimestamp() ?? (int) strtotime('2024-01-01 00:00:00');
     }
 
     public function setName($name): void

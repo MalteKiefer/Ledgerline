@@ -40,9 +40,20 @@ class FileNode extends File implements IACL
         $userId = (int) $this->file->user_id;
         $old = $this->file->blob;
         $blob = $this->backend->storeBlob($userId, $data);
+        $newSize = (int) ($this->backend->disk()->size('files/'.$blob) ?: 0);
+
+        // macOS webdavfs sends a trailing 0-byte PUT to "finalize" a file it just
+        // uploaded. Never let that empty body overwrite existing content — discard
+        // the empty blob and keep what is there (leaves the file intact).
+        if ($newSize === 0 && (int) $this->file->size > 0) {
+            $this->backend->disk()->delete('files/'.$blob);
+
+            return $this->getETag();
+        }
+
         $this->file->forceFill([
             'blob' => $blob,
-            'size' => (int) ($this->backend->disk()->size('files/'.$blob) ?: 0),
+            'size' => $newSize,
             'mime' => $this->backend->guessMime($this->file->name, $blob),
         ])->save();
         if ($old !== $blob) {
@@ -69,7 +80,7 @@ class FileNode extends File implements IACL
 
     public function getLastModified(): ?int
     {
-        return $this->file->updated_at?->getTimestamp() ?? time();
+        return $this->file->updated_at?->getTimestamp() ?? (int) strtotime('2024-01-01 00:00:00');
     }
 
     public function delete(): void

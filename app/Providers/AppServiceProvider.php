@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Dav\AuthBackend;
 use App\Dav\DavContext;
 use App\Events\PersonNamed;
 use App\Listeners\LinkPersonContact;
 use App\Models\User;
 use App\Search\SearchManager;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -56,13 +58,23 @@ class AppServiceProvider extends ServiceProvider
         // person's cover face).
         Event::listen(PersonNamed::class, LinkPersonContact::class);
 
-        // Rate-limit the DAV endpoint. Unauthenticated challenges stay tight to
-        // blunt bcrypt brute-forcing; authenticated clients (esp. macOS Finder,
-        // which fires hundreds of PROPFIND/LOCK/PUT per copy) get generous
-        // headroom keyed by credential + IP, or they hit 429 → Finder error -50.
-        RateLimiter::for('dav', fn ($request) => $request->getUser() !== null
-            ? Limit::perMinute(2000)->by($request->getUser().'|'.$request->ip())
-            : Limit::perMinute(60)->by($request->ip()));
+        // Rate-limit the DAV endpoint. The generous quota is granted ONLY when
+        // the presented Basic credentials recently passed a real bcrypt check
+        // (marker set by AuthBackend) — an attacker cannot forge the Basic header
+        // to escape the tight bucket. Everything else (no auth, wrong password)
+        // stays at 60/min/IP to blunt bcrypt brute-forcing. The generous quota
+        // exists because macOS Finder fires hundreds of PROPFIND/LOCK/PUT per
+        // copy and a flat 60/min returns 429 → Finder error -50.
+        RateLimiter::for('dav', function ($request) {
+            $user = $request->getUser();
+            $pass = $request->getPassword();
+            if ($user !== null && $pass !== null
+                && Cache::get(AuthBackend::authMarkerKey($user, $pass)) === true) {
+                return Limit::perMinute(2000)->by('dav-user:'.$user);
+            }
+
+            return Limit::perMinute(60)->by($request->ip());
+        });
 
         // Only members of the configured Pocket-ID admin group (if any) may
         // manage the non-personal, workspace-wide settings.

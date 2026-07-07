@@ -153,9 +153,18 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget, I
 
     public function getLastModified(): ?int
     {
-        // macOS webdavfs requires getlastmodified on collections or it stalls
-        // after PROPFIND; the root has no own row, so fall back to now.
-        return time();
+        // macOS webdavfs requires getlastmodified on collections, but it MUST be
+        // stable: a value that changes every request makes Finder invalidate its
+        // cache and re-PROPFIND everything endlessly (mounts/copies crawl). Use
+        // the newest child mtime (changes only when content changes), or a fixed
+        // epoch for an empty directory.
+        $folder = FileFolder::withoutGlobalScopes()->where('user_id', $this->userId)
+            ->where('parent_id', $this->parentId)->max('updated_at');
+        $file = StoredFile::withoutGlobalScopes()->where('user_id', $this->userId)
+            ->where('file_folder_id', $this->parentId)->max('updated_at');
+        $ts = max((int) strtotime((string) $folder), (int) strtotime((string) $file));
+
+        return $ts > 0 ? $ts : (int) strtotime('2024-01-01 00:00:00');
     }
 
     // ---- ACL: owner-only ----

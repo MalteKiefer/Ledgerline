@@ -129,7 +129,7 @@
                         </tr>
                     </template>
                     <template x-for="row in rows" :key="row.kind + row.id">
-                        <tr class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" x-data="{ menu: false }"
+                        <tr class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" x-data="{ menu: false, menuStyle: '', toggleMenu(e) { this.menu = ! this.menu; if (this.menu) { const r = e.currentTarget.getBoundingClientRect(); const left = Math.max(8, r.right - 176); this.menuStyle = `top: ${r.bottom + 4}px; left: ${left}px;`; } } }"
                             :draggable="renaming === row.id ? 'false' : 'true'"
                             @dragstart.stop="onDragStart($event, row)" @dragend="onDragEnd()"
                             @dragover="if (row.kind === 'folder' && dragItem && !(dragItem.kind === 'folder' && dragItem.id === row.id)) $event.preventDefault()"
@@ -166,8 +166,11 @@
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
                                     <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
                                     <div class="relative inline-block text-left">
-                                        <button type="button" @click="menu = ! menu" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
-                                        <div x-show="menu" x-cloak @click.outside="menu = false" class="absolute right-0 z-20 mt-1 w-44 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 text-left text-sm shadow-lg">
+                                        <button type="button" @click="toggleMenu($event)" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
+                                        {{-- Teleported to the body so the table's overflow-x-auto wrapper cannot
+                                             clip the menu (which would hide it and force a scrollbar). --}}
+                                        <template x-teleport="body">
+                                        <div x-show="menu" x-cloak @click.outside="menu = false" @keydown.escape.window="menu = false" @scroll.window="menu = false" @resize.window="menu = false" :style="menuStyle" class="fixed z-[60] w-44 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 text-left text-sm shadow-lg">
                                             <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
                                             <button type="button" @click="openTags(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="tag" />{{ __('files.edit_tags') }}</button>
@@ -176,6 +179,7 @@
                                             <button type="button" x-show="isPdf(row) && $store.paperless.configured" @click="openPaperless(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="share" />{{ __('paperless.send_to_paperless') }}</button>
                                             <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="trash" />{{ __('common.delete') }}</button>
                                         </div>
+                                        </template>
                                     </div>
                                 </div>
                             </td>
