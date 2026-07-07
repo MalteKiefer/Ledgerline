@@ -2950,6 +2950,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     tagsValue: '',
     activeTag: '',
     view: 'files', // files | favorites | recent | trash
+    newFolderName: '',
     renameOpen: false,
     renameOpts: { find: '', replace: '', prefix: '', suffix: '' },
     infoOpen: false,
