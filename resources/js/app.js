@@ -4883,7 +4883,9 @@ Alpine.start();
 
 // PWA: register the service worker (network-first navigations with an offline
 // fallback; hashed build assets cached). Registration failures are non-fatal.
-if ('serviceWorker' in navigator) {
+// Skip on public visitor pages (upload/download/share links) — they must not be
+// handled by the app's PWA shell.
+if ('serviceWorker' in navigator && ! /^\/(u|f|p)\//.test(location.pathname)) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch(() => {});
     });
