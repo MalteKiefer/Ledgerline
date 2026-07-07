@@ -70,6 +70,7 @@ return [
     'exp_30d' => '30 days',
     'upload_done' => 'Upload complete',
     'upload_dismiss' => 'Dismiss',
+    'upload_unreadable' => 'File could not be read (blocked by your system?)',
     'all_files' => 'All files',
     'drop_hint' => 'Drop files or folders here to upload',
     'col_name' => 'Name',

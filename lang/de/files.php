@@ -70,6 +70,7 @@ return [
     'exp_30d' => '30 Tage',
     'upload_done' => 'Upload abgeschlossen',
     'upload_dismiss' => 'Schließen',
+    'upload_unreadable' => 'Datei konnte nicht gelesen werden (vom System blockiert?)',
     'all_files' => 'Alle Dateien',
     'drop_hint' => 'Dateien oder Ordner hierher ziehen zum Hochladen',
     'col_name' => 'Name',
