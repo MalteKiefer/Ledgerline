@@ -11,6 +11,8 @@ use App\Listeners\LinkPersonContact;
 use App\Models\User;
 use App\Search\SearchManager;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -83,6 +85,35 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
 
         $this->applySettingOverrides();
+
+        // Record each scheduled maintenance task's last run + outcome so the
+        // System settings page can show whether the cron is alive.
+        Event::listen(ScheduledTaskFinished::class, fn ($e) => self::recordCronRun($e->task, true));
+        Event::listen(ScheduledTaskFailed::class, fn ($e) => self::recordCronRun($e->task, false));
+    }
+
+    /** Cache key holding the last run for a scheduled command. */
+    public static function cronRunKey(string $name): string
+    {
+        return 'cron:last:'.$name;
+    }
+
+    /** Extract the artisan command name from a scheduled Event (or its summary). */
+    public static function cronName(object $event): string
+    {
+        if (preg_match('/artisan[\'"]?\s+([a-z0-9:_-]+)/i', (string) ($event->command ?? ''), $m) === 1) {
+            return $m[1];
+        }
+
+        return method_exists($event, 'getSummaryForDisplay') ? $event->getSummaryForDisplay() : 'task';
+    }
+
+    private static function recordCronRun(object $event, bool $ok): void
+    {
+        Cache::put(self::cronRunKey(self::cronName($event)), [
+            'at' => now()->toIso8601String(),
+            'ok' => $ok,
+        ], now()->addDays(30));
     }
 
     /**
