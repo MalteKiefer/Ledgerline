@@ -13,6 +13,7 @@ use App\Support\DiskTempFile;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Process\Process;
 use ZipArchive;
 
 /**
@@ -223,21 +224,33 @@ class ArchiveManager
         $dest = sys_get_temp_dir().'/llxtar-'.bin2hex(random_bytes(6));
 
         try {
-            $phar = new \PharData($local);
+            // Use the system tar (never PharData, which could unserialize phar
+            // metadata from attacker bytes). List headers first — no extraction —
+            // to enforce the entry/size caps, then extract without owner/perms.
+            $list = new Process(['tar', '-tvf', $local]);
+            $list->setTimeout(60);
+            $list->run();
+            abort_unless($list->isSuccessful(), 422, __('files.archive_invalid'));
 
-            $count = 0;
+            $lines = array_values(array_filter(explode("\n", trim($list->getOutput()))));
+            abort_if(count($lines) > $this->maxEntries, 422, __('files.archive_too_many'));
             $total = 0;
-            foreach (new \RecursiveIteratorIterator($phar, \RecursiveIteratorIterator::LEAVES_ONLY) as $f) {
-                $count++;
-                $total += (int) $f->getSize();
+            foreach ($lines as $line) {
+                // GNU tar -tvf: "perms owner/group SIZE date time name".
+                if (preg_match('/^\S+\s+\S+\s+(\d+)\s/', $line, $mm)) {
+                    $total += (int) $mm[1];
+                }
             }
-            abort_if($count > $this->maxEntries, 422, __('files.archive_too_many'));
             abort_if($total > $this->maxBytes, 413, __('files.archive_too_large'));
             $this->assertQuota($userId, $total);
 
-            // PharData::extractTo is traversal-safe; we also re-check each name.
             @mkdir($dest, 0700, true);
-            $phar->extractTo($dest, null, true);
+            $extract = new Process(
+                ['tar', '-xf', $local, '-C', $dest, '--no-same-owner', '--no-same-permissions']
+            );
+            $extract->setTimeout(120);
+            $extract->run();
+            abort_unless($extract->isSuccessful(), 422, __('files.archive_invalid'));
 
             $base = ArchiveName::sanitize(preg_replace('/(\.tar\.gz|\.tgz|\.tar\.bz2|\.tbz2|\.tar)$/i', '', $arc->name) ?: 'archive');
             $root = $this->makeFolder($userId, $this->uniqueFolderName($base, $userId, $arc->file_folder_id), $arc->file_folder_id);
