@@ -41,6 +41,7 @@ use App\Http\Controllers\ShareController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodoController;
 use App\Http\Controllers\UploadLinkController;
+use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
 // The root simply forwards to the dashboard; unauthenticated visitors are then
@@ -268,6 +269,12 @@ Route::middleware('auth')->group(function (): void {
 
     // Files: plain metadata rows + unencrypted bytes on the files disk. The
     // rich client reads/writes the whole tree as a manifest that syncs to rows.
+    // Zero-knowledge encryption vault (Files): the server only stores ciphertext
+    // and KDF params — never the passphrase, recovery code or vault key.
+    Route::get('/vault', [VaultController::class, 'show'])->name('vault.show');
+    Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('vault.store');
+    Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('vault.rotate');
+
     Route::view('/files', 'files.index')->name('files.index');
     Route::get('/files/data', [FileController::class, 'data'])->name('files.data');
     Route::put('/files/data', [FileController::class, 'sync'])->middleware('throttle:120,1')->name('files.sync');

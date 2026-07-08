@@ -3,6 +3,12 @@ import intersect from '@alpinejs/intersect';
 import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
+import { Vault } from './vault';
+
+// Zero-knowledge encryption vault (client-side crypto for the Files module).
+// Exposed globally so the vault UI + files component can lock/unlock/encrypt.
+window.Vault = Vault;
+Vault.boot();
 
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`

@@ -48,6 +48,10 @@ return [
 
     'quota_mb' => (int) env('FILES_QUOTA_MB', 0),
 
+    // Minutes the browser keeps the unlocked zero-knowledge vault key cached
+    // (session-bound) before it auto-locks and the passphrase is needed again.
+    'vault_idle_minutes' => (int) env('FILES_VAULT_IDLE_MINUTES', 10),
+
     /*
     |--------------------------------------------------------------------------
     | Archive (zip) limits

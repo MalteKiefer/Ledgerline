@@ -8,6 +8,9 @@
     <script>{!! \App\Support\ThemeBootstrap::SCRIPT !!}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {{-- Binds the cached vault key to this login so it can't outlive a logout/re-login. --}}
+    <meta name="vault-owner" content="{{ auth()->id() ? sha1(auth()->id().'|'.session()->getId()) : '' }}">
+    <meta name="vault-idle-minutes" content="{{ (int) config('files.vault_idle_minutes', 10) }}">
     @php // $llCal reused below for calendar metas @endphp
     <meta name="calendar-week-start" content="{{ $llCal->calendar_week_start ?? 'monday' }}">
     <meta name="calendar-week-numbers" content="{{ $llCal->calendar_week_numbers ? '1' : '0' }}">
