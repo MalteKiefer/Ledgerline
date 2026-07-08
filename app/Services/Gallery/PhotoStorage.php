@@ -262,7 +262,17 @@ class PhotoStorage
         }
 
         $attributes = $this->applyPlace($attributes, $attributes['latitude'] ?? $photo->latitude, $attributes['longitude'] ?? $photo->longitude);
-        $attributes['motion_path'] = $this->extractMotion($photo, $tmp, $disk);
+        // Only (re)attach a motion clip when one is actually extracted, and NEVER
+        // clear an existing one: a paired Apple Live Photo's motion_path is set by
+        // PairLivePhotos (the still carries no embedded segment), so a re-process
+        // (rotate/flip, rescan, run-all) must not null it and orphan the clip blob.
+        $newMotion = $this->extractMotion($photo, $tmp, $disk);
+        if ($newMotion !== null) {
+            if ($photo->motion_path !== null && $photo->motion_path !== $newMotion) {
+                $disk->delete($photo->motion_path); // replace: free the prior clip
+            }
+            $attributes['motion_path'] = $newMotion;
+        }
 
         $photo->forceFill($attributes)->save();
     }

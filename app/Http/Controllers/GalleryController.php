@@ -20,6 +20,7 @@ use App\Services\Gallery\TripGrouper;
 use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use App\Support\Bytes;
+use App\Support\DiskTempFile;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -28,6 +29,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -346,22 +348,18 @@ class GalleryController extends Controller
 
         $mediaType = str_starts_with($mime, 'video/') ? 'video' : 'image';
 
-        // Skip duplicates before writing any bytes. Match on identical bytes
-        // (checksum + size) rather than the name, so re-uploading a file that
-        // was renamed by the filename template is still caught. Fall back to
-        // name + size only when a checksum could not be computed.
+        // Skip duplicates before writing any bytes — but only on identical bytes
+        // (checksum + size), and only against the UPLOADER'S OWN photos. Matching
+        // on name+size (when a checksum can't be computed) could silently swallow
+        // a genuinely different file; matching another user's shared photo could
+        // discard a real upload. Both are avoided here.
         $name = $upload->getClientOriginalName();
         $size = (int) $upload->getSize();
         $checksum = hash_file('sha256', $upload->getRealPath()) ?: null;
 
-        $duplicate = Photo::query()
-            ->where('size', $size)
-            ->when(
-                $checksum !== null,
-                fn ($q) => $q->where('checksum', $checksum),
-                fn ($q) => $q->where('original_name', $name),
-            )
-            ->first();
+        $duplicate = $checksum === null
+            ? null
+            : Photo::ownedBy($request->user()->id)->where('size', $size)->where('checksum', $checksum)->first();
 
         if ($duplicate !== null) {
             return response()->json(['duplicate' => true, 'id' => $duplicate->id, 'name' => $duplicate->name], 200);
@@ -522,7 +520,7 @@ class GalleryController extends Controller
 
         $geo = $geocoder->lookupDetailed((float) $validated['latitude'], (float) $validated['longitude']);
 
-        $count = Photo::ownedBy($request->user()->id)->whereIn('id', $validated['photo_ids'])->get()
+        $count = Photo::ownedBy($request->user()->id)->whereNull('deleted_at')->whereIn('id', $validated['photo_ids'])->get()
             ->each(fn (Photo $photo) => $photo->forceFill([
                 'latitude' => $validated['latitude'],
                 'longitude' => $validated['longitude'],
@@ -576,8 +574,10 @@ class GalleryController extends Controller
         ]);
         $edited = ($validated['variant'] ?? 'original') === 'edited';
 
-        // Owner-only: never zip/serve bytes of photos merely shared with the user.
-        $photos = Photo::ownedBy($request->user()->id)->whereIn('id', $validated['photo_ids'])->get();
+        // Owner-only + live-only: never zip/serve bytes of photos merely shared
+        // with the user, or trashed ones (ownedBy strips the SoftDeletingScope).
+        $photos = Photo::ownedBy($request->user()->id)->whereNull('deleted_at')
+            ->whereIn('id', $validated['photo_ids'])->get();
         abort_if($photos->isEmpty(), 404);
 
         $disk = BlobStore::disk();
@@ -601,7 +601,11 @@ class GalleryController extends Controller
                     $zip->addFile($file['path'], $this->uniqueZipName($file['name'], $used));
                 }
             } else {
-                $zip->addFromString($this->uniqueZipName($photo->name ?: ('photo-'.$photo->id), $used), (string) $disk->get($photo->disk_path));
+                // Pull to a temp file and add by path so a large original never
+                // sits fully in PHP memory (unbounded addFromString OOMs).
+                $local = DiskTempFile::pull($disk, $photo->disk_path, 'gallery-src');
+                $temps[] = $local;
+                $zip->addFile($local, $this->uniqueZipName($photo->name ?: ('photo-'.$photo->id), $used));
             }
         }
         $zip->close();
@@ -632,7 +636,7 @@ class GalleryController extends Controller
         // there — an unscoped payload would let any user export another user's
         // photo bytes by id (mirrors FileController::queueExport's scoping).
         $uid = $request->user()->id;
-        $photoIds = Photo::ownedBy($uid)
+        $photoIds = Photo::ownedBy($uid)->whereNull('deleted_at')
             ->whereIn('id', array_values($validated['photo_ids']))->pluck('id')->all();
         abort_if($photoIds === [], 422, 'Nothing selected.');
         $count = count($photoIds);
@@ -783,7 +787,7 @@ class GalleryController extends Controller
             'photo_ids.*' => ['integer'],
         ]);
 
-        $count = Photo::ownedBy($request->user()->id)
+        $count = Photo::ownedBy($request->user()->id)->whereNull('deleted_at')
             ->whereIn('id', $validated['photo_ids'])->get()->each->delete()->count();
 
         if ($request->expectsJson()) {
@@ -802,7 +806,7 @@ class GalleryController extends Controller
     {
         $uid = $request->user()->id;
         $count = 0;
-        Photo::ownedBy($uid)->chunkById(500, function ($photos) use (&$count): void {
+        Photo::ownedBy($uid)->whereNull('deleted_at')->chunkById(500, function ($photos) use (&$count): void {
             foreach ($photos as $photo) {
                 $photo->delete();
                 $count++;
@@ -838,19 +842,30 @@ class GalleryController extends Controller
             ->orderBy('duplicate_group_id')
             ->get()
             ->groupBy('duplicate_group_id')
-            ->map(fn ($members, $groupId): array => [
-                'group' => $groupId,
-                'score' => (float) ($members->max('dup_score') ?? 0),
-                'photos' => $members->map(fn (Photo $p): array => [
-                    'id' => $p->id,
-                    'name' => $p->name,
-                    'size' => (int) $p->size,
-                    'size_human' => Bytes::format((int) $p->size),
-                    'thumb' => route('gallery.image', ['photo' => $p, 'size' => 'thumb']),
-                    'media_type' => $p->media_type,
-                    'taken_at' => $p->taken_at?->toDateString(),
-                ])->values(),
-            ])
+            ->map(function ($members, $groupId): array {
+                // Best copy first (largest bytes, then highest resolution, then
+                // oldest) so a keep-first default keeps the best, not a random one.
+                $sorted = $members->sortByDesc(fn (Photo $p) => [
+                    (int) $p->size,
+                    (int) ($p->width ?? 0) * (int) ($p->height ?? 0),
+                    -($p->taken_at?->getTimestamp() ?? 0),
+                ])->values();
+
+                return [
+                    'group' => $groupId,
+                    'score' => (float) ($members->max('dup_score') ?? 0),
+                    'photos' => $sorted->map(fn (Photo $p): array => [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'size' => (int) $p->size,
+                        'size_human' => Bytes::format((int) $p->size),
+                        'dimensions' => $p->width && $p->height ? $p->width.'×'.$p->height : null,
+                        'thumb' => route('gallery.image', ['photo' => $p, 'size' => 'thumb']),
+                        'media_type' => $p->media_type,
+                        'taken_at' => $p->taken_at?->toDateString(),
+                    ])->values(),
+                ];
+            })
             ->values();
 
         return response()->json(['groups' => $groups]);
@@ -861,7 +876,7 @@ class GalleryController extends Controller
     {
         $keepId = $request->validate(['keep_id' => ['required', 'integer']])['keep_id'];
 
-        $members = Photo::ownedBy($request->user()->id)->where('duplicate_group_id', $group)->get();
+        $members = Photo::ownedBy($request->user()->id)->whereNull('deleted_at')->where('duplicate_group_id', $group)->get();
         abort_if($members->isEmpty(), 404);
         abort_unless($members->contains('id', $keepId), 422);
 
@@ -881,7 +896,7 @@ class GalleryController extends Controller
     /** Mark a group as "not a duplicate" so it is excluded from future scans. */
     public function dismissDuplicate(Request $request, string $group): JsonResponse|RedirectResponse
     {
-        $affected = Photo::ownedBy($request->user()->id)
+        $affected = Photo::ownedBy($request->user()->id)->whereNull('deleted_at')
             ->where('duplicate_group_id', $group)
             ->update(['duplicate_group_id' => null, 'dup_score' => null, 'dup_dismissed_at' => now()]);
 
@@ -915,8 +930,17 @@ class GalleryController extends Controller
         $count = 0;
 
         $this->trashedQuery($request)->get()->each(function (Photo $photo) use ($disk, &$count): void {
-            $disk->delete($photo->allPaths());
-            $photo->forceDelete();
+            // Delete the row FIRST (in a transaction), then the bytes. If the row
+            // delete fails it rolls back and the bytes stay intact; a post-commit
+            // disk failure only leaves a harmless orphan (never a live/trashed row
+            // pointing at already-deleted bytes = a broken, unrecoverable photo).
+            $paths = $photo->allPaths();
+            try {
+                DB::transaction(fn () => $photo->forceDelete());
+            } catch (Throwable) {
+                return; // skip this one, keep the bytes; don't strand the rest
+            }
+            $disk->delete($paths);
             $count++;
         });
 
