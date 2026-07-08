@@ -88,7 +88,10 @@
                 {{-- Rendered preview (client-side markdown, DOMPurify-sanitised) --}}
                 <div class="min-w-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm lg:max-w-md">
                     <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('notes.preview') }}</p>
-                    <div class="prose prose-sm max-w-none text-gray-800 dark:text-gray-200" x-html="previewHtml"></div>
+                    {{-- github-markdown-css styles .markdown-body (imported in app.js);
+                         Tailwind preflight strips raw <h1>/<strong>/lists otherwise.
+                         markdown-body brings its own GitHub light styling + bg. --}}
+                    <div class="markdown-body rounded-md p-3 text-sm" x-html="previewHtml"></div>
                 </div>
               </div>
             </template>
