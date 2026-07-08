@@ -11,12 +11,10 @@ use App\Models\StoredFile;
 use App\Models\UploadLink;
 use App\Support\ArchiveName;
 use App\Support\BlobStore;
-use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -126,32 +124,25 @@ class UploadLinkController extends Controller
         $folderId = $this->resolveUploadFolder($ownerId, $link->file_folder_id, (string) $request->input('path', ''));
         $blob = (string) Str::uuid();
 
-        // Serialize the quota check + write on the owner's per-user key (same as
-        // the authenticated paths), so concurrent anonymous uploads can't each
-        // pass the same stale quota baseline and overshoot the owner's storage.
+        // Best-effort quota check (no per-user lock — holding it across the slow
+        // object-storage write serialised concurrent uploads into 429 timeouts).
+        abort_if($this->quotaExceeded($ownerId, (int) $file->getSize()), 413, __('files.quota_exceeded'));
+        abort_if(BlobStore::disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
         try {
-            Cache::lock('files-write:'.$ownerId, 120)->block(20, function () use ($ownerId, $file, $folderId, $name, $blob): void {
-                abort_if($this->quotaExceeded($ownerId, (int) $file->getSize()), 413, __('files.quota_exceeded'));
-                abort_if(BlobStore::disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
-                try {
-                    $stored = new StoredFile;
-                    $stored->forceFill([
-                        'id' => (string) Str::uuid(),
-                        'user_id' => $ownerId,
-                        'file_folder_id' => $folderId,
-                        'name' => $this->uniqueName($name, $ownerId, $folderId),
-                        'blob' => $blob,
-                        'size' => (int) $file->getSize(),
-                        'mime' => $file->getMimeType() ?: 'application/octet-stream',
-                    ])->save();
-                    ExtractFileText::dispatch($stored->id, $blob)->afterCommit();
-                } catch (\Throwable $e) {
-                    BlobStore::disk()->delete('files/'.$blob);
-                    throw $e;
-                }
-            });
-        } catch (LockTimeoutException) {
-            abort(429, __('files.busy'));
+            $stored = new StoredFile;
+            $stored->forceFill([
+                'id' => (string) Str::uuid(),
+                'user_id' => $ownerId,
+                'file_folder_id' => $folderId,
+                'name' => $this->uniqueName($name, $ownerId, $folderId),
+                'blob' => $blob,
+                'size' => (int) $file->getSize(),
+                'mime' => $file->getMimeType() ?: 'application/octet-stream',
+            ])->save();
+            ExtractFileText::dispatch($stored->id, $blob)->afterCommit();
+        } catch (\Throwable $e) {
+            BlobStore::disk()->delete('files/'.$blob);
+            throw $e;
         }
 
         $link->increment('uploads');

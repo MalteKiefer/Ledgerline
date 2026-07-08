@@ -59,6 +59,14 @@ return [
 
     'phash_max_distance' => (int) env('GALLERY_PHASH_MAX_DISTANCE', 6),
 
+    // Days a photo stays in the trash before it (and its blobs) are permanently
+    // purged by the scheduled gallery:prune-trash command.
+    'trash_retention_days' => (int) env('GALLERY_TRASH_RETENTION_DAYS', 30),
+
+    // Grace before an unreferenced gallery blob on disk is swept (so an in-flight
+    // upload whose row isn't saved yet is never reaped).
+    'blob_orphan_grace_hours' => (int) env('GALLERY_BLOB_ORPHAN_GRACE_HOURS', 24),
+
     /*
     |--------------------------------------------------------------------------
     | Face recognition ("People")

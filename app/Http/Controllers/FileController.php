@@ -289,23 +289,22 @@ class FileController extends Controller
         ]);
 
         $uid = (int) $request->user()->id;
-        // Serialize check-and-reserve per user so concurrent uploads can't each
-        // pass the same stale quota baseline and collectively overshoot.
-        $id = $this->withUserLock($uid, function () use ($request, $uid): string {
-            $incoming = (int) $request->file('file')->getSize();
-            abort_if($this->quotaExceeded($uid, $incoming), 413, __('files.quota_exceeded'));
+        // Best-effort quota check (NOT under the per-user write lock): holding the
+        // lock across the slow object-storage write serialised all concurrent
+        // uploads and timed them out into 429s during a bulk upload. A minor
+        // quota overshoot from concurrent uploads is acceptable; blocking bulk
+        // uploads is not.
+        $incoming = (int) $request->file('file')->getSize();
+        abort_if($this->quotaExceeded($uid, $incoming), 413, __('files.quota_exceeded'));
 
-            $id = (string) Str::uuid();
-            // Fail loudly on a failed/short storage write instead of recording a
-            // valid-looking blob id whose bytes are missing.
-            abort_if($this->disk()->putFileAs('files', $request->file('file'), $id) === false, 500, __('files.upload_failed'));
-            abort_unless($this->disk()->exists('files/'.$id), 500, __('files.upload_failed'));
-            // Record the uploader so sync can reject blobs the caller never uploaded
-            // and the sweeper can reclaim never-synced blobs.
-            FileBlob::create(['blob' => $id, 'user_id' => $uid, 'created_at' => now()]);
-
-            return $id;
-        });
+        $id = (string) Str::uuid();
+        // Fail loudly on a failed/short storage write instead of recording a
+        // valid-looking blob id whose bytes are missing.
+        abort_if($this->disk()->putFileAs('files', $request->file('file'), $id) === false, 500, __('files.upload_failed'));
+        abort_unless($this->disk()->exists('files/'.$id), 500, __('files.upload_failed'));
+        // Record the uploader so sync can reject blobs the caller never uploaded
+        // and the sweeper can reclaim never-synced blobs.
+        FileBlob::create(['blob' => $id, 'user_id' => $uid, 'created_at' => now()]);
 
         return response()->json(['id' => $id], 201);
     }
@@ -529,31 +528,30 @@ class FileController extends Controller
         $uid = (int) $request->user()->id;
         $blob = (string) Str::uuid();
 
-        // Serialize quota check-and-write per user so parallel imports/uploads
-        // can't collectively overshoot the quota.
-        $stored = $this->withUserLock($uid, function () use ($file, $data, $blob, $uid): StoredFile {
-            abort_if($this->quotaExceeded($uid, (int) $file->getSize()), 413, __('files.quota_exceeded'));
-            abort_if($this->disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
+        // Best-effort quota check WITHOUT the per-user write lock — holding it
+        // across the slow object-storage write serialised concurrent uploads and
+        // timed them out into 429s. A minor overshoot is acceptable.
+        abort_if($this->quotaExceeded($uid, (int) $file->getSize()), 413, __('files.quota_exceeded'));
+        abort_if($this->disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
 
-            try {
-                return StoredFile::create([
-                    'id' => (string) Str::uuid(),
-                    'file_folder_id' => $data['folder_id'] ?? null,
-                    'name' => $file->getClientOriginalName() ?: 'attachment',
-                    // Sniff the real type from the bytes (finfo), never the client-sent
-                    // header: this row is created from an untrusted mail attachment and
-                    // the stored mime later drives how the client previews the file.
-                    'mime' => $file->getMimeType() ?: 'application/octet-stream',
-                    'size' => $file->getSize(),
-                    'blob' => $blob,
-                    'tags' => [],
-                ]);
-            } catch (\Throwable $e) {
-                // Don't leak the just-written bytes if the row could not be created.
-                $this->disk()->delete('files/'.$blob);
-                throw $e;
-            }
-        });
+        try {
+            $stored = StoredFile::create([
+                'id' => (string) Str::uuid(),
+                'file_folder_id' => $data['folder_id'] ?? null,
+                'name' => $file->getClientOriginalName() ?: 'attachment',
+                // Sniff the real type from the bytes (finfo), never the client-sent
+                // header: this row is created from an untrusted mail attachment and
+                // the stored mime later drives how the client previews the file.
+                'mime' => $file->getMimeType() ?: 'application/octet-stream',
+                'size' => $file->getSize(),
+                'blob' => $blob,
+                'tags' => [],
+            ]);
+        } catch (\Throwable $e) {
+            // Don't leak the just-written bytes if the row could not be created.
+            $this->disk()->delete('files/'.$blob);
+            throw $e;
+        }
 
         // Index its text so imported files are findable by content search too.
         ExtractFileText::dispatch($stored->id, $blob)->afterCommit();
