@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Dav\Files;
 
 use App\Jobs\ExtractFileText;
+use App\Models\FileBlob;
 use App\Models\StoredFile;
 use Illuminate\Support\Str;
 use Sabre\DAV\Exception\Forbidden;
@@ -52,6 +53,8 @@ class FileNode extends File implements IACL
         // the empty blob and keep what is there (leaves the file intact).
         if ($newSize === 0 && (int) $this->file->size > 0) {
             $this->backend->disk()->delete('files/'.$blob);
+            // Drop the upload record storeBlob just wrote, so it doesn't linger.
+            FileBlob::where('blob', $blob)->delete();
 
             return $this->getETag();
         }

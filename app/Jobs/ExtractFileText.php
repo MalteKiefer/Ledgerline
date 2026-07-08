@@ -26,7 +26,12 @@ class ExtractFileText implements ShouldQueue
 
     public int $timeout = 360;
 
-    public int $tries = 1;
+    // Retry a few times with backoff so a transient disk/tool failure doesn't
+    // permanently leave the file unindexed.
+    public int $tries = 3;
+
+    /** @var array<int,int> */
+    public array $backoff = [30, 120];
 
     public function __construct(private readonly string $fileId, private readonly string $blob) {}
 
