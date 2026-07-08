@@ -25,7 +25,8 @@ class BookmarkController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'folders' => BookmarkFolder::orderBy('name')->get(['id', 'name', 'parent_id', 'color', 'icon']),
+            // name is the sealed {c,n} string; the client decrypts + sorts it.
+            'folders' => BookmarkFolder::orderBy('id')->get(['id', 'name', 'parent_id', 'color', 'icon', 'is_encrypted']),
             'bookmarks' => Bookmark::orderByDesc('favorite')->orderByDesc('updated_at')->get()->map(fn (Bookmark $b) => $this->toArray($b)),
         ]);
     }
@@ -35,12 +36,13 @@ class BookmarkController extends Controller
     public function storeFolder(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
+            // Sealed folder name (zero-knowledge) — opaque ciphertext.
+            'name' => ['required', 'string', 'max:4096'],
             'parent_id' => ['nullable', Rule::exists('bookmark_folders', 'id')->where('user_id', $request->user()->id)],
             'color' => ['nullable', 'string', 'max:20'],
             'icon' => ['nullable', 'string', 'max:40'],
         ]);
-        $folder = BookmarkFolder::create($data);
+        $folder = BookmarkFolder::create([...$data, 'is_encrypted' => true]);
 
         return response()->json($this->folderArray($folder));
     }
@@ -49,10 +51,13 @@ class BookmarkController extends Controller
     public function updateFolder(Request $request, BookmarkFolder $folder): JsonResponse
     {
         $data = $request->validate([
-            'name' => ['sometimes', 'required', 'string', 'max:120'],
+            'name' => ['sometimes', 'required', 'string', 'max:4096'],
             'color' => ['nullable', 'string', 'max:20'],
             'icon' => ['nullable', 'string', 'max:40'],
         ]);
+        if (isset($data['name'])) {
+            $data['is_encrypted'] = true;
+        }
         $folder->update($data);
 
         return response()->json($this->folderArray($folder->refresh()));
@@ -61,7 +66,7 @@ class BookmarkController extends Controller
     /** @return array<string,mixed> */
     private function folderArray(BookmarkFolder $f): array
     {
-        return ['id' => $f->id, 'name' => $f->name, 'parent_id' => $f->parent_id, 'color' => $f->color, 'icon' => $f->icon];
+        return ['id' => $f->id, 'name' => $f->name, 'parent_id' => $f->parent_id, 'color' => $f->color, 'icon' => $f->icon, 'is_encrypted' => (bool) $f->is_encrypted];
     }
 
     /** Move a bookmark into a folder (or to no folder). */

@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Search\Providers\FileSearchProvider;
 use App\Search\Providers\PhotoSearchProvider;
 use App\Search\Providers\TodoSearchProvider;
 
@@ -13,7 +12,6 @@ return [
     */
     'providers' => [
         PhotoSearchProvider::class,
-        FileSearchProvider::class,
         TodoSearchProvider::class,
     ],
 
