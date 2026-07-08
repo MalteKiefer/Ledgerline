@@ -2162,6 +2162,11 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
         if (! res.ok) return false;
         const b = await res.json();
         (b.ids ?? []).forEach((id) => document.querySelector(`[data-photo-id="${id}"]`)?.remove());
+        // Drop any day section left with no photos, so its date header does not
+        // linger after all of that day's images are deleted.
+        document.querySelectorAll('section[data-day]').forEach((s) => {
+            if (! s.querySelector('[data-photo-id]')) s.remove();
+        });
         if (this.viewerOpen && (b.ids ?? []).includes(Number(this.current.id))) this.viewerOpen = false;
         this.applySelection([]);
         return true;
@@ -3054,7 +3059,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     async load() {
         try {
-            const res = await fetch(config.dataUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            // no-store: never serve a stale HTTP-cached tree after a mutation,
+            // otherwise deletes/moves appear to "come back" until a hard reload.
+            const res = await fetch(config.dataUrl, { cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) { this.state = 'error'; return; }
             const data = await res.json();
             this.manifest = data.files ? data : { v: 1, folders: [], files: [] };
@@ -3520,7 +3527,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             }
         }
         this.selected = [];
-        await this.persist().catch(() => {});
+        // If the move fails to save, re-sync from the server so the client never
+        // shows items in a folder they were not actually moved to (a later delete
+        // of the old folder would then look like data loss).
+        await this.persist().catch(() => this.load());
     },
 
     /* ---- Drag & drop into folders ---- */
@@ -3550,10 +3560,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             if (item.id === targetFolderId) return;
             if (targetFolderId !== null && this.subtree(item.id).has(targetFolderId)) return; // no cycle
             const f = this.manifest.folders.find((x) => x.id === item.id);
-            if (f && (f.parent ?? null) !== targetFolderId) { f.parent = targetFolderId; await this.persist().catch(() => {}); }
+            if (f && (f.parent ?? null) !== targetFolderId) { f.parent = targetFolderId; await this.persist().catch(() => this.load()); }
         } else {
             const f = this.manifest.files.find((x) => x.id === item.id);
-            if (f && (f.folder ?? null) !== targetFolderId) { f.folder = targetFolderId; await this.persist().catch(() => {}); }
+            if (f && (f.folder ?? null) !== targetFolderId) { f.folder = targetFolderId; await this.persist().catch(() => this.load()); }
         }
     },
 
@@ -4265,6 +4275,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
  */
 Alpine.data('albumsPage', (cfg = {}) => ({
     ...shareMixin(cfg),
+    // Exposed so template expressions (:href) can read it — the closure `cfg`
+    // itself is not visible inside Blade x-bind/x-text, only component state is.
+    cfg,
     albums: [], loading: true,
     nameModal: { open: false, value: '' },
 

@@ -69,7 +69,9 @@ class FileController extends Controller
                 'note' => $f->note,
                 'tags' => $f->tags ?? [],
             ])->all(),
-        ]);
+            // Never let a proxy/browser serve a stale tree: the client refetches this
+            // right after every delete/move and must see the current state.
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     /** Replace the tree from the client's manifest (upsert + delete missing). */
