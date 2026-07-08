@@ -857,6 +857,13 @@ class FileController extends Controller
     {
         [$fileIds] = $this->ownedIds($request);
         foreach (StoredFile::withoutGlobalScopes()->withTrashed()->whereIn('id', $fileIds)->get() as $file) {
+            // If the file's folder was deleted while it sat in the trash, restoring
+            // it into a gone folder would make it invisible (dangling folder id).
+            // Reparent such orphans to the root so a restore is always visible.
+            if ($file->file_folder_id !== null
+                && ! FileFolder::withoutGlobalScopes()->whereKey($file->file_folder_id)->exists()) {
+                $file->file_folder_id = null;
+            }
             $file->restore();
         }
 

@@ -10,7 +10,9 @@ use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\UserSetting;
 use App\Support\BlobStore;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Sabre\DAV\Exception\InsufficientStorage;
 
@@ -46,24 +48,31 @@ class FileDavBackend
         fclose($out);
         $size = (int) (filesize($tmp) ?: 0);
 
-        if ($this->overQuota($userId, $size)) {
+        // Serialize the quota check + write on the SAME per-user key the web paths
+        // use, so a DAV PUT and a concurrent web upload/sync can't both pass the
+        // quota against the same stale baseline and overshoot.
+        try {
+            return Cache::lock('files-write:'.$userId, 120)->block(20, function () use ($userId, $size, $tmp): string {
+                if ($this->overQuota($userId, $size)) {
+                    throw new InsufficientStorage('Storage quota exceeded.');
+                }
+                $blob = (string) Str::uuid();
+                $stream = fopen($tmp, 'r');
+                $this->disk()->writeStream('files/'.$blob, $stream);
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+                // Record the uploader so this blob is recognised by the web
+                // full-replace sync and reclaimable by the orphan sweep.
+                FileBlob::create(['blob' => $blob, 'user_id' => $userId, 'created_at' => now()]);
+
+                return $blob;
+            });
+        } catch (LockTimeoutException) {
+            throw new InsufficientStorage('Storage is busy, try again.');
+        } finally {
             @unlink($tmp);
-            throw new InsufficientStorage('Storage quota exceeded.');
         }
-
-        $blob = (string) Str::uuid();
-        $stream = fopen($tmp, 'r');
-        $this->disk()->writeStream('files/'.$blob, $stream);
-        if (is_resource($stream)) {
-            fclose($stream);
-        }
-        @unlink($tmp);
-
-        // Record the uploader so this blob is recognised by the web full-replace
-        // sync and reclaimable by the orphan sweep if never attached.
-        FileBlob::create(['blob' => $blob, 'user_id' => $userId, 'created_at' => now()]);
-
-        return $blob;
     }
 
     /**
