@@ -64,6 +64,30 @@ class FilesSyncGuardsTest extends TestCase
         $this->assertNotNull(FileFolder::withoutGlobalScopes()->withTrashed()->find($drop)?->deleted_at);
     }
 
+    public function test_sync_self_heals_a_dangling_folder_reference_to_root(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $u = User::factory()->create();
+
+        // A live file whose folder points at a folder NOT in the incoming manifest
+        // (e.g. one that was trashed) — the sync must not 422; it reparents to root.
+        $gone = (string) Str::uuid();
+        $blob = (string) Str::uuid();
+        Storage::disk('files')->put('files/'.$blob, 'b');
+        $fid = (string) Str::uuid();
+        (new StoredFile)->forceFill(['id' => $fid, 'user_id' => $u->id, 'file_folder_id' => $gone, 'name' => 'f', 'blob' => $blob, 'mime' => 'text/plain', 'size' => 1])->save();
+
+        // Manifest keeps the file (folder=gone, not listed) plus one live folder.
+        $keep = (string) Str::uuid();
+        $this->actingAs($u)->putJson(route('files.sync'), [
+            'folders' => [['id' => $keep, 'name' => 'Keep', 'parent' => null]],
+            'files' => [['id' => $fid, 'blob' => $blob, 'name' => 'f', 'mime' => 'text/plain', 'size' => 1, 'folder' => $gone, 'tags' => []]],
+        ])->assertOk();
+
+        $this->assertNull(StoredFile::withoutGlobalScopes()->find($fid)->file_folder_id);
+    }
+
     public function test_sync_refuses_an_empty_folder_list_while_folders_exist(): void
     {
         Storage::fake('files');

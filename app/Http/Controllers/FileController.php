@@ -153,9 +153,22 @@ class FileController extends Controller
 
         $this->withUserLock($uid, function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): void {
             $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): array {
+                // Set of folder ids present in this manifest, used to self-heal
+                // dangling references (a live file/folder pointing at a folder
+                // that is not in the manifest — e.g. one that was trashed — is
+                // reparented to the root instead of rejecting the whole sync).
+                $manifestFolderIds = [];
+                foreach ($folders as $f) {
+                    $manifestFolderIds[$f['id']] = true;
+                }
+
                 $folderIds = [];
                 foreach ($folders as $f) {
-                    $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
+                    $parent = $f['parent'] ?? null;
+                    if ($parent !== null && ! isset($manifestFolderIds[$parent])) {
+                        $parent = null; // dangling parent → root
+                    }
+                    $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $parent, 'name' => $f['name']]);
                     $folderIds[] = $f['id'];
                 }
                 // Soft-delete live folders the manifest dropped (recoverable);
@@ -187,9 +200,16 @@ class FileController extends Controller
                         $size = (int) $disk->size('files/'.$f['blob']);
                     }
                     $total += $size;
+                    // Self-heal a dangling folder ref on a LIVE file (folder not
+                    // in the manifest → root); a trashed file keeps its folder id
+                    // so a restore can rebuild the hierarchy.
+                    $folderRef = $f['folder'] ?? null;
+                    if (empty($f['trashed']) && $folderRef !== null && ! isset($manifestFolderIds[$folderRef])) {
+                        $folderRef = null;
+                    }
                     $file->fill([
                         'user_id' => $uid,
-                        'file_folder_id' => $f['folder'] ?? null,
+                        'file_folder_id' => $folderRef,
                         'name' => $f['name'],
                         'mime' => $f['mime'] ?? 'application/octet-stream',
                         'size' => $size,
@@ -1031,22 +1051,11 @@ class FileController extends Controller
         foreach ($folders as $f) {
             $parent[$f['id']] = $f['parent'] ?? null;
         }
-        $known = array_fill_keys(array_keys($parent), true);
 
-        foreach ($folders as $f) {
-            $p = $f['parent'] ?? null;
-            abort_if($p !== null && ! isset($known[$p]), 422, 'Folder parent does not resolve within the manifest.');
-        }
-        foreach ($files as $f) {
-            // A trashed file may still point at a folder that has since been
-            // trashed (trashed folders aren't in the live manifest). That's fine
-            // — it isn't in the tree — so only require LIVE files to resolve.
-            if (! empty($f['trashed'])) {
-                continue;
-            }
-            $folder = $f['folder'] ?? null;
-            abort_if($folder !== null && ! isset($known[$folder]), 422, 'File folder does not resolve within the manifest.');
-        }
+        // NOTE: a dangling parent/file-folder reference (pointing at a folder not
+        // in the manifest — e.g. one that was trashed) is NOT rejected here; the
+        // sync self-heals it by reparenting the row to the root. Only a parent
+        // CYCLE is fatal, because it would make the tree walkers recurse forever.
 
         // Cycle check in O(n): memoize folders already proven to reach the root,
         // so each node is walked at most once across all starts (the old
