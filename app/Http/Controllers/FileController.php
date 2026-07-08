@@ -140,6 +140,14 @@ class FileController extends Controller
             ->filter()->flip();
         foreach ($files as $f) {
             abort_unless(isset($allowed[$f['blob']]), 422, 'Unknown blob reference.');
+            // Structural check on the sealed fields: both must be a {c,n} JSON
+            // envelope (ciphertext + nonce). This can't read the plaintext, but
+            // it rejects an obviously-malformed value that would store an
+            // undecryptable row (defense-in-depth for zero-knowledge).
+            foreach (['enc_metadata', 'enc_file_key'] as $sealed) {
+                $env = json_decode((string) $f[$sealed], true);
+                abort_unless(is_array($env) && isset($env['c'], $env['n']) && is_string($env['c']) && is_string($env['n']), 422, 'Malformed sealed field.');
+            }
         }
 
         // Per-user storage quota (0 = unlimited). Reconcile sizes from disk so a

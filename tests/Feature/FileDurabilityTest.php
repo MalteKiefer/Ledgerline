@@ -26,7 +26,7 @@ class FileDurabilityTest extends TestCase
         Storage::disk(config('files.disk'))->put('files/'.$blob, str_repeat('x', $size));
         $this->actingAs($user)->putJson(route('files.sync'), [
             'folders' => [],
-            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => []]],
+            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => []]],
         ])->assertOk();
     }
 

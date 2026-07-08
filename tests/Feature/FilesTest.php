@@ -45,12 +45,12 @@ class FilesTest extends TestCase
         $this->putJson(route('files.sync'), [
             'folders' => [],
             'files' => [[
-                'id' => $fileId, 'blob' => $blob, 'enc_metadata' => 'sealed',
-                'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => ['work'],
+                'id' => $fileId, 'blob' => $blob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}',
+                'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => ['work'],
             ]],
         ])->assertOk();
 
-        $this->assertDatabaseHas('files', ['id' => $fileId, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'is_encrypted' => true]);
+        $this->assertDatabaseHas('files', ['id' => $fileId, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'is_encrypted' => true]);
         $this->assertSame(['work'], StoredFile::find($fileId)->tags);
     }
 
@@ -65,7 +65,7 @@ class FilesTest extends TestCase
         // SOFT-deleted (recoverable from the trash), never hard-deleted, so a
         // stale/partial/racing manifest can never cause irreversible loss.
         $this->putJson(route('files.sync'), ['folders' => [], 'files' => [[
-            'id' => $keep->id, 'blob' => $keepBlob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => [],
+            'id' => $keep->id, 'blob' => $keepBlob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => [],
         ]]])->assertOk();
 
         $this->assertNotNull(StoredFile::find($keep->id));
@@ -88,7 +88,7 @@ class FilesTest extends TestCase
         $id = (string) Str::uuid();
         $this->putJson(route('files.sync'), [
             'folders' => [],
-            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => []]],
+            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => []]],
         ])->assertOk();
 
         // Dropping the file (explicitly confirmed) SOFT-deletes it and KEEPS its
@@ -113,7 +113,7 @@ class FilesTest extends TestCase
         // back from the data endpoint (so it shows in the trash view).
         $this->putJson(route('files.sync'), [
             'folders' => [],
-            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => [], 'trashed' => now()->toIso8601String()]],
+            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => [], 'trashed' => now()->toIso8601String()]],
         ])->assertOk();
 
         $this->assertTrue(StoredFile::withTrashed()->find($id)->trashed());
@@ -146,8 +146,8 @@ class FilesTest extends TestCase
         $this->putJson(route('files.sync'), [
             'folders' => [],
             'files' => [[
-                'id' => (string) Str::uuid(), 'blob' => (string) Str::uuid(), 'enc_metadata' => 'sealed',
-                'enc_file_key' => 'wrapped', 'folder' => (string) Str::uuid(), 'tags' => [],
+                'id' => (string) Str::uuid(), 'blob' => (string) Str::uuid(), 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}',
+                'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => (string) Str::uuid(), 'tags' => [],
             ]],
         ])->assertStatus(422);
 

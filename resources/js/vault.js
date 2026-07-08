@@ -153,6 +153,12 @@ export const Vault = {
         }
     },
 
+    // When the cached key is set to expire (ms epoch); 0 if none. Lets an in-page
+    // idle watchdog auto-lock once this passes.
+    expiresAt() {
+        return Number(sessionStorage.getItem(CACHE_EXPIRES) || 0);
+    },
+
     lock() {
         this.vk = null;
         metaMemo.clear();

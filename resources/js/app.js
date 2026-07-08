@@ -10,6 +10,11 @@ import { Vault } from './vault';
 window.Vault = Vault;
 Vault.boot();
 
+// Upper bound for in-browser file encryption. Encryption buffers the whole file
+// (~2-3x its size) in RAM, so files above this are rejected with a message
+// instead of crashing the tab. Streaming encryption would lift this later.
+const MAX_ENCRYPT_BYTES = 1024 * 1024 * 1024; // 1 GiB
+
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
 document.addEventListener('alpine:init', () => {
@@ -44,6 +49,18 @@ document.addEventListener('alpine:init', () => {
         get unlocked() { this._unlockedAt; return window.Vault.unlocked(); },
         async init() {
             try { this.configured = (await window.Vault.status()).configured; } catch (e) { /* leave false */ }
+            // Idle watchdog: auto-lock once the cached key's idle window passes,
+            // and extend that window on real user activity. Runs in-page (the
+            // previous check only ran at page load).
+            const bump = () => { if (window.Vault.unlocked()) window.Vault.touch(); };
+            let last = 0;
+            const onActivity = () => { const t = Date.now(); if (t - last > 15000) { last = t; bump(); } };
+            ['pointerdown', 'keydown', 'scroll'].forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+            setInterval(() => {
+                if (window.Vault.unlocked() && window.Vault.expiresAt() > 0 && Date.now() > window.Vault.expiresAt()) {
+                    this.lock();
+                }
+            }, 15000);
         },
         async setup(passphrase) {
             const code = await window.Vault.setup(passphrase);
@@ -3131,44 +3148,64 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     // ---- Zero-knowledge (de/serialize the manifest) ----
 
-    // Decrypt a server folder row {id,name(sealed),parent} to an in-memory row.
+    // Decrypt a server folder row {id,name(sealed),parent}. If the name can't be
+    // decrypted (wrong key / corrupt), keep the ORIGINAL sealed string verbatim
+    // so a later persist re-emits it unchanged instead of destroying it.
     _decFolder(f) {
-        let name = '';
-        try { name = window.Vault.decryptFileMeta(f.name).name; } catch (e) { name = '???'; }
-        return { id: f.id, name, parent: f.parent ?? null };
+        let name = '???';
+        let decOk = false;
+        try { name = window.Vault.decryptFileMeta(f.name).name; decOk = true; } catch (e) { /* undecryptable */ }
+        return { id: f.id, name, parent: f.parent ?? null, _decOk: decOk, _rawName: f.name };
     },
-    // Decrypt a server file row into the plaintext shape the UI expects, keeping
-    // the wrapped file key + blob for later download/persist.
+    // Decrypt a server file row into the plaintext shape the UI expects. Tags live
+    // INSIDE the sealed metadata (never a plaintext column). The raw sealed blobs
+    // are kept so an undecryptable row round-trips untouched.
     _decFile(f) {
-        let meta = { name: '???', mime: 'application/octet-stream', size: f.size };
-        try { meta = window.Vault.decryptFileMeta(f.enc_metadata); } catch (e) { /* stays ??? */ }
+        let meta = null;
+        try { meta = window.Vault.decryptFileMeta(f.enc_metadata); } catch (e) { /* undecryptable */ }
+        const decOk = meta !== null;
+        const note = this._openNote(f.note);
         return {
             id: f.id, blob: f.blob, encFileKey: f.enc_file_key,
-            name: meta.name, mime: meta.mime, size: f.size,
+            name: decOk ? meta.name : '???', mime: decOk ? (meta.mime || 'application/octet-stream') : 'application/octet-stream', size: f.size,
             folder: f.folder ?? null, trashed: f.trashed ?? null, created: f.created ?? null,
-            favorite: !! f.favorite, note: this._openNote(f.note), tags: f.tags || [],
+            favorite: !! f.favorite, note: note.value, tags: decOk ? (meta.tags || []) : [],
+            _decOk: decOk, _rawMeta: f.enc_metadata, _noteOk: note.ok, _rawNote: f.note,
         };
     },
-    // Notes are sealed too (the server must not see their plaintext).
+    // Notes are sealed too. Returns {value, ok} so a failed decrypt is not later
+    // re-sealed as an empty note (which would erase the real note).
     _openNote(sealed) {
-        if (! sealed) return null;
-        try { return window.Vault.decryptFileMeta(sealed).name; } catch (e) { return ''; }
+        if (! sealed) return { value: null, ok: true };
+        try { return { value: window.Vault.decryptFileMeta(sealed).name, ok: true }; } catch (e) { return { value: '', ok: false }; }
     },
-    // Re-seal an in-memory folder row for the wire.
+    // Re-seal an in-memory folder row for the wire. Never re-seal a placeholder:
+    // an undecryptable folder passes its original sealed name through verbatim.
     _encFolder(f) {
-        return { id: f.id, name: window.Vault.sealName(f.name), parent: f.parent ?? null };
+        return { id: f.id, name: f._decOk === false ? f._rawName : window.Vault.sealName(f.name), parent: f.parent ?? null };
     },
-    // Re-seal an in-memory file row for the wire: fresh sealed metadata (name may
-    // have changed via rename) plus the already-wrapped per-file key from upload.
+    // Re-seal an in-memory file row for the wire. An undecryptable row (wrong key
+    // / corrupt) emits its ORIGINAL sealed metadata + note verbatim so a persist
+    // can never overwrite real data with a '???' placeholder.
     _encFile(f) {
-        const m = window.Vault.encryptMeta({ name: f.name, mime: f.mime || 'application/octet-stream', size: f.size });
+        if (f._decOk === false) {
+            return {
+                id: f.id, blob: f.blob, enc_metadata: f._rawMeta, enc_file_key: f.encFileKey,
+                folder: f.folder ?? null, tags: [],
+                trashed: f.trashed ?? null, favorite: !! f.favorite,
+                note: f.note ?? f._rawNote ?? null,
+            };
+        }
+        // Tags are sealed inside the metadata (a plaintext tags column would leak).
+        const m = window.Vault.encryptMeta({ name: f.name, mime: f.mime || 'application/octet-stream', size: f.size, tags: f.tags || [] });
         return {
             id: f.id, blob: f.blob,
             enc_metadata: JSON.stringify({ c: m.cipher, n: m.nonce }),
             enc_file_key: f.encFileKey,
-            folder: f.folder ?? null, tags: f.tags || [],
+            folder: f.folder ?? null, tags: [],
             trashed: f.trashed ?? null, favorite: !! f.favorite,
-            note: f.note ? window.Vault.sealName(f.note) : null,
+            // A note that failed to decrypt is passed through untouched.
+            note: f._noteOk === false ? f._rawNote : (f.note ? window.Vault.sealName(f.note) : null),
         };
     },
 
@@ -3226,6 +3263,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             this._persistTimer = null;
             if (this.state === 'ready') this.persist().catch(() => {});
         }, 2000);
+    },
+    // Cancel a pending debounced persist so a stale pre-mutation snapshot can't
+    // fire (e.g. an upload's timer resurrecting a file the user just trashed).
+    _cancelPendingPersist() {
+        if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
     },
 
     // Persist the whole tree; the server syncs it to clean rows. Serialized so
@@ -3670,20 +3712,40 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.deleteOpen = false;
         this.deleteRefs = [];
         if (! refs.length) return;
+        const fileIds = refs.filter((r) => r.kind === 'file').map((r) => r.id);
         const payload = {
-            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
+            file_ids: fileIds,
             folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
             permanent,
         };
+        // Cancel any pending debounced persist + apply the change to the manifest
+        // NOW, so a racing persist (e.g. from an in-flight upload) can't re-send a
+        // pre-trash snapshot and resurrect what was just deleted.
+        this._cancelPendingPersist();
+        this._applyLocalTrash(fileIds, permanent);
         if (! await this.filesPost(config.trashUrl, payload)) { window.llToast(labels.saveFailed); return; }
         this.selected = [];
         await this.load();
+    },
+
+    // Reflect a file trash/purge in the in-memory manifest immediately.
+    _applyLocalTrash(fileIds, permanent) {
+        if (! fileIds.length) return;
+        const set = new Set(fileIds);
+        if (permanent) {
+            this.manifest.files = this.manifest.files.filter((f) => ! set.has(f.id));
+        } else {
+            const stamp = new Date().toISOString();
+            this.manifest.files.forEach((f) => { if (set.has(f.id)) f.trashed = stamp; });
+        }
     },
 
     // Move an item straight to the trash (used by drag-and-drop onto the trash).
     async trashItem(ref) {
         const payload = { file_ids: [], folder_ids: [], permanent: false };
         (ref.kind === 'folder' ? payload.folder_ids : payload.file_ids).push(ref.id);
+        this._cancelPendingPersist();
+        this._applyLocalTrash(payload.file_ids, false);
         if (! await this.filesPost(config.trashUrl, payload)) { window.llToast(labels.saveFailed); return; }
         this.selected = [];
         await this.load();
@@ -3804,9 +3866,13 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 const item = items[idx];
                 const entry = this.uploads[start + idx]; // reactive element
                 try {
-                    // Zero-knowledge: encrypt the whole file in the browser first,
-                    // then upload only the ciphertext. The wrapped per-file key
-                    // (encFileKey) and the plaintext name/size stay client-side.
+                    // Zero-knowledge encryption buffers the whole file in memory
+                    // (~2-3x its size). Reject anything above the cap with a clear
+                    // message instead of crashing the tab with an OOM.
+                    if (item.file.size > MAX_ENCRYPT_BYTES) { const e = new Error('too large'); e.tooLarge = true; throw e; }
+                    // Encrypt the whole file in the browser first, then upload only
+                    // the ciphertext. The wrapped per-file key (encFileKey) and the
+                    // plaintext name/size stay client-side.
                     const enc = await window.Vault.encryptFile(item.file);
                     // Neutral filename — the real name is sealed inside encMeta and
                     // never sent to the server.
@@ -3834,12 +3900,18 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                     this._schedulePersist();
                 } catch (e) {
                     entry.state = 'error';
-                    entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
-                        : (e && e.unreadable ? (labels.uploadUnreadable || labels.uploadFailed) : labels.uploadFailed);
+                    entry.error = e && e.tooLarge ? (labels.encryptTooLarge || labels.uploadFailed)
+                        : (e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
+                            : (e && e.unreadable ? (labels.uploadUnreadable || labels.uploadFailed) : labels.uploadFailed));
                 }
             }
         };
-        await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
+        // Fewer parallel workers when the batch has large files: each in-flight
+        // encryption holds the whole file (x2-3) in RAM, so 4 large ones at once
+        // would multiply peak memory and risk an OOM.
+        const hasLarge = items.some((i) => i.file.size > 64 * 1024 * 1024);
+        const lanes = Math.min(hasLarge ? 2 : 4, items.length);
+        await Promise.all(Array.from({ length: lanes }, worker));
 
         this.uploadBatches--;
         await this.persist().catch(() => {});
@@ -4154,9 +4226,14 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const text = this.editorView.state.doc.toString();
             const bytes = new TextEncoder().encode(text);
 
+            // Zero-knowledge: encrypt the edited bytes with a FRESH per-file key
+            // (exactly like upload) and upload only the ciphertext. Uploading raw
+            // bytes here would leak plaintext to the server AND leave the manifest
+            // row's old wrapped key stale, making the file undecryptable.
+            const enc = window.Vault.encryptContent(bytes, { name: row.name, mime: row.mime || 'text/plain' });
             const data = new FormData();
             data.append('_token', config.token);
-            data.append('file', new Blob([bytes], { type: row.mime || 'text/plain' }), row.name || 'file.txt');
+            data.append('file', new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' }));
             const res = await fetch(config.uploadUrl, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -4168,22 +4245,25 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const entry = this.manifest.files.find((f) => f.id === row.id);
             const oldBlob = entry?.blob;
             const oldSize = entry?.size;
+            const oldKey = entry?.encFileKey;
             if (entry) {
                 entry.blob = id;
                 entry.size = bytes.length;
+                entry.encFileKey = enc.encFileKey; // the new blob's wrapped key
             }
             try {
                 await this.persist();
             } catch (e) {
                 // Revert the optimistic swap and free the orphaned new blob so the
                 // client and server never diverge on a failed save.
-                if (entry) { entry.blob = oldBlob; entry.size = oldSize; }
+                if (entry) { entry.blob = oldBlob; entry.size = oldSize; entry.encFileKey = oldKey; }
                 fetch(`${config.blobBase}/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } }).catch(() => {});
                 throw e;
             }
 
             row.blob = id;
             row.size = bytes.length;
+            row.encFileKey = enc.encFileKey;
             if (oldBlob && oldBlob !== id) {
                 fetch(`${config.blobBase}/${oldBlob}`, {
                     method: 'DELETE',
