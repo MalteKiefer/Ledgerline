@@ -251,7 +251,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
     Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->middleware('throttle:6,1')->name('gallery.download');
     Route::post('/gallery/export', [GalleryController::class, 'queueExport'])->middleware('throttle:20,1')->name('gallery.export');
-    Route::get('/gallery/{photo}/download/edited', [GalleryController::class, 'downloadEdited'])->name('gallery.download.edited');
+    Route::get('/gallery/{photo}/download/edited', [GalleryController::class, 'downloadEdited'])->middleware('throttle:30,1')->name('gallery.download.edited');
     // Throttled: each call blocks on a global geocoder lock + a slow outbound
     // request, so it can pin PHP-FPM workers without a limit.
     Route::get('/gallery/geocode/reverse', [GalleryController::class, 'geocodeReverse'])->middleware('throttle:20,1')->name('gallery.geocode.reverse');

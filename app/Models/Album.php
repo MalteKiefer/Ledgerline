@@ -15,7 +15,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * A user-owned photo album: a named, ordered collection of photos, shareable
  * with other users (ResourceShare) and via a public link (PublicShare).
  */
-#[Fillable(['user_id', 'name', 'cover_photo_id'])]
+// user_id is set by the AssignsOwner creating hook (unfakeable), never mass-assigned.
+#[Fillable(['name', 'cover_photo_id'])]
 class Album extends Model
 {
     use HasUuids;

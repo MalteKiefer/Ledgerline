@@ -367,23 +367,29 @@ class GalleryController extends Controller
 
         $original = $storage->storeOriginal($upload);
 
-        // Save immediately with placeholder renditions; the queue fills the rest.
-        $photo = new Photo([
-            'uuid' => $original['uuid'],
-            'name' => $name,
-            'original_name' => $name,
-            'status' => 'processing',
-            'media_type' => $mediaType,
-            'disk_path' => $original['disk_path'],
-            'thumb_path' => $original['disk_path'],
-            'medium_path' => $original['disk_path'],
-            'mime_type' => $mime,
-            'size' => $original['size'],
-            'checksum' => $original['checksum'],
-            'taken_at' => now(),
-        ]);
-        $photo->uploaded_by = $request->user()->id;
-        $photo->save();
+        try {
+            // Save immediately with placeholder renditions; the queue fills the rest.
+            $photo = new Photo([
+                'uuid' => $original['uuid'],
+                'name' => $name,
+                'original_name' => $name,
+                'status' => 'processing',
+                'media_type' => $mediaType,
+                'disk_path' => $original['disk_path'],
+                'thumb_path' => $original['disk_path'],
+                'medium_path' => $original['disk_path'],
+                'mime_type' => $mime,
+                'size' => $original['size'],
+                'checksum' => $original['checksum'],
+                'taken_at' => now(),
+            ]);
+            $photo->uploaded_by = $request->user()->id;
+            $photo->save();
+        } catch (Throwable $e) {
+            // Don't leak the just-stored original if the row couldn't be created.
+            BlobStore::disk()->delete($original['disk_path']);
+            throw $e;
+        }
 
         ProcessPhoto::dispatch($photo->id);
 
@@ -399,7 +405,9 @@ class GalleryController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'date' => ['required', 'date'],
+            // Constrain to a sane range so an out-of-range date can't be stored
+            // and break the timeline grouping (e.g. year 0 or 9999).
+            'date' => ['required', 'date', 'after:1900-01-01', 'before:2100-01-01'],
             'time' => ['required', 'date_format:H:i'],
             'camera' => ['nullable', 'string', 'max:255'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
@@ -834,9 +842,12 @@ class GalleryController extends Controller
     }
 
     /** Duplicate groups as JSON: each group's members with name, size, similarity. */
-    public function duplicatesData(): JsonResponse
+    public function duplicatesData(Request $request): JsonResponse
     {
         $groups = Photo::query()
+            // Own photos only — the ownerOrShared scope would otherwise leak a
+            // shared photo's duplicate group/score.
+            ->where('uploaded_by', $request->user()->id)
             ->whereNotNull('duplicate_group_id')
             ->orderByDesc('dup_score')
             ->orderBy('duplicate_group_id')

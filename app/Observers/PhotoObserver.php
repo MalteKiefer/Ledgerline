@@ -6,7 +6,9 @@ namespace App\Observers;
 
 use App\Models\Face;
 use App\Models\Photo;
+use App\Models\ResourceShare;
 use App\Services\Gallery\FaceClusterer;
+use App\Support\BlobStore;
 
 /**
  * Keeps face clusters ("People") consistent when photos are permanently deleted.
@@ -22,9 +24,20 @@ class PhotoObserver
         $personIds = Face::where('photo_id', $photo->id)
             ->whereNotNull('person_id')->pluck('person_id')->unique();
 
+        // Free the face-crop thumbnail blobs before dropping the rows, or they
+        // leak on the disk forever.
+        $cropBlobs = Face::where('photo_id', $photo->id)->whereNotNull('thumb_path')->pluck('thumb_path')->all();
+        if ($cropBlobs !== []) {
+            BlobStore::disk()->delete($cropBlobs);
+        }
+
         // Remove this photo's faces now (before recompute); the DB cascade would
         // do the same, but doing it here lets us recount immediately.
         Face::where('photo_id', $photo->id)->delete();
+
+        // Drop any shares of this photo so no dangling resource_shares remain.
+        ResourceShare::where('shareable_type', $photo->getMorphClass())
+            ->where('shareable_id', $photo->getKey())->delete();
 
         $clusterer = app(FaceClusterer::class);
         foreach ($personIds as $personId) {

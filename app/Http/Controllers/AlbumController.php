@@ -6,6 +6,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Album;
 use App\Models\Photo;
+use App\Models\PublicShare;
+use App\Models\ResourceShare;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -98,6 +100,12 @@ class AlbumController extends Controller
     public function destroy(Request $request, Album $album): JsonResponse
     {
         abort_unless($album->isOwnedBy($request->user()->id), 403);
+        // Clean up the album's shares so no dangling internal/public share rows
+        // survive (the photos themselves are untouched — pivot rows drop with it).
+        $morph = $album->getMorphClass();
+        ResourceShare::where('shareable_type', $morph)->where('shareable_id', $album->getKey())->delete();
+        PublicShare::where('shareable_type', $morph)->where('shareable_id', $album->getKey())->delete();
+        $album->photos()->detach();
         $album->delete();
 
         return response()->json(['ok' => true]);
