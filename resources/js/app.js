@@ -2945,6 +2945,9 @@ Alpine.store('paperless', {
 Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
     manifest: { v: 1, folders: [], files: [] },
+    // Serializes every whole-tree PUT and every load() so a full-replace can
+    // never overlap another mutation or a read clobber an unsaved change.
+    _io: Promise.resolve(),
     version: 0,
     cwd: null,
     query: '',
@@ -3057,7 +3060,14 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
-    async load() {
+    // Serialized after any queued PUT, so a refresh never overwrites the manifest
+    // while a write it hasn't seen is still in flight.
+    load() {
+        const run = this._io.then(() => this._loadNow());
+        this._io = run.catch(() => {});
+        return run;
+    },
+    async _loadNow() {
         try {
             // no-store: never serve a stale HTTP-cached tree after a mutation,
             // otherwise deletes/moves appear to "come back" until a hard reload.
@@ -3101,8 +3111,19 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         await this.load();
     },
 
-    // Persist the whole tree; the server syncs it to clean rows.
-    async persist() {
+    // Persist the whole tree; the server syncs it to clean rows. Serialized so
+    // two full-replace PUTs never overlap, and refused before the manifest has
+    // actually loaded so a boot/empty manifest can never wipe the library.
+    persist() {
+        if (this.state !== 'ready') {
+            this.error = labels.saveFailed;
+            return Promise.reject(new Error('files not loaded'));
+        }
+        const run = this._io.then(() => this._persistNow());
+        this._io = run.catch(() => {});
+        return run;
+    },
+    async _persistNow() {
         try {
             const res = await fetch(config.dataUrl, {
                 method: 'PUT',
@@ -3429,7 +3450,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         name = (name || '').trim();
         if (! name) return;
         this.manifest.folders.push({ id: crypto.randomUUID(), name, parent: this.cwd });
-        await this.persist().catch(() => {});
+        await this.persist().catch(() => this.load());
     },
 
     startRename(row) {
@@ -3446,7 +3467,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const item = list.find((x) => x.id === row.id);
         if (item) {
             item.name = name;
-            await this.persist().catch(() => {});
+            await this.persist().catch(() => this.load());
         }
     },
 
@@ -3583,7 +3604,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const item = list.find((x) => x.id === ref.id);
         if (item) {
             item.tags = tags;
-            await this.persist().catch(() => {});
+            await this.persist().catch(() => this.load());
         }
     },
 
