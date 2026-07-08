@@ -19,19 +19,6 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 // Fire to-do reminders that have come due.
 Schedule::command('reminders:send')->everyMinute()->withoutOverlapping();
 
-// Fire calendar event alarms (VALARM) that have come due.
-Schedule::command('calendar:remind')->everyMinute()->withoutOverlapping();
-
-// Refresh subscribed remote ICS feeds that are due (each feed checks its own
-// interval; runs every 15 minutes).
-Schedule::command('calendar:refresh-subscriptions')->everyFifteenMinutes()->withoutOverlapping();
-
-// Rebuild the holidays calendar daily (advances the rolling year window).
-Schedule::command('calendar:refresh-holidays')->daily()->withoutOverlapping();
-
-// Trim the WebDAV sync-collection change logs (bounded history per collection).
-Schedule::command('dav:prune-changes')->daily()->withoutOverlapping();
-
 // Pull every mail account into the local archive (server-deleted mail is kept).
 
 // Remove expired download exports (past their retention window) and their zips.

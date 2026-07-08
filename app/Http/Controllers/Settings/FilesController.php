@@ -7,7 +7,6 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
-use App\Models\DavCredential;
 use App\Models\UserSetting;
 use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\View\View;
@@ -31,7 +30,6 @@ class FilesController extends Controller
 
         return view('settings.files.edit', [
             'maxVersions' => UserSetting::for($request->user()->id)->file_max_versions ?? 10,
-            'davUsername' => DavCredential::where('user_id', $request->user()->id)->value('username'),
             'isAdmin' => $admin,
             'limits' => $admin ? AppSettings::current() : null,
         ]);

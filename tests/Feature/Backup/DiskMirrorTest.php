@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Backup;
 
+use App\Services\Backup\BackupCancelled;
 use App\Services\Backup\DiskMirror;
 use Illuminate\Support\Facades\Storage;
 use League\Flysystem\Filesystem;
@@ -62,9 +63,9 @@ class DiskMirrorTest extends TestCase
 
         [$dest, $dir] = $this->destFs();
         $mirror = new DiskMirror;
-        $cancel = fn () => throw new \App\Services\Backup\BackupCancelled('stop');
+        $cancel = fn () => throw new BackupCancelled('stop');
 
-        $this->expectException(\App\Services\Backup\BackupCancelled::class);
+        $this->expectException(BackupCancelled::class);
         try {
             $mirror->mirror($dest, 'vault', 'job-1', fn (string $m) => null, $cancel);
         } finally {

@@ -25,7 +25,6 @@ class RunCommand implements ShouldQueue
 
     private const ALLOWED = [
         'files:extract-text',
-        'calendar:refresh-subscriptions',
     ];
 
     /** @param array<string, mixed> $options */

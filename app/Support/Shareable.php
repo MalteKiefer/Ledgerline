@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
-use App\Models\AddressBook;
 use App\Models\Album;
-use App\Models\Calendar;
 use App\Models\FileFolder;
 use App\Models\Note;
 use App\Models\Photo;
@@ -28,8 +26,6 @@ final class Shareable
         'notes' => Note::class,
         'files' => StoredFile::class,
         'folders' => FileFolder::class,
-        'calendars' => Calendar::class,
-        'address-books' => AddressBook::class,
         'albums' => Album::class,
         'photos' => Photo::class,
     ];

@@ -11,13 +11,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * A person: a cluster of detected faces. `contact_id` links to a vCard contact
- * once the contacts module exists (naming is free-text until then).
+ * A person: a cluster of detected faces (naming is free-text).
  */
 #[Fillable([
     'user_id',
     'name',
-    'contact_id',
     'cover_face_id',
     'hidden_at',
     'faces_count',

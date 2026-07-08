@@ -6,7 +6,6 @@ namespace App\Http\Controllers;
 
 use App\Models\AppNotification;
 use App\Models\AppSettings;
-use App\Models\Calendar;
 use App\Models\PublicShare;
 use App\Models\ResourceShare;
 use App\Models\User;
@@ -35,7 +34,7 @@ class ResourceShareController extends Controller
     // them (no per-recipient key re-wrap exists) and a write-sharee editing one
     // would re-seal it with THEIR key, permanently locking the owner out. So they
     // are NOT shareable cross-user. Only non-encrypted resources remain.
-    private const ALLOWED = ['calendars', 'address-books', 'albums', 'photos'];
+    private const ALLOWED = ['albums', 'photos'];
 
     /** What I share out + what others shared with me. */
     public function data(Request $request): JsonResponse
@@ -134,8 +133,6 @@ class ResourceShareController extends Controller
     private function linkFor(?string $type): string
     {
         return match ($type) {
-            'calendars' => route('calendar.index'),
-            'address-books' => route('contacts.index'),
             'albums' => route('gallery.albums'),
             'notes' => route('notes.index'),
             'files', 'folders' => route('files.index'),
@@ -161,15 +158,6 @@ class ResourceShareController extends Controller
     /** Resolve a shareable the caller actually OWNS (not merely one shared with them). */
     private function ownedResource(string $type, mixed $id, int $userId): Model
     {
-        $resource = Shareable::resolveOwned($type, $id, $userId);
-
-        // Virtual (tasks → would leak every to-do) and read-only generated
-        // (birthdays/anniversaries/holidays/subscriptions) calendars are not
-        // shareable.
-        if ($resource instanceof Calendar && ($resource->isVirtual() || $resource->isReadOnly())) {
-            abort(422, 'This calendar cannot be shared.');
-        }
-
-        return $resource;
+        return Shareable::resolveOwned($type, $id, $userId);
     }
 }

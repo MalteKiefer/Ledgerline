@@ -24,9 +24,9 @@ trait PurgesOwnedTrash
      */
     protected function emptyOwnedTrash(string $modelClass): JsonResponse
     {
-        // Per-model (not a bulk query delete) so model observers still fire —
-        // e.g. TodoObserver::forceDeleted resyncs derived calendars. Owner-scoped
-        // via scopeOwnedBy so a bulk purge can't reach merely-shared rows.
+        // Per-model (not a bulk query delete) so model observers still fire.
+        // Owner-scoped via scopeOwnedBy so a bulk purge can't reach
+        // merely-shared rows.
         $modelClass::ownedBy(auth()->id())->onlyTrashed()->get()->each->forceDelete();
 
         return response()->json(['ok' => true]);

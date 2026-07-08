@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Models\Album;
 use App\Models\Photo;
-use App\Models\PublicShare;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;

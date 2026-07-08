@@ -88,7 +88,7 @@
                     <input x-model="renameModal.value" class="w-full rounded-md border-gray-300 text-sm">
                     <div class="mt-4 flex justify-end gap-2">
                         <x-button variant="secondary" @click="renameModal.open=false">{{ __('common.cancel') }}</x-button>
-                        <x-button variant="primary" type="submit">{{ __('contacts.ui.save') }}</x-button>
+                        <x-button variant="primary" type="submit">{{ __('common.save') }}</x-button>
                     </div>
                 </form>
             </div>

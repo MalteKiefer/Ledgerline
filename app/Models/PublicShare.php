@@ -11,9 +11,9 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Str;
 
 /**
- * A public, tokenised read-only link to a calendar or address book. Anyone with
- * the token can view it without an account. Optionally time-boxed (expires_at)
- * and password-gated (hashed).
+ * A public, tokenised read-only link to a photo album. Anyone with the token can
+ * view it without an account. Optionally time-boxed (expires_at) and
+ * password-gated (hashed).
  */
 #[Fillable(['token', 'owner_id', 'shareable_type', 'shareable_id', 'expires_at', 'password'])]
 class PublicShare extends Model
@@ -53,16 +53,9 @@ class PublicShare extends Model
         );
     }
 
-    /** The public URL: an ICS feed for calendars, an HTML page for albums, a vCard for address books. */
+    /** The public URL: the album's HTML page (albums are the only public type). */
     public function url(): string
     {
-        if ($this->shareable_type === (new Calendar)->getMorphClass()) {
-            return route('public-share.ics', $this->token);
-        }
-        if ($this->shareable_type === (new Album)->getMorphClass()) {
-            return route('public-share.album', $this->token);
-        }
-
-        return route('public-share.vcf', $this->token);
+        return route('public-share.album', $this->token);
     }
 }
