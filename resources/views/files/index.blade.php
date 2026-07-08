@@ -19,7 +19,6 @@
         token: '{{ csrf_token() }}',
      }, {
         uploadUnreadable: @js(__('files.upload_unreadable')),
-        encryptTooLarge: @js(__('files.encrypt_too_large')),
         types: @js($typeLabels),
         stale: @js(__('files.vault_stale')),
         saveFailed: @js(__('files.save_failed')),

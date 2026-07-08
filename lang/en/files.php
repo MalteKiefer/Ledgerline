@@ -37,7 +37,6 @@ return [
     'upload_done' => 'Upload complete',
     'upload_dismiss' => 'Dismiss',
     'upload_unreadable' => 'File could not be read (blocked by your system?)',
-    'encrypt_too_large' => 'File is too large to encrypt in the browser (max 2 GB).',
     'storage_used_only' => ':used used',
     'all_files' => 'All files',
     'drop_hint' => 'Drop files or folders here to upload',

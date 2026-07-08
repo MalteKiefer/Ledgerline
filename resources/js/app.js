@@ -10,11 +10,6 @@ import { Vault } from './vault';
 // The reactive Alpine.store('vault') boots it (restores the cached key) on init.
 window.Vault = Vault;
 
-// Upper bound for in-browser file encryption. Encryption now reads the plaintext
-// slice-by-slice (only the ciphertext is held), so the ceiling is higher; files
-// above it are rejected with a message instead of crashing the tab.
-const MAX_ENCRYPT_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
-
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
 document.addEventListener('alpine:init', () => {
@@ -3877,28 +3872,28 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 const item = items[idx];
                 const entry = this.uploads[start + idx]; // reactive element
                 try {
-                    // Zero-knowledge encryption buffers the whole file in memory
-                    // (~2-3x its size). Reject anything above the cap with a clear
-                    // message instead of crashing the tab with an OOM.
-                    if (item.file.size > MAX_ENCRYPT_BYTES) { const e = new Error('too large'); e.tooLarge = true; throw e; }
-                    // Encrypt the whole file in the browser first, then upload only
-                    // the ciphertext. The wrapped per-file key (encFileKey) and the
-                    // plaintext name/size stay client-side.
-                    const enc = await window.Vault.encryptFile(item.file);
-                    // Neutral filename — the real name is sealed inside encMeta and
-                    // never sent to the server.
-                    const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
-                    // Large ciphertext goes through chunked (S3 multipart) upload so
-                    // it clears the proxy/PHP body-size limits and GB files work.
-                    const id = cipher.size > 64 * 1024 * 1024
-                        ? await this._uploadChunked(cipher, entry)
-                        : await this._uploadOne(cipher, entry);
+                    // Zero-knowledge: encrypt in the browser, upload only ciphertext.
+                    // Large files stream — encrypted + uploaded part-by-part so neither
+                    // the whole file nor the whole ciphertext is ever held in memory
+                    // (constant-memory upload of any size). Small files take the simple
+                    // whole-in-memory path.
+                    let id, encFileKey;
+                    if (item.file.size > 64 * 1024 * 1024) {
+                        ({ id, encFileKey } = await this._uploadStreamEncrypted(item.file, entry));
+                    } else {
+                        const enc = await window.Vault.encryptFile(item.file);
+                        // Neutral filename — the real name is sealed inside encMeta and
+                        // never sent to the server.
+                        const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+                        id = await this._uploadOne(cipher, entry);
+                        encFileKey = enc.encFileKey;
+                    }
                     entry.state = 'done';
                     entry.progress = 100;
                     this.manifest.files.push({
                         id: crypto.randomUUID(),
                         blob: id,
-                        encFileKey: enc.encFileKey,
+                        encFileKey,
                         name: item.file.name,
                         mime: item.file.type || 'application/octet-stream',
                         size: item.file.size,
@@ -3911,15 +3906,14 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                     this._schedulePersist();
                 } catch (e) {
                     entry.state = 'error';
-                    entry.error = e && e.tooLarge ? (labels.encryptTooLarge || labels.uploadFailed)
-                        : (e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
-                            : (e && e.unreadable ? (labels.uploadUnreadable || labels.uploadFailed) : labels.uploadFailed));
+                    entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
+                        : (e && e.unreadable ? (labels.uploadUnreadable || labels.uploadFailed) : labels.uploadFailed);
                 }
             }
         };
-        // Fewer parallel workers when the batch has large files: each in-flight
-        // encryption holds the whole file (x2-3) in RAM, so 4 large ones at once
-        // would multiply peak memory and risk an OOM.
+        // Fewer parallel lanes when the batch has large files: each in-flight
+        // large upload holds a rolling part buffer, so serialising them keeps
+        // peak memory bounded.
         const hasLarge = items.some((i) => i.file.size > 64 * 1024 * 1024);
         const lanes = Math.min(hasLarge ? 2 : 4, items.length);
         await Promise.all(Array.from({ length: lanes }, worker));
@@ -4001,6 +3995,85 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
+    // Constant-memory encrypted upload: encrypt the file 4 MiB at a time and
+    // stream the ciphertext straight into S3 multipart parts, so neither the
+    // whole file nor the whole ciphertext is ever buffered. Returns the stored
+    // blob id + the wrapped per-file key. Handles any size.
+    async _uploadStreamEncrypted(file, entry) {
+        entry.state = 'uploading';
+        const enc = window.Vault.newContentEncryptor();
+        const cipherSize = window.Vault.ciphertextSize(file.size);
+        const init = await fetch(config.chunkInitUrl, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+            body: JSON.stringify({ name: 'blob.enc', size: cipherSize }),
+        });
+        if (init.status === 413) { const e = new Error('quota'); e.quota = true; throw e; }
+        if (! init.ok) throw new Error('init failed');
+        const { token, id, partSize } = await init.json();
+
+        // Rolling ciphertext buffer (array of Uint8Array frames); flushed as an
+        // S3 part whenever it reaches partSize. Peak memory ≈ partSize + 4 MiB.
+        const buf = [];
+        let bufLen = 0;
+        let partNum = 0;
+        let sent = 0;
+        const parts = [];
+        const pull = (n) => {
+            const out = new Uint8Array(n);
+            let filled = 0;
+            while (filled < n) {
+                const head = buf[0];
+                const need = n - filled;
+                if (head.length <= need) { out.set(head, filled); filled += head.length; buf.shift(); }
+                else { out.set(head.subarray(0, need), filled); buf[0] = head.subarray(need); filled += need; }
+            }
+            bufLen -= n;
+            return out;
+        };
+        const flush = async (bytes) => {
+            partNum++;
+            const etag = await this._uploadPart(token, partNum, new Blob([bytes]), entry, sent, cipherSize);
+            parts.push({ part: partNum, etag });
+            sent += bytes.length;
+        };
+        const feed = async (frame) => {
+            buf.push(frame); bufLen += frame.length;
+            while (bufLen >= partSize) { await flush(pull(partSize)); }
+        };
+
+        try {
+            await feed(enc.header);
+            const CH = enc.chunkSize;
+            const total = file.size;
+            for (let off = 0; off < total || off === 0;) {
+                const end = Math.min(off + CH, total);
+                const last = end >= total;
+                const slice = new Uint8Array(await file.slice(off, end).arrayBuffer());
+                await feed(enc.encryptChunk(slice, last));
+                off = end;
+                if (last) { break; }
+            }
+            if (bufLen > 0) { await flush(pull(bufLen)); } // final part (any size)
+
+            const comp = await fetch(config.chunkCompleteUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ token, parts }),
+            });
+            if (! comp.ok) throw new Error('complete failed');
+            entry.progress = 100;
+            return { id: (await comp.json()).id, encFileKey: enc.sealKey() };
+        } catch (e) {
+            fetch(config.chunkAbortUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ token }),
+            }).catch(() => {});
+            throw e;
+        }
+    },
+
     // Upload one part via XHR, reporting overall byte progress into the tray.
     _uploadPart(token, part, blob, entry, offsetStart, totalSize) {
         return new Promise((resolve, reject) => {
@@ -4050,10 +4123,71 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     async download(row) {
+        // Large files: stream-decrypt straight to disk (constant memory) when the
+        // browser can write incrementally; otherwise fall back to whole-in-memory.
+        if (window.showSaveFilePicker && (row.size || 0) > 64 * 1024 * 1024) {
+            try { await this._downloadStreaming(row); return; }
+            catch (e) { if (e && e.name === 'AbortError') return; /* else fall back */ }
+        }
         this.dl = { active: true, done: 0, total: 1 };
         try {
             saveBlobAs(await this.fetchPlain(row), row.name, row.mime);
         } catch (e) {
+            this.error = labels.downloadFailed;
+        }
+        this.dl.active = false;
+    },
+
+    // Constant-memory download: decrypt the framed ciphertext incrementally and
+    // write each plaintext chunk to a user-chosen file, so a multi-GB download
+    // never buffers in RAM. Uses the File System Access API.
+    async _downloadStreaming(row) {
+        const handle = await window.showSaveFilePicker({ suggestedName: row.name || 'download' });
+        const writable = await handle.createWritable();
+        this.dl = { active: true, done: 0, total: row.size || 1 };
+        try {
+            const dec = window.Vault.beginDecrypt(row.encFileKey);
+            const res = await fetch(`${config.rawBase}/${row.blob}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) throw new Error('fetch failed');
+            const reader = res.body.getReader();
+
+            let buf = new Uint8Array(0);
+            let started = false;
+            let msgLen = -1; // -1 = expecting the 4-byte length prefix
+            let done = false;
+            const readU32 = (b) => b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+
+            for (;;) {
+                const { value, done: streamDone } = await reader.read();
+                if (value && value.length) {
+                    const merged = new Uint8Array(buf.length + value.length);
+                    merged.set(buf); merged.set(value, buf.length); buf = merged;
+                }
+                // Parse as many complete frames as the buffer currently holds.
+                for (;;) {
+                    if (! started) {
+                        if (buf.length < dec.headerLen) { break; }
+                        dec.start(buf.subarray(0, dec.headerLen));
+                        buf = buf.subarray(dec.headerLen); started = true;
+                        continue;
+                    }
+                    if (msgLen < 0) {
+                        if (buf.length < 4) { break; }
+                        msgLen = readU32(buf); buf = buf.subarray(4);
+                        continue;
+                    }
+                    if (buf.length < msgLen) { break; }
+                    const { message, final } = dec.pull(buf.subarray(0, msgLen));
+                    buf = buf.subarray(msgLen); msgLen = -1;
+                    if (message.length) { await writable.write(message); this.dl.done += message.length; }
+                    if (final) { done = true; break; }
+                }
+                if (done) { break; }
+                if (streamDone) { break; }
+            }
+            await writable.close();
+        } catch (e) {
+            try { await writable.abort(); } catch (_) { /* ignore */ }
             this.error = labels.downloadFailed;
         }
         this.dl.active = false;

@@ -292,6 +292,54 @@ export const Vault = {
         return JSON.stringify({ c: m.cipher, n: m.nonce });
     },
 
+    /** The framed-ciphertext size for a plaintext of `total` bytes: a stream
+     *  header, plus each 4 MiB message's auth tag and a 4-byte length prefix.
+     *  A zero-byte file still emits one final (empty) message. */
+    ciphertextSize(total) {
+        const H = sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES;
+        const A = sodium.crypto_secretstream_xchacha20poly1305_ABYTES;
+        const chunks = total === 0 ? 1 : Math.ceil(total / CHUNK);
+
+        return H + total + chunks * (A + 4);
+    },
+
+    /**
+     * Begin a streaming content encryption with a fresh per-file key. The caller
+     * feeds plaintext one CHUNK at a time and streams each returned framed
+     * ciphertext straight to storage, so neither the whole file nor the whole
+     * ciphertext is ever held in memory (constant-memory upload of any size).
+     * `chunkSize` is the plaintext slice size the caller must use.
+     */
+    newContentEncryptor() {
+        const fk = sodium.crypto_secretstream_xchacha20poly1305_keygen();
+        const { state, header } = sodium.crypto_secretstream_xchacha20poly1305_init_push(fk);
+        const vk = this.vk;
+
+        return {
+            chunkSize: CHUNK,
+            header,
+            // Encrypt one plaintext slice → framed (u32 length + ciphertext).
+            encryptChunk(slice, isLast) {
+                const cipher = sodium.crypto_secretstream_xchacha20poly1305_push(
+                    state, slice, null,
+                    isLast ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
+                        : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE,
+                );
+                const frame = new Uint8Array(4 + cipher.length);
+                frame.set(u32le(cipher.length), 0);
+                frame.set(cipher, 4);
+
+                return frame;
+            },
+            // Wrap the per-file key with the vault key (JSON {c,n}).
+            sealKey() {
+                const w = seal(fk, vk);
+
+                return JSON.stringify({ c: w.cipher, n: w.nonce });
+            },
+        };
+    },
+
     /**
      * Encrypt a File for upload. Content is sealed with a fresh per-file key via
      * secretstream (chunked, TAG_FINAL on the last chunk); the file key is then
@@ -375,6 +423,31 @@ export const Vault = {
             blob: new Blob(parts, { type: 'application/octet-stream' }),
             encMeta: JSON.stringify({ c: encMeta.cipher, n: encMeta.nonce }),
             encFileKey: JSON.stringify({ c: encFileKey.cipher, n: encFileKey.nonce }),
+        };
+    },
+
+    /**
+     * Begin a streaming decryption: unwrap the file key, then feed the framed
+     * ciphertext (header first, then message frames) incrementally. Lets a large
+     * download be decrypted + written to disk without holding it all in memory.
+     */
+    beginDecrypt(encFileKey) {
+        const wrapped = JSON.parse(encFileKey);
+        const fk = open(wrapped.c, wrapped.n, this.vk);
+        let state = null;
+
+        return {
+            headerLen: sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES,
+            start(header) { state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(header, fk); },
+            // Decrypt one ciphertext message → {message, final}.
+            pull(cipherMsg) {
+                const res = sodium.crypto_secretstream_xchacha20poly1305_pull(state, cipherMsg);
+                if (res === false) {
+                    throw new Error('decrypt failed');
+                }
+
+                return { message: res.message, final: res.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL };
+            },
         };
     },
 
