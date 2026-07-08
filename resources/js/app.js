@@ -1,6 +1,7 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
 import { Vault } from './vault';
@@ -9,6 +10,13 @@ import { Vault } from './vault';
 // Exposed globally so the vault UI + files component can lock/unlock/encrypt.
 // The reactive Alpine.store('vault') boots it (restores the cached key) on init.
 window.Vault = Vault;
+
+// Client-side markdown render (notes are zero-knowledge, so the server can't
+// render them). Sanitised with DOMPurify so decrypted content can't inject.
+function renderMarkdown(md) {
+    if (! md) return '';
+    return DOMPurify.sanitize(marked.parse(md, { gfm: true, breaks: true }));
+}
 
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
@@ -4694,9 +4702,10 @@ Alpine.data('todos', (labels = {}) => ({
 }));
 
 /**
- * Notes: client-side over a JSON API (no reloads). Markdown is rendered on the
- * server (security-sensitive sanitising) via /notes/preview; share creation is
- * server-side too. Everything else happens in the browser.
+ * Notes: zero-knowledge markdown. Each note's {title, content, tags} is sealed
+ * with the per-user vault key; the server only stores/returns ciphertext. The
+ * browser decrypts, renders the markdown itself (DOMPurify-sanitised) and re-seals
+ * on save. No server render, search or share.
  */
 Alpine.data('notes', (labels = {}) => ({
     state: 'boot',
@@ -4709,24 +4718,51 @@ Alpine.data('notes', (labels = {}) => ({
     tagsValue: '',
     previewHtml: '',
     previewTimer: null,
-    shareOpen: false,
-    shareUrl: '',
-    shareBusy: false,
 
-    async init() { await this.load(); },
+    async init() {
+        // Zero-knowledge gate: notes decrypt with the vault key. Wait for the
+        // store to restore any cached key (survives navigation), then load.
+        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+        if (this.$store.vault.unlocked) { await this.load(); } else { this.state = 'locked'; }
+        this.$watch('$store.vault.unlocked', (on) => {
+            if (on && this.state !== 'ready') this.load();
+            if (! on) { this.state = 'locked'; this.notes = []; this.currentId = null; }
+        });
+    },
 
     async load() {
         try {
             const res = await fetch('/notes/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) { this.state = 'error'; return; }
-            this.notes = (await res.json()).notes ?? [];
+            this.notes = ((await res.json()).notes ?? []).map((n) => this._decNote(n));
             this.state = 'ready';
         } catch (e) { this.state = 'error'; }
     },
 
-    _headers() {
-        return jsonHeaders();
+    // Decrypt a server note into the plaintext shape the UI uses; keep the raw
+    // sealed blob so an undecryptable note round-trips untouched (never overwrite
+    // real data with a '???' placeholder).
+    _decNote(n) {
+        let meta = null;
+        try { meta = window.Vault.decryptFileMeta(n.enc_note); } catch (e) { /* undecryptable */ }
+        const ok = meta !== null;
+        return {
+            id: n.id,
+            title: ok ? (meta.title ?? '') : '???',
+            content: ok ? (meta.content ?? '') : '',
+            tags: ok ? (meta.tags ?? []) : [],
+            pinned: !! n.pinned, trashed: n.trashed, updated: n.updated,
+            _decOk: ok, _rawEnc: n.enc_note,
+        };
     },
+    // Seal {title, content, tags} for the wire; pass an undecryptable note's
+    // original sealed blob through verbatim.
+    _encNote(n) {
+        if (n._decOk === false) return n._rawEnc;
+        const m = window.Vault.encryptMeta({ title: n.title || '', content: n.content || '', tags: n.tags || [] });
+        return JSON.stringify({ c: m.cipher, n: m.nonce });
+    },
+
     async _api(method, url, body) {
         return apiRequest(method, url, body);
     },
@@ -4756,13 +4792,14 @@ Alpine.data('notes', (labels = {}) => ({
     async open(n) {
         this.currentId = n.id;
         this.tagsValue = (n.tags ?? []).join(', ');
-        this.shareOpen = false; this.shareUrl = '';
-        await this.refreshPreview();
+        this.refreshPreview();
     },
 
     async newNote() {
         try {
-            const note = await this._api('POST', '/notes', { title: '', content: '', tags: [] });
+            const local = { title: '', content: '', tags: [], pinned: false, _decOk: true };
+            const saved = await this._api('POST', '/notes', { enc_note: this._encNote(local) });
+            const note = { ...local, id: saved.id, trashed: saved.trashed, updated: saved.updated };
             this.notes.unshift(note);
             await this.open(note);
         } catch (e) { this.error = labels.saveFailed; }
@@ -4770,14 +4807,11 @@ Alpine.data('notes', (labels = {}) => ({
 
     schedulePreview() {
         clearTimeout(this.previewTimer);
-        this.previewTimer = setTimeout(() => this.refreshPreview(), 400);
+        this.previewTimer = setTimeout(() => this.refreshPreview(), 250);
     },
-    async refreshPreview() {
-        if (! this.current) { this.previewHtml = ''; return; }
-        try {
-            const r = await this._api('POST', '/notes/preview', { content: this.current.content || '' });
-            this.previewHtml = r.html || '';
-        } catch (e) { /* keep last preview */ }
+    // Render the current note's markdown IN THE BROWSER (server never sees it).
+    refreshPreview() {
+        this.previewHtml = this.current ? renderMarkdown(this.current.content || '') : '';
     },
 
     async save() {
@@ -4785,21 +4819,21 @@ Alpine.data('notes', (labels = {}) => ({
         if (! n) return;
         n.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
         try {
-            const saved = await this._api('PUT', `/notes/${n.id}`, { title: n.title, content: n.content, tags: n.tags, pinned: n.pinned });
-            Object.assign(n, saved);
+            const saved = await this._api('PUT', `/notes/${n.id}`, { enc_note: this._encNote(n), pinned: n.pinned });
+            n.updated = saved.updated; // keep the local plaintext, refresh the timestamp
         } catch (e) { this.error = labels.saveFailed; }
     },
 
     async togglePin(n) {
-        try { Object.assign(n, await this._api('PATCH', `/notes/${n.id}`, { pinned: ! n.pinned })); }
+        try { const r = await this._api('PATCH', `/notes/${n.id}`, { pinned: ! n.pinned }); n.pinned = !! r.pinned; n.updated = r.updated; }
         catch (e) { this.error = labels.saveFailed; }
     },
     async trash(n) {
-        try { Object.assign(n, await this._api('PATCH', `/notes/${n.id}`, { trashed: true })); if (this.currentId === n.id) this.currentId = null; }
+        try { const r = await this._api('PATCH', `/notes/${n.id}`, { trashed: true }); n.trashed = r.trashed; if (this.currentId === n.id) this.currentId = null; }
         catch (e) { this.error = labels.saveFailed; }
     },
     async restore(n) {
-        try { Object.assign(n, await this._api('PATCH', `/notes/${n.id}`, { trashed: false })); }
+        try { const r = await this._api('PATCH', `/notes/${n.id}`, { trashed: false }); n.trashed = r.trashed; }
         catch (e) { this.error = labels.saveFailed; }
     },
     async remove(n) {
@@ -4811,16 +4845,6 @@ Alpine.data('notes', (labels = {}) => ({
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
         try { await this._api('DELETE', '/notes/trash/all'); this.notes = this.notes.filter((n) => ! n.trashed); }
         catch (e) { this.error = labels.saveFailed; }
-    },
-
-    async createShare(form) {
-        if (! this.current) return;
-        this.shareBusy = true; this.shareUrl = '';
-        try {
-            const r = await this._api('POST', `/notes/${this.current.id}/share`, form);
-            this.shareUrl = r.url || '';
-        } catch (e) { this.error = labels.shareFailed; }
-        this.shareBusy = false;
     },
 }));
 

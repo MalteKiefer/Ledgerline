@@ -26,12 +26,12 @@ class UserIsolationTest extends TestCase
         $bob = User::factory()->create();
 
         $this->actingAs($alice);
-        $this->postJson(route('notes.store'), ['title' => 'Alice secret', 'content' => 'x'])->assertSuccessful();
-        $this->getJson(route('notes.data'))->assertOk()->assertJsonFragment(['title' => 'Alice secret']);
+        $this->postJson(route('notes.store'), ['enc_note' => 'alice-secret-blob'])->assertSuccessful();
+        $this->getJson(route('notes.data'))->assertOk()->assertJsonFragment(['enc_note' => 'alice-secret-blob']);
 
         // Bob sees none of Alice's notes, and the row carries Alice's user_id.
         $this->actingAs($bob);
-        $this->getJson(route('notes.data'))->assertOk()->assertJsonMissing(['title' => 'Alice secret']);
+        $this->getJson(route('notes.data'))->assertOk()->assertJsonMissing(['enc_note' => 'alice-secret-blob']);
         $this->assertSame(0, Note::count()); // scoped to Bob
         $this->assertSame($alice->id, Note::withoutGlobalScopes()->first()->user_id);
     }
@@ -108,7 +108,7 @@ class UserIsolationTest extends TestCase
         $alice = User::factory()->create();
         $this->actingAs($alice);
 
-        $note = Note::create(['title' => 'T', 'content' => 'c']);
+        $note = Note::create(['enc_note' => 'sealed-blob', 'is_encrypted' => true]);
         $this->assertSame($alice->id, $note->user_id);
     }
 }

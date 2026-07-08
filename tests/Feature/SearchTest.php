@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\Note;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -81,19 +80,5 @@ class SearchTest extends TestCase
         $this->signIn();
 
         $this->getJson(route('search.suggest'))->assertOk()->assertExactJson(['groups' => []]);
-    }
-
-    public function test_like_wildcards_in_the_term_are_matched_literally(): void
-    {
-        $this->signIn();
-        Note::create(['title' => 'discount a% code', 'content' => '']);
-        Note::create(['title' => 'banana', 'content' => '']);
-
-        // "a%" must match only the note literally containing "a%", not every
-        // note with an "a" (which an unescaped % wildcard would).
-        $this->search('a%')
-            ->assertOk()
-            ->assertSee('discount a% code')
-            ->assertDontSee('banana');
     }
 }

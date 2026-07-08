@@ -36,9 +36,11 @@ final class NotesData implements UserDataContributor
             ->map(function (Note $note) use ($morph): array {
                 return [
                     'id' => $note->id,
-                    'title' => $note->title,
-                    'content' => $note->content,
-                    'tags' => $note->tags ?? [],
+                    // Notes are zero-knowledge: only the sealed blob exists
+                    // server-side (title/content/tags are null). Exported as
+                    // ciphertext — decryptable only with the user's vault key.
+                    'enc_note' => $note->enc_note,
+                    'is_encrypted' => (bool) $note->is_encrypted,
                     'pinned' => (bool) $note->pinned,
                     'created_at' => $note->created_at?->toIso8601String(),
                     'updated_at' => $note->updated_at?->toIso8601String(),
