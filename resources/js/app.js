@@ -10,10 +10,10 @@ import { Vault } from './vault';
 // The reactive Alpine.store('vault') boots it (restores the cached key) on init.
 window.Vault = Vault;
 
-// Upper bound for in-browser file encryption. Encryption buffers the whole file
-// (~2-3x its size) in RAM, so files above this are rejected with a message
-// instead of crashing the tab. Streaming encryption would lift this later.
-const MAX_ENCRYPT_BYTES = 1024 * 1024 * 1024; // 1 GiB
+// Upper bound for in-browser file encryption. Encryption now reads the plaintext
+// slice-by-slice (only the ciphertext is held), so the ceiling is higher; files
+// above it are rejected with a message instead of crashing the tab.
+const MAX_ENCRYPT_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
