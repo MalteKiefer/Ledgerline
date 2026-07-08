@@ -74,7 +74,7 @@
                     </form>
                 @endforeach
             </div>
-            <form method="POST" action="{{ route('logout') }}">
+            <form method="POST" action="{{ route('logout') }}" @submit="window.Vault && window.Vault.lock()">
                 @csrf
                 <button type="submit" class="rounded-md px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('messages.menu.logout') }}</button>
             </form>

@@ -32,7 +32,7 @@ class FilesMoveThenDeleteTest extends TestCase
         // CLIENT MOVE: full manifest PUT, file now in parent
         $manifest = [
             'folders' => [['id' => $pid, 'name' => 'Privat', 'parent' => null], ['id' => $cid, 'name' => 'Private', 'parent' => $pid]],
-            'files' => [['id' => $fid, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => $pid, 'blob' => $blob, 'trashed' => null, 'tags' => []]],
+            'files' => [['id' => $fid, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => $pid, 'blob' => $blob, 'trashed' => null, 'tags' => []]],
         ];
         $this->actingAs($u)->putJson(route('files.sync'), $manifest)->assertOk();
         $this->assertSame($pid, StoredFile::withoutGlobalScopes()->find($fid)->file_folder_id, 'move did not persist');

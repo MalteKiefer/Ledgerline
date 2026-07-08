@@ -36,7 +36,7 @@ class FilesSyncGuardsTest extends TestCase
         // Restore: point the file back at the version's blob and sync — the blob
         // is one of the user's own versions, so the allow-list must accept it.
         $this->actingAs($u)->putJson(route('files.sync'), ['folders' => [], 'files' => [[
-            'id' => $id, 'blob' => $oldBlob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => [],
+            'id' => $id, 'blob' => $oldBlob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => [],
         ]]])->assertOk();
 
         $this->assertSame($oldBlob, StoredFile::withoutGlobalScopes()->find($id)->blob);
@@ -82,7 +82,7 @@ class FilesSyncGuardsTest extends TestCase
         $keep = (string) Str::uuid();
         $this->actingAs($u)->putJson(route('files.sync'), [
             'folders' => [['id' => $keep, 'name' => 'Keep', 'parent' => null]],
-            'files' => [['id' => $fid, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => $gone, 'tags' => []]],
+            'files' => [['id' => $fid, 'blob' => $blob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => $gone, 'tags' => []]],
         ])->assertOk();
 
         $this->assertNull(StoredFile::withoutGlobalScopes()->find($fid)->file_folder_id);
@@ -101,7 +101,7 @@ class FilesSyncGuardsTest extends TestCase
 
         // A manifest with a file but folders=[] would hard-delete the folder tree.
         $this->actingAs($u)->putJson(route('files.sync'), ['folders' => [], 'files' => [[
-            'id' => $fid, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => [],
+            'id' => $fid, 'blob' => $blob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => [],
         ]]])->assertStatus(409);
 
         $this->assertSame(1, FileFolder::withoutGlobalScopes()->count());

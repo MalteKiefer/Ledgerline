@@ -45,7 +45,7 @@ class SecurityAuditFixesTest extends TestCase
         // Bob tries to attach Alice's blob via his manifest → rejected.
         $this->actingAs($bob)->putJson(route('files.sync'), [
             'folders' => [],
-            'files' => [['id' => (string) Str::uuid(), 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => []]],
+            'files' => [['id' => (string) Str::uuid(), 'blob' => $blob, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'folder' => null, 'tags' => []]],
         ])->assertStatus(422);
     }
 
