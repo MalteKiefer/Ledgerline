@@ -3126,6 +3126,18 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         await this.load();
     },
 
+    // Debounced persist: coalesces many rapid changes (e.g. a big upload adding
+    // files) into a save every ~2s, so an interruption strands at most a couple
+    // of seconds of uploads instead of the whole batch.
+    _persistTimer: null,
+    _schedulePersist() {
+        if (this._persistTimer) clearTimeout(this._persistTimer);
+        this._persistTimer = setTimeout(() => {
+            this._persistTimer = null;
+            if (this.state === 'ready') this.persist().catch(() => {});
+        }, 2000);
+    },
+
     // Persist the whole tree; the server syncs it to clean rows. Serialized so
     // two full-replace PUTs never overlap, and refused before the manifest has
     // actually loaded so a boot/empty manifest can never wipe the library.
@@ -3861,6 +3873,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                         folder: folderFor(item.path),
                         created: new Date().toISOString(),
                     });
+                    // Persist incrementally (debounced) so an interrupted bulk
+                    // upload doesn't strand every uploaded blob without a row —
+                    // the manifest is saved every ~2s instead of only at the end.
+                    this._schedulePersist();
                 } catch (e) {
                     entry.state = 'error';
                     entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
