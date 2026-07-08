@@ -36,7 +36,6 @@ use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessContro
 use App\Http\Controllers\Settings\RemindersController as SettingsRemindersController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
-use App\Http\Controllers\ShareController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodoController;
 use App\Http\Controllers\VaultController;
@@ -52,12 +51,6 @@ Route::get('/', static fn () => redirect()->route('dashboard'));
 // Throttled: both endpoints are unauthenticated and do real work (markdown
 // render + DB write on show, a bcrypt check on unlock), so a leaked share URL
 // must not allow password brute-force or CPU-exhaustion via floods.
-Route::get('/s/{share}', [ShareController::class, 'show'])
-    ->middleware('throttle:60,1')
-    ->name('shares.show');
-Route::post('/s/{share}/unlock', [ShareController::class, 'unlock'])
-    ->middleware('throttle:10,1')
-    ->name('shares.unlock');
 
 // Public, tokenised links (no account): an ICS feed for a shared calendar and a
 // vCard export for a shared address book. No HTML page — the link IS the feed.
@@ -302,12 +295,10 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/notes', 'notes.index')->name('notes.index');
     Route::get('/notes/data', [NoteController::class, 'index'])->name('notes.data');
     Route::post('/notes', [NoteController::class, 'store'])->name('notes.store');
-    Route::post('/notes/preview', [NoteController::class, 'preview'])->middleware('throttle:60,1')->name('notes.preview');
     Route::put('/notes/{note}', [NoteController::class, 'update'])->name('notes.update');
     Route::patch('/notes/{note}', [NoteController::class, 'patch'])->withTrashed()->name('notes.patch');
     Route::delete('/notes/{note}', [NoteController::class, 'destroy'])->withTrashed()->name('notes.destroy');
     Route::delete('/notes/trash/all', [NoteController::class, 'emptyTrash'])->name('notes.trash.empty');
-    Route::post('/notes/{note}/share', [NoteController::class, 'share'])->middleware('throttle:30,1')->name('notes.share');
     // To-dos: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/todos', 'todos.index')->name('todos.index');
     Route::get('/todos/data', [TodoController::class, 'index'])->name('todos.data');

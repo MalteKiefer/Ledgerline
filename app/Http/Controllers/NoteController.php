@@ -6,26 +6,19 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\PurgesOwnedTrash;
 use App\Models\Note;
-use App\Models\NoteShare;
-use App\Support\Tags;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 /**
- * Plain (non-encrypted) markdown notes, exposed as a JSON API so the browser
- * renders and mutates them without page reloads. Markdown rendering is done
- * SERVER-SIDE (a security-sensitive step: HTML is escaped and links sanitised),
- * as is share creation (password hashing) — everything else is client-side.
+ * Zero-knowledge markdown notes, exposed as a JSON API. The browser seals each
+ * note's {title, content, tags} with the per-user vault key and renders the
+ * markdown itself; the server only stores + returns ciphertext (enc_note). No
+ * server-side markdown render, search or public snapshot — those need the
+ * plaintext the server never has.
  */
 class NoteController extends Controller
 {
     use PurgesOwnedTrash;
-
-    private const LIFETIMES = [3600, 86400, 604800, 2592000];
 
     public function index(): JsonResponse
     {
@@ -74,62 +67,25 @@ class NoteController extends Controller
         return $this->emptyOwnedTrash(Note::class);
     }
 
-    /** Server-side markdown render (escaped + sanitised). */
-    public function preview(Request $request): JsonResponse
-    {
-        $data = $request->validate(['content' => ['nullable', 'string', 'max:200000']]);
-
-        return response()->json(['html' => self::render($data['content'] ?? '')]);
-    }
-
-    /* ---- Sharing (server-side: frozen snapshot + hashed password) ---- */
-
-    public function share(Request $request, Note $note): JsonResponse
-    {
-        // Route binding resolves notes shared TO the caller too; only the owner
-        // may mint a public, unauthenticated snapshot link.
-        abort_unless($note->isOwnedBy($request->user()->id), 403);
-
-        $data = $request->validate([
-            'expires_in' => ['required', 'integer', Rule::in(self::LIFETIMES)],
-            'max_views' => ['nullable', 'integer', 'min:1', 'max:100000'],
-            'password' => ['nullable', 'string', 'min:8', 'max:255'],
-            'allow_download' => ['sometimes', 'boolean'],
-        ]);
-
-        $share = new NoteShare([
-            'title' => $note->title,
-            'content' => (string) $note->content,
-            'allow_download' => $request->boolean('allow_download'),
-            'max_views' => $data['max_views'] ?? null,
-            'expires_at' => Carbon::now()->addSeconds($data['expires_in']),
-        ]);
-        // The password fields are guarded (never mass-assignable) so a client
-        // can never set has_password=false to bypass the gate; set them here.
-        $share->forceFill([
-            'password_hash' => ! empty($data['password']) ? Hash::make($data['password']) : null,
-            'has_password' => ! empty($data['password']),
-        ])->save();
-
-        return response()->json(['url' => route('shares.show', $share)]);
-    }
-
     /* ---- Helpers ---- */
 
     /** @return array<string,mixed> */
     private function validated(Request $request): array
     {
+        // Zero-knowledge: the browser seals {title, content, tags} into enc_note;
+        // the plaintext columns are never received. pinned stays a plaintext
+        // ordering flag.
         $v = $request->validate([
-            'title' => ['nullable', 'string', 'max:255'],
-            'content' => ['nullable', 'string', 'max:200000'],
+            'enc_note' => ['required', 'string', 'max:400000'],
             'pinned' => ['sometimes', 'boolean'],
-            ...Tags::rules(),
         ]);
 
         return [
-            'title' => trim((string) ($v['title'] ?? '')) ?: __('notes.untitled'),
-            'content' => $v['content'] ?? null,
-            'tags' => Tags::normalize($v['tags'] ?? null),
+            'title' => null,
+            'content' => null,
+            'tags' => null,
+            'enc_note' => $v['enc_note'],
+            'is_encrypted' => true,
             'pinned' => (bool) ($v['pinned'] ?? false),
         ];
     }
@@ -139,25 +95,11 @@ class NoteController extends Controller
     {
         return [
             'id' => $n->id,
-            'title' => $n->title,
-            'content' => $n->content,
-            'tags' => $n->tags ?? [],
+            // Sealed {title, content, tags}; decrypted client-side.
+            'enc_note' => $n->enc_note,
             'pinned' => (bool) $n->pinned,
             'trashed' => $n->trashed(),
             'updated' => $n->updated_at?->toIso8601String(),
         ];
-    }
-
-    /** Render markdown to sanitised HTML (safe mode strips raw HTML). */
-    public static function render(?string $markdown): string
-    {
-        if ($markdown === null || $markdown === '') {
-            return '';
-        }
-
-        return Str::markdown($markdown, [
-            'html_input' => 'escape',
-            'allow_unsafe_links' => false,
-        ]);
     }
 }

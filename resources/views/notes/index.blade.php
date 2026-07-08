@@ -1,10 +1,25 @@
 <x-layouts.app :title="__('notes.title')">
   <div x-data="notes({
         saveFailed: @js(__('notes.save_failed')),
-        shareFailed: @js(__('notes.share_failed')),
         deleteConfirm: @js(__('notes.delete_confirm')),
         emptyTrashConfirm: @js(__('notes.empty_trash_confirm')),
      })">
+
+    {{-- Zero-knowledge gate: notes decrypt with the vault key. --}}
+    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+
+    <template x-if="state === 'locked'">
+        <div class="mx-auto mt-16 max-w-md rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center">
+            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
+            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
+               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
+            <button type="button" @click="$dispatch('vault-panel')"
+                class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
+                <x-icon name="lock-open" class="h-4 w-4" />
+                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
+            </button>
+        </div>
+    </template>
 
     <template x-if="state === 'error'">
         <p class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('notes.save_failed') }}</p>
@@ -58,7 +73,6 @@
                     <div class="flex items-center gap-2">
                         <input type="text" x-model="current.title" @input.debounce.800ms="save()" placeholder="{{ __('notes.title_placeholder') }}" class="w-full border-0 border-b border-gray-100 px-0 text-lg font-semibold text-gray-900 focus:border-gray-400 focus:ring-0">
                         <button type="button" @click="togglePin(current)" :title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))" class="rounded p-1" :class="current.pinned ? 'text-gray-800 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'"><x-icon name="bookmark" class="h-4 w-4" /></button>
-                        <button type="button" @click="shareOpen = ! shareOpen" title="{{ __('notes.share') }}" class="rounded p-1 text-gray-400 hover:text-gray-700"><x-icon name="share" class="h-4 w-4" /></button>
                         <template x-if="view === 'trash'">
                             <span class="flex items-center gap-1">
                                 <button type="button" @click="restore(current)" title="{{ __('notes.restore') }}" class="rounded p-1 text-gray-400 hover:text-gray-700"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
@@ -69,25 +83,9 @@
                     </div>
                     <input type="text" x-model="tagsValue" @change="save()" placeholder="{{ __('notes.tags_placeholder') }}" class="mt-2 w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <textarea x-model="current.content" @input="save(); schedulePreview()" placeholder="{{ __('notes.content') }}" class="mt-3 min-h-0 w-full flex-1 rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500"></textarea>
-
-                    {{-- Share panel --}}
-                    <div x-show="shareOpen" x-cloak class="mt-3 rounded-md border border-gray-200 dark:border-gray-800 p-3" x-data="{ f: { expires_in: 86400, max_views: null, password: '' } }">
-                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <select x-model.number="f.expires_in" class="rounded-md border-gray-300 dark:border-gray-700 text-xs shadow-sm">
-                                <option value="3600">{{ __('notes.share_expiry_1h') }}</option>
-                                <option value="86400">{{ __('notes.share_expiry_24h') }}</option>
-                                <option value="604800">{{ __('notes.share_expiry_7d') }}</option>
-                                <option value="2592000">{{ __('notes.share_expiry_30d') }}</option>
-                            </select>
-                            <input type="number" min="1" x-model="f.max_views" placeholder="{{ __('notes.share_max_views') }}" class="rounded-md border-gray-300 text-xs shadow-sm">
-                            <input type="text" x-model="f.password" placeholder="{{ __('notes.share_password') }}" class="col-span-2 rounded-md border-gray-300 text-xs shadow-sm">
-                        </div>
-                        <button type="button" @click="createShare(f)" :disabled="shareBusy" class="mt-2 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('notes.share_create') }}</button>
-                        <input x-show="shareUrl" x-cloak type="text" readonly :value="shareUrl" x-on:click="$el.select()" class="mt-2 w-full rounded-md border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs shadow-sm">
-                    </div>
                 </div>
 
-                {{-- Rendered preview (server-side markdown) --}}
+                {{-- Rendered preview (client-side markdown, DOMPurify-sanitised) --}}
                 <div class="min-w-0 flex-1 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm lg:max-w-md">
                     <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('notes.preview') }}</p>
                     <div class="prose prose-sm max-w-none text-gray-800 dark:text-gray-200" x-html="previewHtml"></div>

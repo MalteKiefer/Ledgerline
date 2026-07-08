@@ -18,10 +18,10 @@ class ResourceSharingTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function noteOf(User $u, string $title): Note
+    private function noteOf(User $u, string $enc): Note
     {
         $this->actingAs($u);
-        $note = Note::create(['title' => $title, 'content' => 'c']);
+        $note = Note::create(['enc_note' => $enc, 'is_encrypted' => true]);
         $this->app['auth']->forgetGuards();
 
         return $note;
@@ -31,7 +31,7 @@ class ResourceSharingTest extends TestCase
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'Shared plan');
+        $note = $this->noteOf($alice, 'shared-plan-blob');
 
         // Alice shares read-only with Bob.
         $this->actingAs($alice)
@@ -41,27 +41,27 @@ class ResourceSharingTest extends TestCase
         // Bob now sees the note...
         $this->actingAs($bob);
         $this->assertSame(1, Note::count());
-        $this->getJson(route('notes.data'))->assertOk()->assertJsonFragment(['title' => 'Shared plan']);
+        $this->getJson(route('notes.data'))->assertOk()->assertJsonFragment(['enc_note' => 'shared-plan-blob']);
 
         // ...but a read-only sharee cannot edit it (central write guard → 403).
-        $this->putJson(route('notes.update', $note->id), ['title' => 'Hacked', 'content' => 'x'])->assertForbidden();
-        $this->assertSame('Shared plan', Note::withoutGlobalScopes()->find($note->id)->title);
+        $this->putJson(route('notes.update', $note->id), ['enc_note' => 'hacked-blob'])->assertForbidden();
+        $this->assertSame('shared-plan-blob', Note::withoutGlobalScopes()->find($note->id)->enc_note);
     }
 
     public function test_write_share_allows_the_sharee_to_edit(): void
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'Doc');
+        $note = $this->noteOf($alice, 'doc-blob');
 
         $this->actingAs($alice)
             ->postJson(route('shares.store'), ['type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'write'])
             ->assertCreated();
 
         $this->actingAs($bob)
-            ->putJson(route('notes.update', $note->id), ['title' => 'Edited by Bob', 'content' => 'x'])
+            ->putJson(route('notes.update', $note->id), ['enc_note' => 'edited-by-bob-blob'])
             ->assertOk();
-        $this->assertSame('Edited by Bob', Note::withoutGlobalScopes()->find($note->id)->title);
+        $this->assertSame('edited-by-bob-blob', Note::withoutGlobalScopes()->find($note->id)->enc_note);
     }
 
     public function test_a_third_user_still_cannot_see_the_note(): void

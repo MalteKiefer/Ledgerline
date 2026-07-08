@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\NoteShare;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -38,22 +37,6 @@ final class SecurityHeadersTest extends TestCase
         $scriptSrc = collect(explode('; ', $csp))->first(fn ($d) => str_starts_with($d, 'script-src'));
         $this->assertStringNotContainsString("'unsafe-inline'", (string) $scriptSrc);
         $this->assertStringNotContainsString('script-src https:', $csp);
-    }
-
-    public function test_public_share_pages_get_a_script_less_csp(): void
-    {
-        $share = NoteShare::create(['title' => 'x', 'content' => 'y', 'expires_at' => now()->addDay()]);
-
-        $response = $this->get(route('shares.show', $share));
-        $csp = $response->headers->get('Content-Security-Policy');
-
-        $this->assertNotNull($csp);
-        $this->assertStringContainsString("default-src 'none'", $csp);
-        $this->assertStringContainsString("script-src 'none'", $csp);
-        $this->assertStringContainsString("object-src 'none'", $csp);
-        $this->assertStringNotContainsString('unsafe-inline', $csp);
-        $this->assertStringNotContainsString('unsafe-eval', $csp);
-        $response->assertHeader('Referrer-Policy', 'no-referrer');
     }
 
     public function test_hsts_is_sent_only_when_secure_cookies_are_configured(): void

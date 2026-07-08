@@ -24,31 +24,20 @@ class NotesTest extends TestCase
         $this->getJson(route('notes.data'))->assertOk()->assertJson(['notes' => []]);
     }
 
-    public function test_it_creates_a_note_with_tags(): void
+    public function test_it_creates_an_encrypted_note(): void
     {
         $this->signIn();
 
-        $this->postJson(route('notes.store'), ['title' => 'Shopping', 'content' => '- milk', 'tags' => ['home', 'food']])
-            ->assertCreated()->assertJson(['title' => 'Shopping', 'tags' => ['home', 'food']]);
+        $this->postJson(route('notes.store'), ['enc_note' => 'sealed-blob'])
+            ->assertCreated()->assertJson(['enc_note' => 'sealed-blob']);
 
         $this->assertSame(1, Note::count());
-    }
-
-    public function test_preview_renders_sanitised_markdown(): void
-    {
-        $this->signIn();
-
-        $this->postJson(route('notes.preview'), ['content' => "# Hi\n<script>alert(1)</script>"])
-            ->assertOk()
-            ->assertJsonFragment([])
-            ->assertSee('<h1', false)
-            ->assertDontSee('<script>alert(1)</script>', false);
     }
 
     public function test_patch_trashes_and_empty_trash(): void
     {
         $this->signIn();
-        $note = Note::create(['title' => 'Temp', 'content' => 'x']);
+        $note = Note::create(['enc_note' => 'sealed-blob', 'is_encrypted' => true]);
 
         $this->patchJson(route('notes.patch', $note), ['trashed' => true])->assertOk()->assertJson(['trashed' => true]);
         $this->deleteJson(route('notes.trash.empty'))->assertOk();
@@ -58,7 +47,7 @@ class NotesTest extends TestCase
     public function test_a_trashed_note_can_be_restored_and_stays_listed(): void
     {
         $this->signIn();
-        $note = Note::create(['title' => 'Temp', 'content' => 'x']);
+        $note = Note::create(['enc_note' => 'sealed-blob', 'is_encrypted' => true]);
 
         // Trash it: soft-deleted, but still returned by the data endpoint so the
         // client can show the trash view.
@@ -74,18 +63,10 @@ class NotesTest extends TestCase
     public function test_destroy_permanently_deletes_a_note(): void
     {
         $this->signIn();
-        $note = Note::create(['title' => 'Temp', 'content' => 'x']);
+        $note = Note::create(['enc_note' => 'sealed-blob', 'is_encrypted' => true]);
         $note->delete();
 
         $this->deleteJson(route('notes.destroy', $note))->assertOk();
         $this->assertSame(0, Note::withTrashed()->count());
-    }
-
-    public function test_notes_appear_in_global_search(): void
-    {
-        $this->signIn();
-        Note::create(['title' => 'Uniquenote', 'content' => 'searchable body text']);
-
-        $this->getJson(route('search.suggest', ['q' => 'searchable']))->assertOk()->assertSee('Uniquenote');
     }
 }
