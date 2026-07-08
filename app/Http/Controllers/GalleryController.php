@@ -63,6 +63,9 @@ class GalleryController extends Controller
      */
     public function favorite(Request $request, Photo $photo): RedirectResponse|JsonResponse
     {
+        // Favourite is a single owner column, so only the owner may toggle it —
+        // a write-share collaborator must not mutate the owner's favourites.
+        abort_unless($photo->isOwnedBy($request->user()->id), 403);
         $photo->forceFill(['favorited_at' => $photo->isFavorite() ? null : now()])->save();
 
         if ($request->expectsJson()) {
