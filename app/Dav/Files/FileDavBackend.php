@@ -72,7 +72,7 @@ class FileDavBackend
      * so overwriting over WebDAV keeps the same recoverable history as the web
      * client, instead of silently discarding the prior content.
      */
-    public function snapshotVersion(StoredFile $file, string $oldBlob, int $size, string $mime, string $name): void
+    public function snapshotVersion(StoredFile $file, string $oldBlob, int $size, string $mime, string $name): array
     {
         FileVersion::create([
             'id' => (string) Str::uuid(), 'file_id' => $file->id, 'user_id' => (int) $file->user_id,
@@ -81,11 +81,15 @@ class FileDavBackend
         ]);
         $keep = min(10, max(1, (int) UserSetting::for((int) $file->user_id)->file_max_versions));
         $overflow = FileVersion::where('file_id', $file->id)->orderByDesc('created_at')->skip($keep)->take(1000)->get();
-        foreach ($overflow as $version) {
-            $blob = (string) $version->blob;
-            $version->delete();
-            $this->releaseBlob($blob);
+        // Drop the overflow version ROWS here (in the caller's transaction) but
+        // return their blobs so the disk unlink happens AFTER commit — a rollback
+        // must never leave a live version row pointing at already-erased bytes.
+        $blobs = $overflow->pluck('blob')->all();
+        if ($blobs !== []) {
+            FileVersion::whereIn('id', $overflow->pluck('id'))->delete();
         }
+
+        return $blobs;
     }
 
     /** Best-effort MIME from the filename, then the bytes. */

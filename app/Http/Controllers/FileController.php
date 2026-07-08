@@ -20,6 +20,7 @@ use App\Support\ImageManagerFactory;
 use App\Support\Tags;
 use Aws\S3\S3Client;
 use Carbon\Carbon;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -116,9 +117,14 @@ class FileController extends Controller
         // any mutating action would PUT an empty file list and drop everything.
         // Refuse to trash the whole library from an empty manifest unless the
         // client explicitly confirms it.
-        if (! $request->boolean('confirm_wipe') && $files === []
-            && StoredFile::ownedBy($uid)->exists()) {
-            abort(409, 'Refusing to drop all files from an empty manifest.');
+        if (! $request->boolean('confirm_wipe')) {
+            abort_if($files === [] && StoredFile::ownedBy($uid)->exists(), 409,
+                'Refusing to drop all files from an empty manifest.');
+            // Folders are hard-deleted (not soft) when dropped, so an empty
+            // folders array must be guarded too, or a partial manifest wipes the
+            // whole folder tree.
+            abort_if($folders === [] && FileFolder::ownedBy($uid)->exists(), 409,
+                'Refusing to drop all folders from an empty manifest.');
         }
 
         $owned = fn () => StoredFile::ownedBy($uid);
@@ -128,10 +134,12 @@ class FileController extends Controller
         $keep = min(10, max(1, (int) UserSetting::for($uid)->file_max_versions));
 
         // A manifest row may only reference a blob the caller uploaded (recorded
-        // in file_blobs) or one already attached to one of their files — never a
+        // in file_blobs), one already attached to one of their files, or one kept
+        // as one of their own versions (needed for version-restore) — never a
         // blob whose UUID they merely learned (e.g. from a since-revoked share).
         $allowed = $owned()->withTrashed()->pluck('blob')
             ->merge(FileBlob::where('user_id', $uid)->pluck('blob'))
+            ->merge(FileVersion::where('user_id', $uid)->pluck('blob'))
             ->filter()->flip();
         foreach ($files as $f) {
             abort_unless(isset($allowed[$f['blob']]), 422, 'Unknown blob reference.');
@@ -142,104 +150,106 @@ class FileController extends Controller
         $quota = $this->quotaBytes();
         $disk = $this->disk();
 
-        $removedBlobs = $this->withUserLock($uid, fn (): array => DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): array {
-            $folderIds = [];
-            foreach ($folders as $f) {
-                $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
-                $folderIds[] = $f['id'];
-            }
-            $ownedFolders()->when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->delete();
-
-            $fileIds = [];
-            $prunedBlobs = [];
-            $total = 0;
-            foreach ($files as $f) {
-                // withTrashed: the manifest keeps trashed files, so a matching
-                // row may be soft-deleted; find it (or build a new one) and let
-                // the manifest's `trashed` timestamp drive deleted_at directly.
-                $file = $owned()->withTrashed()->firstOrNew(['id' => $f['id']]);
-                $oldBlob = $file->exists ? $file->blob : null;
-                $oldMeta = ['name' => $file->name, 'mime' => $file->mime, 'size' => (int) $file->size];
-                // Authoritative size: read from disk when the blob is new/changed
-                // (never trust the client's number), else keep the stored size. A
-                // new blob whose bytes are missing on disk is a failed upload —
-                // abort the whole sync rather than silently record a 0-byte file.
-                if ($oldBlob === $f['blob']) {
-                    $size = (int) $file->size;
-                } else {
-                    abort_unless($disk->exists('files/'.$f['blob']), 422, __('files.upload_failed'));
-                    $size = (int) $disk->size('files/'.$f['blob']);
+        $this->withUserLock($uid, function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): void {
+            $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): array {
+                $folderIds = [];
+                foreach ($folders as $f) {
+                    $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
+                    $folderIds[] = $f['id'];
                 }
-                $total += $size;
-                $file->fill([
-                    'user_id' => $uid,
-                    'file_folder_id' => $f['folder'] ?? null,
-                    'name' => $f['name'],
-                    'mime' => $f['mime'] ?? 'application/octet-stream',
-                    'size' => $size,
-                    'blob' => $f['blob'],
-                    'tags' => Tags::normalize($f['tags'] ?? null),
-                    'favorite' => (bool) ($f['favorite'] ?? false),
-                    'note' => $f['note'] ?? null,
-                ]);
-                $file->deleted_at = ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null;
-                $file->save();
-                $fileIds[] = $f['id'];
+                $ownedFolders()->when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->delete();
 
-                // Content changed: snapshot the previous blob as a version instead
-                // of letting it leak, then cap the history and prune the overflow.
-                if (is_string($oldBlob) && $oldBlob !== $f['blob'] && Str::isUuid($oldBlob)) {
-                    FileVersion::create([
-                        'id' => (string) Str::uuid(), 'file_id' => $file->id, 'user_id' => $uid,
-                        'name' => $oldMeta['name'] ?? $f['name'], 'mime' => $oldMeta['mime'] ?? 'application/octet-stream',
-                        'size' => $oldMeta['size'], 'blob' => $oldBlob, 'created_at' => now(),
-                    ]);
-                    $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id, $keep));
-                }
-
-                // New or changed content → drop the now-stale search text at once
-                // (so it can't surface old content) and re-extract off-path.
-                if ($oldBlob !== $f['blob']) {
-                    if ($file->exists && $oldBlob !== null) {
-                        $file->forceFill(['content' => null, 'content_at' => null])->save();
+                $fileIds = [];
+                $prunedBlobs = [];
+                $total = 0;
+                foreach ($files as $f) {
+                    // withTrashed: the manifest keeps trashed files, so a matching
+                    // row may be soft-deleted; find it (or build a new one) and let
+                    // the manifest's `trashed` timestamp drive deleted_at directly.
+                    $file = $owned()->withTrashed()->firstOrNew(['id' => $f['id']]);
+                    $oldBlob = $file->exists ? $file->blob : null;
+                    $oldMeta = ['name' => $file->name, 'mime' => $file->mime, 'size' => (int) $file->size];
+                    // Authoritative size: read from disk when the blob is new/changed
+                    // (never trust the client's number), else keep the stored size. A
+                    // new blob whose bytes are missing on disk is a failed upload —
+                    // abort the whole sync rather than silently record a 0-byte file.
+                    if ($oldBlob === $f['blob']) {
+                        $size = (int) $file->size;
+                    } else {
+                        abort_unless($disk->exists('files/'.$f['blob']), 422, __('files.upload_failed'));
+                        $size = (int) $disk->size('files/'.$f['blob']);
                     }
-                    ExtractFileText::dispatch($file->id, $f['blob'])->afterCommit();
+                    $total += $size;
+                    $file->fill([
+                        'user_id' => $uid,
+                        'file_folder_id' => $f['folder'] ?? null,
+                        'name' => $f['name'],
+                        'mime' => $f['mime'] ?? 'application/octet-stream',
+                        'size' => $size,
+                        'blob' => $f['blob'],
+                        'tags' => Tags::normalize($f['tags'] ?? null),
+                        'favorite' => (bool) ($f['favorite'] ?? false),
+                        'note' => $f['note'] ?? null,
+                    ]);
+                    $file->deleted_at = ! empty($f['trashed']) ? Carbon::parse($f['trashed']) : null;
+                    $file->save();
+                    $fileIds[] = $f['id'];
+
+                    // Content changed: snapshot the previous blob as a version instead
+                    // of letting it leak, then cap the history and prune the overflow.
+                    if (is_string($oldBlob) && $oldBlob !== $f['blob'] && Str::isUuid($oldBlob)) {
+                        FileVersion::create([
+                            'id' => (string) Str::uuid(), 'file_id' => $file->id, 'user_id' => $uid,
+                            'name' => $oldMeta['name'] ?? $f['name'], 'mime' => $oldMeta['mime'] ?? 'application/octet-stream',
+                            'size' => $oldMeta['size'], 'blob' => $oldBlob, 'created_at' => now(),
+                        ]);
+                        $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id, $keep));
+                    }
+
+                    // New or changed content → drop the now-stale search text at once
+                    // (so it can't surface old content) and re-extract off-path.
+                    if ($oldBlob !== $f['blob']) {
+                        if ($file->exists && $oldBlob !== null) {
+                            $file->forceFill(['content' => null, 'content_at' => null])->save();
+                        }
+                        ExtractFileText::dispatch($file->id, $f['blob'])->afterCommit();
+                    }
                 }
-            }
 
-            // Files the manifest dropped are NOT permanently destroyed here. A
-            // stale, partial or racing manifest (a second tab, a DAV write, or a
-            // failed load) must never cause irreversible loss, so dropped rows
-            // are only SOFT-deleted (recoverable from the trash) and their blobs
-            // and versions are kept. The only bytes reclaimed by a sync are the
-            // version-cap overflow blobs pruned above (reference-counted below).
-            // whereNotIn('id', []) matches every owned row, so an empty manifest
-            // (a confirmed full wipe) soft-deletes everything into the trash.
-            // Instance ->delete() applies SoftDeletes even though the owner scope
-            // strips the SoftDeletingScope on the builder.
-            foreach ($owned()->whereNotIn('id', $fileIds)->get() as $dropped) {
-                $dropped->delete();
-            }
+                // Files the manifest dropped are NOT permanently destroyed here. A
+                // stale, partial or racing manifest (a second tab, a DAV write, or a
+                // failed load) must never cause irreversible loss, so dropped rows
+                // are only SOFT-deleted (recoverable from the trash) and their blobs
+                // and versions are kept. The only bytes reclaimed by a sync are the
+                // version-cap overflow blobs pruned above (reference-counted below).
+                // whereNotIn('id', []) matches every owned row, so an empty manifest
+                // (a confirmed full wipe) soft-deletes everything into the trash.
+                // Instance ->delete() applies SoftDeletes even though the owner scope
+                // strips the SoftDeletingScope on the builder.
+                foreach ($owned()->whereNotIn('id', $fileIds)->get() as $dropped) {
+                    $dropped->delete();
+                }
 
-            // Enforce the quota against the reconciled live + kept-version bytes;
-            // throwing here rolls back the whole sync.
-            if ($quota > 0) {
-                $versionBytes = (int) FileVersion::where('user_id', $uid)->sum('size');
-                abort_if($total + $versionBytes > $quota, 413, __('files.quota_exceeded'));
-            }
+                // Enforce the quota against the reconciled live + kept-version bytes;
+                // throwing here rolls back the whole sync.
+                if ($quota > 0) {
+                    $versionBytes = (int) FileVersion::where('user_id', $uid)->sum('size');
+                    abort_if($total + $versionBytes > $quota, 413, __('files.quota_exceeded'));
+                }
 
-            // Referenced blobs no longer need their upload record.
-            $syncedBlobs = collect($files)->pluck('blob')->all();
-            if ($syncedBlobs !== []) {
-                FileBlob::where('user_id', $uid)->whereIn('blob', $syncedBlobs)->delete();
-            }
+                // Referenced blobs no longer need their upload record.
+                $syncedBlobs = collect($files)->pluck('blob')->all();
+                if ($syncedBlobs !== []) {
+                    FileBlob::where('user_id', $uid)->whereIn('blob', $syncedBlobs)->delete();
+                }
 
-            return $prunedBlobs;
-        }));
+                return $prunedBlobs;
+            });
 
-        // Reference-counted: a pruned version blob still referenced by a live
-        // file, a trashed file, or another kept version is never unlinked.
-        $this->freeBlobs($removedBlobs);
+            // Reference-counted inside the lock: a concurrent writer can't
+            // reference a pruned blob between the commit and this ref-check.
+            $this->freeBlobs($removedBlobs);
+        });
 
         return response()->json(['ok' => true]);
     }
@@ -331,12 +341,13 @@ class FileController extends Controller
             'parts.*.part' => ['required', 'integer', 'min:1'],
             'parts.*.etag' => ['required', 'string'],
         ]);
-        // Atomically claim the session (pull = get+forget) so a replayed or
-        // double-clicked completion finds no session and is a 404 — it can't
-        // complete the upload or register the blob twice.
+        // Keep the session until completion SUCCEEDS: only forget it after S3
+        // confirms, so a transient S3 error doesn't strand a fully-uploaded
+        // multi-GB file with no retry/abort path. Both completeMultipartUpload
+        // (idempotent for identical parts) and FileBlob::firstOrCreate dedupe a
+        // replayed completion, so leaving the session in place is safe.
         $token = (string) $request->input('token');
-        $s = Cache::pull($this->chunkKey($token));
-        abort_if(! is_array($s) || (int) ($s['user'] ?? 0) !== (int) $request->user()->id, 404);
+        $s = $this->chunkSession($request);
 
         $parts = collect($request->input('parts'))
             ->map(fn ($p) => ['PartNumber' => (int) $p['part'], 'ETag' => $p['etag']])
@@ -347,6 +358,7 @@ class FileController extends Controller
             'MultipartUpload' => ['Parts' => $parts],
         ]);
         FileBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'created_at' => now()]);
+        Cache::forget($this->chunkKey($token));
 
         return response()->json(['id' => $s['id']], 201);
     }
@@ -355,13 +367,18 @@ class FileController extends Controller
     public function chunkAbort(Request $request): JsonResponse
     {
         $request->validate(['token' => ['required', 'string']]);
-        $s = $this->chunkSession($request);
-        try {
-            $this->s3()->abortMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId']]);
-        } catch (\Throwable) {
-            // best effort; the object-storage lifecycle rule reclaims stale parts
+        $token = (string) $request->input('token');
+        // Tolerate an already-gone session (nothing to abort) so aborting is
+        // always safe/idempotent and never a dead-end 404.
+        $s = Cache::get($this->chunkKey($token));
+        if (is_array($s) && (int) ($s['user'] ?? 0) === (int) $request->user()->id) {
+            try {
+                $this->s3()->abortMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId']]);
+            } catch (\Throwable) {
+                // best effort — the object-storage lifecycle rule reclaims stale parts
+            }
+            Cache::forget($this->chunkKey($token));
         }
-        Cache::forget($this->chunkKey((string) $request->input('token')));
 
         return response()->json(['ok' => true]);
     }
@@ -417,7 +434,14 @@ class FileController extends Controller
      */
     private function withUserLock(int $userId, \Closure $fn)
     {
-        return Cache::lock('files-write:'.$userId, 30)->block(15, $fn);
+        // Long TTL so the lock can't auto-expire mid-transaction on a large sync
+        // and admit a second writer; a genuine contention timeout becomes a clean
+        // 429 (retryable) instead of an unhandled 500.
+        try {
+            return Cache::lock('files-write:'.$userId, 120)->block(20, $fn);
+        } catch (LockTimeoutException $e) {
+            abort(429, __('files.busy'));
+        }
     }
 
     /** Keep only the newest N versions of a file; return the pruned blobs. */
@@ -439,7 +463,7 @@ class FileController extends Controller
         abort_unless($file->isOwnedBy($request->user()->id), 403);
         $versions = FileVersion::where('file_id', $file->id)->orderByDesc('created_at')->get()
             ->map(fn (FileVersion $v): array => [
-                'id' => $v->id, 'name' => $v->name, 'mime' => $v->mime,
+                'id' => $v->id, 'name' => $v->name, 'mime' => $v->mime, 'blob' => $v->blob,
                 'size' => $v->size, 'created_at' => $v->created_at?->toIso8601String(),
             ]);
 
@@ -587,38 +611,44 @@ class FileController extends Controller
     {
         [$fileIds, $folderIds] = $this->ownedIds($request);
         $permanent = $request->boolean('permanent');
+        $uid = (int) $request->user()->id;
 
-        $blobs = DB::transaction(function () use ($fileIds, $folderIds, $permanent): array {
-            $ids = $fileIds;
-            foreach ($folderIds as $fid) {
-                $subtree = $this->folderSubtree($fid);
-                $ids = array_merge($ids, StoredFile::withoutGlobalScopes()
-                    ->whereIn('file_folder_id', $subtree)->pluck('id')->all());
-                StoredFile::withoutGlobalScopes()->whereIn('file_folder_id', $subtree)
-                    ->update(['file_folder_id' => null]);
-                FileFolder::withoutGlobalScopes()->whereIn('id', $subtree)->delete();
-            }
-            $freed = [];
-            // Instance ->delete()/->forceDelete() (not builder) so SoftDeletes
-            // applies even though the owner global scope is stripped.
-            foreach (StoredFile::withoutGlobalScopes()->withTrashed()->whereIn('id', array_unique($ids))->get() as $file) {
-                if ($permanent) {
-                    // Reclaim the file blob AND every version's blob, and drop the
-                    // now-orphaned version rows, so a permanent delete leaves no
-                    // dangling version rows or leaked bytes/quota.
-                    $freed[] = $file->blob;
-                    $freed = array_merge($freed, FileVersion::where('file_id', $file->id)->pluck('blob')->all());
-                    FileVersion::where('file_id', $file->id)->delete();
-                    $file->forceDelete();
-                } else {
-                    $file->delete();
+        // Hold the per-user write lock across BOTH the transaction and the blob
+        // reclaim, so a permanent-delete's ref-check-then-unlink can't race a
+        // concurrent duplicate/sync that just referenced the shared blob.
+        $this->withUserLock($uid, function () use ($fileIds, $folderIds, $permanent): void {
+            $blobs = DB::transaction(function () use ($fileIds, $folderIds, $permanent): array {
+                $ids = $fileIds;
+                foreach ($folderIds as $fid) {
+                    $subtree = $this->folderSubtree($fid);
+                    $ids = array_merge($ids, StoredFile::withoutGlobalScopes()
+                        ->whereIn('file_folder_id', $subtree)->pluck('id')->all());
+                    StoredFile::withoutGlobalScopes()->whereIn('file_folder_id', $subtree)
+                        ->update(['file_folder_id' => null]);
+                    FileFolder::withoutGlobalScopes()->whereIn('id', $subtree)->delete();
                 }
-            }
+                $freed = [];
+                // Instance ->delete()/->forceDelete() (not builder) so SoftDeletes
+                // applies even though the owner global scope is stripped.
+                foreach (StoredFile::withoutGlobalScopes()->withTrashed()->whereIn('id', array_unique($ids))->get() as $file) {
+                    if ($permanent) {
+                        // Reclaim the file blob AND every version's blob, and drop the
+                        // now-orphaned version rows, so a permanent delete leaves no
+                        // dangling version rows or leaked bytes/quota.
+                        $freed[] = $file->blob;
+                        $freed = array_merge($freed, FileVersion::where('file_id', $file->id)->pluck('blob')->all());
+                        FileVersion::where('file_id', $file->id)->delete();
+                        $file->forceDelete();
+                    } else {
+                        $file->delete();
+                    }
+                }
 
-            return $freed;
+                return $freed;
+            });
+
+            $this->freeBlobs($blobs);
         });
-
-        $this->freeBlobs($blobs);
 
         return response()->json(['ok' => true]);
     }
@@ -974,13 +1004,23 @@ class FileController extends Controller
             abort_if($folder !== null && ! isset($known[$folder]), 422, 'File folder does not resolve within the manifest.');
         }
 
-        // Walk each folder to the root; a chain longer than the folder count
-        // means a cycle.
-        $count = count($parent);
+        // Cycle check in O(n): memoize folders already proven to reach the root,
+        // so each node is walked at most once across all starts (the old
+        // per-node full walk was O(n^2) — a CPU DoS on a deep chain).
+        $safe = [];
         foreach (array_keys($parent) as $start) {
-            $steps = 0;
-            for ($cur = $parent[$start]; $cur !== null; $cur = $parent[$cur] ?? null) {
-                abort_if(++$steps > $count, 422, 'Folder hierarchy contains a cycle.');
+            if (isset($safe[$start])) {
+                continue;
+            }
+            $seen = [];
+            $cur = $start;
+            while ($cur !== null && ! isset($safe[$cur])) {
+                abort_if(isset($seen[$cur]), 422, 'Folder hierarchy contains a cycle.');
+                $seen[$cur] = true;
+                $cur = $parent[$cur] ?? null;
+            }
+            foreach (array_keys($seen) as $id) {
+                $safe[$id] = true;
             }
         }
     }

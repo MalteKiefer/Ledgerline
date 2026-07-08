@@ -50,8 +50,11 @@ class FolderNode extends FileCollection
         });
     }
 
-    private function deleteTree(string $folderId): void
+    private function deleteTree(string $folderId, int $depth = 0): void
     {
+        // Bound the recursion so a very deep (or, defensively, a cyclic) chain
+        // can't overflow the PHP stack mid-transaction.
+        abort_if($depth > 100, 422, __('files.folder_too_deep'));
         // Trash the files (move to root + keep the blob) so they stay restorable
         // from the web trash after the folder itself is gone; then drop the now
         // empty subfolders (folders are not soft-deletable).
@@ -60,7 +63,7 @@ class FolderNode extends FileCollection
             $file->delete();
         }
         foreach (FileFolder::withoutGlobalScopes()->where('parent_id', $folderId)->get() as $sub) {
-            $this->deleteTree($sub->id);
+            $this->deleteTree($sub->id, $depth + 1);
             $sub->delete();
         }
     }

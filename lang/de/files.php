@@ -22,6 +22,8 @@ return [
     'archive_too_many' => 'Zu viele Dateien für ein Archiv.',
     'archive_too_large' => 'Das Archiv ist zu groß.',
     'folder_too_deep' => 'Die Ordnerstruktur ist zu tief zum Kopieren.',
+    'busy' => 'Der Dateispeicher ist gerade belegt, bitte erneut versuchen.',
+    'retry' => 'Erneut versuchen',
     'archive_invalid' => 'Das ist kein gültiges Zip-Archiv.',
     'archived_toast' => 'Archiv erstellt.',
     'extracted_toast' => 'Archiv entpackt.',

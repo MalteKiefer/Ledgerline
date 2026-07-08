@@ -56,23 +56,31 @@ class FileNode extends File implements IACL
             return $this->getETag();
         }
 
-        \DB::transaction(function () use ($old, $oldSize, $oldMime, $oldName, $blob, $newSize): void {
+        $prunedBlobs = [];
+        \DB::transaction(function () use ($old, $oldSize, $oldMime, $oldName, $blob, $newSize, &$prunedBlobs): void {
             // Keep the prior content as a recoverable version (parity with the web
             // client) before switching the live blob, instead of dropping it.
             if ($old !== $blob && Str::isUuid($old)) {
-                $this->backend->snapshotVersion($this->file, $old, $oldSize, $oldMime, $oldName);
+                $prunedBlobs = $this->backend->snapshotVersion($this->file, $old, $oldSize, $oldMime, $oldName);
             }
             $this->file->forceFill([
                 'blob' => $blob,
                 'size' => $newSize,
                 'mime' => $this->backend->guessMime($this->file->name, $blob),
+                // Stale search text must not survive a content change.
+                'content' => null,
+                'content_at' => null,
             ])->save();
         });
         ExtractFileText::dispatch($this->file->id, $blob)->afterCommit();
-        // Reference-counted: the snapshot above now holds $old, so this only frees
-        // it if nothing (file/trashed/version) references it.
+        // Free disk bytes only AFTER commit (reference-counted). The snapshot now
+        // holds $old, so releaseBlob keeps it; the pruned overflow versions are
+        // freed here.
         if ($old !== $blob) {
             $this->backend->releaseBlob($old);
+        }
+        foreach ($prunedBlobs as $pruned) {
+            $this->backend->releaseBlob((string) $pruned);
         }
 
         return $this->getETag();
