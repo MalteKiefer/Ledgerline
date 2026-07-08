@@ -7,15 +7,12 @@ namespace Tests\Feature;
 use App\Jobs\BuildExport;
 use App\Models\AppSettings;
 use App\Models\Export;
-use App\Models\FileFolder;
 use App\Models\Photo;
-use App\Models\StoredFile;
 use App\Services\Export\ExportArchiver;
 use App\Services\Notifications\ChannelNotifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ExportTest extends TestCase
@@ -93,27 +90,8 @@ class ExportTest extends TestCase
         $this->assertSame(2, $export->part_count);
     }
 
-    public function test_build_includes_a_folder_tree_for_files(): void
-    {
-        Storage::fake('files');
-        $user = $this->signIn();
-
-        $folder = FileFolder::create(['id' => (string) Str::uuid(), 'name' => 'Docs']);
-        $file = StoredFile::create(['id' => (string) Str::uuid(), 'file_folder_id' => $folder->id, 'name' => 'note.txt', 'blob' => (string) Str::uuid(), 'size' => 3]);
-        Storage::disk('files')->put('files/'.$file->blob, 'abc');
-
-        $export = Export::create([
-            'user_id' => $user->id, 'source' => 'files', 'title' => '1 item', 'status' => 'queued',
-            'item_count' => 1, 'payload' => ['file_ids' => [], 'folder_ids' => [$folder->id]],
-        ]);
-
-        $this->runBuild($export);
-        $export->refresh();
-
-        $this->assertSame('ready', $export->status);
-        $this->assertSame(1, $export->part_count);
-        Storage::disk('files')->assertExists($export->parts()[0]['path']);
-    }
+    // (Removed: server-side files export — files are end-to-end encrypted, so
+    // only gallery exports produce a readable archive.)
 
     public function test_downloads_page_lists_and_serves_and_deletes(): void
     {
