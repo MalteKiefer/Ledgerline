@@ -348,11 +348,6 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/bookmarks/folders/{folder}/move', [BookmarkController::class, 'moveFolder'])->name('bookmarks.folders.move');
     Route::put('/bookmarks/folders/{folder}', [BookmarkController::class, 'updateFolder'])->name('bookmarks.folders.update');
     Route::post('/bookmarks/{bookmark}/move', [BookmarkController::class, 'moveBookmark'])->name('bookmarks.move');
-    Route::get('/bookmarks/export', [BookmarkController::class, 'export'])->name('bookmarks.export');
-    Route::post('/bookmarks/import', [BookmarkController::class, 'import'])->middleware('throttle:10,1')->name('bookmarks.import');
-    Route::post('/bookmarks/fetch-meta', [BookmarkController::class, 'fetchMeta'])->middleware('throttle:30,1')->name('bookmarks.fetch-meta');
-    Route::post('/bookmarks/check-links', [BookmarkController::class, 'checkLinks'])->middleware('throttle:10,1')->name('bookmarks.check-links');
-    Route::get('/bookmarks/favicon', [BookmarkController::class, 'favicon'])->middleware('throttle:120,1')->name('bookmarks.favicon');
     Route::post('/bookmarks', [BookmarkController::class, 'store'])->name('bookmarks.store');
     Route::put('/bookmarks/{bookmark}', [BookmarkController::class, 'update'])->name('bookmarks.update');
     Route::patch('/bookmarks/{bookmark}', [BookmarkController::class, 'patch'])->withTrashed()->name('bookmarks.patch');

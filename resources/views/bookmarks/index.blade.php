@@ -5,10 +5,24 @@
         subfolderPrompt: @js(__('bookmarks.subfolder_prompt')),
         deleteConfirm: @js(__('bookmarks.delete_confirm')),
         emptyTrashConfirm: @js(__('bookmarks.empty_trash_confirm')),
-        importResult: @js(__('bookmarks.import_result')),
         urlRequired: @js(__('bookmarks.url_required')),
-        linkCheckQueued: @js(__('bookmarks.link_check_queued')),
      })">
+
+    {{-- Zero-knowledge gate: bookmarks decrypt with the vault key. --}}
+    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+
+    <template x-if="state === 'locked'">
+        <div class="mx-auto mt-16 max-w-md rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center">
+            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
+            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
+               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
+            <button type="button" @click="$dispatch('vault-panel')"
+                class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
+                <x-icon name="lock-open" class="h-4 w-4" />
+                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
+            </button>
+        </div>
+    </template>
 
     <template x-if="state === 'error'">
         <p class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('bookmarks.save_failed') }}</p>
@@ -50,9 +64,9 @@
                     <template x-for="b in filtered" :key="b.id">
                         <li class="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm"
                             draggable="true" @dragstart="dragItem = { type: 'bookmark', id: b.id }" @dragend="dragItem = null" :class="dragItem && dragItem.type === 'bookmark' && dragItem.id === b.id ? 'opacity-50' : ''">
-                            <template x-if="host(b.url)">
-                                <img :src="'{{ route('bookmarks.favicon') }}?host='+encodeURIComponent(host(b.url))" alt="" x-on:error="$el.style.display='none'" class="mt-0.5 h-5 w-5 shrink-0 rounded">
-                            </template>
+                            {{-- No server favicon fetch under zero-knowledge (it would
+                                 leak the bookmarked domain to the server) — generic icon. --}}
+                            <span class="mt-0.5 shrink-0 text-gray-400 dark:text-gray-500"><x-icon name="link" class="h-5 w-5" /></span>
                             <div class="min-w-0 flex-1">
                                 <span class="flex items-center gap-1.5">
                                     <a :href="b.url" target="_blank" rel="noopener" @click="view === 'readlater' && markRead(b)" class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100 hover:underline" x-text="b.title"></a>
@@ -177,13 +191,8 @@
                 <div class="min-h-0 flex-1 space-y-4 overflow-auto p-5" x-show="editing">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('bookmarks.url') }}</label>
-                        <div class="mt-1 flex items-center gap-2">
-                            <input type="url" x-model="editing.url" placeholder="https://…" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                            <button type="button" @click="fetchMeta()" :disabled="fetchingMeta || !(editing.url||'').startsWith('http')" title="{{ __('bookmarks.fetch_meta') }}"
-                                class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
-                                <x-icon name="arrow-path" class="h-4 w-4" x-bind:class="fetchingMeta && 'animate-spin'" />
-                            </button>
-                        </div>
+                        {{-- No server metadata prefill (the URL is sealed); type it. --}}
+                        <input type="url" x-model="editing.url" placeholder="https://…" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('bookmarks.field_title') }}</label>

@@ -32,13 +32,13 @@ class BookmarksData implements UserDataContributor
             ->withTrashed()
             ->where('user_id', $user->id)
             ->orderBy('id')
+            // Zero-knowledge: url/title/description/tags are null; the sealed blob
+            // is exported as ciphertext (decryptable only with the vault key).
             ->get([
                 'id',
                 'bookmark_folder_id',
-                'title',
-                'url',
-                'description',
-                'tags',
+                'enc_bookmark',
+                'is_encrypted',
                 'favorite',
                 'created_at',
                 'updated_at',

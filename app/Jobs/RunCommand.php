@@ -25,7 +25,6 @@ class RunCommand implements ShouldQueue
 
     private const ALLOWED = [
         'files:extract-text',
-        'bookmarks:check-links',
         'calendar:refresh-subscriptions',
     ];
 
