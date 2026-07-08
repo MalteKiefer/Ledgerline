@@ -33,6 +33,29 @@ document.addEventListener('alpine:init', () => {
         toggleSidebar() { this.sidebarOpen = ! this.sidebarOpen; if (this.sidebarOpen) this.navOpen = false; },
         closeAll() { this.navOpen = false; this.sidebarOpen = false; },
     });
+
+    // Reactive wrapper around the zero-knowledge Vault crypto module. Tracks
+    // whether the user's vault is configured (server) and unlocked (this login),
+    // so the Files UI can gate on it. All crypto stays in window.Vault; nothing
+    // secret is held here.
+    Alpine.store('vault', {
+        configured: false,
+        _unlockedAt: 0, // reactive nonce bumped on lock/unlock so getters re-run
+        get unlocked() { this._unlockedAt; return window.Vault.unlocked(); },
+        async init() {
+            try { this.configured = (await window.Vault.status()).configured; } catch (e) { /* leave false */ }
+        },
+        async setup(passphrase) {
+            const code = await window.Vault.setup(passphrase);
+            this.configured = true; this._unlockedAt++;
+            return code;
+        },
+        async unlock(passphrase) { await window.Vault.unlock(passphrase); this._unlockedAt++; },
+        async recover(code) { await window.Vault.recover(code); this._unlockedAt++; },
+        async changePassphrase(a, b) { await window.Vault.changePassphrase(a, b); this._unlockedAt++; },
+        lock() { window.Vault.lock(); this._unlockedAt++; },
+    });
+    Alpine.store('vault').init();
 });
 
 // CSP-safe replacement for inline `onsubmit="return confirm(...)"`: any form
@@ -3022,9 +3045,17 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         // Switching view clears any selection, so a stale pick doesn't keep the
         // bulk bar / select-all checkbox active.
         this.$watch('view', () => { this.selected = []; });
-        // Full-text (content/OCR) search: query the server as the term changes.
-        this.$watch('query', () => this.fetchContentMatches());
-        await this.load();
+        // Zero-knowledge gate: the tree can only be decrypted with an unlocked
+        // vault. Load once unlocked, and (re)load the moment the vault unlocks.
+        if (this.$store.vault.unlocked) {
+            await this.load();
+        } else {
+            this.state = 'locked';
+        }
+        this.$watch('$store.vault.unlocked', (on) => {
+            if (on && this.state !== 'ready') this.load();
+            if (! on) { this.state = 'locked'; this.manifest = { v: 1, folders: [], files: [] }; }
+        });
     },
 
     initDropzone() {
@@ -3095,12 +3126,57 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const res = await fetch(config.dataUrl, { cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) { this.state = 'error'; return; }
             const data = await res.json();
-            this.manifest = data.files ? data : { v: 1, folders: [], files: [] };
+            const raw = data.files ? data : { v: 1, folders: [], files: [] };
+            // Decrypt the sealed names/metadata into the in-memory manifest so the
+            // rest of the UI (rendering, sort, search, rename) works on plaintext
+            // that never leaves the browser. Requires an unlocked vault.
+            this.manifest = {
+                v: raw.v,
+                folders: (raw.folders || []).map((f) => this._decFolder(f)),
+                files: (raw.files || []).map((f) => this._decFile(f)),
+            };
             this.usage = data.usage || { used: 0, quota: 0 };
             this.state = 'ready';
         } catch (e) {
             this.state = 'error';
         }
+    },
+
+    // ---- Zero-knowledge (de/serialize the manifest) ----
+
+    // Decrypt a server folder row {id,name(sealed),parent} to an in-memory row.
+    _decFolder(f) {
+        let name = '';
+        try { name = window.Vault.decryptFileMeta(f.name).name; } catch (e) { name = '???'; }
+        return { id: f.id, name, parent: f.parent ?? null };
+    },
+    // Decrypt a server file row into the plaintext shape the UI expects, keeping
+    // the wrapped file key + blob for later download/persist.
+    _decFile(f) {
+        let meta = { name: '???', mime: 'application/octet-stream', size: f.size };
+        try { meta = window.Vault.decryptFileMeta(f.enc_metadata); } catch (e) { /* stays ??? */ }
+        return {
+            id: f.id, blob: f.blob, encFileKey: f.enc_file_key,
+            name: meta.name, mime: meta.mime, size: f.size,
+            folder: f.folder ?? null, trashed: f.trashed ?? null, created: f.created ?? null,
+            favorite: !! f.favorite, note: f.note ?? null, tags: f.tags || [],
+        };
+    },
+    // Re-seal an in-memory folder row for the wire.
+    _encFolder(f) {
+        return { id: f.id, name: window.Vault.sealName(f.name), parent: f.parent ?? null };
+    },
+    // Re-seal an in-memory file row for the wire: fresh sealed metadata (name may
+    // have changed via rename) plus the already-wrapped per-file key from upload.
+    _encFile(f) {
+        const m = window.Vault.encryptMeta({ name: f.name, mime: f.mime || 'application/octet-stream', size: f.size });
+        return {
+            id: f.id, blob: f.blob,
+            enc_metadata: JSON.stringify({ c: m.cipher, n: m.nonce }),
+            enc_file_key: f.encFileKey,
+            folder: f.folder ?? null, tags: f.tags || [],
+            trashed: f.trashed ?? null, favorite: !! f.favorite, note: f.note ?? null,
+        };
     },
 
     usage: { used: 0, quota: 0 },
@@ -3161,7 +3237,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const res = await fetch(config.dataUrl, {
                 method: 'PUT',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ folders: this.manifest.folders, files: this.manifest.files }),
+                body: JSON.stringify({
+                    folders: this.manifest.folders.map((f) => this._encFolder(f)),
+                    files: this.manifest.files.map((f) => this._encFile(f)),
+                }),
             });
             if (! res.ok) throw new Error('save failed');
             this.error = '';
@@ -3863,16 +3942,24 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 const item = items[idx];
                 const entry = this.uploads[start + idx]; // reactive element
                 try {
-                    // Large files go through chunked (S3 multipart) upload so they
-                    // clear the proxy/PHP body-size limits and GB files work.
-                    const id = item.file.size > 64 * 1024 * 1024
-                        ? await this._uploadChunked(item.file, entry)
-                        : await this._uploadOne(item.file, entry);
+                    // Zero-knowledge: encrypt the whole file in the browser first,
+                    // then upload only the ciphertext. The wrapped per-file key
+                    // (encFileKey) and the plaintext name/size stay client-side.
+                    const enc = await window.Vault.encryptFile(item.file);
+                    // Neutral filename — the real name is sealed inside encMeta and
+                    // never sent to the server.
+                    const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+                    // Large ciphertext goes through chunked (S3 multipart) upload so
+                    // it clears the proxy/PHP body-size limits and GB files work.
+                    const id = cipher.size > 64 * 1024 * 1024
+                        ? await this._uploadChunked(cipher, entry)
+                        : await this._uploadOne(cipher, entry);
                     entry.state = 'done';
                     entry.progress = 100;
                     this.manifest.files.push({
                         id: crypto.randomUUID(),
                         blob: id,
+                        encFileKey: enc.encFileKey,
                         name: item.file.name,
                         mime: item.file.type || 'application/octet-stream',
                         size: item.file.size,
@@ -4006,12 +4093,15 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.uploads = [];
     },
 
+    // Fetch a file's ciphertext and decrypt it in the browser back to plaintext
+    // bytes. Central to download + preview, so decrypting here makes every
+    // consumer zero-knowledge with no per-caller change.
     async fetchPlain(row) {
         const res = await fetch(`${config.rawBase}/${row.blob}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         });
         if (! res.ok) throw new Error('fetch failed');
-        return new Uint8Array(await res.arrayBuffer());
+        return window.Vault.decryptFile(await res.arrayBuffer(), row.encFileKey);
     },
 
     async download(row) {
