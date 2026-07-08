@@ -236,11 +236,30 @@ export const Vault = {
     async changePassphrase(currentPass, newPass) {
         await this.unlock(currentPass); // verifies the current passphrase, loads VK
 
+        return this.setPassphrase(newPass);
+    },
+
+    /**
+     * Re-wrap the (already-unlocked, in-memory) vault key under a NEW passphrase
+     * and mint a fresh recovery code — no current passphrase needed. Used after a
+     * recovery-code unlock to set a new passphrase, and by changePassphrase.
+     * Returns the new recovery code to show once. Files are untouched (VK is the
+     * same), so everything stays decryptable.
+     */
+    async setPassphrase(newPass) {
+        if (! this.vk) {
+            throw new Error('locked');
+        }
         const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
         const ops = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
         const mem = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
         const kek = deriveKek(newPass, salt, ops, mem);
         const wrapped = seal(this.vk, kek);
+
+        // Mint a fresh recovery code (the old one no longer opens the vault).
+        const recoveryBytes = sodium.randombytes_buf(32);
+        const recoveryKey = sodium.crypto_generichash(sodium.crypto_secretbox_KEYBYTES, recoveryBytes);
+        const wrappedRecovery = seal(this.vk, recoveryKey);
 
         await api('PUT', {
             salt: b64(salt),
@@ -248,9 +267,13 @@ export const Vault = {
             kdf_mem: mem,
             wrapped_vault_key: wrapped.cipher,
             wrap_nonce: wrapped.nonce,
+            wrapped_vault_key_recovery: wrappedRecovery.cipher,
+            recovery_nonce: wrappedRecovery.nonce,
         });
 
         this.cache();
+
+        return sodium.to_hex(recoveryBytes).replace(/(.{4})/g, '$1 ').trim();
     },
 
     // ---- Data operations (used by later phases) ----
@@ -278,11 +301,40 @@ export const Vault = {
      * @returns {Promise<{blob: Blob, encMeta: string, encFileKey: string}>}
      */
     async encryptFile(file) {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        return this.encryptContent(bytes, {
-            name: file.name,
-            mime: file.type || 'application/octet-stream',
-        });
+        const fk = sodium.crypto_secretstream_xchacha20poly1305_keygen();
+        const { state, header } = sodium.crypto_secretstream_xchacha20poly1305_init_push(fk);
+
+        const parts = [header];
+        const total = file.size;
+        // Read the plaintext one 4 MiB slice at a time instead of buffering the
+        // WHOLE file into memory first — a large file no longer needs ~2-3x its
+        // size in RAM (only one slice + the growing ciphertext).
+        for (let off = 0; off < total || off === 0;) {
+            const end = Math.min(off + CHUNK, total);
+            const last = end >= total;
+            const slice = new Uint8Array(await file.slice(off, end).arrayBuffer());
+            const cipher = sodium.crypto_secretstream_xchacha20poly1305_push(
+                state,
+                slice,
+                null,
+                last ? sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL
+                    : sodium.crypto_secretstream_xchacha20poly1305_TAG_MESSAGE,
+            );
+            parts.push(u32le(cipher.length), cipher);
+            off = end;
+            if (last) {
+                break;
+            }
+        }
+
+        const encFileKey = seal(fk, this.vk);
+        const encMeta = this.encryptMeta({ name: file.name, mime: file.type || 'application/octet-stream', size: total });
+
+        return {
+            blob: new Blob(parts, { type: 'application/octet-stream' }),
+            encMeta: JSON.stringify({ c: encMeta.cipher, n: encMeta.nonce }),
+            encFileKey: JSON.stringify({ c: encFileKey.cipher, n: encFileKey.nonce }),
+        };
     },
 
     /**

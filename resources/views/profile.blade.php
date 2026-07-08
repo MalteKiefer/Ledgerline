@@ -57,6 +57,25 @@
         </dl>
     </div>
 
+    {{-- Files encryption (zero-knowledge vault): change passphrase / reset via
+         recovery code. The panel (included below) drives the modals. --}}
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('vault.settings_heading') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('vault.settings_hint') }}</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+            <template x-if="$store.vault.configured">
+                <div class="flex flex-wrap gap-3">
+                    <x-button variant="secondary" type="button" x-on:click="$dispatch('vault-change')">{{ __('vault.change_action') }}</x-button>
+                    <x-button variant="secondary" type="button" x-on:click="$dispatch('vault-recover')">{{ __('vault.reset_action') }}</x-button>
+                </div>
+            </template>
+            <template x-if="! $store.vault.configured">
+                <x-button variant="secondary" type="button" x-on:click="$dispatch('vault-panel')">{{ __('vault.setup') }}</x-button>
+            </template>
+        </div>
+    </div>
+    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+
     {{-- Security & data --}}
     <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="{ del: false }">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.security_heading') }}</h2>

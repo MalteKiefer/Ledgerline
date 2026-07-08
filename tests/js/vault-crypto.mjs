@@ -48,6 +48,17 @@ for (const n of sizes) {
     ok(meta.name === `f${n}.bin` && meta.size === n, `size ${n}: sealed metadata (name+size) round-trips`);
 }
 
+// --- Slice-based encryptFile(File) round-trips (streaming read, multi-chunk) ---
+for (const n of [0, 100, CHUNK + 500, 2 * CHUNK + 99]) {
+    const data = new Uint8Array(n);
+    for (let i = 0; i < n; i++) data[i] = (i * 97 + 3) & 0xff;
+    const file = new File([data], 'x.bin', { type: 'application/octet-stream' });
+    const enc = await Vault.encryptFile(file);
+    const back = Vault.decryptFile(await blobBytes(enc.blob), enc.encFileKey);
+    ok(eqBytes(back, data), `encryptFile(File) round-trips at ${n} bytes (slice read)`);
+    ok(Vault.decryptFileMeta(enc.encMeta).size === n, `encryptFile(File) seals the real size at ${n} bytes`);
+}
+
 // --- No plaintext leak: a recognizable marker never appears in the ciphertext ---
 const marker = new TextEncoder().encode('SECRET_MARKER_1234567890');
 const secret = new Uint8Array(200000);
@@ -105,6 +116,17 @@ ok(eqBytes(Vault.decryptFile(cipherBefore, encBefore.encFileKey), new Uint8Array
 Vault.lock();
 await Vault.unlock('a brand new passphrase!!');
 ok(Vault.unlocked(), 'unlock works with the new passphrase after rotation');
+
+// --- Recovery re-wrap: setPassphrase mints a FRESH recovery code; the old one dies ---
+const newRecovery = await Vault.setPassphrase('third passphrase here');
+ok(typeof newRecovery === 'string' && newRecovery.replace(/\s/g, '').length === 64, 'setPassphrase returns a fresh 32-byte recovery code');
+ok(newRecovery.replace(/\s/g, '') !== recoveryCode.replace(/\s/g, ''), 'the new recovery code differs from the old one');
+Vault.lock();
+let oldRecFailed = false;
+try { await Vault.recover(recoveryCode); } catch (e) { oldRecFailed = true; }
+ok(oldRecFailed && ! Vault.unlocked(), 'the OLD recovery code no longer opens the vault after a re-wrap');
+await Vault.recover(newRecovery);
+ok(Vault.unlocked() && Buffer.from(Vault.vk).toString('hex') === vkHex, 'the NEW recovery code opens the vault (same VK, files intact)');
 
 console.log(`\nvault-crypto: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

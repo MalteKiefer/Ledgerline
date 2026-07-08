@@ -36,42 +36,45 @@
         },
         async doRecover() {
             this.error = ''; this.busy = true;
-            try { await $store.vault.recover(this.code); this.open = false; }
+            // Recovery unlocks the in-memory key; then FORCE a new passphrase (the
+            // forgotten one is unknown) — this also mints a fresh recovery code.
+            try { await $store.vault.recover(this.code); this.pass = this.pass2 = ''; this.mode = 'setnew'; }
             catch (e) { this.error = '{{ __('vault.err_recover') }}'; }
             finally { this.busy = false; }
         },
+        async doSetNew() {
+            this.error = '';
+            if (this.pass.length < 10) { this.error = '{{ __('vault.err_short') }}'; return; }
+            if (this.pass !== this.pass2) { this.error = '{{ __('vault.err_mismatch') }}'; return; }
+            this.busy = true;
+            try { this.recovery = await $store.vault.setPassphrase(this.pass); this.mode = 'recovery'; }
+            catch (e) { this.error = '{{ __('vault.err_change') }}'; }
+            finally { this.busy = false; }
+        },
+        recoverPanel() {
+            this.mode = 'recover';
+            this.pass = this.pass2 = this.code = this.recovery = this.error = '';
+            this.open = true;
+        },
         changePanel() {
             this.mode = 'change';
-            this.pass = this.pass2 = this.code = this.error = '';
+            this.pass = this.pass2 = this.code = this.recovery = this.error = '';
             this.open = true;
         },
         async doChange() {
             this.error = '';
             if (this.pass2.length < 10) { this.error = '{{ __('vault.err_short') }}'; return; }
             this.busy = true;
-            try { await $store.vault.changePassphrase(this.pass, this.pass2); this.open = false; }
+            // A passphrase change also mints a fresh recovery code, shown once.
+            try { this.recovery = await $store.vault.changePassphrase(this.pass, this.pass2); this.mode = 'recovery'; }
             catch (e) { this.error = '{{ __('vault.err_change') }}'; }
             finally { this.busy = false; }
         },
-     }" @vault-panel.window="panel()" @vault-change.window="changePanel()">
+     }" @vault-panel.window="panel()" @vault-change.window="changePanel()" @vault-recover.window="recoverPanel()">
 
     {{-- Monochrome padlock: open = unlocked, closed = locked / not set up. --}}
-    <template x-if="$store.vault.configured && $store.vault.unlocked">
-        <button type="button" @click="$store.vault.lock()" title="{{ __('vault.unlocked') }}"
-            class="rounded-md p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900" aria-label="{{ __('vault.unlocked') }}">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-        </button>
-    </template>
-    <template x-if="! ($store.vault.configured && $store.vault.unlocked)">
-        <button type="button" @click="panel()" :title="$store.vault.configured ? '{{ __('vault.unlock') }}' : '{{ __('vault.setup') }}'"
-            class="rounded-md p-2 text-gray-600 hover:bg-gray-50 hover:text-gray-900" :aria-label="$store.vault.configured ? '{{ __('vault.unlock') }}' : '{{ __('vault.setup') }}'">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-        </button>
-    </template>
+    {{-- No inline padlock here: the Files header renders the lock toggle next to
+         Upload and opens this panel via the vault-panel window event. --}}
 
     <template x-teleport="body">
         <div x-show="open" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="open = false">
@@ -145,6 +148,20 @@
                         <div class="mt-5 flex items-center justify-between">
                             <button type="button" @click="mode = 'unlock'; error = ''" class="text-sm text-gray-500 hover:text-gray-900">{{ __('common.cancel') }}</button>
                             <button type="button" @click="doRecover()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.restore') }}</button>
+                        </div>
+                    </div>
+                </template>
+
+                {{-- After a recovery unlock: set a NEW passphrase (the old one is unknown). --}}
+                <template x-if="mode === 'setnew'">
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">{{ __('vault.setnew_title') }}</h3>
+                        <p class="mt-2 text-sm text-gray-600">{{ __('vault.setnew_hint') }}</p>
+                        <input type="password" x-model="pass" placeholder="{{ __('vault.change_new') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="password" x-model="pass2" @keydown.enter="doSetNew()" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
+                        <div class="mt-5 flex justify-end">
+                            <button type="button" @click="doSetNew()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.change') }}</button>
                         </div>
                     </div>
                 </template>

@@ -37,7 +37,7 @@ return [
     'upload_done' => 'Upload abgeschlossen',
     'upload_dismiss' => 'Schließen',
     'upload_unreadable' => 'Datei konnte nicht gelesen werden (vom System blockiert?)',
-    'encrypt_too_large' => 'Datei ist zu groß, um im Browser verschlüsselt zu werden (max. 1 GB).',
+    'encrypt_too_large' => 'Datei ist zu groß, um im Browser verschlüsselt zu werden (max. 2 GB).',
     'storage_used_only' => ':used verbraucht',
     'all_files' => 'Alle Dateien',
     'drop_hint' => 'Dateien oder Ordner hierher ziehen zum Hochladen',
