@@ -22,6 +22,8 @@ return [
     'archive_too_many' => 'Too many files for one archive.',
     'archive_too_large' => 'The archive is too large.',
     'folder_too_deep' => 'The folder hierarchy is too deep to copy.',
+    'busy' => 'The file store is busy, try again.',
+    'retry' => 'Retry',
     'archive_invalid' => 'This is not a valid zip archive.',
     'archived_toast' => 'Archive created.',
     'extracted_toast' => 'Archive extracted.',

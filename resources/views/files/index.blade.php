@@ -58,7 +58,14 @@
     </div>
 
     <template x-if="state === 'error'">
-        <p class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('files.save_failed') }}</p>
+        <div class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">
+            <p>{{ __('files.save_failed') }}</p>
+            {{-- Recover from a transient load failure without a full page reload,
+                 so the client isn't stuck in 'error' (which blocks all persists). --}}
+            <button type="button" @click="state = 'boot'; load()" class="mt-3 inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 font-medium hover:bg-red-100 dark:hover:bg-red-900">
+                <x-icon name="arrow-path" class="h-4 w-4" />{{ __('files.retry') }}
+            </button>
+        </div>
     </template>
 
     <template x-if="state === 'ready'">

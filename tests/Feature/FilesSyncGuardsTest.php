@@ -1,0 +1,63 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Models\FileFolder;
+use App\Models\FileVersion;
+use App\Models\StoredFile;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+class FilesSyncGuardsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_sync_accepts_a_kept_version_blob_so_restore_works(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $u = User::factory()->create();
+
+        $newBlob = (string) Str::uuid();
+        $oldBlob = (string) Str::uuid();
+        Storage::disk('files')->put('files/'.$newBlob, 'new');
+        Storage::disk('files')->put('files/'.$oldBlob, 'old');
+
+        $id = (string) Str::uuid();
+        (new StoredFile)->forceFill(['id' => $id, 'user_id' => $u->id, 'name' => 'x', 'blob' => $newBlob, 'mime' => 'text/plain', 'size' => 3])->save();
+        FileVersion::create(['id' => (string) Str::uuid(), 'file_id' => $id, 'user_id' => $u->id,
+            'name' => 'x', 'mime' => 'text/plain', 'size' => 3, 'blob' => $oldBlob, 'created_at' => now()]);
+
+        // Restore: point the file back at the version's blob and sync — the blob
+        // is one of the user's own versions, so the allow-list must accept it.
+        $this->actingAs($u)->putJson(route('files.sync'), ['folders' => [], 'files' => [[
+            'id' => $id, 'blob' => $oldBlob, 'name' => 'x', 'mime' => 'text/plain', 'size' => 3, 'folder' => null, 'tags' => [],
+        ]]])->assertOk();
+
+        $this->assertSame($oldBlob, StoredFile::withoutGlobalScopes()->find($id)->blob);
+    }
+
+    public function test_sync_refuses_an_empty_folder_list_while_folders_exist(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $u = User::factory()->create();
+
+        (new FileFolder)->forceFill(['id' => (string) Str::uuid(), 'user_id' => $u->id, 'parent_id' => null, 'name' => 'Keep'])->save();
+        $blob = (string) Str::uuid();
+        Storage::disk('files')->put('files/'.$blob, 'b');
+        (new StoredFile)->forceFill(['id' => ($fid = (string) Str::uuid()), 'user_id' => $u->id, 'name' => 'f', 'blob' => $blob, 'mime' => 'text/plain', 'size' => 1])->save();
+
+        // A manifest with a file but folders=[] would hard-delete the folder tree.
+        $this->actingAs($u)->putJson(route('files.sync'), ['folders' => [], 'files' => [[
+            'id' => $fid, 'blob' => $blob, 'name' => 'f', 'mime' => 'text/plain', 'size' => 1, 'folder' => null, 'tags' => [],
+        ]]])->assertStatus(409);
+
+        $this->assertSame(1, FileFolder::withoutGlobalScopes()->count());
+    }
+}
