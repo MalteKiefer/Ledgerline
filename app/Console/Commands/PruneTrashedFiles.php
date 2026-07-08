@@ -11,6 +11,7 @@ use App\Support\BlobStore;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Permanently purges files trashed longer than the retention window (blob +
@@ -62,7 +63,34 @@ class PruneTrashedFiles extends Command
             }
         }, 'blob');
 
-        $this->info("Purged {$count} trashed file(s); reclaimed {$orphans} orphan blob(s).");
+        // True-orphan disk sweep: reclaim blob files on disk that NOTHING in the
+        // database references and that have no upload record — e.g. bytes leaked
+        // by a crash between a committed delete and the post-commit unlink.
+        // Age-gated by lastModified so an in-flight upload (whose row/FileBlob may
+        // not exist yet) is never touched.
+        $referenced = StoredFile::withoutGlobalScopes()->withTrashed()->pluck('blob')
+            ->merge(FileVersion::pluck('blob'))
+            ->merge(FileBlob::pluck('blob'))
+            ->filter()->flip();
+        $swept = 0;
+        foreach ($disk->files('files') as $path) {
+            $blob = basename($path);
+            if (! Str::isUuid($blob) || isset($referenced[$blob])) {
+                continue;
+            }
+            try {
+                if ($disk->lastModified($path) > $orphanCutoff->getTimestamp()) {
+                    continue;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+            $disk->delete($path);
+            $disk->delete('thumbs/'.$blob.'.jpg');
+            $swept++;
+        }
+
+        $this->info("Purged {$count} trashed file(s); reclaimed {$orphans} orphan blob(s); swept {$swept} unreferenced blob file(s).");
 
         return self::SUCCESS;
     }
