@@ -59,6 +59,38 @@ for (const n of [0, 100, CHUNK + 500, 2 * CHUNK + 99]) {
     ok(Vault.decryptFileMeta(enc.encMeta).size === n, `encryptFile(File) seals the real size at ${n} bytes`);
 }
 
+// --- Streaming encryptor -> streaming decryptor round-trip (constant-memory path) ---
+for (const n of [0, 10, CHUNK, 2 * CHUNK + 777]) {
+    const data = new Uint8Array(n);
+    for (let i = 0; i < n; i++) data[i] = (i * 61 + 17) & 0xff;
+    const enc = Vault.newContentEncryptor();
+    // Produce the exact byte stream the streaming upload would send.
+    const frames = [enc.header];
+    let total = enc.header.length;
+    for (let off = 0; off < n || off === 0;) {
+        const end = Math.min(off + CHUNK, n);
+        const last = end >= n;
+        const f = enc.encryptChunk(data.subarray(off, end), last);
+        frames.push(f); total += f.length;
+        off = end; if (last) break;
+    }
+    ok(total === Vault.ciphertextSize(n), `ciphertextSize(${n}) predicts the exact stream length`);
+    // Concatenate + decrypt via the streaming decryptor (header then framed msgs).
+    const wire = concatAll(frames);
+    const dec = Vault.beginDecrypt(enc.sealKey());
+    dec.start(wire.subarray(0, dec.headerLen));
+    let off = dec.headerLen; const out = [];
+    for (;;) {
+        const len = wire[off] | (wire[off + 1] << 8) | (wire[off + 2] << 16) | (wire[off + 3] << 24);
+        off += 4;
+        const { message, final } = dec.pull(wire.subarray(off, off + len));
+        off += len; out.push(message);
+        if (final) break;
+    }
+    ok(eqBytes(concatAll(out), data), `streaming encrypt->decrypt round-trips at ${n} bytes`);
+}
+function concatAll(arrs) { const size = arrs.reduce((a, b) => a + b.length, 0); const o = new Uint8Array(size); let p = 0; for (const a of arrs) { o.set(a, p); p += a.length; } return o; }
+
 // --- No plaintext leak: a recognizable marker never appears in the ciphertext ---
 const marker = new TextEncoder().encode('SECRET_MARKER_1234567890');
 const secret = new Uint8Array(200000);
