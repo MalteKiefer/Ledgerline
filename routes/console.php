@@ -16,9 +16,6 @@ Schedule::command('backups:run-due')->everyMinute()->withoutOverlapping();
 // the transfer modal always has an up-to-date quick-pick list.
 Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 
-// Fire to-do reminders that have come due.
-Schedule::command('reminders:send')->everyMinute()->withoutOverlapping();
-
 // Pull every mail account into the local archive (server-deleted mail is kept).
 
 // Remove expired download exports (past their retention window) and their zips.

@@ -19,7 +19,7 @@ class GlobalSettingsAccessTest extends TestCase
 
         $this->get(route('settings.gallery.edit'))->assertForbidden();
         // Personal settings stay open.
-        $this->get(route('settings.reminders.edit'))->assertOk();
+        $this->get(route('settings.files.edit'))->assertOk();
     }
 
     public function test_admin_group_member_can_open_infra_settings(): void
@@ -47,7 +47,7 @@ class GlobalSettingsAccessTest extends TestCase
         // section hidden entirely.
         $this->get(route('settings'))->assertOk()
             ->assertSee(__('settings.personal_heading'))
-            ->assertSee(__('settings.reminders_desc'))
+            ->assertSee(__('settings.files_desc'))
             ->assertDontSee(__('settings.admin_heading'));
     }
 

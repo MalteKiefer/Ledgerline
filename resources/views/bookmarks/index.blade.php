@@ -70,7 +70,6 @@
                             <div class="min-w-0 flex-1">
                                 <span class="flex items-center gap-1.5">
                                     <a :href="b.url" target="_blank" rel="noopener" @click="view === 'readlater' && markRead(b)" class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100 hover:underline" x-text="b.title"></a>
-                                    <span x-show="b.dead" x-cloak class="shrink-0 rounded bg-red-50 dark:bg-red-950 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300" title="{{ __('bookmarks.dead_hint') }}">{{ __('bookmarks.dead') }}</span>
                                 </span>
                                 <p class="truncate text-xs text-gray-400 dark:text-gray-500" x-text="b.url"></p>
                                 <p x-show="b.description" class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="b.description"></p>

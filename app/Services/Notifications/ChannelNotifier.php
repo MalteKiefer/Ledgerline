@@ -16,8 +16,8 @@ use Symfony\Component\Mime\Email;
 /**
  * Generic multi-channel notifier (in-app/desktop bell, e-mail, NTFY, webhook)
  * driven by the global notification settings. One channel failing never stops
- * the others — failures are logged. Used for to-do reminders; backups have
- * their own tailored notifier.
+ * the others — failures are logged. Used for share/download/paperless notices;
+ * backups have their own tailored notifier.
  */
 class ChannelNotifier
 {
