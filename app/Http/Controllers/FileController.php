@@ -110,6 +110,17 @@ class FileController extends Controller
         // never ones merely shared with them (guards against the write-guard
         // being bypassed by these query-builder mass operations).
         $uid = $request->user()->id;
+
+        // Guard against a self-inflicted mass wipe: the client initialises an
+        // empty manifest before load() hydrates it, so a failed load followed by
+        // any mutating action would PUT an empty file list and drop everything.
+        // Refuse to trash the whole library from an empty manifest unless the
+        // client explicitly confirms it.
+        if (! $request->boolean('confirm_wipe') && $files === []
+            && StoredFile::ownedBy($uid)->exists()) {
+            abort(409, 'Refusing to drop all files from an empty manifest.');
+        }
+
         $owned = fn () => StoredFile::ownedBy($uid);
         $ownedFolders = fn () => FileFolder::ownedBy($uid);
 
@@ -187,16 +198,19 @@ class FileController extends Controller
                 }
             }
 
-            // Reclaim the bytes of the user's own rows the manifest dropped —
-            // both the file blobs and any version blobs they kept.
-            $droppedFiles = $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds));
-            $droppedIds = $droppedFiles->pluck('id')->all();
-            $removed = $droppedFiles->pluck('blob')->all();
-            if ($droppedIds !== []) {
-                $removed = array_merge($removed, FileVersion::whereIn('file_id', $droppedIds)->pluck('blob')->all());
-                FileVersion::whereIn('file_id', $droppedIds)->delete();
+            // Files the manifest dropped are NOT permanently destroyed here. A
+            // stale, partial or racing manifest (a second tab, a DAV write, or a
+            // failed load) must never cause irreversible loss, so dropped rows
+            // are only SOFT-deleted (recoverable from the trash) and their blobs
+            // and versions are kept. The only bytes reclaimed by a sync are the
+            // version-cap overflow blobs pruned above (reference-counted below).
+            // whereNotIn('id', []) matches every owned row, so an empty manifest
+            // (a confirmed full wipe) soft-deletes everything into the trash.
+            // Instance ->delete() applies SoftDeletes even though the owner scope
+            // strips the SoftDeletingScope on the builder.
+            foreach ($owned()->whereNotIn('id', $fileIds)->get() as $dropped) {
+                $dropped->delete();
             }
-            $owned()->withTrashed()->when($fileIds !== [], fn ($q) => $q->whereNotIn('id', $fileIds))->forceDelete();
 
             // Enforce the quota against the reconciled live + kept-version bytes;
             // throwing here rolls back the whole sync.
@@ -211,14 +225,12 @@ class FileController extends Controller
                 FileBlob::where('user_id', $uid)->whereIn('blob', $syncedBlobs)->delete();
             }
 
-            return array_merge($removed, $prunedBlobs);
+            return $prunedBlobs;
         });
 
-        foreach ($removedBlobs as $blob) {
-            if (is_string($blob) && Str::isUuid($blob)) {
-                $this->disk()->delete('files/'.$blob);
-            }
-        }
+        // Reference-counted: a pruned version blob still referenced by a live
+        // file, a trashed file, or another kept version is never unlinked.
+        $this->freeBlobs($removedBlobs);
 
         return response()->json(['ok' => true]);
     }
@@ -542,7 +554,12 @@ class FileController extends Controller
             // applies even though the owner global scope is stripped.
             foreach (StoredFile::withoutGlobalScopes()->withTrashed()->whereIn('id', array_unique($ids))->get() as $file) {
                 if ($permanent) {
+                    // Reclaim the file blob AND every version's blob, and drop the
+                    // now-orphaned version rows, so a permanent delete leaves no
+                    // dangling version rows or leaked bytes/quota.
                     $freed[] = $file->blob;
+                    $freed = array_merge($freed, FileVersion::where('file_id', $file->id)->pluck('blob')->all());
+                    FileVersion::where('file_id', $file->id)->delete();
                     $file->forceDelete();
                 } else {
                     $file->delete();
@@ -745,7 +762,12 @@ class FileController extends Controller
     private function freeBlobs(array $blobs): void
     {
         foreach (array_unique(array_filter($blobs)) as $blob) {
-            if (! StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists()) {
+            // A blob may be shared by a duplicate file, a soft-deleted (trashed)
+            // file, or a kept FileVersion. Never unlink bytes any of them still
+            // reference, or restoring/downloading them would 404.
+            $stillUsed = StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists()
+                || FileVersion::withoutGlobalScopes()->where('blob', $blob)->exists();
+            if (! $stillUsed) {
                 $this->disk()->delete('files/'.$blob);
                 $this->disk()->delete('thumbs/'.$blob.'.jpg');
             }
@@ -831,11 +853,23 @@ class FileController extends Controller
     {
         $path = $this->path($blob);
 
-        // Never destroy bytes still owned by a live row — of ANY user, so one
-        // user can't delete another's blob by guessing its UUID.
-        abort_if(StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists(), 409);
+        // If the blob is still staged (uploaded but not yet synced to a file),
+        // only its uploader may drop it — otherwise one user could delete
+        // another's pending upload by guessing the UUID.
+        $staged = FileBlob::where('blob', $blob)->first();
+        abort_if($staged !== null && (int) $staged->user_id !== (int) auth()->id(), 403);
+
+        // Never destroy bytes still referenced by any live/trashed file OR a kept
+        // version, of ANY user (blobs are reference-shared across duplicates).
+        abort_if(
+            StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists()
+            || FileVersion::withoutGlobalScopes()->where('blob', $blob)->exists(),
+            409
+        );
 
         $this->disk()->delete($path);
+        $this->disk()->delete('thumbs/'.$blob.'.jpg');
+        $staged?->delete();
 
         return response()->json(['deleted' => true]);
     }
