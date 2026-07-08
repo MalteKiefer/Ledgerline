@@ -19,6 +19,8 @@
         token: '{{ csrf_token() }}',
      }, {
         uploadUnreadable: @js(__('files.upload_unreadable')),
+        paperlessDecryptWarn: @js(__('files.paperless_decrypt_warn')),
+        noteDecryptWarn: @js(__('files.note_decrypt_warn')),
         types: @js($typeLabels),
         stale: @js(__('files.vault_stale')),
         saveFailed: @js(__('files.save_failed')),
