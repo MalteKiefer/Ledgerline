@@ -179,15 +179,13 @@
                             @dragleave="$event.currentTarget.classList.remove('ring-2','ring-gray-400')"
                             @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-gray-400'); if (row.kind === 'folder' && dragItem) { dropInto(row.id); dragItem = null; }">
                             <button type="button" @click="row.kind === 'folder' ? (cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
-                                <template x-if="isImage(row)">
-                                    <img :src="thumbUrl(row)" loading="lazy" alt="" class="h-full w-full object-cover" x-on:error="$event.target.style.display='none'">
-                                </template>
-                                <template x-if="! isImage(row)">
-                                    <span class="text-gray-400 dark:text-gray-500">
-                                        <template x-if="row.kind === 'folder'"><span><x-icon name="folder" class="h-10 w-10" /></span></template>
-                                        <template x-if="row.kind !== 'folder'"><span><x-icon name="document-text" class="h-10 w-10" /></span></template>
-                                    </span>
-                                </template>
+                                {{-- No server thumbnails under zero-knowledge (the bytes are
+                                     ciphertext the server can't decode) — show a type icon. --}}
+                                <span class="text-gray-400 dark:text-gray-500">
+                                    <template x-if="row.kind === 'folder'"><span><x-icon name="folder" class="h-10 w-10" /></span></template>
+                                    <template x-if="row.kind !== 'folder' && isImage(row)"><span><x-icon name="photo" class="h-10 w-10" /></span></template>
+                                    <template x-if="row.kind !== 'folder' && ! isImage(row)"><span><x-icon name="document-text" class="h-10 w-10" /></span></template>
+                                </span>
                             </button>
                             <div class="flex items-center gap-1 px-2 py-1.5">
                                 <button type="button" x-show="row.kind === 'file'" @click="toggleFavorite(row)" class="shrink-0" :class="row.favorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500'" :aria-label="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))">
