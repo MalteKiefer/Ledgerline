@@ -481,7 +481,7 @@
                                     <span class="text-gray-700 dark:text-gray-300" x-text="fmtSize(v.size)"></span>
                                 </span>
                                 <span class="flex shrink-0 items-center gap-2">
-                                    <a :href="versionDownloadUrl(v.id)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('files.version_download') }}</a>
+                                    <button type="button" @click="downloadVersion(v)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('files.version_download') }}</button>
                                     <button type="button" @click="restoreVersion(v)" class="inline-flex min-h-11 items-center rounded-md bg-gray-900 dark:bg-gray-100 dark:text-gray-900 px-3 text-sm font-medium text-white hover:bg-gray-800 dark:hover:bg-white">{{ __('files.version_restore') }}</button>
                                 </span>
                             </li>

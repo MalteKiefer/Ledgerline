@@ -486,7 +486,9 @@ class FileController extends Controller
         abort_unless($file->isOwnedBy($request->user()->id), 403);
         $versions = FileVersion::where('file_id', $file->id)->orderByDesc('created_at')->get()
             ->map(fn (FileVersion $v): array => [
-                'id' => $v->id, 'name' => $v->name, 'mime' => $v->mime, 'blob' => $v->blob,
+                // Sealed metadata + wrapped key so the client can show the name and
+                // decrypt the snapshotted blob on restore/download (zero-knowledge).
+                'id' => $v->id, 'enc_metadata' => $v->enc_metadata, 'enc_file_key' => $v->enc_file_key, 'blob' => $v->blob,
                 'size' => $v->size, 'created_at' => $v->created_at?->toIso8601String(),
             ]);
 
@@ -593,7 +595,8 @@ class FileController extends Controller
     public function saveNote(Request $request, StoredFile $file): JsonResponse
     {
         abort_unless($file->isOwnedBy($request->user()->id), 403);
-        $data = $request->validate(['note' => ['nullable', 'string', 'max:5000']]);
+        // The note arrives sealed (ciphertext) — allow for the encryption overhead.
+        $data = $request->validate(['note' => ['nullable', 'string', 'max:8192']]);
         $file->forceFill(['note' => $data['note'] ?? null])->save();
 
         return response()->json(['ok' => true]);

@@ -3146,8 +3146,13 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             id: f.id, blob: f.blob, encFileKey: f.enc_file_key,
             name: meta.name, mime: meta.mime, size: f.size,
             folder: f.folder ?? null, trashed: f.trashed ?? null, created: f.created ?? null,
-            favorite: !! f.favorite, note: f.note ?? null, tags: f.tags || [],
+            favorite: !! f.favorite, note: this._openNote(f.note), tags: f.tags || [],
         };
+    },
+    // Notes are sealed too (the server must not see their plaintext).
+    _openNote(sealed) {
+        if (! sealed) return null;
+        try { return window.Vault.decryptFileMeta(sealed).name; } catch (e) { return ''; }
     },
     // Re-seal an in-memory folder row for the wire.
     _encFolder(f) {
@@ -3162,7 +3167,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             enc_metadata: JSON.stringify({ c: m.cipher, n: m.nonce }),
             enc_file_key: f.encFileKey,
             folder: f.folder ?? null, tags: f.tags || [],
-            trashed: f.trashed ?? null, favorite: !! f.favorite, note: f.note ?? null,
+            trashed: f.trashed ?? null, favorite: !! f.favorite,
+            note: f.note ? window.Vault.sealName(f.note) : null,
         };
     },
 
@@ -3173,16 +3179,30 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.versions = { open: true, row, list: [], loading: true };
         try {
             const res = await fetch(config.versionsBase + '/' + row.id + '/versions', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (res.ok) this.versions.list = (await res.json()).versions || [];
+            if (res.ok) {
+                // Decrypt each snapshot's sealed metadata for display; keep the
+                // wrapped key for restore/download.
+                this.versions.list = ((await res.json()).versions || []).map((v) => {
+                    let meta = { name: '???', mime: 'application/octet-stream' };
+                    try { meta = window.Vault.decryptFileMeta(v.enc_metadata); } catch (e) { /* stays ??? */ }
+                    return { ...v, name: meta.name, mime: meta.mime };
+                });
+            }
         } catch (e) { /* keep empty */ }
         this.versions.loading = false;
     },
-    versionDownloadUrl(versionId) {
-        return config.versionsBase + '/' + this.versions.row.id + '/versions/' + versionId + '/download';
+    // Download a snapshot: fetch its ciphertext and decrypt with the version's
+    // own wrapped key (each version has its own key).
+    async downloadVersion(v) {
+        try {
+            const res = await fetch(config.versionsBase + '/' + this.versions.row.id + '/versions/' + v.id + '/download', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) throw new Error('fetch failed');
+            saveBlobAs(window.Vault.decryptFile(await res.arrayBuffer(), v.encFileKey ?? v.enc_file_key), v.name, v.mime);
+        } catch (e) { this.error = labels.downloadFailed; }
     },
     // Restore a version by pointing the file's manifest row back at the version's
-    // blob and re-syncing. The client stays authoritative; the sync then snapshots
-    // the pre-restore blob as a new version automatically.
+    // blob AND its wrapped key (so the old ciphertext stays decryptable), then
+    // re-syncing. The sync snapshots the pre-restore blob as a new version.
     async restoreVersion(v) {
         if (! await this.$store.confirm.ask(labels.restoreConfirm || '')) return;
         const row = this.manifest.files.find((f) => f.id === this.versions.row.id);
@@ -3190,6 +3210,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         row.blob = v.blob;
         row.size = v.size;
         row.mime = v.mime;
+        row.encFileKey = v.encFileKey ?? v.enc_file_key;
         await this.persist();
         this.versions.open = false;
         await this.load();
@@ -3354,8 +3375,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const note = this.infoNote.trim();
         if ((row.note || '') === note) return;
         const f = this.manifest.files.find((x) => x.id === row.id);
-        if (f) f.note = note; // optimistic
-        if (! await this.filesPost(`${config.versionsBase}/${row.id}/note`, { note })) {
+        if (f) f.note = note; // optimistic (plaintext in-memory)
+        // Seal before it leaves the browser — the server stores only ciphertext.
+        const sealed = note ? window.Vault.sealName(note) : null;
+        if (! await this.filesPost(`${config.versionsBase}/${row.id}/note`, { note: sealed })) {
             window.llToast(labels.saveFailed);
         }
     },
