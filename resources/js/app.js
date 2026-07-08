@@ -84,6 +84,9 @@ document.addEventListener('alpine:init', () => {
                     this.lock();
                 }
             }, 15000);
+            // Clear the cached vault key when the tab is closed/navigated away so
+            // it doesn't linger in sessionStorage beyond the session.
+            window.addEventListener('pagehide', () => { try { window.Vault.lock(); } catch (e) { /* ignore */ } });
         },
         async setup(passphrase) {
             const code = await window.Vault.setup(passphrase);
@@ -3971,9 +3974,12 @@ Alpine.data('bookmarks', (labels = {}) => ({
         let meta = null;
         try { meta = window.Vault.decryptFileMeta(b.enc_bookmark); } catch (e) { /* undecryptable */ }
         const ok = meta !== null;
+        // Re-assert http(s) on display too: a decrypted javascript:/data: URL bound
+        // into :href would execute on click (self-XSS). Validate on BOTH ends.
+        const safeUrl = ok && /^https?:\/\//i.test(meta.url || '') ? meta.url : '';
         return {
             id: b.id, folderId: b.folderId ?? null,
-            url: ok ? (meta.url ?? '') : '', title: ok ? (meta.title ?? '') : '???',
+            url: safeUrl, title: ok ? (meta.title ?? '') : '???',
             description: ok ? (meta.description ?? '') : '', tags: ok ? (meta.tags ?? []) : [],
             favorite: !! b.favorite, readLater: !! b.readLater, read: !! b.read, dead: !! b.dead, trashed: b.trashed,
             _decOk: ok, _rawEnc: b.enc_bookmark,

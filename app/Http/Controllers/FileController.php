@@ -148,6 +148,12 @@ class FileController extends Controller
                 $env = json_decode((string) $f[$sealed], true);
                 abort_unless(is_array($env) && isset($env['c'], $env['n']) && is_string($env['c']) && is_string($env['n']), 422, 'Malformed sealed field.');
             }
+            // A per-file note, when present, must also be a sealed {c,n} envelope —
+            // never plaintext (it would otherwise land in the DB + GDPR export).
+            if (! empty($f['note'])) {
+                $env = json_decode((string) $f['note'], true);
+                abort_unless(is_array($env) && isset($env['c'], $env['n']) && is_string($env['c']) && is_string($env['n']), 422, 'Malformed sealed note.');
+            }
         }
 
         // Per-user storage quota (0 = unlimited). Reconcile sizes from disk so a
@@ -232,7 +238,8 @@ class FileController extends Controller
                         'is_encrypted' => true,
                         'size' => $size,
                         'blob' => $f['blob'],
-                        'tags' => Tags::normalize($f['tags'] ?? null),
+                        // Tags live inside the sealed enc_metadata — never plaintext.
+                        'tags' => null,
                         'favorite' => (bool) ($f['favorite'] ?? false),
                         'note' => $f['note'] ?? null,
                     ]);
@@ -621,6 +628,11 @@ class FileController extends Controller
         abort_unless($file->isOwnedBy($request->user()->id), 403);
         // The note arrives sealed (ciphertext) — allow for the encryption overhead.
         $data = $request->validate(['note' => ['nullable', 'string', 'max:8192']]);
+        // Enforce the {c,n} envelope so a non-browser client can't store plaintext.
+        if (! empty($data['note'])) {
+            $env = json_decode((string) $data['note'], true);
+            abort_unless(is_array($env) && isset($env['c'], $env['n']) && is_string($env['c']) && is_string($env['n']), 422, 'Malformed sealed note.');
+        }
         $file->forceFill(['note' => $data['note'] ?? null])->save();
 
         return response()->json(['ok' => true]);

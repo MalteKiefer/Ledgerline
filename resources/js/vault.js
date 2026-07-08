@@ -176,7 +176,7 @@ export const Vault = {
     async setup(passphrase) {
         await ready();
         const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
-        const ops = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
+        const ops = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE;
         const mem = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
         const kek = deriveKek(passphrase, salt, ops, mem);
 
@@ -251,7 +251,7 @@ export const Vault = {
             throw new Error('locked');
         }
         const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
-        const ops = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
+        const ops = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE;
         const mem = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
         const kek = deriveKek(newPass, salt, ops, mem);
         const wrapped = seal(this.vk, kek);
