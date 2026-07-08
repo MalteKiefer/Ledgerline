@@ -2,9 +2,21 @@ import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
+import hljs from 'highlight.js/lib/common';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
 import { Vault } from './vault';
+
+// Syntax-highlight fenced code blocks during markdown render (client-side, since
+// notes are zero-knowledge). github.css styles the .hljs spans.
+marked.use(markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code, lang) {
+        const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+        return hljs.highlight(code, { language }).value;
+    },
+}));
 
 // Zero-knowledge encryption vault (client-side crypto for the Files module).
 // Exposed globally so the vault UI + files component can lock/unlock/encrypt.
