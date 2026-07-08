@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Models\Face;
 use App\Models\Photo;
 use App\Support\BlobStore;
 use Illuminate\Console\Command;
@@ -56,22 +57,30 @@ class PruneTrashedPhotos extends Command
                     }
                 }
             });
+        // Face-crop thumbnails live under faces/** and are referenced by
+        // Face.thumb_path — include them so a crashed crop-write (crop on disk,
+        // row missing/updated) doesn't leak forever.
+        foreach (Face::whereNotNull('thumb_path')->pluck('thumb_path') as $tp) {
+            $referenced[$tp] = true;
+        }
 
         $graceTs = Carbon::now()->subHours((int) config('gallery.blob_orphan_grace_hours', 24))->getTimestamp();
         $swept = 0;
-        foreach ($disk->allFiles('photos') as $path) {
-            if (isset($referenced[$path])) {
-                continue;
-            }
-            try {
-                if ($disk->lastModified($path) > $graceTs) {
+        foreach (['photos', 'faces'] as $prefix) {
+            foreach ($disk->allFiles($prefix) as $path) {
+                if (isset($referenced[$path])) {
                     continue;
                 }
-            } catch (\Throwable) {
-                continue;
+                try {
+                    if ($disk->lastModified($path) > $graceTs) {
+                        continue;
+                    }
+                } catch (\Throwable) {
+                    continue;
+                }
+                $disk->delete($path);
+                $swept++;
             }
-            $disk->delete($path);
-            $swept++;
         }
 
         $this->info("Purged {$purged} trashed photo(s); swept {$swept} orphan gallery blob(s).");
