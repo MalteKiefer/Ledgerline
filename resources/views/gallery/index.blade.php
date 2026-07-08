@@ -22,6 +22,26 @@
                 <x-icon name="arrow-up-tray" class="h-5 w-5" />
                 <input type="file" accept="image/*,video/*" multiple class="hidden" @change="pick($event)">
             </label>
+            {{-- Danger: move the whole library to the trash (guarded by a confirm). --}}
+            <div x-data="{ open: false }" class="contents">
+                <button type="button" @click="open = true" title="{{ __('gallery.delete_all') }}" aria-label="{{ __('gallery.delete_all') }}"
+                    class="inline-flex items-center rounded-md border border-red-300 dark:border-red-800 p-2 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
+                    <x-icon name="trash" class="h-5 w-5" />
+                </button>
+                <div x-show="open" x-cloak @keydown.escape.window="open = false" class="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                    <div class="absolute inset-0 bg-gray-900/40" @click="open = false"></div>
+                    <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.delete_all') }}</h2>
+                        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ __('gallery.delete_all_confirm') }}</p>
+                        <form method="POST" action="{{ route('gallery.destroy-all') }}" class="mt-5 flex justify-end gap-3">
+                            @csrf
+                            @method('DELETE')
+                            <button type="button" @click="open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
+                            <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">{{ __('gallery.delete_all_action') }}</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </x-slot:actions>
     </x-page-heading>
 

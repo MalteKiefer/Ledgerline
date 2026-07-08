@@ -247,6 +247,7 @@ Route::middleware('auth')->group(function (): void {
     Route::patch('/gallery/people/{person}', [PersonController::class, 'update'])->name('gallery.people.update');
     Route::post('/gallery/people/{person}/merge', [PersonController::class, 'merge'])->name('gallery.people.merge');
     Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
+    Route::delete('/gallery/all', [GalleryController::class, 'destroyAll'])->middleware('throttle:6,1')->name('gallery.destroy-all');
     Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
     Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->middleware('throttle:6,1')->name('gallery.download');
     Route::post('/gallery/export', [GalleryController::class, 'queueExport'])->middleware('throttle:20,1')->name('gallery.export');

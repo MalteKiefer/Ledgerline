@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Gallery;
 
 use App\Models\Photo;
+use App\Support\BlobStore;
+use App\Support\DiskTempFile;
 use App\Support\Vector;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -35,12 +37,50 @@ class DuplicateDetector
         Photo::query()->whereNull('dup_dismissed_at')
             ->update(['duplicate_group_id' => null, 'dup_score' => null]);
 
+        // Make sure every ready photo has a perceptual hash before comparing.
+        // Videos in particular are hashed from their poster frame (medium_path);
+        // without this, any photo/video that never got a hash at upload — or
+        // whose async backfill has not run yet — is silently skipped and never
+        // flagged as a duplicate.
+        $this->backfillHashes();
+
         $this->perceptualPass();
         if (Vector::available()) {
             $this->embeddingPass();
         }
 
         return $this->assignGroups();
+    }
+
+    /**
+     * Compute and store a perceptual hash for every ready photo still missing
+     * one, reading the medium rendition (for videos, the poster frame). Mirrors
+     * EmbedPhoto's hashing so detection never depends on that async job having
+     * finished first.
+     */
+    private function backfillHashes(): void
+    {
+        $disk = BlobStore::disk();
+
+        Photo::query()
+            ->where('status', 'ready')
+            ->whereNull('phash')
+            ->whereNull('dup_dismissed_at')
+            ->eachById(function (Photo $photo) use ($disk): void {
+                $path = $photo->medium_path ?: $photo->disk_path;
+                if ($path === null || ! $disk->exists($path)) {
+                    return;
+                }
+                $tmp = DiskTempFile::pull($disk, $path, 'dup');
+                try {
+                    $hash = $this->hasher->hash($tmp);
+                    if ($hash !== null) {
+                        $photo->forceFill(['phash' => $hash])->save();
+                    }
+                } finally {
+                    @unlink($tmp);
+                }
+            });
     }
 
     private function perceptualPass(): void
