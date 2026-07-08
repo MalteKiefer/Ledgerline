@@ -23,6 +23,94 @@ marked.use(markedHighlight({
 // The reactive Alpine.store('vault') boots it (restores the cached key) on init.
 window.Vault = Vault;
 
+/**
+ * The opaque zero-knowledge store client. The whole workspace (notes, bookmarks,
+ * todos, and their structure/flags) lives in ONE sealed manifest; the server only
+ * stores/returns ciphertext + a version. This singleton loads + decrypts it once,
+ * holds it in memory, and saves (debounced, sealed, optimistic version) on change.
+ * File content bytes stay as separate opaque blobs (a later phase folds files in).
+ */
+window.LLStore = {
+    data: null,        // decrypted manifest, or null until loaded
+    version: 0,
+    ready: false,
+    loaded: false,
+    _timer: null,
+    _saving: false,
+    _again: false,
+    _onError: null,
+
+    _blank() {
+        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [] };
+    },
+
+    // A random client-side id for a new item (server never assigns ids now).
+    newId() {
+        const b = new Uint8Array(16);
+        crypto.getRandomValues(b);
+        return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+    },
+
+    // Load + decrypt the manifest once (call after the vault is unlocked).
+    async load() {
+        const res = await fetch('/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        if (! res.ok) throw new Error('store load failed');
+        const d = await res.json();
+        this.version = d.version ?? 0;
+        this.data = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
+        // Forward-compat: ensure every collection exists.
+        for (const k of Object.keys(this._blank())) if (! (k in this.data)) this.data[k] = this._blank()[k];
+        this.loaded = true;
+        this.ready = true;
+        return this.data;
+    },
+
+    reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; clearTimeout(this._timer); },
+
+    // Schedule a debounced save; every mutation calls this.
+    touch() {
+        clearTimeout(this._timer);
+        this._timer = setTimeout(() => this.flush(), 800);
+    },
+
+    // Seal + PUT the manifest with optimistic concurrency. On a version conflict
+    // (another tab/device wrote in between) we reload the server version and
+    // re-apply our in-memory copy (last-write-wins for this single-user app).
+    async flush() {
+        if (! this.loaded) return;
+        if (this._saving) { this._again = true; return; }
+        this._saving = true;
+        try {
+            const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(this.data), version: this.version });
+            const res = await fetch('/store', { method: 'PUT', headers: jsonHeaders(), body });
+            if (res.status === 409) {
+                const cur = await fetch('/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
+                this.version = cur.version ?? this.version;
+                this._again = true; // re-PUT our copy over the fresh version
+            } else if (res.ok) {
+                this.version = (await res.json()).version ?? this.version + 1;
+            } else {
+                throw new Error('store save failed');
+            }
+        } catch (e) {
+            if (this._onError) this._onError();
+        } finally {
+            this._saving = false;
+            if (this._again) { this._again = false; this.touch(); }
+        }
+    },
+};
+
+// Wait for the vault, then load the opaque manifest once (shared across the
+// notes/bookmarks/todos components). Returns true when the manifest is ready,
+// false while the vault is still locked.
+async function bootStore(store) {
+    while (! store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+    if (! store.vault.unlocked) return false;
+    if (! window.LLStore.loaded) await window.LLStore.load();
+    return true;
+}
+
 // Client-side markdown render (notes are zero-knowledge, so the server can't
 // render them). Sanitised with DOMPurify so decrypted content can't inject.
 function renderMarkdown(md) {
@@ -3624,52 +3712,19 @@ Alpine.data('notes', (labels = {}) => ({
     previewTimer: null,
 
     async init() {
-        // Zero-knowledge gate: notes decrypt with the vault key. Wait for the
-        // store to restore any cached key (survives navigation), then load.
-        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-        if (this.$store.vault.unlocked) { await this.load(); } else { this.state = 'locked'; }
-        this.$watch('$store.vault.unlocked', (on) => {
-            if (on && this.state !== 'ready') this.load();
-            if (! on) { this.state = 'locked'; this.notes = []; this.currentId = null; }
+        // Zero-knowledge: notes live in the opaque manifest (one sealed blob).
+        if (await bootStore(this.$store)) { this.notes = window.LLStore.data.notes; this.state = 'ready'; }
+        else { this.state = 'locked'; }
+        this.$watch('$store.vault.unlocked', async (on) => {
+            if (on && this.state !== 'ready') {
+                if (await bootStore(this.$store)) { this.notes = window.LLStore.data.notes; this.state = 'ready'; }
+            }
+            if (! on) { this.state = 'locked'; this.notes = []; this.currentId = null; window.LLStore.reset(); }
         });
     },
 
-    async load() {
-        try {
-            const res = await fetch('/notes/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) { this.state = 'error'; return; }
-            this.notes = ((await res.json()).notes ?? []).map((n) => this._decNote(n));
-            this.state = 'ready';
-        } catch (e) { this.state = 'error'; }
-    },
-
-    // Decrypt a server note into the plaintext shape the UI uses; keep the raw
-    // sealed blob so an undecryptable note round-trips untouched (never overwrite
-    // real data with a '???' placeholder).
-    _decNote(n) {
-        let meta = null;
-        try { meta = window.Vault.decryptFileMeta(n.enc_note); } catch (e) { /* undecryptable */ }
-        const ok = meta !== null;
-        return {
-            id: n.id,
-            title: ok ? (meta.title ?? '') : '???',
-            content: ok ? (meta.content ?? '') : '',
-            tags: ok ? (meta.tags ?? []) : [],
-            pinned: !! n.pinned, trashed: n.trashed, updated: n.updated,
-            _decOk: ok, _rawEnc: n.enc_note,
-        };
-    },
-    // Seal {title, content, tags} for the wire; pass an undecryptable note's
-    // original sealed blob through verbatim.
-    _encNote(n) {
-        if (n._decOk === false) return n._rawEnc;
-        const m = window.Vault.encryptMeta({ title: n.title || '', content: n.content || '', tags: n.tags || [] });
-        return JSON.stringify({ c: m.cipher, n: m.nonce });
-    },
-
-    async _api(method, url, body) {
-        return apiRequest(method, url, body);
-    },
+    // Persist the manifest (debounced, sealed) after a mutation.
+    _save() { window.LLStore.touch(); },
 
     get allTags() {
         const set = new Set();
@@ -3699,14 +3754,11 @@ Alpine.data('notes', (labels = {}) => ({
         this.refreshPreview();
     },
 
-    async newNote() {
-        try {
-            const local = { title: '', content: '', tags: [], pinned: false, _decOk: true };
-            const saved = await this._api('POST', '/notes', { enc_note: this._encNote(local) });
-            const note = { ...local, id: saved.id, trashed: saved.trashed, updated: saved.updated };
-            this.notes.unshift(note);
-            await this.open(note);
-        } catch (e) { this.error = labels.saveFailed; }
+    newNote() {
+        const note = { id: window.LLStore.newId(), title: '', content: '', tags: [], pinned: false, trashed: false, updated: new Date().toISOString() };
+        this.notes.unshift(note);
+        this._save();
+        this.open(note);
     },
 
     schedulePreview() {
@@ -3718,37 +3770,28 @@ Alpine.data('notes', (labels = {}) => ({
         this.previewHtml = this.current ? renderMarkdown(this.current.content || '') : '';
     },
 
-    async save() {
+    save() {
         const n = this.current;
         if (! n) return;
         n.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
-        try {
-            const saved = await this._api('PUT', `/notes/${n.id}`, { enc_note: this._encNote(n), pinned: n.pinned });
-            n.updated = saved.updated; // keep the local plaintext, refresh the timestamp
-        } catch (e) { this.error = labels.saveFailed; }
+        n.updated = new Date().toISOString();
+        this._save();
     },
 
-    async togglePin(n) {
-        try { const r = await this._api('PATCH', `/notes/${n.id}`, { pinned: ! n.pinned }); n.pinned = !! r.pinned; n.updated = r.updated; }
-        catch (e) { this.error = labels.saveFailed; }
-    },
-    async trash(n) {
-        try { const r = await this._api('PATCH', `/notes/${n.id}`, { trashed: true }); n.trashed = r.trashed; if (this.currentId === n.id) this.currentId = null; }
-        catch (e) { this.error = labels.saveFailed; }
-    },
-    async restore(n) {
-        try { const r = await this._api('PATCH', `/notes/${n.id}`, { trashed: false }); n.trashed = r.trashed; }
-        catch (e) { this.error = labels.saveFailed; }
-    },
+    togglePin(n) { n.pinned = ! n.pinned; n.updated = new Date().toISOString(); this._save(); },
+    trash(n) { n.trashed = new Date().toISOString(); if (this.currentId === n.id) this.currentId = null; this._save(); },
+    restore(n) { n.trashed = false; this._save(); },
     async remove(n) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
-        try { await this._api('DELETE', `/notes/${n.id}`); this.notes = this.notes.filter((x) => x.id !== n.id); if (this.currentId === n.id) this.currentId = null; }
-        catch (e) { this.error = labels.saveFailed; }
+        const i = this.notes.findIndex((x) => x.id === n.id);
+        if (i >= 0) this.notes.splice(i, 1);
+        if (this.currentId === n.id) this.currentId = null;
+        this._save();
     },
     async emptyTrash() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
-        try { await this._api('DELETE', '/notes/trash/all'); this.notes = this.notes.filter((n) => ! n.trashed); }
-        catch (e) { this.error = labels.saveFailed; }
+        for (let i = this.notes.length - 1; i >= 0; i--) if (this.notes[i].trashed) this.notes.splice(i, 1);
+        this._save();
     },
 }));
 

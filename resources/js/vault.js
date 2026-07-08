@@ -292,6 +292,27 @@ export const Vault = {
         return JSON.stringify({ c: m.cipher, n: m.nonce });
     },
 
+    /**
+     * Seal the whole opaque workspace manifest into a {c,n} JSON string. The JSON
+     * is padded with trailing whitespace to the next 4 KiB bucket so the stored
+     * ciphertext size blurs the true content size (JSON.parse ignores the
+     * padding). Returns the sealed string for the store API.
+     */
+    sealManifest(obj) {
+        let json = JSON.stringify(obj);
+        const bucket = 4096;
+        const target = Math.ceil((json.length + 1) / bucket) * bucket;
+        json += ' '.repeat(target - json.length);
+        const m = seal(sodium.from_string(json), this.vk);
+        return JSON.stringify({ c: m.cipher, n: m.nonce });
+    },
+
+    /** Open a sealed manifest string back into the workspace object. */
+    openManifest(enc) {
+        const { c, n } = JSON.parse(enc);
+        return JSON.parse(sodium.to_string(open(c, n, this.vk)));
+    },
+
     /** The framed-ciphertext size for a plaintext of `total` bytes: a stream
      *  header, plus each 4 MiB message's auth tag and a 4-byte length prefix.
      *  A zero-byte file still emits one final (empty) message. */

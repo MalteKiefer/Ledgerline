@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Actions\PurgeUserAccount;
-use App\Models\Note;
 use App\Models\User;
+use App\Models\VaultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -14,22 +14,21 @@ class AccountLifecycleTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function ownedNote(User $user, string $title): Note
+    private function ownedStore(User $user, string $ciphertext): VaultStore
     {
-        // Ownership is assigned from the authenticated user (AssignsOwner), not
-        // mass-assigned. saveQuietly() skips that hook so the explicit user_id
-        // sticks without needing an authenticated request.
-        $note = new Note(['title' => $title, 'content' => 'x']);
-        $note->user_id = $user->id;
-        $note->saveQuietly();
-
-        return $note;
+        // The user's whole sealed workspace (notes live here now) is one row in
+        // vault_store, keyed by user_id — exported as ciphertext, purged on erase.
+        return VaultStore::query()->create([
+            'user_id' => $user->id,
+            'ciphertext' => $ciphertext,
+            'version' => 1,
+        ]);
     }
 
     public function test_export_streams_a_zip_of_all_modules(): void
     {
         $user = User::factory()->create();
-        $this->ownedNote($user, 'Mine');
+        $this->ownedStore($user, 'mine-sealed-blob');
 
         $res = $this->actingAs($user)->get(route('account.export'));
         $res->assertOk();
@@ -49,15 +48,15 @@ class AccountLifecycleTest extends TestCase
     public function test_purge_action_erases_the_user_and_their_data(): void
     {
         $user = User::factory()->create(['email' => 'gdpr@example.com']);
-        $note = $this->ownedNote($user, 'Secret');
+        $this->ownedStore($user, 'secret-sealed-blob');
         $otherUser = User::factory()->create();
-        $otherNote = $this->ownedNote($otherUser, 'Keep');
+        $this->ownedStore($otherUser, 'keep-sealed-blob');
 
         app(PurgeUserAccount::class)->handle($user);
 
         $this->assertNull(User::find($user->id));
-        $this->assertNull(Note::withoutGlobalScopes()->find($note->id));
-        $this->assertNotNull(Note::withoutGlobalScopes()->find($otherNote->id));
+        $this->assertNull(VaultStore::query()->find($user->id));
+        $this->assertNotNull(VaultStore::query()->find($otherUser->id));
         $this->assertNotNull(User::find($otherUser->id));
     }
 }

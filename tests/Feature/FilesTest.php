@@ -51,7 +51,8 @@ class FilesTest extends TestCase
         ])->assertOk();
 
         $this->assertDatabaseHas('files', ['id' => $fileId, 'enc_metadata' => '{"c":"c2VhbGVk","n":"bm9uY2U="}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}', 'is_encrypted' => true]);
-        $this->assertSame(['work'], StoredFile::find($fileId)->tags);
+        // Tags are sealed inside enc_metadata now — never stored plaintext server-side.
+        $this->assertNull(StoredFile::find($fileId)->tags);
     }
 
     public function test_sync_soft_deletes_rows_missing_from_the_manifest(): void
