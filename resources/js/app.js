@@ -3059,7 +3059,15 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     uploads: [], // per-file upload tray: [{ name, state, progress, error }]
     uploadBatches: 0, // concurrent uploadItems() runs still in flight
     dl: { active: false, done: 0, total: 0 },
+    busy: 0, // in-flight file operations (sync/save/trash/delete/move/…); drives the spinner badge
     error: '',
+
+    // Track an async file operation so the UI can show a "working" spinner badge
+    // for every mutation (the user gets feedback even for a slow permanent delete).
+    _track(p) {
+        this.busy++;
+        return Promise.resolve(p).finally(() => { this.busy = Math.max(0, this.busy - 1); });
+    },
     dragging: false,
     viewer: { open: false, kind: 'none', src: '', row: null, saving: false, saved: false },
     editorView: null,
@@ -3147,7 +3155,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     load() {
         const run = this._io.then(() => this._loadNow());
         this._io = run.catch(() => {});
-        return run;
+        return this._track(run);
     },
     async _loadNow() {
         try {
@@ -3306,7 +3314,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
         const run = this._io.then(() => this._persistNow());
         this._io = run.catch(() => {});
-        return run;
+        return this._track(run);
     },
     async _persistNow() {
         try {
@@ -3725,7 +3733,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     filesPost(url, body) {
         const run = this._io.then(() => this._filesPostNow(url, body));
         this._io = run.catch(() => {});
-        return run;
+        return this._track(run);
     },
     async _filesPostNow(url, body) {
         try {

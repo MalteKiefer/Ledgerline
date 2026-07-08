@@ -39,6 +39,15 @@
         <div class="rounded-2xl border-4 border-dashed border-white/80 px-16 py-24 text-center text-lg font-medium text-white">{{ __('files.drop_hint') }}</div>
     </div>
 
+    {{-- Working indicator: a spinner badge (top-right) while any file operation
+         is in flight — sync, save, move, rename, trash or a slow permanent delete
+         — so the user always sees that something is happening. --}}
+    <div x-show="busy > 0" x-cloak x-transition
+        class="fixed right-4 top-20 z-[950] flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 shadow-lg">
+        <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
+        {{ __('files.working') }}
+    </div>
+
     {{-- Zero-knowledge gate: the file tree can only be decrypted with the vault
          unlocked. Setup/unlock/recover all happen in this panel (client-side). --}}
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
