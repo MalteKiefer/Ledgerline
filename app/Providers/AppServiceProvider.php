@@ -135,8 +135,9 @@ class AppServiceProvider extends ServiceProvider
         'gallery_ml_clip_model' => ['gallery.ml_clip_model', 'string'],
         'gallery_face_enabled' => ['gallery.face_enabled', 'bool'],
         'gallery_face_model' => ['gallery.face_model', 'string'],
-        'gallery_ffmpeg_path' => ['gallery.ffmpeg_path', 'string'],
-        'gallery_exiftool_path' => ['gallery.exiftool_path', 'string'],
+        // NB: the ffmpeg/exiftool BINARY paths are intentionally NOT overridable
+        // from the DB/UI — a settable executable path is a remote-code-execution
+        // lever. They stay env/config-only.
         'gallery_duplicate_threshold' => ['gallery.duplicate_threshold', 'float'],
         'gallery_phash_max_distance' => ['gallery.phash_max_distance', 'int'],
         'gallery_face_min_score' => ['gallery.face_min_score', 'float'],

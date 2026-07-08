@@ -126,7 +126,9 @@ class GalleryController extends Controller
      */
     public function detectDuplicates(Request $request): RedirectResponse
     {
-        Artisan::call('gallery:embed');
+        // Queue the backfill so a full-library scan never runs inline in the
+        // request (it would block/time out on a large library).
+        Artisan::queue('gallery:embed');
         DetectDuplicatesJob::dispatch();
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.duplicates_scan_queued'));
@@ -137,7 +139,7 @@ class GalleryController extends Controller
      */
     public function detectFaces(Request $request): RedirectResponse
     {
-        Artisan::call('gallery:faces');
+        Artisan::queue('gallery:faces');
 
         return redirect()->route('settings.gallery.edit')->with('status', __('flash.faces_scan_queued'));
     }

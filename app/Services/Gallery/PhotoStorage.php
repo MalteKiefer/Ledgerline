@@ -64,7 +64,9 @@ class PhotoStorage
         $ext = strtolower($upload->getClientOriginalExtension() ?: 'jpg');
         $path = "{$dir}/{$uuid}.{$ext}";
 
-        BlobStore::disk()->put($path, file_get_contents($upload->getRealPath()));
+        // Stream the upload to the disk instead of buffering the whole file into
+        // a PHP string (a large photo/video would otherwise OOM the web worker).
+        BlobStore::disk()->putFileAs($dir, $upload, "{$uuid}.{$ext}");
 
         return [
             'uuid' => $uuid,
