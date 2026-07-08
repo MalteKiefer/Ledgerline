@@ -6,6 +6,7 @@ namespace App\Dav\Files;
 
 use App\Jobs\ExtractFileText;
 use App\Models\StoredFile;
+use Illuminate\Support\Str;
 use Sabre\DAV\Exception\Forbidden;
 use Sabre\DAV\File;
 use Sabre\DAVACL\IACL;
@@ -39,7 +40,10 @@ class FileNode extends File implements IACL
     public function put($data): string
     {
         $userId = (int) $this->file->user_id;
-        $old = $this->file->blob;
+        $old = (string) $this->file->blob;
+        $oldSize = (int) $this->file->size;
+        $oldMime = (string) $this->file->mime;
+        $oldName = (string) $this->file->name;
         $blob = $this->backend->storeBlob($userId, $data);
         $newSize = (int) ($this->backend->disk()->size('files/'.$blob) ?: 0);
 
@@ -52,12 +56,21 @@ class FileNode extends File implements IACL
             return $this->getETag();
         }
 
-        $this->file->forceFill([
-            'blob' => $blob,
-            'size' => $newSize,
-            'mime' => $this->backend->guessMime($this->file->name, $blob),
-        ])->save();
+        \DB::transaction(function () use ($old, $oldSize, $oldMime, $oldName, $blob, $newSize): void {
+            // Keep the prior content as a recoverable version (parity with the web
+            // client) before switching the live blob, instead of dropping it.
+            if ($old !== $blob && Str::isUuid($old)) {
+                $this->backend->snapshotVersion($this->file, $old, $oldSize, $oldMime, $oldName);
+            }
+            $this->file->forceFill([
+                'blob' => $blob,
+                'size' => $newSize,
+                'mime' => $this->backend->guessMime($this->file->name, $blob),
+            ])->save();
+        });
         ExtractFileText::dispatch($this->file->id, $blob)->afterCommit();
+        // Reference-counted: the snapshot above now holds $old, so this only frees
+        // it if nothing (file/trashed/version) references it.
         if ($old !== $blob) {
             $this->backend->releaseBlob($old);
         }

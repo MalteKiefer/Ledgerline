@@ -60,7 +60,7 @@ class FilesDavTest extends TestCase
         $this->assertDatabaseHas('files', ['name' => 'note.txt', 'file_folder_id' => FileFolder::where('name', 'Docs')->value('id')]);
     }
 
-    public function test_put_replaces_bytes_and_releases_the_old_blob(): void
+    public function test_put_replaces_bytes_and_snapshots_the_old_blob_as_a_version(): void
     {
         Storage::fake('files');
         $user = User::factory()->create();
@@ -76,8 +76,11 @@ class FilesDavTest extends TestCase
         $file->refresh();
         $this->assertNotSame($old, $file->blob);
         $this->assertSame(14, $file->size);
-        Storage::disk('files')->assertMissing('files/'.$old);
         Storage::disk('files')->assertExists('files/'.$file->blob);
+        // The prior content is kept as a recoverable version (parity with web),
+        // so its blob survives the overwrite instead of being released.
+        Storage::disk('files')->assertExists('files/'.$old);
+        $this->assertDatabaseHas('file_versions', ['file_id' => $file->id, 'blob' => $old]);
     }
 
     public function test_empty_put_does_not_wipe_existing_content(): void

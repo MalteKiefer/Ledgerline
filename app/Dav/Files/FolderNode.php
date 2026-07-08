@@ -39,11 +39,15 @@ class FolderNode extends FileCollection
         $this->folder->forceFill(['name' => (string) $name])->save();
     }
 
-    /** Delete the folder, its subtree and the files' blobs. */
+    /** Delete the folder and its subtree atomically (files → trash). */
     public function delete(): void
     {
-        $this->deleteTree($this->folder->id);
-        $this->folder->delete();
+        // One transaction so a mid-recursion failure can't leave a half-deleted
+        // tree (some files trashed, some folders gone, parents dangling).
+        \DB::transaction(function (): void {
+            $this->deleteTree($this->folder->id);
+            $this->folder->delete();
+        });
     }
 
     private function deleteTree(string $folderId): void

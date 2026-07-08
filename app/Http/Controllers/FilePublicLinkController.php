@@ -12,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -34,7 +35,7 @@ class FilePublicLinkController extends Controller
         $this->authorizeFile($file);
         $data = $request->validate([
             'expires_in' => ['nullable', 'integer', Rule::in(self::EXPIRY)],
-            'password' => ['nullable', 'string', 'min:6', 'max:255'],
+            'password' => ['nullable', 'string', 'min:10', 'max:255'],
         ]);
 
         $link = FilePublicLink::firstOrNew(['stored_file_id' => $file->id]);
@@ -99,8 +100,10 @@ class FilePublicLinkController extends Controller
 
         $link->increment('downloads');
 
+        // Force a neutral type (not the client-controlled stored mime) so a
+        // link can never be used to serve active content in-origin.
         return $disk->download('files/'.$file->blob, $file->name, [
-            'Content-Type' => $file->mime ?: 'application/octet-stream',
+            'Content-Type' => 'application/octet-stream',
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => "default-src 'none'; sandbox",
         ]);
@@ -113,12 +116,20 @@ class FilePublicLinkController extends Controller
         abort_if($link === null, 404);
         abort_if($link->isExpired(), 410);
 
+        // Per-token brute-force cap on top of the per-IP route throttle, so a
+        // botnet can't distribute a guessing attack across many IPs.
+        $key = 'filelink-unlock:'.sha1($token);
+        abort_if(RateLimiter::tooManyAttempts($key, 10), 429);
+
         $given = (string) $request->input('password', '');
         if (! $link->isProtected() || ! Hash::check($given, $link->password)) {
+            RateLimiter::hit($key, 900);
+
             return response()->view('public-file.password', ['token' => $token, 'error' => true])
                 ->withHeaders($this->pageHeaders());
         }
 
+        RateLimiter::clear($key);
         $request->session()->put($this->sessionKey($token), true);
 
         return redirect()->route('file-link.download', $token);

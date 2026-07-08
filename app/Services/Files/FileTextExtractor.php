@@ -67,7 +67,7 @@ class FileTextExtractor
             $outPdf = tempnam(sys_get_temp_dir(), 'llocr').'.pdf';
             try {
                 $this->run([
-                    'ocrmypdf', '--force-ocr', '--optimize', '0', '--sidecar', $sidecar,
+                    'ocrmypdf', '--force-ocr', '--optimize', '0', '--pages', '1-50', '--sidecar', $sidecar,
                     '-l', self::OCR_LANGS, $path, $outPdf,
                 ], 300);
                 if (is_file($sidecar)) {
@@ -123,6 +123,8 @@ class FileTextExtractor
         if (! mb_check_encoding($text, 'UTF-8')) {
             $text = mb_convert_encoding($text, 'UTF-8', 'UTF-8');
         }
+        // Drop C0 control chars except tab/newline (Postgres text + noise).
+        $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/u', '', $text) ?? $text;
         $text = preg_replace('/\R+/u', "\n", $text) ?? $text;
         $text = preg_replace('/[ \t\x{00A0}]+/u', ' ', $text) ?? $text;
 
