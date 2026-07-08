@@ -15,7 +15,6 @@ use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
-use App\Http\Controllers\FilePublicLinkController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NoteController;
@@ -40,7 +39,6 @@ use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodoController;
-use App\Http\Controllers\UploadLinkController;
 use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
@@ -72,13 +70,8 @@ Route::middleware('throttle:60,1')->group(function (): void {
     // Password-gated album unlock; throttled to blunt brute-forcing the password.
     Route::post('/p/{publicShare:token}/album/unlock', [PublicShareController::class, 'albumUnlock'])
         ->middleware('throttle:10,1')->name('public-share.album.unlock');
-    // Public file download links (token, optional password gate).
-    Route::get('/f/{token}', [FilePublicLinkController::class, 'download'])->name('file-link.download');
-    Route::post('/f/{token}/unlock', [FilePublicLinkController::class, 'unlock'])->middleware('throttle:10,1')->name('file-link.unlock');
-    // Public file-request (upload) links: visitors can only upload.
-    Route::get('/u/{token}', [UploadLinkController::class, 'show'])->name('upload-link.show');
-    Route::post('/u/{token}/unlock', [UploadLinkController::class, 'unlock'])->middleware('throttle:10,1')->name('upload-link.unlock');
-    Route::post('/u/{token}', [UploadLinkController::class, 'upload'])->middleware('throttle:1200,1')->name('upload-link.upload');
+    // No public file-download or upload-request links: they'd need the server to
+    // read/produce plaintext, which the zero-knowledge vault forbids.
 });
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
@@ -122,7 +115,6 @@ Route::middleware('auth')->group(function (): void {
     // Per-user Files preferences (version-history depth).
     Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
     Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
-    Route::post('/settings/files/reindex', [SettingsFilesController::class, 'reindexText'])->middleware('throttle:5,1')->name('settings.files.reindex');
 
     // Paperless-ngx: per-user integration (each user's own instance URL + token).
     Route::get('/settings/paperless', [SettingsPaperlessController::class, 'edit'])->name('settings.paperless.edit');
@@ -286,30 +278,16 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/upload/part', [FileController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.upload.part');
     Route::post('/files/upload/complete', [FileController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.upload.complete');
     Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.upload.abort');
-    Route::post('/files/import', [FileController::class, 'import'])
-        ->middleware('throttle:300,1')->name('files.import');
+    // Encrypted bytes stream back verbatim; the browser decrypts them. No server
+    // thumbnail/search/import/archive/extract/export/public-link/upload-link:
+    // those need the plaintext the server (by design) never has.
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('files.raw');
-    Route::get('/files/thumb/{blob}', [FileController::class, 'thumb'])->middleware('throttle:240,1')->name('files.thumb');
-    Route::get('/files/search-content', [FileController::class, 'searchContent'])->middleware('throttle:120,1')->name('files.search-content');
-    Route::get('/files/upload-links', [UploadLinkController::class, 'index'])->name('files.upload-links.index');
-    Route::post('/files/upload-links', [UploadLinkController::class, 'store'])->middleware('throttle:30,1')->name('files.upload-links.store');
-    Route::delete('/files/upload-links/{link}', [UploadLinkController::class, 'destroy'])->name('files.upload-links.destroy');
     Route::get('/files/{file}/versions', [FileController::class, 'versions'])->name('files.versions');
     Route::get('/files/{file}/versions/{version}/download', [FileController::class, 'downloadVersion'])->name('files.versions.download');
-    Route::post('/files/export', [FileController::class, 'queueExport'])->middleware('throttle:20,1')->name('files.export');
     Route::post('/files/trash', [FileController::class, 'trash'])->middleware('throttle:120,1')->name('files.trash');
     Route::post('/files/restore', [FileController::class, 'restoreTrash'])->middleware('throttle:120,1')->name('files.restore');
     Route::post('/files/favorite', [FileController::class, 'favorite'])->middleware('throttle:120,1')->name('files.favorite');
     Route::post('/files/{file}/note', [FileController::class, 'saveNote'])->middleware('throttle:120,1')->name('files.note');
-    Route::get('/files/{file}/public-link', [FilePublicLinkController::class, 'show'])->name('files.public-link.show');
-    Route::post('/files/{file}/public-link', [FilePublicLinkController::class, 'store'])->middleware('throttle:30,1')->name('files.public-link.store');
-    Route::post('/files/public-link/{link}/rotate', [FilePublicLinkController::class, 'rotate'])->middleware('throttle:30,1')->name('files.public-link.rotate');
-    Route::delete('/files/public-link/{link}', [FilePublicLinkController::class, 'destroy'])->name('files.public-link.destroy');
-    Route::post('/files/duplicate', [FileController::class, 'duplicate'])->middleware('throttle:60,1')->name('files.duplicate');
-    Route::post('/files/bulk-rename', [FileController::class, 'bulkRename'])->middleware('throttle:60,1')->name('files.bulk-rename');
-    Route::post('/files/archive', [FileController::class, 'createArchive'])->middleware('throttle:20,1')->name('files.archive');
-    Route::post('/files/{file}/extract', [FileController::class, 'extract'])->middleware('throttle:20,1')->name('files.extract');
-    Route::get('/files/extract/{token}/status', [FileController::class, 'extractStatus'])->name('files.extract.status');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:120,1')->name('files.blob.destroy');
 
     // Downloads center: asynchronous, worker-built export zips (gallery + files),

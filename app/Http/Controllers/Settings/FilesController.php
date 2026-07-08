@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
-use App\Jobs\RunCommand;
 use App\Models\AppSettings;
 use App\Models\DavCredential;
 use App\Models\UserSetting;
@@ -61,15 +60,5 @@ class FilesController extends Controller
         }
 
         return $this->savedRedirect('settings.files.edit', 'settings.files_saved');
-    }
-
-    /** Re-run full-text extraction over every file (admin) — e.g. after adding
-     *  files that predate the search index. Queued so it never blocks. */
-    public function reindexText(Request $request): RedirectResponse
-    {
-        abort_unless(Gate::allows('manage-global-settings'), 403);
-        RunCommand::dispatch('files:extract-text', ['--all' => true]);
-
-        return $this->savedRedirect('settings.files.edit', 'settings.files_reindex_queued');
     }
 }

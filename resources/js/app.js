@@ -2993,7 +2993,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     sortDir: 'asc',
     sortKey: 'name', // name | size | date
     layout: (typeof localStorage !== 'undefined' && localStorage.getItem('ll-files-layout')) || 'list', // list | grid
-    contentMatchIds: [], // file ids matching a full-text (content) search
     renaming: null,   // item id currently renamed inline
     renameValue: '',
     moveRefs: [],     // [{kind, id}] for the move modal
@@ -3008,21 +3007,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     activeTag: '',
     view: 'files', // files | favorites | recent | trash
     newFolderName: '',
-    extracting: { active: false, name: '', done: 0, total: 0 },
-    renameOpen: false,
-    renameOpts: { find: '', replace: '', prefix: '', suffix: '' },
     infoOpen: false,
     infoRow: null,
     infoNote: '',
-    publicOpen: false,
-    publicRow: null,
-    publicLink: null,
-    publicOpts: { expires_in: '', password: '' },
-    publicBusy: false,
-    uploadLinkOpen: false,
-    uploadLinks: [],
-    uploadLinkForm: { folder_id: '', label: '', extensions: '', expires_in: '', password: '', max_file_mb: '' },
-    uploadLinkBusy: false,
     migrateOpen: false,
     migrateRow: null,
     migrateDelete: true,
@@ -3308,7 +3295,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             let scoped = (q === '' && tag === '')
                 ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
                 : list;
-            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || this.contentMatchIds.includes(x.id));
+            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q));
             if (tag !== '') scoped = scoped.filter((x) => (x.tags ?? []).includes(tag));
             return scoped;
         };
@@ -3358,98 +3345,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.infoRow = row;
         this.infoNote = row.note || '';
         this.infoOpen = true;
-    },
-
-    // ---- Upload (file-request) links ----
-    async openUploadLinks() {
-        this.uploadLinkForm = { folder_id: this.cwd || '', label: '', extensions: '', expires_in: '', password: '', max_file_mb: '' };
-        this.uploadLinkOpen = true;
-        try {
-            const r = await fetch(config.uploadLinksUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) this.uploadLinks = (await r.json()).links ?? [];
-        } catch (e) { /* keep list */ }
-    },
-    async createUploadLink() {
-        this.uploadLinkBusy = true;
-        try {
-            const f = this.uploadLinkForm;
-            const r = await fetch(config.uploadLinksUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({
-                    folder_id: f.folder_id || null,
-                    label: f.label || null,
-                    extensions: f.extensions || null,
-                    expires_in: f.expires_in ? Number(f.expires_in) : null,
-                    password: f.password || null,
-                    max_file_mb: f.max_file_mb ? Number(f.max_file_mb) : null,
-                }),
-            });
-            if (r.ok) { this.uploadLinks.unshift(await r.json()); this.uploadLinkForm.label = ''; this.uploadLinkForm.password = ''; }
-            else { window.llToast(labels.saveFailed); }
-        } catch (e) { window.llToast(labels.saveFailed); } finally { this.uploadLinkBusy = false; }
-    },
-    async revokeUploadLink(id) {
-        try {
-            const r = await fetch(`${config.uploadLinkBase}/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } });
-            if (r.ok) this.uploadLinks = this.uploadLinks.filter((l) => l.id !== id);
-        } catch (e) { window.llToast(labels.saveFailed); }
-    },
-    copyUploadLink(url) {
-        navigator.clipboard?.writeText(url).then(() => window.llToast(labels.linkCopied)).catch(() => {});
-    },
-    uploadLinkFolderName(id) {
-        if (! id) return labels.rootFolder;
-        const f = this.manifest.folders.find((x) => x.id === id);
-        return f ? f.name : labels.rootFolder;
-    },
-
-    // ---- Public download links ----
-    async openPublicLink(row) {
-        this.publicRow = row;
-        this.publicLink = null;
-        this.publicOpts = { expires_in: '', password: '' };
-        this.publicOpen = true;
-        try {
-            const r = await fetch(`${config.versionsBase}/${row.id}/public-link`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) this.publicLink = (await r.json()).link;
-        } catch (e) { /* leave empty */ }
-    },
-
-    async createPublic() {
-        this.publicBusy = true;
-        try {
-            const r = await fetch(`${config.versionsBase}/${this.publicRow.id}/public-link`, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ expires_in: this.publicOpts.expires_in ? Number(this.publicOpts.expires_in) : null, password: this.publicOpts.password || null }),
-            });
-            if (r.ok) { this.publicLink = await r.json(); } else { window.llToast(labels.saveFailed); }
-        } catch (e) { window.llToast(labels.saveFailed); } finally { this.publicBusy = false; }
-    },
-
-    async rotatePublic() {
-        if (! this.publicLink) return;
-        try {
-            const r = await fetch(`${config.publicLinkBase}/${this.publicLink.id}/rotate`, {
-                method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            });
-            if (r.ok) this.publicLink = await r.json();
-        } catch (e) { window.llToast(labels.saveFailed); }
-    },
-
-    async revokePublic() {
-        if (! this.publicLink) return;
-        try {
-            const r = await fetch(`${config.publicLinkBase}/${this.publicLink.id}`, {
-                method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            });
-            if (r.ok) this.publicLink = null;
-        } catch (e) { window.llToast(labels.saveFailed); }
-    },
-
-    copyPublicLink() {
-        if (this.publicLink?.url) navigator.clipboard?.writeText(this.publicLink.url).then(() => window.llToast(labels.linkCopied)).catch(() => {});
     },
 
     // Save the note on the current info file (targeted endpoint + manifest sync).
@@ -3805,62 +3700,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
-    // Duplicate a row (or the selection). Files share the blob; folders copy deep.
-    async duplicate(row) {
-        const refs = row ? [{ kind: row.kind, id: row.id }] : this.selectionRefs;
-        if (! refs.length) return;
-        const body = {
-            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
-            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
-        };
-        if (! await this.filesPost(config.duplicateUrl, body)) { window.llToast(labels.duplicateFailed); return; }
-        this.selected = [];
-        await this.load();
-    },
-
-    openBulkRename() {
-        if (! this.selected.length) return;
-        this.renameOpts = { find: '', replace: '', prefix: '', suffix: '' };
-        this.renameOpen = true;
-    },
-
-    async applyBulkRename() {
-        const refs = this.selectionRefs;
-        this.renameOpen = false;
-        if (! refs.length) return;
-        const body = {
-            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
-            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
-            ...this.renameOpts,
-        };
-        if (! await this.filesPost(config.bulkRenameUrl, body)) { window.llToast(labels.renameFailed); return; }
-        this.selected = [];
-        await this.load();
-    },
-
-    // Queue an async export of the selection (files + folders). A worker builds
-    // the zip(s) server-side (folder structure preserved) and it appears under
-    // Downloads — no in-browser zipping or memory pressure.
-    async bulkDownload(format = 'zip') {
-        const refs = this.selectionRefs;
-        if (! refs.length) return;
-
-        const file_ids = refs.filter((r) => r.kind === 'file').map((r) => r.id);
-        const folder_ids = refs.filter((r) => r.kind !== 'file').map((r) => r.id);
-        if (! file_ids.length && ! folder_ids.length) return;
-
-        try {
-            const res = await fetch(labels.exportUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ file_ids, folder_ids, format }),
-            });
-            if (res.ok) { window.llToast(labels.exportQueued, labels.downloadsUrl); }
-            else { const body = await res.json().catch(() => ({})); if (body.message) window.llToast(body.message); }
-        } catch (e) { /* user can retry */ }
-        this.selected = [];
-    },
-
     /* ---- Content operations ---- */
 
     upload(fileList) {
@@ -4127,23 +3966,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         return row?.kind === 'file' && (row.mime || '').startsWith('image/');
     },
 
-    thumbUrl(row) {
-        return `${config.thumbBase}/${row.blob}`;
-    },
-
-    _contentTimer: null,
-    fetchContentMatches() {
-        clearTimeout(this._contentTimer);
-        const q = this.query.trim();
-        if (q.length < 2) { this.contentMatchIds = []; return; }
-        this._contentTimer = setTimeout(async () => {
-            try {
-                const r = await fetch(`${config.searchContentUrl}?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (r.ok) this.contentMatchIds = (await r.json()).ids ?? [];
-            } catch (e) { /* keep previous */ }
-        }, 250);
-    },
-
     setLayout(l) {
         this.layout = l;
         try { localStorage.setItem('ll-files-layout', l); } catch (e) { /* ignore */ }
@@ -4156,66 +3978,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
     sortArrow(key) {
         return this.sortKey === key ? (this.sortDir === 'asc' ? '↑' : '↓') : '';
-    },
-
-    // Zip the current selection into a new file in this folder (server-side).
-    async createArchive() {
-        const refs = this.selectionRefs;
-        if (! refs.length) return;
-        try {
-            const res = await fetch(config.archiveUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ refs, folder_id: this.cwd }),
-            });
-            if (! res.ok) { const b = await res.json().catch(() => ({})); window.llToast(b.message || labels.archiveFailed); return; }
-            this.selected = [];
-            await this.load();
-            window.llToast(labels.archivedToast);
-        } catch (e) { window.llToast(labels.archiveFailed); }
-    },
-
-    // Extract a zip file into a new folder next to it (server-side).
-    async extractArchive(row) {
-        if (this.extracting.active) { window.llToast(labels.extractBusy || labels.extractFailed); return; }
-        try {
-            const res = await fetch(`${config.versionsBase}/${row.id}/extract`, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            });
-            if (! res.ok) { const b = await res.json().catch(() => ({})); window.llToast(b.message || labels.extractFailed); return; }
-            const { token } = await res.json();
-            // Extraction runs in the background now (large archives would time the
-            // request out); show a live progress badge and poll until it finishes.
-            this.extracting = { active: true, name: row.name, done: 0, total: 0 };
-            this._pollExtract(token);
-        } catch (e) { window.llToast(labels.extractFailed); }
-    },
-
-    async _pollExtract(token) {
-        for (;;) {
-            await new Promise((r) => setTimeout(r, 1200));
-            let s;
-            try {
-                const r = await fetch(`${config.extractStatusBase}/${token}/status`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (! r.ok) break; // session gone
-                s = await r.json();
-            } catch (e) { continue; }
-            this.extracting.done = s.done || 0;
-            this.extracting.total = s.total || 0;
-            if (s.state === 'done') {
-                this.extracting.active = false;
-                await this.load();
-                window.llToast(labels.extractedToast);
-                return;
-            }
-            if (s.state === 'failed') {
-                this.extracting.active = false;
-                window.llToast(s.error || labels.extractFailed);
-                return;
-            }
-        }
-        this.extracting.active = false;
     },
 
     // Open the Paperless modal immediately, then decrypt the PDF in the
