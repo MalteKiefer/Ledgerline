@@ -59,6 +59,7 @@ return [
     'album_empty' => 'Dieses Album ist leer.',
     'album_add_photos' => 'Fotos hinzufügen',
     'album_remove' => 'Aus Album entfernen',
+    'album_remove_confirm' => 'Dieses Foto aus dem Album entfernen? Es bleibt in deiner Mediathek.',
     'album_delete' => 'Album löschen',
     'album_delete_confirm' => 'Dieses Album löschen? Die Fotos bleiben in deiner Mediathek.',
     'album_photos_count' => ':count Fotos',

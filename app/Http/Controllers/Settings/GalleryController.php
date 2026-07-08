@@ -151,7 +151,9 @@ class GalleryController extends Controller
     {
         $batch = $request->filled('id') ? Bus::findBatch((string) $request->query('id')) : null;
 
-        if ($batch === null) {
+        // Only report on gallery maintenance batches, so an arbitrary batch id
+        // can't be probed for another operation's progress.
+        if ($batch === null || ! str_starts_with((string) $batch->name, 'gallery:')) {
             return response()->json(['found' => false]);
         }
 
@@ -200,7 +202,7 @@ class GalleryController extends Controller
             ->with('status', __($flashKey, ['count' => $ids->count()]));
 
         if ($jobs !== []) {
-            $batch = Bus::batch($jobs)->name($name)->allowFailures()->dispatch();
+            $batch = Bus::batch($jobs)->name('gallery:'.$name)->allowFailures()->dispatch();
             $redirect->with('batch_id', $batch->id);
         }
 
