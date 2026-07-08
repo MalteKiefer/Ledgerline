@@ -350,7 +350,6 @@ class FileController extends Controller
         $token = (string) Str::uuid();
         Cache::put($this->chunkKey($token), [
             'uploadId' => $res['UploadId'], 'key' => $key, 'id' => $id, 'user' => (int) $request->user()->id,
-            'size' => (int) $data['size'],
         ], now()->addHours(12));
 
         return response()->json(['token' => $token, 'id' => $id, 'partSize' => self::CHUNK_PART_SIZE]);
@@ -399,7 +398,11 @@ class FileController extends Controller
             'Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId'],
             'MultipartUpload' => ['Parts' => $parts],
         ]);
-        FileBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'size' => (int) ($s['size'] ?? 0), 'created_at' => now()]);
+        // Authoritative size of the ASSEMBLED object (never the client's declared
+        // size, which would let a caller understate a large upload to beat the
+        // quota). One HEAD per completed multipart upload — rare (>64 MB files).
+        $size = (int) ($this->s3()->headObject(['Bucket' => $this->bucket(), 'Key' => $s['key']])['ContentLength'] ?? 0);
+        FileBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'size' => $size, 'created_at' => now()]);
         Cache::forget($this->chunkKey($token));
 
         return response()->json(['id' => $s['id']], 201);
