@@ -1952,10 +1952,12 @@ Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13,
     },
 
     // Play a Live Photo's motion clip on hover (Apple-style), stop on leave.
-    hoverMotion(el, enter) {
-        // Hover-to-play only makes sense with a real pointer; on touch devices
-        // mouseenter fires on tap and would clash with opening the viewer.
-        if (! window.matchMedia('(pointer: fine)').matches) return;
+    hoverMotion(el, enter, ev) {
+        // Hover-to-play only makes sense with a real mouse; on touch devices a
+        // tap fires pointerenter and would clash with opening the viewer. Gate
+        // on the event's pointerType (reliable) rather than a media query
+        // (which is false on some hybrid/hi-dpi setups, killing hover there).
+        if (ev && ev.pointerType && ev.pointerType !== 'mouse') return;
         const src = el.getAttribute('data-motion');
         if (! src) return;
         if (enter) {
