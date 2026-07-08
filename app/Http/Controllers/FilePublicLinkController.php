@@ -89,7 +89,10 @@ class FilePublicLinkController extends Controller
                 ->withHeaders($this->pageHeaders());
         }
 
-        $file = StoredFile::withoutGlobalScopes()->find($link->stored_file_id);
+        // withoutGlobalScopes() strips the SoftDeletingScope, so a trashed file
+        // must be excluded explicitly — a public link must not keep serving a
+        // file the owner has since deleted.
+        $file = StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->find($link->stored_file_id);
         abort_if($file === null, 404);
         $disk = BlobStore::disk();
         abort_unless($disk->exists('files/'.$file->blob), 404);

@@ -21,6 +21,7 @@ return [
     'archive_empty' => 'Nichts zum Archivieren.',
     'archive_too_many' => 'Zu viele Dateien für ein Archiv.',
     'archive_too_large' => 'Das Archiv ist zu groß.',
+    'folder_too_deep' => 'Die Ordnerstruktur ist zu tief zum Kopieren.',
     'archive_invalid' => 'Das ist kein gültiges Zip-Archiv.',
     'archived_toast' => 'Archiv erstellt.',
     'extracted_toast' => 'Archiv entpackt.',
