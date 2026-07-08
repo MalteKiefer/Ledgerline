@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Export;
 
 use App\Models\Export;
-use App\Models\FileFolder;
 use App\Models\Photo;
-use App\Models\StoredFile;
 use App\Services\Gallery\PhotoExporter;
 use App\Support\ArchiveName;
 use App\Support\BlobStore;
@@ -205,11 +203,14 @@ class ExportArchiver
      */
     private function entries(Export $export, Filesystem $disk): Generator
     {
-        $payload = $export->payload ?? [];
+        // Only gallery exports produce readable archives. Files are end-to-end
+        // encrypted (the server holds only ciphertext + sealed names), so it
+        // cannot build a usable server-side export/zip of them — that path was
+        // removed. Refuse any non-gallery source rather than emit a broken,
+        // undecryptable ciphertext archive.
+        abort_unless($export->source === 'gallery', 422, 'Only gallery exports are supported.');
 
-        return $export->source === 'gallery'
-            ? $this->galleryEntries($payload, (string) $export->variant, (int) $export->user_id, $disk)
-            : $this->fileEntries($payload, $disk);
+        return $this->galleryEntries($export->payload ?? [], (string) $export->variant, (int) $export->user_id, $disk);
     }
 
     /**
@@ -234,45 +235,6 @@ class ExportArchiver
             $tmp = $this->localCopy($disk, $photo->disk_path);
             yield [(string) $photo->name, $tmp, (int) ($photo->size ?: filesize($tmp))];
         }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return Generator<array{0: string, 1: string, 2: int}>
-     */
-    private function fileEntries(array $payload, Filesystem $disk): Generator
-    {
-        foreach (StoredFile::query()->whereIn('id', $payload['file_ids'] ?? [])->get() as $file) {
-            yield $this->fileEntry($file, (string) $file->name, $disk);
-        }
-
-        foreach (FileFolder::query()->whereIn('id', $payload['folder_ids'] ?? [])->get() as $folder) {
-            yield from $this->folderEntries($folder, (string) $folder->name, $disk);
-        }
-    }
-
-    /**
-     * @return Generator<array{0: string, 1: string, 2: int}>
-     */
-    private function folderEntries(FileFolder $folder, string $prefix, Filesystem $disk): Generator
-    {
-        foreach (StoredFile::query()->where('file_folder_id', $folder->id)->get() as $file) {
-            yield $this->fileEntry($file, $prefix.'/'.$file->name, $disk);
-        }
-
-        foreach (FileFolder::query()->where('parent_id', $folder->id)->get() as $sub) {
-            yield from $this->folderEntries($sub, $prefix.'/'.$sub->name, $disk);
-        }
-    }
-
-    /**
-     * @return array{0: string, 1: string, 2: int}
-     */
-    private function fileEntry(StoredFile $file, string $name, Filesystem $disk): array
-    {
-        $tmp = $this->localCopy($disk, 'files/'.$file->blob);
-
-        return [$name, $tmp, (int) ($file->size ?: filesize($tmp))];
     }
 
     private function localCopy(Filesystem $disk, string $path): string

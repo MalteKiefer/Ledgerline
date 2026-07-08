@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Export;
-use App\Models\StoredFile;
+use App\Models\Photo;
+use App\Models\User;
 use App\Services\Export\ExportArchiver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -16,39 +17,32 @@ class ExportArchiverFormatTest extends TestCase
 {
     use RefreshDatabase;
 
-    /**
-     * @return array{0: Export, 1: StoredFile[]}
-     */
+    // Files are end-to-end encrypted (no server-side export); the archive format
+    // logic is source-agnostic, so it is exercised through a GALLERY export.
     private function makeFilesExport(int $userId, string $format): array
     {
-        $files = [];
+        User::factory()->create(['id' => $userId]);
         $ids = [];
-        foreach (['one.txt', 'two.txt'] as $name) {
-            $file = StoredFile::create([
-                'id' => (string) Str::uuid(),
-                'name' => $name,
-                'blob' => (string) Str::uuid(),
-                'size' => 5,
-            ]);
-            Storage::disk(config('files.disk'))->put('files/'.$file->blob, 'hello');
-            $files[] = $file;
-            $ids[] = $file->id;
+        foreach (['one.jpg', 'two.jpg'] as $name) {
+            $blob = 'photos/'.Str::uuid().'.jpg';
+            Storage::disk(config('files.disk'))->put($blob, 'hello');
+            $photo = Photo::factory()->create(['name' => $name, 'disk_path' => $blob, 'size' => 5, 'uploaded_by' => $userId]);
+            $ids[] = $photo->id;
         }
 
-        // Ownership is normally assigned from auth; set it explicitly and persist
-        // without the model events so the exact user_id/format we want is stored.
         $export = new Export([
-            'source' => 'files',
+            'source' => 'gallery',
             'format' => $format,
+            'variant' => 'original',
             'title' => 'archive',
             'status' => 'queued',
             'item_count' => 2,
-            'payload' => ['file_ids' => $ids, 'folder_ids' => []],
+            'payload' => ['photo_ids' => $ids],
         ]);
         $export->user_id = $userId;
         $export->saveQuietly();
 
-        return [$export, $files];
+        return [$export, $ids];
     }
 
     public function test_tar_export_produces_a_single_stored_part(): void
