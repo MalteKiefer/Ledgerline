@@ -63,7 +63,7 @@ class FilesTrashEndpointTest extends TestCase
         $this->assertNull(StoredFile::withoutGlobalScopes()->withTrashed()->find($f->id)->deleted_at);
     }
 
-    public function test_trash_folder_moves_files_to_root_and_drops_folder(): void
+    public function test_trash_folder_soft_deletes_the_folder_and_keeps_the_hierarchy(): void
     {
         Storage::fake('files');
         $u = User::factory()->create();
@@ -73,10 +73,18 @@ class FilesTrashEndpointTest extends TestCase
 
         $this->actingAs($u)->postJson(route('files.trash'), ['folder_ids' => [$folder->id]])->assertOk();
 
-        $this->assertNull(FileFolder::withoutGlobalScopes()->find($folder->id));
+        // Folder soft-deleted (recoverable), and the file keeps its folder id and
+        // is soft-deleted — so a restore brings the whole hierarchy back.
+        $this->assertNull(FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->find($folder->id));
+        $this->assertNotNull(FileFolder::withoutGlobalScopes()->withTrashed()->find($folder->id)?->deleted_at);
         $row = StoredFile::withoutGlobalScopes()->withTrashed()->find($f->id);
-        $this->assertNull($row->file_folder_id);
+        $this->assertSame($folder->id, $row->file_folder_id);
         $this->assertNotNull($row->deleted_at);
+
+        // Restoring the file un-trashes it AND its folder chain.
+        $this->actingAs($u)->postJson(route('files.restore'), ['file_ids' => [$f->id]])->assertOk();
+        $this->assertNull(StoredFile::withoutGlobalScopes()->find($f->id)->deleted_at);
+        $this->assertNotNull(FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->find($folder->id));
     }
 
     public function test_cannot_trash_another_users_file(): void

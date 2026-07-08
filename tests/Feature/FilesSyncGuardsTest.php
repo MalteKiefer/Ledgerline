@@ -42,6 +42,28 @@ class FilesSyncGuardsTest extends TestCase
         $this->assertSame($oldBlob, StoredFile::withoutGlobalScopes()->find($id)->blob);
     }
 
+    public function test_sync_soft_deletes_a_dropped_folder_so_it_is_recoverable(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        $u = User::factory()->create();
+
+        $keep = (string) Str::uuid();
+        $drop = (string) Str::uuid();
+        (new FileFolder)->forceFill(['id' => $keep, 'user_id' => $u->id, 'parent_id' => null, 'name' => 'Keep'])->save();
+        (new FileFolder)->forceFill(['id' => $drop, 'user_id' => $u->id, 'parent_id' => null, 'name' => 'Drop'])->save();
+
+        // Manifest keeps one folder, omits the other → the omitted one is
+        // SOFT-deleted (recoverable), never hard-deleted.
+        $this->actingAs($u)->putJson(route('files.sync'), [
+            'folders' => [['id' => $keep, 'name' => 'Keep', 'parent' => null]], 'files' => [],
+        ])->assertOk();
+
+        $this->assertNotNull(FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->find($keep));
+        $this->assertNull(FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->find($drop));
+        $this->assertNotNull(FileFolder::withoutGlobalScopes()->withTrashed()->find($drop)?->deleted_at);
+    }
+
     public function test_sync_refuses_an_empty_folder_list_while_folders_exist(): void
     {
         Storage::fake('files');
