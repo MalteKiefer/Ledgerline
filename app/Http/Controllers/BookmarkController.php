@@ -5,23 +5,18 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\PurgesOwnedTrash;
-use App\Jobs\RunCommand;
 use App\Models\Bookmark;
 use App\Models\BookmarkFolder;
-use App\Services\Bookmarks\FaviconFetcher;
-use App\Services\Bookmarks\NetscapeBookmarks;
-use App\Support\BlobStore;
-use App\Support\OutboundUrl;
-use App\Support\Tags;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Plain (non-encrypted) bookmarks and folders, exposed as a JSON API so the
- * browser renders and mutates them without page reloads.
+ * Zero-knowledge bookmarks and folders, exposed as a JSON API. The browser
+ * seals each bookmark's {title, url, description, tags} with the per-user vault
+ * key; the server only stores + returns ciphertext (enc_bookmark). No
+ * server-side export/import, metadata/favicon fetch, dead-link check or
+ * search — those all need the plaintext URL the server never has.
  */
 class BookmarkController extends Controller
 {
@@ -125,15 +120,6 @@ class BookmarkController extends Controller
         return response()->json($this->toArray($bookmark), 201);
     }
 
-    /** Re-check every bookmark's URL now (queued), instead of waiting for the
-     *  weekly cron; the dead-link flags update as it runs. */
-    public function checkLinks(): JsonResponse
-    {
-        RunCommand::dispatch('bookmarks:check-links');
-
-        return response()->json(['ok' => true]);
-    }
-
     public function update(Request $request, Bookmark $bookmark): JsonResponse
     {
         $bookmark->update($this->validated($request));
@@ -167,103 +153,6 @@ class BookmarkController extends Controller
         return response()->json($this->toArray($bookmark));
     }
 
-    /* ---- Netscape import / export ---- */
-
-    /** Export every bookmark as a browser-compatible Netscape HTML file. */
-    public function export(NetscapeBookmarks $netscape): StreamedResponse
-    {
-        $html = $netscape->build(BookmarkFolder::orderBy('name')->get(), Bookmark::orderBy('title')->get());
-
-        return response()->streamDownload(fn () => print $html, 'bookmarks.html', [
-            'Content-Type' => 'text/html; charset=utf-8',
-        ]);
-    }
-
-    /** Import a Netscape HTML file; existing URLs are skipped, folders reused by name. */
-    public function import(Request $request, NetscapeBookmarks $netscape): JsonResponse
-    {
-        $request->validate(['file' => ['required', 'file', 'max:10240']]);
-        $entries = $netscape->parse((string) file_get_contents($request->file('file')->getRealPath()));
-
-        $existing = Bookmark::withTrashed()->pluck('url')->flip();
-        $folders = BookmarkFolder::pluck('id', 'name');
-        $created = 0;
-        $skipped = 0;
-
-        foreach ($entries as $entry) {
-            if (isset($existing[$entry['url']])) {
-                $skipped++;
-
-                continue;
-            }
-            $folderId = null;
-            if ($entry['folder'] !== null) {
-                $folderId = $folders[$entry['folder']] ?? BookmarkFolder::create(['name' => $entry['folder']])->id;
-                $folders[$entry['folder']] = $folderId;
-            }
-            Bookmark::create([
-                'bookmark_folder_id' => $folderId,
-                'title' => $entry['title'],
-                'url' => $entry['url'],
-                'description' => $entry['description'],
-                'tags' => Tags::normalize($entry['tags']),
-            ]);
-            $existing[$entry['url']] = true;
-            $created++;
-        }
-
-        return response()->json(['created' => $created, 'skipped' => $skipped]);
-    }
-
-    /* ---- Metadata / favicons / link health ---- */
-
-    /** Fetch a page's title + description so the editor can prefill them. */
-    public function fetchMeta(Request $request): JsonResponse
-    {
-        $url = $request->validate(['url' => ['required', 'string', 'max:2048', 'regex:#^https?://#i']])['url'];
-        abort_unless(OutboundUrl::safe($url), 422);
-
-        try {
-            $html = substr(OutboundUrl::client($url, 8)->get($url)->body(), 0, 300_000);
-        } catch (\Throwable) {
-            return response()->json(['title' => null, 'description' => null]);
-        }
-
-        $title = preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $m) === 1
-            ? mb_substr(trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5)), 0, 255) : null;
-        $description = preg_match('/<meta[^>]+name=["\']description["\'][^>]*content=["\']([^"\']*)["\']/is', $html, $m) === 1
-            ? mb_substr(trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5)), 0, 1000) : null;
-
-        return response()->json(['title' => $title ?: null, 'description' => $description ?: null]);
-    }
-
-    /** Serve the (server-cached) favicon for a bookmark's host. */
-    public function favicon(Request $request, FaviconFetcher $favicons): Response
-    {
-        $host = (string) $request->query('host', '');
-        $icon = $favicons->fetch($host);
-
-        // Hosts without a favicon return a cached 1x1 transparent PNG instead of
-        // a 404, so the <img> never logs a console error for a missing icon.
-        if ($icon === null) {
-            $pixel = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
-
-            return response($pixel, 200, [
-                'Content-Type' => 'image/png',
-                'X-Content-Type-Options' => 'nosniff',
-                'Content-Security-Policy' => "default-src 'none'; sandbox",
-                'Cache-Control' => 'public, max-age=86400',
-            ]);
-        }
-
-        return response(BlobStore::disk()->get($icon['path']), 200, [
-            'Content-Type' => $icon['mime'],
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Security-Policy' => "default-src 'none'; sandbox",
-            'Cache-Control' => 'public, max-age=604800',
-        ]);
-    }
-
     public function destroy(Bookmark $bookmark): JsonResponse
     {
         $bookmark->forceDelete();
@@ -279,23 +168,23 @@ class BookmarkController extends Controller
     /** @return array<string,mixed> */
     private function validated(Request $request): array
     {
+        // Zero-knowledge: the browser seals {title, url, description, tags} into
+        // enc_bookmark; the plaintext columns are never received. favorite +
+        // folder stay plaintext ordering/organisation flags.
         $v = $request->validate([
+            'enc_bookmark' => ['required', 'string', 'max:400000'],
             'bookmark_folder_id' => ['nullable', Rule::exists('bookmark_folders', 'id')->where('user_id', $request->user()->id)],
-            'title' => ['required', 'string', 'max:255'],
-            // Only http(s): a javascript:/data:/vbscript: URL would execute on
-            // click via the :href binding (stored XSS).
-            'url' => ['required', 'string', 'max:2048', 'regex:#^https?://#i'],
-            'description' => ['nullable', 'string', 'max:20000'],
             'favorite' => ['sometimes', 'boolean'],
-            ...Tags::rules(),
         ]);
 
         return [
+            'title' => null,
+            'url' => null,
+            'description' => null,
+            'tags' => null,
+            'enc_bookmark' => $v['enc_bookmark'],
+            'is_encrypted' => true,
             'bookmark_folder_id' => $v['bookmark_folder_id'] ?? null,
-            'title' => $v['title'],
-            'url' => $v['url'],
-            'description' => $v['description'] ?? null,
-            'tags' => Tags::normalize($v['tags'] ?? null),
             'favorite' => (bool) ($v['favorite'] ?? false),
         ];
     }
@@ -306,10 +195,8 @@ class BookmarkController extends Controller
         return [
             'id' => $b->id,
             'folderId' => $b->bookmark_folder_id,
-            'title' => $b->title,
-            'url' => $b->url,
-            'description' => $b->description,
-            'tags' => $b->tags ?? [],
+            // Sealed {title, url, description, tags}; decrypted client-side.
+            'enc_bookmark' => $b->enc_bookmark,
             'favorite' => (bool) $b->favorite,
             'readLater' => (bool) $b->read_later,
             'read' => $b->read_at !== null,

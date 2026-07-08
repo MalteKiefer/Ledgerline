@@ -5038,18 +5038,23 @@ Alpine.data('bookmarks', (labels = {}) => ({
     query: '',
     activeTag: '',
     error: '',
-    checking: false,
     newFolderName: '',
     editorOpen: false,
     // Kept a non-null blank so the teleported editor's x-model bindings never
     // read from null before a bookmark is opened.
     editing: { id: null, folderId: null, title: '', url: '', description: '', tags: [], favorite: false, readLater: false },
     tagsValue: '',
-    importing: false, importResult: '',
-    fetchingMeta: false,
     dragItem: null, // { type: 'bookmark' | 'folder', id }
 
-    async init() { await this.load(); },
+    async init() {
+        // Zero-knowledge gate: bookmarks decrypt with the vault key.
+        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+        if (this.$store.vault.unlocked) { await this.load(); } else { this.state = 'locked'; }
+        this.$watch('$store.vault.unlocked', (on) => {
+            if (on && this.state !== 'ready') this.load();
+            if (! on) { this.state = 'locked'; this.bookmarks = []; this.folders = []; }
+        });
+    },
 
     async load() {
         try {
@@ -5057,9 +5062,32 @@ Alpine.data('bookmarks', (labels = {}) => ({
             if (! res.ok) { this.state = 'error'; return; }
             const d = await res.json();
             this.folders = d.folders ?? [];
-            this.bookmarks = d.bookmarks ?? [];
+            this.bookmarks = (d.bookmarks ?? []).map((b) => this._decBookmark(b));
             this.state = 'ready';
         } catch (e) { this.state = 'error'; }
+    },
+
+    // Decrypt a server bookmark {id, enc_bookmark, folderId, favorite, ...} into
+    // the plaintext shape the UI uses; keep the raw sealed blob so an
+    // undecryptable bookmark round-trips untouched.
+    _decBookmark(b) {
+        let meta = null;
+        try { meta = window.Vault.decryptFileMeta(b.enc_bookmark); } catch (e) { /* undecryptable */ }
+        const ok = meta !== null;
+        return {
+            id: b.id, folderId: b.folderId ?? null,
+            url: ok ? (meta.url ?? '') : '', title: ok ? (meta.title ?? '') : '???',
+            description: ok ? (meta.description ?? '') : '', tags: ok ? (meta.tags ?? []) : [],
+            favorite: !! b.favorite, readLater: !! b.readLater, read: !! b.read, dead: !! b.dead, trashed: b.trashed,
+            _decOk: ok, _rawEnc: b.enc_bookmark,
+        };
+    },
+    // Seal {url, title, description, tags} for the wire; pass an undecryptable
+    // bookmark's original sealed blob through verbatim.
+    _encBookmark(b) {
+        if (b._decOk === false) return b._rawEnc;
+        const m = window.Vault.encryptMeta({ url: b.url || '', title: b.title || '', description: b.description || '', tags: b.tags || [] });
+        return JSON.stringify({ c: m.cipher, n: m.nonce });
     },
 
     _headers() {
@@ -5073,16 +5101,6 @@ Alpine.data('bookmarks', (labels = {}) => ({
         if (i >= 0) this.bookmarks[i] = b; else this.bookmarks.unshift(b);
     },
     host(url) { try { return new URL(url).host; } catch (e) { return ''; } },
-
-    // Re-check every bookmark URL now (queued on the server); the dead-link
-    // flags refresh on the next data load.
-    async checkLinks() {
-        if (this.checking) return;
-        this.checking = true;
-        try { await this._api('POST', '/bookmarks/check-links'); window.llToast(labels.linkCheckQueued); }
-        catch (e) { window.llToast(labels.saveFailed); }
-        finally { this.checking = false; }
-    },
 
     // Folder editor modal (create / subfolder / rename + colour + icon) —
     // replaces the old inline form and the window.prompt.
@@ -5210,56 +5228,39 @@ Alpine.data('bookmarks', (labels = {}) => ({
 
     async saveBookmark() {
         const e = this.editing;
-        if (! e || ! (e.url || '').trim()) { this.error = labels.urlRequired; return; }
+        const url = (e?.url || '').trim();
+        if (! e || ! url) { this.error = labels.urlRequired; return; }
+        // Only http(s): a javascript:/data: URL would execute on click via :href
+        // (the server can no longer validate the sealed URL, so enforce it here).
+        if (! /^https?:\/\//i.test(url)) { this.error = labels.urlRequired; return; }
+        e.url = url;
         // Fall back to the host as the title so a bookmark is never untitled.
         if (! (e.title || '').trim()) e.title = this.host(e.url) || e.url;
         this.error = '';
         e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
-        const body = { bookmark_folder_id: e.folderId ?? null, title: e.title, url: e.url, description: e.description, tags: e.tags, favorite: !! e.favorite };
+        // Seal {url,title,description,tags}; only the folder + favorite flag +
+        // read-state stay plaintext server-side.
+        const body = { bookmark_folder_id: e.folderId ?? null, enc_bookmark: this._encBookmark(e), favorite: !! e.favorite };
         try {
-            let b = e.id ? await this._api('PUT', `/bookmarks/${e.id}`, body) : await this._api('POST', '/bookmarks', body);
-            // read_later is a PATCH concern (it also resets read_at) — sync it
-            // when the checkbox differs from the stored state.
-            if (!! e.readLater !== !! b.readLater) b = await this._api('PATCH', `/bookmarks/${b.id}`, { read_later: !! e.readLater });
-            this._replace(b);
+            const saved = e.id ? await this._api('PUT', `/bookmarks/${e.id}`, body) : await this._api('POST', '/bookmarks', body);
+            // Keep the local plaintext; merge the server's flags/id.
+            const local = { ...e, id: saved.id, folderId: saved.folderId, trashed: saved.trashed, dead: !! saved.dead, read: !! saved.read, readLater: !! saved.readLater, _decOk: true };
+            if (!! e.readLater !== !! saved.readLater) {
+                const r = await this._api('PATCH', `/bookmarks/${saved.id}`, { read_later: !! e.readLater });
+                local.readLater = !! r.readLater; local.read = !! r.read;
+            }
+            this._replace(local);
             this.closeEditor();
         } catch (err) { this.error = labels.saveFailed; }
     },
 
-    // ---- metadata prefill / import / read-later ----------------------------
-    async fetchMeta() {
-        const url = (this.editing?.url || '').trim();
-        if (! url || this.fetchingMeta) return;
-        this.fetchingMeta = true;
-        try {
-            const d = await this._api('POST', '/bookmarks/fetch-meta', { url });
-            if (d.title && ! (this.editing.title || '').trim()) this.editing.title = d.title;
-            if (d.description && ! (this.editing.description || '').trim()) this.editing.description = d.description;
-        } catch (e) { /* leave fields as typed */ } finally { this.fetchingMeta = false; }
-    },
-    async importFile(ev) {
-        const f = ev.target.files[0]; if (! f) return;
-        const fd = new FormData(); fd.append('file', f);
-        this.importing = true; this.importResult = '';
-        try {
-            const res = await fetch('/bookmarks/import', {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
-                body: fd,
-            });
-            if (res.ok) {
-                const d = await res.json();
-                this.importResult = (labels.importResult || ':created / :skipped').replace(':created', d.created).replace(':skipped', d.skipped);
-                setTimeout(() => { this.importResult = ''; }, 8000);
-                await this.load();
-            } else { this.error = labels.saveFailed; }
-        } catch (e) { this.error = labels.saveFailed; } finally { this.importing = false; ev.target.value = ''; }
-    },
     async toggleReadLater(b) { await this._patch(b, { read_later: ! b.readLater }); },
     async markRead(b) { await this._patch(b, { read: true }); },
 
     async _patch(b, changes) {
-        try { this._replace(await this._api('PATCH', `/bookmarks/${b.id}`, changes)); }
+        // The PATCH response is the sealed row; decrypt it before replacing so the
+        // in-memory bookmark keeps its plaintext url/title/tags.
+        try { this._replace(this._decBookmark(await this._api('PATCH', `/bookmarks/${b.id}`, changes))); }
         catch (e) { this.error = labels.saveFailed; }
     },
     async toggleFavorite(b) { await this._patch(b, { favorite: ! b.favorite }); },

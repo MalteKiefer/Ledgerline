@@ -20,11 +20,9 @@ class ManualTriggersTest extends TestCase
         Queue::fake();
         $this->actingAs(User::factory()->create());
 
-        $this->postJson(route('bookmarks.check-links'))->assertOk();
         $this->post(route('settings.calendar.refresh-subscriptions'))->assertRedirect();
 
-        Queue::assertPushed(RunCommand::class, 2);
-        Queue::assertPushed(RunCommand::class, fn (RunCommand $j) => $j->command === 'bookmarks:check-links');
+        Queue::assertPushed(RunCommand::class, 1);
         Queue::assertPushed(RunCommand::class, fn (RunCommand $j) => $j->command === 'calendar:refresh-subscriptions');
     }
 

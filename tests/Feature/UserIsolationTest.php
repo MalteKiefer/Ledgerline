@@ -55,7 +55,7 @@ class UserIsolationTest extends TestCase
         $bob = User::factory()->create();
 
         $this->actingAs($alice);
-        $this->postJson(route('bookmarks.store'), ['title' => 'Alice link', 'url' => 'https://example.com'])->assertSuccessful();
+        $this->postJson(route('bookmarks.store'), ['enc_bookmark' => 'alice-sealed'])->assertSuccessful();
 
         $this->actingAs($bob);
         $this->assertSame(0, Bookmark::count());
