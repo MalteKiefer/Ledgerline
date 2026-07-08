@@ -9,8 +9,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /** A bookmark folder, private to its owning user. */
-#[Fillable(['name', 'parent_id', 'color', 'icon'])]
+#[Fillable(['name', 'parent_id', 'color', 'icon', 'is_encrypted'])]
 class BookmarkFolder extends Model
 {
     use OwnsUserData;
+
+    protected function casts(): array
+    {
+        return ['is_encrypted' => 'boolean'];
+    }
 }

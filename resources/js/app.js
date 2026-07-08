@@ -5061,7 +5061,7 @@ Alpine.data('bookmarks', (labels = {}) => ({
             const res = await fetch('/bookmarks/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) { this.state = 'error'; return; }
             const d = await res.json();
-            this.folders = d.folders ?? [];
+            this.folders = (d.folders ?? []).map((f) => this._decFolder(f));
             this.bookmarks = (d.bookmarks ?? []).map((b) => this._decBookmark(b));
             this.state = 'ready';
         } catch (e) { this.state = 'error'; }
@@ -5088,6 +5088,14 @@ Alpine.data('bookmarks', (labels = {}) => ({
         if (b._decOk === false) return b._rawEnc;
         const m = window.Vault.encryptMeta({ url: b.url || '', title: b.title || '', description: b.description || '', tags: b.tags || [] });
         return JSON.stringify({ c: m.cipher, n: m.nonce });
+    },
+    // Folder names are sealed too. Decrypt for display; keep the raw sealed name
+    // so an undecryptable folder round-trips untouched.
+    _decFolder(f) {
+        let name = '???';
+        let ok = false;
+        try { name = window.Vault.decryptFileMeta(f.name).name; ok = true; } catch (e) { /* undecryptable */ }
+        return { ...f, name, _decOk: ok, _rawName: f.name };
     },
 
     _headers() {
@@ -5117,14 +5125,16 @@ Alpine.data('bookmarks', (labels = {}) => ({
         const e = this.folderEditor;
         const name = (e.name || '').trim();
         if (! name) return;
+        // Seal the folder name (zero-knowledge); color/icon stay plaintext.
+        const sealed = window.Vault.sealName(name);
         try {
             if (e.id) {
-                const f = await this._api('PUT', `/bookmarks/folders/${e.id}`, { name, color: e.color || null, icon: e.icon || null });
+                const f = await this._api('PUT', `/bookmarks/folders/${e.id}`, { name: sealed, color: e.color || null, icon: e.icon || null });
                 const i = this.folders.findIndex((x) => x.id === e.id);
-                if (i >= 0) this.folders[i] = f;
+                if (i >= 0) this.folders[i] = this._decFolder(f);
             } else {
-                const f = await this._api('POST', '/bookmarks/folders', { name, parent_id: e.parentId, color: e.color || null, icon: e.icon || null });
-                this.folders.push(f);
+                const f = await this._api('POST', '/bookmarks/folders', { name: sealed, parent_id: e.parentId, color: e.color || null, icon: e.icon || null });
+                this.folders.push(this._decFolder(f));
             }
             this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             this.folderEditor.open = false;

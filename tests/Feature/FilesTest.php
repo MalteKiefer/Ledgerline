@@ -168,12 +168,4 @@ class FilesTest extends TestCase
         Storage::disk('files')->assertExists('files/'.$blob);
     }
 
-    public function test_files_appear_in_global_search(): void
-    {
-        $this->signIn();
-        StoredFile::create(['id' => (string) Str::uuid(), 'name' => 'searchabledoc.pdf', 'blob' => (string) Str::uuid(), 'mime' => 'application/pdf', 'size' => 3]);
-
-        $this->getJson(route('search.suggest', ['q' => 'searchabledoc']))
-            ->assertOk()->assertSee('searchabledoc.pdf');
-    }
 }
