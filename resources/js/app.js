@@ -3041,7 +3041,12 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     async walkEntry(entry, prefix, out) {
         if (entry.isFile) {
             const f = await new Promise((res) => entry.file(res, () => res(null)));
-            if (f) out.push({ file: f, path: prefix + f.name });
+            if (f) {
+                out.push({ file: f, path: prefix + f.name });
+            } else {
+                // Surface an unreadable dropped file instead of silently dropping it.
+                this.uploads.push({ name: prefix + entry.name, state: 'error', progress: 0, error: labels.saveFailed || 'read failed' });
+            }
             return;
         }
         // Read ALL child entries first (a tight readEntries loop, no per-file
@@ -3613,10 +3618,16 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.deleteOpen = this.deleteRefs.length > 0;
     },
 
-    // POST a small ids payload to a targeted files endpoint (trash/restore).
-    // Returns true on success. These avoid the fragile whole-manifest sync, so a
-    // stale tab can't fail the operation with "save failed".
-    async filesPost(url, body) {
+    // POST a small ids payload to a targeted files endpoint (trash/restore/etc).
+    // Returns true on success. Serialized on the same _io chain as persist()/load()
+    // so a targeted mutation can never overlap a whole-manifest PUT (or another
+    // targeted op) and race its result.
+    filesPost(url, body) {
+        const run = this._io.then(() => this._filesPostNow(url, body));
+        this._io = run.catch(() => {});
+        return run;
+    },
+    async _filesPostNow(url, body) {
         try {
             const res = await fetch(url, {
                 method: 'POST',
@@ -4249,11 +4260,20 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
             const entry = this.manifest.files.find((f) => f.id === row.id);
             const oldBlob = entry?.blob;
+            const oldSize = entry?.size;
             if (entry) {
                 entry.blob = id;
                 entry.size = bytes.length;
             }
-            await this.persist();
+            try {
+                await this.persist();
+            } catch (e) {
+                // Revert the optimistic swap and free the orphaned new blob so the
+                // client and server never diverge on a failed save.
+                if (entry) { entry.blob = oldBlob; entry.size = oldSize; }
+                fetch(`${config.blobBase}/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } }).catch(() => {});
+                throw e;
+            }
 
             row.blob = id;
             row.size = bytes.length;
