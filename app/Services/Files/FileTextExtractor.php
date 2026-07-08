@@ -115,9 +115,17 @@ class FileTextExtractor
 
     private function clip(string $text): string
     {
-        // Collapse whitespace runs and cap the length.
-        $text = trim(preg_replace('/[ \t\x{00A0}]+/u', ' ', preg_replace('/\R+/u', "\n", $text)) ?? '');
+        // Binary or invalid-UTF-8 input (e.g. a mis-typed file forced down the
+        // text path) makes the /u regexes return null and would crash the job,
+        // and Postgres rejects NUL bytes. Scrub to valid UTF-8 and drop NULs
+        // first, and null-coalesce every regex so extraction can never fail.
+        $text = str_replace("\0", '', $text);
+        if (! mb_check_encoding($text, 'UTF-8')) {
+            $text = mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+        }
+        $text = preg_replace('/\R+/u', "\n", $text) ?? $text;
+        $text = preg_replace('/[ \t\x{00A0}]+/u', ' ', $text) ?? $text;
 
-        return mb_substr($text, 0, self::MAX_CHARS);
+        return mb_substr(trim($text), 0, self::MAX_CHARS);
     }
 }

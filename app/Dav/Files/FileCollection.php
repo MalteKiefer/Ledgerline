@@ -130,6 +130,17 @@ abstract class FileCollection extends Collection implements IACL, IMoveTarget, I
             if ((int) $folder->user_id !== $this->userId || $folder->id === $this->parentId) {
                 return false;
             }
+            // Refuse moving a folder into its own subtree — that would create a
+            // parent cycle and make the tree walkers (sync, subtree, DAV) recurse
+            // forever. Walk the target's ancestors; the step cap also breaks out
+            // if the stored graph is already cyclic.
+            $cur = $this->parentId;
+            for ($steps = 0; $cur !== null && $steps < 10000; $steps++) {
+                if ($cur === $folder->id) {
+                    return false;
+                }
+                $cur = FileFolder::withoutGlobalScopes()->where('id', $cur)->value('parent_id');
+            }
             $folder->forceFill(['parent_id' => $this->parentId, 'name' => (string) $targetName])->save();
 
             return true;

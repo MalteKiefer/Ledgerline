@@ -281,8 +281,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.upload.abort');
     Route::post('/files/import', [FileController::class, 'import'])
         ->middleware('throttle:300,1')->name('files.import');
-    Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->name('files.raw');
-    Route::get('/files/thumb/{blob}', [FileController::class, 'thumb'])->name('files.thumb');
+    Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('files.raw');
+    Route::get('/files/thumb/{blob}', [FileController::class, 'thumb'])->middleware('throttle:600,1')->name('files.thumb');
     Route::get('/files/search-content', [FileController::class, 'searchContent'])->middleware('throttle:120,1')->name('files.search-content');
     Route::get('/files/upload-links', [UploadLinkController::class, 'index'])->name('files.upload-links.index');
     Route::post('/files/upload-links', [UploadLinkController::class, 'store'])->middleware('throttle:30,1')->name('files.upload-links.store');

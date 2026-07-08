@@ -458,6 +458,9 @@ class FileController extends Controller
             'tags' => [],
         ]);
 
+        // Index its text so imported files are findable by content search too.
+        ExtractFileText::dispatch($stored->id, $blob)->afterCommit();
+
         return response()->json(['id' => $stored->id], 201);
     }
 
@@ -610,8 +613,11 @@ class FileController extends Controller
         ])->save();
     }
 
-    private function copyFolder(FileFolder $src, ?string $parentId, int $uid, bool $unique): void
+    private function copyFolder(FileFolder $src, ?string $parentId, int $uid, bool $unique, int $depth = 0): void
     {
+        // Hard depth cap so a very deep (or, defensively, a cyclic) folder chain
+        // cannot exhaust the PHP stack while copying.
+        abort_if($depth > 100, 422, __('files.folder_too_deep'));
         $name = $unique ? $this->uniqueFolderName($src->name, $uid, $parentId) : $src->name;
         $copy = new FileFolder;
         $copy->forceFill(['id' => (string) Str::uuid(), 'user_id' => $uid, 'parent_id' => $parentId, 'name' => $name])->save();
@@ -619,7 +625,7 @@ class FileController extends Controller
             $this->copyFile($f, $copy->id, $uid, false);
         }
         foreach (FileFolder::withoutGlobalScopes()->where('parent_id', $src->id)->get() as $sub) {
-            $this->copyFolder($sub, $copy->id, $uid, false);
+            $this->copyFolder($sub, $copy->id, $uid, false, $depth + 1);
         }
     }
 

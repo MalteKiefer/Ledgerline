@@ -187,12 +187,17 @@ class ArchiveManager
                 }
 
                 $name = end($segments);
-                $bytes = $za->getFromIndex($i);
-                if ($bytes === false) {
+                // Stream the entry to the blob rather than buffering it whole in
+                // PHP memory — a single large entry would otherwise OOM the worker.
+                $stream = $za->getStream($raw);
+                if ($stream === false) {
                     continue;
                 }
                 $blob = (string) Str::uuid();
-                $this->disk()->put('files/'.$blob, $bytes);
+                $this->disk()->writeStream('files/'.$blob, $stream);
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
                 $file = new StoredFile;
                 $file->forceFill([
                     'id' => (string) Str::uuid(),
@@ -200,7 +205,7 @@ class ArchiveManager
                     'file_folder_id' => $folderId,
                     'name' => $name,
                     'blob' => $blob,
-                    'size' => strlen($bytes),
+                    'size' => (int) ($za->statIndex($i)['size'] ?? 0),
                     'mime' => $this->guessMime($name),
                 ])->save();
                 $count++;
@@ -265,6 +270,12 @@ class ArchiveManager
                 \RecursiveIteratorIterator::SELF_FIRST
             );
             foreach ($rii as $item) {
+                // Never follow symlinks/hardlinks or import special (device/fifo)
+                // entries a crafted tar may contain — reading them would leak
+                // arbitrary server files into a blob. Only real dirs/files.
+                if ($item->isLink() || (! $item->isDir() && ! $item->isFile())) {
+                    continue;
+                }
                 $rel = substr($item->getPathname(), strlen($dest) + 1);
                 $segments = $this->safeSegments($rel);
                 if ($segments === null) {
@@ -276,16 +287,20 @@ class ArchiveManager
                     continue;
                 }
                 $folderId = $this->ensureDir($userId, array_slice($segments, 0, -1), $dirCache);
-                $bytes = file_get_contents($item->getPathname());
-                if ($bytes === false) {
+                // Stream the extracted file into the blob (bounded memory).
+                $in = @fopen($item->getPathname(), 'rb');
+                if ($in === false) {
                     continue;
                 }
                 $blob = (string) Str::uuid();
-                $this->disk()->put('files/'.$blob, $bytes);
+                $this->disk()->writeStream('files/'.$blob, $in);
+                if (is_resource($in)) {
+                    fclose($in);
+                }
                 $file = new StoredFile;
                 $file->forceFill([
                     'id' => (string) Str::uuid(), 'user_id' => $userId, 'file_folder_id' => $folderId,
-                    'name' => end($segments), 'blob' => $blob, 'size' => strlen($bytes), 'mime' => $this->guessMime(end($segments)),
+                    'name' => end($segments), 'blob' => $blob, 'size' => (int) $item->getSize(), 'mime' => $this->guessMime(end($segments)),
                 ])->save();
                 $written++;
                 if ($onProgress !== null) {
