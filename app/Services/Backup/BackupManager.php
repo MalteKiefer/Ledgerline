@@ -74,6 +74,9 @@ final class BackupManager
 
             $prefix = (Str::slug($job->name) ?: 'backup').'-'.$job->id;
             $fs = $this->destinations->make($job->destination);
+            // Create the destination folder if the configured path does not exist
+            // yet, so a fresh target does not fail the first backup.
+            $this->destinations->ensureRoot($fs, $job->destination->driver, $job->destination->config ?? []);
 
             // Files/Gallery can be either an incremental mirror (default) or a
             // full archive; the database is always a full archive.

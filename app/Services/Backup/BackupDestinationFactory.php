@@ -51,10 +51,40 @@ class BackupDestinationFactory
     public function test(string $driver, array $config): void
     {
         $fs = $this->makeFromParts($driver, $config);
+        // Create the target folder up front so testing a not-yet-existing path
+        // succeeds (and leaves the folder ready for the first backup) instead of
+        // failing on the probe write.
+        $this->ensureRoot($fs, $driver, $config);
         // Plain (non-dot) filename so no host hides/rejects it; written + deleted.
         $probe = 'ledgerline-connection-test-'.bin2hex(random_bytes(6)).'.txt';
         $fs->write($probe, "ok\n");
         $fs->delete($probe);
+    }
+
+    /**
+     * Best-effort create of the configured destination root directory. Directory
+     * based drivers (SFTP/WebDAV) do not auto-create the root prefix when a file
+     * is written at its top level — so a valid host whose target folder does not
+     * exist yet would fail the connection test and the first backup. Object
+     * stores (S3/B2) create keys on write and need nothing here.
+     *
+     * Throws (does not swallow) so a genuine failure — e.g. no permission to
+     * create the folder — is surfaced to the user rather than hidden.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function ensureRoot(Filesystem $fs, string $driver, array $config): void
+    {
+        if (! in_array($driver, ['sftp', 'webdav'], true)) {
+            return;
+        }
+        // No path configured means the login/base directory, which already exists.
+        if (trim((string) ($config['path'] ?? ''), '/') === '') {
+            return;
+        }
+        // The empty path resolves to the root prefix; the adapter mkdir's the
+        // whole chain recursively.
+        $fs->createDirectory('');
     }
 
     private function s3(array $c): AwsS3V3Adapter
