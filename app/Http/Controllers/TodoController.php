@@ -8,18 +8,17 @@ use App\Http\Controllers\Concerns\PurgesOwnedTrash;
 use App\Models\Reminder;
 use App\Models\Todo;
 use App\Models\TodoList;
-use App\Support\Tags;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * Plain (non-encrypted) to-do lists and tasks, exposed as a JSON API so the
- * browser can render and mutate everything without page reloads. Only the
- * security/performance-sensitive bits stay on the server: reminder rows are
- * managed here (a task with a due date + channels upserts a reminder), and
- * outbound reminder URLs are restricted to http(s).
+ * Zero-knowledge to-do lists and tasks over a JSON API. The browser seals
+ * {title, description, url, tags} into enc_todo (+ sealed list names); the server
+ * stores only ciphertext plus scheduling/sort metadata (priority, marked, due_at,
+ * done, list, reminder channels). Reminders schedule off due_at + channels only —
+ * no readable content — and fire a generic "a to-do is due" message.
  */
 class TodoController extends Controller
 {
@@ -28,7 +27,8 @@ class TodoController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'lists' => TodoList::orderBy('name')->get(['id', 'name']),
+            // name is the sealed {c,n} string; the client decrypts + sorts it.
+            'lists' => TodoList::orderBy('id')->get(['id', 'name', 'is_encrypted']),
             'tasks' => Todo::withTrashed()->orderByDesc('created_at')->get()->map(fn (Todo $t) => $this->toArray($t)),
         ]);
     }
@@ -37,14 +37,16 @@ class TodoController extends Controller
 
     public function storeList(Request $request): JsonResponse
     {
-        $list = TodoList::create($request->validate(['name' => ['required', 'string', 'max:120']]));
+        $data = $request->validate(['name' => ['required', 'string', 'max:4096']]);
+        $list = TodoList::create([...$data, 'is_encrypted' => true]);
 
-        return response()->json(['id' => $list->id, 'name' => $list->name]);
+        return response()->json(['id' => $list->id, 'name' => $list->name, 'is_encrypted' => true]);
     }
 
     public function updateList(Request $request, TodoList $list): JsonResponse
     {
-        $list->update($request->validate(['name' => ['required', 'string', 'max:120']]));
+        $data = $request->validate(['name' => ['required', 'string', 'max:4096']]);
+        $list->update([...$data, 'is_encrypted' => true]);
 
         return response()->json(['ok' => true]);
     }
@@ -116,15 +118,11 @@ class TodoController extends Controller
     {
         $v = $request->validate([
             'todo_list_id' => ['nullable', Rule::exists('todo_lists', 'id')->where('user_id', $request->user()->id)],
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:20000'],
-            // Only http(s): a javascript:/data:/vbscript: URL would execute on
-            // click via the :href binding (stored XSS).
-            'url' => ['nullable', 'string', 'max:2048', 'regex:#^https?://#i'],
+            // Sealed {title, description, url, tags} — opaque ciphertext.
+            'enc_todo' => ['required', 'string', 'max:400000'],
             'priority' => ['required', Rule::in(['low', 'normal', 'high'])],
             'marked' => ['sometimes', 'boolean'],
             'due' => ['nullable', 'date'],
-            ...Tags::rules(),
             'reminder_channels' => ['array'],
             'reminder_channels.*' => [Rule::in(Reminder::CHANNELS)],
             'done' => ['sometimes', 'boolean'],
@@ -132,12 +130,14 @@ class TodoController extends Controller
 
         return [
             'todo_list_id' => $v['todo_list_id'] ?? null,
-            'title' => $v['title'],
-            'description' => $v['description'] ?? null,
-            'url' => $v['url'] ?? null,
+            'title' => null,
+            'description' => null,
+            'url' => null,
+            'tags' => null,
+            'enc_todo' => $v['enc_todo'],
+            'is_encrypted' => true,
             'priority' => $v['priority'],
             'marked' => (bool) ($v['marked'] ?? false),
-            'tags' => Tags::normalize($v['tags'] ?? null),
             'due_at' => ! empty($v['due']) ? Carbon::parse($v['due'], config('app.timezone')) : null,
             'reminder_channels' => array_values($v['reminder_channels'] ?? []),
             'done' => (bool) ($v['done'] ?? false),
@@ -155,25 +155,11 @@ class TodoController extends Controller
             return;
         }
 
+        // No title/url — the content is sealed; the reminder only schedules.
         Reminder::updateOrCreate(
             ['todo_id' => $todo->id],
-            [
-                'due_at' => $todo->due_at,
-                'channels' => $channels,
-                'title' => $todo->title,
-                'url' => $this->safeUrl($todo->url),
-                'fired_at' => null,
-            ],
+            ['due_at' => $todo->due_at, 'channels' => $channels, 'fired_at' => null],
         );
-    }
-
-    private function safeUrl(?string $url): ?string
-    {
-        if ($url === null || $url === '') {
-            return null;
-        }
-
-        return preg_match('#^https?://#i', $url) === 1 ? $url : null;
     }
 
     /** @return array<string,mixed> */
@@ -182,12 +168,9 @@ class TodoController extends Controller
         return [
             'id' => $t->id,
             'listId' => $t->todo_list_id,
-            'title' => $t->title,
-            'description' => $t->description,
-            'url' => $t->url,
+            'enc_todo' => $t->enc_todo,
             'priority' => $t->priority,
             'marked' => (bool) $t->marked,
-            'tags' => $t->tags ?? [],
             'due' => $t->due_at?->timezone(config('app.timezone'))->format('Y-m-d\TH:i'),
             'reminderChannels' => $t->reminder_channels ?? [],
             'done' => (bool) $t->done,

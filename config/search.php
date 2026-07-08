@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Search\Providers\PhotoSearchProvider;
-use App\Search\Providers\TodoSearchProvider;
 
 return [
     /*
@@ -12,7 +11,6 @@ return [
     */
     'providers' => [
         PhotoSearchProvider::class,
-        TodoSearchProvider::class,
     ],
 
     'limit_per_group' => 8,

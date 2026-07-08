@@ -37,15 +37,6 @@ class SettingsData implements UserDataContributor
         $setting = UserSetting::withoutGlobalScopes()
             ->where('user_id', $user->id)
             ->first([
-                'calendar_week_start',
-                'calendar_week_numbers',
-                'calendar_default_event_minutes',
-                'calendar_timezone',
-                'calendar_birthdays_enabled',
-                'calendar_anniversaries_enabled',
-                'calendar_holiday_countries',
-                'contact_sort',
-                'contact_display_format',
                 'reminder_channels',
                 'gallery_columns',
             ]);
@@ -64,17 +55,29 @@ class SettingsData implements UserDataContributor
             ])
             ->toArray();
 
+        // Never export the raw token: it is a live 48-char bearer credential that
+        // grants access to the shared resource. Emit a non-reversible reference
+        // and a has_password flag instead.
         $publicShares = PublicShare::query()
             ->where('owner_id', $user->id)
             ->orderBy('id')
             ->get([
                 'id',
-                'token',
                 'shareable_type',
                 'shareable_id',
                 'expires_at',
+                'password',
                 'created_at',
                 'updated_at',
+            ])
+            ->map(fn (PublicShare $share): array => [
+                'id' => $share->id,
+                'shareable_type' => $share->shareable_type,
+                'shareable_id' => $share->shareable_id,
+                'expires_at' => $share->expires_at,
+                'has_password' => $share->password !== null,
+                'created_at' => $share->created_at,
+                'updated_at' => $share->updated_at,
             ])
             ->toArray();
 

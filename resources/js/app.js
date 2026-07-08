@@ -3431,15 +3431,23 @@ Alpine.data('todos', (labels = {}) => ({
     editing: null,
     tagsValue: '',
 
-    async init() { await this.load(); },
+    async init() {
+        // Zero-knowledge gate: to-dos decrypt with the vault key.
+        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+        if (this.$store.vault.unlocked) { await this.load(); } else { this.state = 'locked'; }
+        this.$watch('$store.vault.unlocked', (on) => {
+            if (on && this.state !== 'ready') this.load();
+            if (! on) { this.state = 'locked'; this.tasks = []; this.lists = []; }
+        });
+    },
 
     async load() {
         try {
             const res = await fetch('/todos/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) { this.state = 'error'; return; }
             const d = await res.json();
-            this.lists = d.lists ?? [];
-            this.tasks = d.tasks ?? [];
+            this.lists = (d.lists ?? []).map((l) => this._decList(l));
+            this.tasks = (d.tasks ?? []).map((t) => this._decTask(t));
             this.state = 'ready';
         } catch (e) { this.state = 'error'; }
     },
@@ -3450,10 +3458,37 @@ Alpine.data('todos', (labels = {}) => ({
     async _api(method, url, body) {
         return apiRequest(method, url, body);
     },
-    _payload(t) {
+    // Decrypt a server task {id, enc_todo, listId, priority, ...} into the UI
+    // shape; keep the raw sealed blob so an undecryptable task round-trips.
+    _decTask(t) {
+        let meta = null;
+        try { meta = window.Vault.decryptFileMeta(t.enc_todo); } catch (e) { /* undecryptable */ }
+        const ok = meta !== null;
         return {
-            todo_list_id: t.listId ?? null, title: t.title, description: t.description, url: t.url,
-            priority: t.priority, marked: !! t.marked, tags: t.tags ?? [],
+            id: t.id, listId: t.listId ?? null,
+            title: ok ? (meta.title ?? '') : '???', description: ok ? (meta.description ?? '') : '',
+            url: ok ? (meta.url ?? '') : '', tags: ok ? (meta.tags ?? []) : [],
+            priority: t.priority, marked: !! t.marked, due: t.due || '',
+            reminderChannels: t.reminderChannels ?? [], done: !! t.done, trashed: t.trashed,
+            _decOk: ok, _rawEnc: t.enc_todo,
+        };
+    },
+    _encTask(t) {
+        if (t._decOk === false) return t._rawEnc;
+        const m = window.Vault.encryptMeta({ title: t.title || '', description: t.description || '', url: t.url || '', tags: t.tags || [] });
+        return JSON.stringify({ c: m.cipher, n: m.nonce });
+    },
+    _decList(l) {
+        let name = '???';
+        try { name = window.Vault.decryptFileMeta(l.name).name; } catch (e) { /* undecryptable */ }
+        return { id: l.id, name };
+    },
+    _payload(t) {
+        // Only http(s) for the (sealed) url — the server can't re-check it.
+        if (t.url && ! /^https?:\/\//i.test(t.url)) t.url = '';
+        return {
+            todo_list_id: t.listId ?? null, enc_todo: this._encTask(t),
+            priority: t.priority, marked: !! t.marked,
             due: t.due || null, reminder_channels: t.reminderChannels ?? [], done: !! t.done,
         };
     },
@@ -3468,8 +3503,8 @@ Alpine.data('todos', (labels = {}) => ({
         const name = this.newListName.trim();
         if (! name) return;
         try {
-            const l = await this._api('POST', '/todos/lists', { name });
-            this.lists.push({ id: l.id, name: l.name });
+            const l = await this._api('POST', '/todos/lists', { name: window.Vault.sealName(name) });
+            this.lists.push({ id: l.id, name });
             this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             this.newListName = '';
         } catch (e) { this.error = labels.saveFailed; }
@@ -3477,7 +3512,7 @@ Alpine.data('todos', (labels = {}) => ({
     async renameList(l) {
         const name = (prompt(labels.renameList, l.name) || '').trim();
         if (! name || name === l.name) return;
-        try { await this._api('PUT', `/todos/lists/${l.id}`, { name }); l.name = name; this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+        try { await this._api('PUT', `/todos/lists/${l.id}`, { name: window.Vault.sealName(name) }); l.name = name; this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
         catch (e) { this.error = labels.saveFailed; }
     },
     async deleteList(l) {
@@ -3537,13 +3572,14 @@ Alpine.data('todos', (labels = {}) => ({
             const task = e.id
                 ? await this._api('PUT', `/todos/tasks/${e.id}`, this._payload(e))
                 : await this._api('POST', '/todos/tasks', this._payload(e));
-            this._replace(task);
+            this._replace(this._decTask(task));
             this.closeEditor();
         } catch (err) { this.error = labels.saveFailed; }
     },
 
     async _patch(t, changes) {
-        try { this._replace(await this._api('PATCH', `/todos/tasks/${t.id}`, changes)); }
+        // The PATCH response is the sealed row; decrypt before replacing.
+        try { this._replace(this._decTask(await this._api('PATCH', `/todos/tasks/${t.id}`, changes))); }
         catch (e) { this.error = labels.saveFailed; }
     },
     async toggleDone(t) { await this._patch(t, { done: ! t.done }); },
