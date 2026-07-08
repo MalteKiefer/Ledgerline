@@ -37,6 +37,8 @@ return [
     'upload_done' => 'Upload abgeschlossen',
     'upload_dismiss' => 'Schließen',
     'upload_unreadable' => 'Datei konnte nicht gelesen werden (vom System blockiert?)',
+    'paperless_decrypt_warn' => 'Diese Datei wird entschlüsselt und als Klartext an Paperless gesendet — sie verlässt den verschlüsselten Tresor. Fortfahren?',
+    'note_decrypt_warn' => 'Diese Datei wird entschlüsselt und als Klartext-Notiz gespeichert — sie verlässt den verschlüsselten Tresor. Fortfahren?',
     'storage_used_only' => ':used verbraucht',
     'all_files' => 'Alle Dateien',
     'drop_hint' => 'Dateien oder Ordner hierher ziehen zum Hochladen',

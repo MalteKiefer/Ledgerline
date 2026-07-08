@@ -3473,6 +3473,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const row = this.migrateRow;
         const del = this.migrateDelete;
         if (! row || this.migrateBusy) return;
+        // Converting to a note decrypts the file and stores it as a PLAINTEXT note
+        // — it leaves the zero-knowledge vault. Warn first.
+        if (! await this.$store.confirm.ask(labels.noteDecryptWarn || '')) return;
         this.migrateBusy = true;
         this.error = '';
         try {
@@ -4224,6 +4227,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // background so the dialog never blocks. allowDelete lets the modal offer
     // to remove the stored file after upload.
     async openPaperless(row) {
+        // Sending to Paperless takes the file OUT of the zero-knowledge vault: it
+        // is decrypted in the browser and uploaded as plaintext to Paperless.
+        // Warn before it leaves the encrypted store.
+        if (! await this.$store.confirm.ask(labels.paperlessDecryptWarn || '')) return;
         const store = Alpine.store('paperless');
         store.begin(row.name, {}, {
             allowDelete: true,
@@ -4409,12 +4416,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             row.blob = id;
             row.size = bytes.length;
             row.encFileKey = enc.encFileKey;
-            if (oldBlob && oldBlob !== id) {
-                fetch(`${config.blobBase}/${oldBlob}`, {
-                    method: 'DELETE',
-                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                }).catch(() => {});
-            }
+            // Do NOT delete the old blob here: the sync just snapshotted it as a
+            // version (kept so a restore stays decryptable). The version cap prunes
+            // it later, reference-counted. Deleting it now would hit the ref-count
+            // guard (409) and, if forced, break the version.
             this.viewer.saved = true;
         } catch (e) {
             this.error = labels.saveFailed;
