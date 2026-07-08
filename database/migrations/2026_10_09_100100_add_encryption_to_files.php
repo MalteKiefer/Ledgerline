@@ -31,6 +31,8 @@ return new class extends Migration
             $table->longText('enc_metadata')->nullable()->after('name');
             $table->text('enc_file_key')->nullable()->after('enc_metadata');
             $table->boolean('is_encrypted')->default(false)->after('enc_file_key');
+            $table->string('name')->nullable()->change();
+            $table->string('mime')->nullable()->change();
         });
 
         Schema::table('file_folders', function (Blueprint $table): void {
