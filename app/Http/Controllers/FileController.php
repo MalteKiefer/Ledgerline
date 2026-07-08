@@ -57,13 +57,15 @@ class FileController extends Controller
             // Live folders only (ownedBy strips the SoftDeletingScope, so exclude
             // trashed ones explicitly); trashed folders come back via restore.
             'folders' => FileFolder::ownedBy($uid)->whereNull('deleted_at')->get(['id', 'parent_id', 'name'])
+                // name is the sealed {c,n} string; the client decrypts it.
                 ->map(fn (FileFolder $f) => ['id' => $f->id, 'name' => $f->name, 'parent' => $f->parent_id])
                 ->all(),
             'files' => StoredFile::ownedBy($uid)->withTrashed()->get()->map(fn (StoredFile $f) => [
                 'id' => $f->id,
                 'blob' => $f->blob,
-                'name' => $f->name,
-                'mime' => $f->mime,
+                // Sealed metadata (name/mime/size) + wrapped key; decrypted client-side.
+                'enc_metadata' => $f->enc_metadata,
+                'enc_file_key' => $f->enc_file_key,
                 'size' => $f->size,
                 'folder' => $f->file_folder_id,
                 'trashed' => $f->deleted_at?->toIso8601String(),
@@ -83,19 +85,23 @@ class FileController extends Controller
         $data = $request->validate([
             'folders' => ['array', 'max:20000'],
             'folders.*.id' => ['required', 'uuid'],
-            'folders.*.name' => ['required', 'string', 'max:255'],
+            // Folder name is the sealed {c,n} JSON string (zero-knowledge), so it
+            // is opaque ciphertext and larger than a plaintext name.
+            'folders.*.name' => ['required', 'string', 'max:4096'],
             'folders.*.parent' => ['nullable', 'uuid'],
             'files' => ['array', 'max:50000'],
             'files.*.id' => ['required', 'uuid'],
             'files.*.blob' => ['required', 'uuid'],
-            'files.*.name' => ['required', 'string', 'max:255'],
-            'files.*.mime' => ['nullable', 'string', 'max:255'],
-            'files.*.size' => ['nullable', 'integer', 'min:0'],
+            // Zero-knowledge: the sealed name/mime/size and the wrapped per-file
+            // key. The server never receives a plaintext name/mime.
+            'files.*.enc_metadata' => ['required', 'string', 'max:8192'],
+            'files.*.enc_file_key' => ['required', 'string', 'max:2048'],
             'files.*.folder' => ['nullable', 'uuid'],
             'files.*.tags' => ['array'],
             'files.*.trashed' => ['nullable'],
             'files.*.favorite' => ['nullable', 'boolean'],
-            'files.*.note' => ['nullable', 'string', 'max:5000'],
+            // Note stays server-opaque too (sealed by the client) when present.
+            'files.*.note' => ['nullable', 'string', 'max:8192'],
         ]);
 
         $folders = $data['folders'] ?? [];
@@ -168,7 +174,7 @@ class FileController extends Controller
                     if ($parent !== null && ! isset($manifestFolderIds[$parent])) {
                         $parent = null; // dangling parent → root
                     }
-                    $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $parent, 'name' => $f['name']]);
+                    $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $parent, 'name' => $f['name'], 'is_encrypted' => true]);
                     $folderIds[] = $f['id'];
                 }
                 // Soft-delete live folders the manifest dropped (recoverable);
@@ -188,7 +194,9 @@ class FileController extends Controller
                     // the manifest's `trashed` timestamp drive deleted_at directly.
                     $file = $owned()->withTrashed()->firstOrNew(['id' => $f['id']]);
                     $oldBlob = $file->exists ? $file->blob : null;
-                    $oldMeta = ['name' => $file->name, 'mime' => $file->mime, 'size' => (int) $file->size];
+                    // Snapshot the sealed metadata + wrapped key of the outgoing
+                    // blob so a version restore can still decrypt it.
+                    $oldMeta = ['enc_metadata' => $file->enc_metadata, 'enc_file_key' => $file->enc_file_key, 'size' => (int) $file->size];
                     // Authoritative size: read from disk when the blob is new/changed
                     // (never trust the client's number), else keep the stored size. A
                     // new blob whose bytes are missing on disk is a failed upload —
@@ -210,8 +218,13 @@ class FileController extends Controller
                     $file->fill([
                         'user_id' => $uid,
                         'file_folder_id' => $folderRef,
-                        'name' => $f['name'],
-                        'mime' => $f['mime'] ?? 'application/octet-stream',
+                        // Zero-knowledge: no plaintext name/mime — the sealed
+                        // metadata + wrapped key are the source of truth.
+                        'name' => null,
+                        'mime' => null,
+                        'enc_metadata' => $f['enc_metadata'],
+                        'enc_file_key' => $f['enc_file_key'],
+                        'is_encrypted' => true,
                         'size' => $size,
                         'blob' => $f['blob'],
                         'tags' => Tags::normalize($f['tags'] ?? null),
@@ -227,20 +240,14 @@ class FileController extends Controller
                     if (is_string($oldBlob) && $oldBlob !== $f['blob'] && Str::isUuid($oldBlob)) {
                         FileVersion::create([
                             'id' => (string) Str::uuid(), 'file_id' => $file->id, 'user_id' => $uid,
-                            'name' => $oldMeta['name'] ?? $f['name'], 'mime' => $oldMeta['mime'] ?? 'application/octet-stream',
+                            'name' => null, 'mime' => null,
+                            'enc_metadata' => $oldMeta['enc_metadata'], 'enc_file_key' => $oldMeta['enc_file_key'], 'is_encrypted' => true,
                             'size' => $oldMeta['size'], 'blob' => $oldBlob, 'created_at' => now(),
                         ]);
                         $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id, $keep));
                     }
-
-                    // New or changed content → drop the now-stale search text at once
-                    // (so it can't surface old content) and re-extract off-path.
-                    if ($oldBlob !== $f['blob']) {
-                        if ($file->exists && $oldBlob !== null) {
-                            $file->forceFill(['content' => null, 'content_at' => null])->save();
-                        }
-                        ExtractFileText::dispatch($file->id, $f['blob'])->afterCommit();
-                    }
+                    // No server-side text extraction: the bytes are ciphertext the
+                    // server can't read (zero-knowledge). Content search is dropped.
                 }
 
                 // Files the manifest dropped are NOT permanently destroyed here. A
