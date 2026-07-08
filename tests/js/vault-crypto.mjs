@@ -106,5 +106,16 @@ Vault.lock();
 await Vault.unlock('a brand new passphrase!!');
 ok(Vault.unlocked(), 'unlock works with the new passphrase after rotation');
 
+// --- Recovery re-wrap: setPassphrase mints a FRESH recovery code; the old one dies ---
+const newRecovery = await Vault.setPassphrase('third passphrase here');
+ok(typeof newRecovery === 'string' && newRecovery.replace(/\s/g, '').length === 64, 'setPassphrase returns a fresh 32-byte recovery code');
+ok(newRecovery.replace(/\s/g, '') !== recoveryCode.replace(/\s/g, ''), 'the new recovery code differs from the old one');
+Vault.lock();
+let oldRecFailed = false;
+try { await Vault.recover(recoveryCode); } catch (e) { oldRecFailed = true; }
+ok(oldRecFailed && ! Vault.unlocked(), 'the OLD recovery code no longer opens the vault after a re-wrap');
+await Vault.recover(newRecovery);
+ok(Vault.unlocked() && Buffer.from(Vault.vk).toString('hex') === vkHex, 'the NEW recovery code opens the vault (same VK, files intact)');
+
 console.log(`\nvault-crypto: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

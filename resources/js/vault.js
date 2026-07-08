@@ -236,11 +236,30 @@ export const Vault = {
     async changePassphrase(currentPass, newPass) {
         await this.unlock(currentPass); // verifies the current passphrase, loads VK
 
+        return this.setPassphrase(newPass);
+    },
+
+    /**
+     * Re-wrap the (already-unlocked, in-memory) vault key under a NEW passphrase
+     * and mint a fresh recovery code — no current passphrase needed. Used after a
+     * recovery-code unlock to set a new passphrase, and by changePassphrase.
+     * Returns the new recovery code to show once. Files are untouched (VK is the
+     * same), so everything stays decryptable.
+     */
+    async setPassphrase(newPass) {
+        if (! this.vk) {
+            throw new Error('locked');
+        }
         const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
         const ops = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
         const mem = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
         const kek = deriveKek(newPass, salt, ops, mem);
         const wrapped = seal(this.vk, kek);
+
+        // Mint a fresh recovery code (the old one no longer opens the vault).
+        const recoveryBytes = sodium.randombytes_buf(32);
+        const recoveryKey = sodium.crypto_generichash(sodium.crypto_secretbox_KEYBYTES, recoveryBytes);
+        const wrappedRecovery = seal(this.vk, recoveryKey);
 
         await api('PUT', {
             salt: b64(salt),
@@ -248,9 +267,13 @@ export const Vault = {
             kdf_mem: mem,
             wrapped_vault_key: wrapped.cipher,
             wrap_nonce: wrapped.nonce,
+            wrapped_vault_key_recovery: wrappedRecovery.cipher,
+            recovery_nonce: wrappedRecovery.nonce,
         });
 
         this.cache();
+
+        return sodium.to_hex(recoveryBytes).replace(/(.{4})/g, '$1 ').trim();
     },
 
     // ---- Data operations (used by later phases) ----

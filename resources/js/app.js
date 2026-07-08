@@ -7,8 +7,8 @@ import { Vault } from './vault';
 
 // Zero-knowledge encryption vault (client-side crypto for the Files module).
 // Exposed globally so the vault UI + files component can lock/unlock/encrypt.
+// The reactive Alpine.store('vault') boots it (restores the cached key) on init.
 window.Vault = Vault;
-Vault.boot();
 
 // Upper bound for in-browser file encryption. Encryption buffers the whole file
 // (~2-3x its size) in RAM, so files above this are rejected with a message
@@ -45,9 +45,17 @@ document.addEventListener('alpine:init', () => {
     // secret is held here.
     Alpine.store('vault', {
         configured: false,
+        ready: false, // true once the cached key has been restored (or not) at load
         _unlockedAt: 0, // reactive nonce bumped on lock/unlock so getters re-run
         get unlocked() { this._unlockedAt; return window.Vault.unlocked(); },
         async init() {
+            // Restore the cached key (it survives navigation between modules)
+            // BEFORE anything reads `unlocked`, and bump the reactive nonce so the
+            // getter reflects the restored state — otherwise leaving + returning to
+            // Files would wrongly show the vault as locked.
+            try { await window.Vault.boot(); } catch (e) { /* stays locked */ }
+            this._unlockedAt++;
+            this.ready = true;
             try { this.configured = (await window.Vault.status()).configured; } catch (e) { /* leave false */ }
             // Idle watchdog: auto-lock once the cached key's idle window passes,
             // and extend that window on real user activity. Runs in-page (the
@@ -69,7 +77,8 @@ document.addEventListener('alpine:init', () => {
         },
         async unlock(passphrase) { await window.Vault.unlock(passphrase); this._unlockedAt++; },
         async recover(code) { await window.Vault.recover(code); this._unlockedAt++; },
-        async changePassphrase(a, b) { await window.Vault.changePassphrase(a, b); this._unlockedAt++; },
+        async changePassphrase(a, b) { const code = await window.Vault.changePassphrase(a, b); this._unlockedAt++; return code; },
+        async setPassphrase(b) { const code = await window.Vault.setPassphrase(b); this._unlockedAt++; return code; },
         lock() { window.Vault.lock(); this._unlockedAt++; },
     });
     Alpine.store('vault').init();
@@ -3050,7 +3059,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         // bulk bar / select-all checkbox active.
         this.$watch('view', () => { this.selected = []; });
         // Zero-knowledge gate: the tree can only be decrypted with an unlocked
-        // vault. Load once unlocked, and (re)load the moment the vault unlocks.
+        // vault. Wait for the store to finish restoring the cached key (it
+        // survives navigation), so returning to Files doesn't flash 'locked'.
+        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (this.$store.vault.unlocked) {
             await this.load();
         } else {

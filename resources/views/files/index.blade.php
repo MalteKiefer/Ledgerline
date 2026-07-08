@@ -110,6 +110,16 @@
                         <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
                     </label>
                 </template>
+                {{-- Vault lock toggle: unlocked padlock = click to lock now;
+                     closed padlock = click to unlock. Sits next to Upload. --}}
+                <button type="button"
+                    @click="$store.vault.unlocked ? $store.vault.lock() : $dispatch('vault-panel')"
+                    :title="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
+                    :aria-label="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
+                    class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <span x-show="$store.vault.unlocked"><x-icon name="lock-open" class="h-5 w-5" /></span>
+                    <span x-show="! $store.vault.unlocked"><x-icon name="lock-closed" class="h-5 w-5" /></span>
+                </button>
                 <template x-if="trashView && trashCount > 0">
                     <button type="button" @click="emptyTrash()" class="inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
                         <x-icon name="trash" class="h-4 w-4" />{{ __('files.empty_trash') }}
