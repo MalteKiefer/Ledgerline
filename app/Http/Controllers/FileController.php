@@ -331,7 +331,13 @@ class FileController extends Controller
             'parts.*.part' => ['required', 'integer', 'min:1'],
             'parts.*.etag' => ['required', 'string'],
         ]);
-        $s = $this->chunkSession($request);
+        // Atomically claim the session (pull = get+forget) so a replayed or
+        // double-clicked completion finds no session and is a 404 — it can't
+        // complete the upload or register the blob twice.
+        $token = (string) $request->input('token');
+        $s = Cache::pull($this->chunkKey($token));
+        abort_if(! is_array($s) || (int) ($s['user'] ?? 0) !== (int) $request->user()->id, 404);
+
         $parts = collect($request->input('parts'))
             ->map(fn ($p) => ['PartNumber' => (int) $p['part'], 'ETag' => $p['etag']])
             ->sortBy('PartNumber')->values()->all();
@@ -340,8 +346,7 @@ class FileController extends Controller
             'Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId'],
             'MultipartUpload' => ['Parts' => $parts],
         ]);
-        FileBlob::create(['blob' => $s['id'], 'user_id' => $s['user'], 'created_at' => now()]);
-        Cache::forget($this->chunkKey((string) $request->input('token')));
+        FileBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'created_at' => now()]);
 
         return response()->json(['id' => $s['id']], 201);
     }
