@@ -3764,6 +3764,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         // pre-trash snapshot and resurrect what was just deleted.
         this._cancelPendingPersist();
         this._applyLocalTrash(fileIds, permanent);
+        this._applyLocalFolderRemove(payload.folder_ids);
         if (! await this.filesPost(config.trashUrl, payload)) { window.llToast(labels.saveFailed); return; }
         this.selected = [];
         await this.load();
@@ -3779,6 +3780,22 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const stamp = new Date().toISOString();
             this.manifest.files.forEach((f) => { if (set.has(f.id)) f.trashed = stamp; });
         }
+    },
+
+    // Drop a deleted/trashed folder subtree (folders + their files) from the
+    // active view immediately, so it vanishes at once instead of lingering until
+    // the slow server delete finishes; load() then reconciles the real state.
+    _applyLocalFolderRemove(folderIds) {
+        if (! folderIds || ! folderIds.length) return;
+        const kill = new Set(folderIds);
+        for (let grew = true; grew;) {
+            grew = false;
+            for (const f of this.manifest.folders) {
+                if (! kill.has(f.id) && f.parent && kill.has(f.parent)) { kill.add(f.id); grew = true; }
+            }
+        }
+        this.manifest.folders = this.manifest.folders.filter((f) => ! kill.has(f.id));
+        this.manifest.files = this.manifest.files.filter((f) => ! kill.has(f.folder));
     },
 
     // Move an item straight to the trash (used by drag-and-drop onto the trash).
