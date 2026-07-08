@@ -142,7 +142,7 @@ class FileController extends Controller
         $quota = $this->quotaBytes();
         $disk = $this->disk();
 
-        $removedBlobs = DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): array {
+        $removedBlobs = $this->withUserLock($uid, fn (): array => DB::transaction(function () use ($folders, $files, $uid, $owned, $ownedFolders, $keep, $quota, $disk): array {
             $folderIds = [];
             foreach ($folders as $f) {
                 $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
@@ -235,7 +235,7 @@ class FileController extends Controller
             }
 
             return $prunedBlobs;
-        });
+        }));
 
         // Reference-counted: a pruned version blob still referenced by a live
         // file, a trashed file, or another kept version is never unlinked.
@@ -251,17 +251,24 @@ class FileController extends Controller
             'file' => ['required', 'file', 'max:'.((int) config('files.max_upload_mb', 2048) * 1024)],
         ]);
 
-        $incoming = (int) $request->file('file')->getSize();
-        abort_if($this->quotaExceeded($request->user()->id, $incoming), 413, __('files.quota_exceeded'));
+        $uid = (int) $request->user()->id;
+        // Serialize check-and-reserve per user so concurrent uploads can't each
+        // pass the same stale quota baseline and collectively overshoot.
+        $id = $this->withUserLock($uid, function () use ($request, $uid): string {
+            $incoming = (int) $request->file('file')->getSize();
+            abort_if($this->quotaExceeded($uid, $incoming), 413, __('files.quota_exceeded'));
 
-        $id = (string) Str::uuid();
-        // Fail loudly on a failed/short storage write instead of recording a
-        // valid-looking blob id whose bytes are missing.
-        abort_if($this->disk()->putFileAs('files', $request->file('file'), $id) === false, 500, __('files.upload_failed'));
-        abort_unless($this->disk()->exists('files/'.$id), 500, __('files.upload_failed'));
-        // Record the uploader so sync can reject blobs the caller never uploaded
-        // and the sweeper can reclaim never-synced blobs.
-        FileBlob::create(['blob' => $id, 'user_id' => $request->user()->id, 'created_at' => now()]);
+            $id = (string) Str::uuid();
+            // Fail loudly on a failed/short storage write instead of recording a
+            // valid-looking blob id whose bytes are missing.
+            abort_if($this->disk()->putFileAs('files', $request->file('file'), $id) === false, 500, __('files.upload_failed'));
+            abort_unless($this->disk()->exists('files/'.$id), 500, __('files.upload_failed'));
+            // Record the uploader so sync can reject blobs the caller never uploaded
+            // and the sweeper can reclaim never-synced blobs.
+            FileBlob::create(['blob' => $id, 'user_id' => $uid, 'created_at' => now()]);
+
+            return $id;
+        });
 
         return response()->json(['id' => $id], 201);
     }
@@ -398,6 +405,16 @@ class FileController extends Controller
         return $quota > 0 && ($this->usedBytes($userId) + $incoming) > $quota;
     }
 
+    /**
+     * Serialize a user's storage-mutating operation so concurrent uploads/syncs
+     * can't each read the same stale quota baseline and collectively overshoot
+     * (and so per-file version-cap enforcement stays atomic).
+     */
+    private function withUserLock(int $userId, \Closure $fn)
+    {
+        return Cache::lock('files-write:'.$userId, 30)->block(15, $fn);
+    }
+
     /** Keep only the newest N versions of a file; return the pruned blobs. */
     private function capVersions(string $fileId, int $keep): array
     {
@@ -453,28 +470,34 @@ class FileController extends Controller
         ]);
 
         $file = $request->file('file');
-        abort_if($this->quotaExceeded($request->user()->id, (int) $file->getSize()), 413, __('files.quota_exceeded'));
+        $uid = (int) $request->user()->id;
         $blob = (string) Str::uuid();
-        abort_if($this->disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
 
-        try {
-            $stored = StoredFile::create([
-                'id' => (string) Str::uuid(),
-                'file_folder_id' => $data['folder_id'] ?? null,
-                'name' => $file->getClientOriginalName() ?: 'attachment',
-                // Sniff the real type from the bytes (finfo), never the client-sent
-                // header: this row is created from an untrusted mail attachment and
-                // the stored mime later drives how the client previews the file.
-                'mime' => $file->getMimeType() ?: 'application/octet-stream',
-                'size' => $file->getSize(),
-                'blob' => $blob,
-                'tags' => [],
-            ]);
-        } catch (\Throwable $e) {
-            // Don't leak the just-written bytes if the row could not be created.
-            $this->disk()->delete('files/'.$blob);
-            throw $e;
-        }
+        // Serialize quota check-and-write per user so parallel imports/uploads
+        // can't collectively overshoot the quota.
+        $stored = $this->withUserLock($uid, function () use ($file, $data, $blob, $uid): StoredFile {
+            abort_if($this->quotaExceeded($uid, (int) $file->getSize()), 413, __('files.quota_exceeded'));
+            abort_if($this->disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
+
+            try {
+                return StoredFile::create([
+                    'id' => (string) Str::uuid(),
+                    'file_folder_id' => $data['folder_id'] ?? null,
+                    'name' => $file->getClientOriginalName() ?: 'attachment',
+                    // Sniff the real type from the bytes (finfo), never the client-sent
+                    // header: this row is created from an untrusted mail attachment and
+                    // the stored mime later drives how the client previews the file.
+                    'mime' => $file->getMimeType() ?: 'application/octet-stream',
+                    'size' => $file->getSize(),
+                    'blob' => $blob,
+                    'tags' => [],
+                ]);
+            } catch (\Throwable $e) {
+                // Don't leak the just-written bytes if the row could not be created.
+                $this->disk()->delete('files/'.$blob);
+                throw $e;
+            }
+        });
 
         // Index its text so imported files are findable by content search too.
         ExtractFileText::dispatch($stored->id, $blob)->afterCommit();
@@ -605,29 +628,32 @@ class FileController extends Controller
         [$fileIds, $folderIds] = $this->ownedIds($request);
         $uid = $request->user()->id;
 
-        // Copies count toward the quota (usage sums row sizes), so gate the whole
-        // selection — files plus every selected folder's subtree — up front.
-        $copyBytes = (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->sum('size');
-        $folderSet = [];
-        foreach ($folderIds as $fid) {
-            $folderSet = array_merge($folderSet, $this->folderSubtree($fid));
-        }
-        if ($folderSet !== []) {
-            $copyBytes += (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')
-                ->whereIn('file_folder_id', array_unique($folderSet))->sum('size');
-        }
-        abort_if($this->quotaExceeded($uid, $copyBytes), 413, __('files.quota_exceeded'));
-
-        DB::transaction(function () use ($fileIds, $folderIds, $uid): void {
-            foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->get() as $f) {
-                $this->copyFile($f, $f->file_folder_id, $uid);
-            }
+        // Serialize the quota gate + copy so concurrent duplicates/uploads can't
+        // race past the quota. Copies count toward usage (it sums row sizes), so
+        // gate the whole selection — files plus every selected folder's subtree.
+        $this->withUserLock($uid, function () use ($fileIds, $folderIds, $uid): void {
+            $copyBytes = (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->sum('size');
+            $folderSet = [];
             foreach ($folderIds as $fid) {
-                $folder = FileFolder::withoutGlobalScopes()->where('user_id', $uid)->find($fid);
-                if ($folder) {
-                    $this->copyFolder($folder, $folder->parent_id, $uid, true);
-                }
+                $folderSet = array_merge($folderSet, $this->folderSubtree($fid));
             }
+            if ($folderSet !== []) {
+                $copyBytes += (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')
+                    ->whereIn('file_folder_id', array_unique($folderSet))->sum('size');
+            }
+            abort_if($this->quotaExceeded($uid, $copyBytes), 413, __('files.quota_exceeded'));
+
+            DB::transaction(function () use ($fileIds, $folderIds, $uid): void {
+                foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->get() as $f) {
+                    $this->copyFile($f, $f->file_folder_id, $uid);
+                }
+                foreach ($folderIds as $fid) {
+                    $folder = FileFolder::withoutGlobalScopes()->where('user_id', $uid)->find($fid);
+                    if ($folder) {
+                        $this->copyFolder($folder, $folder->parent_id, $uid, true);
+                    }
+                }
+            });
         });
 
         return response()->json(['ok' => true]);
