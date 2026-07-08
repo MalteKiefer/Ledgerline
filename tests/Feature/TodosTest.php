@@ -25,21 +25,27 @@ class TodosTest extends TestCase
         $this->getJson(route('todos.data'))->assertOk()->assertJson(['lists' => [], 'tasks' => []]);
     }
 
-    public function test_it_creates_a_task_with_tags(): void
+    public function test_it_creates_a_task_with_a_sealed_blob(): void
     {
         $this->signIn();
 
+        // Title/description/url/tags now live inside the sealed enc_todo blob.
         $this->postJson(route('todos.store'), [
-            'title' => 'Buy milk', 'priority' => 'normal', 'tags' => ['shopping', 'home'],
-        ])->assertOk()->assertJson(['title' => 'Buy milk', 'tags' => ['shopping', 'home']]);
+            'enc_todo' => 'sealed-task-blob', 'priority' => 'normal',
+        ])->assertOk()->assertJson(['enc_todo' => 'sealed-task-blob']);
 
         $this->assertSame(1, Todo::count());
+        $todo = Todo::first();
+        $this->assertSame('sealed-task-blob', $todo->enc_todo);
+        $this->assertTrue($todo->is_encrypted);
+        $this->assertNull($todo->title);
+        $this->assertNull($todo->tags);
     }
 
     public function test_patch_toggles_done(): void
     {
         $this->signIn();
-        $todo = Todo::create(['title' => 'X', 'priority' => 'normal']);
+        $todo = Todo::create(['enc_todo' => 'sealed', 'is_encrypted' => true, 'priority' => 'normal']);
 
         $this->patchJson(route('todos.patch', $todo), ['done' => true])
             ->assertOk()->assertJson(['done' => true]);
@@ -49,7 +55,7 @@ class TodosTest extends TestCase
     public function test_empty_trash(): void
     {
         $this->signIn();
-        Todo::create(['title' => 'T', 'priority' => 'normal'])->delete();
+        Todo::create(['enc_todo' => 'sealed', 'is_encrypted' => true, 'priority' => 'normal'])->delete();
 
         $this->deleteJson(route('todos.trash.empty'))->assertOk();
         $this->assertSame(0, Todo::withTrashed()->count());
@@ -58,21 +64,12 @@ class TodosTest extends TestCase
     public function test_deleting_a_list_keeps_its_tasks(): void
     {
         $this->signIn();
-        $list = TodoList::create(['name' => 'Work']);
-        $todo = Todo::create(['title' => 'Task', 'priority' => 'normal', 'todo_list_id' => $list->id]);
+        $list = TodoList::create(['name' => 'sealed-list-name', 'is_encrypted' => true]);
+        $todo = Todo::create(['enc_todo' => 'sealed', 'is_encrypted' => true, 'priority' => 'normal', 'todo_list_id' => $list->id]);
 
         $this->deleteJson(route('todos.lists.destroy', $list))->assertOk();
 
         $this->assertNull($todo->refresh()->todo_list_id);
         $this->assertSame(1, Todo::count());
-    }
-
-    public function test_todos_appear_in_global_search(): void
-    {
-        $this->signIn();
-        Todo::create(['title' => 'Unique searchable todo', 'priority' => 'normal']);
-
-        $this->getJson(route('search.suggest', ['q' => 'searchable']))
-            ->assertOk()->assertSee('Unique searchable todo');
     }
 }

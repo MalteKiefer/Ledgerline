@@ -10,6 +10,7 @@ use App\Models\Person;
 use App\Models\Photo;
 use App\Models\StoredFile;
 use App\Models\Todo;
+use App\Models\TodoList;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -42,11 +43,18 @@ class UserIsolationTest extends TestCase
         $bob = User::factory()->create();
 
         $this->actingAs($alice);
-        $this->postJson(route('todos.store'), ['title' => 'Alice task', 'priority' => 'normal'])->assertOk();
+        $list = TodoList::create(['name' => 'alice-sealed-list', 'is_encrypted' => true]);
+        $this->postJson(route('todos.store'), [
+            'enc_todo' => 'alice-sealed-task', 'priority' => 'normal', 'todo_list_id' => $list->id,
+        ])->assertOk();
+        $this->getJson(route('todos.data'))->assertOk()->assertJsonFragment(['enc_todo' => 'alice-sealed-task']);
 
+        // Bob sees none of Alice's to-dos or lists, and the rows carry Alice's user_id.
         $this->actingAs($bob);
         $this->assertSame(0, Todo::count());
-        $this->getJson(route('todos.data'))->assertOk()->assertJsonMissing(['title' => 'Alice task']);
+        $this->assertSame(0, TodoList::count());
+        $this->getJson(route('todos.data'))->assertOk()->assertJsonMissing(['enc_todo' => 'alice-sealed-task']);
+        $this->assertSame($alice->id, Todo::withoutGlobalScopes()->first()->user_id);
     }
 
     public function test_bookmarks_are_private(): void

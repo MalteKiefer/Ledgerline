@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'todo_list_id', 'title', 'description', 'url', 'priority',
     'marked', 'tags', 'due_at', 'reminder_channels', 'done',
+    'enc_todo', 'is_encrypted',
 ])]
 class Todo extends Model
 {
@@ -29,6 +30,7 @@ class Todo extends Model
             'tags' => 'array',
             'reminder_channels' => 'array',
             'due_at' => 'datetime',
+            'is_encrypted' => 'boolean',
         ];
     }
 

@@ -30,11 +30,13 @@ class SendDueReminders extends Command
             $when = $reminder->due_at?->timezone(config('app.timezone'))->format('Y-m-d H:i');
             // The in-app bell notification goes to the to-do's owner only.
             $ownerId = Todo::withoutGlobalScopes()->whereKey($reminder->todo_id)->value('user_id');
+            // To-dos are zero-knowledge — the server can't read the title, so the
+            // reminder is generic and links to the to-do list, not the task.
             $notifier->send(
                 $reminder->channels ?? [],
-                $reminder->title,
-                trim(__('reminders.body', ['time' => $when]).($reminder->url ? "\n".$reminder->url : '')),
-                ['url' => $reminder->url, 'category' => 'reminder', 'priority' => 'high', 'user_id' => $ownerId],
+                __('reminders.subject'),
+                __('reminders.body', ['time' => $when]),
+                ['url' => route('todos.index'), 'category' => 'reminder', 'priority' => 'high', 'user_id' => $ownerId],
             );
             $reminder->update(['fired_at' => Carbon::now()]);
         }

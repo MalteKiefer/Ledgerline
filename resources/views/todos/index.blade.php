@@ -8,6 +8,22 @@
         defaultReminderChannels: @js(\App\Models\UserSetting::for(auth()->id())->reminder_channels ?? ['desktop']),
      })">
 
+    {{-- Zero-knowledge gate: to-dos decrypt with the vault key. --}}
+    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+
+    <template x-if="state === 'locked'">
+        <div class="mx-auto mt-16 max-w-md rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center">
+            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
+            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
+               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
+            <button type="button" @click="$dispatch('vault-panel')"
+                class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
+                <x-icon name="lock-open" class="h-4 w-4" />
+                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
+            </button>
+        </div>
+    </template>
+
     <template x-if="state === 'error'">
         <p class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('todos.save_failed') }}</p>
     </template>
