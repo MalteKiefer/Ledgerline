@@ -527,7 +527,9 @@ class FileController extends Controller
 
         // Force download + a script-less sandbox so a version whose mime is a
         // client-controlled text/html can't render in-origin (self-XSS), matching raw().
-        return $this->disk()->response($path, $version->name, [
+        // Neutral filename — the real (sealed) name never touches the server; the
+        // client decrypts + renames on save. (version->name is null under ZK.)
+        return $this->disk()->response($path, 'version', [
             'Content-Type' => 'application/octet-stream',
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => "default-src 'none'; sandbox",

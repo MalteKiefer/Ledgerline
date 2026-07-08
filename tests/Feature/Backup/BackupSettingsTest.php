@@ -78,6 +78,9 @@ class BackupSettingsTest extends TestCase
             'backup_destination_id' => $dest->id,
             'cron' => '0 */3 * * *',
             'retention' => 5,
+            // A database dump must be encrypted (never written off-box in plaintext).
+            'encrypt' => '1',
+            'passphrase' => 'a-strong-passphrase',
             'notify_channels' => ['desktop', 'mail'],
             'enabled' => '1',
         ])->assertRedirect();

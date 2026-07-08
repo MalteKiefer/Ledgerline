@@ -198,6 +198,7 @@ return [
     'backup_encrypt' => 'Encrypt archive',
     'backup_passphrase' => 'Passphrase',
     'backup_passphrase_required' => 'A passphrase is required when encryption is enabled.',
+    'backup_db_encrypt_required' => 'A database backup must be encrypted (it contains other modules in plaintext). Enable encryption + set a passphrase.',
     'backup_notify' => 'Notify via',
     'backup_enabled' => 'Enabled',
     'backup_run_now' => 'Back up now',

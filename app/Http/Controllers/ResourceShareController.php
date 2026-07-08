@@ -31,7 +31,11 @@ class ResourceShareController extends Controller
      * set, but keeping it enumerated here means the registry can't silently
      * widen what this controller permits.
      */
-    private const ALLOWED = ['notes', 'files', 'folders', 'calendars', 'address-books', 'albums', 'photos'];
+    // Notes/files/folders are zero-knowledge encrypted: a recipient can't decrypt
+    // them (no per-recipient key re-wrap exists) and a write-sharee editing one
+    // would re-seal it with THEIR key, permanently locking the owner out. So they
+    // are NOT shareable cross-user. Only non-encrypted resources remain.
+    private const ALLOWED = ['calendars', 'address-books', 'albums', 'photos'];
 
     /** What I share out + what others shared with me. */
     public function data(Request $request): JsonResponse

@@ -35,9 +35,20 @@ trait SharesWithUsers
             });
         });
 
-        // Central write guard: a non-owner may only mutate with a write share.
+        // Central write guard: a non-owner may only mutate with a write share —
+        // AND never a zero-knowledge (is_encrypted) row, even with a write share:
+        // the sharee would re-seal it under THEIR vault key and permanently lock
+        // the owner out (irreversible data loss). ZK rows are owner-write-only,
+        // enforced server-side (not trusting the sharee's client).
         $guard = function ($model): void {
-            if (Auth::check() && $model->exists && ! $model->canEdit(Auth::id())) {
+            if (! Auth::check() || ! $model->exists) {
+                return;
+            }
+            $uid = Auth::id();
+            if (! $model->canEdit($uid)) {
+                abort(403);
+            }
+            if (($model->is_encrypted ?? false) && ! $model->isOwnedBy($uid)) {
                 abort(403);
             }
         };

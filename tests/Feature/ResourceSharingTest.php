@@ -6,110 +6,50 @@ namespace Tests\Feature;
 
 use App\Models\AddressBook;
 use App\Models\Calendar;
-use App\Models\Note;
 use App\Models\ResourceShare;
-use App\Models\StoredFile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class ResourceSharingTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function noteOf(User $u, string $enc): Note
+    /** A still-shareable resource (calendar) owned by the given user. */
+    private function calendarOf(User $u, string $name): Calendar
     {
         $this->actingAs($u);
-        $note = Note::create(['enc_note' => $enc, 'is_encrypted' => true]);
+        $calendar = Calendar::create(['name' => $name, 'uri' => 'default', 'components' => ['VEVENT'], 'synctoken' => 1]);
         $this->app['auth']->forgetGuards();
 
-        return $note;
+        return $calendar;
     }
 
-    public function test_owner_can_share_a_note_read_only_and_sharee_sees_but_cannot_edit(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'shared-plan-blob');
-
-        // Alice shares read-only with Bob.
-        $this->actingAs($alice)
-            ->postJson(route('shares.store'), ['type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'read'])
-            ->assertCreated();
-
-        // Bob now sees the note...
-        $this->actingAs($bob);
-        $this->assertSame(1, Note::count());
-        $this->getJson(route('notes.data'))->assertOk()->assertJsonFragment(['enc_note' => 'shared-plan-blob']);
-
-        // ...but a read-only sharee cannot edit it (central write guard → 403).
-        $this->putJson(route('notes.update', $note->id), ['enc_note' => 'hacked-blob'])->assertForbidden();
-        $this->assertSame('shared-plan-blob', Note::withoutGlobalScopes()->find($note->id)->enc_note);
-    }
-
-    public function test_write_share_allows_the_sharee_to_edit(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'doc-blob');
-
-        $this->actingAs($alice)
-            ->postJson(route('shares.store'), ['type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'write'])
-            ->assertCreated();
-
-        $this->actingAs($bob)
-            ->putJson(route('notes.update', $note->id), ['enc_note' => 'edited-by-bob-blob'])
-            ->assertOk();
-        $this->assertSame('edited-by-bob-blob', Note::withoutGlobalScopes()->find($note->id)->enc_note);
-    }
-
-    public function test_a_third_user_still_cannot_see_the_note(): void
+    public function test_a_third_user_still_cannot_see_the_resource(): void
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
         $carol = User::factory()->create();
-        $note = $this->noteOf($alice, 'Private');
+        $calendar = $this->calendarOf($alice, 'Private');
 
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
         ])->assertCreated();
 
         $this->actingAs($carol);
-        $this->assertSame(0, Note::count());
+        $this->assertNull(Calendar::find($calendar->id));
     }
 
     public function test_only_the_owner_can_share_a_resource(): void
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'Mine');
+        $calendar = $this->calendarOf($alice, 'Mine');
 
-        // Bob (not the owner) cannot share Alice's note.
+        // Bob (not the owner) cannot share Alice's calendar.
         $this->actingAs($bob)->postJson(route('shares.store'), [
-            'type' => 'notes', 'id' => $note->id, 'email' => $alice->email, 'permission' => 'read',
+            'type' => 'calendars', 'id' => $calendar->id, 'email' => $alice->email, 'permission' => 'read',
         ])->assertForbidden();
-    }
-
-    public function test_a_sharee_sync_cannot_destroy_the_owners_files(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $this->actingAs($alice);
-        $file = StoredFile::create([
-            'id' => (string) Str::uuid(), 'name' => 'a.txt',
-            'mime' => 'text/plain', 'size' => 1, 'blob' => (string) Str::uuid(), 'tags' => [],
-        ]);
-        // Even a WRITE share must not let a full-replace sync delete the owner's file.
-        $this->postJson(route('shares.store'), ['type' => 'files', 'id' => $file->id, 'email' => $bob->email, 'permission' => 'write'])->assertCreated();
-
-        $this->actingAs($bob);
-        // Bob's own tree is empty; the shared file is NOT in his manifest…
-        $this->getJson(route('files.data'))->assertOk()->assertJsonMissing(['name' => 'a.txt']);
-        // …and posting an empty manifest must not touch Alice's file.
-        $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertOk();
-        $this->assertDatabaseHas('files', ['id' => $file->id, 'deleted_at' => null]);
     }
 
     public function test_owner_can_share_a_calendar_and_address_book(): void
@@ -143,10 +83,10 @@ class ResourceSharingTest extends TestCase
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'Plan');
+        $calendar = $this->calendarOf($alice, 'Plan');
 
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
         ])->assertCreated()->assertJsonStructure(['ok', 'id', 'link']);
 
         $this->assertDatabaseHas('app_notifications', ['user_id' => $bob->id, 'category' => 'share']);
@@ -157,9 +97,9 @@ class ResourceSharingTest extends TestCase
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'Plan');
+        $calendar = $this->calendarOf($alice, 'Plan');
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
         ]);
         $share = ResourceShare::firstOrFail();
 
@@ -174,14 +114,19 @@ class ResourceSharingTest extends TestCase
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $note = $this->noteOf($alice, 'Temp');
+        $calendar = $this->calendarOf($alice, 'Temp');
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'notes', 'id' => $note->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
         ])->assertCreated();
         $share = ResourceShare::firstOrFail();
 
-        $this->actingAs($alice)->deleteJson(route('shares.destroy', $share->id))->assertOk();
+        // Bob can see it while the share exists.
         $this->actingAs($bob);
-        $this->assertSame(0, Note::count());
+        $this->assertNotNull(Calendar::find($calendar->id));
+
+        $this->actingAs($alice)->deleteJson(route('shares.destroy', $share->id))->assertOk();
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($bob);
+        $this->assertNull(Calendar::find($calendar->id));
     }
 }
