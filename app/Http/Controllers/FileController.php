@@ -186,6 +186,11 @@ class FileController extends Controller
                 $fileIds = [];
                 $prunedBlobs = [];
                 $total = 0;
+                // The uploader recorded each new blob's stored size in file_blobs,
+                // so sync reads it here instead of an object-storage HEAD per file
+                // (hundreds of HEADs per sync would take tens of seconds and get the
+                // request aborted → the whole batch lost).
+                $blobSizes = FileBlob::where('user_id', $uid)->pluck('size', 'blob');
                 foreach ($files as $f) {
                     // withTrashed: the manifest keeps trashed files, so a matching
                     // row may be soft-deleted; find it (or build a new one) and let
@@ -195,12 +200,14 @@ class FileController extends Controller
                     // Snapshot the sealed metadata + wrapped key of the outgoing
                     // blob so a version restore can still decrypt it.
                     $oldMeta = ['enc_metadata' => $file->enc_metadata, 'enc_file_key' => $file->enc_file_key, 'size' => (int) $file->size];
-                    // Authoritative size: read from disk when the blob is new/changed
-                    // (never trust the client's number), else keep the stored size. A
-                    // new blob whose bytes are missing on disk is a failed upload —
-                    // abort the whole sync rather than silently record a 0-byte file.
+                    // Authoritative size (never trust the client's number): the
+                    // stored size for an unchanged blob, the uploader-recorded size
+                    // for a freshly uploaded one, and only as a last resort a disk
+                    // HEAD (e.g. a version-restore blob without a file_blobs row).
                     if ($oldBlob === $f['blob']) {
                         $size = (int) $file->size;
+                    } elseif (($blobSizes[$f['blob']] ?? null) !== null) {
+                        $size = (int) $blobSizes[$f['blob']];
                     } else {
                         abort_unless($disk->exists('files/'.$f['blob']), 422, __('files.upload_failed'));
                         $size = (int) $disk->size('files/'.$f['blob']);
@@ -307,9 +314,12 @@ class FileController extends Controller
         // valid-looking blob id whose bytes are missing.
         abort_if($this->disk()->putFileAs('files', $request->file('file'), $id) === false, 500, __('files.upload_failed'));
         abort_unless($this->disk()->exists('files/'.$id), 500, __('files.upload_failed'));
-        // Record the uploader so sync can reject blobs the caller never uploaded
-        // and the sweeper can reclaim never-synced blobs.
-        FileBlob::create(['blob' => $id, 'user_id' => $uid, 'created_at' => now()]);
+        // Record the uploader (so sync rejects blobs the caller never uploaded and
+        // the sweeper can reclaim never-synced blobs) AND the stored byte size, so
+        // sync reads the authoritative size here instead of one object-storage HEAD
+        // per file (a large batch would otherwise make one sync take tens of
+        // seconds and be aborted → data loss).
+        FileBlob::create(['blob' => $id, 'user_id' => $uid, 'size' => (int) $request->file('file')->getSize(), 'created_at' => now()]);
 
         return response()->json(['id' => $id], 201);
     }
@@ -340,6 +350,7 @@ class FileController extends Controller
         $token = (string) Str::uuid();
         Cache::put($this->chunkKey($token), [
             'uploadId' => $res['UploadId'], 'key' => $key, 'id' => $id, 'user' => (int) $request->user()->id,
+            'size' => (int) $data['size'],
         ], now()->addHours(12));
 
         return response()->json(['token' => $token, 'id' => $id, 'partSize' => self::CHUNK_PART_SIZE]);
@@ -388,7 +399,7 @@ class FileController extends Controller
             'Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId'],
             'MultipartUpload' => ['Parts' => $parts],
         ]);
-        FileBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'created_at' => now()]);
+        FileBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'size' => (int) ($s['size'] ?? 0), 'created_at' => now()]);
         Cache::forget($this->chunkKey($token));
 
         return response()->json(['id' => $s['id']], 201);
