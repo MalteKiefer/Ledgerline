@@ -4,27 +4,24 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\NoteShare;
 use Illuminate\Console\Command;
 
 /**
- * Delete expired note shares.
+ * Prune expired share artifacts.
  *
- * Expired ciphertext is also removed lazily when a link is accessed, but a link
- * that is never opened again would linger until this runs. Schedule it (or run
- * manually) to keep the table clean.
+ * Note share links are gone (notes now live in the zero-knowledge store), so
+ * there is nothing left to prune here. The command is kept as the scheduled
+ * hook for any future expiring share type.
  */
 class PruneShares extends Command
 {
     protected $signature = 'shares:prune';
 
-    protected $description = 'Delete expired note share links';
+    protected $description = 'Delete expired share links';
 
     public function handle(): int
     {
-        $deleted = NoteShare::query()->where('expires_at', '<', now())->delete();
-
-        $this->info("Deleted {$deleted} expired share(s).");
+        $this->info('Deleted 0 expired share(s).');
 
         return self::SUCCESS;
     }

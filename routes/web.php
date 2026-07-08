@@ -12,7 +12,6 @@ use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\LocaleController;
-use App\Http\Controllers\NoteController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PersonController;
@@ -29,6 +28,7 @@ use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessContro
 use App\Http\Controllers\Settings\RemindersController as SettingsRemindersController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
+use App\Http\Controllers\StoreController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TodoController;
 use App\Http\Controllers\VaultController;
@@ -242,14 +242,13 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('index')->name('downloads.part');
     Route::delete('/downloads', [DownloadsController::class, 'destroy'])->name('downloads.destroy');
     // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
-    // Markdown rendering + share creation stay server-side (security-sensitive).
+    // Opaque zero-knowledge store: the whole workspace as one sealed manifest.
+    Route::get('/store', [StoreController::class, 'show'])->name('store.show');
+    Route::put('/store', [StoreController::class, 'save'])->middleware('throttle:120,1')->name('store.save');
+
+    // Notes live entirely in the zero-knowledge store now; only the page shell
+    // remains here (all data flows through GET/PUT /store).
     Route::view('/notes', 'notes.index')->name('notes.index');
-    Route::get('/notes/data', [NoteController::class, 'index'])->name('notes.data');
-    Route::post('/notes', [NoteController::class, 'store'])->name('notes.store');
-    Route::put('/notes/{note}', [NoteController::class, 'update'])->name('notes.update');
-    Route::patch('/notes/{note}', [NoteController::class, 'patch'])->withTrashed()->name('notes.patch');
-    Route::delete('/notes/{note}', [NoteController::class, 'destroy'])->withTrashed()->name('notes.destroy');
-    Route::delete('/notes/trash/all', [NoteController::class, 'emptyTrash'])->name('notes.trash.empty');
     // To-dos: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/todos', 'todos.index')->name('todos.index');
     Route::get('/todos/data', [TodoController::class, 'index'])->name('todos.data');

@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Bookmark;
-use App\Models\Note;
 use App\Models\Person;
 use App\Models\Photo;
 use App\Models\StoredFile;
 use App\Models\Todo;
 use App\Models\TodoList;
 use App\Models\User;
+use App\Models\VaultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -21,20 +21,22 @@ class UserIsolationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_notes_are_private_to_their_owner(): void
+    public function test_the_store_manifest_is_private_to_its_owner(): void
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
 
-        $this->actingAs($alice);
-        $this->postJson(route('notes.store'), ['enc_note' => 'alice-secret-blob'])->assertSuccessful();
-        $this->getJson(route('notes.data'))->assertOk()->assertJsonFragment(['enc_note' => 'alice-secret-blob']);
+        // Alice seals her whole workspace (notes live here now) in her manifest.
+        $this->actingAs($alice)
+            ->putJson(route('store.save'), ['ciphertext' => 'alice-sealed-blob', 'version' => 0])
+            ->assertOk();
+        $this->actingAs($alice)->getJson(route('store.show'))
+            ->assertOk()->assertJson(['ciphertext' => 'alice-sealed-blob', 'version' => 1]);
 
-        // Bob sees none of Alice's notes, and the row carries Alice's user_id.
-        $this->actingAs($bob);
-        $this->getJson(route('notes.data'))->assertOk()->assertJsonMissing(['enc_note' => 'alice-secret-blob']);
-        $this->assertSame(0, Note::count()); // scoped to Bob
-        $this->assertSame($alice->id, Note::withoutGlobalScopes()->first()->user_id);
+        // Bob has his own empty manifest and never sees Alice's ciphertext.
+        $this->actingAs($bob)->getJson(route('store.show'))
+            ->assertOk()->assertJson(['ciphertext' => null, 'version' => 0]);
+        $this->assertSame($alice->id, VaultStore::query()->where('ciphertext', 'alice-sealed-blob')->value('user_id'));
     }
 
     public function test_todos_and_lists_are_private(): void
@@ -116,7 +118,7 @@ class UserIsolationTest extends TestCase
         $alice = User::factory()->create();
         $this->actingAs($alice);
 
-        $note = Note::create(['enc_note' => 'sealed-blob', 'is_encrypted' => true]);
-        $this->assertSame($alice->id, $note->user_id);
+        $list = TodoList::create(['name' => 'sealed-list', 'is_encrypted' => true]);
+        $this->assertSame($alice->id, $list->user_id);
     }
 }
