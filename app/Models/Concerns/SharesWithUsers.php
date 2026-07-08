@@ -29,9 +29,19 @@ trait SharesWithUsers
                 return;
             }
             $model = $query->getModel();
-            $query->where(function (Builder $q) use ($model): void {
+            // A zero-knowledge row must NEVER surface via a share (a sharee can't
+            // decrypt it and ZK sharing is disabled) — so the shared branch
+            // excludes is_encrypted rows for models that carry that column. The
+            // owner still sees all of their own rows.
+            $zk = array_key_exists('is_encrypted', $model->getCasts());
+            $query->where(function (Builder $q) use ($model, $zk): void {
                 $q->where($model->getTable().'.'.$model->ownerColumn(), Auth::id())
-                    ->orWhereIn($model->getQualifiedKeyName(), self::sharedIdsFor(Auth::id(), $model->getMorphClass()));
+                    ->orWhere(function (Builder $s) use ($model, $zk): void {
+                        $s->whereIn($model->getQualifiedKeyName(), self::sharedIdsFor(Auth::id(), $model->getMorphClass()));
+                        if ($zk) {
+                            $s->where($model->getTable().'.is_encrypted', false);
+                        }
+                    });
             });
         });
 

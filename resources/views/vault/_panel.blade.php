@@ -32,7 +32,8 @@
             this.error = ''; this.busy = true;
             try { await $store.vault.unlock(this.pass); this.open = false; }
             catch (e) { this.error = '{{ __('vault.err_wrong') }}'; }
-            finally { this.busy = false; }
+            // Don't leave the passphrase resident in component memory after use.
+            finally { this.busy = false; this.pass = this.pass2 = this.code = ''; }
         },
         async doRecover() {
             this.error = ''; this.busy = true;

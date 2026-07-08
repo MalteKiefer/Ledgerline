@@ -37,13 +37,29 @@ final class FilesData implements UserDataContributor
             ->map(fn (FileFolder $folder): array => $folder->attributesToArray())
             ->all();
 
+        // Explicit ciphertext-only allowlist — never attributesToArray(), which
+        // would leak any plaintext column (e.g. the dead pre-ZK `content`/OCR
+        // columns) the instant something repopulated it.
         $files = StoredFile::query()
             ->withoutGlobalScopes()
             ->withTrashed()
             ->where('user_id', $user->getKey())
             ->orderBy('id')
             ->get()
-            ->map(fn (StoredFile $file): array => $file->attributesToArray())
+            ->map(fn (StoredFile $file): array => [
+                'id' => $file->id,
+                'file_folder_id' => $file->file_folder_id,
+                'enc_metadata' => $file->enc_metadata,
+                'enc_file_key' => $file->enc_file_key,
+                'is_encrypted' => (bool) $file->is_encrypted,
+                'note' => $file->note,
+                'favorite' => (bool) $file->favorite,
+                'size' => $file->size,
+                'blob' => $file->blob,
+                'created_at' => $file->created_at,
+                'updated_at' => $file->updated_at,
+                'deleted_at' => $file->deleted_at,
+            ])
             ->all();
 
         return [

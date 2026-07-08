@@ -67,6 +67,14 @@ final class BackupManager
 
         try {
             $step(sprintf('Backup "%s" started (source: %s).', $job->name, $job->source));
+            // A database dump carries every non-zero-knowledge module in plaintext
+            // AND the wrapped vault-key material (an offline passphrase-cracking
+            // oracle). It must never leave the box unencrypted — enforce here, not
+            // only in the controller, so a job created via seeder/console/legacy
+            // can't ship a cleartext dump.
+            if ($job->source === 'database' && (! $job->encrypt || ! $job->passphrase)) {
+                throw new RuntimeException('A database backup must be encrypted (set encryption + a passphrase).');
+            }
             if ($job->destination === null) {
                 throw new RuntimeException('No destination configured for this backup job.');
             }
