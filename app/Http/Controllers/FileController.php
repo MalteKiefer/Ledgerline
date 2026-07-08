@@ -4,19 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Jobs\BuildExport;
-use App\Jobs\ExtractArchive;
-use App\Jobs\ExtractFileText;
-use App\Models\Export;
 use App\Models\FileBlob;
 use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Models\UserSetting;
-use App\Services\Files\ArchiveManager;
-use App\Support\ArchiveName;
 use App\Support\BlobStore;
-use App\Support\ImageManagerFactory;
 use App\Support\Tags;
 use Aws\S3\S3Client;
 use Carbon\Carbon;
@@ -25,10 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
-use Intervention\Image\Encoders\JpegEncoder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -57,13 +47,15 @@ class FileController extends Controller
             // Live folders only (ownedBy strips the SoftDeletingScope, so exclude
             // trashed ones explicitly); trashed folders come back via restore.
             'folders' => FileFolder::ownedBy($uid)->whereNull('deleted_at')->get(['id', 'parent_id', 'name'])
+                // name is the sealed {c,n} string; the client decrypts it.
                 ->map(fn (FileFolder $f) => ['id' => $f->id, 'name' => $f->name, 'parent' => $f->parent_id])
                 ->all(),
             'files' => StoredFile::ownedBy($uid)->withTrashed()->get()->map(fn (StoredFile $f) => [
                 'id' => $f->id,
                 'blob' => $f->blob,
-                'name' => $f->name,
-                'mime' => $f->mime,
+                // Sealed metadata (name/mime/size) + wrapped key; decrypted client-side.
+                'enc_metadata' => $f->enc_metadata,
+                'enc_file_key' => $f->enc_file_key,
                 'size' => $f->size,
                 'folder' => $f->file_folder_id,
                 'trashed' => $f->deleted_at?->toIso8601String(),
@@ -83,19 +75,23 @@ class FileController extends Controller
         $data = $request->validate([
             'folders' => ['array', 'max:20000'],
             'folders.*.id' => ['required', 'uuid'],
-            'folders.*.name' => ['required', 'string', 'max:255'],
+            // Folder name is the sealed {c,n} JSON string (zero-knowledge), so it
+            // is opaque ciphertext and larger than a plaintext name.
+            'folders.*.name' => ['required', 'string', 'max:4096'],
             'folders.*.parent' => ['nullable', 'uuid'],
             'files' => ['array', 'max:50000'],
             'files.*.id' => ['required', 'uuid'],
             'files.*.blob' => ['required', 'uuid'],
-            'files.*.name' => ['required', 'string', 'max:255'],
-            'files.*.mime' => ['nullable', 'string', 'max:255'],
-            'files.*.size' => ['nullable', 'integer', 'min:0'],
+            // Zero-knowledge: the sealed name/mime/size and the wrapped per-file
+            // key. The server never receives a plaintext name/mime.
+            'files.*.enc_metadata' => ['required', 'string', 'max:8192'],
+            'files.*.enc_file_key' => ['required', 'string', 'max:2048'],
             'files.*.folder' => ['nullable', 'uuid'],
             'files.*.tags' => ['array'],
             'files.*.trashed' => ['nullable'],
             'files.*.favorite' => ['nullable', 'boolean'],
-            'files.*.note' => ['nullable', 'string', 'max:5000'],
+            // Note stays server-opaque too (sealed by the client) when present.
+            'files.*.note' => ['nullable', 'string', 'max:8192'],
         ]);
 
         $folders = $data['folders'] ?? [];
@@ -168,7 +164,7 @@ class FileController extends Controller
                     if ($parent !== null && ! isset($manifestFolderIds[$parent])) {
                         $parent = null; // dangling parent → root
                     }
-                    $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $parent, 'name' => $f['name']]);
+                    $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $parent, 'name' => $f['name'], 'is_encrypted' => true]);
                     $folderIds[] = $f['id'];
                 }
                 // Soft-delete live folders the manifest dropped (recoverable);
@@ -188,7 +184,9 @@ class FileController extends Controller
                     // the manifest's `trashed` timestamp drive deleted_at directly.
                     $file = $owned()->withTrashed()->firstOrNew(['id' => $f['id']]);
                     $oldBlob = $file->exists ? $file->blob : null;
-                    $oldMeta = ['name' => $file->name, 'mime' => $file->mime, 'size' => (int) $file->size];
+                    // Snapshot the sealed metadata + wrapped key of the outgoing
+                    // blob so a version restore can still decrypt it.
+                    $oldMeta = ['enc_metadata' => $file->enc_metadata, 'enc_file_key' => $file->enc_file_key, 'size' => (int) $file->size];
                     // Authoritative size: read from disk when the blob is new/changed
                     // (never trust the client's number), else keep the stored size. A
                     // new blob whose bytes are missing on disk is a failed upload —
@@ -210,8 +208,13 @@ class FileController extends Controller
                     $file->fill([
                         'user_id' => $uid,
                         'file_folder_id' => $folderRef,
-                        'name' => $f['name'],
-                        'mime' => $f['mime'] ?? 'application/octet-stream',
+                        // Zero-knowledge: no plaintext name/mime — the sealed
+                        // metadata + wrapped key are the source of truth.
+                        'name' => null,
+                        'mime' => null,
+                        'enc_metadata' => $f['enc_metadata'],
+                        'enc_file_key' => $f['enc_file_key'],
+                        'is_encrypted' => true,
                         'size' => $size,
                         'blob' => $f['blob'],
                         'tags' => Tags::normalize($f['tags'] ?? null),
@@ -227,20 +230,14 @@ class FileController extends Controller
                     if (is_string($oldBlob) && $oldBlob !== $f['blob'] && Str::isUuid($oldBlob)) {
                         FileVersion::create([
                             'id' => (string) Str::uuid(), 'file_id' => $file->id, 'user_id' => $uid,
-                            'name' => $oldMeta['name'] ?? $f['name'], 'mime' => $oldMeta['mime'] ?? 'application/octet-stream',
+                            'name' => null, 'mime' => null,
+                            'enc_metadata' => $oldMeta['enc_metadata'], 'enc_file_key' => $oldMeta['enc_file_key'], 'is_encrypted' => true,
                             'size' => $oldMeta['size'], 'blob' => $oldBlob, 'created_at' => now(),
                         ]);
                         $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id, $keep));
                     }
-
-                    // New or changed content → drop the now-stale search text at once
-                    // (so it can't surface old content) and re-extract off-path.
-                    if ($oldBlob !== $f['blob']) {
-                        if ($file->exists && $oldBlob !== null) {
-                            $file->forceFill(['content' => null, 'content_at' => null])->save();
-                        }
-                        ExtractFileText::dispatch($file->id, $f['blob'])->afterCommit();
-                    }
+                    // No server-side text extraction: the bytes are ciphertext the
+                    // server can't read (zero-knowledge). Content search is dropped.
                 }
 
                 // Files the manifest dropped are NOT permanently destroyed here. A
@@ -489,7 +486,9 @@ class FileController extends Controller
         abort_unless($file->isOwnedBy($request->user()->id), 403);
         $versions = FileVersion::where('file_id', $file->id)->orderByDesc('created_at')->get()
             ->map(fn (FileVersion $v): array => [
-                'id' => $v->id, 'name' => $v->name, 'mime' => $v->mime, 'blob' => $v->blob,
+                // Sealed metadata + wrapped key so the client can show the name and
+                // decrypt the snapshotted blob on restore/download (zero-knowledge).
+                'id' => $v->id, 'enc_metadata' => $v->enc_metadata, 'enc_file_key' => $v->enc_file_key, 'blob' => $v->blob,
                 'size' => $v->size, 'created_at' => $v->created_at?->toIso8601String(),
             ]);
 
@@ -514,51 +513,6 @@ class FileController extends Controller
         ], 'attachment');
     }
 
-    /** Import an uploaded file straight into Files as a row (used by mail "save to Files"). */
-    public function import(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'file' => ['required', 'file', 'max:'.((int) config('files.max_upload_mb', 2048) * 1024)],
-            // Owner-scoped exists: a plain exists rule would accept another
-            // user's folder id (the global scope doesn't apply to the rule).
-            'folder_id' => ['nullable', 'uuid', Rule::exists('file_folders', 'id')->where('user_id', $request->user()->id)],
-        ]);
-
-        $file = $request->file('file');
-        $uid = (int) $request->user()->id;
-        $blob = (string) Str::uuid();
-
-        // Best-effort quota check WITHOUT the per-user write lock — holding it
-        // across the slow object-storage write serialised concurrent uploads and
-        // timed them out into 429s. A minor overshoot is acceptable.
-        abort_if($this->quotaExceeded($uid, (int) $file->getSize()), 413, __('files.quota_exceeded'));
-        abort_if($this->disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
-
-        try {
-            $stored = StoredFile::create([
-                'id' => (string) Str::uuid(),
-                'file_folder_id' => $data['folder_id'] ?? null,
-                'name' => $file->getClientOriginalName() ?: 'attachment',
-                // Sniff the real type from the bytes (finfo), never the client-sent
-                // header: this row is created from an untrusted mail attachment and
-                // the stored mime later drives how the client previews the file.
-                'mime' => $file->getMimeType() ?: 'application/octet-stream',
-                'size' => $file->getSize(),
-                'blob' => $blob,
-                'tags' => [],
-            ]);
-        } catch (\Throwable $e) {
-            // Don't leak the just-written bytes if the row could not be created.
-            $this->disk()->delete('files/'.$blob);
-            throw $e;
-        }
-
-        // Index its text so imported files are findable by content search too.
-        ExtractFileText::dispatch($stored->id, $blob)->afterCommit();
-
-        return response()->json(['id' => $stored->id], 201);
-    }
-
     /** Stream a stored file's bytes back to the browser. */
     public function raw(string $blob): StreamedResponse
     {
@@ -575,55 +529,6 @@ class FileController extends Controller
             'Content-Security-Policy' => "default-src 'none'; sandbox",
             'Cache-Control' => 'private, no-store',
         ], 'attachment');
-    }
-
-    /**
-     * Queue an asynchronous export of the selected files and/or folders. A worker
-     * zips them in the background (folders keep their tree); the user collects the
-     * result from the Downloads page.
-     */
-    public function queueExport(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'file_ids' => ['nullable', 'array', 'max:20000'],
-            'file_ids.*' => ['string'],
-            'folder_ids' => ['nullable', 'array', 'max:5000'],
-            'folder_ids.*' => ['string'],
-            'format' => ['nullable', Rule::in(['zip', 'tar', 'targz', 'tarbz2'])],
-        ]);
-
-        // Keep only ids the current user actually OWNS (not merely shared with
-        // them) so an export can never exfiltrate another user's file bytes.
-        $uid = $request->user()->id;
-        $fileIds = StoredFile::ownedBy($uid)->withTrashed()
-            ->whereIn('id', array_values($validated['file_ids'] ?? []))->pluck('id')->all();
-        $folderIds = FileFolder::ownedBy($uid)->whereNull('deleted_at')
-            ->whereIn('id', array_values($validated['folder_ids'] ?? []))->pluck('id')->all();
-        abort_if($fileIds === [] && $folderIds === [], 422, 'Nothing selected.');
-
-        // Cap how many exports one user can have building at once so a single
-        // user can't flood the queue with huge jobs.
-        abort_if(
-            Export::inFlightCount($uid) >= Export::MAX_IN_FLIGHT,
-            429,
-            __('downloads.error.too_many', ['max' => Export::MAX_IN_FLIGHT])
-        );
-
-        $count = count($fileIds) + count($folderIds);
-
-        $export = Export::create([
-            'user_id' => $request->user()->id,
-            'source' => 'files',
-            'title' => trans_choice('downloads.title.files', $count, ['count' => $count]),
-            'status' => 'queued',
-            'format' => $validated['format'] ?? 'zip',
-            'item_count' => $count,
-            'payload' => ['file_ids' => $fileIds, 'folder_ids' => $folderIds],
-        ]);
-
-        BuildExport::dispatch($export->id);
-
-        return response()->json(['queued' => true, 'export_id' => $export->id], 202);
     }
 
     /**
@@ -686,190 +591,15 @@ class FileController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /**
-     * Duplicate owned files/folders in place. Files share the same blob (content
-     * is identical, blob delete is reference-counted), folders are copied
-     * recursively. Names are made unique among their siblings.
-     */
-    public function duplicate(Request $request): JsonResponse
-    {
-        [$fileIds, $folderIds] = $this->ownedIds($request);
-        $uid = $request->user()->id;
-
-        // Serialize the quota gate + copy so concurrent duplicates/uploads can't
-        // race past the quota. Copies count toward usage (it sums row sizes), so
-        // gate the whole selection — files plus every selected folder's subtree.
-        $this->withUserLock($uid, function () use ($fileIds, $folderIds, $uid): void {
-            $copyBytes = (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->sum('size');
-            $folderSet = [];
-            foreach ($folderIds as $fid) {
-                $folderSet = array_merge($folderSet, $this->folderSubtree($fid));
-            }
-            if ($folderSet !== []) {
-                $copyBytes += (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')
-                    ->whereIn('file_folder_id', array_unique($folderSet))->sum('size');
-            }
-            abort_if($this->quotaExceeded($uid, $copyBytes), 413, __('files.quota_exceeded'));
-
-            DB::transaction(function () use ($fileIds, $folderIds, $uid): void {
-                foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->get() as $f) {
-                    $this->copyFile($f, $f->file_folder_id, $uid);
-                }
-                foreach ($folderIds as $fid) {
-                    $folder = FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $uid)->find($fid);
-                    if ($folder) {
-                        $this->copyFolder($folder, $folder->parent_id, $uid, true);
-                    }
-                }
-            });
-        });
-
-        return response()->json(['ok' => true]);
-    }
-
-    private function copyFile(StoredFile $src, ?string $folderId, int $uid, bool $unique = true): void
-    {
-        $name = $unique ? $this->uniqueFileName($src->name, $uid, $folderId, true) : $src->name;
-        $copy = new StoredFile;
-        $copy->forceFill([
-            'id' => (string) Str::uuid(), 'user_id' => $uid, 'file_folder_id' => $folderId,
-            'name' => $name, 'blob' => $src->blob, 'size' => (int) $src->size,
-            'mime' => $src->mime, 'tags' => $src->tags,
-        ])->save();
-    }
-
-    private function copyFolder(FileFolder $src, ?string $parentId, int $uid, bool $unique, int $depth = 0): void
-    {
-        // Hard depth cap so a very deep (or, defensively, a cyclic) folder chain
-        // cannot exhaust the PHP stack while copying.
-        abort_if($depth > 100, 422, __('files.folder_too_deep'));
-        $name = $unique ? $this->uniqueFolderName($src->name, $uid, $parentId) : $src->name;
-        $copy = new FileFolder;
-        $copy->forceFill(['id' => (string) Str::uuid(), 'user_id' => $uid, 'parent_id' => $parentId, 'name' => $name])->save();
-        foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('file_folder_id', $src->id)->get() as $f) {
-            $this->copyFile($f, $copy->id, $uid, false);
-        }
-        foreach (FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->where('parent_id', $src->id)->get() as $sub) {
-            $this->copyFolder($sub, $copy->id, $uid, false, $depth + 1);
-        }
-    }
-
-    /** Find/replace across the names of the selected owned files/folders. */
-    public function bulkRename(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'file_ids' => ['array', 'max:20000'], 'file_ids.*' => ['string'],
-            'folder_ids' => ['array', 'max:5000'], 'folder_ids.*' => ['string'],
-            'find' => ['nullable', 'string', 'max:255'],
-            'replace' => ['nullable', 'string', 'max:255'],
-            'prefix' => ['nullable', 'string', 'max:255'],
-            'suffix' => ['nullable', 'string', 'max:255'],
-        ]);
-        [$fileIds, $folderIds] = $this->ownedIds($request);
-        $find = (string) ($data['find'] ?? '');
-        $apply = function (string $name) use ($data, $find): string {
-            if ($find !== '') {
-                $name = str_replace($find, (string) ($data['replace'] ?? ''), $name);
-            }
-
-            return mb_substr(($data['prefix'] ?? '').$name.($data['suffix'] ?? ''), 0, 255);
-        };
-
-        DB::transaction(function () use ($fileIds, $folderIds, $apply): void {
-            foreach (StoredFile::withoutGlobalScopes()->whereIn('id', $fileIds)->get() as $f) {
-                $new = trim($apply($f->name));
-                if ($new !== '' && $new !== $f->name) {
-                    $f->forceFill(['name' => $new])->save();
-                }
-            }
-            foreach (FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $folderIds)->get() as $f) {
-                $new = trim($apply($f->name));
-                if ($new !== '' && $new !== $f->name) {
-                    $f->forceFill(['name' => $new])->save();
-                }
-            }
-        });
-
-        return response()->json(['ok' => true]);
-    }
-
-    private function uniqueFileName(string $name, int $uid, ?string $folderId, bool $copySuffix = false): string
-    {
-        $used = StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $uid)
-            ->where('file_folder_id', $folderId)->pluck('name')->flip()->all();
-        if ($copySuffix) {
-            $dot = strrpos($name, '.');
-            $stem = $dot === false ? $name : substr($name, 0, $dot);
-            $ext = $dot === false ? '' : substr($name, $dot);
-            $name = $stem.' '.__('files.copy_suffix').$ext;
-        }
-
-        return ArchiveName::unique($name, $used, ' ', true);
-    }
-
-    private function uniqueFolderName(string $name, int $uid, ?string $parentId): string
-    {
-        $used = FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $uid)
-            ->where('parent_id', $parentId)->pluck('name')->flip()->all();
-
-        return ArchiveName::unique($name, $used, ' ', true);
-    }
-
     /** Save the note/comment on an owned file. */
     public function saveNote(Request $request, StoredFile $file): JsonResponse
     {
         abort_unless($file->isOwnedBy($request->user()->id), 403);
-        $data = $request->validate(['note' => ['nullable', 'string', 'max:5000']]);
+        // The note arrives sealed (ciphertext) — allow for the encryption overhead.
+        $data = $request->validate(['note' => ['nullable', 'string', 'max:8192']]);
         $file->forceFill(['note' => $data['note'] ?? null])->save();
 
         return response()->json(['ok' => true]);
-    }
-
-    /** A cached ~320px JPEG thumbnail for an owned image file (owner-scoped). */
-    public function thumb(string $blob, ImageManagerFactory $images): StreamedResponse
-    {
-        $file = StoredFile::withTrashed()->where('blob', $blob)->first();
-        abort_unless($file !== null, 404);
-        abort_unless(str_starts_with((string) $file->mime, 'image/'), 404);
-
-        $thumbPath = 'thumbs/'.$blob.'.jpg';
-        if (! $this->disk()->exists($thumbPath)) {
-            abort_unless($this->disk()->exists('files/'.$blob), 404);
-            try {
-                $raw = (string) $this->disk()->get('files/'.$blob);
-                // Reject a decompression bomb before decoding: cap the intrinsic
-                // pixel area (~100 MP) read cheaply from the header.
-                $dim = @getimagesizefromstring($raw);
-                abort_if($dim !== false && ((int) ($dim[0] ?? 0) * (int) ($dim[1] ?? 0)) > 100_000_000, 422);
-                $img = $images->make()->decodeBinary($raw);
-                $img->scaleDown(width: 320);
-                $this->disk()->put($thumbPath, (string) $img->encode(new JpegEncoder(quality: 72)));
-            } catch (\Throwable) {
-                abort(404);
-            }
-        }
-
-        return $this->disk()->response($thumbPath, 'thumb.jpg', [
-            'Content-Type' => 'image/jpeg',
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
-            'Cache-Control' => 'private, max-age=86400',
-        ], 'inline');
-    }
-
-    /** Ids of owned files whose extracted text matches the term (full-text). */
-    public function searchContent(Request $request): JsonResponse
-    {
-        $term = trim((string) $request->query('q', ''));
-        if (mb_strlen($term) < 2) {
-            return response()->json(['ids' => []]);
-        }
-        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($term)).'%';
-        $ids = StoredFile::query()->whereNotNull('content')
-            ->whereRaw("LOWER(content) LIKE ? ESCAPE '\\'", [$like])
-            ->limit(500)->pluck('id')->all();
-
-        return response()->json(['ids' => $ids]);
     }
 
     /** Toggle the favourite flag on owned files (owner-scoped). */
@@ -965,48 +695,6 @@ class FileController extends Controller
         }
 
         return $all;
-    }
-
-    /** Zip up the selected owned files/folders into a new file in the browser. */
-    public function createArchive(Request $request, ArchiveManager $archives): JsonResponse
-    {
-        $data = $request->validate([
-            'refs' => ['required', 'array', 'min:1', 'max:5000'],
-            'refs.*.kind' => ['required', Rule::in(['file', 'folder'])],
-            'refs.*.id' => ['required', 'string'],
-            'folder_id' => ['nullable', Rule::exists('file_folders', 'id')->where('user_id', $request->user()->id)],
-            'name' => ['nullable', 'string', 'max:200'],
-        ]);
-
-        $archives->create($request->user()->id, $data['refs'], $data['folder_id'] ?? null, $data['name'] ?? null);
-
-        return response()->json(['ok' => true]);
-    }
-
-    /** Extract an owned zip file into a new folder alongside it. */
-    public function extract(Request $request, StoredFile $file): JsonResponse
-    {
-        abort_unless($file->isOwnedBy($request->user()->id), 403);
-        abort_unless(ArchiveManager::isExtractable($file->name, $file->mime), 422, __('files.archive_invalid'));
-
-        // Unpack in the background (large archives would otherwise block the
-        // request and time out); the client polls extractStatus for progress.
-        $token = (string) Str::uuid();
-        Cache::put(ExtractArchive::statusKey($token), [
-            'state' => 'running', 'done' => 0, 'total' => 0,
-            'user' => (int) $request->user()->id, 'name' => $file->name,
-        ], now()->addHour());
-        ExtractArchive::dispatch($token, (int) $request->user()->id, $file->id, $file->name)->afterCommit();
-
-        return response()->json(['token' => $token], 202);
-    }
-
-    public function extractStatus(Request $request, string $token): JsonResponse
-    {
-        $s = Cache::get(ExtractArchive::statusKey($token));
-        abort_if(! is_array($s) || (int) ($s['user'] ?? 0) !== (int) $request->user()->id, 404);
-
-        return response()->json($s);
     }
 
     /** Delete a stored file's bytes (after its row was removed via sync). */

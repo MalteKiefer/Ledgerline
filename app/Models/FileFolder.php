@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /** A file-browser folder (plain row, client-generated UUID id), private to its user. */
-#[Fillable(['id', 'parent_id', 'name'])]
+#[Fillable(['id', 'parent_id', 'name', 'is_encrypted'])]
 class FileFolder extends Model
 {
     use SharesWithUsers;
@@ -19,4 +19,9 @@ class FileFolder extends Model
     public $incrementing = false;
 
     protected $keyType = 'string';
+
+    protected function casts(): array
+    {
+        return ['is_encrypted' => 'boolean'];
+    }
 }

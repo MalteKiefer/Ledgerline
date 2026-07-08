@@ -25,6 +25,7 @@
         "github-markdown-css": "^5.9.0",
         "highlight.js": "^11.11.1",
         "leaflet": "^1.9.4",
-        "leaflet.markercluster": "^1.5.3"
+        "leaflet.markercluster": "^1.5.3",
+        "libsodium-wrappers-sumo": "^0.8.4"
     }
 }
