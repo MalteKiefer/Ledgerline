@@ -6,7 +6,6 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AlbumController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
-use App\Http\Controllers\BookmarkController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
@@ -25,12 +24,10 @@ use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
-use App\Http\Controllers\Settings\RemindersController as SettingsRemindersController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\ThemeController;
-use App\Http\Controllers\TodoController;
 use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
@@ -87,10 +84,6 @@ Route::middleware('auth')->group(function (): void {
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
-
-    // Per-user reminder defaults (which channels are pre-selected).
-    Route::get('/settings/reminders', [SettingsRemindersController::class, 'edit'])->name('settings.reminders.edit');
-    Route::put('/settings/reminders', [SettingsRemindersController::class, 'update'])->name('settings.reminders.update');
 
     // Per-user Files preferences (version-history depth).
     Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
@@ -249,17 +242,8 @@ Route::middleware('auth')->group(function (): void {
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).
     Route::view('/notes', 'notes.index')->name('notes.index');
-    // To-dos: plain DB rows, driven client-side over a JSON API (no reloads).
+    // To-dos: zero-knowledge, living entirely in the opaque store manifest.
     Route::view('/todos', 'todos.index')->name('todos.index');
-    Route::get('/todos/data', [TodoController::class, 'index'])->name('todos.data');
-    Route::post('/todos/lists', [TodoController::class, 'storeList'])->name('todos.lists.store');
-    Route::put('/todos/lists/{list}', [TodoController::class, 'updateList'])->name('todos.lists.update');
-    Route::delete('/todos/lists/{list}', [TodoController::class, 'destroyList'])->name('todos.lists.destroy');
-    Route::post('/todos/tasks', [TodoController::class, 'store'])->name('todos.store');
-    Route::put('/todos/tasks/{todo}', [TodoController::class, 'update'])->name('todos.update');
-    Route::patch('/todos/tasks/{todo}', [TodoController::class, 'patch'])->withTrashed()->name('todos.patch');
-    Route::delete('/todos/tasks/{todo}', [TodoController::class, 'destroy'])->withTrashed()->name('todos.destroy');
-    Route::delete('/todos/trash', [TodoController::class, 'emptyTrash'])->name('todos.trash.empty');
     // Cross-user sharing management (grant/revoke access to your resources).
     Route::get('/shares/data', [ResourceShareController::class, 'data'])->name('shares.data');
     Route::post('/shares', [ResourceShareController::class, 'store'])->name('shares.store');
@@ -270,19 +254,8 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/shares/public/{publicShare}', [PublicShareController::class, 'destroy'])->name('public-share.destroy');
     Route::post('/shares/public/{publicShare}/email', [PublicShareController::class, 'email'])->middleware('throttle:5,1')->name('public-share.email');
     Route::post('/shares/public/{publicShare}/rotate', [PublicShareController::class, 'rotate'])->name('public-share.rotate');
-    // Bookmarks: plain DB rows, driven client-side over a JSON API (no reloads).
+    // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
-    Route::get('/bookmarks/data', [BookmarkController::class, 'index'])->name('bookmarks.data');
-    Route::post('/bookmarks/folders', [BookmarkController::class, 'storeFolder'])->name('bookmarks.folders.store');
-    Route::delete('/bookmarks/folders/{folder}', [BookmarkController::class, 'destroyFolder'])->name('bookmarks.folders.destroy');
-    Route::post('/bookmarks/folders/{folder}/move', [BookmarkController::class, 'moveFolder'])->name('bookmarks.folders.move');
-    Route::put('/bookmarks/folders/{folder}', [BookmarkController::class, 'updateFolder'])->name('bookmarks.folders.update');
-    Route::post('/bookmarks/{bookmark}/move', [BookmarkController::class, 'moveBookmark'])->name('bookmarks.move');
-    Route::post('/bookmarks', [BookmarkController::class, 'store'])->name('bookmarks.store');
-    Route::put('/bookmarks/{bookmark}', [BookmarkController::class, 'update'])->name('bookmarks.update');
-    Route::patch('/bookmarks/{bookmark}', [BookmarkController::class, 'patch'])->withTrashed()->name('bookmarks.patch');
-    Route::delete('/bookmarks/{bookmark}', [BookmarkController::class, 'destroy'])->withTrashed()->name('bookmarks.destroy');
-    Route::delete('/bookmarks/trash/all', [BookmarkController::class, 'emptyTrash'])->name('bookmarks.trash.empty');
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');

@@ -5,10 +5,6 @@
                         <span class="flex items-center gap-2"><x-icon name="clock" class="h-4 w-4" />{{ __('bookmarks.read_later') }}</span>
                         <span x-show="readLaterCount" class="text-xs text-gray-400 dark:text-gray-500" x-text="readLaterCount"></span>
                     </button>
-                    <button type="button" x-show="deadCount" @click="view = 'dead'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'dead' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">
-                        <span class="flex items-center gap-2"><x-icon name="exclamation-triangle" class="h-4 w-4" />{{ __('bookmarks.dead_links') }}</span>
-                        <span class="text-xs text-gray-400 dark:text-gray-500" x-text="deadCount"></span>
-                    </button>
                     <button type="button" @click="view = 'trash'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">
                         <span class="flex items-center gap-2"><x-icon name="trash" class="h-4 w-4" />{{ __('bookmarks.trash') }}</span>
                         <span x-show="trashCount" class="text-xs text-gray-400 dark:text-gray-500" x-text="trashCount"></span>

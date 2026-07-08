@@ -5,7 +5,6 @@
         deleteListConfirm: @js(__('todos.delete_list_confirm')),
         deleteConfirm: @js(__('todos.delete_confirm')),
         emptyTrashConfirm: @js(__('todos.empty_trash_confirm')),
-        defaultReminderChannels: @js(\App\Models\UserSetting::for(auth()->id())->reminder_channels ?? ['desktop']),
      })">
 
     {{-- Zero-knowledge gate: to-dos decrypt with the vault key. --}}
@@ -133,16 +132,6 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.due') }}</label>
                         <input type="datetime-local" x-model="editing.due" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                    </div>
-                    <div x-show="editing.due" x-cloak>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.notify_heading') }}</label>
-                        <div class="mt-1 flex flex-wrap gap-3 text-sm text-gray-700 dark:text-gray-300">
-                            <label class="flex items-center gap-1.5"><input type="checkbox" value="desktop" x-model="editing.reminderChannels" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">{{ __('todos.channel_browser') }}</label>
-                            <label class="flex items-center gap-1.5"><input type="checkbox" value="ntfy" x-model="editing.reminderChannels" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">{{ __('todos.channel_ntfy') }}</label>
-                            <label class="flex items-center gap-1.5"><input type="checkbox" value="mail" x-model="editing.reminderChannels" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">{{ __('todos.channel_mail') }}</label>
-                            <label class="flex items-center gap-1.5"><input type="checkbox" value="webhook" x-model="editing.reminderChannels" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">{{ __('todos.channel_webhook') }}</label>
-                        </div>
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('todos.notify_hint') }}</p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.tags') }}</label>

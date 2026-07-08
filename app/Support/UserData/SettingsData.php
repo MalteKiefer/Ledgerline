@@ -37,7 +37,6 @@ class SettingsData implements UserDataContributor
         $setting = UserSetting::withoutGlobalScopes()
             ->where('user_id', $user->id)
             ->first([
-                'reminder_channels',
                 'gallery_columns',
             ]);
 

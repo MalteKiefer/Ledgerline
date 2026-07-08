@@ -3506,11 +3506,15 @@ Alpine.plugin(intersect);
 window.Alpine = Alpine;
 
 /**
- * To-do lists + tasks, driven entirely client-side over the JSON API (no page
- * reloads). Reminders are handled server-side on save.
+ * To-do lists + tasks. Zero-knowledge: everything lives in the opaque manifest
+ * (one sealed blob shared with notes/bookmarks), so there is no fetch/seal per
+ * row — fields (incl. list names + due dates) are plaintext inside the sealed
+ * manifest and every mutation edits the in-memory arrays in place then schedules
+ * a debounced sealed save. Due dates are sealed too, so there are no server-side
+ * reminders — any reminder would only ever be client-side.
  */
 Alpine.data('todos', (labels = {}) => ({
-    state: 'boot', // boot | ready | error
+    state: 'boot',
     lists: [],
     tasks: [],
     view: 'all', // all | marked | trash | a list id
@@ -3523,97 +3527,51 @@ Alpine.data('todos', (labels = {}) => ({
     tagsValue: '',
 
     async init() {
-        // Zero-knowledge gate: to-dos decrypt with the vault key.
-        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-        if (this.$store.vault.unlocked) { await this.load(); } else { this.state = 'locked'; }
-        this.$watch('$store.vault.unlocked', (on) => {
-            if (on && this.state !== 'ready') this.load();
-            if (! on) { this.state = 'locked'; this.tasks = []; this.lists = []; }
+        // Zero-knowledge: to-dos live in the opaque manifest (one sealed blob).
+        if (await bootStore(this.$store)) {
+            this.tasks = window.LLStore.data.todos;
+            this.lists = window.LLStore.data.todoLists;
+            this.state = 'ready';
+        } else { this.state = 'locked'; }
+        this.$watch('$store.vault.unlocked', async (on) => {
+            if (on && this.state !== 'ready') {
+                if (await bootStore(this.$store)) {
+                    this.tasks = window.LLStore.data.todos;
+                    this.lists = window.LLStore.data.todoLists;
+                    this.state = 'ready';
+                }
+            }
+            if (! on) { this.state = 'locked'; this.tasks = []; this.lists = []; window.LLStore.reset(); }
         });
     },
 
-    async load() {
-        try {
-            const res = await fetch('/todos/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) { this.state = 'error'; return; }
-            const d = await res.json();
-            this.lists = (d.lists ?? []).map((l) => this._decList(l));
-            this.tasks = (d.tasks ?? []).map((t) => this._decTask(t));
-            this.state = 'ready';
-        } catch (e) { this.state = 'error'; }
-    },
-
-    _headers() {
-        return jsonHeaders();
-    },
-    async _api(method, url, body) {
-        return apiRequest(method, url, body);
-    },
-    // Decrypt a server task {id, enc_todo, listId, priority, ...} into the UI
-    // shape; keep the raw sealed blob so an undecryptable task round-trips.
-    _decTask(t) {
-        let meta = null;
-        try { meta = window.Vault.decryptFileMeta(t.enc_todo); } catch (e) { /* undecryptable */ }
-        const ok = meta !== null;
-        return {
-            id: t.id, listId: t.listId ?? null,
-            title: ok ? (meta.title ?? '') : '???', description: ok ? (meta.description ?? '') : '',
-            url: ok ? (meta.url ?? '') : '', tags: ok ? (meta.tags ?? []) : [],
-            priority: t.priority, marked: !! t.marked, due: t.due || '',
-            reminderChannels: t.reminderChannels ?? [], done: !! t.done, trashed: t.trashed,
-            _decOk: ok, _rawEnc: t.enc_todo,
-        };
-    },
-    _encTask(t) {
-        if (t._decOk === false) return t._rawEnc;
-        const m = window.Vault.encryptMeta({ title: t.title || '', description: t.description || '', url: t.url || '', tags: t.tags || [] });
-        return JSON.stringify({ c: m.cipher, n: m.nonce });
-    },
-    _decList(l) {
-        let name = '???';
-        try { name = window.Vault.decryptFileMeta(l.name).name; } catch (e) { /* undecryptable */ }
-        return { id: l.id, name };
-    },
-    _payload(t) {
-        // Only http(s) for the (sealed) url — the server can't re-check it.
-        if (t.url && ! /^https?:\/\//i.test(t.url)) t.url = '';
-        return {
-            todo_list_id: t.listId ?? null, enc_todo: this._encTask(t),
-            priority: t.priority, marked: !! t.marked,
-            due: t.due || null, reminder_channels: t.reminderChannels ?? [], done: !! t.done,
-        };
-    },
-    _replace(task) {
-        const i = this.tasks.findIndex((x) => x.id === task.id);
-        if (i >= 0) this.tasks[i] = task; else this.tasks.unshift(task);
-    },
+    // Persist the manifest (debounced, sealed) after a mutation.
+    _save() { window.LLStore.touch(); },
 
     listName(id) { return (this.lists.find((l) => l.id === id) || {}).name || ''; },
 
-    async addList() {
+    addList() {
         const name = this.newListName.trim();
         if (! name) return;
-        try {
-            const l = await this._api('POST', '/todos/lists', { name: window.Vault.sealName(name) });
-            this.lists.push({ id: l.id, name });
-            this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            this.newListName = '';
-        } catch (e) { this.error = labels.saveFailed; }
+        this.lists.push({ id: window.LLStore.newId(), name });
+        this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        this.newListName = '';
+        this._save();
     },
-    async renameList(l) {
+    renameList(l) {
         const name = (prompt(labels.renameList, l.name) || '').trim();
         if (! name || name === l.name) return;
-        try { await this._api('PUT', `/todos/lists/${l.id}`, { name: window.Vault.sealName(name) }); l.name = name; this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
-        catch (e) { this.error = labels.saveFailed; }
+        l.name = name;
+        this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        this._save();
     },
     async deleteList(l) {
-        if (! confirm(labels.deleteListConfirm)) return;
-        try {
-            await this._api('DELETE', `/todos/lists/${l.id}`);
-            this.lists = this.lists.filter((x) => x.id !== l.id);
-            this.tasks.forEach((t) => { if (t.listId === l.id) t.listId = null; });
-            if (this.view === l.id) this.view = 'all';
-        } catch (e) { this.error = labels.saveFailed; }
+        if (! await this.$store.confirm.ask(labels.deleteListConfirm)) return;
+        for (const t of this.tasks) if (t.listId === l.id) t.listId = null;
+        const i = this.lists.findIndex((x) => x.id === l.id);
+        if (i >= 0) this.lists.splice(i, 1);
+        if (this.view === l.id) this.view = 'all';
+        this._save();
     },
 
     get allTags() {
@@ -3644,48 +3602,55 @@ Alpine.data('todos', (labels = {}) => ({
 
     newTask() {
         const listId = (this.view !== 'all' && this.view !== 'marked' && this.view !== 'trash') ? this.view : null;
-        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false, reminderChannels: [...(labels.defaultReminderChannels ?? [])] };
+        this.editing = { id: null, listId, title: '', description: '', url: '', priority: 'normal', marked: false, tags: [], due: '', done: false };
         this.tagsValue = '';
         this.editorOpen = true;
     },
     editTask(t) {
-        this.editing = { ...t, tags: [...(t.tags ?? [])], reminderChannels: [...(t.reminderChannels ?? [])] };
+        this.editing = { ...t, tags: [...(t.tags ?? [])] };
         this.tagsValue = (this.editing.tags || []).join(', ');
         this.editorOpen = true;
     },
     closeEditor() { this.editorOpen = false; this.editing = null; },
 
-    async saveTask() {
+    saveTask() {
         const e = this.editing;
         if (! e || ! (e.title || '').trim()) return;
         e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
-        try {
-            const task = e.id
-                ? await this._api('PUT', `/todos/tasks/${e.id}`, this._payload(e))
-                : await this._api('POST', '/todos/tasks', this._payload(e));
-            this._replace(this._decTask(task));
-            this.closeEditor();
-        } catch (err) { this.error = labels.saveFailed; }
+        // Only http(s) for the url — a javascript:/data: URL would execute on click.
+        let url = (e.url || '').trim();
+        if (url && ! /^https?:\/\//i.test(url)) url = '';
+        if (e.id) {
+            const t = this.tasks.find((x) => x.id === e.id);
+            if (t) {
+                t.listId = e.listId ?? null; t.title = e.title.trim(); t.description = e.description || '';
+                t.url = url; t.tags = e.tags; t.priority = e.priority; t.marked = !! e.marked; t.due = e.due || '';
+            }
+        } else {
+            this.tasks.unshift({
+                id: window.LLStore.newId(), title: e.title.trim(), description: e.description || '', url,
+                tags: e.tags, priority: e.priority, marked: !! e.marked, due: e.due || '',
+                done: false, listId: e.listId ?? null, trashed: false,
+            });
+        }
+        this._save();
+        this.closeEditor();
     },
 
-    async _patch(t, changes) {
-        // The PATCH response is the sealed row; decrypt before replacing.
-        try { this._replace(this._decTask(await this._api('PATCH', `/todos/tasks/${t.id}`, changes))); }
-        catch (e) { this.error = labels.saveFailed; }
-    },
-    async toggleDone(t) { await this._patch(t, { done: ! t.done }); },
-    async toggleMark(t) { await this._patch(t, { marked: ! t.marked }); },
-    async trashTask(t) { await this._patch(t, { trashed: true }); },
-    async restoreTask(t) { await this._patch(t, { trashed: false }); },
+    toggleDone(t) { t.done = ! t.done; this._save(); },
+    toggleMark(t) { t.marked = ! t.marked; this._save(); },
+    trashTask(t) { t.trashed = true; this._save(); },
+    restoreTask(t) { t.trashed = false; this._save(); },
     async deleteForever(t) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
-        try { await this._api('DELETE', `/todos/tasks/${t.id}`); this.tasks = this.tasks.filter((x) => x.id !== t.id); }
-        catch (e) { this.error = labels.saveFailed; }
+        const i = this.tasks.findIndex((x) => x.id === t.id);
+        if (i >= 0) this.tasks.splice(i, 1);
+        this._save();
     },
     async emptyTrash() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
-        try { await this._api('DELETE', '/todos/trash'); this.tasks = this.tasks.filter((t) => ! t.trashed); }
-        catch (e) { this.error = labels.saveFailed; }
+        for (let i = this.tasks.length - 1; i >= 0; i--) if (this.tasks[i].trashed) this.tasks.splice(i, 1);
+        this._save();
     },
 
     priorityClass(p) { return p === 'high' ? 'bg-red-500' : (p === 'low' ? 'bg-gray-300' : 'bg-amber-400'); },
@@ -3971,17 +3936,19 @@ Alpine.data('uploadLink', (config = {}, labels = {}) => ({
 }));
 
 /**
- * Bookmarks + folders, driven client-side over a JSON API (no reloads).
+ * Bookmarks + folders. Zero-knowledge: everything lives in the opaque manifest
+ * (one sealed blob shared with notes/todos), so there is no fetch/seal per row —
+ * fields are plaintext inside the sealed manifest and every mutation edits the
+ * in-memory arrays in place then schedules a debounced sealed save.
  */
 Alpine.data('bookmarks', (labels = {}) => ({
     state: 'boot',
     folders: [],
     bookmarks: [],
-    view: 'all', // all | favorites | trash | a folder id
+    view: 'all', // all | favorites | readlater | trash | a folder id
     query: '',
     activeTag: '',
     error: '',
-    newFolderName: '',
     editorOpen: false,
     // Kept a non-null blank so the teleported editor's x-model bindings never
     // read from null before a bookmark is opened.
@@ -3990,74 +3957,30 @@ Alpine.data('bookmarks', (labels = {}) => ({
     dragItem: null, // { type: 'bookmark' | 'folder', id }
 
     async init() {
-        // Zero-knowledge gate: bookmarks decrypt with the vault key.
-        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-        if (this.$store.vault.unlocked) { await this.load(); } else { this.state = 'locked'; }
-        this.$watch('$store.vault.unlocked', (on) => {
-            if (on && this.state !== 'ready') this.load();
-            if (! on) { this.state = 'locked'; this.bookmarks = []; this.folders = []; }
+        // Zero-knowledge: bookmarks live in the opaque manifest (one sealed blob).
+        if (await bootStore(this.$store)) {
+            this.bookmarks = window.LLStore.data.bookmarks;
+            this.folders = window.LLStore.data.bookmarkFolders;
+            this.state = 'ready';
+        } else { this.state = 'locked'; }
+        this.$watch('$store.vault.unlocked', async (on) => {
+            if (on && this.state !== 'ready') {
+                if (await bootStore(this.$store)) {
+                    this.bookmarks = window.LLStore.data.bookmarks;
+                    this.folders = window.LLStore.data.bookmarkFolders;
+                    this.state = 'ready';
+                }
+            }
+            if (! on) { this.state = 'locked'; this.bookmarks = []; this.folders = []; window.LLStore.reset(); }
         });
     },
 
-    async load() {
-        try {
-            const res = await fetch('/bookmarks/data', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) { this.state = 'error'; return; }
-            const d = await res.json();
-            this.folders = (d.folders ?? []).map((f) => this._decFolder(f));
-            this.bookmarks = (d.bookmarks ?? []).map((b) => this._decBookmark(b));
-            this.state = 'ready';
-        } catch (e) { this.state = 'error'; }
-    },
+    // Persist the manifest (debounced, sealed) after a mutation.
+    _save() { window.LLStore.touch(); },
 
-    // Decrypt a server bookmark {id, enc_bookmark, folderId, favorite, ...} into
-    // the plaintext shape the UI uses; keep the raw sealed blob so an
-    // undecryptable bookmark round-trips untouched.
-    _decBookmark(b) {
-        let meta = null;
-        try { meta = window.Vault.decryptFileMeta(b.enc_bookmark); } catch (e) { /* undecryptable */ }
-        const ok = meta !== null;
-        // Re-assert http(s) on display too: a decrypted javascript:/data: URL bound
-        // into :href would execute on click (self-XSS). Validate on BOTH ends.
-        const safeUrl = ok && /^https?:\/\//i.test(meta.url || '') ? meta.url : '';
-        return {
-            id: b.id, folderId: b.folderId ?? null,
-            url: safeUrl, title: ok ? (meta.title ?? '') : '???',
-            description: ok ? (meta.description ?? '') : '', tags: ok ? (meta.tags ?? []) : [],
-            favorite: !! b.favorite, readLater: !! b.readLater, read: !! b.read, dead: !! b.dead, trashed: b.trashed,
-            _decOk: ok, _rawEnc: b.enc_bookmark,
-        };
-    },
-    // Seal {url, title, description, tags} for the wire; pass an undecryptable
-    // bookmark's original sealed blob through verbatim.
-    _encBookmark(b) {
-        if (b._decOk === false) return b._rawEnc;
-        const m = window.Vault.encryptMeta({ url: b.url || '', title: b.title || '', description: b.description || '', tags: b.tags || [] });
-        return JSON.stringify({ c: m.cipher, n: m.nonce });
-    },
-    // Folder names are sealed too. Decrypt for display; keep the raw sealed name
-    // so an undecryptable folder round-trips untouched.
-    _decFolder(f) {
-        let name = '???';
-        let ok = false;
-        try { name = window.Vault.decryptFileMeta(f.name).name; ok = true; } catch (e) { /* undecryptable */ }
-        return { ...f, name, _decOk: ok, _rawName: f.name };
-    },
-
-    _headers() {
-        return jsonHeaders();
-    },
-    async _api(method, url, body) {
-        return apiRequest(method, url, body);
-    },
-    _replace(b) {
-        const i = this.bookmarks.findIndex((x) => x.id === b.id);
-        if (i >= 0) this.bookmarks[i] = b; else this.bookmarks.unshift(b);
-    },
     host(url) { try { return new URL(url).host; } catch (e) { return ''; } },
 
-    // Folder editor modal (create / subfolder / rename + colour + icon) —
-    // replaces the old inline form and the window.prompt.
+    // ---- Folders (create / subfolder / rename + colour + icon) ----
     folderEditor: { open: false, id: null, parentId: null, name: '', color: '', icon: '' },
     moreIconsOpen: false,
     get allFolderIcons() { return Object.keys(FOLDER_ICONS); },
@@ -4065,38 +3988,33 @@ Alpine.data('bookmarks', (labels = {}) => ({
         this.folderEditor = { open: true, id: null, parentId, name: '', color: '', icon: '' };
     },
     openFolderEdit(f) {
-        this.folderEditor = { open: true, id: f.id, parentId: f.parent_id ?? null, name: f.name || '', color: f.color || '', icon: f.icon || '' };
+        this.folderEditor = { open: true, id: f.id, parentId: f.parentId ?? null, name: f.name || '', color: f.color || '', icon: f.icon || '' };
     },
-    async saveFolder() {
+    saveFolder() {
         const e = this.folderEditor;
         const name = (e.name || '').trim();
         if (! name) return;
-        // Seal the folder name (zero-knowledge); color/icon stay plaintext.
-        const sealed = window.Vault.sealName(name);
-        try {
-            if (e.id) {
-                const f = await this._api('PUT', `/bookmarks/folders/${e.id}`, { name: sealed, color: e.color || null, icon: e.icon || null });
-                const i = this.folders.findIndex((x) => x.id === e.id);
-                if (i >= 0) this.folders[i] = this._decFolder(f);
-            } else {
-                const f = await this._api('POST', '/bookmarks/folders', { name: sealed, parent_id: e.parentId, color: e.color || null, icon: e.icon || null });
-                this.folders.push(this._decFolder(f));
-            }
-            this.folders.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-            this.folderEditor.open = false;
-        } catch (err) { this.error = labels.saveFailed; }
+        if (e.id) {
+            const f = this.folders.find((x) => x.id === e.id);
+            if (f) { f.name = name; f.color = e.color || ''; f.icon = e.icon || ''; }
+        } else {
+            this.folders.push({ id: window.LLStore.newId(), name, parentId: e.parentId ?? null, color: e.color || '', icon: e.icon || '' });
+        }
+        this._save();
+        this.folderEditor.open = false;
     },
     addSubfolder(parent) { this.openFolderCreate(parent.id); },
 
     async deleteFolder(f) {
         if (! await this.$store.confirm.ask(labels.deleteFolderConfirm)) return;
-        try {
-            await this._api('DELETE', `/bookmarks/folders/${f.id}`);
-            // The FK is nullOnDelete, so subfolders become roots and their
-            // bookmarks lose the folder; reload to reflect the server truth.
-            await this.load();
-            if (this.view === f.id) this.view = 'all';
-        } catch (e) { this.error = labels.saveFailed; }
+        // Reparent this folder's subfolders to roots and drop the folder from its
+        // bookmarks, so nothing is orphaned inside the manifest.
+        for (const child of this.folders) if (child.parentId === f.id) child.parentId = null;
+        for (const b of this.bookmarks) if (b.folderId === f.id) b.folderId = null;
+        const i = this.folders.findIndex((x) => x.id === f.id);
+        if (i >= 0) this.folders.splice(i, 1);
+        if (this.view === f.id) this.view = 'all';
+        this._save();
     },
 
     // Name of the folder a bookmark lives in (for the list badge).
@@ -4107,7 +4025,7 @@ Alpine.data('bookmarks', (labels = {}) => ({
     get folderTree() {
         const byParent = {};
         for (const f of this.folders) {
-            const p = f.parent_id ?? null;
+            const p = f.parentId ?? null;
             (byParent[p] ??= []).push(f);
         }
         for (const k in byParent) byParent[k].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -4120,27 +4038,22 @@ Alpine.data('bookmarks', (labels = {}) => ({
     },
 
     // ---- Drag & drop into folders ----
-    async onFolderDrop(folderId) {
+    onFolderDrop(folderId) {
         const d = this.dragItem;
         this.dragItem = null;
         if (! d) return;
-        if (d.type === 'bookmark') await this.moveBookmarkToFolder(d.id, folderId);
-        else if (d.type === 'folder' && d.id !== folderId) await this.moveFolderTo(d.id, folderId);
+        if (d.type === 'bookmark') this.moveBookmarkToFolder(d.id, folderId);
+        else if (d.type === 'folder' && d.id !== folderId) this.moveFolderTo(d.id, folderId);
     },
 
-    async moveBookmarkToFolder(id, folderId) {
-        try {
-            const b = await this._api('POST', `/bookmarks/${id}/move`, { folder_id: folderId });
-            this._replace(b);
-        } catch (e) { this.error = labels.saveFailed; }
+    moveBookmarkToFolder(id, folderId) {
+        const b = this.bookmarks.find((x) => x.id === id);
+        if (b) { b.folderId = folderId; this._save(); }
     },
 
-    async moveFolderTo(id, parentId) {
-        try {
-            await this._api('POST', `/bookmarks/folders/${id}/move`, { parent_id: parentId });
-            const f = this.folders.find((x) => x.id === id);
-            if (f) f.parent_id = parentId;
-        } catch (e) { this.error = labels.saveFailed; }
+    moveFolderTo(id, parentId) {
+        const f = this.folders.find((x) => x.id === id);
+        if (f) { f.parentId = parentId; this._save(); }
     },
 
     get allTags() {
@@ -4150,14 +4063,12 @@ Alpine.data('bookmarks', (labels = {}) => ({
     },
     get trashCount() { return this.bookmarks.filter((b) => b.trashed).length; },
     get readLaterCount() { return this.bookmarks.filter((b) => ! b.trashed && b.readLater && ! b.read).length; },
-    get deadCount() { return this.bookmarks.filter((b) => ! b.trashed && b.dead).length; },
 
     get filtered() {
         const q = this.query.trim().toLowerCase();
         let list = this.bookmarks.filter((b) => this.view === 'trash' ? b.trashed : ! b.trashed);
         if (this.view === 'favorites') list = list.filter((b) => b.favorite);
         else if (this.view === 'readlater') list = list.filter((b) => b.readLater && ! b.read);
-        else if (this.view === 'dead') list = list.filter((b) => b.dead);
         else if (this.view !== 'all' && this.view !== 'trash') list = list.filter((b) => b.folderId === this.view);
         if (this.activeTag !== '') list = list.filter((b) => (b.tags ?? []).includes(this.activeTag));
         if (q !== '') {
@@ -4170,7 +4081,7 @@ Alpine.data('bookmarks', (labels = {}) => ({
     },
 
     newBookmark() {
-        const folderId = (this.view !== 'all' && this.view !== 'favorites' && this.view !== 'trash') ? this.view : null;
+        const folderId = (this.view !== 'all' && this.view !== 'favorites' && this.view !== 'readlater' && this.view !== 'trash') ? this.view : null;
         this.editing = { id: null, folderId, title: '', url: '', description: '', tags: [], favorite: false, readLater: this.view === 'readlater' };
         this.tagsValue = '';
         this.editorOpen = true;
@@ -4182,55 +4093,45 @@ Alpine.data('bookmarks', (labels = {}) => ({
     },
     closeEditor() { this.editorOpen = false; this.editing = { id: null, folderId: null, title: '', url: '', description: '', tags: [], favorite: false, readLater: false }; },
 
-    async saveBookmark() {
+    saveBookmark() {
         const e = this.editing;
         const url = (e?.url || '').trim();
         if (! e || ! url) { this.error = labels.urlRequired; return; }
-        // Only http(s): a javascript:/data: URL would execute on click via :href
-        // (the server can no longer validate the sealed URL, so enforce it here).
+        // Only http(s): a javascript:/data: URL would execute on click via :href.
         if (! /^https?:\/\//i.test(url)) { this.error = labels.urlRequired; return; }
-        e.url = url;
-        // Fall back to the host as the title so a bookmark is never untitled.
-        if (! (e.title || '').trim()) e.title = this.host(e.url) || e.url;
         this.error = '';
-        e.tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
-        // Seal {url,title,description,tags}; only the folder + favorite flag +
-        // read-state stay plaintext server-side.
-        const body = { bookmark_folder_id: e.folderId ?? null, enc_bookmark: this._encBookmark(e), favorite: !! e.favorite };
-        try {
-            const saved = e.id ? await this._api('PUT', `/bookmarks/${e.id}`, body) : await this._api('POST', '/bookmarks', body);
-            // Keep the local plaintext; merge the server's flags/id.
-            const local = { ...e, id: saved.id, folderId: saved.folderId, trashed: saved.trashed, dead: !! saved.dead, read: !! saved.read, readLater: !! saved.readLater, _decOk: true };
-            if (!! e.readLater !== !! saved.readLater) {
-                const r = await this._api('PATCH', `/bookmarks/${saved.id}`, { read_later: !! e.readLater });
-                local.readLater = !! r.readLater; local.read = !! r.read;
-            }
-            this._replace(local);
-            this.closeEditor();
-        } catch (err) { this.error = labels.saveFailed; }
+        // Fall back to the host as the title so a bookmark is never untitled.
+        const title = (e.title || '').trim() || this.host(url) || url;
+        const description = e.description || '';
+        const tags = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
+        const folderId = e.folderId ?? null;
+        const favorite = !! e.favorite;
+        const readLater = !! e.readLater;
+        if (e.id) {
+            const b = this.bookmarks.find((x) => x.id === e.id);
+            if (b) { b.url = url; b.title = title; b.description = description; b.tags = tags; b.folderId = folderId; b.favorite = favorite; b.readLater = readLater; }
+        } else {
+            this.bookmarks.unshift({ id: window.LLStore.newId(), url, title, description, tags, folderId, favorite, readLater, read: false, trashed: false });
+        }
+        this._save();
+        this.closeEditor();
     },
 
-    async toggleReadLater(b) { await this._patch(b, { read_later: ! b.readLater }); },
-    async markRead(b) { await this._patch(b, { read: true }); },
-
-    async _patch(b, changes) {
-        // The PATCH response is the sealed row; decrypt it before replacing so the
-        // in-memory bookmark keeps its plaintext url/title/tags.
-        try { this._replace(this._decBookmark(await this._api('PATCH', `/bookmarks/${b.id}`, changes))); }
-        catch (e) { this.error = labels.saveFailed; }
-    },
-    async toggleFavorite(b) { await this._patch(b, { favorite: ! b.favorite }); },
-    async trash(b) { await this._patch(b, { trashed: true }); },
-    async restore(b) { await this._patch(b, { trashed: false }); },
+    toggleReadLater(b) { b.readLater = ! b.readLater; if (! b.readLater) b.read = false; this._save(); },
+    markRead(b) { b.read = true; this._save(); },
+    toggleFavorite(b) { b.favorite = ! b.favorite; this._save(); },
+    trash(b) { b.trashed = true; this._save(); },
+    restore(b) { b.trashed = false; this._save(); },
     async remove(b) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
-        try { await this._api('DELETE', `/bookmarks/${b.id}`); this.bookmarks = this.bookmarks.filter((x) => x.id !== b.id); }
-        catch (e) { this.error = labels.saveFailed; }
+        const i = this.bookmarks.findIndex((x) => x.id === b.id);
+        if (i >= 0) this.bookmarks.splice(i, 1);
+        this._save();
     },
     async emptyTrash() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
-        try { await this._api('DELETE', '/bookmarks/trash/all'); this.bookmarks = this.bookmarks.filter((b) => ! b.trashed); }
-        catch (e) { this.error = labels.saveFailed; }
+        for (let i = this.bookmarks.length - 1; i >= 0; i--) if (this.bookmarks[i].trashed) this.bookmarks.splice(i, 1);
+        this._save();
     },
 }));
 

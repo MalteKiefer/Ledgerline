@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\Bookmark;
 use App\Models\Person;
 use App\Models\Photo;
 use App\Models\StoredFile;
-use App\Models\Todo;
-use App\Models\TodoList;
 use App\Models\User;
 use App\Models\VaultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,38 +34,6 @@ class UserIsolationTest extends TestCase
         $this->actingAs($bob)->getJson(route('store.show'))
             ->assertOk()->assertJson(['ciphertext' => null, 'version' => 0]);
         $this->assertSame($alice->id, VaultStore::query()->where('ciphertext', 'alice-sealed-blob')->value('user_id'));
-    }
-
-    public function test_todos_and_lists_are_private(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $this->actingAs($alice);
-        $list = TodoList::create(['name' => 'alice-sealed-list', 'is_encrypted' => true]);
-        $this->postJson(route('todos.store'), [
-            'enc_todo' => 'alice-sealed-task', 'priority' => 'normal', 'todo_list_id' => $list->id,
-        ])->assertOk();
-        $this->getJson(route('todos.data'))->assertOk()->assertJsonFragment(['enc_todo' => 'alice-sealed-task']);
-
-        // Bob sees none of Alice's to-dos or lists, and the rows carry Alice's user_id.
-        $this->actingAs($bob);
-        $this->assertSame(0, Todo::count());
-        $this->assertSame(0, TodoList::count());
-        $this->getJson(route('todos.data'))->assertOk()->assertJsonMissing(['enc_todo' => 'alice-sealed-task']);
-        $this->assertSame($alice->id, Todo::withoutGlobalScopes()->first()->user_id);
-    }
-
-    public function test_bookmarks_are_private(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $this->actingAs($alice);
-        $this->postJson(route('bookmarks.store'), ['enc_bookmark' => 'alice-sealed'])->assertSuccessful();
-
-        $this->actingAs($bob);
-        $this->assertSame(0, Bookmark::count());
     }
 
     public function test_files_are_private_and_raw_download_is_owner_only(): void
@@ -118,7 +83,10 @@ class UserIsolationTest extends TestCase
         $alice = User::factory()->create();
         $this->actingAs($alice);
 
-        $list = TodoList::create(['name' => 'sealed-list', 'is_encrypted' => true]);
-        $this->assertSame($alice->id, $list->user_id);
+        $file = StoredFile::create([
+            'id' => (string) Str::uuid(), 'enc_metadata' => '{"c":"c2VhbGVkYQ==","n":"bm9uY2Vh"}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}',
+            'is_encrypted' => true, 'size' => 12, 'blob' => (string) Str::uuid(), 'tags' => [],
+        ]);
+        $this->assertSame($alice->id, $file->user_id);
     }
 }
