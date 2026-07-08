@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  * Ownership record for an uploaded raw blob (files/{blob}) before it is attached
  * to a StoredFile via the manifest sync. See the create migration for why.
  */
-#[Fillable(['blob', 'user_id', 'created_at'])]
+#[Fillable(['blob', 'user_id', 'size', 'created_at'])]
 class FileBlob extends Model
 {
     public $timestamps = false;
