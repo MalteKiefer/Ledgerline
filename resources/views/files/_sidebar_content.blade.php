@@ -30,11 +30,6 @@
         <span class="flex-1 text-left">{{ __('files.trash') }}</span>
         <span x-show="trashCount > 0" x-cloak x-text="trashCount" class="rounded-full bg-gray-200 dark:bg-gray-700 px-1.5 text-xs text-gray-600 dark:text-gray-300"></span>
     </button>
-    <button type="button" @click="openUploadLinks(); $store.nav.closeAll && $store.nav.closeAll()"
-        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-        <x-icon name="inbox-arrow-down" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
-        <span>{{ __('upload_links.sidebar') }}</span>
-    </button>
 </nav>
 
 {{-- New folder (creates in the current folder) --}}

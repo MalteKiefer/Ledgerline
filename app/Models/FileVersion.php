@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A prior blob of a StoredFile, snapshotted when the file's content changed on
  * sync. Downloadable as a safety net; the newest N are kept per file.
  */
-#[Fillable(['id', 'file_id', 'user_id', 'name', 'mime', 'size', 'blob', 'created_at'])]
+#[Fillable(['id', 'file_id', 'user_id', 'name', 'mime', 'size', 'blob', 'created_at', 'enc_metadata', 'enc_file_key', 'is_encrypted'])]
 class FileVersion extends Model
 {
     public $timestamps = false;

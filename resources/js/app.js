@@ -3,6 +3,12 @@ import intersect from '@alpinejs/intersect';
 import DOMPurify from 'dompurify';
 import 'github-markdown-css/github-markdown-light.css';
 import 'highlight.js/styles/github.css';
+import { Vault } from './vault';
+
+// Zero-knowledge encryption vault (client-side crypto for the Files module).
+// Exposed globally so the vault UI + files component can lock/unlock/encrypt.
+window.Vault = Vault;
+Vault.boot();
 
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
@@ -27,6 +33,29 @@ document.addEventListener('alpine:init', () => {
         toggleSidebar() { this.sidebarOpen = ! this.sidebarOpen; if (this.sidebarOpen) this.navOpen = false; },
         closeAll() { this.navOpen = false; this.sidebarOpen = false; },
     });
+
+    // Reactive wrapper around the zero-knowledge Vault crypto module. Tracks
+    // whether the user's vault is configured (server) and unlocked (this login),
+    // so the Files UI can gate on it. All crypto stays in window.Vault; nothing
+    // secret is held here.
+    Alpine.store('vault', {
+        configured: false,
+        _unlockedAt: 0, // reactive nonce bumped on lock/unlock so getters re-run
+        get unlocked() { this._unlockedAt; return window.Vault.unlocked(); },
+        async init() {
+            try { this.configured = (await window.Vault.status()).configured; } catch (e) { /* leave false */ }
+        },
+        async setup(passphrase) {
+            const code = await window.Vault.setup(passphrase);
+            this.configured = true; this._unlockedAt++;
+            return code;
+        },
+        async unlock(passphrase) { await window.Vault.unlock(passphrase); this._unlockedAt++; },
+        async recover(code) { await window.Vault.recover(code); this._unlockedAt++; },
+        async changePassphrase(a, b) { await window.Vault.changePassphrase(a, b); this._unlockedAt++; },
+        lock() { window.Vault.lock(); this._unlockedAt++; },
+    });
+    Alpine.store('vault').init();
 });
 
 // CSP-safe replacement for inline `onsubmit="return confirm(...)"`: any form
@@ -2964,7 +2993,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     sortDir: 'asc',
     sortKey: 'name', // name | size | date
     layout: (typeof localStorage !== 'undefined' && localStorage.getItem('ll-files-layout')) || 'list', // list | grid
-    contentMatchIds: [], // file ids matching a full-text (content) search
     renaming: null,   // item id currently renamed inline
     renameValue: '',
     moveRefs: [],     // [{kind, id}] for the move modal
@@ -2979,21 +3007,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     activeTag: '',
     view: 'files', // files | favorites | recent | trash
     newFolderName: '',
-    extracting: { active: false, name: '', done: 0, total: 0 },
-    renameOpen: false,
-    renameOpts: { find: '', replace: '', prefix: '', suffix: '' },
     infoOpen: false,
     infoRow: null,
     infoNote: '',
-    publicOpen: false,
-    publicRow: null,
-    publicLink: null,
-    publicOpts: { expires_in: '', password: '' },
-    publicBusy: false,
-    uploadLinkOpen: false,
-    uploadLinks: [],
-    uploadLinkForm: { folder_id: '', label: '', extensions: '', expires_in: '', password: '', max_file_mb: '' },
-    uploadLinkBusy: false,
     migrateOpen: false,
     migrateRow: null,
     migrateDelete: true,
@@ -3016,9 +3032,17 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         // Switching view clears any selection, so a stale pick doesn't keep the
         // bulk bar / select-all checkbox active.
         this.$watch('view', () => { this.selected = []; });
-        // Full-text (content/OCR) search: query the server as the term changes.
-        this.$watch('query', () => this.fetchContentMatches());
-        await this.load();
+        // Zero-knowledge gate: the tree can only be decrypted with an unlocked
+        // vault. Load once unlocked, and (re)load the moment the vault unlocks.
+        if (this.$store.vault.unlocked) {
+            await this.load();
+        } else {
+            this.state = 'locked';
+        }
+        this.$watch('$store.vault.unlocked', (on) => {
+            if (on && this.state !== 'ready') this.load();
+            if (! on) { this.state = 'locked'; this.manifest = { v: 1, folders: [], files: [] }; }
+        });
     },
 
     initDropzone() {
@@ -3089,12 +3113,63 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const res = await fetch(config.dataUrl, { cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) { this.state = 'error'; return; }
             const data = await res.json();
-            this.manifest = data.files ? data : { v: 1, folders: [], files: [] };
+            const raw = data.files ? data : { v: 1, folders: [], files: [] };
+            // Decrypt the sealed names/metadata into the in-memory manifest so the
+            // rest of the UI (rendering, sort, search, rename) works on plaintext
+            // that never leaves the browser. Requires an unlocked vault.
+            this.manifest = {
+                v: raw.v,
+                folders: (raw.folders || []).map((f) => this._decFolder(f)),
+                files: (raw.files || []).map((f) => this._decFile(f)),
+            };
             this.usage = data.usage || { used: 0, quota: 0 };
             this.state = 'ready';
         } catch (e) {
             this.state = 'error';
         }
+    },
+
+    // ---- Zero-knowledge (de/serialize the manifest) ----
+
+    // Decrypt a server folder row {id,name(sealed),parent} to an in-memory row.
+    _decFolder(f) {
+        let name = '';
+        try { name = window.Vault.decryptFileMeta(f.name).name; } catch (e) { name = '???'; }
+        return { id: f.id, name, parent: f.parent ?? null };
+    },
+    // Decrypt a server file row into the plaintext shape the UI expects, keeping
+    // the wrapped file key + blob for later download/persist.
+    _decFile(f) {
+        let meta = { name: '???', mime: 'application/octet-stream', size: f.size };
+        try { meta = window.Vault.decryptFileMeta(f.enc_metadata); } catch (e) { /* stays ??? */ }
+        return {
+            id: f.id, blob: f.blob, encFileKey: f.enc_file_key,
+            name: meta.name, mime: meta.mime, size: f.size,
+            folder: f.folder ?? null, trashed: f.trashed ?? null, created: f.created ?? null,
+            favorite: !! f.favorite, note: this._openNote(f.note), tags: f.tags || [],
+        };
+    },
+    // Notes are sealed too (the server must not see their plaintext).
+    _openNote(sealed) {
+        if (! sealed) return null;
+        try { return window.Vault.decryptFileMeta(sealed).name; } catch (e) { return ''; }
+    },
+    // Re-seal an in-memory folder row for the wire.
+    _encFolder(f) {
+        return { id: f.id, name: window.Vault.sealName(f.name), parent: f.parent ?? null };
+    },
+    // Re-seal an in-memory file row for the wire: fresh sealed metadata (name may
+    // have changed via rename) plus the already-wrapped per-file key from upload.
+    _encFile(f) {
+        const m = window.Vault.encryptMeta({ name: f.name, mime: f.mime || 'application/octet-stream', size: f.size });
+        return {
+            id: f.id, blob: f.blob,
+            enc_metadata: JSON.stringify({ c: m.cipher, n: m.nonce }),
+            enc_file_key: f.encFileKey,
+            folder: f.folder ?? null, tags: f.tags || [],
+            trashed: f.trashed ?? null, favorite: !! f.favorite,
+            note: f.note ? window.Vault.sealName(f.note) : null,
+        };
     },
 
     usage: { used: 0, quota: 0 },
@@ -3104,16 +3179,30 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.versions = { open: true, row, list: [], loading: true };
         try {
             const res = await fetch(config.versionsBase + '/' + row.id + '/versions', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (res.ok) this.versions.list = (await res.json()).versions || [];
+            if (res.ok) {
+                // Decrypt each snapshot's sealed metadata for display; keep the
+                // wrapped key for restore/download.
+                this.versions.list = ((await res.json()).versions || []).map((v) => {
+                    let meta = { name: '???', mime: 'application/octet-stream' };
+                    try { meta = window.Vault.decryptFileMeta(v.enc_metadata); } catch (e) { /* stays ??? */ }
+                    return { ...v, name: meta.name, mime: meta.mime };
+                });
+            }
         } catch (e) { /* keep empty */ }
         this.versions.loading = false;
     },
-    versionDownloadUrl(versionId) {
-        return config.versionsBase + '/' + this.versions.row.id + '/versions/' + versionId + '/download';
+    // Download a snapshot: fetch its ciphertext and decrypt with the version's
+    // own wrapped key (each version has its own key).
+    async downloadVersion(v) {
+        try {
+            const res = await fetch(config.versionsBase + '/' + this.versions.row.id + '/versions/' + v.id + '/download', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) throw new Error('fetch failed');
+            saveBlobAs(window.Vault.decryptFile(await res.arrayBuffer(), v.encFileKey ?? v.enc_file_key), v.name, v.mime);
+        } catch (e) { this.error = labels.downloadFailed; }
     },
     // Restore a version by pointing the file's manifest row back at the version's
-    // blob and re-syncing. The client stays authoritative; the sync then snapshots
-    // the pre-restore blob as a new version automatically.
+    // blob AND its wrapped key (so the old ciphertext stays decryptable), then
+    // re-syncing. The sync snapshots the pre-restore blob as a new version.
     async restoreVersion(v) {
         if (! await this.$store.confirm.ask(labels.restoreConfirm || '')) return;
         const row = this.manifest.files.find((f) => f.id === this.versions.row.id);
@@ -3121,6 +3210,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         row.blob = v.blob;
         row.size = v.size;
         row.mime = v.mime;
+        row.encFileKey = v.encFileKey ?? v.enc_file_key;
         await this.persist();
         this.versions.open = false;
         await this.load();
@@ -3155,7 +3245,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const res = await fetch(config.dataUrl, {
                 method: 'PUT',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ folders: this.manifest.folders, files: this.manifest.files }),
+                body: JSON.stringify({
+                    folders: this.manifest.folders.map((f) => this._encFolder(f)),
+                    files: this.manifest.files.map((f) => this._encFile(f)),
+                }),
             });
             if (! res.ok) throw new Error('save failed');
             this.error = '';
@@ -3223,7 +3316,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             let scoped = (q === '' && tag === '')
                 ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
                 : list;
-            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || this.contentMatchIds.includes(x.id));
+            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q));
             if (tag !== '') scoped = scoped.filter((x) => (x.tags ?? []).includes(tag));
             return scoped;
         };
@@ -3275,98 +3368,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.infoOpen = true;
     },
 
-    // ---- Upload (file-request) links ----
-    async openUploadLinks() {
-        this.uploadLinkForm = { folder_id: this.cwd || '', label: '', extensions: '', expires_in: '', password: '', max_file_mb: '' };
-        this.uploadLinkOpen = true;
-        try {
-            const r = await fetch(config.uploadLinksUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) this.uploadLinks = (await r.json()).links ?? [];
-        } catch (e) { /* keep list */ }
-    },
-    async createUploadLink() {
-        this.uploadLinkBusy = true;
-        try {
-            const f = this.uploadLinkForm;
-            const r = await fetch(config.uploadLinksUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({
-                    folder_id: f.folder_id || null,
-                    label: f.label || null,
-                    extensions: f.extensions || null,
-                    expires_in: f.expires_in ? Number(f.expires_in) : null,
-                    password: f.password || null,
-                    max_file_mb: f.max_file_mb ? Number(f.max_file_mb) : null,
-                }),
-            });
-            if (r.ok) { this.uploadLinks.unshift(await r.json()); this.uploadLinkForm.label = ''; this.uploadLinkForm.password = ''; }
-            else { window.llToast(labels.saveFailed); }
-        } catch (e) { window.llToast(labels.saveFailed); } finally { this.uploadLinkBusy = false; }
-    },
-    async revokeUploadLink(id) {
-        try {
-            const r = await fetch(`${config.uploadLinkBase}/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } });
-            if (r.ok) this.uploadLinks = this.uploadLinks.filter((l) => l.id !== id);
-        } catch (e) { window.llToast(labels.saveFailed); }
-    },
-    copyUploadLink(url) {
-        navigator.clipboard?.writeText(url).then(() => window.llToast(labels.linkCopied)).catch(() => {});
-    },
-    uploadLinkFolderName(id) {
-        if (! id) return labels.rootFolder;
-        const f = this.manifest.folders.find((x) => x.id === id);
-        return f ? f.name : labels.rootFolder;
-    },
-
-    // ---- Public download links ----
-    async openPublicLink(row) {
-        this.publicRow = row;
-        this.publicLink = null;
-        this.publicOpts = { expires_in: '', password: '' };
-        this.publicOpen = true;
-        try {
-            const r = await fetch(`${config.versionsBase}/${row.id}/public-link`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) this.publicLink = (await r.json()).link;
-        } catch (e) { /* leave empty */ }
-    },
-
-    async createPublic() {
-        this.publicBusy = true;
-        try {
-            const r = await fetch(`${config.versionsBase}/${this.publicRow.id}/public-link`, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ expires_in: this.publicOpts.expires_in ? Number(this.publicOpts.expires_in) : null, password: this.publicOpts.password || null }),
-            });
-            if (r.ok) { this.publicLink = await r.json(); } else { window.llToast(labels.saveFailed); }
-        } catch (e) { window.llToast(labels.saveFailed); } finally { this.publicBusy = false; }
-    },
-
-    async rotatePublic() {
-        if (! this.publicLink) return;
-        try {
-            const r = await fetch(`${config.publicLinkBase}/${this.publicLink.id}/rotate`, {
-                method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            });
-            if (r.ok) this.publicLink = await r.json();
-        } catch (e) { window.llToast(labels.saveFailed); }
-    },
-
-    async revokePublic() {
-        if (! this.publicLink) return;
-        try {
-            const r = await fetch(`${config.publicLinkBase}/${this.publicLink.id}`, {
-                method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            });
-            if (r.ok) this.publicLink = null;
-        } catch (e) { window.llToast(labels.saveFailed); }
-    },
-
-    copyPublicLink() {
-        if (this.publicLink?.url) navigator.clipboard?.writeText(this.publicLink.url).then(() => window.llToast(labels.linkCopied)).catch(() => {});
-    },
-
     // Save the note on the current info file (targeted endpoint + manifest sync).
     async saveNote() {
         const row = this.infoRow;
@@ -3374,8 +3375,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const note = this.infoNote.trim();
         if ((row.note || '') === note) return;
         const f = this.manifest.files.find((x) => x.id === row.id);
-        if (f) f.note = note; // optimistic
-        if (! await this.filesPost(`${config.versionsBase}/${row.id}/note`, { note })) {
+        if (f) f.note = note; // optimistic (plaintext in-memory)
+        // Seal before it leaves the browser — the server stores only ciphertext.
+        const sealed = note ? window.Vault.sealName(note) : null;
+        if (! await this.filesPost(`${config.versionsBase}/${row.id}/note`, { note: sealed })) {
             window.llToast(labels.saveFailed);
         }
     },
@@ -3720,62 +3723,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
-    // Duplicate a row (or the selection). Files share the blob; folders copy deep.
-    async duplicate(row) {
-        const refs = row ? [{ kind: row.kind, id: row.id }] : this.selectionRefs;
-        if (! refs.length) return;
-        const body = {
-            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
-            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
-        };
-        if (! await this.filesPost(config.duplicateUrl, body)) { window.llToast(labels.duplicateFailed); return; }
-        this.selected = [];
-        await this.load();
-    },
-
-    openBulkRename() {
-        if (! this.selected.length) return;
-        this.renameOpts = { find: '', replace: '', prefix: '', suffix: '' };
-        this.renameOpen = true;
-    },
-
-    async applyBulkRename() {
-        const refs = this.selectionRefs;
-        this.renameOpen = false;
-        if (! refs.length) return;
-        const body = {
-            file_ids: refs.filter((r) => r.kind === 'file').map((r) => r.id),
-            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
-            ...this.renameOpts,
-        };
-        if (! await this.filesPost(config.bulkRenameUrl, body)) { window.llToast(labels.renameFailed); return; }
-        this.selected = [];
-        await this.load();
-    },
-
-    // Queue an async export of the selection (files + folders). A worker builds
-    // the zip(s) server-side (folder structure preserved) and it appears under
-    // Downloads — no in-browser zipping or memory pressure.
-    async bulkDownload(format = 'zip') {
-        const refs = this.selectionRefs;
-        if (! refs.length) return;
-
-        const file_ids = refs.filter((r) => r.kind === 'file').map((r) => r.id);
-        const folder_ids = refs.filter((r) => r.kind !== 'file').map((r) => r.id);
-        if (! file_ids.length && ! folder_ids.length) return;
-
-        try {
-            const res = await fetch(labels.exportUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ file_ids, folder_ids, format }),
-            });
-            if (res.ok) { window.llToast(labels.exportQueued, labels.downloadsUrl); }
-            else { const body = await res.json().catch(() => ({})); if (body.message) window.llToast(body.message); }
-        } catch (e) { /* user can retry */ }
-        this.selected = [];
-    },
-
     /* ---- Content operations ---- */
 
     upload(fileList) {
@@ -3857,16 +3804,24 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 const item = items[idx];
                 const entry = this.uploads[start + idx]; // reactive element
                 try {
-                    // Large files go through chunked (S3 multipart) upload so they
-                    // clear the proxy/PHP body-size limits and GB files work.
-                    const id = item.file.size > 64 * 1024 * 1024
-                        ? await this._uploadChunked(item.file, entry)
-                        : await this._uploadOne(item.file, entry);
+                    // Zero-knowledge: encrypt the whole file in the browser first,
+                    // then upload only the ciphertext. The wrapped per-file key
+                    // (encFileKey) and the plaintext name/size stay client-side.
+                    const enc = await window.Vault.encryptFile(item.file);
+                    // Neutral filename — the real name is sealed inside encMeta and
+                    // never sent to the server.
+                    const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+                    // Large ciphertext goes through chunked (S3 multipart) upload so
+                    // it clears the proxy/PHP body-size limits and GB files work.
+                    const id = cipher.size > 64 * 1024 * 1024
+                        ? await this._uploadChunked(cipher, entry)
+                        : await this._uploadOne(cipher, entry);
                     entry.state = 'done';
                     entry.progress = 100;
                     this.manifest.files.push({
                         id: crypto.randomUUID(),
                         blob: id,
+                        encFileKey: enc.encFileKey,
                         name: item.file.name,
                         mime: item.file.type || 'application/octet-stream',
                         size: item.file.size,
@@ -4000,12 +3955,15 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.uploads = [];
     },
 
+    // Fetch a file's ciphertext and decrypt it in the browser back to plaintext
+    // bytes. Central to download + preview, so decrypting here makes every
+    // consumer zero-knowledge with no per-caller change.
     async fetchPlain(row) {
         const res = await fetch(`${config.rawBase}/${row.blob}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
         });
         if (! res.ok) throw new Error('fetch failed');
-        return new Uint8Array(await res.arrayBuffer());
+        return window.Vault.decryptFile(await res.arrayBuffer(), row.encFileKey);
     },
 
     async download(row) {
@@ -4031,23 +3989,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         return row?.kind === 'file' && (row.mime || '').startsWith('image/');
     },
 
-    thumbUrl(row) {
-        return `${config.thumbBase}/${row.blob}`;
-    },
-
-    _contentTimer: null,
-    fetchContentMatches() {
-        clearTimeout(this._contentTimer);
-        const q = this.query.trim();
-        if (q.length < 2) { this.contentMatchIds = []; return; }
-        this._contentTimer = setTimeout(async () => {
-            try {
-                const r = await fetch(`${config.searchContentUrl}?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (r.ok) this.contentMatchIds = (await r.json()).ids ?? [];
-            } catch (e) { /* keep previous */ }
-        }, 250);
-    },
-
     setLayout(l) {
         this.layout = l;
         try { localStorage.setItem('ll-files-layout', l); } catch (e) { /* ignore */ }
@@ -4060,66 +4001,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
     sortArrow(key) {
         return this.sortKey === key ? (this.sortDir === 'asc' ? '↑' : '↓') : '';
-    },
-
-    // Zip the current selection into a new file in this folder (server-side).
-    async createArchive() {
-        const refs = this.selectionRefs;
-        if (! refs.length) return;
-        try {
-            const res = await fetch(config.archiveUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ refs, folder_id: this.cwd }),
-            });
-            if (! res.ok) { const b = await res.json().catch(() => ({})); window.llToast(b.message || labels.archiveFailed); return; }
-            this.selected = [];
-            await this.load();
-            window.llToast(labels.archivedToast);
-        } catch (e) { window.llToast(labels.archiveFailed); }
-    },
-
-    // Extract a zip file into a new folder next to it (server-side).
-    async extractArchive(row) {
-        if (this.extracting.active) { window.llToast(labels.extractBusy || labels.extractFailed); return; }
-        try {
-            const res = await fetch(`${config.versionsBase}/${row.id}/extract`, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            });
-            if (! res.ok) { const b = await res.json().catch(() => ({})); window.llToast(b.message || labels.extractFailed); return; }
-            const { token } = await res.json();
-            // Extraction runs in the background now (large archives would time the
-            // request out); show a live progress badge and poll until it finishes.
-            this.extracting = { active: true, name: row.name, done: 0, total: 0 };
-            this._pollExtract(token);
-        } catch (e) { window.llToast(labels.extractFailed); }
-    },
-
-    async _pollExtract(token) {
-        for (;;) {
-            await new Promise((r) => setTimeout(r, 1200));
-            let s;
-            try {
-                const r = await fetch(`${config.extractStatusBase}/${token}/status`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (! r.ok) break; // session gone
-                s = await r.json();
-            } catch (e) { continue; }
-            this.extracting.done = s.done || 0;
-            this.extracting.total = s.total || 0;
-            if (s.state === 'done') {
-                this.extracting.active = false;
-                await this.load();
-                window.llToast(labels.extractedToast);
-                return;
-            }
-            if (s.state === 'failed') {
-                this.extracting.active = false;
-                window.llToast(s.error || labels.extractFailed);
-                return;
-            }
-        }
-        this.extracting.active = false;
     },
 
     // Open the Paperless modal immediately, then decrypt the PDF in the

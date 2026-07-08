@@ -45,12 +45,12 @@ class FilesTest extends TestCase
         $this->putJson(route('files.sync'), [
             'folders' => [],
             'files' => [[
-                'id' => $fileId, 'blob' => $blob, 'name' => 'doc.pdf',
-                'mime' => 'application/pdf', 'size' => 12, 'folder' => null, 'tags' => ['work'],
+                'id' => $fileId, 'blob' => $blob, 'enc_metadata' => 'sealed',
+                'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => ['work'],
             ]],
         ])->assertOk();
 
-        $this->assertDatabaseHas('files', ['id' => $fileId, 'name' => 'doc.pdf']);
+        $this->assertDatabaseHas('files', ['id' => $fileId, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'is_encrypted' => true]);
         $this->assertSame(['work'], StoredFile::find($fileId)->tags);
     }
 
@@ -65,7 +65,7 @@ class FilesTest extends TestCase
         // SOFT-deleted (recoverable from the trash), never hard-deleted, so a
         // stale/partial/racing manifest can never cause irreversible loss.
         $this->putJson(route('files.sync'), ['folders' => [], 'files' => [[
-            'id' => $keep->id, 'blob' => $keepBlob, 'name' => 'keep', 'mime' => 'text/plain', 'size' => 1, 'folder' => null, 'tags' => [],
+            'id' => $keep->id, 'blob' => $keepBlob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => [],
         ]]])->assertOk();
 
         $this->assertNotNull(StoredFile::find($keep->id));
@@ -88,7 +88,7 @@ class FilesTest extends TestCase
         $id = (string) Str::uuid();
         $this->putJson(route('files.sync'), [
             'folders' => [],
-            'files' => [['id' => $id, 'blob' => $blob, 'name' => 'x', 'mime' => 'text/plain', 'size' => 5, 'folder' => null, 'tags' => []]],
+            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => []]],
         ])->assertOk();
 
         // Dropping the file (explicitly confirmed) SOFT-deletes it and KEEPS its
@@ -113,7 +113,7 @@ class FilesTest extends TestCase
         // back from the data endpoint (so it shows in the trash view).
         $this->putJson(route('files.sync'), [
             'folders' => [],
-            'files' => [['id' => $id, 'blob' => $blob, 'name' => 'x', 'mime' => 'text/plain', 'size' => 1, 'folder' => null, 'tags' => [], 'trashed' => now()->toIso8601String()]],
+            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => [], 'trashed' => now()->toIso8601String()]],
         ])->assertOk();
 
         $this->assertTrue(StoredFile::withTrashed()->find($id)->trashed());
@@ -146,8 +146,8 @@ class FilesTest extends TestCase
         $this->putJson(route('files.sync'), [
             'folders' => [],
             'files' => [[
-                'id' => (string) Str::uuid(), 'blob' => (string) Str::uuid(), 'name' => 'x',
-                'mime' => 'text/plain', 'size' => 1, 'folder' => (string) Str::uuid(), 'tags' => [],
+                'id' => (string) Str::uuid(), 'blob' => (string) Str::uuid(), 'enc_metadata' => 'sealed',
+                'enc_file_key' => 'wrapped', 'folder' => (string) Str::uuid(), 'tags' => [],
             ]],
         ])->assertStatus(422);
 
@@ -166,24 +166,6 @@ class FilesTest extends TestCase
 
         $this->deleteJson(route('files.blob.destroy', $blob))->assertStatus(409);
         Storage::disk('files')->assertExists('files/'.$blob);
-    }
-
-    public function test_import_sniffs_the_mime_from_content(): void
-    {
-        $this->signIn();
-        Storage::fake('files');
-        config(['files.disk' => 'files']);
-
-        // PNG bytes behind a .txt name and a lying client mime: the stored mime
-        // is derived from the content (image/png) via finfo, never the header.
-        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
-        $path = tempnam(sys_get_temp_dir(), 'imp');
-        file_put_contents($path, $png);
-        $file = new UploadedFile($path, 'evil.txt', 'text/plain', null, true);
-
-        $this->post(route('files.import'), ['file' => $file])->assertCreated();
-
-        $this->assertSame('image/png', StoredFile::first()->mime);
     }
 
     public function test_files_appear_in_global_search(): void

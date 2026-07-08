@@ -71,17 +71,17 @@ class UserIsolationTest extends TestCase
         $blob = (string) Str::uuid();
         Storage::disk(config('files.disk'))->put('files/'.$blob, 'secret bytes');
         StoredFile::create([
-            'id' => (string) Str::uuid(), 'name' => 'a.txt',
-            'mime' => 'text/plain', 'size' => 12, 'blob' => $blob, 'tags' => [],
+            'id' => (string) Str::uuid(), 'enc_metadata' => 'sealed-a.txt', 'enc_file_key' => 'wrapped',
+            'is_encrypted' => true, 'size' => 12, 'blob' => $blob, 'tags' => [],
         ]);
 
         // Owner can list + download.
-        $this->getJson(route('files.data'))->assertOk()->assertJsonFragment(['name' => 'a.txt']);
+        $this->getJson(route('files.data'))->assertOk()->assertJsonFragment(['enc_metadata' => 'sealed-a.txt']);
         $this->get(route('files.raw', ['blob' => $blob]))->assertOk();
 
         // Bob sees no files and cannot fetch Alice's blob by its UUID.
         $this->actingAs($bob);
-        $this->getJson(route('files.data'))->assertOk()->assertJsonMissing(['name' => 'a.txt']);
+        $this->getJson(route('files.data'))->assertOk()->assertJsonMissing(['enc_metadata' => 'sealed-a.txt']);
         $this->get(route('files.raw', ['blob' => $blob]))->assertNotFound();
     }
 

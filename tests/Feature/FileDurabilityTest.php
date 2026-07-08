@@ -20,16 +20,19 @@ class FileDurabilityTest extends TestCase
 
     private function syncOneFile(User $user, string $id, string $blob, int $size = 10): void
     {
-        // Sync only accepts blobs the user actually uploaded; register it.
+        // Sync only accepts blobs the user actually uploaded; register it and
+        // put its bytes on disk so the server can read the authoritative size.
         FileBlob::firstOrCreate(['blob' => $blob], ['user_id' => $user->id, 'created_at' => now()]);
+        Storage::disk(config('files.disk'))->put('files/'.$blob, str_repeat('x', $size));
         $this->actingAs($user)->putJson(route('files.sync'), [
             'folders' => [],
-            'files' => [['id' => $id, 'blob' => $blob, 'name' => 'doc.txt', 'mime' => 'text/plain', 'size' => $size, 'tags' => []]],
+            'files' => [['id' => $id, 'blob' => $blob, 'enc_metadata' => 'sealed', 'enc_file_key' => 'wrapped', 'folder' => null, 'tags' => []]],
         ])->assertOk();
     }
 
     public function test_changing_a_files_blob_snapshots_the_old_blob_as_a_version(): void
     {
+        Storage::fake(config('files.disk'));
         $user = User::factory()->create();
         $id = (string) Str::uuid();
         $blobA = (string) Str::uuid();

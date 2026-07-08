@@ -41,20 +41,6 @@ class ExportTest extends TestCase
         Queue::assertPushed(BuildExport::class);
     }
 
-    public function test_files_export_endpoint_queues_a_job(): void
-    {
-        Queue::fake();
-        $this->signIn();
-        $file = StoredFile::create(['id' => (string) Str::uuid(), 'name' => 'a.txt', 'blob' => (string) Str::uuid(), 'size' => 3]);
-
-        $this->postJson(route('files.export'), ['file_ids' => [$file->id]])
-            ->assertStatus(202)
-            ->assertJson(['queued' => true]);
-
-        $this->assertDatabaseHas('exports', ['source' => 'files', 'status' => 'queued']);
-        Queue::assertPushed(BuildExport::class);
-    }
-
     public function test_build_produces_a_ready_zip_and_a_notification(): void
     {
         Storage::fake('files');
