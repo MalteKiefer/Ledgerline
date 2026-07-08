@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Dav\Files;
 
 use App\Models\DavCredential;
+use App\Models\FileBlob;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
+use App\Models\UserSetting;
 use App\Support\BlobStore;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -57,7 +59,33 @@ class FileDavBackend
         }
         @unlink($tmp);
 
+        // Record the uploader so this blob is recognised by the web full-replace
+        // sync and reclaimable by the orphan sweep if never attached.
+        FileBlob::create(['blob' => $blob, 'user_id' => $userId, 'created_at' => now()]);
+
         return $blob;
+    }
+
+    /**
+     * Snapshot a file's previous content as a version before a DAV overwrite,
+     * then cap the per-user history and free any pruned (unreferenced) blobs —
+     * so overwriting over WebDAV keeps the same recoverable history as the web
+     * client, instead of silently discarding the prior content.
+     */
+    public function snapshotVersion(StoredFile $file, string $oldBlob, int $size, string $mime, string $name): void
+    {
+        FileVersion::create([
+            'id' => (string) Str::uuid(), 'file_id' => $file->id, 'user_id' => (int) $file->user_id,
+            'name' => $name !== '' ? $name : $file->name, 'mime' => $mime !== '' ? $mime : 'application/octet-stream',
+            'size' => $size, 'blob' => $oldBlob, 'created_at' => now(),
+        ]);
+        $keep = min(10, max(1, (int) UserSetting::for((int) $file->user_id)->file_max_versions));
+        $overflow = FileVersion::where('file_id', $file->id)->orderByDesc('created_at')->skip($keep)->take(1000)->get();
+        foreach ($overflow as $version) {
+            $blob = (string) $version->blob;
+            $version->delete();
+            $this->releaseBlob($blob);
+        }
     }
 
     /** Best-effort MIME from the filename, then the bytes. */

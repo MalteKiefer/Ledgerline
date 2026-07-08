@@ -47,7 +47,7 @@ class FilePublicLinkTest extends TestCase
         Storage::fake('files');
         $u = User::factory()->create();
         $f = $this->file($u);
-        $this->actingAs($u)->postJson(route('files.public-link.store', $f->id), ['password' => 'secret1'])->assertOk();
+        $this->actingAs($u)->postJson(route('files.public-link.store', $f->id), ['password' => 'secret1234'])->assertOk();
         $token = FilePublicLink::first()->token;
 
         // Without unlock: password page (200 with the prompt), not the file.
@@ -55,7 +55,7 @@ class FilePublicLinkTest extends TestCase
         // Wrong password stays on the page.
         $this->post(route('file-link.unlock', $token), ['password' => 'nope'])->assertOk();
         // Correct password unlocks then redirects to download.
-        $this->post(route('file-link.unlock', $token), ['password' => 'secret1'])->assertRedirect(route('file-link.download', $token));
+        $this->post(route('file-link.unlock', $token), ['password' => 'secret1234'])->assertRedirect(route('file-link.download', $token));
     }
 
     public function test_cannot_link_another_users_file(): void

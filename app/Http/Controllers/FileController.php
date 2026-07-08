@@ -78,11 +78,11 @@ class FileController extends Controller
     public function sync(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'folders' => ['array'],
+            'folders' => ['array', 'max:20000'],
             'folders.*.id' => ['required', 'uuid'],
             'folders.*.name' => ['required', 'string', 'max:255'],
             'folders.*.parent' => ['nullable', 'uuid'],
-            'files' => ['array'],
+            'files' => ['array', 'max:50000'],
             'files.*.id' => ['required', 'uuid'],
             'files.*.blob' => ['required', 'uuid'],
             'files.*.name' => ['required', 'string', 'max:255'],
@@ -161,10 +161,15 @@ class FileController extends Controller
                 $oldBlob = $file->exists ? $file->blob : null;
                 $oldMeta = ['name' => $file->name, 'mime' => $file->mime, 'size' => (int) $file->size];
                 // Authoritative size: read from disk when the blob is new/changed
-                // (never trust the client's number), else keep the stored size.
-                $size = ($oldBlob === $f['blob'])
-                    ? (int) $file->size
-                    : (int) ($disk->exists('files/'.$f['blob']) ? $disk->size('files/'.$f['blob']) : 0);
+                // (never trust the client's number), else keep the stored size. A
+                // new blob whose bytes are missing on disk is a failed upload —
+                // abort the whole sync rather than silently record a 0-byte file.
+                if ($oldBlob === $f['blob']) {
+                    $size = (int) $file->size;
+                } else {
+                    abort_unless($disk->exists('files/'.$f['blob']), 422, __('files.upload_failed'));
+                    $size = (int) $disk->size('files/'.$f['blob']);
+                }
                 $total += $size;
                 $file->fill([
                     'user_id' => $uid,
@@ -192,8 +197,12 @@ class FileController extends Controller
                     $prunedBlobs = array_merge($prunedBlobs, $this->capVersions($file->id, $keep));
                 }
 
-                // New or changed content → (re)extract searchable text off-path.
+                // New or changed content → drop the now-stale search text at once
+                // (so it can't surface old content) and re-extract off-path.
                 if ($oldBlob !== $f['blob']) {
+                    if ($file->exists && $oldBlob !== null) {
+                        $file->forceFill(['content' => null, 'content_at' => null])->save();
+                    }
                     ExtractFileText::dispatch($file->id, $f['blob'])->afterCommit();
                 }
             }
@@ -246,7 +255,10 @@ class FileController extends Controller
         abort_if($this->quotaExceeded($request->user()->id, $incoming), 413, __('files.quota_exceeded'));
 
         $id = (string) Str::uuid();
-        $this->disk()->putFileAs('files', $request->file('file'), $id);
+        // Fail loudly on a failed/short storage write instead of recording a
+        // valid-looking blob id whose bytes are missing.
+        abort_if($this->disk()->putFileAs('files', $request->file('file'), $id) === false, 500, __('files.upload_failed'));
+        abort_unless($this->disk()->exists('files/'.$id), 500, __('files.upload_failed'));
         // Record the uploader so sync can reject blobs the caller never uploaded
         // and the sweeper can reclaim never-synced blobs.
         FileBlob::create(['blob' => $id, 'user_id' => $request->user()->id, 'created_at' => now()]);
@@ -443,20 +455,26 @@ class FileController extends Controller
         $file = $request->file('file');
         abort_if($this->quotaExceeded($request->user()->id, (int) $file->getSize()), 413, __('files.quota_exceeded'));
         $blob = (string) Str::uuid();
-        $this->disk()->putFileAs('files', $file, $blob);
+        abort_if($this->disk()->putFileAs('files', $file, $blob) === false, 500, __('files.upload_failed'));
 
-        $stored = StoredFile::create([
-            'id' => (string) Str::uuid(),
-            'file_folder_id' => $data['folder_id'] ?? null,
-            'name' => $file->getClientOriginalName() ?: 'attachment',
-            // Sniff the real type from the bytes (finfo), never the client-sent
-            // header: this row is created from an untrusted mail attachment and
-            // the stored mime later drives how the client previews the file.
-            'mime' => $file->getMimeType() ?: 'application/octet-stream',
-            'size' => $file->getSize(),
-            'blob' => $blob,
-            'tags' => [],
-        ]);
+        try {
+            $stored = StoredFile::create([
+                'id' => (string) Str::uuid(),
+                'file_folder_id' => $data['folder_id'] ?? null,
+                'name' => $file->getClientOriginalName() ?: 'attachment',
+                // Sniff the real type from the bytes (finfo), never the client-sent
+                // header: this row is created from an untrusted mail attachment and
+                // the stored mime later drives how the client previews the file.
+                'mime' => $file->getMimeType() ?: 'application/octet-stream',
+                'size' => $file->getSize(),
+                'blob' => $blob,
+                'tags' => [],
+            ]);
+        } catch (\Throwable $e) {
+            // Don't leak the just-written bytes if the row could not be created.
+            $this->disk()->delete('files/'.$blob);
+            throw $e;
+        }
 
         // Index its text so imported files are findable by content search too.
         ExtractFileText::dispatch($stored->id, $blob)->afterCommit();
@@ -587,6 +605,19 @@ class FileController extends Controller
         [$fileIds, $folderIds] = $this->ownedIds($request);
         $uid = $request->user()->id;
 
+        // Copies count toward the quota (usage sums row sizes), so gate the whole
+        // selection — files plus every selected folder's subtree — up front.
+        $copyBytes = (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->sum('size');
+        $folderSet = [];
+        foreach ($folderIds as $fid) {
+            $folderSet = array_merge($folderSet, $this->folderSubtree($fid));
+        }
+        if ($folderSet !== []) {
+            $copyBytes += (int) StoredFile::withoutGlobalScopes()->whereNull('deleted_at')
+                ->whereIn('file_folder_id', array_unique($folderSet))->sum('size');
+        }
+        abort_if($this->quotaExceeded($uid, $copyBytes), 413, __('files.quota_exceeded'));
+
         DB::transaction(function () use ($fileIds, $folderIds, $uid): void {
             foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $fileIds)->get() as $f) {
                 $this->copyFile($f, $f->file_folder_id, $uid);
@@ -711,7 +742,12 @@ class FileController extends Controller
         if (! $this->disk()->exists($thumbPath)) {
             abort_unless($this->disk()->exists('files/'.$blob), 404);
             try {
-                $img = $images->make()->decodeBinary($this->disk()->get('files/'.$blob));
+                $raw = (string) $this->disk()->get('files/'.$blob);
+                // Reject a decompression bomb before decoding: cap the intrinsic
+                // pixel area (~100 MP) read cheaply from the header.
+                $dim = @getimagesizefromstring($raw);
+                abort_if($dim !== false && ((int) ($dim[0] ?? 0) * (int) ($dim[1] ?? 0)) > 100_000_000, 422);
+                $img = $images->make()->decodeBinary($raw);
                 $img->scaleDown(width: 320);
                 $this->disk()->put($thumbPath, (string) $img->encode(new JpegEncoder(quality: 72)));
             } catch (\Throwable) {
@@ -747,7 +783,9 @@ class FileController extends Controller
     {
         $request->validate(['favorite' => ['required', 'boolean']]);
         [$fileIds] = $this->ownedIds($request);
-        StoredFile::withoutGlobalScopes()->whereIn('id', $fileIds)
+        // Explicit owner predicate as well, so this builder update never depends
+        // solely on ownedIds() provenance to stay within the caller's own rows.
+        StoredFile::withoutGlobalScopes()->where('user_id', $request->user()->id)->whereIn('id', $fileIds)
             ->update(['favorite' => $request->boolean('favorite')]);
 
         return response()->json(['ok' => true]);
