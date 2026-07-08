@@ -6,6 +6,7 @@
         'photosUrl' => route('gallery.albums.photos.add', ['album' => $album]),
         'pickerUrl' => route('gallery.picker'),
         'deleteConfirm' => __('gallery.album_delete_confirm'),
+        'removeConfirm' => __('gallery.album_remove_confirm'),
         'token' => csrf_token(),
         'sharesDataUrl' => route('shares.data'),
         'sharesUrl' => route('shares.store'),

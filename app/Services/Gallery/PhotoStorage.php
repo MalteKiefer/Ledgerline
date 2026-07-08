@@ -110,6 +110,11 @@ class PhotoStorage
      */
     public function applyNameTemplate(Photo $photo): void
     {
+        // Never overwrite a name the user set by hand — editMeta locks the photo's
+        // metadata, so a library-wide template re-apply skips those photos.
+        if ($photo->meta_locked) {
+            return;
+        }
         $template = AppSettings::current()->gallery_filename_template;
         $name = $this->filenameTemplate->render($photo, $template);
 

@@ -59,6 +59,7 @@ return [
     'album_empty' => 'This album is empty.',
     'album_add_photos' => 'Add photos',
     'album_remove' => 'Remove from album',
+    'album_remove_confirm' => 'Remove this photo from the album? It stays in your library.',
     'album_delete' => 'Delete album',
     'album_delete_confirm' => 'Delete this album? The photos stay in your library.',
     'album_photos_count' => ':count photos',

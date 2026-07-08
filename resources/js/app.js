@@ -1621,24 +1621,34 @@ Alpine.data('duplicatesPage', (cfg = {}) => ({
         const keepId = this.keep[g.group];
         if (! keepId) return;
         if (! await this.$store.confirm.ask(cfg.confirm)) return;
-        this.groups = this.groups.filter((x) => x.group !== g.group); // optimistic
+        // Only drop the group from the UI after the server confirms — otherwise a
+        // failed request would hide a duplicate that was never actually resolved.
         try {
-            await fetch(cfg.resolveBase.replace('__G__', g.group), {
+            const res = await fetch(cfg.resolveBase.replace('__G__', g.group), {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token },
                 body: JSON.stringify({ keep_id: keepId }),
             });
-        } catch (e) { /* next load reconciles */ }
+            if (! res.ok) throw new Error('resolve failed');
+            this.groups = this.groups.filter((x) => x.group !== g.group);
+        } catch (e) {
+            window.llToast?.(cfg.saveFailed || '');
+            this.load?.();
+        }
     },
 
     async dismiss(g) {
-        this.groups = this.groups.filter((x) => x.group !== g.group);
         try {
-            await fetch(cfg.dismissBase.replace('__G__', g.group), {
+            const res = await fetch(cfg.dismissBase.replace('__G__', g.group), {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': cfg.token },
             });
-        } catch (e) { /* ignore */ }
+            if (! res.ok) throw new Error('dismiss failed');
+            this.groups = this.groups.filter((x) => x.group !== g.group);
+        } catch (e) {
+            window.llToast?.(cfg.saveFailed || '');
+            this.load?.();
+        }
     },
 }));
 
@@ -4376,6 +4386,9 @@ Alpine.data('albumPage', (cfg = {}) => ({
         this.picker.open = false; this.load();
     },
     async removePhoto(id) {
+        // Confirm a single-click removal so a mis-click doesn't silently detach a
+        // photo from the album (the photo itself is untouched).
+        if (! await this.$store.confirm.ask(cfg.removeConfirm || cfg.deleteConfirm || '')) return;
         await this._json(cfg.photosUrl, 'DELETE', { photo_ids: [id] });
         this.load();
     },
