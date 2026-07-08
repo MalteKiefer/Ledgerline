@@ -55,14 +55,13 @@ class FolderNode extends FileCollection
         // Bound the recursion so a very deep (or, defensively, a cyclic) chain
         // can't overflow the PHP stack mid-transaction.
         abort_if($depth > 100, 422, __('files.folder_too_deep'));
-        // Trash the files (move to root + keep the blob) so they stay restorable
-        // from the web trash after the folder itself is gone; then drop the now
-        // empty subfolders (folders are not soft-deletable).
+        // Soft-delete the files (keep the blob AND their folder id) and the
+        // subfolders, so the whole hierarchy stays restorable from the web trash
+        // instead of being flattened to the root.
         foreach (StoredFile::withoutGlobalScopes()->where('file_folder_id', $folderId)->get() as $file) {
-            $file->forceFill(['file_folder_id' => null])->save();
             $file->delete();
         }
-        foreach (FileFolder::withoutGlobalScopes()->where('parent_id', $folderId)->get() as $sub) {
+        foreach (FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->where('parent_id', $folderId)->get() as $sub) {
             $this->deleteTree($sub->id, $depth + 1);
             $sub->delete();
         }

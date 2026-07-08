@@ -54,7 +54,9 @@ class FileController extends Controller
         return response()->json([
             'v' => 1,
             'usage' => ['used' => $this->usedBytes((int) $uid), 'quota' => $this->quotaBytes()],
-            'folders' => FileFolder::ownedBy($uid)->get(['id', 'parent_id', 'name'])
+            // Live folders only (ownedBy strips the SoftDeletingScope, so exclude
+            // trashed ones explicitly); trashed folders come back via restore.
+            'folders' => FileFolder::ownedBy($uid)->whereNull('deleted_at')->get(['id', 'parent_id', 'name'])
                 ->map(fn (FileFolder $f) => ['id' => $f->id, 'name' => $f->name, 'parent' => $f->parent_id])
                 ->all(),
             'files' => StoredFile::ownedBy($uid)->withTrashed()->get()->map(fn (StoredFile $f) => [
@@ -120,10 +122,9 @@ class FileController extends Controller
         if (! $request->boolean('confirm_wipe')) {
             abort_if($files === [] && StoredFile::ownedBy($uid)->exists(), 409,
                 'Refusing to drop all files from an empty manifest.');
-            // Folders are hard-deleted (not soft) when dropped, so an empty
-            // folders array must be guarded too, or a partial manifest wipes the
-            // whole folder tree.
-            abort_if($folders === [] && FileFolder::ownedBy($uid)->exists(), 409,
+            // An empty folders array from a not-yet-loaded manifest would trash
+            // the whole live folder tree; guard it too.
+            abort_if($folders === [] && FileFolder::ownedBy($uid)->whereNull('deleted_at')->exists(), 409,
                 'Refusing to drop all folders from an empty manifest.');
         }
 
@@ -157,7 +158,13 @@ class FileController extends Controller
                     $ownedFolders()->updateOrCreate(['id' => $f['id']], ['user_id' => $uid, 'parent_id' => $f['parent'] ?? null, 'name' => $f['name']]);
                     $folderIds[] = $f['id'];
                 }
-                $ownedFolders()->when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->delete();
+                // Soft-delete live folders the manifest dropped (recoverable);
+                // never touch already-trashed folders. Instance delete so
+                // SoftDeletes applies even though the owner scope is stripped.
+                foreach ($ownedFolders()->whereNull('deleted_at')
+                    ->when($folderIds !== [], fn ($q) => $q->whereNotIn('id', $folderIds))->get() as $droppedFolder) {
+                    $droppedFolder->delete();
+                }
 
                 $fileIds = [];
                 $prunedBlobs = [];
@@ -572,7 +579,7 @@ class FileController extends Controller
         $uid = $request->user()->id;
         $fileIds = StoredFile::ownedBy($uid)->withTrashed()
             ->whereIn('id', array_values($validated['file_ids'] ?? []))->pluck('id')->all();
-        $folderIds = FileFolder::ownedBy($uid)
+        $folderIds = FileFolder::ownedBy($uid)->whereNull('deleted_at')
             ->whereIn('id', array_values($validated['folder_ids'] ?? []))->pluck('id')->all();
         abort_if($fileIds === [] && $folderIds === [], 422, 'Nothing selected.');
 
@@ -621,11 +628,19 @@ class FileController extends Controller
                 $ids = $fileIds;
                 foreach ($folderIds as $fid) {
                     $subtree = $this->folderSubtree($fid);
-                    $ids = array_merge($ids, StoredFile::withoutGlobalScopes()
+                    $ids = array_merge($ids, StoredFile::withoutGlobalScopes()->withTrashed()
                         ->whereIn('file_folder_id', $subtree)->pluck('id')->all());
-                    StoredFile::withoutGlobalScopes()->whereIn('file_folder_id', $subtree)
-                        ->update(['file_folder_id' => null]);
-                    FileFolder::withoutGlobalScopes()->whereIn('id', $subtree)->delete();
+                    if ($permanent) {
+                        // The subtree files are force-deleted in the loop below.
+                        FileFolder::withoutGlobalScopes()->whereIn('id', $subtree)->forceDelete();
+                    } else {
+                        // Soft-delete the folder subtree and KEEP each file's folder
+                        // id, so restoring the files brings the whole hierarchy back
+                        // (instead of flattening everything to the root).
+                        foreach (FileFolder::withoutGlobalScopes()->whereIn('id', $subtree)->get() as $folder) {
+                            $folder->delete();
+                        }
+                    }
                 }
                 $freed = [];
                 // Instance ->delete()/->forceDelete() (not builder) so SoftDeletes
@@ -683,7 +698,7 @@ class FileController extends Controller
                     $this->copyFile($f, $f->file_folder_id, $uid);
                 }
                 foreach ($folderIds as $fid) {
-                    $folder = FileFolder::withoutGlobalScopes()->where('user_id', $uid)->find($fid);
+                    $folder = FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $uid)->find($fid);
                     if ($folder) {
                         $this->copyFolder($folder, $folder->parent_id, $uid, true);
                     }
@@ -716,7 +731,7 @@ class FileController extends Controller
         foreach (StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('file_folder_id', $src->id)->get() as $f) {
             $this->copyFile($f, $copy->id, $uid, false);
         }
-        foreach (FileFolder::withoutGlobalScopes()->where('parent_id', $src->id)->get() as $sub) {
+        foreach (FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->where('parent_id', $src->id)->get() as $sub) {
             $this->copyFolder($sub, $copy->id, $uid, false, $depth + 1);
         }
     }
@@ -749,7 +764,7 @@ class FileController extends Controller
                     $f->forceFill(['name' => $new])->save();
                 }
             }
-            foreach (FileFolder::withoutGlobalScopes()->whereIn('id', $folderIds)->get() as $f) {
+            foreach (FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->whereIn('id', $folderIds)->get() as $f) {
                 $new = trim($apply($f->name));
                 if ($new !== '' && $new !== $f->name) {
                     $f->forceFill(['name' => $new])->save();
@@ -776,7 +791,7 @@ class FileController extends Controller
 
     private function uniqueFolderName(string $name, int $uid, ?string $parentId): string
     {
-        $used = FileFolder::withoutGlobalScopes()->where('user_id', $uid)
+        $used = FileFolder::withoutGlobalScopes()->whereNull('deleted_at')->where('user_id', $uid)
             ->where('parent_id', $parentId)->pluck('name')->flip()->all();
 
         return ArchiveName::unique($name, $used, ' ', true);
@@ -852,14 +867,15 @@ class FileController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /** Restore trashed files (owner-scoped). */
+    /** Restore trashed files (owner-scoped), bringing back their folders too. */
     public function restoreTrash(Request $request): JsonResponse
     {
         [$fileIds] = $this->ownedIds($request);
         foreach (StoredFile::withoutGlobalScopes()->withTrashed()->whereIn('id', $fileIds)->get() as $file) {
-            // If the file's folder was deleted while it sat in the trash, restoring
-            // it into a gone folder would make it invisible (dangling folder id).
-            // Reparent such orphans to the root so a restore is always visible.
+            // Bring back any trashed ancestor folders so the file lands back in
+            // its original place; only if a folder is truly gone (hard-deleted)
+            // reparent to root, so a restore is never invisible.
+            $this->restoreFolderChain($file->file_folder_id);
             if ($file->file_folder_id !== null
                 && ! FileFolder::withoutGlobalScopes()->whereKey($file->file_folder_id)->exists()) {
                 $file->file_folder_id = null;
@@ -868,6 +884,21 @@ class FileController extends Controller
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    /** Un-trash a folder and every trashed ancestor, so a restored child shows. */
+    private function restoreFolderChain(?string $folderId): void
+    {
+        for ($steps = 0; $folderId !== null && $steps < 1000; $steps++) {
+            $folder = FileFolder::withoutGlobalScopes()->whereKey($folderId)->first();
+            if ($folder === null) {
+                return;
+            }
+            if ($folder->trashed()) {
+                $folder->restore();
+            }
+            $folderId = $folder->parent_id;
+        }
     }
 
     /** Delete blobs no longer referenced by any (live or trashed) file. */
@@ -898,7 +929,7 @@ class FileController extends Controller
         $uid = $request->user()->id;
         $fileIds = StoredFile::ownedBy($uid)->withTrashed()
             ->whereIn('id', array_values($data['file_ids'] ?? []))->pluck('id')->all();
-        $folderIds = FileFolder::ownedBy($uid)
+        $folderIds = FileFolder::ownedBy($uid)->whereNull('deleted_at')
             ->whereIn('id', array_values($data['folder_ids'] ?? []))->pluck('id')->all();
 
         return [$fileIds, $folderIds];

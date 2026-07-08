@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\FileBlob;
+use App\Models\FileFolder;
 use App\Models\FileVersion;
 use App\Models\StoredFile;
 use App\Support\BlobStore;
@@ -49,6 +50,11 @@ class PruneTrashedFiles extends Command
                     $count++;
                 }
             });
+
+        // Purge folders trashed longer than the retention window (their files are
+        // purged by the sweep above; the folder rows would otherwise linger).
+        FileFolder::withoutGlobalScopes()->whereNotNull('deleted_at')
+            ->where('deleted_at', '<', $cutoff)->forceDelete();
 
         // Reclaim blobs uploaded but never attached to a file (abandoned uploads).
         $orphanCutoff = Carbon::now()->subHours((int) config('files.blob_orphan_grace_hours', 24));
