@@ -29,12 +29,14 @@ class DuplicatesUiTest extends TestCase
         $this->signIn();
         [$gid] = $this->group();
 
+        // Best copy first (largest bytes) so a keep-first default keeps the best.
         $this->getJson(route('gallery.duplicates.data'))
             ->assertOk()
             ->assertJsonPath('groups.0.group', $gid)
             ->assertJsonCount(2, 'groups.0.photos')
-            ->assertJsonPath('groups.0.photos.0.name', 'a.jpg')
-            ->assertJsonPath('groups.0.photos.0.size', 1000);
+            ->assertJsonPath('groups.0.photos.0.name', 'b.jpg')
+            ->assertJsonPath('groups.0.photos.0.size', 2000)
+            ->assertJsonPath('groups.0.photos.1.name', 'a.jpg');
     }
 
     public function test_resolve_keeps_one_and_trashes_the_rest(): void
