@@ -1038,6 +1038,12 @@ class FileController extends Controller
             abort_if($p !== null && ! isset($known[$p]), 422, 'Folder parent does not resolve within the manifest.');
         }
         foreach ($files as $f) {
+            // A trashed file may still point at a folder that has since been
+            // trashed (trashed folders aren't in the live manifest). That's fine
+            // — it isn't in the tree — so only require LIVE files to resolve.
+            if (! empty($f['trashed'])) {
+                continue;
+            }
             $folder = $f['folder'] ?? null;
             abort_if($folder !== null && ! isset($known[$folder]), 422, 'File folder does not resolve within the manifest.');
         }
