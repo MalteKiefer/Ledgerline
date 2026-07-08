@@ -3,7 +3,6 @@
         'dataUrl' => route('gallery.people.show.data', ['person' => $person]),
         'updateUrl' => route('gallery.people.update', ['person' => $person]),
         'mergeUrl' => route('gallery.people.merge', ['person' => $person]),
-        'suggestUrl' => route('contacts.suggest'),
         'faceBase' => url('gallery/faces'),
         'token' => csrf_token(),
         'mergeConfirm' => __('gallery.person_merge_confirm'),
@@ -17,24 +16,11 @@
         </div>
 
         <div class="mt-4 flex flex-wrap items-end gap-3">
-            {{-- Name with contact autocomplete --}}
             <div class="relative flex-1 max-w-sm">
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('gallery.person_rename') }}</label>
-                <input type="text" x-model="person.name" @input.debounce.250ms="suggestNames()" @focus="suggestNames()"
-                    @keydown.escape.stop="nameOpen=false" @click.outside="nameOpen=false"
+                <input type="text" x-model="person.name"
                     placeholder="{{ __('gallery.person_rename_placeholder') }}"
                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
-                <div x-show="nameOpen && nameSuggest.length" x-cloak
-                    class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
-                    <template x-for="c in nameSuggest" :key="c.id">
-                        <button type="button" @click="pickContactName(c)" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                            <span class="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700">
-                                <template x-if="c.avatar"><img :src="c.avatar" alt="" class="h-full w-full object-cover"></template>
-                            </span>
-                            <span x-text="c.name"></span>
-                        </button>
-                    </template>
-                </div>
             </div>
             <x-button variant="primary" @click="save()">{{ __('gallery.person_save') }}</x-button>
             <span x-show="saved" x-cloak x-transition class="inline-flex items-center gap-1 text-sm font-medium text-green-600"><x-icon name="check" class="h-4 w-4" /> {{ __('gallery.person_saved') }}</span>

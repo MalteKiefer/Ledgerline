@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Events\PersonNamed;
 use App\Http\Controllers\Concerns\RespondsFlexibly;
 use App\Models\Face;
 use App\Models\Person;
@@ -19,8 +18,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The gallery "People" section: browse clustered people, open a person's photos,
- * and manage them (name, merge, hide, reassign a face). Naming fires PersonNamed
- * so the future contacts module can link/create a vCard contact.
+ * and manage them (name, merge, hide, reassign a face).
  */
 class PersonController extends Controller
 {
@@ -98,9 +96,6 @@ class PersonController extends Controller
 
         if (array_key_exists('name', $data)) {
             $person->forceFill(['name' => $data['name'] ?: null])->save();
-            if (filled($data['name'] ?? null)) {
-                PersonNamed::dispatch($person->id, (string) $data['name'], $request->user()->id);
-            }
         }
         if ($request->has('hidden')) {
             $person->forceFill(['hidden_at' => $request->boolean('hidden') ? now() : null])->save();

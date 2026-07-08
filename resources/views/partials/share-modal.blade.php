@@ -83,7 +83,7 @@
                         <x-button variant="secondary" @click="emailPublic()">{{ __('shares.send_mail') }}</x-button>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
-                        <x-button variant="secondary" icon="arrow-path" @click="createPublic()">{{ __('contacts.ui.save') }}</x-button>
+                        <x-button variant="secondary" icon="arrow-path" @click="createPublic()">{{ __('common.save') }}</x-button>
                         <button type="button" @click="rotatePublic('{{ __('shares.public_rotated') }}')" class="text-xs font-medium text-gray-600 hover:text-gray-900">{{ __('shares.public_rotate') }}</button>
                         <button type="button" @click="revokePublic()" class="text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300">{{ __('shares.public_revoke') }}</button>
                     </div>

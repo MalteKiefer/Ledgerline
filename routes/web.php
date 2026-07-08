@@ -3,15 +3,10 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
-use App\Http\Controllers\AddressBookController;
 use App\Http\Controllers\AlbumController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\BookmarkController;
-use App\Http\Controllers\CalendarController;
-use App\Http\Controllers\ContactController;
-use App\Http\Controllers\ContactDuplicateController;
-use App\Http\Controllers\ContactGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
@@ -26,8 +21,6 @@ use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\ResourceShareController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
-use App\Http\Controllers\Settings\CalendarController as SettingsCalendarController;
-use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
@@ -52,11 +45,8 @@ Route::get('/', static fn () => redirect()->route('dashboard'));
 // render + DB write on show, a bcrypt check on unlock), so a leaked share URL
 // must not allow password brute-force or CPU-exhaustion via floods.
 
-// Public, tokenised links (no account): an ICS feed for a shared calendar and a
-// vCard export for a shared address book. No HTML page — the link IS the feed.
+// Public, tokenised links (no account): a shared photo album.
 Route::middleware('throttle:60,1')->group(function (): void {
-    Route::get('/p/{publicShare:token}/ics', [PublicShareController::class, 'ics'])->name('public-share.ics');
-    Route::get('/p/{publicShare:token}/vcf', [PublicShareController::class, 'vcf'])->name('public-share.vcf');
     Route::get('/p/{publicShare:token}/album', [PublicShareController::class, 'album'])->name('public-share.album');
     Route::get('/p/{publicShare:token}/photo/{photo}/{size}', [PublicShareController::class, 'photo'])
         ->whereIn('size', ['thumb', 'medium', 'original'])->name('public-share.photo');
@@ -97,9 +87,6 @@ Route::middleware('auth')->group(function (): void {
 
     // Settings.
     Route::get('/settings', SettingsController::class)->name('settings');
-    Route::get('/settings/calendar', [SettingsCalendarController::class, 'edit'])->name('settings.calendar.edit');
-    Route::put('/settings/calendar', [SettingsCalendarController::class, 'update'])->name('settings.calendar.update');
-    Route::post('/settings/calendar/refresh-subscriptions', [SettingsCalendarController::class, 'refreshSubscriptions'])->middleware('throttle:10,1')->name('settings.calendar.refresh-subscriptions');
 
     // Per-user reminder defaults (which channels are pre-selected).
     Route::get('/settings/reminders', [SettingsRemindersController::class, 'edit'])->name('settings.reminders.edit');
@@ -150,42 +137,6 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/backup/runs/{run}/decrypt', [SettingsBackupController::class, 'decryptRun'])->middleware('throttle:10,1')->name('settings.backup.runs.decrypt');
         Route::post('/settings/backup/runs/{run}/cancel', [SettingsBackupController::class, 'cancelRun'])->name('settings.backup.runs.cancel');
     });
-
-    // Contacts / CardDAV: enable + DAV credentials.
-    Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
-    Route::post('/settings/contacts/credentials', [SettingsContactsController::class, 'generate'])->middleware('throttle:20,1')->name('settings.contacts.generate');
-    Route::get('/settings/contacts/profile', [SettingsContactsController::class, 'profile'])->name('settings.contacts.profile');
-
-    // Contacts UI (reload-free JSON over the CardDAV-backed store).
-    Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
-    Route::get('/contacts/data', [ContactController::class, 'data'])->name('contacts.data');
-    Route::get('/contacts/export', [ContactController::class, 'export'])->name('contacts.export');
-    Route::post('/contacts/import', [ContactController::class, 'import'])->middleware('throttle:30,1')->name('contacts.import');
-    Route::post('/contacts/settings', [ContactController::class, 'settings'])->name('contacts.settings');
-    Route::get('/contacts/suggest', [ContactController::class, 'suggest'])->name('contacts.suggest');
-    // Duplicate review — declared before /contacts/{contact} so "duplicates" is
-    // not swallowed by the model-bound show route.
-    Route::get('/contacts/duplicates', [ContactDuplicateController::class, 'index'])->middleware('throttle:60,1')->name('contacts.duplicates');
-    Route::get('/contacts/duplicates/data', [ContactDuplicateController::class, 'data'])->middleware('throttle:60,1')->name('contacts.duplicates.data');
-    Route::post('/contacts/duplicates/merge', [ContactDuplicateController::class, 'merge'])->middleware('throttle:60,1')->name('contacts.duplicates.merge');
-    Route::post('/contacts/duplicates/dismiss', [ContactDuplicateController::class, 'dismiss'])->middleware('throttle:60,1')->name('contacts.duplicates.dismiss');
-    Route::get('/contacts/new', [ContactController::class, 'create'])->name('contacts.create');
-    Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
-    Route::get('/contacts/{contact}/edit', [ContactController::class, 'edit'])->name('contacts.edit');
-    Route::get('/contacts/{contact}/view', [ContactController::class, 'view'])->name('contacts.view');
-    Route::get('/contacts/{contact}', [ContactController::class, 'show'])->name('contacts.show');
-    Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
-    Route::delete('/contacts', [ContactController::class, 'bulkDestroy'])->name('contacts.bulk-destroy');
-    Route::delete('/contacts/{contact}', [ContactController::class, 'destroy'])->name('contacts.destroy');
-    Route::get('/contacts/{contact}/avatar', [ContactController::class, 'avatarImage'])->name('contacts.avatar');
-    Route::post('/contacts/{contact}/avatar', [ContactController::class, 'avatar'])->name('contacts.avatar.upload');
-    Route::patch('/contacts/{contact}/favorite', [ContactController::class, 'favorite'])->name('contacts.favorite');
-    Route::get('/contacts/{contact}/geo', [ContactController::class, 'geocode'])->middleware('throttle:30,1')->name('contacts.geo');
-    Route::post('/address-books', [AddressBookController::class, 'store'])->name('address-books.store');
-    Route::put('/address-books/{addressBook}', [AddressBookController::class, 'update'])->name('address-books.update');
-    Route::delete('/address-books/{addressBook}', [AddressBookController::class, 'destroy'])->name('address-books.destroy');
-    Route::post('/contact-groups', [ContactGroupController::class, 'store'])->name('contact-groups.store');
-    Route::delete('/contact-groups/{group}', [ContactGroupController::class, 'destroy'])->name('contact-groups.destroy');
 
     // Downloads/exports: max zip part size (files + gallery) and notify channels.
     Route::middleware('can:manage-global-settings')->group(function (): void {
@@ -320,26 +271,6 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/shares/public/{publicShare}', [PublicShareController::class, 'destroy'])->name('public-share.destroy');
     Route::post('/shares/public/{publicShare}/email', [PublicShareController::class, 'email'])->middleware('throttle:5,1')->name('public-share.email');
     Route::post('/shares/public/{publicShare}/rotate', [PublicShareController::class, 'rotate'])->name('public-share.rotate');
-    // Calendar: CalDAV-backed events, driven client-side over a JSON API.
-    Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
-    Route::get('/calendar/data', [CalendarController::class, 'data'])->name('calendar.data');
-    Route::post('/calendar/timezone', [CalendarController::class, 'setTimezone'])->name('calendar.timezone');
-    Route::get('/calendar/export', [CalendarController::class, 'export'])->name('calendar.export');
-    Route::post('/calendar/import', [CalendarController::class, 'import'])->middleware('throttle:20,1')->name('calendar.import');
-    // These issue a server-side outbound fetch → throttle to blunt SSRF-scan /
-    // amplification abuse.
-    Route::post('/calendar/import-url', [CalendarController::class, 'importUrl'])->middleware('throttle:20,1')->name('calendar.import-url');
-    Route::post('/calendar/subscribe', [CalendarController::class, 'subscribe'])->middleware('throttle:20,1')->name('calendar.subscribe');
-    Route::post('/calendar/calendars', [CalendarController::class, 'storeCalendar'])->name('calendar.calendars.store');
-    Route::put('/calendar/calendars/{calendar}', [CalendarController::class, 'updateCalendar'])->name('calendar.calendars.update');
-    Route::delete('/calendar/calendars/{calendar}', [CalendarController::class, 'destroyCalendar'])->name('calendar.calendars.destroy');
-    Route::post('/calendar/events', [CalendarController::class, 'store'])->name('calendar.events.store');
-    Route::get('/calendar/events/{object}', [CalendarController::class, 'show'])->name('calendar.events.show');
-    Route::put('/calendar/events/{object}', [CalendarController::class, 'update'])->name('calendar.events.update');
-    Route::patch('/calendar/events/{object}/move', [CalendarController::class, 'move'])->middleware('throttle:120,1')->name('calendar.events.move');
-    Route::put('/calendar/events/{object}/instance', [CalendarController::class, 'updateInstance'])->name('calendar.events.instance.update');
-    Route::delete('/calendar/events/{object}/instance', [CalendarController::class, 'destroyInstance'])->name('calendar.events.instance.destroy');
-    Route::delete('/calendar/events/{object}', [CalendarController::class, 'destroy'])->name('calendar.events.destroy');
     // Bookmarks: plain DB rows, driven client-side over a JSON API (no reloads).
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     Route::get('/bookmarks/data', [BookmarkController::class, 'index'])->name('bookmarks.data');

@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\AddressBook;
-use App\Models\Calendar;
+use App\Models\Album;
 use App\Models\ResourceShare;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,14 +14,14 @@ class ResourceSharingTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** A still-shareable resource (calendar) owned by the given user. */
-    private function calendarOf(User $u, string $name): Calendar
+    /** A shareable resource (album) owned by the given user. */
+    private function albumOf(User $u, string $name): Album
     {
         $this->actingAs($u);
-        $calendar = Calendar::create(['name' => $name, 'uri' => 'default', 'components' => ['VEVENT'], 'synctoken' => 1]);
+        $id = $this->postJson(route('gallery.albums.store'), ['name' => $name])->assertCreated()->json('id');
         $this->app['auth']->forgetGuards();
 
-        return $calendar;
+        return Album::withoutGlobalScopes()->findOrFail($id);
     }
 
     public function test_a_third_user_still_cannot_see_the_resource(): void
@@ -30,63 +29,36 @@ class ResourceSharingTest extends TestCase
         $alice = User::factory()->create();
         $bob = User::factory()->create();
         $carol = User::factory()->create();
-        $calendar = $this->calendarOf($alice, 'Private');
+        $album = $this->albumOf($alice, 'Private');
 
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'albums', 'id' => $album->id, 'email' => $bob->email, 'permission' => 'read',
         ])->assertCreated();
 
         $this->actingAs($carol);
-        $this->assertNull(Calendar::find($calendar->id));
+        $this->assertNull(Album::find($album->id));
     }
 
     public function test_only_the_owner_can_share_a_resource(): void
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $calendar = $this->calendarOf($alice, 'Mine');
+        $album = $this->albumOf($alice, 'Mine');
 
-        // Bob (not the owner) cannot share Alice's calendar.
+        // Bob (not the owner) cannot share Alice's album.
         $this->actingAs($bob)->postJson(route('shares.store'), [
-            'type' => 'calendars', 'id' => $calendar->id, 'email' => $alice->email, 'permission' => 'read',
+            'type' => 'albums', 'id' => $album->id, 'email' => $alice->email, 'permission' => 'read',
         ])->assertForbidden();
-    }
-
-    public function test_owner_can_share_a_calendar_and_address_book(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $calendar = Calendar::create(['user_id' => $alice->id, 'uri' => 'default', 'name' => 'Team', 'components' => ['VEVENT'], 'synctoken' => 1]);
-        $book = AddressBook::create(['user_id' => $alice->id, 'uri' => 'default', 'name' => 'Shared', 'synctoken' => 1]);
-
-        $this->actingAs($alice)->postJson(route('shares.store'), ['type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'write'])->assertCreated();
-        $this->actingAs($alice)->postJson(route('shares.store'), ['type' => 'address-books', 'id' => $book->id, 'email' => $bob->email, 'permission' => 'read'])->assertCreated();
-
-        // Bob now sees both via the owned-or-shared scope.
-        $this->actingAs($bob);
-        $this->assertNotNull(Calendar::find($calendar->id));
-        $this->assertNotNull(AddressBook::find($book->id));
-    }
-
-    public function test_a_read_only_calendar_cannot_be_shared(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-        $holidays = Calendar::create(['user_id' => $alice->id, 'uri' => 'holidays', 'name' => 'Holidays', 'components' => ['VEVENT'], 'synctoken' => 1, 'read_only' => true]);
-
-        $this->actingAs($alice)->postJson(route('shares.store'), ['type' => 'calendars', 'id' => $holidays->id, 'email' => $bob->email, 'permission' => 'read'])
-            ->assertStatus(422);
     }
 
     public function test_internal_share_notifies_the_recipient_in_app(): void
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $calendar = $this->calendarOf($alice, 'Plan');
+        $album = $this->albumOf($alice, 'Plan');
 
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'albums', 'id' => $album->id, 'email' => $bob->email, 'permission' => 'read',
         ])->assertCreated()->assertJsonStructure(['ok', 'id', 'link']);
 
         $this->assertDatabaseHas('app_notifications', ['user_id' => $bob->id, 'category' => 'share']);
@@ -97,9 +69,9 @@ class ResourceSharingTest extends TestCase
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $calendar = $this->calendarOf($alice, 'Plan');
+        $album = $this->albumOf($alice, 'Plan');
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'albums', 'id' => $album->id, 'email' => $bob->email, 'permission' => 'read',
         ]);
         $share = ResourceShare::firstOrFail();
 
@@ -114,19 +86,19 @@ class ResourceSharingTest extends TestCase
     {
         $alice = User::factory()->create();
         $bob = User::factory()->create();
-        $calendar = $this->calendarOf($alice, 'Temp');
+        $album = $this->albumOf($alice, 'Temp');
         $this->actingAs($alice)->postJson(route('shares.store'), [
-            'type' => 'calendars', 'id' => $calendar->id, 'email' => $bob->email, 'permission' => 'read',
+            'type' => 'albums', 'id' => $album->id, 'email' => $bob->email, 'permission' => 'read',
         ])->assertCreated();
         $share = ResourceShare::firstOrFail();
 
         // Bob can see it while the share exists.
         $this->actingAs($bob);
-        $this->assertNotNull(Calendar::find($calendar->id));
+        $this->assertNotNull(Album::find($album->id));
 
         $this->actingAs($alice)->deleteJson(route('shares.destroy', $share->id))->assertOk();
         $this->app['auth']->forgetGuards();
         $this->actingAs($bob);
-        $this->assertNull(Calendar::find($calendar->id));
+        $this->assertNull(Album::find($album->id));
     }
 }

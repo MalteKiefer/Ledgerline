@@ -167,5 +167,4 @@ class FilesTest extends TestCase
         $this->deleteJson(route('files.blob.destroy', $blob))->assertStatus(409);
         Storage::disk('files')->assertExists('files/'.$blob);
     }
-
 }

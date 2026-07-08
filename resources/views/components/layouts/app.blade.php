@@ -11,11 +11,6 @@
     {{-- Binds the cached vault key to this login so it can't outlive a logout/re-login. --}}
     <meta name="vault-owner" content="{{ auth()->id() ? sha1(auth()->id().'|'.session()->getId()) : '' }}">
     <meta name="vault-idle-minutes" content="{{ (int) config('files.vault_idle_minutes', 10) }}">
-    @php // $llCal reused below for calendar metas @endphp
-    <meta name="calendar-week-start" content="{{ $llCal->calendar_week_start ?? 'monday' }}">
-    <meta name="calendar-week-numbers" content="{{ $llCal->calendar_week_numbers ? '1' : '0' }}">
-    <meta name="calendar-default-minutes" content="{{ (int) ($llCal->calendar_default_event_minutes ?? 60) }}">
-    <meta name="calendar-timezone" content="{{ $llCal->calendar_timezone ?? '' }}">
     <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
     <title>{{ $title }} — Ledgerline</title>
     <link rel="manifest" href="/manifest.webmanifest">

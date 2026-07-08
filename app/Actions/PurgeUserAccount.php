@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
-use App\Models\DavCredential;
 use App\Models\User;
 use App\Models\Vault;
 use App\Support\UserData\UserDataContributor;
@@ -28,7 +27,6 @@ class PurgeUserAccount
             }
 
             // Shared per-user infrastructure not owned by any single module.
-            DavCredential::where('user_id', $user->id)->delete();
             DB::table('sessions')->where('user_id', $user->id)->delete();
             // The zero-knowledge vault (wrapped keys) — delete explicitly rather
             // than relying solely on the FK cascade.

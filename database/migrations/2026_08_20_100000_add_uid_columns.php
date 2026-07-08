@@ -2,10 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Models\CalendarObject;
-use App\Models\Contact;
-use App\Services\Calendar\ICalService;
-use App\Services\Contacts\VCardService;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -14,30 +10,23 @@ use Illuminate\Support\Facades\Schema;
  * Denormalised UID columns for exact, indexed dedup on import — replacing the
  * fragile `... LIKE '%UID:x%'` substring match (which mis-matched 'foo' against
  * 'foobar' and let a crafted UID overwrite the wrong object).
+ *
+ * (The original model-based backfill was dropped when the Calendar/Contacts
+ * modules were removed; these tables are dropped by a later migration anyway.)
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('contacts', function (Blueprint $table): void {
-            $table->string('uid')->nullable()->index()->after('etag');
-        });
-        Schema::table('calendar_objects', function (Blueprint $table): void {
-            $table->string('uid')->nullable()->index()->after('etag');
-        });
-
-        // Backfill existing rows from the stored payload.
-        foreach (Contact::query()->cursor() as $contact) {
-            $uid = app(VCardService::class)->parse($contact->vcard)['uid'] ?? null;
-            if ($uid !== null) {
-                $contact->forceFill(['uid' => $uid])->saveQuietly();
-            }
+        if (Schema::hasTable('contacts') && ! Schema::hasColumn('contacts', 'uid')) {
+            Schema::table('contacts', function (Blueprint $table): void {
+                $table->string('uid')->nullable()->index()->after('etag');
+            });
         }
-        foreach (CalendarObject::query()->cursor() as $object) {
-            $uid = app(ICalService::class)->uid($object->ics);
-            if ($uid !== null) {
-                $object->forceFill(['uid' => $uid])->saveQuietly();
-            }
+        if (Schema::hasTable('calendar_objects') && ! Schema::hasColumn('calendar_objects', 'uid')) {
+            Schema::table('calendar_objects', function (Blueprint $table): void {
+                $table->string('uid')->nullable()->index()->after('etag');
+            });
         }
     }
 

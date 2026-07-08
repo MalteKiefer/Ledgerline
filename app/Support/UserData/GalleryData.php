@@ -133,8 +133,8 @@ final class GalleryData implements UserDataContributor
                     ->delete();
             });
 
-        // People (faces already gone; cover_face_id/contact_id are plain columns
-        // with no FK, so nothing dangles).
+        // People (faces already gone; cover_face_id is a plain column with no
+        // FK, so nothing dangles).
         Person::query()
             ->withoutGlobalScopes()
             ->where('user_id', $user->getKey())

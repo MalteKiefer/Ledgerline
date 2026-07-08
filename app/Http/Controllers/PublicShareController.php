@@ -4,12 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\AddressBook;
 use App\Models\Album;
 use App\Models\AppSettings;
-use App\Models\Calendar;
-use App\Models\CalendarObject;
-use App\Models\Contact;
 use App\Models\Photo;
 use App\Models\PublicShare;
 use App\Services\Notifications\ChannelNotifier;
@@ -24,27 +20,25 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Sabre\VObject\Reader;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Public, tokenised read-only links to a calendar or address book for people
- * without an account: an HTML view, an ICS subscription feed and a vCard export.
- * The authenticated half (create/revoke/email) is owner-only.
+ * Public, tokenised read-only links to a photo album for people without an
+ * account: an HTML gallery view. The authenticated half (create/revoke/email)
+ * is owner-only.
  */
 class PublicShareController extends Controller
 {
     /**
      * Slugs public sharing accepts. This is a deliberate SUBSET of the global
      * Shareable registry: public (no-auth) links must never widen to
-     * notes/files/folders/photos — only whole calendars/address-books/albums.
+     * notes/files/folders/photos — only whole albums.
      */
-    private const ALLOWED = ['calendars', 'address-books', 'albums'];
+    private const ALLOWED = ['albums'];
 
     /** Allowed expiry presets, in seconds (null = never). */
     private const EXPIRY = [3600, 86400, 604800, 2592000];
 
-    /** Create (or update) the public link for an owned calendar/address book/album. */
+    /** Create (or update) the public link for an owned album. */
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -57,14 +51,7 @@ class PublicShareController extends Controller
         $resource = $this->ownedResource($data['type'], $data['id'], $request->user()->id);
         $share = PublicShare::forResource($resource, $request->user()->id);
 
-        // A password only gates the album's HTML page — calendar/address-book
-        // feeds can't prompt for one, so silently ignore any password set on a
-        // non-album share (and don't report has_password for feeds).
-        if ($data['type'] !== 'albums') {
-            $data['password'] = null;
-        }
-
-        // Expiry applies to every link type. An empty password clears it.
+        // Expiry applies to the link. An empty password clears it.
         $share->expires_at = ! empty($data['expires_in']) ? now()->addSeconds((int) $data['expires_in']) : null;
         if (array_key_exists('password', $data)) {
             $share->password = filled($data['password']) ? Hash::make($data['password']) : null;
@@ -174,69 +161,6 @@ class PublicShareController extends Controller
         ], $size === 'original' ? 'attachment' : 'inline');
     }
 
-    /** ICS subscription feed for a shared calendar. */
-    public function ics(PublicShare $publicShare): StreamedResponse
-    {
-        $resource = $publicShare->shareable;
-        abort_unless($resource instanceof Calendar, 404);
-        abort_if($publicShare->isExpired(), 410);
-
-        // Stream the feed rather than assembling the whole VCALENDAR in memory,
-        // so a large calendar can't OOM the worker. Same bytes as before.
-        return response()->stream(function () use ($resource): void {
-            echo "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ledgerline//Public//EN\r\nX-WR-CALNAME:".$this->esc($resource->name)."\r\n";
-            CalendarObject::where('calendar_id', $resource->id)->orderBy('id')
-                ->chunk(200, function ($chunk): void {
-                    foreach ($chunk as $object) {
-                        foreach ($this->innerComponents($object->ics) as $b) {
-                            echo $b;
-                        }
-                    }
-                });
-            echo "END:VCALENDAR\r\n";
-        }, 200, ['Content-Type' => 'text/calendar; charset=utf-8']);
-    }
-
-    /** vCard export for a shared address book. */
-    public function vcf(PublicShare $publicShare): StreamedResponse
-    {
-        $resource = $publicShare->shareable;
-        abort_unless($resource instanceof AddressBook, 404);
-        abort_if($publicShare->isExpired(), 410);
-
-        // Stream the export instead of concatenating every vCard in memory.
-        return response()->stream(function () use ($resource): void {
-            Contact::where('address_book_id', $resource->id)->orderBy('id')->chunk(200, function ($chunk): void {
-                foreach ($chunk as $contact) {
-                    echo rtrim($contact->vcard, "\r\n")."\r\n";
-                }
-            });
-        }, 200, ['Content-Type' => 'text/vcard; charset=utf-8']);
-    }
-
-    /** Inner VEVENT/VTIMEZONE blocks of a stored per-object VCALENDAR. */
-    private function innerComponents(string $ics): array
-    {
-        try {
-            $vcal = Reader::read($ics, Reader::OPTION_FORGIVING);
-        } catch (\Throwable) {
-            return [];
-        }
-        $out = [];
-        foreach ($vcal->getComponents() as $component) {
-            if (in_array($component->name, ['VEVENT', 'VTIMEZONE'], true)) {
-                $out[] = $component->serialize();
-            }
-        }
-
-        return $out;
-    }
-
-    private function esc(string $v): string
-    {
-        return str_replace(["\r", "\n"], '', $v);
-    }
-
     private function sessionKey(PublicShare $publicShare): string
     {
         return 'pubshare_unlock_'.$publicShare->id;
@@ -249,13 +173,6 @@ class PublicShareController extends Controller
 
     private function ownedResource(string $type, mixed $id, int $userId): Model
     {
-        $resource = Shareable::resolveOwned($type, $id, $userId);
-        // PublicShare-specific: virtual (tasks) and read-only generated
-        // calendars can't be exposed as a public ICS feed.
-        if ($resource instanceof Calendar && ($resource->isVirtual() || $resource->isReadOnly())) {
-            abort(422, 'This calendar cannot be shared.');
-        }
-
-        return $resource;
+        return Shareable::resolveOwned($type, $id, $userId);
     }
 }
