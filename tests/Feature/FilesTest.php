@@ -54,17 +54,29 @@ class FilesTest extends TestCase
         $this->assertSame(['work'], StoredFile::find($fileId)->tags);
     }
 
-    public function test_sync_deletes_rows_missing_from_the_manifest(): void
+    public function test_sync_soft_deletes_rows_missing_from_the_manifest(): void
     {
         $this->signIn();
-        StoredFile::create(['id' => (string) Str::uuid(), 'name' => 'gone', 'blob' => (string) Str::uuid(), 'mime' => 'text/plain', 'size' => 1]);
+        $keepBlob = (string) Str::uuid();
+        $keep = StoredFile::create(['id' => (string) Str::uuid(), 'name' => 'keep', 'blob' => $keepBlob, 'mime' => 'text/plain', 'size' => 1]);
+        $gone = StoredFile::create(['id' => (string) Str::uuid(), 'name' => 'gone', 'blob' => (string) Str::uuid(), 'mime' => 'text/plain', 'size' => 1]);
 
-        $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertOk();
+        // A manifest that keeps one file and omits the other: the omitted row is
+        // SOFT-deleted (recoverable from the trash), never hard-deleted, so a
+        // stale/partial/racing manifest can never cause irreversible loss.
+        $this->putJson(route('files.sync'), ['folders' => [], 'files' => [[
+            'id' => $keep->id, 'blob' => $keepBlob, 'name' => 'keep', 'mime' => 'text/plain', 'size' => 1, 'folder' => null, 'tags' => [],
+        ]]])->assertOk();
 
-        $this->assertSame(0, StoredFile::count());
+        $this->assertNotNull(StoredFile::find($keep->id));
+        $this->assertNull(StoredFile::find($gone->id));                                  // hidden
+        $this->assertNotNull(StoredFile::withTrashed()->find($gone->id)?->deleted_at);   // but recoverable
+
+        // An empty manifest while files still exist is refused (mass-wipe guard).
+        $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertStatus(409);
     }
 
-    public function test_sync_reclaims_the_blob_of_a_removed_file(): void
+    public function test_sync_keeps_the_blob_of_a_removed_file_for_recovery(): void
     {
         $u = $this->signIn();
         Storage::fake('files');
@@ -79,9 +91,11 @@ class FilesTest extends TestCase
             'files' => [['id' => $id, 'blob' => $blob, 'name' => 'x', 'mime' => 'text/plain', 'size' => 5, 'folder' => null, 'tags' => []]],
         ])->assertOk();
 
-        // Dropping the file from the manifest removes both the row and its bytes.
-        $this->putJson(route('files.sync'), ['folders' => [], 'files' => []])->assertOk();
-        Storage::disk('files')->assertMissing('files/'.$blob);
+        // Dropping the file (explicitly confirmed) SOFT-deletes it and KEEPS its
+        // bytes — a sync must never permanently destroy data.
+        $this->putJson(route('files.sync'), ['folders' => [], 'files' => [], 'confirm_wipe' => true])->assertOk();
+        Storage::disk('files')->assertExists('files/'.$blob);
+        $this->assertNotNull(StoredFile::withTrashed()->find($id)?->deleted_at);
     }
 
     public function test_sync_round_trips_a_trashed_file(): void

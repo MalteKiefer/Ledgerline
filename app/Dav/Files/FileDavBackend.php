@@ -88,15 +88,18 @@ class FileDavBackend
         return 'application/octet-stream';
     }
 
-    /** Delete a blob only when no other (non-trashed) file still references it. */
+    /** Delete a blob only when no file (live OR trashed) and no kept version
+     *  still references it — blobs are reference-shared across duplicates. */
     public function releaseBlob(?string $blob): void
     {
         if (! $blob) {
             return;
         }
-        $stillUsed = StoredFile::withoutGlobalScopes()->whereNull('deleted_at')->where('blob', $blob)->exists();
+        $stillUsed = StoredFile::withoutGlobalScopes()->withTrashed()->where('blob', $blob)->exists()
+            || FileVersion::withoutGlobalScopes()->where('blob', $blob)->exists();
         if (! $stillUsed) {
             $this->disk()->delete('files/'.$blob);
+            $this->disk()->delete('thumbs/'.$blob.'.jpg');
         }
     }
 
