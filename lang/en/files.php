@@ -38,7 +38,6 @@ return [
     'upload_dismiss' => 'Dismiss',
     'upload_unreadable' => 'File could not be read (blocked by your system?)',
     'paperless_decrypt_warn' => 'This file will be decrypted and sent to Paperless as plaintext — it leaves the encrypted vault. Continue?',
-    'note_decrypt_warn' => 'This file will be decrypted and saved as a plaintext note — it leaves the encrypted vault. Continue?',
     'storage_used_only' => ':used used',
     'all_files' => 'All files',
     'drop_hint' => 'Drop files or folders here to upload',

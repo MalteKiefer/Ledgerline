@@ -198,6 +198,7 @@ return [
     'backup_encrypt' => 'Archiv verschlüsseln',
     'backup_passphrase' => 'Passphrase',
     'backup_passphrase_required' => 'Bei aktiver Verschlüsselung ist eine Passphrase erforderlich.',
+    'backup_db_encrypt_required' => 'Ein Datenbank-Backup muss verschlüsselt sein (enthält andere Module im Klartext). Verschlüsselung aktivieren + Passphrase setzen.',
     'backup_notify' => 'Benachrichtigen via',
     'backup_enabled' => 'Aktiv',
     'backup_run_now' => 'Jetzt sichern',

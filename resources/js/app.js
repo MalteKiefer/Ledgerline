@@ -3464,10 +3464,15 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Create a note from a title + content via the (plain) notes API.
     async migrateAddNote(note) {
         try {
+            // Notes are zero-knowledge too — seal {title, content, tags} with the
+            // vault key so the note goes straight from encrypted file to encrypted
+            // note (it never leaves the vault as plaintext).
+            const m = window.Vault.encryptMeta({ title: note.title || '', content: note.content || '', tags: [] });
+            const enc_note = JSON.stringify({ c: m.cipher, n: m.nonce });
             const res = await fetch('/notes', {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify(note),
+                body: JSON.stringify({ enc_note }),
             });
             return res.ok;
         } catch (e) {
@@ -3481,9 +3486,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const row = this.migrateRow;
         const del = this.migrateDelete;
         if (! row || this.migrateBusy) return;
-        // Converting to a note decrypts the file and stores it as a PLAINTEXT note
-        // — it leaves the zero-knowledge vault. Warn first.
-        if (! await this.$store.confirm.ask(labels.noteDecryptWarn || '')) return;
+        // Note: both files AND notes are zero-knowledge, so the content stays
+        // encrypted end to end — no vault-exit warning needed here.
         this.migrateBusy = true;
         this.error = '';
         try {
@@ -3965,46 +3969,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         });
     },
 
-    // Chunked upload: slice the file and stream each part to object storage via
-    // the server's S3 multipart endpoints. Small requests → no body-size limits,
-    // and multi-GB files upload part by part. Returns the stored blob id.
-    async _uploadChunked(file, entry) {
-        entry.state = 'uploading';
-        const init = await fetch(config.chunkInitUrl, {
-            method: 'POST',
-            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            body: JSON.stringify({ name: file.name, size: file.size }),
-        });
-        if (init.status === 413) { const e = new Error('quota'); e.quota = true; throw e; }
-        if (! init.ok) throw new Error('init failed');
-        const { token, id, partSize } = await init.json();
-        const total = Math.ceil(file.size / partSize);
-        const parts = [];
-        try {
-            for (let i = 0; i < total; i++) {
-                const startByte = i * partSize;
-                const blob = file.slice(startByte, Math.min(file.size, startByte + partSize));
-                const etag = await this._uploadPart(token, i + 1, blob, entry, startByte, file.size);
-                parts.push({ part: i + 1, etag });
-            }
-            const comp = await fetch(config.chunkCompleteUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ token, parts }),
-            });
-            if (! comp.ok) throw new Error('complete failed');
-            entry.progress = 100;
-            return (await comp.json()).id;
-        } catch (e) {
-            // Best-effort cleanup of the staged parts.
-            fetch(config.chunkAbortUrl, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ token }),
-            }).catch(() => {});
-            throw e;
-        }
-    },
+    // (Removed the old plaintext chunked upload — it streamed raw bytes + the
+    // real filename. Large files go through _uploadStreamEncrypted, which uploads
+    // only ciphertext with a neutral name.)
 
     // Constant-memory encrypted upload: encrypt the file 4 MiB at a time and
     // stream the ciphertext straight into S3 multipart parts, so neither the
