@@ -793,6 +793,29 @@ class GalleryController extends Controller
         return back()->with('status', __('flash.photos_trashed', ['count' => $count]));
     }
 
+    /**
+     * Move EVERY one of the caller's photos to the trash. Soft-delete (chunked so
+     * a huge library does not load at once, and per-model so Photo delete events
+     * still fire); recoverable from the trash until purged.
+     */
+    public function destroyAll(Request $request): RedirectResponse|JsonResponse
+    {
+        $uid = $request->user()->id;
+        $count = 0;
+        Photo::ownedBy($uid)->chunkById(500, function ($photos) use (&$count): void {
+            foreach ($photos as $photo) {
+                $photo->delete();
+                $count++;
+            }
+        });
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'count' => $count]);
+        }
+
+        return back()->with('status', __('flash.photos_trashed', ['count' => $count]));
+    }
+
     public function trash(): View
     {
         return view('gallery.trash', [
