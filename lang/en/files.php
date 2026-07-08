@@ -37,6 +37,7 @@ return [
     'upload_done' => 'Upload complete',
     'upload_dismiss' => 'Dismiss',
     'upload_unreadable' => 'File could not be read (blocked by your system?)',
+    'working' => 'Working…',
     'paperless_decrypt_warn' => 'This file will be decrypted and sent to Paperless as plaintext — it leaves the encrypted vault. Continue?',
     'storage_used_only' => ':used used',
     'all_files' => 'All files',
