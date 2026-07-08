@@ -16,7 +16,7 @@
         </label>
         <div class="grid gap-2 grid-cols-3 sm:[grid-template-columns:repeat(var(--gallery-cols,6),minmax(0,1fr))]" data-day-grid>
             @foreach ($dayPhotos as $photo)
-                <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
+                <div data-photo-id="{{ $photo->id }}" class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
                     @if ($photo->isReady())
                         <button type="button" data-photo
                             data-id="{{ $photo->id }}"
@@ -46,7 +46,7 @@
                             data-shutter="{{ $photo->shutter() }}"
                             data-iso="{{ $photo->iso() }}"
                             @click="openViewer($el)"
-                            @mouseenter="hoverMotion($el, true)" @mouseleave="hoverMotion($el, false)"
+                            @pointerenter="hoverMotion($el, true, $event)" @pointerleave="hoverMotion($el, false, $event)"
                             class="block h-full w-full">
                             <img src="{{ route('gallery.image', ['photo' => $photo, 'size' => 'thumb']) }}" alt="{{ $photo->name }}" loading="lazy"
                                 x-on:load="$el.classList.remove('opacity-0')" x-init="$el.complete && $el.classList.remove('opacity-0')"

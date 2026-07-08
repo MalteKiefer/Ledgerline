@@ -1,7 +1,7 @@
 <x-layouts.app :title="__('settings.files_section')">
     <x-page-heading :title="__('settings.files_section')" :subtitle="__('settings.files_desc')" />
 
-    <form method="POST" action="{{ route('settings.files.update') }}" class="mt-6 max-w-lg rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+    <form method="POST" action="{{ route('settings.files.update') }}" class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         @csrf
         @method('PUT')
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="file_max_versions">{{ __('settings.files_max_versions') }}</label>
@@ -46,7 +46,7 @@
 
     @if ($isAdmin)
         {{-- Rebuild the file full-text search index (admin, queued) --}}
-        <div class="mt-6 max-w-lg rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.files_reindex_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.files_reindex_hint') }}</p>
             <form method="POST" action="{{ route('settings.files.reindex') }}" class="mt-3">
@@ -57,7 +57,7 @@
     @endif
 
     {{-- WebDAV access (same DAV login as Contacts/Calendar) --}}
-    <div class="mt-6 max-w-lg rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.files_webdav_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.files_webdav_hint') }}</p>
         @if ($davUsername)
