@@ -167,6 +167,7 @@
                         <svg x-show="!p.thumbRef" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
                       </div>
                       <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
+                      <template x-if="p.motionRef && p.media_type !== 'video'"><span class="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">Live</span></template>
                     </button>
                     <label class="absolute left-2 top-2 z-10 cursor-pointer" :class="selectedCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop>
                       <input type="checkbox" :checked="isSelected(p.id)" @change="toggleSelect(p.id)" class="h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
@@ -427,8 +428,19 @@
       <button type="button" @click="closeViewer()" class="absolute right-4 top-4 z-10 text-white/70 hover:text-white"><x-icon name="x-mark" class="h-7 w-7" /></button>
       <div class="flex flex-1 items-center justify-center p-4" @click.self="closeViewer()">
         <template x-if="viewer.kind === 'loading'"><svg class="h-8 w-8 animate-spin text-white/60" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg></template>
-        <template x-if="viewer.kind === 'image'"><img :src="viewer.src" class="max-h-[92vh] max-w-full rounded-lg"></template>
-        <template x-if="viewer.kind === 'video'"><video :src="viewer.src" controls autoplay class="max-h-[92vh] max-w-full rounded-lg"></video></template>
+        <template x-if="viewer.kind === 'image'">
+          <div class="relative" @click.stop>
+            <img :src="viewer.src" x-show="! viewer.motionOn" class="max-h-[92vh] max-w-full rounded-lg">
+            <template x-if="viewer.motionOn">
+              <video :src="viewer.motionSrc" autoplay muted playsinline @ended="stopMotion()" class="max-h-[92vh] max-w-full rounded-lg"></video>
+            </template>
+            <button type="button" x-show="viewer.hasMotion && ! viewer.motionOn" @click.stop="playMotion()"
+                class="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-black/70">
+              <x-icon name="play" class="h-4 w-4" />Live
+            </button>
+          </div>
+        </template>
+        <template x-if="viewer.kind === 'video'"><video :src="viewer.src" controls autoplay playsinline class="max-h-[92vh] max-w-full rounded-lg" @click.stop></video></template>
       </div>
       {{-- Info panel --}}
       <aside x-show="viewer.photo" class="hidden w-80 shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-6 text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100 md:block">
