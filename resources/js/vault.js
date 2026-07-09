@@ -1,5 +1,3 @@
-import _sodium from 'libsodium-wrappers-sumo';
-
 /**
  * Zero-knowledge encryption vault (client-side only).
  *
@@ -56,10 +54,16 @@ function concat(chunks) {
     return out;
 }
 
+// libsodium (the ~400 KB sumo/WASM build) is the single heaviest dependency and
+// is only needed once the vault is actually used, so it is code-split out of the
+// initial bundle and loaded on the first crypto call. Every public Vault method
+// awaits ready() before touching `sodium`, so nothing runs before it resolves.
 async function ready() {
     if (! sodium) {
-        await _sodium.ready;
-        sodium = _sodium;
+        const mod = await import('libsodium-wrappers-sumo');
+        const s = mod.default ?? mod;
+        await s.ready;
+        sodium = s;
     }
     return sodium;
 }
@@ -113,20 +117,28 @@ export const Vault = {
     vk: null,
 
     async boot() {
+        // Nothing cached = the vault was never unlocked this session, so there is
+        // nothing to restore. Return WITHOUT loading libsodium, so a page that
+        // never touches the vault (gallery, dashboard, settings) never pays for
+        // the ~400 KB crypto lib. It loads on the first unlock() instead.
+        const cached = sessionStorage.getItem(CACHE_KEY);
+        if (! cached) {
+            return;
+        }
+
         await ready();
 
         const owner = currentOwner();
         const expires = Number(sessionStorage.getItem(CACHE_EXPIRES) || 0);
-        const cached = sessionStorage.getItem(CACHE_KEY);
         const cachedOwner = sessionStorage.getItem(CACHE_OWNER) || '';
 
         // Only restore the key if it belongs to the current login and has not
         // expired. A signed-out page (empty owner) or a different/new login
         // (owner mismatch) drops the key — it can never outlive its login.
-        if (cached && owner !== '' && cachedOwner === owner && expires > Date.now()) {
+        if (owner !== '' && cachedOwner === owner && expires > Date.now()) {
             this.vk = unb64(cached);
             this.touch();
-        } else if (cached) {
+        } else {
             this.lock();
         }
     },
@@ -160,8 +172,9 @@ export const Vault = {
         sessionStorage.removeItem(CACHE_OWNER);
     },
 
+    // Just fetches the server's public KDF params — no crypto, so it must NOT
+    // pull in libsodium (the vault store reads status() on every page).
     async status() {
-        await ready();
         return api('GET');
     },
 
