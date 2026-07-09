@@ -2,20 +2,15 @@
     <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('pages.dashboard.heading') }}</h1>
     <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('pages.dashboard.subtitle') }}</p>
 
-    <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.gallery_images') }}</dt>
-            <dd class="mt-2 text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{{ $gallery['images'] }}</dd>
-        </a>
-        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.gallery_videos') }}</dt>
-            <dd class="mt-2 text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{{ $gallery['videos'] }}</dd>
-        </a>
-        <a href="{{ route('gallery.index') }}" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 shadow-sm hover:border-gray-300">
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.gallery_motion') }}</dt>
-            <dd class="mt-2 text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{{ $gallery['motion'] }}</dd>
-        </a>
-    </div>
+    <a href="{{ route('gallery.index') }}" class="mt-6 flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 shadow-sm hover:border-gray-300">
+        <div>
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.gallery') }}</dt>
+            <dd class="mt-2 text-base text-gray-900 dark:text-gray-100">{{ __('pages.dashboard.gallery_ready') }}</dd>
+        </div>
+        <svg class="h-8 w-8 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+        </svg>
+    </a>
 
     <a href="{{ route('files.index') }}" class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 shadow-sm hover:border-gray-300">
         <div>

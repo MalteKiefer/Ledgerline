@@ -4,23 +4,19 @@ declare(strict_types=1);
 
 namespace App\Support;
 
-use App\Models\Album;
-use App\Models\Photo;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * Single source of truth for the shareable slug ↔ model-class mapping and
- * owned-resource resolution. Only gallery resources remain shareable — notes,
- * files and folders are zero-knowledge (a recipient can't decrypt them), so
- * they were removed from the registry entirely.
+ * owned-resource resolution. Every module is now zero-knowledge (a recipient
+ * can't decrypt a resource, and a write-sharee would re-seal it with their own
+ * key), so nothing is currently cross-user shareable. The registry is kept as
+ * the single extension point should a plaintext, shareable resource return.
  */
 final class Shareable
 {
     /** Shareable resource slug → model class (all use SharesWithUsers). */
-    private const MAP = [
-        'albums' => Album::class,
-        'photos' => Photo::class,
-    ];
+    private const MAP = [];
 
     /** Resolve the model class for a slug, or null if the slug is unknown. */
     public static function classFor(string $slug): ?string

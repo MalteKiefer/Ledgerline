@@ -4,36 +4,32 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\Album;
 use App\Models\AppSettings;
-use App\Models\Photo;
 use App\Models\PublicShare;
 use App\Services\Notifications\ChannelNotifier;
-use App\Support\BlobStore;
 use App\Support\Shareable;
-use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
- * Public, tokenised read-only links to a photo album for people without an
- * account: an HTML gallery view. The authenticated half (create/revoke/email)
- * is owner-only.
+ * Public, tokenised read-only links to an owned resource for people without an
+ * account. The authenticated half (create/revoke/email) is owner-only. Every
+ * module is now zero-knowledge, so the shareable registry is currently empty
+ * and no public resource type is accepted; the CRUD surface remains as the
+ * extension point should a plaintext, publicly shareable resource return.
  */
 class PublicShareController extends Controller
 {
     /**
-     * Slugs public sharing accepts. This is a deliberate SUBSET of the global
-     * Shareable registry: public (no-auth) links must never widen to
-     * notes/files/folders/photos — only whole albums.
+     * Slugs public sharing accepts. A deliberate SUBSET of the global Shareable
+     * registry: public (no-auth) links must never widen to zero-knowledge
+     * resources. Nothing is publicly shareable at present.
      */
-    private const ALLOWED = ['albums'];
+    private const ALLOWED = [];
 
     /** Allowed expiry presets, in seconds (null = never). */
     private const EXPIRY = [3600, 86400, 604800, 2592000];
@@ -99,76 +95,6 @@ class PublicShareController extends Controller
         }
 
         return response()->json(['ok' => true]);
-    }
-
-    // ---- public (no auth) --------------------------------------------------
-
-    /** Public HTML gallery page for a shared album. */
-    public function album(Request $request, PublicShare $publicShare): View
-    {
-        $resource = $publicShare->shareable;
-        abort_unless($resource instanceof Album, 404);
-        abort_if($publicShare->isExpired(), 410, __('shares.public_expired'));
-
-        if ($publicShare->hasPassword() && ! $this->unlocked($request, $publicShare)) {
-            return view('public-share.password', ['share' => $publicShare, 'error' => false]);
-        }
-
-        $photos = $resource->photos()->get(['photos.id']);
-
-        return view('public-share.album', ['share' => $publicShare, 'album' => $resource, 'photos' => $photos]);
-    }
-
-    /** Verify the album password and unlock it for this session. */
-    public function albumUnlock(Request $request, PublicShare $publicShare): Response|View|RedirectResponse
-    {
-        $resource = $publicShare->shareable;
-        abort_unless($resource instanceof Album, 404);
-        abort_if($publicShare->isExpired(), 410, __('shares.public_expired'));
-
-        $given = (string) $request->input('password', '');
-        if (! $publicShare->hasPassword() || ! Hash::check($given, $publicShare->password)) {
-            return view('public-share.password', ['share' => $publicShare, 'error' => true]);
-        }
-
-        $request->session()->put($this->sessionKey($publicShare), true);
-
-        return redirect()->route('public-share.album', $publicShare->token);
-    }
-
-    /** Stream a photo of a shared album (thumb/medium/original), no auth. */
-    public function photo(Request $request, PublicShare $publicShare, Photo $photo, string $size): Response
-    {
-        $album = $publicShare->shareable;
-        abort_unless($album instanceof Album, 404);
-        abort_if($publicShare->isExpired(), 410);
-        abort_if($publicShare->hasPassword() && ! $this->unlocked($request, $publicShare), 403);
-        abort_unless($album->photos()->whereKey($photo->id)->exists(), 404);
-
-        $path = match ($size) {
-            'thumb' => $photo->thumb_path,
-            'medium' => $photo->medium_path,
-            default => $photo->disk_path,
-        };
-        $disk = BlobStore::disk();
-        abort_unless($path && $disk->exists($path), 404);
-
-        return $disk->response($path, $photo->name, [
-            'Content-Type' => $size === 'original' ? $photo->mime_type : 'image/jpeg',
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Security-Policy' => "default-src 'none'; img-src 'self' data:; sandbox",
-            'Cache-Control' => 'private, max-age=3600',
-        ], $size === 'original' ? 'attachment' : 'inline');
-    }
-
-    private function sessionKey(PublicShare $publicShare): string
-    {
-        return 'pubshare_unlock_'.$publicShare->id;
-    }
-
-    private function unlocked(Request $request, PublicShare $publicShare): bool
-    {
-        return (bool) $request->session()->get($this->sessionKey($publicShare), false);
     }
 
     private function ownedResource(string $type, mixed $id, int $userId): Model

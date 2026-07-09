@@ -5,11 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Export;
 
 use App\Models\Export;
-use App\Models\Photo;
-use App\Services\Gallery\PhotoExporter;
 use App\Support\ArchiveName;
 use App\Support\BlobStore;
-use App\Support\DiskTempFile;
 use Generator;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Phar;
@@ -18,9 +15,8 @@ use RuntimeException;
 use ZipArchive;
 
 /**
- * Builds an export's archive file(s) on the files disk. Entries are gathered per
- * source (gallery photos or files/folders) into a shared list, then written in
- * the export's chosen format:
+ * Builds an export's archive file(s) on the files disk. Entries are gathered
+ * into a shared list, then written in the export's chosen format:
  *
  *  - 'zip' (default): streamed through a local temp zip and uploaded. When a
  *    configured maximum size is set, the archive is split into several parts so
@@ -29,12 +25,15 @@ use ZipArchive;
  *    compressed). Tar cannot be incrementally size-split like zip, so it is
  *    always one part regardless of $maxBytes.
  *
+ * Every module is now end-to-end encrypted (the server holds only ciphertext +
+ * sealed names), so no source can produce a readable server-side archive; the
+ * archiver refuses all sources rather than emit a broken, undecryptable file.
+ * The zip/tar machinery is retained as the Downloads-centre build path.
+ *
  * @phpstan-type Part array{name: string, path: string, size: int}
  */
 class ExportArchiver
 {
-    public function __construct(private readonly PhotoExporter $photoExporter) {}
-
     /**
      * @return list<Part>
      */
@@ -203,43 +202,12 @@ class ExportArchiver
      */
     private function entries(Export $export, Filesystem $disk): Generator
     {
-        // Only gallery exports produce readable archives. Files are end-to-end
-        // encrypted (the server holds only ciphertext + sealed names), so it
-        // cannot build a usable server-side export/zip of them — that path was
-        // removed. Refuse any non-gallery source rather than emit a broken,
-        // undecryptable ciphertext archive.
-        abort_unless($export->source === 'gallery', 422, 'Only gallery exports are supported.');
+        // Every module is end-to-end encrypted (the server holds only ciphertext
+        // + sealed names), so it cannot build a usable, decryptable server-side
+        // archive of any source. Refuse rather than emit a broken archive.
+        abort(422, 'No exportable source is available.');
 
-        return $this->galleryEntries($export->payload ?? [], (string) $export->variant, (int) $export->user_id, $disk);
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     * @return Generator<array{0: string, 1: string, 2: int}>
-     */
-    private function galleryEntries(array $payload, string $variant, int $ownerId, Filesystem $disk): Generator
-    {
-        $ids = $payload['photo_ids'] ?? [];
-
-        // Defence in depth: the job runs without Auth so the owner global scope
-        // is inert here — constrain to the export owner's photos explicitly.
-        foreach (Photo::ownedBy($ownerId)->whereIn('id', $ids)->get() as $photo) {
-            if ($variant === 'edited') {
-                foreach ($this->photoExporter->editedFiles($photo) as $file) {
-                    yield [$file['name'], $file['path'], (int) (filesize($file['path']) ?: 0)];
-                }
-
-                continue;
-            }
-
-            $tmp = $this->localCopy($disk, $photo->disk_path);
-            yield [(string) $photo->name, $tmp, (int) ($photo->size ?: filesize($tmp))];
-        }
-    }
-
-    private function localCopy(Filesystem $disk, string $path): string
-    {
-        return DiskTempFile::pull($disk, $path, 'exp-src');
+        yield from [];
     }
 
     /**

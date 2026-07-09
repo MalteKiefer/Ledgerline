@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
-use App\Http\Controllers\AlbumController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DashboardController;
@@ -16,7 +15,6 @@ use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
-use App\Http\Controllers\PersonController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\ResourceShareController;
@@ -24,7 +22,6 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
-use App\Http\Controllers\Settings\GalleryController as SettingsGalleryController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
 use App\Http\Controllers\Settings\SettingsController;
@@ -37,25 +34,6 @@ use Illuminate\Support\Facades\Route;
 // The root simply forwards to the dashboard; unauthenticated visitors are then
 // redirected to the login page by the "auth" middleware.
 Route::get('/', static fn () => redirect()->route('dashboard'));
-
-// Public note share links: no auth and no guest middleware, so a recipient
-// without an account can open them and a signed-in user is not redirected
-// away. The server renders a frozen snapshot, gated by an optional password.
-// Throttled: both endpoints are unauthenticated and do real work (markdown
-// render + DB write on show, a bcrypt check on unlock), so a leaked share URL
-// must not allow password brute-force or CPU-exhaustion via floods.
-
-// Public, tokenised links (no account): a shared photo album.
-Route::middleware('throttle:60,1')->group(function (): void {
-    Route::get('/p/{publicShare:token}/album', [PublicShareController::class, 'album'])->name('public-share.album');
-    Route::get('/p/{publicShare:token}/photo/{photo}/{size}', [PublicShareController::class, 'photo'])
-        ->whereIn('size', ['thumb', 'medium', 'original'])->name('public-share.photo');
-    // Password-gated album unlock; throttled to blunt brute-forcing the password.
-    Route::post('/p/{publicShare:token}/album/unlock', [PublicShareController::class, 'albumUnlock'])
-        ->middleware('throttle:10,1')->name('public-share.album.unlock');
-    // No public file-download or upload-request links: they'd need the server to
-    // read/produce plaintext, which the zero-knowledge vault forbids.
-});
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
 // endpoints are throttled to blunt handshake replay/hammering.
@@ -102,16 +80,6 @@ Route::middleware('auth')->group(function (): void {
     // group (config services.pocketid.admin_group; open to all when unset).
     Route::middleware('can:manage-global-settings')->group(function (): void {
         Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
-        Route::get('/settings/gallery', [SettingsGalleryController::class, 'edit'])->name('settings.gallery.edit');
-        Route::put('/settings/gallery', [SettingsGalleryController::class, 'update'])->name('settings.gallery.update');
-        Route::post('/settings/gallery/rescan', [SettingsGalleryController::class, 'rescan'])->name('settings.gallery.rescan');
-        Route::post('/settings/gallery/regenerate', [SettingsGalleryController::class, 'regenerate'])->name('settings.gallery.regenerate');
-        Route::post('/settings/gallery/rename', [SettingsGalleryController::class, 'rename'])->name('settings.gallery.rename');
-        Route::post('/settings/gallery/run-all', [SettingsGalleryController::class, 'runAll'])->name('settings.gallery.run-all');
-        Route::post('/settings/gallery/detect-duplicates', [SettingsGalleryController::class, 'detectDuplicates'])->name('settings.gallery.detect-duplicates');
-        Route::post('/settings/gallery/detect-faces', [SettingsGalleryController::class, 'detectFaces'])->name('settings.gallery.detect-faces');
-        Route::get('/settings/gallery/queue-status', [SettingsGalleryController::class, 'queueStatus'])->name('settings.gallery.queue-status');
-        Route::get('/settings/gallery/batch-status', [SettingsGalleryController::class, 'batchStatus'])->name('settings.gallery.batch-status');
 
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
@@ -142,62 +110,10 @@ Route::middleware('auth')->group(function (): void {
 
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
-    // Gallery: a photo timeline with drag-and-drop upload and a trash.
+    // Zero-knowledge gallery: the client holds all keys and renders entirely
+    // from the sealed index + decrypted blobs. The server ships only the shell
+    // here; upload/process/blob/store live in the dedicated routes below.
     Route::get('/gallery', [GalleryController::class, 'index'])->name('gallery.index');
-    // Throttled: each accepted upload dispatches heavy media processing.
-    Route::post('/gallery', [GalleryController::class, 'store'])->middleware('throttle:300,1')->name('gallery.store');
-    Route::get('/gallery/feed', [GalleryController::class, 'feed'])->name('gallery.feed');
-    Route::get('/gallery/months', [GalleryController::class, 'months'])->name('gallery.months');
-    Route::get('/gallery/map', [GalleryController::class, 'map'])->name('gallery.map');
-    Route::get('/gallery/trips', [GalleryController::class, 'trips'])->name('gallery.trips');
-    Route::get('/gallery/points', [GalleryController::class, 'points'])->name('gallery.points');
-    Route::get('/gallery/picker', [GalleryController::class, 'pickerList'])->name('gallery.picker');
-    Route::post('/gallery/columns', [GalleryController::class, 'setColumns'])->name('gallery.columns');
-
-    // Albums (before /gallery/{...} model-bound routes).
-    Route::get('/gallery/albums', [AlbumController::class, 'index'])->name('gallery.albums');
-    Route::get('/gallery/albums/data', [AlbumController::class, 'data'])->name('gallery.albums.data');
-    Route::post('/gallery/albums', [AlbumController::class, 'store'])->name('gallery.albums.store');
-    Route::get('/gallery/albums/{album}', [AlbumController::class, 'show'])->name('gallery.albums.show');
-    Route::get('/gallery/albums/{album}/data', [AlbumController::class, 'showData'])->name('gallery.albums.show.data');
-    Route::put('/gallery/albums/{album}', [AlbumController::class, 'update'])->name('gallery.albums.update');
-    Route::delete('/gallery/albums/{album}', [AlbumController::class, 'destroy'])->name('gallery.albums.destroy');
-    Route::post('/gallery/albums/{album}/photos', [AlbumController::class, 'addPhotos'])->name('gallery.albums.photos.add');
-    Route::delete('/gallery/albums/{album}/photos', [AlbumController::class, 'removePhotos'])->name('gallery.albums.photos.remove');
-    Route::get('/gallery/trash', [GalleryController::class, 'trash'])->name('gallery.trash');
-    // Duplicates: content-based duplicate groups; keep one, trash the rest.
-    Route::get('/gallery/duplicates', [GalleryController::class, 'duplicates'])->name('gallery.duplicates');
-    Route::get('/gallery/duplicates/data', [GalleryController::class, 'duplicatesData'])->name('gallery.duplicates.data');
-    Route::post('/gallery/duplicates/{group}/resolve', [GalleryController::class, 'resolveDuplicate'])->name('gallery.duplicates.resolve');
-    Route::post('/gallery/duplicates/{group}/dismiss', [GalleryController::class, 'dismissDuplicate'])->name('gallery.duplicates.dismiss');
-    // People: faces clustered into people; name/merge/hide/reassign.
-    Route::get('/gallery/people', [PersonController::class, 'index'])->name('gallery.people');
-    Route::get('/gallery/people/data', [PersonController::class, 'data'])->name('gallery.people.data');
-    Route::get('/gallery/faces/{face}/thumb', [PersonController::class, 'thumb'])->name('gallery.faces.thumb');
-    Route::post('/gallery/faces/{face}/reassign', [PersonController::class, 'reassignFace'])->name('gallery.faces.reassign');
-    Route::get('/gallery/people/{person}', [PersonController::class, 'show'])->name('gallery.people.show');
-    Route::get('/gallery/people/{person}/data', [PersonController::class, 'showData'])->name('gallery.people.show.data');
-    Route::patch('/gallery/people/{person}', [PersonController::class, 'update'])->name('gallery.people.update');
-    Route::post('/gallery/people/{person}/merge', [PersonController::class, 'merge'])->name('gallery.people.merge');
-    Route::delete('/gallery', [GalleryController::class, 'destroy'])->name('gallery.destroy');
-    Route::delete('/gallery/all', [GalleryController::class, 'destroyAll'])->middleware('throttle:6,1')->name('gallery.destroy-all');
-    Route::post('/gallery/location', [GalleryController::class, 'bulkLocation'])->name('gallery.location');
-    Route::post('/gallery/download', [GalleryController::class, 'bulkDownload'])->middleware('throttle:6,1')->name('gallery.download');
-    Route::post('/gallery/export', [GalleryController::class, 'queueExport'])->middleware('throttle:20,1')->name('gallery.export');
-    Route::get('/gallery/{photo}/download/edited', [GalleryController::class, 'downloadEdited'])->middleware('throttle:30,1')->name('gallery.download.edited');
-    // Throttled: each call blocks on a global geocoder lock + a slow outbound
-    // request, so it can pin PHP-FPM workers without a limit.
-    Route::get('/gallery/geocode/reverse', [GalleryController::class, 'geocodeReverse'])->middleware('throttle:20,1')->name('gallery.geocode.reverse');
-    Route::get('/gallery/geocode/search', [GalleryController::class, 'geocodeSearch'])->middleware('throttle:20,1')->name('gallery.geocode.search');
-    Route::put('/gallery/{photo}/meta', [GalleryController::class, 'editMeta'])->name('gallery.meta');
-    Route::post('/gallery/{photo}/transform', [GalleryController::class, 'transform'])->name('gallery.transform');
-    Route::post('/gallery/{photo}/favorite', [GalleryController::class, 'favorite'])->name('gallery.favorite');
-    Route::get('/gallery/{photo}/video', [GalleryController::class, 'video'])->name('gallery.video');
-    Route::get('/gallery/{photo}/motion', [GalleryController::class, 'motion'])->name('gallery.motion');
-    Route::post('/gallery/trash/restore', [GalleryController::class, 'restore'])->name('gallery.restore');
-    Route::delete('/gallery/trash', [GalleryController::class, 'forceDestroy'])->name('gallery.force-destroy');
-    Route::get('/gallery/{photo}/{size}', [GalleryController::class, 'image'])
-        ->whereIn('size', ['thumb', 'medium', 'original'])->name('gallery.image');
 
     // Zero-knowledge encryption vault (Files): the server only stores ciphertext
     // and KDF params — never the passphrase, recovery code or vault key.

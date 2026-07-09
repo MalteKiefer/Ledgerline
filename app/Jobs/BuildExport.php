@@ -72,10 +72,7 @@ class BuildExport implements ShouldQueue
 
     private function maxBytes(Export $export): int
     {
-        $s = AppSettings::current();
-        $mb = (int) ($export->source === 'gallery'
-            ? $s->export_gallery_max_zip_mb
-            : $s->export_files_max_zip_mb);
+        $mb = (int) AppSettings::current()->export_files_max_zip_mb;
 
         return $mb > 0 ? $mb * 1024 * 1024 : 0;
     }

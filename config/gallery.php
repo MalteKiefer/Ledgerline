@@ -38,14 +38,12 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Content-based duplicate detection (machine learning + perceptual hash)
+    | Machine learning (CLIP embeddings)
     |--------------------------------------------------------------------------
     |
-    | CLIP image embeddings come from the immich-machine-learning sidecar
-    | (docker compose --profile ml). ml_url points at it on the internal network.
-    | duplicate_threshold is the minimum cosine similarity (0..1) for two photos
-    | to count as duplicates; phash_max_distance is the Hamming distance under
-    | which the cheap perceptual-hash pre-pass treats two images as near-identical.
+    | CLIP image/text embeddings come from the immich-machine-learning sidecar
+    | (docker compose --profile ml). ml_url points at it on the internal network;
+    | the browser stores the resulting (sealed) embedding for client-side search.
     |
     */
 
@@ -55,27 +53,18 @@ return [
 
     'ml_clip_model' => env('ML_CLIP_MODEL', 'ViT-B-32__openai'),
 
-    'duplicate_threshold' => (float) env('GALLERY_DUPLICATE_THRESHOLD', 0.92),
-
-    'phash_max_distance' => (int) env('GALLERY_PHASH_MAX_DISTANCE', 6),
-
-    // Days a photo stays in the trash before it (and its blobs) are permanently
-    // purged by the scheduled gallery:prune-trash command.
-    'trash_retention_days' => (int) env('GALLERY_TRASH_RETENTION_DAYS', 30),
-
     // Grace before an unreferenced gallery blob on disk is swept (so an in-flight
     // upload whose row isn't saved yet is never reaped).
     'blob_orphan_grace_hours' => (int) env('GALLERY_BLOB_ORPHAN_GRACE_HOURS', 24),
 
     /*
     |--------------------------------------------------------------------------
-    | Face recognition ("People")
+    | Face detection
     |--------------------------------------------------------------------------
     |
-    | Faces are detected + embedded by the immich-ml sidecar (buffalo_l) and
-    | clustered into people. face_min_score/face_min_size filter weak or tiny
-    | detections; face_cluster_threshold is the minimum cosine similarity for two
-    | faces to be the same person; face_min_per_person hides one-off clusters.
+    | Faces are detected + embedded by the immich-ml sidecar (buffalo_l). The
+    | browser seals the detected face crops + embeddings and clusters people
+    | client-side. face_min_score filters weak detections.
     |
     */
 
@@ -84,12 +73,6 @@ return [
     'face_model' => env('ML_FACE_MODEL', 'buffalo_l'),
 
     'face_min_score' => (float) env('GALLERY_FACE_MIN_SCORE', 0.7),
-
-    'face_min_size' => (int) env('GALLERY_FACE_MIN_SIZE', 32),
-
-    'face_cluster_threshold' => (float) env('GALLERY_FACE_CLUSTER_THRESHOLD', 0.5),
-
-    'face_min_per_person' => (int) env('GALLERY_FACE_MIN_PER_PERSON', 2),
 
     /*
     |--------------------------------------------------------------------------

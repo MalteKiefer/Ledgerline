@@ -30,11 +30,11 @@ class ResourceShareController extends Controller
      * set, but keeping it enumerated here means the registry can't silently
      * widen what this controller permits.
      */
-    // Notes/files/folders are zero-knowledge encrypted: a recipient can't decrypt
-    // them (no per-recipient key re-wrap exists) and a write-sharee editing one
-    // would re-seal it with THEIR key, permanently locking the owner out. So they
-    // are NOT shareable cross-user. Only non-encrypted resources remain.
-    private const ALLOWED = ['albums', 'photos'];
+    // Every module is zero-knowledge encrypted: a recipient can't decrypt a
+    // resource (no per-recipient key re-wrap exists) and a write-sharee editing
+    // one would re-seal it with THEIR key, permanently locking the owner out. So
+    // nothing is currently shareable cross-user.
+    private const ALLOWED = [];
 
     /** What I share out + what others shared with me. */
     public function data(Request $request): JsonResponse
@@ -132,11 +132,7 @@ class ResourceShareController extends Controller
     /** App link to the page that lists a shared resource type. */
     private function linkFor(?string $type): string
     {
-        return match ($type) {
-            'albums' => route('gallery.albums'),
-            'photos' => route('gallery.index'),
-            default => url('/'),
-        };
+        return url('/');
     }
 
     private function resourceLabel(Model $resource): string

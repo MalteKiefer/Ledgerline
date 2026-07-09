@@ -110,12 +110,7 @@ class AppServiceProvider extends ServiceProvider
         // NB: the ffmpeg/exiftool BINARY paths are intentionally NOT overridable
         // from the DB/UI — a settable executable path is a remote-code-execution
         // lever. They stay env/config-only.
-        'gallery_duplicate_threshold' => ['gallery.duplicate_threshold', 'float'],
-        'gallery_phash_max_distance' => ['gallery.phash_max_distance', 'int'],
         'gallery_face_min_score' => ['gallery.face_min_score', 'float'],
-        'gallery_face_min_size' => ['gallery.face_min_size', 'int'],
-        'gallery_face_cluster_threshold' => ['gallery.face_cluster_threshold', 'float'],
-        'gallery_face_min_per_person' => ['gallery.face_min_per_person', 'int'],
         'gallery_geocode_interval_ms' => ['gallery.geocode_interval_ms', 'int'],
     ];
 

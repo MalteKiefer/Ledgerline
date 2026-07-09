@@ -12,7 +12,6 @@
         ];
         // Administration — workspace-wide, admin group only.
         $admin = [
-            ['url' => route('settings.gallery.edit'), 'title' => __('settings.gallery_section'), 'desc' => __('settings.gallery_desc')],
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc')],
             ['url' => route('settings.downloads.edit'), 'title' => __('settings.downloads_section'), 'desc' => __('settings.downloads_desc')],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc')],
