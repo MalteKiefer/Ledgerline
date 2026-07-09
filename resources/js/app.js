@@ -204,13 +204,28 @@ async function bootGalleryStore(store) {
 document.addEventListener('alpine:init', () => {
     Alpine.store('confirm', {
         open: false, message: '', _resolve: null,
+        isPrompt: false, input: '', placeholder: '', okLabel: '',
         ask(message) {
-            this.message = message || '';
+            this.message = message || ''; this.isPrompt = false; this.okLabel = '';
             this.open = true;
             return new Promise((resolve) => { this._resolve = resolve; });
         },
-        yes() { this.open = false; const r = this._resolve; this._resolve = null; if (r) r(true); },
-        no() { this.open = false; const r = this._resolve; this._resolve = null; if (r) r(false); },
+        // In-app replacement for window.prompt: resolves to the entered string, or
+        // null if cancelled. `opts` = { value, placeholder, ok }.
+        prompt(message, opts = {}) {
+            this.message = message || ''; this.isPrompt = true;
+            this.input = opts.value || ''; this.placeholder = opts.placeholder || ''; this.okLabel = opts.ok || '';
+            this.open = true;
+            return new Promise((resolve) => { this._resolve = resolve; });
+        },
+        yes() {
+            const val = this.isPrompt ? this.input : true;
+            this.open = false; const r = this._resolve; this._resolve = null; if (r) r(val);
+        },
+        no() {
+            this.open = false; const r = this._resolve; this._resolve = null;
+            if (r) r(this.isPrompt ? null : false);
+        },
     });
 
     // Global navigation/off-canvas state. Drives the mobile hamburger nav drawer
@@ -1257,7 +1272,6 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
 
     /* ---- Albums (plain client-side grouping, sealed in the index) ---- */
     activeAlbum: null,
-    newAlbumName: '',
     get albums() {
         return (this.index.albums || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     },
@@ -1273,17 +1287,18 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         return ps.find((p) => p.id === al.cover) || ps[0] || null;
     },
     openAlbum(al) { this.activeAlbum = al.id; this.view = 'album'; },
-    createAlbum() {
-        const name = (this.newAlbumName || '').trim();
+    async createAlbum() {
+        const raw = await this.$store.confirm.prompt('', { placeholder: labels.albumName || '', ok: labels.create || '' });
+        const name = (raw || '').trim();
         if (! name) return;
         const al = { id: window.LLGalleryStore.newId(), name, photoIds: [...this.selected], cover: this.selected[0] || null, created: new Date().toISOString() };
         (this.index.albums = this.index.albums || []).push(al);
-        this.newAlbumName = '';
         this.selected = [];
         this._save();
     },
-    renameAlbum(al) {
-        const name = (window.prompt(labels.albumName || 'Album', al.name) || '').trim();
+    async renameAlbum(al) {
+        const raw = await this.$store.confirm.prompt('', { value: al.name, placeholder: labels.albumName || '', ok: labels.save || '' });
+        const name = (raw || '').trim();
         if (name) { al.name = name; this._save(); }
     },
     async deleteAlbum(al) {
@@ -1439,9 +1454,10 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             this.peopleScanning = false;
         }
     },
-    renamePerson(pp) {
-        const name = (window.prompt(labels.personName || 'Name', pp.name || '') || '').trim();
-        pp.name = name; this._save();
+    async renamePerson(pp) {
+        const raw = await this.$store.confirm.prompt('', { value: pp.name || '', placeholder: labels.personName || '', ok: labels.save || '' });
+        if (raw === null) return;
+        pp.name = raw.trim(); this._save();
     },
     hidePerson(pp) {
         pp.hidden = true;

@@ -85,16 +85,26 @@
     {{-- Mobile navigation drawer (hamburger) --}}
     <x-mobile-nav />
 
-    {{-- App-wide confirm modal (replaces window.confirm) --}}
+    {{-- App-wide confirm/prompt modal (replaces window.confirm & window.prompt) --}}
     <div x-data x-show="$store.confirm.open" x-cloak class="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto p-4"
         role="dialog" aria-modal="true" @keydown.escape.window="$store.confirm.no()">
         <div class="absolute inset-0 bg-gray-900/50" @click="$store.confirm.no()"></div>
-        <div class="relative my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-gray-900">
+        <div class="relative my-24 w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-gray-900"
+            @keydown.enter.stop="$store.confirm.isPrompt && $store.confirm.input.trim() && $store.confirm.yes()">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('common.confirm_title') }}</h3>
-            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400" x-text="$store.confirm.message || '{{ __('common.confirm_message') }}'"></p>
+            <p x-show="$store.confirm.message" class="mt-2 text-sm text-gray-600 dark:text-gray-400" x-text="$store.confirm.message || '{{ __('common.confirm_message') }}'"></p>
+            <template x-if="$store.confirm.isPrompt">
+                <input type="text" x-model="$store.confirm.input" :placeholder="$store.confirm.placeholder"
+                    x-effect="if ($store.confirm.open && $store.confirm.isPrompt) $nextTick(() => $el.focus())"
+                    class="mt-3 w-full rounded-lg border-gray-200 bg-white py-2 px-3 text-sm shadow-sm focus:border-gray-400 focus:ring-0 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">
+            </template>
             <div class="mt-4 flex justify-end gap-2">
                 <button type="button" @click="$store.confirm.no()" class="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
-                <button type="button" @click="$store.confirm.yes()" class="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">{{ __('common.confirm') }}</button>
+                <button type="button" @click="$store.confirm.yes()" :disabled="$store.confirm.isPrompt && ! $store.confirm.input.trim()"
+                    :class="$store.confirm.isPrompt ? 'bg-gray-900 hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white' : 'bg-red-600 hover:bg-red-700 text-white'"
+                    class="rounded-md px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                    <span x-text="$store.confirm.okLabel || '{{ __('common.confirm') }}'"></span>
+                </button>
             </div>
         </div>
     </div>
