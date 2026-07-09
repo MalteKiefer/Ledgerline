@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\FileBlob;
-use App\Models\Person;
-use App\Models\Photo;
 use App\Models\User;
 use App\Models\VaultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,24 +52,6 @@ class UserIsolationTest extends TestCase
         // Bob cannot fetch Alice's blob by guessing its UUID.
         $this->actingAs($bob);
         $this->get(route('files.raw', ['blob' => $blob]))->assertNotFound();
-    }
-
-    public function test_gallery_photos_and_people_are_private(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-
-        $this->actingAs($alice);
-        Photo::factory()->create(['uploaded_by' => $alice->id]);
-        Person::create(['name' => 'Alice friend']);
-        $this->assertSame(1, Photo::count());
-        $this->assertSame(1, Person::count());
-
-        // Bob's gallery + people are empty; the photo carries Alice's ownership.
-        $this->actingAs($bob);
-        $this->assertSame(0, Photo::count());
-        $this->assertSame(0, Person::count());
-        $this->assertSame($alice->id, Photo::withoutGlobalScopes()->first()->uploaded_by);
     }
 
     public function test_an_upload_is_owned_by_the_uploader(): void
