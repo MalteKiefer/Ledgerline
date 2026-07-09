@@ -6,8 +6,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Support\BlobStore;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
+use App\Support\OutboundUrl;
 use Throwable;
 
 /**
@@ -30,10 +29,11 @@ class AvatarFetcher
         }
 
         try {
-            // Do not follow redirects (a redirect could escape the allowed host).
-            $response = Http::withOptions(['allow_redirects' => false])
-                ->timeout(5)
-                ->get($url);
+            // OutboundUrl pins the resolved IP (DNS-rebind safe) and refuses
+            // metadata/link-local addresses; it also disables redirect following
+            // (a redirect could escape the allowed host). The host is still
+            // pinned to Pocket-ID by hostAllowed() above.
+            $response = OutboundUrl::client($url, 5)->get($url);
 
             if (! $response->successful()) {
                 return false;

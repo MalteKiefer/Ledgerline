@@ -36,7 +36,6 @@ return [
     'list' => 'Liste',
     'tags' => 'Tags',
     'tags_placeholder' => 'komma, getrennte, tags',
-    'done' => 'Erledigt',
 
     'save' => 'Speichern',
     'cancel' => 'Abbrechen',

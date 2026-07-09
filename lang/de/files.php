@@ -57,7 +57,6 @@ return [
     'next_image' => 'Nächstes Bild',
     'large_zip_confirm' => 'Dieser Download ist über 2 GB und wird im Browser erstellt — das kann viel Speicher brauchen. Fortfahren?',
     'decrypting' => 'Entschlüsseln…',
-    'encrypting_keep_open' => 'Diese Seite geöffnet lassen, bis die Verschlüsselung abgeschlossen ist.',
     'encrypted_no_preview' => 'Für diesen Dateityp ist keine Inline-Vorschau verfügbar.',
     'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
     'empty_explorer' => 'Noch keine Dateien hier.',

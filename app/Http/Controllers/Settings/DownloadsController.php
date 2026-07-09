@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
+use App\Support\CheckboxFlags;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,9 +38,7 @@ class DownloadsController extends Controller
             'export_notify_webhook' => ['sometimes', 'boolean'],
         ]);
 
-        foreach (['export_notify_desktop', 'export_notify_ntfy', 'export_notify_mail', 'export_notify_webhook'] as $flag) {
-            $data[$flag] = $request->boolean($flag);
-        }
+        $data = CheckboxFlags::apply($data, $request, ['export_notify_desktop', 'export_notify_ntfy', 'export_notify_mail', 'export_notify_webhook']);
 
         AppSettings::current()->update($data);
 

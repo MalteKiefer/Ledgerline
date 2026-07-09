@@ -134,8 +134,6 @@ class ResourceShareController extends Controller
     {
         return match ($type) {
             'albums' => route('gallery.albums'),
-            'notes' => route('notes.index'),
-            'files', 'folders' => route('files.index'),
             'photos' => route('gallery.index'),
             default => url('/'),
         };

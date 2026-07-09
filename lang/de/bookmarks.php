@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'link_check_queued' => 'Links werden geprüft…',
-    'check_links_now' => 'Links jetzt prüfen',
     'title' => 'Lesezeichen',
     'search' => 'Lesezeichen durchsuchen…',
     'new_bookmark' => 'Neues Lesezeichen',
@@ -42,13 +40,6 @@ return [
     'read_later' => 'Später lesen',
     'read_later_add' => 'Zu „Später lesen" hinzufügen',
     'read_later_remove' => 'Aus „Später lesen" entfernen',
-    'dead_links' => 'Defekte Links',
-    'dead' => 'defekt',
-    'dead_hint' => 'Dieser Link ist bei der letzten automatischen Prüfung fehlgeschlagen.',
-    'import' => 'Lesezeichen importieren (.html)',
-    'export' => 'Lesezeichen exportieren (.html)',
-    'import_result' => ':created importiert, :skipped übersprungen',
-    'fetch_meta' => 'Titel und Beschreibung von der Seite laden',
     'url_required' => 'Bitte eine URL angeben.',
     'folder_cycle' => 'Ein Ordner kann nicht in sich selbst verschoben werden.',
     'subfolder' => 'Neuer Unterordner',

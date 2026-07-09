@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Search\SearchManager;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -42,6 +43,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Dev tripwire: surface any accidental N+1 (a relation lazy-loaded in a
+        // loop) as a loud exception while developing. Local only — never in prod
+        // and never in the test env, so it can't mask a real failure with a
+        // lazy-load error.
+        Model::preventLazyLoading(app()->environment('local'));
+
         // Register the Pocket-ID OIDC driver with Socialite. Laravel 11+ has no
         // EventServiceProvider, so the listener is wired up here.
         Event::listen(function (SocialiteWasCalled $event): void {

@@ -29,8 +29,15 @@ class AvatarController extends Controller
 
         abort_if(! is_string($path) || $path === '' || ! $disk->exists($path), 404);
 
+        // The avatar is stored with a real image extension, so the disk sets a
+        // correct image Content-Type; nosniff + a script-less sandbox CSP then
+        // stop a (semi-trusted, IdP-supplied) file from ever being interpreted
+        // as anything active if it navigated to directly — matching the other
+        // blob-serving endpoints.
         return $disk->response($path, 'avatar', [
             'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
         ], 'inline');
     }
 
