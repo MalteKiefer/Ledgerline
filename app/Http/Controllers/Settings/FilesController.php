@@ -48,9 +48,6 @@ class FilesController extends Controller
             $limits = $request->validate([
                 'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
                 'files_max_upload_mb' => ['nullable', 'integer', 'min:1', 'max:100000000'],
-                'files_trash_retention_days' => ['nullable', 'integer', 'min:1', 'max:36500'],
-                'files_archive_max_entries' => ['nullable', 'integer', 'min:1', 'max:10000000'],
-                'files_archive_max_mb' => ['nullable', 'integer', 'min:1', 'max:100000000'],
                 'files_blob_orphan_grace_hours' => ['nullable', 'integer', 'min:0', 'max:100000'],
             ]);
             AppSettings::current()->update($limits);

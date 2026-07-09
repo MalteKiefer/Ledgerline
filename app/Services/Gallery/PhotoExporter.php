@@ -8,7 +8,6 @@ use App\Models\Photo;
 use App\Support\BlobStore;
 use App\Support\DiskTempFile;
 use App\Support\ImageManagerFactory;
-use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Encoders\AvifEncoder;
 use Intervention\Image\Encoders\HeicEncoder;
 use Intervention\Image\Encoders\JpegEncoder;

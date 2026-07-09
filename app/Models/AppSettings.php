@@ -43,9 +43,6 @@ use Illuminate\Database\Eloquent\Model;
     'export_notify_webhook',
     'files_quota_mb',
     'files_max_upload_mb',
-    'files_trash_retention_days',
-    'files_archive_max_entries',
-    'files_archive_max_mb',
     'files_blob_orphan_grace_hours',
     'gallery_ml_enabled',
     'gallery_ml_url',
@@ -102,9 +99,6 @@ class AppSettings extends Model
             'export_notify_webhook' => 'boolean',
             'files_quota_mb' => 'integer',
             'files_max_upload_mb' => 'integer',
-            'files_trash_retention_days' => 'integer',
-            'files_archive_max_entries' => 'integer',
-            'files_archive_max_mb' => 'integer',
             'files_blob_orphan_grace_hours' => 'integer',
             'gallery_ml_enabled' => 'boolean',
             'gallery_face_enabled' => 'boolean',
@@ -121,8 +115,17 @@ class AppSettings extends Model
     /**
      * The settings row, creating an empty one on first use.
      */
+    /** Request-scoped memo of the single global settings row (read on many pages).
+     *  Held in the container, not a static, so it is per-request in prod (fresh
+     *  app per FPM request) and reset between tests. */
+    private const MEMO_KEY = 'memo.app_settings.current';
+
     public static function current(): self
     {
-        return static::query()->firstOr(fn (): self => static::create());
+        if (! app()->bound(self::MEMO_KEY)) {
+            app()->instance(self::MEMO_KEY, static::query()->firstOr(fn (): self => static::create()));
+        }
+
+        return app(self::MEMO_KEY);
     }
 }
