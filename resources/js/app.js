@@ -825,7 +825,15 @@ Alpine.data('notificationBell', (labels = {}) => ({
  * transient /gallery/process endpoint (plaintext in, derived out, discarded),
  * re-seals the derived data, and renders the grid from decrypted thumbnails.
  */
-Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
+Alpine.data('vaultGallery', (config = {}, labels = {}) => {
+// Non-reactive caches. Decrypted CLIP/face embeddings are large float arrays;
+// keeping them OFF the Alpine component (out of the reactive proxy) is critical
+// — proxying thousands of 512-float vectors and reading them through get-traps
+// during the O(n²) duplicate/face passes freezes the tab even for a few dozen
+// photos. These live in the factory closure, one set per component instance.
+const metaCache = {};   // photoId -> decrypted { exif, embedding, phash, faces, ... }
+const searchEmb = {};   // photoId -> normalised Float32Array (CLIP), for cosine
+return {
     state: 'boot', // boot | locked | ready | error
     index: { v: 1, photos: [], albums: [], people: [] },
     view: 'library',
@@ -1108,7 +1116,9 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     _revokeThumbs() {
         for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]);
         for (const k in this.faceThumbs) URL.revokeObjectURL(this.faceThumbs[k]);
-        this.thumbs = {}; this.faceThumbs = {}; this._meta = {}; this.dupGroups = null;
+        this.thumbs = {}; this.faceThumbs = {}; this.dupGroups = null;
+        for (const k in metaCache) delete metaCache[k];
+        for (const k in searchEmb) delete searchEmb[k];
     },
 
     /* ---- Viewer ---- */
@@ -1190,7 +1200,6 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     query: '',
     searchResults: null, // null = not searching; array = results
     searching: false,
-    _searchEmb: {},      // photoId -> image embedding (decrypted, cached)
     _searchTimer: null,
     get isSearching() { return this.searchResults !== null; },
     runSearch() {
@@ -1213,7 +1222,8 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             const res = await fetch(config.embedTextUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ q }) });
             const qv = res.ok ? (await res.json()).embedding : null;
             if (Array.isArray(qv)) {
-                const scored = Object.entries(this._searchEmb).map(([id, emb]) => [id, this.cosine(qv, emb)]);
+                const qn = this._norm(qv); // normalised → cosine is a plain dot product
+                const scored = Object.entries(searchEmb).map(([id, emb]) => [id, this._dot(qn, emb)]);
                 scored.sort((a, b) => b[1] - a[1]);
                 contentIds = scored.filter(([, s]) => s > 0.2).slice(0, 80).map(([id]) => id);
             }
@@ -1224,26 +1234,41 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         this.searchResults = order.map((id) => byId.get(id)).filter(Boolean);
         this.searching = false;
     },
+    // Cheap vector helpers. Normalising once turns every later cosine into a
+    // plain dot product (no per-pair sqrt), and Float32Array keeps the O(n²)
+    // duplicate pass out of double-precision boxing.
+    _norm(v) {
+        let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i];
+        const inv = s > 0 ? 1 / Math.sqrt(s) : 0;
+        const out = new Float32Array(v.length);
+        for (let i = 0; i < v.length; i++) out[i] = v[i] * inv;
+        return out;
+    },
+    _dot(a, b) {
+        let d = 0; const n = Math.min(a.length, b.length);
+        for (let i = 0; i < n; i++) d += a[i] * b[i];
+        return d;
+    },
     async _ensureEmbeddings() {
         await this._ensureMeta();
         for (const p of this.libraryPhotos) {
-            const m = this._meta[p.id];
-            if (m && Array.isArray(m.embedding)) this._searchEmb[p.id] = m.embedding;
+            const m = metaCache[p.id];
+            if (m && Array.isArray(m.embedding) && ! searchEmb[p.id]) searchEmb[p.id] = this._norm(m.embedding);
         }
     },
     // Shared decrypted-metadata cache (embedding/phash/faces/place). Every
     // cross-photo feature — search, duplicates, faces — reads from here so each
-    // sealed meta blob is fetched and decrypted at most once per session.
-    _meta: {},
+    // sealed meta blob is fetched and decrypted at most once per session. Kept in
+    // the factory closure (metaCache), never on reactive state.
     async _ensureMeta(photos, onProgress) {
         const list = photos || this.libraryPhotos;
-        const todo = list.filter((p) => p.metaRef && ! this._meta[p.id]);
+        const todo = list.filter((p) => p.metaRef && ! metaCache[p.id]);
         let done = 0;
         for (const p of todo) {
             try {
                 const b = await this._decryptBlob(p.metaRef, p.metaKey);
-                this._meta[p.id] = JSON.parse(new TextDecoder().decode(b));
-            } catch (e) { this._meta[p.id] = null; }
+                metaCache[p.id] = JSON.parse(new TextDecoder().decode(b));
+            } catch (e) { metaCache[p.id] = null; }
             if (onProgress) onProgress(++done, todo.length);
         }
     },
@@ -1387,35 +1412,40 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     dupScanning: false,
     dupProgress: { done: 0, total: 0 },
     _popcount(n) { let c = 0n; while (n) { c += n & 1n; n >>= 1n; } return Number(c); },
-    _hamming(a, b) {
-        if (a == null || b == null || ! Number.isFinite(a) || ! Number.isFinite(b)) return 64;
-        try { return this._popcount(BigInt(a) ^ BigInt(b)); } catch (e) { return 64; }
-    },
     async scanDuplicates() {
         this.dupScanning = true;
         this.dupGroups = null;
         try {
             const targets = this._scanTargets();
             await this._ensureMeta(targets, (d, t) => { this.dupProgress = { done: d, total: t }; });
-            const items = targets.filter((p) => this._meta[p.id]).map((p) => ({ p, m: this._meta[p.id] }));
-            // Union-find: two photos are near-duplicates if their CLIP vectors are
-            // very close, or their difference-hashes are within a few bits.
-            const parent = items.map((_, i) => i);
+            const items = targets.filter((p) => metaCache[p.id]);
+            const N = items.length;
+            // Precompute once: normalised Float32 CLIP vector + phash as BigInt.
+            // Then cosine is a plain dot product and Hamming is a BigInt xor.
+            const emb = new Array(N), ph = new Array(N);
+            for (let i = 0; i < N; i++) {
+                const m = metaCache[items[i].id];
+                emb[i] = Array.isArray(m.embedding) ? this._norm(m.embedding) : null;
+                let b = null;
+                if (m.phash != null && Number.isFinite(m.phash)) { try { b = BigInt(m.phash); } catch (e) { b = null; } }
+                ph[i] = b;
+            }
+            const parent = new Array(N); for (let i = 0; i < N; i++) parent[i] = i;
             const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
             const union = (i, j) => { const a = find(i), b = find(j); if (a !== b) parent[a] = b; };
-            for (let i = 0; i < items.length; i++) {
-                for (let j = i + 1; j < items.length; j++) {
-                    const a = items[i].m, b = items[j].m;
+            // O(n²) pairwise, yielding to the event loop every few rows so the tab
+            // stays responsive and the progress bar advances on big libraries.
+            for (let i = 0; i < N; i++) {
+                for (let j = i + 1; j < N; j++) {
                     let dup = false;
-                    if (Array.isArray(a.embedding) && Array.isArray(b.embedding)) {
-                        if (this.cosine(a.embedding, b.embedding) >= 0.94) dup = true;
-                    }
-                    if (! dup && a.phash != null && b.phash != null && this._hamming(a.phash, b.phash) <= 4) dup = true;
+                    if (emb[i] && emb[j]) dup = this._dot(emb[i], emb[j]) >= 0.94;
+                    if (! dup && ph[i] != null && ph[j] != null) dup = this._popcount(ph[i] ^ ph[j]) <= 4;
                     if (dup) union(i, j);
                 }
+                if ((i & 15) === 0) { this.dupProgress = { done: i, total: N }; await new Promise((r) => setTimeout(r)); }
             }
             const groups = new Map();
-            items.forEach((it, i) => { const r = find(i); if (! groups.has(r)) groups.set(r, []); groups.get(r).push(it.p); });
+            for (let i = 0; i < N; i++) { const r = find(i); if (! groups.has(r)) groups.set(r, []); groups.get(r).push(items[i]); }
             this.dupGroups = [...groups.values()].filter((g) => g.length > 1)
                 .map((g) => g.sort((a, b) => (b.size || 0) - (a.size || 0)));
         } finally {
@@ -1465,7 +1495,7 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             // Collect every detected face carrying an embedding + a crop blob.
             const faces = [];
             for (const p of targets) {
-                const m = this._meta[p.id];
+                const m = metaCache[p.id];
                 if (! m || ! Array.isArray(m.faces)) continue;
                 m.faces.forEach((f, idx) => {
                     if (Array.isArray(f.embedding) && f.cropRef) {
@@ -1487,8 +1517,11 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
                 }
             }
             // Greedy single-link clustering. buffalo_l embeddings put same-person
-            // pairs well above 0.5 cosine.
+            // pairs well above 0.5 cosine. Yield periodically so a large face set
+            // keeps the tab responsive and advances the progress bar.
+            let fi = 0;
             for (const face of faces) {
+                if ((++fi & 127) === 0) { this.peopleProgress = { done: fi, total: faces.length }; await new Promise((r) => setTimeout(r)); }
                 const key = face.photoId + ':' + face.idx;
                 if (placed.has(key)) continue;
                 placed.add(key);
@@ -1575,7 +1608,7 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             if (al.cover === p.id) al.cover = al.photoIds[0] || null;
         }
         for (const pp of (this.index.people || [])) pp.faces = (pp.faces || []).filter((f) => f.photoId !== p.id);
-        delete this._meta[p.id];
+        delete metaCache[p.id]; delete searchEmb[p.id];
         if (this.thumbs[p.id]) { URL.revokeObjectURL(this.thumbs[p.id]); delete this.thumbs[p.id]; }
         this._freeBlobs(refs);
     },
@@ -1613,7 +1646,8 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     },
     dismissUploads() { this.uploads = []; },
     get uploading() { return this.uploads.some((u) => u.state === 'uploading'); },
-}));
+};
+});
 
 /**
  * Editor for an encrypted file: fetches the ciphertext, decrypts it to text in
