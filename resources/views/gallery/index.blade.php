@@ -16,6 +16,8 @@
         albumName: @js(__('gallery.album_name')),
         deleteAlbumConfirm: @js(__('gallery.delete_album_confirm')),
         personName: @js(__('gallery.person_name')),
+        create: @js(__('gallery.create')),
+        save: @js(__('gallery.save')),
      })">
 
     <div x-show="dragging && state === 'ready'" x-cloak @drop.prevent="drop($event)" @dragover.prevent
@@ -104,7 +106,7 @@
                     <template x-for="al in albums" :key="al.id">
                       <button type="button" @click="addSelectedToAlbum(al); open = false" class="block w-full truncate rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" x-text="al.name"></button>
                     </template>
-                    <button type="button" @click="newAlbumName = (window.prompt(@js(__('gallery.album_name')), '') || ''); createAlbum(); open = false" class="mt-0.5 flex w-full items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
+                    <button type="button" @click="open = false; createAlbum()" class="mt-0.5 flex w-full items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
                   </div>
                 </div>
                 <button type="button" @click="bulkTrash()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900"><x-icon name="trash" class="h-4 w-4" />{{ __('gallery.delete') }}</button>
@@ -120,9 +122,13 @@
         </div>
 
         {{-- Mobile view switch --}}
-        <div class="mb-4 flex gap-2 md:hidden">
-          <button type="button" @click="view = 'library'; clearSelection()" :class="view === 'library' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.library') }}</button>
-          <button type="button" @click="view = 'trash'; clearSelection()" :class="view === 'trash' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
+        <div class="mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden">
+          <button type="button" @click="view = 'library'; clearSelection()" :class="view === 'library' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.library') }}</button>
+          <button type="button" @click="view = 'albums'; clearSelection()" :class="view === 'albums' || view === 'album' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.albums') }}</button>
+          <button type="button" @click="view = 'people'; clearSelection()" :class="view === 'people' || view === 'person' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.people') }}</button>
+          <button type="button" @click="view = 'duplicates'; clearSelection()" :class="view === 'duplicates' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.duplicates') }}</button>
+          <button type="button" @click="view = 'map'; clearSelection()" :class="view === 'map' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.map') }}</button>
+          <button type="button" @click="view = 'trash'; clearSelection()" :class="view === 'trash' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
         </div>
 
         {{-- LIBRARY --}}
@@ -207,19 +213,29 @@
 
         {{-- ALBUMS (list) --}}
         <div x-show="view === 'albums'">
-          <template x-if="! albums.length"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_albums') }}</p></template>
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div x-show="albums.length" class="mb-5 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.albums') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="albums.length"></span></h2>
+            <button type="button" @click="createAlbum()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+              <x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}
+            </button>
+          </div>
+
+          <div x-show="! albums.length" x-cloak class="mx-auto mt-8 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="folder" class="h-8 w-8 text-gray-400 dark:text-gray-500" /></div>
+            <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_albums') }}</p>
+          </div>
+
+          <div x-show="albums.length" class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             <template x-for="al in albums" :key="al.id">
-              <div class="group cursor-pointer" @click="openAlbum(al)">
-                <div class="relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-init="$nextTick(() => albumCover(al) && thumbFor(albumCover(al)))">
-                  <img x-show="albumCover(al) && thumbs[albumCover(al).id]" :src="albumCover(al) && thumbs[albumCover(al).id]" class="h-full w-full object-cover">
-                  <div x-show="! (albumCover(al) && thumbs[albumCover(al).id])" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"><x-icon name="folder" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></div>
+              <button type="button" @click="openAlbum(al)" class="group text-left focus:outline-none">
+                <div class="relative aspect-square overflow-hidden rounded-2xl bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-800 transition duration-300 group-hover:shadow-md group-hover:ring-gray-300 dark:group-hover:ring-gray-700"
+                     x-init="$nextTick(() => albumCover(al) && thumbFor(albumCover(al)))">
+                  <img x-show="albumCover(al) && thumbs[albumCover(al).id]" :src="albumCover(al) && thumbs[albumCover(al).id]" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                  <div x-show="! (albumCover(al) && thumbs[albumCover(al).id])" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"><x-icon name="folder" class="h-9 w-9 text-gray-300 dark:text-gray-600" /></div>
+                  <span class="absolute bottom-2 right-2 inline-flex h-5 items-center rounded-full bg-black/55 px-2 text-[11px] font-medium tabular-nums text-white backdrop-blur-sm" x-text="albumCount(al)"></span>
                 </div>
-                <div class="mt-1.5 flex items-center justify-between gap-2">
-                  <span class="truncate text-sm font-medium text-gray-800 dark:text-gray-200" x-text="al.name"></span>
-                  <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="albumCount(al)"></span>
-                </div>
-              </div>
+                <p class="mt-2 truncate text-sm font-medium text-gray-800 dark:text-gray-200" x-text="al.name"></p>
+              </button>
             </template>
           </div>
         </div>
@@ -256,25 +272,43 @@
 
         {{-- PEOPLE (list) --}}
         <div x-show="view === 'people'">
-          <div class="mb-4 flex items-center justify-between">
-            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="people.length + ' · ' + @js(__('gallery.people'))"></p>
-            <button type="button" @click="scanFaces()" :disabled="peopleScanning" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50">
-              <svg x-show="peopleScanning" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
-              <span x-text="peopleScanning ? (@js(__('gallery.scanning'))) : (@js(__('gallery.scan_faces')))"></span>
+          {{-- Toolbar: only when results exist --}}
+          <div x-show="people.length && ! peopleScanning" class="mb-5 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.people') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="people.length"></span></h2>
+            <button type="button" @click="scanFaces()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+              <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
             </button>
           </div>
-          <p x-show="peopleScanning" x-cloak class="mb-3 text-xs tabular-nums text-gray-400" x-text="peopleProgress.done + ' / ' + peopleProgress.total"></p>
-          <template x-if="! people.length && ! peopleScanning"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_people') }}</p></template>
-          <div class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+
+          {{-- Scanning card --}}
+          <div x-show="peopleScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center shadow-sm">
+            <svg class="h-8 w-8 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+            <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ __('gallery.scanning') }}</p>
+            <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div class="h-full rounded-full bg-gray-800 dark:bg-gray-200 transition-all duration-300" :style="`width: ${peopleProgress.total ? (peopleProgress.done / peopleProgress.total * 100) : 8}%`"></div></div>
+            <p class="mt-2 text-xs tabular-nums text-gray-400" x-text="peopleProgress.done + ' / ' + peopleProgress.total"></p>
+          </div>
+
+          {{-- Empty / first-run hero --}}
+          <div x-show="! people.length && ! peopleScanning" x-cloak class="mx-auto mt-8 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="user" class="h-8 w-8 text-gray-400 dark:text-gray-500" /></div>
+            <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_people') }}</p>
+            <button type="button" @click="scanFaces()" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white">
+              <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.scan_faces') }}
+            </button>
+          </div>
+
+          {{-- People grid --}}
+          <div x-show="people.length && ! peopleScanning" class="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 lg:grid-cols-6">
             <template x-for="pp in people" :key="pp.id">
-              <div class="group cursor-pointer text-center" @click="openPerson(pp)">
-                <div class="relative mx-auto aspect-square w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" x-init="$nextTick(() => personCover(pp) && faceThumb(personCover(pp)))">
-                  <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover">
+              <button type="button" @click="openPerson(pp)" class="group flex flex-col items-center focus:outline-none">
+                <div class="relative aspect-square w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 transition duration-300 group-hover:ring-2 group-hover:ring-gray-900 dark:group-hover:ring-gray-100 group-hover:shadow-md"
+                     x-init="$nextTick(() => personCover(pp) && faceThumb(personCover(pp)))">
+                  <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
                   <div x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])" class="flex h-full w-full items-center justify-center"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></div>
                 </div>
-                <p class="mt-1.5 truncate text-sm font-medium text-gray-800 dark:text-gray-200" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></p>
-                <p class="text-xs tabular-nums text-gray-400" x-text="personCount(pp)"></p>
-              </div>
+                <p class="mt-2 max-w-full truncate text-sm font-medium text-gray-800 dark:text-gray-200" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></p>
+                <p class="text-xs tabular-nums text-gray-400" x-text="@js(__('gallery.photos_count', ['count' => '{n}'])).replace('{n}', personCount(pp))"></p>
+              </button>
             </template>
           </div>
         </div>
@@ -308,27 +342,52 @@
 
         {{-- DUPLICATES --}}
         <div x-show="view === 'duplicates'">
-          <div class="mb-4 flex items-center justify-between">
-            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="(dupGroups ? dupGroups.length : 0) + ' · ' + @js(__('gallery.duplicates'))"></p>
-            <button type="button" @click="scanDuplicates()" :disabled="dupScanning" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50">
-              <svg x-show="dupScanning" x-cloak class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
-              <span x-text="dupScanning ? (@js(__('gallery.scanning'))) : (@js(__('gallery.find_duplicates')))"></span>
+          {{-- Toolbar: only when result groups exist --}}
+          <div x-show="dupGroups && dupGroups.length && ! dupScanning" class="mb-5 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.duplicates') }}
+              <span class="ml-1 text-sm font-normal text-gray-400" x-text="@js(__('gallery.duplicate_sets', ['count' => '{n}'])).replace('{n}', (dupGroups ? dupGroups.length : 0))"></span>
+            </h2>
+            <button type="button" @click="scanDuplicates()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+              <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
             </button>
           </div>
-          <p x-show="dupScanning" x-cloak class="mb-3 text-xs tabular-nums text-gray-400" x-text="dupProgress.done + ' / ' + dupProgress.total"></p>
-          <template x-if="dupGroups && ! dupGroups.length && ! dupScanning"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_duplicates') }}</p></template>
-          <div class="space-y-4">
+
+          {{-- Scanning card --}}
+          <div x-show="dupScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center shadow-sm">
+            <svg class="h-8 w-8 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+            <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ __('gallery.scanning') }}</p>
+            <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div class="h-full rounded-full bg-gray-800 dark:bg-gray-200 transition-all duration-300" :style="`width: ${dupProgress.total ? (dupProgress.done / dupProgress.total * 100) : 8}%`"></div></div>
+            <p class="mt-2 text-xs tabular-nums text-gray-400" x-text="dupProgress.done + ' / ' + dupProgress.total"></p>
+          </div>
+
+          {{-- Empty / first-run hero (no scan yet, or scan found nothing) --}}
+          <div x-show="! dupScanning && (! dupGroups || ! dupGroups.length)" x-cloak class="mx-auto mt-8 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="square-2-stack" class="h-8 w-8 text-gray-400 dark:text-gray-500" /></div>
+            <p class="mt-4 text-sm text-gray-500 dark:text-gray-400" x-text="dupGroups ? (@js(__('gallery.no_duplicates'))) : (@js(__('gallery.duplicates_hint')))"></p>
+            <button type="button" @click="scanDuplicates()" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white">
+              <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.find_duplicates') }}
+            </button>
+          </div>
+
+          {{-- Result groups --}}
+          <div x-show="dupGroups && dupGroups.length && ! dupScanning" class="space-y-3">
             <template x-for="(group, gi) in (dupGroups || [])" :key="gi">
-              <div class="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+              <div class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm">
+                <div class="mb-2 flex items-center gap-2 px-1">
+                  <span class="inline-flex h-5 items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2 text-[11px] font-medium tabular-nums text-gray-500 dark:text-gray-400" x-text="@js(__('gallery.copies', ['count' => '{n}'])).replace('{n}', group.length)"></span>
+                  <span class="text-[11px] text-gray-400" x-text="'· ' + @js(__('gallery.keep_hint'))"></span>
+                </div>
                 <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6">
-                  <template x-for="p in group" :key="p.id">
-                    <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800" x-init="thumbFor(p)">
+                  <template x-for="(p, pi) in group" :key="p.id">
+                    <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 ring-1 ring-transparent transition" :class="pi === 0 ? 'ring-2 ring-emerald-400' : ''" x-init="thumbFor(p)">
                       <button type="button" @click="openViewer(p)" class="block h-full w-full">
                         <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover">
                         <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
                       </button>
-                      <span x-show="p.size" class="pointer-events-none absolute bottom-1 left-1 rounded bg-black/50 px-1 text-[10px] text-white" x-text="fmtBytes(p.size)"></span>
-                      <button type="button" @click.stop="keepOne(group, p)" class="absolute bottom-1 right-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-gray-800 opacity-0 transition hover:bg-white group-hover:opacity-100">{{ __('gallery.keep') }}</button>
+                      <span x-show="p.size" class="pointer-events-none absolute bottom-1 left-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm" x-text="fmtBytes(p.size)"></span>
+                      <span x-show="pi === 0" class="pointer-events-none absolute left-1 top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-medium text-white">{{ __('gallery.best') }}</span>
+                      <button type="button" @click.stop="keepOne(group, p)" title="{{ __('gallery.keep') }}"
+                          class="absolute bottom-1 right-1 inline-flex items-center gap-1 rounded-md bg-gray-900/90 px-2 py-1 text-[10px] font-medium text-white opacity-0 backdrop-blur-sm transition hover:bg-gray-900 group-hover:opacity-100"><x-icon name="check" class="h-3 w-3" />{{ __('gallery.keep') }}</button>
                     </div>
                   </template>
                 </div>
