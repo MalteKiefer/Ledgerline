@@ -4,18 +4,16 @@
           ->mapWithKeys(fn (\App\Enums\FileType $c): array => [$c->value => $c->label()]);
   @endphp
   <div x-data="vaultFiles({
-        dataUrl: '{{ url('/files/data') }}',
+        usageUrl: '{{ url('/files/usage') }}',
+        reconcileUrl: '{{ url('/files/blobs/reconcile') }}',
         uploadUrl: '{{ url('/files/upload') }}',
         rawBase: '{{ url('/files/raw') }}',
         blobBase: '{{ url('/files/blob') }}',
-        versionsBase: '{{ url('/files') }}',
-        trashUrl: '{{ url('/files/trash') }}',
-        restoreUrl: '{{ url('/files/restore') }}',
-        favoriteUrl: '{{ url('/files/favorite') }}',
         chunkInitUrl: '{{ url('/files/upload/init') }}',
         chunkPartUrl: '{{ url('/files/upload/part') }}',
         chunkCompleteUrl: '{{ url('/files/upload/complete') }}',
         chunkAbortUrl: '{{ url('/files/upload/abort') }}',
+        maxVersions: {{ $maxVersions }},
         token: '{{ csrf_token() }}',
      }, {
         uploadUnreadable: @js(__('files.upload_unreadable')),

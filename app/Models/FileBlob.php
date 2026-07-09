@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Ownership record for an uploaded raw blob (files/{blob}) before it is attached
- * to a StoredFile via the manifest sync. See the create migration for why.
+ * Ownership ledger for a stored content blob (files/{blob}). One row per blob
+ * the user uploaded; drives the per-user storage quota and access control, and
+ * lets a reconcile/sweep reclaim bytes the sealed manifest no longer references.
  */
 #[Fillable(['blob', 'user_id', 'size', 'created_at'])]
 class FileBlob extends Model

@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\FileBlob;
 use App\Models\Person;
 use App\Models\Photo;
-use App\Models\StoredFile;
 use App\Models\User;
 use App\Models\VaultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -45,18 +46,13 @@ class UserIsolationTest extends TestCase
         $this->actingAs($alice);
         $blob = (string) Str::uuid();
         Storage::disk(config('files.disk'))->put('files/'.$blob, 'secret bytes');
-        StoredFile::create([
-            'id' => (string) Str::uuid(), 'enc_metadata' => '{"c":"c2VhbGVkYQ==","n":"bm9uY2Vh"}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}',
-            'is_encrypted' => true, 'size' => 12, 'blob' => $blob, 'tags' => [],
-        ]);
+        FileBlob::create(['blob' => $blob, 'user_id' => $alice->id, 'size' => 12, 'created_at' => now()]);
 
-        // Owner can list + download.
-        $this->getJson(route('files.data'))->assertOk()->assertJsonFragment(['enc_metadata' => '{"c":"c2VhbGVkYQ==","n":"bm9uY2Vh"}']);
+        // Owner can download their blob's ciphertext.
         $this->get(route('files.raw', ['blob' => $blob]))->assertOk();
 
-        // Bob sees no files and cannot fetch Alice's blob by its UUID.
+        // Bob cannot fetch Alice's blob by guessing its UUID.
         $this->actingAs($bob);
-        $this->getJson(route('files.data'))->assertOk()->assertJsonMissing(['enc_metadata' => '{"c":"c2VhbGVkYQ==","n":"bm9uY2Vh"}']);
         $this->get(route('files.raw', ['blob' => $blob]))->assertNotFound();
     }
 
@@ -78,15 +74,16 @@ class UserIsolationTest extends TestCase
         $this->assertSame($alice->id, Photo::withoutGlobalScopes()->first()->uploaded_by);
     }
 
-    public function test_owner_is_set_automatically_on_create(): void
+    public function test_an_upload_is_owned_by_the_uploader(): void
     {
+        Storage::fake(config('files.disk'));
         $alice = User::factory()->create();
         $this->actingAs($alice);
 
-        $file = StoredFile::create([
-            'id' => (string) Str::uuid(), 'enc_metadata' => '{"c":"c2VhbGVkYQ==","n":"bm9uY2Vh"}', 'enc_file_key' => '{"c":"d3JhcHBlZA==","n":"bm9uY2Uy"}',
-            'is_encrypted' => true, 'size' => 12, 'blob' => (string) Str::uuid(), 'tags' => [],
-        ]);
-        $this->assertSame($alice->id, $file->user_id);
+        $blob = $this->post(route('files.upload'), [
+            'file' => UploadedFile::fake()->create('doc.pdf', 12, 'application/pdf'),
+        ])->assertCreated()->json('id');
+
+        $this->assertSame($alice->id, (int) FileBlob::find($blob)->user_id);
     }
 }

@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Models\Album;
-use App\Models\FileFolder;
 use App\Models\Note;
 use App\Models\Photo;
-use App\Models\StoredFile;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -24,8 +22,6 @@ final class Shareable
     /** Shareable resource slug → model class (all use SharesWithUsers). */
     private const MAP = [
         'notes' => Note::class,
-        'files' => StoredFile::class,
-        'folders' => FileFolder::class,
         'albums' => Album::class,
         'photos' => Photo::class,
     ];

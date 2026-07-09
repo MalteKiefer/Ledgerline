@@ -24,8 +24,9 @@ Schedule::command('exports:prune')->daily()->withoutOverlapping();
 // Fail exports left stuck building by a dead worker so they get pruned.
 Schedule::command('exports:recover-stuck')->hourly()->withoutOverlapping();
 
-// Permanently purge files trashed longer than the retention window (and blobs).
-Schedule::command('files:prune-trash')->daily()->withoutOverlapping();
+// Reclaim stored file bytes on disk with no ownership record (leaked/aborted
+// uploads). The client reconciles manifest-unreferenced blobs on its own.
+Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
 
 // Same for gallery photos: purge trashed past retention + sweep orphan blobs.
 Schedule::command('gallery:prune-trash')->daily()->withoutOverlapping();
