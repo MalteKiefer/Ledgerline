@@ -274,11 +274,14 @@
         {{-- PEOPLE (list) --}}
         <div x-show="view === 'people'">
           {{-- Toolbar: only when results exist --}}
-          <div x-show="people.length && ! peopleScanning" class="mb-5 flex items-center justify-between">
+          <div x-show="people.length && ! peopleScanning" class="mb-5 flex items-center justify-between gap-3">
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.people') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="people.length"></span></h2>
-            <button type="button" @click="scanFaces()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
-              <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
-            </button>
+            <div class="flex items-center gap-2">
+              @include('gallery._scan_scope')
+              <button type="button" @click="scanFaces()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+                <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
+              </button>
+            </div>
           </div>
 
           {{-- Scanning card --}}
@@ -293,9 +296,12 @@
           <div x-show="! people.length && ! peopleScanning" x-cloak class="mx-auto mt-8 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="user" class="h-8 w-8 text-gray-400 dark:text-gray-500" /></div>
             <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_people') }}</p>
-            <button type="button" @click="scanFaces()" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white">
-              <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.scan_faces') }}
-            </button>
+            <div class="mt-5 flex items-center gap-2">
+              @include('gallery._scan_scope')
+              <button type="button" @click="scanFaces()" class="inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white">
+                <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.scan_faces') }}
+              </button>
+            </div>
           </div>
 
           {{-- People grid --}}
@@ -348,9 +354,12 @@
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.duplicates') }}
               <span class="ml-1 text-sm font-normal text-gray-400" x-text="@js(__('gallery.duplicate_sets', ['count' => '{n}'])).replace('{n}', (dupGroups ? dupGroups.length : 0))"></span>
             </h2>
-            <button type="button" @click="scanDuplicates()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
-              <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
-            </button>
+            <div class="flex items-center gap-2">
+              @include('gallery._scan_scope')
+              <button type="button" @click="scanDuplicates()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+                <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
+              </button>
+            </div>
           </div>
 
           {{-- Scanning card --}}
@@ -365,9 +374,12 @@
           <div x-show="! dupScanning && (! dupGroups || ! dupGroups.length)" x-cloak class="mx-auto mt-8 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="square-2-stack" class="h-8 w-8 text-gray-400 dark:text-gray-500" /></div>
             <p class="mt-4 text-sm text-gray-500 dark:text-gray-400" x-text="dupGroups ? (@js(__('gallery.no_duplicates'))) : (@js(__('gallery.duplicates_hint')))"></p>
-            <button type="button" @click="scanDuplicates()" class="mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white">
-              <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.find_duplicates') }}
-            </button>
+            <div class="mt-5 flex items-center gap-2">
+              @include('gallery._scan_scope')
+              <button type="button" @click="scanDuplicates()" class="inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white">
+                <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.find_duplicates') }}
+              </button>
+            </div>
           </div>
 
           {{-- Result groups --}}

@@ -28,6 +28,8 @@ return [
     'back' => 'Back',
     'scan_faces' => 'Scan faces',
     'rescan' => 'Rescan',
+    'scope_all' => 'All photos',
+    'scope_last' => 'Last :count',
     'scanning' => 'Scanning…',
     'save' => 'Save',
     'cancel' => 'Cancel',
