@@ -172,9 +172,13 @@ document.addEventListener('alpine:init', () => {
                     this.lock();
                 }
             }, 15000);
-            // Clear the cached vault key when the tab is closed/navigated away so
-            // it doesn't linger in sessionStorage beyond the session.
-            window.addEventListener('pagehide', () => { try { window.Vault.lock(); } catch (e) { /* ignore */ } });
+            // NB: do NOT lock on `pagehide` — it fires on every same-tab navigation
+            // and reload, which would drop the cached key on each page change and
+            // force re-entry of the passphrase everywhere. The key is held in
+            // sessionStorage (already cleared by the browser when the tab closes),
+            // bound to the current login (vault-owner), and auto-locked by the idle
+            // watchdog above — so it correctly survives navigation but not a real
+            // tab close, logout or idle timeout.
         },
         async setup(passphrase) {
             const code = await window.Vault.setup(passphrase);
