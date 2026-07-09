@@ -1235,8 +1235,9 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     // cross-photo feature — search, duplicates, faces — reads from here so each
     // sealed meta blob is fetched and decrypted at most once per session.
     _meta: {},
-    async _ensureMeta(onProgress) {
-        const todo = this.libraryPhotos.filter((p) => p.metaRef && ! this._meta[p.id]);
+    async _ensureMeta(photos, onProgress) {
+        const list = photos || this.libraryPhotos;
+        const todo = list.filter((p) => p.metaRef && ! this._meta[p.id]);
         let done = 0;
         for (const p of todo) {
             try {
@@ -1371,6 +1372,16 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         this._save();
     },
 
+    /* ---- Scan scope (shared by faces + duplicates): 0 = whole library, N = the
+       N most-recently-added photos, so a re-scan needn't re-crunch everything. --- */
+    scanLimit: 0,
+    _scanTargets() {
+        if (! this.scanLimit) return this.libraryPhotos;
+        return [...this.index.photos.filter((p) => ! p.trashed)]
+            .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0))
+            .slice(0, this.scanLimit);
+    },
+
     /* ---- Duplicates (pHash Hamming + CLIP cosine, all client-side) ---- */
     dupGroups: null,
     dupScanning: false,
@@ -1384,8 +1395,9 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         this.dupScanning = true;
         this.dupGroups = null;
         try {
-            await this._ensureMeta((d, t) => { this.dupProgress = { done: d, total: t }; });
-            const items = this.libraryPhotos.filter((p) => this._meta[p.id]).map((p) => ({ p, m: this._meta[p.id] }));
+            const targets = this._scanTargets();
+            await this._ensureMeta(targets, (d, t) => { this.dupProgress = { done: d, total: t }; });
+            const items = targets.filter((p) => this._meta[p.id]).map((p) => ({ p, m: this._meta[p.id] }));
             // Union-find: two photos are near-duplicates if their CLIP vectors are
             // very close, or their difference-hashes are within a few bits.
             const parent = items.map((_, i) => i);
@@ -1444,19 +1456,15 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         } catch (e) { return ''; }
     },
     personCover(pp) { return (pp.faces || [])[0] || null; },
-    _centroid(vecs) {
-        const n = vecs[0].length, out = new Array(n).fill(0);
-        for (const v of vecs) for (let i = 0; i < n; i++) out[i] += v[i];
-        for (let i = 0; i < n; i++) out[i] /= vecs.length;
-        return out;
-    },
     async scanFaces() {
         this.peopleScanning = true;
         try {
-            await this._ensureMeta((d, t) => { this.peopleProgress = { done: d, total: t }; });
+            const targets = this._scanTargets();
+            const incremental = this.scanLimit > 0;
+            await this._ensureMeta(targets, (d, t) => { this.peopleProgress = { done: d, total: t }; });
             // Collect every detected face carrying an embedding + a crop blob.
             const faces = [];
-            for (const p of this.libraryPhotos) {
+            for (const p of targets) {
                 const m = this._meta[p.id];
                 if (! m || ! Array.isArray(m.faces)) continue;
                 m.faces.forEach((f, idx) => {
@@ -1465,39 +1473,68 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
                     }
                 });
             }
-            // Greedy single-link clustering against running centroids. buffalo_l
-            // embeddings put same-person pairs well above 0.5 cosine.
+            // Seed clusters. A scoped (incremental) scan seeds from the existing
+            // people so new faces merge into them instead of wiping the older
+            // clusters; a full scan starts empty and rebuilds everything.
             const clusters = [];
+            const placed = new Set(); // photoId:idx already assigned
+            if (incremental) {
+                for (const pp of (this.index.people || [])) {
+                    if (! Array.isArray(pp.centroid) || ! pp.centroid.length) continue;
+                    const members = (pp.faces || []).map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey }));
+                    clusters.push({ id: pp.id, name: pp.name || '', hidden: ! ! pp.hidden, centroid: pp.centroid.slice(), count: members.length, members });
+                    for (const f of (pp.faces || [])) placed.add(f.photoId + ':' + f.idx);
+                }
+            }
+            // Greedy single-link clustering. buffalo_l embeddings put same-person
+            // pairs well above 0.5 cosine.
             for (const face of faces) {
+                const key = face.photoId + ':' + face.idx;
+                if (placed.has(key)) continue;
+                placed.add(key);
                 let best = null, bestSim = 0.5;
                 for (const c of clusters) {
                     const s = this.cosine(face.emb, c.centroid);
                     if (s > bestSim) { bestSim = s; best = c; }
                 }
-                if (best) { best.members.push(face); best.centroid = this._centroid(best.members.map((x) => x.emb)); }
-                else clusters.push({ members: [face], centroid: face.emb.slice() });
-            }
-            // Keep clusters of 2+ faces; carry over names from the previous scan by
-            // matching centroids so renames survive re-clustering.
-            const prev = this.index.people || [];
-            const kept = clusters.filter((c) => c.members.length >= 2)
-                .sort((a, b) => b.members.length - a.members.length);
-            const people = kept.map((c) => {
-                let name = '', hidden = false;
-                let bestSim = 0.6, match = null;
-                for (const pp of prev) {
-                    if (! pp.centroid) continue;
-                    const s = this.cosine(c.centroid, pp.centroid);
-                    if (s > bestSim) { bestSim = s; match = pp; }
+                const member = { photoId: face.photoId, idx: face.idx, cropRef: face.cropRef, cropKey: face.cropKey };
+                if (best) {
+                    // Running-mean centroid update (no need to keep every embedding).
+                    const n = best.count || best.members.length;
+                    for (let i = 0; i < best.centroid.length; i++) best.centroid[i] = (best.centroid[i] * n + face.emb[i]) / (n + 1);
+                    best.count = n + 1;
+                    best.members.push(member);
+                } else {
+                    clusters.push({ id: null, name: '', hidden: false, centroid: face.emb.slice(), count: 1, members: [member] });
                 }
-                if (match) { name = match.name || ''; hidden = ! ! match.hidden; }
-                return {
-                    id: window.LLGalleryStore.newId(),
-                    name, hidden, centroid: c.centroid,
-                    faces: c.members.map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey })),
-                };
-            });
-            this.index.people = people;
+            }
+            // Keep clusters of 2+ faces. A full scan carries over names by matching
+            // the previous scan's centroids so renames survive re-clustering.
+            const prev = incremental ? [] : (this.index.people || []);
+            const built = clusters.filter((c) => c.members.length >= 2)
+                .sort((a, b) => b.members.length - a.members.length)
+                .map((c) => {
+                    let name = c.name || '', hidden = ! ! c.hidden;
+                    if (! incremental) {
+                        let bestSim = 0.6, match = null;
+                        for (const pp of prev) {
+                            if (! pp.centroid) continue;
+                            const s = this.cosine(c.centroid, pp.centroid);
+                            if (s > bestSim) { bestSim = s; match = pp; }
+                        }
+                        if (match) { name = match.name || ''; hidden = ! ! match.hidden; }
+                    }
+                    return { id: c.id || window.LLGalleryStore.newId(), name, hidden, centroid: c.centroid, faces: c.members };
+                });
+            // Incremental: preserve any existing person that couldn't be seeded
+            // (e.g. legacy entry without a stored centroid) so it isn't dropped.
+            if (incremental) {
+                const builtIds = new Set(built.map((b) => b.id));
+                for (const pp of (this.index.people || [])) {
+                    if (! builtIds.has(pp.id) && (pp.faces || []).length >= 2) built.push(pp);
+                }
+            }
+            this.index.people = built;
             this._save();
         } finally {
             this.peopleScanning = false;
