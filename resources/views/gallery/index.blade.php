@@ -183,9 +183,12 @@
 
         {{-- TRASH --}}
         <div x-show="view === 'trash'">
-          <div class="mb-3 flex items-center justify-between">
-            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="trashCount() + ' · ' + @js(__('gallery.trash'))"></p>
-            <button type="button" x-show="trashCount()" @click="emptyTrash()" class="text-xs font-medium text-red-500 hover:text-red-600">{{ __('gallery.empty_trash') }}</button>
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.trash') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="trashCount()"></span></h2>
+            <button type="button" x-show="trashCount()" @click="emptyTrash()"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-red-600">
+              <x-icon name="trash" class="h-4 w-4" />{{ __('gallery.empty_trash') }}
+            </button>
           </div>
           <template x-if="! trashCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.trash_empty') }}</p></template>
           <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
