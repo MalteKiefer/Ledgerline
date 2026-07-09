@@ -22,6 +22,7 @@ use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use App\Support\Bytes;
 use App\Support\DiskTempFile;
+use App\Support\Like;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -140,8 +141,7 @@ class GalleryController extends Controller
         // Escape LIKE metacharacters (\, %, _) in the term so they match
         // literally instead of acting as wildcards (e.g. "%" no longer matches
         // everything, and "_" matches a literal underscore).
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($q));
-        $like = '%'.$escaped.'%';
+        $like = '%'.Like::escape($q).'%';
 
         // Text columns (and the JSON dump / timestamp cast to text), matched
         // case-insensitively across both PostgreSQL and SQLite.
@@ -259,8 +259,7 @@ class GalleryController extends Controller
     private function pickerSearch(Builder $query, string $q): void
     {
         $uid = (int) auth()->id();
-        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($q));
-        $like = '%'.$escaped.'%';
+        $like = '%'.Like::escape($q).'%';
 
         // Photo ids belonging to an album whose name matches (owner-scoped via
         // the SharesWithUsers global scope + explicit user_id on the query).

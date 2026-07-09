@@ -16,8 +16,10 @@ class BackupRunLogTest extends TestCase
     public function test_a_failed_run_records_a_step_log_with_the_cause(): void
     {
         // A job with no destination fails early; the run log should capture it.
+        // Use a file source: a database source is rejected even earlier (it must
+        // be encrypted), which would mask the missing-destination path this covers.
         $job = BackupJob::create([
-            'name' => 'No dest', 'source' => 'database', 'backup_destination_id' => null,
+            'name' => 'No dest', 'source' => 'files', 'backup_destination_id' => null,
             'cron' => '0 3 * * *', 'retention' => 3, 'notify_channels' => [], 'enabled' => true,
         ]);
 
