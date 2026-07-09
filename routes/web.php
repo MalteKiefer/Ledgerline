@@ -10,6 +10,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryController;
+use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
@@ -234,6 +235,10 @@ Route::middleware('auth')->group(function (): void {
     // Opaque zero-knowledge store: the whole workspace as one sealed manifest.
     Route::get('/store', [StoreController::class, 'show'])->name('store.show');
     Route::put('/store', [StoreController::class, 'save'])->middleware('throttle:120,1')->name('store.save');
+
+    // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
+    Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('gallery.store.show');
+    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:120,1')->name('gallery.store.save');
 
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).
