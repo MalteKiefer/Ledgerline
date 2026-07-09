@@ -832,6 +832,13 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             if (on && this.state !== 'ready') this.load();
             if (! on) { this.state = 'locked'; this._revokeThumbs(); window.LLGalleryStore.reset(); }
         });
+        // Leaving the library clears the selection + any active search; entering
+        // the map (re)builds it from the geotagged photos.
+        this.$watch('view', (v) => {
+            this.selected = [];
+            if (v !== 'library') this.clearSearch();
+            if (v === 'map') this.renderMap();
+        });
     },
 
     async load() {
@@ -1015,9 +1022,12 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         const metaBytes = new TextEncoder().encode(JSON.stringify(meta));
         const mr = await this._encStore(metaBytes, 'meta.enc');
         p.metaRef = mr.id; p.metaKey = mr.key;
-        // 5. Promote display fields onto the index entry.
+        // 5. Promote display fields onto the index entry (sealed, so client-only):
+        // date/dims + GPS (for the map) + camera (for fast metadata search).
         p.taken_at = d.exif?.taken_at || p.created;
         p.width = d.width; p.height = d.height; p.duration = d.duration;
+        p.lat = d.exif?.lat ?? null; p.lng = d.exif?.lon ?? null;
+        p.camera = d.exif?.camera ?? null;
         p.hasFaces = meta.faces.length;
         // Face-crop blob ids on the entry too, so reconcile keeps them (they live
         // inside the meta blob otherwise, invisible to the live-set builder).
@@ -1097,6 +1107,90 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     async bulkPurge() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || labels.purgeConfirm || '')) return;
         this._eachSelected((p) => this._purgeOne(p)); this.selected = []; this._save();
+    },
+
+    /* ---- Search (metadata + CLIP content, all client-side) ---- */
+    query: '',
+    searchResults: null, // null = not searching; array = results
+    searching: false,
+    _searchEmb: {},      // photoId -> image embedding (decrypted, cached)
+    _searchTimer: null,
+    get isSearching() { return this.searchResults !== null; },
+    runSearch() {
+        clearTimeout(this._searchTimer);
+        if (! this.query.trim()) { this.searchResults = null; return; }
+        this._searchTimer = setTimeout(() => this._doSearch(), 350);
+    },
+    clearSearch() { this.query = ''; this.searchResults = null; },
+    async _doSearch() {
+        const q = this.query.trim();
+        if (! q) { this.searchResults = null; return; }
+        this.searching = true;
+        const lc = q.toLowerCase();
+        // Instant metadata matches from the (already decrypted) index.
+        const metaIds = this.libraryPhotos.filter((p) => (p.name || '').toLowerCase().includes(lc) || (p.camera || '').toLowerCase().includes(lc)).map((p) => p.id);
+        // CLIP content matches: embed the text, cosine vs cached image vectors.
+        let contentIds = [];
+        try {
+            await this._ensureEmbeddings();
+            const res = await fetch(config.embedTextUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ q }) });
+            const qv = res.ok ? (await res.json()).embedding : null;
+            if (Array.isArray(qv)) {
+                const scored = Object.entries(this._searchEmb).map(([id, emb]) => [id, this.cosine(qv, emb)]);
+                scored.sort((a, b) => b[1] - a[1]);
+                contentIds = scored.filter(([, s]) => s > 0.2).slice(0, 80).map(([id]) => id);
+            }
+        } catch (e) { /* fall back to metadata only */ }
+        const seen = new Set();
+        const order = [...contentIds, ...metaIds].filter((id) => (seen.has(id) ? false : seen.add(id)));
+        const byId = new Map(this.libraryPhotos.map((p) => [p.id, p]));
+        this.searchResults = order.map((id) => byId.get(id)).filter(Boolean);
+        this.searching = false;
+    },
+    async _ensureEmbeddings() {
+        for (const p of this.libraryPhotos) {
+            if (! p.metaRef || this._searchEmb[p.id]) continue;
+            try {
+                const b = await this._decryptBlob(p.metaRef, p.metaKey);
+                const m = JSON.parse(new TextDecoder().decode(b));
+                if (Array.isArray(m.embedding)) this._searchEmb[p.id] = m.embedding;
+            } catch (e) { /* skip */ }
+        }
+    },
+    cosine(a, b) {
+        let dot = 0, na = 0, nb = 0;
+        const n = Math.min(a.length, b.length);
+        for (let i = 0; i < n; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+        return (na && nb) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+    },
+    // Library shown as day groups, or a single flat group of search hits.
+    get displayGroups() {
+        if (this.searchResults !== null) {
+            return this.searchResults.length ? [{ day: 'search', label: '', photos: this.searchResults }] : [];
+        }
+        return this.groupedPhotos;
+    },
+
+    /* ---- Map ---- */
+    _map: null,
+    get mapPhotos() { return this.libraryPhotos.filter((p) => p.lat != null && p.lng != null); },
+    async renderMap() {
+        const L = await loadLeaflet();
+        this.$nextTick(() => {
+            const el = this.$refs.map;
+            if (! el) return;
+            if (this._map) { this._map.remove(); this._map = null; }
+            this._map = L.map(el).setView([20, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(this._map);
+            const cluster = L.markerClusterGroup ? L.markerClusterGroup() : L.layerGroup();
+            for (const p of this.mapPhotos) {
+                const m = L.marker([p.lat, p.lng]);
+                m.on('click', () => this.openViewer(p));
+                cluster.addLayer(m);
+            }
+            this._map.addLayer(cluster);
+            if (this.mapPhotos.length) this._map.fitBounds(L.latLngBounds(this.mapPhotos.map((p) => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 14 });
+        });
     },
 
     /* ---- Trash (soft-delete → recoverable) ---- */
