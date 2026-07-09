@@ -3438,40 +3438,77 @@ window.Alpine = Alpine;
  * a debounced sealed save. Due dates are sealed too, so there are no server-side
  * reminders — any reminder would only ever be client-side.
  */
+/**
+ * Shared lifecycle for the zero-knowledge manifest modules (notes, bookmarks,
+ * to-dos). They all point local arrays at window.LLStore.data.* once the vault
+ * is unlocked, mutate them in place, and schedule a debounced sealed save; on
+ * lock they clear those arrays and reset the store. Mirrors the shareMixin(cfg)
+ * pattern: each component spreads this and supplies its module-specific bits.
+ *
+ * cfg.map: { <LLStore.data key>: '<component property>' } — the collections to
+ *          wire (e.g. { todos: 'tasks', todoLists: 'lists' }).
+ * cfg.onLock(self): optional extra reset (e.g. notes clears currentId).
+ */
+function zkModule(cfg) {
+    return {
+        state: 'boot',
+        query: '',
+        activeTag: '',
+        error: '',
+        tagsValue: '',
+
+        // Persist the manifest (debounced, sealed) after a mutation.
+        _save() { window.LLStore.touch(); },
+
+        // Point the mapped component properties at the (already-decrypted) store
+        // arrays; false while the vault is still locked.
+        async _bootAssign() {
+            if (! await bootStore(this.$store)) { this.state = 'locked'; return false; }
+            for (const [key, prop] of Object.entries(cfg.map)) this[prop] = window.LLStore.data[key];
+            this.state = 'ready';
+            return true;
+        },
+
+        async _initZk() {
+            await this._bootAssign();
+            this.$watch('$store.vault.unlocked', async (on) => {
+                if (on && this.state !== 'ready') await this._bootAssign();
+                if (! on) {
+                    this.state = 'locked';
+                    for (const prop of Object.values(cfg.map)) this[prop] = [];
+                    if (cfg.onLock) cfg.onLock(this);
+                    window.LLStore.reset();
+                }
+            });
+        },
+
+        // Sorted union of every tag on the rows of a collection (for suggestions).
+        _tagsOf(list) {
+            const set = new Set();
+            for (const x of list) for (const t of x.tags ?? []) set.add(t);
+            return [...set].sort((a, b) => a.localeCompare(b));
+        },
+        _trashCount(list) { return list.filter((x) => x.trashed).length; },
+
+        // Permanently drop every trashed row of a collection (in place).
+        async _emptyTrashArr(list, confirmMsg) {
+            if (! await this.$store.confirm.ask(confirmMsg)) return;
+            for (let i = list.length - 1; i >= 0; i--) if (list[i].trashed) list.splice(i, 1);
+            this._save();
+        },
+    };
+}
+
 Alpine.data('todos', (labels = {}) => ({
-    state: 'boot',
+    ...zkModule({ map: { todos: 'tasks', todoLists: 'lists' } }),
     lists: [],
     tasks: [],
     view: 'all', // all | marked | trash | a list id
-    query: '',
-    activeTag: '',
-    error: '',
     newListName: '',
     editorOpen: false,
     editing: null,
-    tagsValue: '',
 
-    async init() {
-        // Zero-knowledge: to-dos live in the opaque manifest (one sealed blob).
-        if (await bootStore(this.$store)) {
-            this.tasks = window.LLStore.data.todos;
-            this.lists = window.LLStore.data.todoLists;
-            this.state = 'ready';
-        } else { this.state = 'locked'; }
-        this.$watch('$store.vault.unlocked', async (on) => {
-            if (on && this.state !== 'ready') {
-                if (await bootStore(this.$store)) {
-                    this.tasks = window.LLStore.data.todos;
-                    this.lists = window.LLStore.data.todoLists;
-                    this.state = 'ready';
-                }
-            }
-            if (! on) { this.state = 'locked'; this.tasks = []; this.lists = []; window.LLStore.reset(); }
-        });
-    },
-
-    // Persist the manifest (debounced, sealed) after a mutation.
-    _save() { window.LLStore.touch(); },
+    async init() { await this._initZk(); },
 
     listName(id) { return (this.lists.find((l) => l.id === id) || {}).name || ''; },
 
@@ -3499,12 +3536,8 @@ Alpine.data('todos', (labels = {}) => ({
         this._save();
     },
 
-    get allTags() {
-        const set = new Set();
-        for (const t of this.tasks) for (const g of t.tags ?? []) set.add(g);
-        return [...set].sort((a, b) => a.localeCompare(b));
-    },
-    get trashCount() { return this.tasks.filter((t) => t.trashed).length; },
+    get allTags() { return this._tagsOf(this.tasks); },
+    get trashCount() { return this._trashCount(this.tasks); },
 
     get filteredTasks() {
         const q = this.query.trim().toLowerCase();
@@ -3572,11 +3605,7 @@ Alpine.data('todos', (labels = {}) => ({
         if (i >= 0) this.tasks.splice(i, 1);
         this._save();
     },
-    async emptyTrash() {
-        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
-        for (let i = this.tasks.length - 1; i >= 0; i--) if (this.tasks[i].trashed) this.tasks.splice(i, 1);
-        this._save();
-    },
+    emptyTrash() { return this._emptyTrashArr(this.tasks, labels.emptyTrashConfirm); },
 
     priorityClass(p) { return p === 'high' ? 'bg-red-500' : (p === 'low' ? 'bg-gray-300' : 'bg-amber-400'); },
     dueLabel(t) { if (! t.due) return ''; try { return new Date(t.due).toLocaleString(); } catch (e) { return t.due; } },
@@ -3590,38 +3619,17 @@ Alpine.data('todos', (labels = {}) => ({
  * on save. No server render, search or share.
  */
 Alpine.data('notes', (labels = {}) => ({
-    state: 'boot',
+    ...zkModule({ map: { notes: 'notes' }, onLock: (self) => { self.currentId = null; } }),
     notes: [],
     currentId: null,
-    query: '',
-    activeTag: '',
     view: 'active', // active | trash
-    error: '',
-    tagsValue: '',
     previewHtml: '',
     previewTimer: null,
 
-    async init() {
-        // Zero-knowledge: notes live in the opaque manifest (one sealed blob).
-        if (await bootStore(this.$store)) { this.notes = window.LLStore.data.notes; this.state = 'ready'; }
-        else { this.state = 'locked'; }
-        this.$watch('$store.vault.unlocked', async (on) => {
-            if (on && this.state !== 'ready') {
-                if (await bootStore(this.$store)) { this.notes = window.LLStore.data.notes; this.state = 'ready'; }
-            }
-            if (! on) { this.state = 'locked'; this.notes = []; this.currentId = null; window.LLStore.reset(); }
-        });
-    },
+    async init() { await this._initZk(); },
 
-    // Persist the manifest (debounced, sealed) after a mutation.
-    _save() { window.LLStore.touch(); },
-
-    get allTags() {
-        const set = new Set();
-        for (const n of this.notes) for (const t of n.tags ?? []) set.add(t);
-        return [...set].sort((a, b) => a.localeCompare(b));
-    },
-    get trashCount() { return this.notes.filter((n) => n.trashed).length; },
+    get allTags() { return this._tagsOf(this.notes); },
+    get trashCount() { return this._trashCount(this.notes); },
     get current() { return this.notes.find((n) => n.id === this.currentId) ?? null; },
 
     get filtered() {
@@ -3684,11 +3692,7 @@ Alpine.data('notes', (labels = {}) => ({
         if (this.currentId === n.id) this.currentId = null;
         this._save();
     },
-    async emptyTrash() {
-        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
-        for (let i = this.notes.length - 1; i >= 0; i--) if (this.notes[i].trashed) this.notes.splice(i, 1);
-        this._save();
-    },
+    emptyTrash() { return this._emptyTrashArr(this.notes, labels.emptyTrashConfirm); },
 }));
 
 // Monochrome icon paths a bookmark folder can be given (rendered inline so the
@@ -3757,41 +3761,17 @@ const FOLDER_ICONS = {
  * in-memory arrays in place then schedules a debounced sealed save.
  */
 Alpine.data('bookmarks', (labels = {}) => ({
-    state: 'boot',
+    ...zkModule({ map: { bookmarks: 'bookmarks', bookmarkFolders: 'folders' } }),
     folders: [],
     bookmarks: [],
     view: 'all', // all | favorites | readlater | trash | a folder id
-    query: '',
-    activeTag: '',
-    error: '',
     editorOpen: false,
     // Kept a non-null blank so the teleported editor's x-model bindings never
     // read from null before a bookmark is opened.
     editing: { id: null, folderId: null, title: '', url: '', description: '', tags: [], favorite: false, readLater: false },
-    tagsValue: '',
     dragItem: null, // { type: 'bookmark' | 'folder', id }
 
-    async init() {
-        // Zero-knowledge: bookmarks live in the opaque manifest (one sealed blob).
-        if (await bootStore(this.$store)) {
-            this.bookmarks = window.LLStore.data.bookmarks;
-            this.folders = window.LLStore.data.bookmarkFolders;
-            this.state = 'ready';
-        } else { this.state = 'locked'; }
-        this.$watch('$store.vault.unlocked', async (on) => {
-            if (on && this.state !== 'ready') {
-                if (await bootStore(this.$store)) {
-                    this.bookmarks = window.LLStore.data.bookmarks;
-                    this.folders = window.LLStore.data.bookmarkFolders;
-                    this.state = 'ready';
-                }
-            }
-            if (! on) { this.state = 'locked'; this.bookmarks = []; this.folders = []; window.LLStore.reset(); }
-        });
-    },
-
-    // Persist the manifest (debounced, sealed) after a mutation.
-    _save() { window.LLStore.touch(); },
+    async init() { await this._initZk(); },
 
     host(url) { try { return new URL(url).host; } catch (e) { return ''; } },
 
@@ -3871,12 +3851,8 @@ Alpine.data('bookmarks', (labels = {}) => ({
         if (f) { f.parentId = parentId; this._save(); }
     },
 
-    get allTags() {
-        const set = new Set();
-        for (const b of this.bookmarks) for (const t of b.tags ?? []) set.add(t);
-        return [...set].sort((a, b) => a.localeCompare(b));
-    },
-    get trashCount() { return this.bookmarks.filter((b) => b.trashed).length; },
+    get allTags() { return this._tagsOf(this.bookmarks); },
+    get trashCount() { return this._trashCount(this.bookmarks); },
     get readLaterCount() { return this.bookmarks.filter((b) => ! b.trashed && b.readLater && ! b.read).length; },
 
     get filtered() {
@@ -3943,11 +3919,7 @@ Alpine.data('bookmarks', (labels = {}) => ({
         if (i >= 0) this.bookmarks.splice(i, 1);
         this._save();
     },
-    async emptyTrash() {
-        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
-        for (let i = this.bookmarks.length - 1; i >= 0; i--) if (this.bookmarks[i].trashed) this.bookmarks.splice(i, 1);
-        this._save();
-    },
+    emptyTrash() { return this._emptyTrashArr(this.bookmarks, labels.emptyTrashConfirm); },
 }));
 
 /**
