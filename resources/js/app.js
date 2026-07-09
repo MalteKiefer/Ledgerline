@@ -1072,6 +1072,7 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         this.viewer = { open: true, kind: 'loading', src: '', photo: p, meta: null };
         // Decrypt the sealed metadata blob in parallel for the info panel.
         if (p.metaRef) this._loadViewerMeta(p);
+        else if (p.lat != null) this._renderMiniMap(p.lat, p.lng);
         try {
             const ref = p.mediumRef || p.originalRef;
             const key = p.mediumRef ? p.mediumKey : p.originalKey;
@@ -1086,10 +1087,18 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         try {
             const b = await this._decryptBlob(p.metaRef, p.metaKey);
             const m = JSON.parse(new TextDecoder().decode(b));
-            if (this.viewer.photo?.id === p.id) this.viewer.meta = m;
+            if (this.viewer.photo?.id !== p.id) return;
+            this.viewer.meta = m;
+            const lat = m.exif?.lat ?? p.lat;
+            const lng = m.exif?.lon ?? p.lng;
+            if (lat != null) this._renderMiniMap(lat, lng);
         } catch (e) { /* info panel just stays sparse */ }
     },
-    closeViewer() { if (this.viewer.src) URL.revokeObjectURL(this.viewer.src); this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null }; },
+    closeViewer() {
+        if (this.viewer.src) URL.revokeObjectURL(this.viewer.src);
+        if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
+        this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null };
+    },
 
     /* ---- Multi-select ---- */
     selected: [],
@@ -1173,8 +1182,45 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
 
     /* ---- Map ---- */
     _map: null,
+    _miniMap: null,
+    _geoLoaded: false,
     get mapPhotos() { return this.libraryPhotos.filter((p) => p.lat != null && p.lng != null); },
+    // Photos processed before GPS was promoted onto the index carry their
+    // coordinates only inside the meta blob; backfill lat/lng from there once.
+    async _ensureGeo() {
+        if (this._geoLoaded) return;
+        let changed = false;
+        for (const p of this.libraryPhotos) {
+            if (p.lat != null || ! p.metaRef) continue;
+            try {
+                const b = await this._decryptBlob(p.metaRef, p.metaKey);
+                const m = JSON.parse(new TextDecoder().decode(b));
+                if (m.exif && m.exif.lat != null) {
+                    p.lat = m.exif.lat; p.lng = m.exif.lon;
+                    if (! p.camera && m.exif.camera) p.camera = m.exif.camera;
+                    changed = true;
+                }
+            } catch (e) { /* skip */ }
+        }
+        this._geoLoaded = true;
+        if (changed) this._save();
+    },
+    // A small, static map with one marker for the viewer info panel.
+    async _renderMiniMap(lat, lng) {
+        if (lat == null || lng == null) return;
+        const L = await loadLeaflet();
+        this.$nextTick(() => {
+            const el = this.$refs.minimap;
+            if (! el || ! this.viewer.open) return;
+            if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
+            this._miniMap = L.map(el, { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, keyboard: false, touchZoom: false }).setView([lat, lng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this._miniMap);
+            L.marker([lat, lng]).addTo(this._miniMap);
+            setTimeout(() => { if (this._miniMap) this._miniMap.invalidateSize(); }, 120);
+        });
+    },
     async renderMap() {
+        await this._ensureGeo();
         const L = await loadLeaflet();
         this.$nextTick(() => {
             const el = this.$refs.map;
