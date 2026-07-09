@@ -3,9 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'gallery_desc' => 'Reise-Gruppierung und ein Metadaten-Rescan für die Fotogalerie.',
-    'gallery_heading' => 'Galerie-Einstellungen',
-    'gallery_section' => 'Galerie',
     'heading' => 'Einstellungen',
     'index_title' => 'Einstellungen',
     'personal_heading' => 'Meine Einstellungen',

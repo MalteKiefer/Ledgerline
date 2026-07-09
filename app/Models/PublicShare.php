@@ -53,9 +53,14 @@ class PublicShare extends Model
         );
     }
 
-    /** The public URL: the album's HTML page (albums are the only public type). */
+    /**
+     * The public URL for this share. Every module is now zero-knowledge, so no
+     * public resource type is currently served (the public no-auth routes were
+     * removed); the token-scoped path is retained for when a plaintext, publicly
+     * shareable resource returns.
+     */
     public function url(): string
     {
-        return route('public-share.album', $this->token);
+        return url('/p/'.$this->token);
     }
 }

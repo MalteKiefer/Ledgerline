@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Models\Photo;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +22,7 @@ return new class extends Migration
 
         // Backfill existing rows with the current display name.
         Schema::hasColumn('photos', 'original_name')
-            && Photo::withTrashed()->whereNull('original_name')->update(['original_name' => DB::raw('name')]);
+            && DB::table('photos')->whereNull('original_name')->update(['original_name' => DB::raw('name')]);
     }
 
     public function down(): void

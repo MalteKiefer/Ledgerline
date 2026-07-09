@@ -30,7 +30,7 @@ class ExifReader
     }
 
     /**
-     * Read one file's metadata into the same shape PhotoStorage::exif() returns.
+     * Read one file's metadata into a normalised shape for the gallery processor.
      *
      * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, content_id: ?string, raw: ?array<string, mixed>}
      */

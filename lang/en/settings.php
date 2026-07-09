@@ -3,9 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'gallery_desc' => 'Trip-grouping thresholds and a metadata re-scan for the photo gallery.',
-    'gallery_heading' => 'Gallery settings',
-    'gallery_section' => 'Gallery',
     'heading' => 'Settings',
     'index_title' => 'Settings',
     'personal_heading' => 'My settings',

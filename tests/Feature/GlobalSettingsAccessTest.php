@@ -17,7 +17,7 @@ class GlobalSettingsAccessTest extends TestCase
         config()->set('services.pocketid.admin_group', 'admins');
         $this->actingAs(User::factory()->create(['groups' => ['users']]));
 
-        $this->get(route('settings.gallery.edit'))->assertForbidden();
+        $this->get(route('settings.system.edit'))->assertForbidden();
         // Personal settings stay open.
         $this->get(route('settings.files.edit'))->assertOk();
     }
@@ -27,7 +27,7 @@ class GlobalSettingsAccessTest extends TestCase
         config()->set('services.pocketid.admin_group', 'admins');
         $this->actingAs(User::factory()->create(['groups' => ['staff', 'admins']]));
 
-        $this->get(route('settings.gallery.edit'))->assertOk();
+        $this->get(route('settings.system.edit'))->assertOk();
     }
 
     public function test_everyone_may_when_no_admin_group_configured(): void
@@ -35,7 +35,7 @@ class GlobalSettingsAccessTest extends TestCase
         config()->set('services.pocketid.admin_group', null);
         $this->actingAs(User::factory()->create(['groups' => []]));
 
-        $this->get(route('settings.gallery.edit'))->assertOk();
+        $this->get(route('settings.system.edit'))->assertOk();
     }
 
     public function test_settings_index_hides_infra_cards_for_non_admins(): void

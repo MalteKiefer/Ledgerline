@@ -28,9 +28,6 @@ Schedule::command('exports:recover-stuck')->hourly()->withoutOverlapping();
 // uploads). The client reconciles manifest-unreferenced blobs on its own.
 Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
 
-// Same for gallery photos: purge trashed past retention + sweep orphan blobs.
-Schedule::command('gallery:prune-trash')->daily()->withoutOverlapping();
-
 // Delete expired public note-share snapshots so their plaintext content does not
 // linger past its expiry (these anonymous rows can't be targeted at erasure).
 Schedule::command('shares:prune')->daily()->withoutOverlapping();

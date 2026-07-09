@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\Photo;
 use App\Models\User;
 use App\Support\OutboundUrl;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -16,19 +15,6 @@ use Tests\TestCase;
 class SecurityAuditFixesTest extends TestCase
 {
     use RefreshDatabase;
-
-    public function test_gallery_export_cannot_include_another_users_photo(): void
-    {
-        $alice = User::factory()->create();
-        $bob = User::factory()->create();
-        // Ownership (uploaded_by) is assigned from the authenticated user.
-        $this->actingAs($alice);
-        $alicePhoto = Photo::factory()->create();
-
-        // Bob owns nothing → exporting Alice's photo id yields no owned photos → 422.
-        $this->actingAs($bob)->postJson(route('gallery.export'), ['photo_ids' => [$alicePhoto->id]])
-            ->assertStatus(422);
-    }
 
     public function test_a_blob_is_private_to_its_uploader(): void
     {
