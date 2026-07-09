@@ -9,7 +9,9 @@ use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
+use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
@@ -234,6 +236,21 @@ Route::middleware('auth')->group(function (): void {
     // Opaque zero-knowledge store: the whole workspace as one sealed manifest.
     Route::get('/store', [StoreController::class, 'show'])->name('store.show');
     Route::put('/store', [StoreController::class, 'save'])->middleware('throttle:120,1')->name('store.save');
+
+    // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
+    Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('gallery.store.show');
+    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:120,1')->name('gallery.store.save');
+
+    // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
+    Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');
+    Route::post('/gallery/blobs/reconcile', [GalleryBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('gallery.blobs.reconcile');
+    Route::post('/gallery/upload', [GalleryBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('gallery.upload');
+    Route::post('/gallery/upload/init', [GalleryBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('gallery.upload.init');
+    Route::post('/gallery/upload/part', [GalleryBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('gallery.upload.part');
+    Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.upload.complete');
+    Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.upload.abort');
+    Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:600,1')->name('gallery.raw');
+    Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:120,1')->name('gallery.blob.destroy');
 
     // Notes live entirely in the zero-knowledge store now; only the page shell
     // remains here (all data flows through GET/PUT /store).
