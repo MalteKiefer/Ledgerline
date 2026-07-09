@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 return [
+    'dismiss' => 'Dismiss',
+    'load_failed' => 'Could not load this item.',
+    'working' => 'Working…',
     'dup_heading' => 'Duplicates',
     'dup_subheading' => 'Photos that look like the same or similar content. Keep one, send the rest to the trash.',
     'dup_empty' => 'No duplicates found. Run a scan from Gallery settings to check.',

@@ -309,33 +309,6 @@ class GalleryTest extends TestCase
         }
     }
 
-    public function test_search_matches_across_all_metadata(): void
-    {
-        $this->signIn();
-        $match = Photo::factory()->create([
-            'status' => 'ready', 'name' => 'trip.jpg', 'place' => 'Las Vegas, USA',
-            'camera' => 'Apple iPhone 15', 'taken_at' => '2012-10-06 12:00:00',
-            'metadata' => ['EXIF' => ['LensModel' => 'Zeiss 24mm']],
-            'latitude' => 50.02, 'longitude' => 11.85,
-        ]);
-        Photo::factory()->create([
-            'status' => 'ready', 'name' => 'other.png', 'place' => 'Berlin',
-            'camera' => 'Canon', 'taken_at' => '2020-01-01 00:00:00',
-            'metadata' => ['EXIF' => ['LensModel' => 'Sigma']],
-            'latitude' => 10.0, 'longitude' => 10.0,
-        ]);
-
-        $ids = fn (string $q): array => $this->get(route('gallery.index', ['q' => $q]))
-            ->viewData('photos')->pluck('id')->all();
-
-        $this->assertSame([$match->id], $ids('vegas'));        // place / country
-        $this->assertSame([$match->id], $ids('iphone'));       // camera / device
-        $this->assertSame([$match->id], $ids('trip'));         // filename
-        $this->assertSame([$match->id], $ids('2012-10'));      // date
-        $this->assertSame([$match->id], $ids('zeiss'));        // full metadata dump
-        $this->assertSame([$match->id], $ids('50.02,11.85'));  // coordinates
-    }
-
     public function test_trash_page_uses_a_modal_not_native_confirm(): void
     {
         $this->signIn();
@@ -356,17 +329,6 @@ class GalleryTest extends TestCase
         $this->post(route('gallery.store'), [
             'photo' => UploadedFile::fake()->create('notes.pdf', 20, 'application/pdf'),
         ])->assertSessionHasErrors('photo');
-    }
-
-    public function test_timeline_groups_photos_by_capture_day(): void
-    {
-        $this->signIn();
-        Photo::factory()->create(['name' => 'DayOne.jpg', 'taken_at' => '2026-06-01 10:00:00']);
-        Photo::factory()->create(['name' => 'DayTwo.jpg', 'taken_at' => '2026-06-03 09:00:00']);
-
-        $this->get(route('gallery.index'))
-            ->assertOk()
-            ->assertViewHas('grouped', fn ($grouped): bool => $grouped->has('2026-06-01') && $grouped->has('2026-06-03'));
     }
 
     public function test_bulk_delete_returns_json_for_the_reload_free_grid(): void
@@ -447,27 +409,17 @@ class GalleryTest extends TestCase
         $this->assertNotNull($photo->fresh()->favorited_at);
     }
 
-    public function test_index_can_filter_to_favorites_only(): void
+    public function test_index_renders_the_zero_knowledge_shell_without_leaking_photos(): void
     {
         $this->signIn();
-        $fav = Photo::factory()->create(['status' => 'ready', 'name' => 'Loved.jpg', 'favorited_at' => now()]);
-        Photo::factory()->create(['status' => 'ready', 'name' => 'Plain.jpg']);
-
-        $this->get(route('gallery.index', ['favorites' => 1]))
-            ->assertOk()
-            ->assertSee('Loved.jpg')
-            ->assertDontSee('Plain.jpg');
-    }
-
-    public function test_timeline_renders_photo_tiles_with_metadata(): void
-    {
-        $this->signIn();
-        Photo::factory()->create(['status' => 'ready', 'name' => 'Sunset.jpg', 'taken_at' => '2026-06-01 18:30:00', 'width' => 4000, 'height' => 3000]);
+        // Even with a plaintext photo present, the ZK index ships only the empty
+        // client shell — nothing about the photo is server-rendered.
+        Photo::factory()->create(['status' => 'ready', 'name' => 'Secret.jpg']);
 
         $this->get(route('gallery.index'))
             ->assertOk()
-            ->assertSee('data-photo', false)
-            ->assertSee('Sunset.jpg');
+            ->assertSee('vaultGallery(', false)
+            ->assertDontSee('Secret.jpg');
     }
 
     public function test_feed_returns_the_next_page_fragment(): void
