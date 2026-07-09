@@ -1411,7 +1411,9 @@ return {
     dupGroups: null,
     dupScanning: false,
     dupProgress: { done: 0, total: 0 },
-    _popcount(n) { let c = 0n; while (n) { c += n & 1n; n >>= 1n; } return Number(c); },
+    // Defensive against a negative BigInt: `>>` never reaches 0 on negatives, so
+    // a signed phash would spin forever. Fold to non-negative first.
+    _popcount(n) { if (n < 0n) n = -n; let c = 0n; while (n > 0n) { c += n & 1n; n >>= 1n; } return Number(c); },
     async scanDuplicates() {
         this.dupScanning = true;
         this.dupGroups = null;
@@ -1427,7 +1429,9 @@ return {
                 const m = metaCache[items[i].id];
                 emb[i] = Array.isArray(m.embedding) ? this._norm(m.embedding) : null;
                 let b = null;
-                if (m.phash != null && Number.isFinite(m.phash)) { try { b = BigInt(m.phash); } catch (e) { b = null; } }
+                // Fold to an unsigned 64-bit value so the difference-hash xor and
+                // its popcount never see a negative (a signed int64 phash would).
+                if (m.phash != null && Number.isFinite(m.phash)) { try { b = BigInt.asUintN(64, BigInt(Math.trunc(m.phash))); } catch (e) { b = null; } }
                 ph[i] = b;
             }
             const parent = new Array(N); for (let i = 0; i < N; i++) parent[i] = i;
