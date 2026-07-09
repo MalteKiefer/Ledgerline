@@ -926,12 +926,19 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             const start = this.uploads.length;
             for (const f of files) this.uploads.push({ name: f.name, state: 'pending', progress: 0 });
             let next = 0;
+            // Exact-duplicate guard: skip re-uploading a byte-identical file. The
+            // signature (size + hash of head/tail) is computed client-side before
+            // encryption, so an identical file is never uploaded in the first place.
+            const seen = new Set(this.index.photos.filter((p) => ! p.trashed && p.sig).map((p) => p.sig));
             const worker = async () => {
                 while (next < files.length) {
                     const idx = next++;
                     const file = files[idx];
                     const entry = this.uploads[start + idx];
                     try {
+                        const sig = await this._fileSig(file);
+                        if (sig && seen.has(sig)) { entry.state = 'duplicate'; continue; }
+                        if (sig) seen.add(sig);
                         entry.state = 'uploading';
                         const enc = await window.Vault.encryptFile(file);
                         const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
@@ -941,6 +948,7 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
                             originalRef: id, originalKey: enc.encFileKey,
                             name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
                             media_type: (file.type.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(file.name)) ? 'video' : 'image',
+                            sig,
                             created: new Date().toISOString(),
                         });
                         entry.state = 'done'; entry.progress = 100;
@@ -952,8 +960,8 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             this.uploadBatches--;
             this.refreshUsage();
             this.runBacklog();
-            // Auto-clear a clean tray shortly after finishing.
-            if (! this.uploads.some((u) => u.state === 'error')) {
+            // Auto-clear once every entry finished cleanly (keep errors/dupes visible).
+            if (this.uploads.every((u) => u.state === 'done')) {
                 setTimeout(() => { if (! this.uploading) this.uploads = []; }, 4000);
             }
         })());
@@ -1013,6 +1021,8 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         // 1. Decrypt the original.
         const plain = await this._decryptBlob(p.originalRef, p.originalKey);
         const file = new File([plain], p.name || 'photo', { type: p.mime || 'application/octet-stream' });
+        // Backfill the exact-duplicate signature for photos uploaded before it existed.
+        if (! p.sig) p.sig = await this._fileSig(file);
         // 2. Transient transform on the server (plaintext in, derived out, discarded).
         const fd = new FormData();
         fd.append('_token', config.token);
@@ -1067,6 +1077,21 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         const bin = atob(b64); const out = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
         return out;
+    },
+    // Cheap exact-file signature: byte size + SHA-256 over the first and last
+    // 1 MiB. Bounded memory (never buffers a whole video), and collisions for two
+    // genuinely different files are astronomically unlikely.
+    async _fileSig(file) {
+        try {
+            const cap = 1024 * 1024;
+            const head = new Uint8Array(await file.slice(0, Math.min(cap, file.size)).arrayBuffer());
+            const tail = file.size > cap ? new Uint8Array(await file.slice(file.size - cap).arrayBuffer()) : new Uint8Array(0);
+            const buf = new Uint8Array(head.length + tail.length);
+            buf.set(head, 0); buf.set(tail, head.length);
+            const dig = await crypto.subtle.digest('SHA-256', buf);
+            const hex = [...new Uint8Array(dig)].map((x) => x.toString(16).padStart(2, '0')).join('');
+            return `${file.size}:${hex}`;
+        } catch (e) { return ''; }
     },
 
     /* ---- Thumbnails (decrypted, cached) ---- */

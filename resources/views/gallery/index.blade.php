@@ -415,7 +415,7 @@
       <div class="mt-2 max-h-40 space-y-1.5 overflow-y-auto">
         <template x-for="(u, i) in uploads" :key="i">
           <div>
-            <div class="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400"><span class="truncate" x-text="u.name"></span><span class="ml-auto tabular-nums" x-text="u.state === 'error' ? '⚠' : (u.state === 'done' ? '✓' : (u.state === 'pending' ? '…' : u.progress + '%'))"></span></div>
+            <div class="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400"><span class="truncate" x-text="u.name"></span><span class="ml-auto tabular-nums" :class="u.state === 'duplicate' ? 'text-gray-400' : ''" x-text="u.state === 'error' ? '⚠' : (u.state === 'done' ? '✓' : (u.state === 'duplicate' ? @js(__('gallery.duplicate_skipped')) : (u.state === 'pending' ? '…' : u.progress + '%')))"></span></div>
             <div x-show="u.state === 'uploading'" class="mt-0.5 h-0.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-500 transition-all" :style="`width: ${u.progress}%`"></div></div>
           </div>
         </template>
