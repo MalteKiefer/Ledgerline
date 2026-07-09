@@ -869,6 +869,26 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     },
     get pendingCount() { return this.index.photos.filter((p) => ! p.trashed && ! p.thumbRef && ! p.failed).length; },
     photoCount() { return this.libraryPhotos.length; },
+    trashCount() { return this.index.photos.filter((p) => p.trashed).length; },
+    get trashedPhotos() {
+        return this.index.photos.filter((p) => p.trashed)
+            .sort((a, b) => new Date(b.trashed || 0) - new Date(a.trashed || 0));
+    },
+    // Library photos grouped by capture day (newest first) for the timeline.
+    get groupedPhotos() {
+        const groups = new Map();
+        for (const p of this.libraryPhotos) {
+            const d = new Date(p.taken_at || p.created || 0);
+            const day = isNaN(d.getTime()) ? 'unknown' : d.toISOString().slice(0, 10);
+            if (! groups.has(day)) groups.set(day, []);
+            groups.get(day).push(p);
+        }
+        return [...groups.entries()].map(([day, photos]) => ({ day, label: this.dayLabel(day), photos }));
+    },
+    dayLabel(day) {
+        if (day === 'unknown') return '—';
+        try { return new Date(day + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return day; }
+    },
 
     /* ---- Upload ---- */
     upload(fileList) {
@@ -999,6 +1019,11 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         p.taken_at = d.exif?.taken_at || p.created;
         p.width = d.width; p.height = d.height; p.duration = d.duration;
         p.hasFaces = meta.faces.length;
+        // Face-crop blob ids on the entry too, so reconcile keeps them (they live
+        // inside the meta blob otherwise, invisible to the live-set builder).
+        p.faceCropRefs = meta.faces.map((f) => f.cropRef).filter(Boolean);
+        // Prime the decrypted thumbnail so the grid updates live (reactive cache).
+        this.thumbFor(p);
     },
 
     // Encrypt raw bytes with a fresh per-blob key and upload; returns { id, key }.
@@ -1045,14 +1070,25 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     },
     closeViewer() { if (this.viewer.src) URL.revokeObjectURL(this.viewer.src); this.viewer = { open: false, kind: 'none', src: '', photo: null }; },
 
-    /* ---- Delete ---- */
-    async remove(p) {
-        if (! await this.$store.confirm.ask(labels.deleteConfirm || '')) return;
-        const refs = [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef].filter(Boolean);
+    /* ---- Trash (soft-delete → recoverable) ---- */
+    trash(p) { p.trashed = new Date().toISOString(); this._save(); },
+    restore(p) { p.trashed = null; this._save(); },
+    async purge(p) {
+        if (! await this.$store.confirm.ask(labels.purgeConfirm || labels.deleteConfirm || '')) return;
+        this._purgeOne(p);
+        this._save();
+    },
+    async emptyTrash() {
+        if (! this.trashCount()) return;
+        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
+        for (const p of this.index.photos.filter((x) => x.trashed)) this._purgeOne(p);
+        this._save();
+    },
+    _purgeOne(p) {
+        const refs = [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef, ...(p.faceCropRefs || [])];
         const i = this.index.photos.findIndex((x) => x.id === p.id);
         if (i >= 0) this.index.photos.splice(i, 1);
         if (this.thumbs[p.id]) { URL.revokeObjectURL(this.thumbs[p.id]); delete this.thumbs[p.id]; }
-        this._save();
         this._freeBlobs(refs);
     },
     _freeBlobs(refs) {
@@ -1068,7 +1104,10 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     },
     reconcileBlobs() {
         const blobs = [];
-        for (const p of this.index.photos) for (const ref of [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef]) if (ref) blobs.push(ref);
+        for (const p of this.index.photos) {
+            for (const ref of [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef]) if (ref) blobs.push(ref);
+            for (const ref of (p.faceCropRefs || [])) if (ref) blobs.push(ref);
+        }
         fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) })
             .then((r) => r.ok && r.json()).then((u) => { if (u) this.usage = u; }).catch(() => {});
     },
