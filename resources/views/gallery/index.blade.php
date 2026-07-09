@@ -388,19 +388,30 @@
               <div class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm">
                 <div class="mb-2 flex items-center gap-2 px-1">
                   <span class="inline-flex h-5 items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2 text-[11px] font-medium tabular-nums text-gray-500 dark:text-gray-400" x-text="@js(__('gallery.copies', ['count' => '{n}'])).replace('{n}', group.length)"></span>
-                  <span class="text-[11px] text-gray-400" x-text="'· ' + @js(__('gallery.keep_hint'))"></span>
+                  <span class="text-[11px] text-gray-400">· {{ __('gallery.select_to_delete') }}</span>
+                  <div class="ml-auto flex items-center gap-1.5">
+                    <button type="button" @click="markRest(group)" class="rounded-lg px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">{{ __('gallery.select_rest') }}</button>
+                    <button type="button" @click="trashMarked(group)" :disabled="! dupMarkedCount(group)"
+                        class="inline-flex items-center gap-1 rounded-lg bg-red-500 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-red-600 disabled:opacity-40"
+                        x-text="dupMarkedCount(group) ? @js(__('gallery.delete_selected', ['count' => '{n}'])).replace('{n}', dupMarkedCount(group)) : @js(__('gallery.delete'))"></button>
+                  </div>
                 </div>
                 <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6">
                   <template x-for="(p, pi) in group" :key="p.id">
-                    <div class="group relative aspect-square overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 ring-1 ring-transparent transition" :class="pi === 0 ? 'ring-2 ring-emerald-400' : ''" x-init="thumbFor(p)">
-                      <button type="button" @click="openViewer(p)" class="block h-full w-full">
-                        <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover">
-                        <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
-                      </button>
+                    <div class="group relative aspect-square cursor-pointer overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 ring-2 transition"
+                         :class="isDupMarked(p.id) ? 'ring-red-500' : (pi === 0 ? 'ring-emerald-400' : 'ring-transparent')"
+                         x-init="thumbFor(p)" @click="toggleDupMark(p.id)">
+                      <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover" :class="isDupMarked(p.id) ? 'opacity-60' : ''">
+                      <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
+                      {{-- Selection checkmark --}}
+                      <span class="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 transition"
+                          :class="isDupMarked(p.id) ? 'border-red-500 bg-red-500 text-white' : 'border-white/80 bg-black/25'">
+                        <svg x-show="isDupMarked(p.id)" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0L3.3 9.7a1 1 0 011.4-1.4l3.3 3.3 6.8-6.8a1 1 0 011.4 0z" clip-rule="evenodd"/></svg>
+                      </span>
+                      <span x-show="pi === 0 && ! isDupMarked(p.id)" class="pointer-events-none absolute right-1 top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-medium text-white">{{ __('gallery.best') }}</span>
                       <span x-show="p.size" class="pointer-events-none absolute bottom-1 left-1 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm" x-text="fmtBytes(p.size)"></span>
-                      <span x-show="pi === 0" class="pointer-events-none absolute left-1 top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-medium text-white">{{ __('gallery.best') }}</span>
-                      <button type="button" @click.stop="keepOne(group, p)" title="{{ __('gallery.keep') }}"
-                          class="absolute bottom-1 right-1 inline-flex items-center gap-1 rounded-md bg-gray-900/90 px-2 py-1 text-[10px] font-medium text-white opacity-0 backdrop-blur-sm transition hover:bg-gray-900 group-hover:opacity-100"><x-icon name="check" class="h-3 w-3" />{{ __('gallery.keep') }}</button>
+                      <button type="button" @click.stop="openViewer(p)" title="{{ __('gallery.view') }}"
+                          class="absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 backdrop-blur-sm transition hover:bg-black/70 group-hover:opacity-100"><x-icon name="eye" class="h-3.5 w-3.5" /></button>
                     </div>
                   </template>
                 </div>

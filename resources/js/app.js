@@ -1424,10 +1424,11 @@ return {
             const N = items.length;
             // Precompute once: normalised Float32 CLIP vector + phash as BigInt.
             // Then cosine is a plain dot product and Hamming is a BigInt xor.
-            const emb = new Array(N), ph = new Array(N);
+            const emb = new Array(N), ph = new Array(N), vid = new Array(N);
             for (let i = 0; i < N; i++) {
                 const m = metaCache[items[i].id];
                 emb[i] = Array.isArray(m.embedding) ? this._norm(m.embedding) : null;
+                vid[i] = items[i].media_type === 'video';
                 let b = null;
                 // Fold to an unsigned 64-bit value so the difference-hash xor and
                 // its popcount never see a negative (a signed int64 phash would).
@@ -1441,9 +1442,17 @@ return {
             // stays responsive and the progress bar advances on big libraries.
             for (let i = 0; i < N; i++) {
                 for (let j = i + 1; j < N; j++) {
-                    let dup = false;
-                    if (emb[i] && emb[j]) dup = this._dot(emb[i], emb[j]) >= 0.94;
-                    if (! dup && ph[i] != null && ph[j] != null) dup = this._popcount(ph[i] ^ ph[j]) <= 4;
+                    const hd = (ph[i] != null && ph[j] != null) ? this._popcount(ph[i] ^ ph[j]) : 64;
+                    let dup;
+                    if (vid[i] || vid[j]) {
+                        // A video's CLIP vector is only its poster frame, so scene-
+                        // similar but different clips score high. Require the poster
+                        // difference-hash to nearly match instead of trusting cosine.
+                        dup = hd <= 4;
+                    } else {
+                        // Stills: high cosine OR a near-identical difference-hash.
+                        dup = (emb[i] && emb[j] && this._dot(emb[i], emb[j]) >= 0.97) || hd <= 3;
+                    }
                     if (dup) union(i, j);
                 }
                 if ((i & 15) === 0) { this.dupProgress = { done: i, total: N }; await new Promise((r) => setTimeout(r)); }
@@ -1457,10 +1466,25 @@ return {
         }
     },
     get dupTotal() { return this.dupGroups ? this.dupGroups.reduce((n, g) => n + g.length - 1, 0) : 0; },
-    async keepOne(group, keep) {
+    // Per-set trash marks: the user picks any subset to delete (multi-select),
+    // keeping the rest — not just one survivor.
+    dupMarked: [],
+    isDupMarked(id) { return this.dupMarked.includes(id); },
+    toggleDupMark(id) { const i = this.dupMarked.indexOf(id); if (i >= 0) this.dupMarked.splice(i, 1); else this.dupMarked.push(id); },
+    dupMarkedCount(group) { return group.filter((p) => this.dupMarked.includes(p.id)).length; },
+    // Quick action: mark every copy except the best (largest) for deletion.
+    markRest(group) {
+        for (let i = 1; i < group.length; i++) if (! this.isDupMarked(group[i].id)) this.dupMarked.push(group[i].id);
+    },
+    // Trash the marked copies in this set, keep the rest.
+    trashMarked(group) {
         const t = new Date().toISOString();
-        for (const p of group) if (p.id !== keep.id && ! p.trashed) p.trashed = t;
-        this.dupGroups = (this.dupGroups || []).filter((g) => g !== group);
+        const marks = new Set(this.dupMarked);
+        for (const p of group) if (marks.has(p.id) && ! p.trashed) p.trashed = t;
+        const gone = new Set(group.filter((p) => marks.has(p.id)).map((p) => p.id));
+        this.dupMarked = this.dupMarked.filter((id) => ! gone.has(id));
+        const remaining = group.filter((p) => ! p.trashed);
+        this.dupGroups = (this.dupGroups || []).map((g) => (g === group ? remaining : g)).filter((g) => g.length > 1);
         this._save();
     },
 
