@@ -24,6 +24,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * bytes at "gallery/{blob}" and keeps a blob ownership ledger (gallery_blobs) for
  * quota + access control. It cannot read a blob's contents, its metadata, or
  * which index entry references it.
+ *
+ * Residual side-channel (accepted): the ledger keeps per-blob owner, stored size
+ * and created_at. Sizes are length-hidden by client-side Padmé padding (app.js
+ * _padBlob) and created_at is snapped to the hour, so exact lengths and the
+ * per-photo upload burst are blurred — but the blob COUNT itself is still visible,
+ * from which photo count and rough per-photo face count remain inferable. No
+ * content, name or location leaks.
  */
 class GalleryBlobController extends Controller
 {
@@ -104,8 +111,10 @@ class GalleryBlobController extends Controller
         abort_if($this->disk()->putFileAs('gallery', $request->file('file'), $id) === false, 500, __('files.upload_failed'));
         abort_unless($this->disk()->exists('gallery/'.$id), 500, __('files.upload_failed'));
         // Record the uploader + stored byte size: this is the permanent blob
-        // ownership ledger (quota + access control + orphan reclaim).
-        GalleryBlob::create(['blob' => $id, 'user_id' => $uid, 'size' => (int) $request->file('file')->getSize(), 'created_at' => now()]);
+        // ownership ledger (quota + access control + orphan reclaim). created_at is
+        // snapped to the hour so the per-photo blob cluster (original/thumb/medium/
+        // meta/crops uploaded within seconds) can't be grouped by upload time.
+        GalleryBlob::create(['blob' => $id, 'user_id' => $uid, 'size' => (int) $request->file('file')->getSize(), 'created_at' => now()->startOfHour()]);
 
         return response()->json(['id' => $id], 201);
     }
@@ -188,7 +197,7 @@ class GalleryBlobController extends Controller
         // size, which would let a caller understate a large upload to beat the
         // quota). One HEAD per completed multipart upload — rare (>64 MB files).
         $size = (int) ($this->s3()->headObject(['Bucket' => $this->bucket(), 'Key' => $s['key']])['ContentLength'] ?? 0);
-        GalleryBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'size' => $size, 'created_at' => now()]);
+        GalleryBlob::firstOrCreate(['blob' => $s['id']], ['user_id' => $s['user'], 'size' => $size, 'created_at' => now()->startOfHour()]);
         Cache::forget($this->chunkKey($token));
 
         return response()->json(['id' => $s['id']], 201);

@@ -12,7 +12,11 @@ use Illuminate\Support\Facades\DB;
 /**
  * Opaque zero-knowledge gallery index store: the whole photo/album/people
  * structure the browser seals with the vault key. The server only ever stores
- * and returns ciphertext + a version counter — no photos, metadata or counts.
+ * and returns ciphertext + a version counter — no photo bytes, names, EXIF, GPS
+ * or embeddings. The sealed blob is size-padded (see vault.js sealManifest), so
+ * this store alone reveals no counts. (Residual structural metadata — photo
+ * count, media type, face count — is inferable only from the separate content-
+ * blob ledger, see GalleryBlobController.)
  */
 class GalleryStoreController extends Controller
 {
