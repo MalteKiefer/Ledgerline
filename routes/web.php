@@ -196,17 +196,20 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/gallery/{photo}/{size}', [GalleryController::class, 'image'])
         ->whereIn('size', ['thumb', 'medium', 'original'])->name('gallery.image');
 
-    // Files: plain metadata rows + unencrypted bytes on the files disk. The
-    // rich client reads/writes the whole tree as a manifest that syncs to rows.
     // Zero-knowledge encryption vault (Files): the server only stores ciphertext
     // and KDF params — never the passphrase, recovery code or vault key.
     Route::get('/vault', [VaultController::class, 'show'])->name('vault.show');
     Route::post('/vault', [VaultController::class, 'store'])->middleware('throttle:10,1')->name('vault.store');
     Route::put('/vault', [VaultController::class, 'rotate'])->middleware('throttle:10,1')->name('vault.rotate');
 
-    Route::view('/files', 'files.index')->name('files.index');
-    Route::get('/files/data', [FileController::class, 'data'])->name('files.data');
-    Route::put('/files/data', [FileController::class, 'sync'])->middleware('throttle:120,1')->name('files.sync');
+    // Files: the whole directory tree (names, folders, tags, notes, trash flags,
+    // version history) lives in the sealed opaque store; the server only handles
+    // the opaque content blobs below (store/stream ciphertext + a quota ledger).
+    Route::get('/files', [FileController::class, 'index'])->name('files.index');
+    Route::get('/files/usage', [FileController::class, 'usage'])->name('files.usage');
+    // Reclaim blobs the (sealed) manifest no longer references — the client sends
+    // its live blob set; owner-scoped, grace-gated pruning of the quota ledger.
+    Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('files.blobs.reconcile');
     // Throttled to blunt a large-body upload flood (disk-fill / worker-hold),
     // while staying generous enough for a normal batch upload.
     Route::post('/files/upload', [FileController::class, 'upload'])
@@ -215,16 +218,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/files/upload/part', [FileController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('files.upload.part');
     Route::post('/files/upload/complete', [FileController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('files.upload.complete');
     Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('files.upload.abort');
-    // Encrypted bytes stream back verbatim; the browser decrypts them. No server
-    // thumbnail/search/import/archive/extract/export/public-link/upload-link:
-    // those need the plaintext the server (by design) never has.
+    // Encrypted bytes stream back verbatim; the browser decrypts them. Version
+    // history is manifest-side, so a version download is just a raw blob fetch.
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('files.raw');
-    Route::get('/files/{file}/versions', [FileController::class, 'versions'])->name('files.versions');
-    Route::get('/files/{file}/versions/{version}/download', [FileController::class, 'downloadVersion'])->name('files.versions.download');
-    Route::post('/files/trash', [FileController::class, 'trash'])->middleware('throttle:120,1')->name('files.trash');
-    Route::post('/files/restore', [FileController::class, 'restoreTrash'])->middleware('throttle:120,1')->name('files.restore');
-    Route::post('/files/favorite', [FileController::class, 'favorite'])->middleware('throttle:120,1')->name('files.favorite');
-    Route::post('/files/{file}/note', [FileController::class, 'saveNote'])->middleware('throttle:120,1')->name('files.note');
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:120,1')->name('files.blob.destroy');
 
     // Downloads center: asynchronous, worker-built export zips (gallery + files),

@@ -5,20 +5,17 @@ declare(strict_types=1);
 namespace App\Support\UserData;
 
 use App\Models\FileBlob;
-use App\Models\FileFolder;
-use App\Models\FileVersion;
-use App\Models\StoredFile;
 use App\Models\User;
 use App\Support\BlobStore;
 use Illuminate\Support\Str;
 
 /**
- * Per-user data contributor for the files module: exports and erases a user's
- * files and folders. Both own their data via the `user_id` column. File rows
- * carry only metadata; the bytes live on the files disk at "files/{blob}", so
- * purge deletes the stored blobs before force-deleting the rows. Purge also
- * clears the user's version snapshots (file_versions) and raw upload ownership
- * records (file_blobs), including their on-disk bytes, so no orphans remain.
+ * Per-user data contributor for the files module under zero-knowledge. The file
+ * tree (names, folders, tags, notes, versions) lives sealed inside the opaque
+ * store and is exported/erased by StoreData; the only server-side files state is
+ * the opaque content blobs + their ownership ledger (file_blobs). The export is
+ * therefore just the ciphertext blob inventory (ids/sizes — no plaintext), and
+ * purge deletes the user's stored bytes and ledger rows so no orphans remain.
  */
 final class FilesData implements UserDataContributor
 {
@@ -29,115 +26,38 @@ final class FilesData implements UserDataContributor
 
     public function export(User $user): array
     {
-        $folders = FileFolder::query()
-            ->withoutGlobalScopes()
+        $blobs = FileBlob::query()
             ->where('user_id', $user->getKey())
-            ->orderBy('id')
-            ->get()
-            ->map(fn (FileFolder $folder): array => $folder->attributesToArray())
-            ->all();
-
-        // Explicit ciphertext-only allowlist — never attributesToArray(), which
-        // would leak any plaintext column (e.g. the dead pre-ZK `content`/OCR
-        // columns) the instant something repopulated it.
-        $files = StoredFile::query()
-            ->withoutGlobalScopes()
-            ->withTrashed()
-            ->where('user_id', $user->getKey())
-            ->orderBy('id')
-            ->get()
-            ->map(fn (StoredFile $file): array => [
-                'id' => $file->id,
-                'file_folder_id' => $file->file_folder_id,
-                'enc_metadata' => $file->enc_metadata,
-                'enc_file_key' => $file->enc_file_key,
-                'is_encrypted' => (bool) $file->is_encrypted,
-                'note' => $file->note,
-                'favorite' => (bool) $file->favorite,
-                'size' => $file->size,
-                'blob' => $file->blob,
-                'created_at' => $file->created_at,
-                'updated_at' => $file->updated_at,
-                'deleted_at' => $file->deleted_at,
+            ->orderBy('blob')
+            ->get(['blob', 'size', 'created_at'])
+            ->map(fn (FileBlob $b): array => [
+                'blob' => $b->blob,
+                'size' => $b->size,
+                'created_at' => $b->created_at,
             ])
             ->all();
 
-        return [
-            'folders' => $folders,
-            'files' => $files,
-        ];
+        return ['blobs' => $blobs];
     }
 
     public function purge(User $user): void
     {
         $disk = BlobStore::disk();
 
-        StoredFile::query()
-            ->withoutGlobalScopes()
-            ->withTrashed()
-            ->where('user_id', $user->getKey())
-            ->orderBy('id')
-            ->chunkById(500, function ($files) use ($disk): void {
-                foreach ($files as $file) {
-                    if (is_string($file->blob) && Str::isUuid($file->blob)) {
-                        $disk->delete('files/'.$file->blob);
-                    }
-                }
-
-                StoredFile::query()
-                    ->withoutGlobalScopes()
-                    ->withTrashed()
-                    ->whereIn('id', $files->modelKeys())
-                    ->forceDelete();
-            });
-
-        // Prior blobs kept as version snapshots: delete their bytes and rows
-        // (owner-scoped by user_id). Each version references a "files/{blob}".
-        FileVersion::query()
-            ->withoutGlobalScopes()
-            ->where('user_id', $user->getKey())
-            ->orderBy('id')
-            ->chunkById(500, function ($versions) use ($disk): void {
-                foreach ($versions as $version) {
-                    if (is_string($version->blob) && Str::isUuid($version->blob)) {
-                        $disk->delete('files/'.$version->blob);
-                    }
-                }
-
-                FileVersion::query()
-                    ->withoutGlobalScopes()
-                    ->whereIn('id', $versions->modelKeys())
-                    ->delete();
-            });
-
-        // Raw upload ownership records: delete their bytes (orphaned blobs never
-        // attached to a StoredFile) and rows. The blob column is the primary key.
         FileBlob::query()
-            ->withoutGlobalScopes()
             ->where('user_id', $user->getKey())
             ->orderBy('blob')
             ->chunkById(500, function ($blobs) use ($disk): void {
                 foreach ($blobs as $blob) {
                     if (is_string($blob->blob) && Str::isUuid($blob->blob)) {
                         $disk->delete('files/'.$blob->blob);
+                        $disk->delete('thumbs/'.$blob->blob.'.jpg');
                     }
                 }
 
                 FileBlob::query()
-                    ->withoutGlobalScopes()
                     ->whereIn('blob', $blobs->modelKeys())
                     ->delete();
             }, 'blob');
-
-        FileFolder::query()
-            ->withoutGlobalScopes()
-            ->where('user_id', $user->getKey())
-            ->orderBy('id')
-            ->chunkById(500, function ($folders): void {
-                FileFolder::query()
-                    ->withoutGlobalScopes()
-                    ->whereIn('id', $folders->modelKeys())
-                    ->delete();
-            });
     }
 }

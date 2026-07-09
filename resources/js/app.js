@@ -41,7 +41,7 @@ window.LLStore = {
     _onError: null,
 
     _blank() {
-        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [] };
+        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [] };
     },
 
     // A random client-side id for a new item (server never assigns ids now).
@@ -1976,10 +1976,9 @@ Alpine.store('paperless', {
 
 Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
+    // Points at the shared opaque store's file arrays once loaded; the tree is
+    // plaintext inside the sealed blob, so mutations edit these in place.
     manifest: { v: 1, folders: [], files: [] },
-    // Serializes every whole-tree PUT and every load() so a full-replace can
-    // never overlap another mutation or a read clobber an unsaved change.
-    _io: Promise.resolve(),
     version: 0,
     cwd: null,
     query: '',
@@ -2033,18 +2032,12 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         // Switching view clears any selection, so a stale pick doesn't keep the
         // bulk bar / select-all checkbox active.
         this.$watch('view', () => { this.selected = []; });
-        // Zero-knowledge gate: the tree can only be decrypted with an unlocked
-        // vault. Wait for the store to finish restoring the cached key (it
-        // survives navigation), so returning to Files doesn't flash 'locked'.
-        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-        if (this.$store.vault.unlocked) {
-            await this.load();
-        } else {
-            this.state = 'locked';
-        }
+        // Zero-knowledge gate: the tree lives in the shared opaque store, which can
+        // only be opened with an unlocked vault. load() waits for the vault + store.
+        await this.load();
         this.$watch('$store.vault.unlocked', (on) => {
             if (on && this.state !== 'ready') this.load();
-            if (! on) { this.state = 'locked'; this.manifest = { v: 1, folders: [], files: [] }; }
+            if (! on) { this.state = 'locked'; window.LLStore.reset(); }
         });
     },
 
@@ -2102,189 +2095,149 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         }
     },
 
-    // Serialized after any queued PUT, so a refresh never overwrites the manifest
-    // while a write it hasn't seen is still in flight.
-    load() {
-        const run = this._io.then(() => this._loadNow());
-        this._io = run.catch(() => {});
-        return this._track(run);
-    },
-    async _loadNow() {
+    // Open the shared opaque store (waits for the vault) and point the in-memory
+    // manifest at its file arrays. The tree is already plaintext inside the sealed
+    // blob — no per-row decrypt — so the UI works on it directly and every mutation
+    // edits these arrays in place, then a debounced sealed save persists the whole
+    // workspace. Mutations must splice in place, never reassign the arrays, so the
+    // reference into window.LLStore.data stays intact (see _spliceWhere).
+    async load() {
+        this.state = 'boot';
         try {
-            // no-store: never serve a stale HTTP-cached tree after a mutation,
-            // otherwise deletes/moves appear to "come back" until a hard reload.
-            const res = await fetch(config.dataUrl, { cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) { this.state = 'error'; return; }
-            const data = await res.json();
-            const raw = data.files ? data : { v: 1, folders: [], files: [] };
-            // Decrypt the sealed names/metadata into the in-memory manifest so the
-            // rest of the UI (rendering, sort, search, rename) works on plaintext
-            // that never leaves the browser. Requires an unlocked vault.
-            this.manifest = {
-                v: raw.v,
-                folders: (raw.folders || []).map((f) => this._decFolder(f)),
-                files: (raw.files || []).map((f) => this._decFile(f)),
-            };
-            this.usage = data.usage || { used: 0, quota: 0 };
-            this.state = 'ready';
-        } catch (e) {
-            this.state = 'error';
-        }
+            if (! await bootStore(this.$store)) { this.state = 'locked'; return; }
+        } catch (e) { this.state = 'error'; return; }
+        this.manifest.folders = window.LLStore.data.fileFolders;
+        this.manifest.files = window.LLStore.data.files;
+        this.state = 'ready';
+        this.refreshUsage();
+        // Tell the server which blobs the manifest still references so it can
+        // reclaim the quota held by any it no longer does (grace-gated).
+        this.reconcileBlobs();
     },
 
-    // ---- Zero-knowledge (de/serialize the manifest) ----
+    // Current storage usage (the server can only report opaque blob bytes vs quota).
+    refreshUsage() {
+        return this._track((async () => {
+            try {
+                const res = await fetch(config.usageUrl, { cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (res.ok) this.usage = await res.json();
+            } catch (e) { /* keep the last value */ }
+        })());
+    },
 
-    // Decrypt a server folder row {id,name(sealed),parent}. If the name can't be
-    // decrypted (wrong key / corrupt), keep the ORIGINAL sealed string verbatim
-    // so a later persist re-emits it unchanged instead of destroying it.
-    _decFolder(f) {
-        let name = '???';
-        let decOk = false;
-        try { name = window.Vault.decryptFileMeta(f.name).name; decOk = true; } catch (e) { /* undecryptable */ }
-        return { id: f.id, name, parent: f.parent ?? null, _decOk: decOk, _rawName: f.name };
+    // Remove matching elements from an array IN PLACE, so the shared reference
+    // into window.LLStore.data (which the sealed save reads) is never detached.
+    _spliceWhere(arr, pred) {
+        for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) arr.splice(i, 1);
     },
-    // Decrypt a server file row into the plaintext shape the UI expects. Tags live
-    // INSIDE the sealed metadata (never a plaintext column). The raw sealed blobs
-    // are kept so an undecryptable row round-trips untouched.
-    _decFile(f) {
-        let meta = null;
-        try { meta = window.Vault.decryptFileMeta(f.enc_metadata); } catch (e) { /* undecryptable */ }
-        const decOk = meta !== null;
-        const note = this._openNote(f.note);
-        return {
-            id: f.id, blob: f.blob, encFileKey: f.enc_file_key,
-            name: decOk ? meta.name : '???', mime: decOk ? (meta.mime || 'application/octet-stream') : 'application/octet-stream', size: f.size,
-            folder: f.folder ?? null, trashed: f.trashed ?? null, created: f.created ?? null,
-            favorite: !! f.favorite, note: note.value, tags: decOk ? (meta.tags || []) : [],
-            _decOk: decOk, _rawMeta: f.enc_metadata, _noteOk: note.ok, _rawNote: f.note,
-        };
-    },
-    // Notes are sealed too. Returns {value, ok} so a failed decrypt is not later
-    // re-sealed as an empty note (which would erase the real note).
-    _openNote(sealed) {
-        if (! sealed) return { value: null, ok: true };
-        try { return { value: window.Vault.decryptFileMeta(sealed).name, ok: true }; } catch (e) { return { value: '', ok: false }; }
-    },
-    // Re-seal an in-memory folder row for the wire. Never re-seal a placeholder:
-    // an undecryptable folder passes its original sealed name through verbatim.
-    _encFolder(f) {
-        return { id: f.id, name: f._decOk === false ? f._rawName : window.Vault.sealName(f.name), parent: f.parent ?? null };
-    },
-    // Re-seal an in-memory file row for the wire. An undecryptable row (wrong key
-    // / corrupt) emits its ORIGINAL sealed metadata + note verbatim so a persist
-    // can never overwrite real data with a '???' placeholder.
-    _encFile(f) {
-        if (f._decOk === false) {
-            return {
-                id: f.id, blob: f.blob, enc_metadata: f._rawMeta, enc_file_key: f.encFileKey,
-                folder: f.folder ?? null, tags: [],
-                trashed: f.trashed ?? null, favorite: !! f.favorite,
-                note: f.note ?? f._rawNote ?? null,
-            };
+
+    // Best-effort reclaim of content blobs the manifest no longer references
+    // (permanent delete / version-cap overflow / edit swap). The server verifies
+    // ownership; a still-referenced blob is never passed here.
+    _freeBlobs(blobs) {
+        const uniq = [...new Set((blobs || []).filter(Boolean))];
+        for (const blob of uniq) {
+            fetch(`${config.blobBase}/${blob}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } }).catch(() => {});
         }
-        // Tags are sealed inside the metadata (a plaintext tags column would leak).
-        const m = window.Vault.encryptMeta({ name: f.name, mime: f.mime || 'application/octet-stream', size: f.size, tags: f.tags || [] });
-        return {
-            id: f.id, blob: f.blob,
-            enc_metadata: JSON.stringify({ c: m.cipher, n: m.nonce }),
-            enc_file_key: f.encFileKey,
-            folder: f.folder ?? null, tags: [],
-            trashed: f.trashed ?? null, favorite: !! f.favorite,
-            // A note that failed to decrypt is passed through untouched.
-            note: f._noteOk === false ? f._rawNote : (f.note ? window.Vault.sealName(f.note) : null),
-        };
+        if (uniq.length) this.refreshUsage();
+    },
+
+    // Send the manifest's full live blob set so the server frees the rest of the
+    // user's quota ledger. Debounced; runs on load (self-heals quota each visit).
+    _reconcileTimer: null,
+    reconcileBlobs() {
+        clearTimeout(this._reconcileTimer);
+        this._reconcileTimer = setTimeout(() => this._reconcileNow(), 1500);
+    },
+    async _reconcileNow() {
+        if (this.state !== 'ready') return;
+        const blobs = [];
+        for (const f of this.manifest.files) {
+            if (f.blob) blobs.push(f.blob);
+            for (const v of f.versions ?? []) if (v.blob) blobs.push(v.blob);
+        }
+        try {
+            const res = await fetch(config.reconcileUrl, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ blobs: [...new Set(blobs)] }),
+            });
+            if (res.ok) this.usage = await res.json();
+        } catch (e) { /* best effort */ }
+    },
+
+    // All descendant folder ids of the given folders (inclusive of the roots).
+    _folderClosure(folderIds) {
+        const kill = new Set(folderIds);
+        for (let grew = true; grew;) {
+            grew = false;
+            for (const f of this.manifest.folders) {
+                if (! kill.has(f.id) && f.parent && kill.has(f.parent)) { kill.add(f.id); grew = true; }
+            }
+        }
+        return kill;
+    },
+
+    // Keep only the newest N versions of a file; reclaim the overflow blobs.
+    _trimVersions(entry) {
+        const keep = config.maxVersions || 10;
+        if (! entry.versions || entry.versions.length <= keep) return;
+        const evicted = entry.versions.slice(keep);
+        entry.versions = entry.versions.slice(0, keep);
+        this._freeBlobs(evicted.map((v) => v.blob));
     },
 
     usage: { used: 0, quota: 0 },
     versions: { open: false, row: null, list: [], loading: false },
 
-    async openVersions(row) {
-        this.versions = { open: true, row, list: [], loading: true };
-        try {
-            const res = await fetch(config.versionsBase + '/' + row.id + '/versions', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (res.ok) {
-                // Decrypt each snapshot's sealed metadata for display; keep the
-                // wrapped key for restore/download.
-                this.versions.list = ((await res.json()).versions || []).map((v) => {
-                    let meta = { name: '???', mime: 'application/octet-stream' };
-                    try { meta = window.Vault.decryptFileMeta(v.enc_metadata); } catch (e) { /* stays ??? */ }
-                    return { ...v, name: meta.name, mime: meta.mime };
-                });
-            }
-        } catch (e) { /* keep empty */ }
-        this.versions.loading = false;
+    // Version history lives in the file's manifest row (versions[]) — no server
+    // round-trip. Each entry keeps its own wrapped key so its blob decrypts.
+    openVersions(row) {
+        const f = this.manifest.files.find((x) => x.id === row.id) || row;
+        this.versions = {
+            open: true, row, loading: false,
+            list: (f.versions ?? []).map((v) => ({ ...v, created_at: v.created })),
+        };
     },
-    // Download a snapshot: fetch its ciphertext and decrypt with the version's
-    // own wrapped key (each version has its own key).
+    // Download a snapshot: fetch its ciphertext blob and decrypt with the
+    // version's own wrapped key.
     async downloadVersion(v) {
         try {
-            const res = await fetch(config.versionsBase + '/' + this.versions.row.id + '/versions/' + v.id + '/download', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const res = await fetch(`${config.rawBase}/${v.blob}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) throw new Error('fetch failed');
-            saveBlobAs(window.Vault.decryptFile(await res.arrayBuffer(), v.encFileKey ?? v.enc_file_key), v.name, v.mime);
+            saveBlobAs(window.Vault.decryptFile(await res.arrayBuffer(), v.encFileKey), v.name, v.mime);
         } catch (e) { this.error = labels.downloadFailed; }
     },
-    // Restore a version by pointing the file's manifest row back at the version's
-    // blob AND its wrapped key (so the old ciphertext stays decryptable), then
-    // re-syncing. The sync snapshots the pre-restore blob as a new version.
+    // Restore a version: snapshot the current blob as a new version, then point
+    // the row at the restored blob + its wrapped key (kept decryptable), cap, save.
     async restoreVersion(v) {
         if (! await this.$store.confirm.ask(labels.restoreConfirm || '')) return;
         const row = this.manifest.files.find((f) => f.id === this.versions.row.id);
         if (! row) return;
+        row.versions = row.versions ?? [];
+        row.versions.unshift({ id: crypto.randomUUID(), blob: row.blob, encFileKey: row.encFileKey, size: row.size, mime: row.mime, name: row.name, created: new Date().toISOString() });
         row.blob = v.blob;
         row.size = v.size;
-        row.mime = v.mime;
-        row.encFileKey = v.encFileKey ?? v.enc_file_key;
-        await this.persist();
+        if (v.mime) row.mime = v.mime;
+        row.encFileKey = v.encFileKey;
+        this._spliceWhere(row.versions, (x) => x.id === v.id);
+        this._trimVersions(row);
+        this.persist();
         this.versions.open = false;
-        await this.load();
     },
 
-    // Debounced persist: coalesces many rapid changes (e.g. a big upload adding
-    // files) into a save every ~2s, so an interruption strands at most a couple
-    // of seconds of uploads instead of the whole batch.
-    _persistTimer: null,
-    _schedulePersist() {
-        if (this._persistTimer) clearTimeout(this._persistTimer);
-        this._persistTimer = setTimeout(() => {
-            this._persistTimer = null;
-            if (this.state === 'ready') this.persist().catch(() => {});
-        }, 2000);
-    },
-    // Cancel a pending debounced persist so a stale pre-mutation snapshot can't
-    // fire (e.g. an upload's timer resurrecting a file the user just trashed).
-    _cancelPendingPersist() {
-        if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
-    },
-
-    // Persist the whole tree; the server syncs it to clean rows. Serialized so
-    // two full-replace PUTs never overlap, and refused before the manifest has
-    // actually loaded so a boot/empty manifest can never wipe the library.
+    // Persist the whole workspace: schedule a debounced, sealed save of the shared
+    // opaque store (the file arrays are live references into it). LLStore coalesces
+    // rapid edits and handles optimistic-concurrency + retry itself.
     persist() {
-        if (this.state !== 'ready') {
-            this.error = labels.saveFailed;
-            return Promise.reject(new Error('files not loaded'));
-        }
-        const run = this._io.then(() => this._persistNow());
-        this._io = run.catch(() => {});
-        return this._track(run);
+        if (this.state === 'ready') window.LLStore.touch();
+        return Promise.resolve();
     },
-    async _persistNow() {
-        try {
-            const res = await fetch(config.dataUrl, {
-                method: 'PUT',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({
-                    folders: this.manifest.folders.map((f) => this._encFolder(f)),
-                    files: this.manifest.files.map((f) => this._encFile(f)),
-                }),
-            });
-            if (! res.ok) throw new Error('save failed');
-            this.error = '';
-        } catch (e) {
-            this.error = labels.saveFailed;
-            throw e;
-        }
-    },
+    // Kept as thin aliases so existing call sites don't need to change: LLStore
+    // already debounces, and there is no stale whole-tree PUT to cancel anymore
+    // (every save seals the current shared state).
+    _schedulePersist() { this.persist(); },
+    _cancelPendingPersist() {},
 
     /* ---- Derived views ---- */
 
@@ -2396,19 +2349,17 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.infoOpen = true;
     },
 
-    // Save the note on the current info file (targeted endpoint + manifest sync).
-    async saveNote() {
+    // Save the note on the current info file. The note is plaintext inside the
+    // sealed manifest — just edit the row and schedule a save.
+    saveNote() {
         const row = this.infoRow;
         if (! row || row.kind !== 'file') return;
         const note = this.infoNote.trim();
         if ((row.note || '') === note) return;
         const f = this.manifest.files.find((x) => x.id === row.id);
-        if (f) f.note = note; // optimistic (plaintext in-memory)
-        // Seal before it leaves the browser — the server stores only ciphertext.
-        const sealed = note ? window.Vault.sealName(note) : null;
-        if (! await this.filesPost(`${config.versionsBase}/${row.id}/note`, { note: sealed })) {
-            window.llToast(labels.saveFailed);
-        }
+        if (f) f.note = note;
+        row.note = note;
+        this.persist();
     },
 
     // Direct children of a folder (files + subfolders), counted client-side —
@@ -2433,20 +2384,19 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.migrateOpen = true;
     },
 
-    // Create a note from a title + content via the (plain) notes API.
+    // Create a note from a title + content. Notes live in the same opaque store,
+    // so this just adds a row to the shared notes manifest (no plaintext ever
+    // leaves the vault) and schedules a sealed save.
     async migrateAddNote(note) {
         try {
-            // Notes are zero-knowledge too — seal {title, content, tags} with the
-            // vault key so the note goes straight from encrypted file to encrypted
-            // note (it never leaves the vault as plaintext).
-            const m = window.Vault.encryptMeta({ title: note.title || '', content: note.content || '', tags: [] });
-            const enc_note = JSON.stringify({ c: m.cipher, n: m.nonce });
-            const res = await fetch('/notes', {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify({ enc_note }),
+            if (! await bootStore(this.$store)) return false;
+            window.LLStore.data.notes.unshift({
+                id: window.LLStore.newId(),
+                title: note.title || '', content: note.content || '',
+                tags: [], pinned: false, trashed: false, updated: new Date().toISOString(),
             });
-            return res.ok;
+            window.LLStore.touch();
+            return true;
         } catch (e) {
             return false;
         }
@@ -2475,15 +2425,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             }
 
             if (del) {
-                const blobId = row.blob;
-                this.manifest.files = this.manifest.files.filter((x) => x.id !== row.id);
-                try {
-                    await this.persist();
-                    fetch(`${config.blobBase}/${blobId}`, {
-                        method: 'DELETE',
-                        headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                    }).catch(() => {});
-                } catch (e) { /* note already created; keep the file on save failure */ }
+                const src = this.manifest.files.find((x) => x.id === row.id);
+                const blobs = src ? [src.blob, ...(src.versions ?? []).map((v) => v.blob)] : [];
+                this._spliceWhere(this.manifest.files, (x) => x.id === row.id);
+                this.persist();
+                this._freeBlobs(blobs);
             }
             this.migrateOpen = false;
         } catch (e) {
@@ -2678,121 +2624,97 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.deleteOpen = this.deleteRefs.length > 0;
     },
 
-    // POST a small ids payload to a targeted files endpoint (trash/restore/etc).
-    // Returns true on success. Serialized on the same _io chain as persist()/load()
-    // so a targeted mutation can never overlap a whole-manifest PUT (or another
-    // targeted op) and race its result.
-    filesPost(url, body) {
-        const run = this._io.then(() => this._filesPostNow(url, body));
-        this._io = run.catch(() => {});
-        return this._track(run);
-    },
-    async _filesPostNow(url, body) {
-        try {
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-                body: JSON.stringify(body),
-            });
-            return res.ok;
-        } catch (e) { return false; }
-    },
-
-    // Delete via the modal: to the trash (soft) or permanently. Folders bring
-    // their files; the server keeps blobs for restore unless permanent.
-    async applyDelete(permanent = false) {
+    // Delete via the modal: to the trash (soft) or permanently. A folder brings
+    // its whole subtree. Everything is a manifest edit — trash is just a flag;
+    // permanent removal also reclaims the content blobs (file + versions).
+    applyDelete(permanent = false) {
         const refs = this.deleteRefs;
         this.deleteOpen = false;
         this.deleteRefs = [];
         if (! refs.length) return;
-        const fileIds = refs.filter((r) => r.kind === 'file').map((r) => r.id);
-        const payload = {
-            file_ids: fileIds,
-            folder_ids: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
-            permanent,
-        };
-        // Cancel any pending debounced persist + apply the change to the manifest
-        // NOW, so a racing persist (e.g. from an in-flight upload) can't re-send a
-        // pre-trash snapshot and resurrect what was just deleted.
-        this._cancelPendingPersist();
-        this._applyLocalTrash(fileIds, permanent);
-        this._applyLocalFolderRemove(payload.folder_ids);
-        if (! await this.filesPost(config.trashUrl, payload)) { window.llToast(labels.saveFailed); return; }
-        this.selected = [];
-        await this.load();
-    },
+        const fileIds = new Set(refs.filter((r) => r.kind === 'file').map((r) => r.id));
+        const folderIds = refs.filter((r) => r.kind === 'folder').map((r) => r.id);
+        const killFolders = this._folderClosure(folderIds);
+        // Directly-selected files + every file inside a deleted folder subtree.
+        const targets = this.manifest.files.filter((f) => fileIds.has(f.id) || killFolders.has(f.folder));
 
-    // Reflect a file trash/purge in the in-memory manifest immediately.
-    _applyLocalTrash(fileIds, permanent) {
-        if (! fileIds.length) return;
-        const set = new Set(fileIds);
         if (permanent) {
-            this.manifest.files = this.manifest.files.filter((f) => ! set.has(f.id));
+            const blobs = [];
+            for (const f of targets) { blobs.push(f.blob); for (const v of f.versions ?? []) blobs.push(v.blob); }
+            const kill = new Set(targets.map((f) => f.id));
+            this._spliceWhere(this.manifest.files, (f) => kill.has(f.id));
+            this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
+            this.persist();
+            this._freeBlobs(blobs);
         } else {
             const stamp = new Date().toISOString();
-            this.manifest.files.forEach((f) => { if (set.has(f.id)) f.trashed = stamp; });
-        }
-    },
-
-    // Drop a deleted/trashed folder subtree (folders + their files) from the
-    // active view immediately, so it vanishes at once instead of lingering until
-    // the slow server delete finishes; load() then reconciles the real state.
-    _applyLocalFolderRemove(folderIds) {
-        if (! folderIds || ! folderIds.length) return;
-        const kill = new Set(folderIds);
-        for (let grew = true; grew;) {
-            grew = false;
-            for (const f of this.manifest.folders) {
-                if (! kill.has(f.id) && f.parent && kill.has(f.parent)) { kill.add(f.id); grew = true; }
+            for (const f of targets) {
+                if (! f.trashed) f.trashed = stamp;
+                // The folder is gone from the tree, so detach to root — a restore
+                // then lands the file at the top level instead of nowhere.
+                if (killFolders.has(f.folder)) f.folder = null;
             }
+            this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
+            this.persist();
         }
-        this.manifest.folders = this.manifest.folders.filter((f) => ! kill.has(f.id));
-        this.manifest.files = this.manifest.files.filter((f) => ! kill.has(f.folder));
+        this.selected = [];
     },
 
     // Move an item straight to the trash (used by drag-and-drop onto the trash).
-    async trashItem(ref) {
-        const payload = { file_ids: [], folder_ids: [], permanent: false };
-        (ref.kind === 'folder' ? payload.folder_ids : payload.file_ids).push(ref.id);
-        this._cancelPendingPersist();
-        this._applyLocalTrash(payload.file_ids, false);
-        if (! await this.filesPost(config.trashUrl, payload)) { window.llToast(labels.saveFailed); return; }
+    trashItem(ref) {
+        if (ref.kind === 'folder') {
+            const killFolders = this._folderClosure([ref.id]);
+            const stamp = new Date().toISOString();
+            for (const f of this.manifest.files) {
+                if (killFolders.has(f.folder)) { if (! f.trashed) f.trashed = stamp; f.folder = null; }
+            }
+            this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
+        } else {
+            const f = this.manifest.files.find((x) => x.id === ref.id);
+            if (f && ! f.trashed) f.trashed = new Date().toISOString();
+        }
         this.selected = [];
-        await this.load();
+        this.persist();
     },
 
-    // Restore a trashed file back into the browser.
-    async restore(row) {
-        if (! await this.filesPost(config.restoreUrl, { file_ids: [row.id] })) { window.llToast(labels.saveFailed); return; }
-        await this.load();
+    // Restore a trashed file back into the browser (clear its flag).
+    restore(row) {
+        const f = this.manifest.files.find((x) => x.id === row.id);
+        if (! f) return;
+        f.trashed = null;
+        this.persist();
     },
 
-    // Permanently delete one trashed file.
+    // Permanently delete one trashed file + reclaim its blobs.
     async purge(row) {
         if (! await this.$store.confirm.ask(labels.purgeConfirm || '')) return;
-        if (! await this.filesPost(config.trashUrl, { file_ids: [row.id], permanent: true })) { window.llToast(labels.saveFailed); return; }
-        await this.load();
+        const f = this.manifest.files.find((x) => x.id === row.id);
+        if (! f) return;
+        const blobs = [f.blob, ...(f.versions ?? []).map((v) => v.blob)];
+        this._spliceWhere(this.manifest.files, (x) => x.id === row.id);
+        this.persist();
+        this._freeBlobs(blobs);
     },
 
-    // Permanently delete every trashed file.
+    // Permanently delete every trashed file + reclaim their blobs.
     async emptyTrash() {
         if (! this.trashCount) return;
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
-        const ids = this.manifest.files.filter((f) => f.trashed).map((f) => f.id);
-        if (! await this.filesPost(config.trashUrl, { file_ids: ids, permanent: true })) { window.llToast(labels.saveFailed); return; }
-        await this.load();
+        const trashed = this.manifest.files.filter((f) => f.trashed);
+        const blobs = [];
+        for (const f of trashed) { blobs.push(f.blob); for (const v of f.versions ?? []) blobs.push(v.blob); }
+        this._spliceWhere(this.manifest.files, (f) => f.trashed);
+        this.persist();
+        this._freeBlobs(blobs);
     },
 
-    // Toggle a file's favourite (optimistic; robust targeted endpoint).
-    async toggleFavorite(row) {
+    // Toggle a file's favourite (a plain manifest flag).
+    toggleFavorite(row) {
         const f = this.manifest.files.find((x) => x.id === row.id);
         if (! f) return;
-        const next = ! f.favorite;
-        f.favorite = next; // optimistic
-        if (! await this.filesPost(config.favoriteUrl, { file_ids: [row.id], favorite: next })) {
-            f.favorite = ! next; // revert
-            window.llToast(labels.saveFailed);
-        }
+        f.favorite = ! f.favorite;
+        if (row) row.favorite = f.favorite;
+        this.persist();
     },
 
     /* ---- Content operations ---- */
@@ -2903,6 +2825,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                         size: item.file.size,
                         folder: folderFor(item.path),
                         created: new Date().toISOString(),
+                        versions: [],
                     });
                     // Persist incrementally (debounced) so an interrupted bulk
                     // upload doesn't strand every uploaded blob without a row —
@@ -2923,7 +2846,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         await Promise.all(Array.from({ length: lanes }, worker));
 
         this.uploadBatches--;
-        await this.persist().catch(() => {});
+        this.persist();
+        this.refreshUsage();
         // Auto-dismiss the tray a few seconds after a clean finish (keep it open
         // when something errored so the user sees which file failed).
         if (this.uploadBatches === 0 && ! this.uploads.some((u) => u.state === 'error')) {
@@ -3210,21 +3134,17 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     // After a file-browser upload the user may choose to delete the original;
     // remove it from the manifest and drop its blob (best effort).
-    async onPaperlessSent(detail) {
+    onPaperlessSent(detail) {
         const ctx = detail?.context;
         if (! detail?.deleteAfter || ctx?.source !== 'files') return;
         const row = this.manifest.files.find((x) => x.id === ctx.rowId);
         if (! row) return;
         // If the deleted file is the one open in the viewer, close it.
         if (this.viewer.open && this.viewer.row?.id === row.id) this.closeViewer();
-        this.manifest.files = this.manifest.files.filter((x) => x.id !== row.id);
-        try {
-            await this.persist();
-            fetch(`${config.blobBase}/${ctx.blob}`, {
-                method: 'DELETE',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            }).catch(() => {});
-        } catch (e) { /* keep the file on save failure */ }
+        const blobs = [row.blob, ...(row.versions ?? []).map((v) => v.blob)];
+        this._spliceWhere(this.manifest.files, (x) => x.id === ctx.rowId);
+        this.persist();
+        this._freeBlobs(blobs);
     },
 
     /* ---- Preview & editor (all in the browser, nothing readable leaves it) ---- */
@@ -3359,32 +3279,27 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             const { id } = await res.json();
 
             const entry = this.manifest.files.find((f) => f.id === row.id);
-            const oldBlob = entry?.blob;
-            const oldSize = entry?.size;
-            const oldKey = entry?.encFileKey;
             if (entry) {
+                // Snapshot the outgoing blob as a version (kept + decryptable via
+                // its own wrapped key) before pointing the row at the new blob,
+                // then cap the history — the overflow blobs are reclaimed.
+                const oldBlob = entry.blob;
+                if (oldBlob && oldBlob !== id) {
+                    entry.versions = entry.versions ?? [];
+                    entry.versions.unshift({ id: crypto.randomUUID(), blob: oldBlob, encFileKey: entry.encFileKey, size: entry.size, mime: entry.mime, name: entry.name, created: new Date().toISOString() });
+                    this._trimVersions(entry);
+                }
                 entry.blob = id;
                 entry.size = bytes.length;
                 entry.encFileKey = enc.encFileKey; // the new blob's wrapped key
             }
-            try {
-                await this.persist();
-            } catch (e) {
-                // Revert the optimistic swap and free the orphaned new blob so the
-                // client and server never diverge on a failed save.
-                if (entry) { entry.blob = oldBlob; entry.size = oldSize; entry.encFileKey = oldKey; }
-                fetch(`${config.blobBase}/${id}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } }).catch(() => {});
-                throw e;
-            }
+            this.persist();
 
             row.blob = id;
             row.size = bytes.length;
             row.encFileKey = enc.encFileKey;
-            // Do NOT delete the old blob here: the sync just snapshotted it as a
-            // version (kept so a restore stays decryptable). The version cap prunes
-            // it later, reference-counted. Deleting it now would hit the ref-count
-            // guard (409) and, if forced, break the version.
             this.viewer.saved = true;
+            this.refreshUsage();
         } catch (e) {
             this.error = labels.saveFailed;
         }
@@ -3819,121 +3734,6 @@ const FOLDER_ICONS = {
     moon: 'M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z',
     wifi: 'M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z',
 };
-
-/**
- * Public "file request" upload page: a visitor can only upload files to a
- * tokenised link. No listing, no browsing — just per-file progress + result.
- */
-Alpine.data('uploadLink', (config = {}, labels = {}) => ({
-    items: [],
-    dragging: false,
-    busy: false,
-
-    get doneCount() { return this.items.filter((u) => u.state === 'done').length; },
-    get errorCount() { return this.items.filter((u) => u.state === 'error').length; },
-
-    // From the file/folder picker: folder picks carry webkitRelativePath.
-    add(fileList) {
-        this._start([...(fileList || [])].map((f) => ({ file: f, path: f.webkitRelativePath || f.name })));
-    },
-
-    // From a drag-drop: walk dropped folders (and subfolders) via the entries API.
-    async dropped(event) {
-        const items = event.dataTransfer.items;
-        if (items && items.length && items[0] && items[0].webkitGetAsEntry) {
-            // Capture every top-level entry SYNCHRONOUSLY — DataTransferItems are
-            // invalidated once the drop handler yields (awaits).
-            const entries = [...items].map((it) => it.webkitGetAsEntry()).filter(Boolean);
-            const out = [];
-            for (const entry of entries) await this._walk(entry, '', out);
-            this._start(out);
-        } else {
-            this._start([...event.dataTransfer.files].map((f) => ({ file: f, path: f.name })));
-        }
-    },
-
-    async _walk(entry, prefix, out) {
-        if (entry.isFile) {
-            const f = await new Promise((res) => entry.file(res, () => res(null)));
-            if (f) out.push({ file: f, path: prefix + f.name });
-            return;
-        }
-        // Drain the whole directory first (tight readEntries loop) before reading
-        // any files — the reader is invalidated on big folders otherwise, which
-        // truncated large drops.
-        const reader = entry.createReader();
-        const children = [];
-        for (;;) {
-            const batch = await new Promise((res) => reader.readEntries(res, () => res([])));
-            if (! batch.length) break;
-            children.push(...batch);
-        }
-        for (const child of children) await this._walk(child, prefix + entry.name + '/', out);
-    },
-
-    _start(items) {
-        if (! items.length) return;
-        this.busy = true;
-        this._run(items);
-    },
-
-    async _run(items) {
-        // Push all rows upfront so the tray shows the whole batch immediately.
-        const start = this.items.length;
-        for (const it of items) this.items.push({ name: it.path || it.file.name, state: 'pending', progress: 0, error: '' });
-
-        // Upload several at a time: with concurrent in-flight XHRs the transfers
-        // keep going even when the tab is backgrounded/frozen (the browser only
-        // freezes JS, not requests already in flight) instead of stalling
-        // between files as a sequential loop would.
-        let next = 0;
-        const worker = async () => {
-            while (next < items.length) {
-                const idx = next++;
-                const it = items[idx];
-                const file = it.file;
-                const entry = this.items[start + idx];
-                const ext = (file.name.split('.').pop() || '').toLowerCase();
-                if (config.extensions && config.extensions.length && ! config.extensions.includes(ext)) {
-                    entry.state = 'error'; entry.error = labels.typeNotAllowed; continue;
-                }
-                if (config.maxBytes && file.size > config.maxBytes) {
-                    entry.state = 'error'; entry.error = labels.tooLarge; continue;
-                }
-                try { await this._upload(file, entry, it.path); entry.state = 'done'; entry.progress = 100; }
-                catch (e) { entry.state = 'error'; entry.error = e && e.msg ? e.msg : labels.failed; }
-            }
-        };
-        await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
-        this.busy = false;
-    },
-
-    _upload(file, entry, path) {
-        return new Promise((resolve, reject) => {
-            const data = new FormData();
-            data.append('_token', config.token);
-            data.append('file', file, file.name);
-            if (path && path.includes('/')) data.append('path', path);
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', config.url);
-            xhr.setRequestHeader('Accept', 'application/json');
-            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            xhr.timeout = 600000;
-            entry.state = 'uploading';
-            xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) entry.progress = Math.round((ev.loaded / ev.total) * 100); };
-            xhr.onload = () => {
-                if (xhr.status >= 200 && xhr.status < 300) { resolve(); return; }
-                const err = new Error('failed');
-                if (xhr.status === 413) err.msg = labels.tooLarge;
-                else if (xhr.status === 422) err.msg = labels.typeNotAllowed;
-                reject(err);
-            };
-            xhr.onerror = () => { const e = new Error('network'); e.msg = labels.unreadable || labels.failed; reject(e); };
-            xhr.ontimeout = () => reject(new Error('timeout'));
-            try { xhr.send(data); } catch (e) { const err = new Error('read'); err.msg = labels.unreadable || labels.failed; reject(err); }
-        });
-    },
-}));
 
 /**
  * Bookmarks + folders. Zero-knowledge: everything lives in the opaque manifest
