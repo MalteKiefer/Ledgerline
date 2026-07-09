@@ -954,7 +954,7 @@ return {
                         if (sig) seen.add(sig);
                         entry.state = 'uploading';
                         const enc = await window.Vault.encryptFile(file);
-                        const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+                        const cipher = new File([await this._padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
                         const id = await this._uploadBlob(cipher, entry);
                         this.index.photos.unshift({
                             id: window.LLGalleryStore.newId(),
@@ -1077,9 +1077,36 @@ return {
     // Encrypt raw bytes with a fresh per-blob key and upload; returns { id, key }.
     async _encStore(bytes, name) {
         const enc = window.Vault.encryptContent(bytes, { name, mime: 'application/octet-stream' });
-        const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+        const cipher = new File([await this._padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
         const id = await this._uploadBlob(cipher, null);
         return { id, key: enc.encFileKey };
+    },
+    // Length-hiding padding for stored content blobs. The secretstream decryptor
+    // stops at its FINAL frame, so random bytes appended after the ciphertext are
+    // never parsed — decryption is unaffected while the stored/on-ledger size is
+    // rounded up to a Padmé bucket (leaks O(log log n) bits, ≤~12% overhead)
+    // instead of revealing the exact plaintext length. Random (not zero) padding
+    // so an observer of the raw blob can't spot the boundary.
+    _padmeSize(n) {
+        if (n < 2) return n;
+        const e = Math.floor(Math.log2(n));
+        const s = Math.floor(Math.log2(e)) + 1;
+        const bits = e - s;
+        if (bits <= 0) return n;
+        const mask = (1 << bits) - 1;
+        return (n + mask) & ~mask;
+    },
+    async _padBlob(blob) {
+        let pad = this._padmeSize(blob.size) - blob.size;
+        if (pad <= 0) return blob;
+        const parts = [blob];
+        while (pad > 0) {
+            const chunk = new Uint8Array(Math.min(pad, 65536));
+            crypto.getRandomValues(chunk);
+            parts.push(chunk);
+            pad -= chunk.length;
+        }
+        return new Blob(parts, { type: 'application/octet-stream' });
     },
     async _decryptBlob(ref, key) {
         const res = await fetch(`${config.rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });

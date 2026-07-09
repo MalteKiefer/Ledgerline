@@ -12,8 +12,13 @@ use Spatie\DbDumper\Databases\PostgreSql;
 
 /**
  * Dumps the application database to a gzipped SQL file (or, for SQLite, a
- * gzipped copy of the database file). The dump contains all application data
- * manifests as-is — it is ciphertext, not decrypted content.
+ * gzipped copy of the database file). The dump contains ALL data: the sealed
+ * zero-knowledge manifest rows are ciphertext, but every non-ZK module
+ * (todos/bookmarks/contacts/calendar/mail headers, blob-ownership ledgers) and
+ * the wrapped-vault-key material are present in plaintext. The dump artifact is
+ * therefore NOT ciphertext and MUST be encrypted before it leaves the host —
+ * enforcement lives in BackupManager::run() and Settings\BackupController; do
+ * not remove those gates.
  */
 final class DatabaseSource implements BackupSource
 {
