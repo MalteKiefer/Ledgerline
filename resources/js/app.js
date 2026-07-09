@@ -133,8 +133,7 @@ window.LLGalleryStore = {
     ready: false,
     loaded: false,
     _timer: null,
-    _saving: false,
-    _again: false,
+    _chain: null,
     _onError: null,
 
     _blank() {
@@ -166,17 +165,25 @@ window.LLGalleryStore = {
         this._timer = setTimeout(() => this.flush(), 800);
     },
 
-    async flush() {
-        if (! this.loaded) return;
-        if (this._saving) { this._again = true; return; }
-        this._saving = true;
+    // Serialised, awaitable save. Callers can `await flush()` and be sure the
+    // CURRENT data was persisted — a save in flight no longer turns the call into
+    // a no-op (which lost destructive edits like emptying the trash on reload).
+    flush() {
+        if (! this.loaded) return Promise.resolve();
+        this._chain = (this._chain || Promise.resolve()).then(() => this._doFlush()).catch(() => {});
+        return this._chain;
+    },
+
+    async _doFlush(retry = 0) {
+        if (! this.loaded || ! this.data) return;
         try {
             const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(this.data), version: this.version });
             const res = await fetch('/gallery/store', { method: 'PUT', headers: jsonHeaders(), body });
             if (res.status === 409) {
+                // Someone else advanced the version; adopt it and re-seal our data.
                 const cur = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
                 this.version = cur.version ?? this.version;
-                this._again = true;
+                if (retry < 3) return this._doFlush(retry + 1);
             } else if (res.ok) {
                 this.version = (await res.json()).version ?? this.version + 1;
             } else {
@@ -184,9 +191,7 @@ window.LLGalleryStore = {
             }
         } catch (e) {
             if (this._onError) this._onError();
-        } finally {
-            this._saving = false;
-            if (this._again) { this._again = false; this.touch(); }
+            throw e;
         }
     },
 };
