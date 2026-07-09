@@ -42,12 +42,12 @@ class GalleryBlobController extends Controller
     }
 
     /**
-     * Reclaim blobs the manifest no longer references. The server can't see the
-     * (sealed) reference graph, so the client sends the set of blob ids its
-     * manifest still points at (files + kept versions); any of the caller's OWN
-     * blobs not in that set — and older than the grace window, so an in-flight
-     * upload not yet saved into the manifest is never reaped — are freed. This is
-     * how removed files/versions release their quota under zero-knowledge.
+     * Reclaim blobs the sealed gallery index no longer references. The server
+     * can't see the (sealed) reference graph, so the client sends the set of blob
+     * ids its index still points at (originals + derived renditions/crops); any
+     * of the caller's OWN blobs not in that set — and older than the grace
+     * window, so an in-flight upload not yet saved into the index is never reaped
+     * — are freed. This is how deleted photos release their quota under ZK.
      */
     public function reconcile(Request $request): JsonResponse
     {
@@ -295,8 +295,8 @@ class GalleryBlobController extends Controller
 
     /**
      * Delete an owned blob's bytes + ledger row. The client calls this when its
-     * manifest stops referencing the blob (permanent delete, version-cap
-     * overflow, edit-swap). Owner-scoped; unknown blob = already gone (idempotent).
+     * sealed index stops referencing the blob (photo permanently deleted, or a
+     * rendition replaced). Owner-scoped; unknown blob = already gone (idempotent).
      */
     public function deleteBlob(string $blob): JsonResponse
     {
