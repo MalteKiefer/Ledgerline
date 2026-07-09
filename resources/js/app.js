@@ -1065,7 +1065,11 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
             return url;
         } catch (e) { return ''; }
     },
-    _revokeThumbs() { for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]); this.thumbs = {}; },
+    _revokeThumbs() {
+        for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]);
+        for (const k in this.faceThumbs) URL.revokeObjectURL(this.faceThumbs[k]);
+        this.thumbs = {}; this.faceThumbs = {}; this._meta = {}; this.dupGroups = null;
+    },
 
     /* ---- Viewer ---- */
     async openViewer(p) {
@@ -1157,13 +1161,25 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         this.searching = false;
     },
     async _ensureEmbeddings() {
+        await this._ensureMeta();
         for (const p of this.libraryPhotos) {
-            if (! p.metaRef || this._searchEmb[p.id]) continue;
+            const m = this._meta[p.id];
+            if (m && Array.isArray(m.embedding)) this._searchEmb[p.id] = m.embedding;
+        }
+    },
+    // Shared decrypted-metadata cache (embedding/phash/faces/place). Every
+    // cross-photo feature — search, duplicates, faces — reads from here so each
+    // sealed meta blob is fetched and decrypted at most once per session.
+    _meta: {},
+    async _ensureMeta(onProgress) {
+        const todo = this.libraryPhotos.filter((p) => p.metaRef && ! this._meta[p.id]);
+        let done = 0;
+        for (const p of todo) {
             try {
                 const b = await this._decryptBlob(p.metaRef, p.metaKey);
-                const m = JSON.parse(new TextDecoder().decode(b));
-                if (Array.isArray(m.embedding)) this._searchEmb[p.id] = m.embedding;
-            } catch (e) { /* skip */ }
+                this._meta[p.id] = JSON.parse(new TextDecoder().decode(b));
+            } catch (e) { this._meta[p.id] = null; }
+            if (onProgress) onProgress(++done, todo.length);
         }
     },
     cosine(a, b) {
@@ -1239,6 +1255,200 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         });
     },
 
+    /* ---- Albums (plain client-side grouping, sealed in the index) ---- */
+    activeAlbum: null,
+    newAlbumName: '',
+    get albums() {
+        return (this.index.albums || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    },
+    get currentAlbum() { return (this.index.albums || []).find((a) => a.id === this.activeAlbum) || null; },
+    albumPhotos(al) {
+        if (! al) return [];
+        const set = new Set(al.photoIds || []);
+        return this.libraryPhotos.filter((p) => set.has(p.id));
+    },
+    albumCount(al) { return this.albumPhotos(al).length; },
+    albumCover(al) {
+        const ps = this.albumPhotos(al);
+        return ps.find((p) => p.id === al.cover) || ps[0] || null;
+    },
+    openAlbum(al) { this.activeAlbum = al.id; this.view = 'album'; },
+    createAlbum() {
+        const name = (this.newAlbumName || '').trim();
+        if (! name) return;
+        const al = { id: window.LLGalleryStore.newId(), name, photoIds: [...this.selected], cover: this.selected[0] || null, created: new Date().toISOString() };
+        (this.index.albums = this.index.albums || []).push(al);
+        this.newAlbumName = '';
+        this.selected = [];
+        this._save();
+    },
+    renameAlbum(al) {
+        const name = (window.prompt(labels.albumName || 'Album', al.name) || '').trim();
+        if (name) { al.name = name; this._save(); }
+    },
+    async deleteAlbum(al) {
+        if (! await this.$store.confirm.ask(labels.deleteAlbumConfirm || '')) return;
+        const i = (this.index.albums || []).findIndex((a) => a.id === al.id);
+        if (i >= 0) this.index.albums.splice(i, 1);
+        if (this.activeAlbum === al.id) { this.activeAlbum = null; this.view = 'albums'; }
+        this._save();
+    },
+    addSelectedToAlbum(al) {
+        const set = new Set(al.photoIds || []);
+        for (const id of this.selected) set.add(id);
+        al.photoIds = [...set];
+        if (! al.cover) al.cover = al.photoIds[0] || null;
+        this.selected = [];
+        this._save();
+    },
+    removeFromAlbum(al, p) {
+        al.photoIds = (al.photoIds || []).filter((id) => id !== p.id);
+        if (al.cover === p.id) al.cover = al.photoIds[0] || null;
+        this._save();
+    },
+
+    /* ---- Duplicates (pHash Hamming + CLIP cosine, all client-side) ---- */
+    dupGroups: null,
+    dupScanning: false,
+    dupProgress: { done: 0, total: 0 },
+    _popcount(n) { let c = 0n; while (n) { c += n & 1n; n >>= 1n; } return Number(c); },
+    _hamming(a, b) {
+        if (a == null || b == null || ! Number.isFinite(a) || ! Number.isFinite(b)) return 64;
+        try { return this._popcount(BigInt(a) ^ BigInt(b)); } catch (e) { return 64; }
+    },
+    async scanDuplicates() {
+        this.dupScanning = true;
+        this.dupGroups = null;
+        try {
+            await this._ensureMeta((d, t) => { this.dupProgress = { done: d, total: t }; });
+            const items = this.libraryPhotos.filter((p) => this._meta[p.id]).map((p) => ({ p, m: this._meta[p.id] }));
+            // Union-find: two photos are near-duplicates if their CLIP vectors are
+            // very close, or their difference-hashes are within a few bits.
+            const parent = items.map((_, i) => i);
+            const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+            const union = (i, j) => { const a = find(i), b = find(j); if (a !== b) parent[a] = b; };
+            for (let i = 0; i < items.length; i++) {
+                for (let j = i + 1; j < items.length; j++) {
+                    const a = items[i].m, b = items[j].m;
+                    let dup = false;
+                    if (Array.isArray(a.embedding) && Array.isArray(b.embedding)) {
+                        if (this.cosine(a.embedding, b.embedding) >= 0.94) dup = true;
+                    }
+                    if (! dup && a.phash != null && b.phash != null && this._hamming(a.phash, b.phash) <= 4) dup = true;
+                    if (dup) union(i, j);
+                }
+            }
+            const groups = new Map();
+            items.forEach((it, i) => { const r = find(i); if (! groups.has(r)) groups.set(r, []); groups.get(r).push(it.p); });
+            this.dupGroups = [...groups.values()].filter((g) => g.length > 1)
+                .map((g) => g.sort((a, b) => (b.size || 0) - (a.size || 0)));
+        } finally {
+            this.dupScanning = false;
+        }
+    },
+    get dupTotal() { return this.dupGroups ? this.dupGroups.reduce((n, g) => n + g.length - 1, 0) : 0; },
+    async keepOne(group, keep) {
+        const t = new Date().toISOString();
+        for (const p of group) if (p.id !== keep.id && ! p.trashed) p.trashed = t;
+        this.dupGroups = (this.dupGroups || []).filter((g) => g !== group);
+        this._save();
+    },
+
+    /* ---- People (client-side face clustering over sealed embeddings) ---- */
+    faceThumbs: {},
+    activePerson: null,
+    peopleScanning: false,
+    peopleProgress: { done: 0, total: 0 },
+    get people() { return (this.index.people || []).filter((pp) => ! pp.hidden); },
+    get currentPerson() { return (this.index.people || []).find((pp) => pp.id === this.activePerson) || null; },
+    openPerson(pp) { this.activePerson = pp.id; this.view = 'person'; },
+    personPhotos(pp) {
+        if (! pp) return [];
+        const ids = [...new Set((pp.faces || []).map((f) => f.photoId))];
+        const byId = new Map(this.libraryPhotos.map((p) => [p.id, p]));
+        return ids.map((id) => byId.get(id)).filter(Boolean);
+    },
+    personCount(pp) { return this.personPhotos(pp).length; },
+    async faceThumb(f) {
+        if (! f || ! f.cropRef) return '';
+        if (this.faceThumbs[f.cropRef]) return this.faceThumbs[f.cropRef];
+        try {
+            const bytes = await this._decryptBlob(f.cropRef, f.cropKey);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            this.faceThumbs[f.cropRef] = url;
+            return url;
+        } catch (e) { return ''; }
+    },
+    personCover(pp) { return (pp.faces || [])[0] || null; },
+    _centroid(vecs) {
+        const n = vecs[0].length, out = new Array(n).fill(0);
+        for (const v of vecs) for (let i = 0; i < n; i++) out[i] += v[i];
+        for (let i = 0; i < n; i++) out[i] /= vecs.length;
+        return out;
+    },
+    async scanFaces() {
+        this.peopleScanning = true;
+        try {
+            await this._ensureMeta((d, t) => { this.peopleProgress = { done: d, total: t }; });
+            // Collect every detected face carrying an embedding + a crop blob.
+            const faces = [];
+            for (const p of this.libraryPhotos) {
+                const m = this._meta[p.id];
+                if (! m || ! Array.isArray(m.faces)) continue;
+                m.faces.forEach((f, idx) => {
+                    if (Array.isArray(f.embedding) && f.cropRef) {
+                        faces.push({ photoId: p.id, idx, cropRef: f.cropRef, cropKey: f.cropKey, emb: f.embedding });
+                    }
+                });
+            }
+            // Greedy single-link clustering against running centroids. buffalo_l
+            // embeddings put same-person pairs well above 0.5 cosine.
+            const clusters = [];
+            for (const face of faces) {
+                let best = null, bestSim = 0.5;
+                for (const c of clusters) {
+                    const s = this.cosine(face.emb, c.centroid);
+                    if (s > bestSim) { bestSim = s; best = c; }
+                }
+                if (best) { best.members.push(face); best.centroid = this._centroid(best.members.map((x) => x.emb)); }
+                else clusters.push({ members: [face], centroid: face.emb.slice() });
+            }
+            // Keep clusters of 2+ faces; carry over names from the previous scan by
+            // matching centroids so renames survive re-clustering.
+            const prev = this.index.people || [];
+            const kept = clusters.filter((c) => c.members.length >= 2)
+                .sort((a, b) => b.members.length - a.members.length);
+            const people = kept.map((c) => {
+                let name = '', hidden = false;
+                let bestSim = 0.6, match = null;
+                for (const pp of prev) {
+                    if (! pp.centroid) continue;
+                    const s = this.cosine(c.centroid, pp.centroid);
+                    if (s > bestSim) { bestSim = s; match = pp; }
+                }
+                if (match) { name = match.name || ''; hidden = ! ! match.hidden; }
+                return {
+                    id: window.LLGalleryStore.newId(),
+                    name, hidden, centroid: c.centroid,
+                    faces: c.members.map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey })),
+                };
+            });
+            this.index.people = people;
+            this._save();
+        } finally {
+            this.peopleScanning = false;
+        }
+    },
+    renamePerson(pp) {
+        const name = (window.prompt(labels.personName || 'Name', pp.name || '') || '').trim();
+        pp.name = name; this._save();
+    },
+    hidePerson(pp) {
+        pp.hidden = true;
+        if (this.activePerson === pp.id) { this.activePerson = null; this.view = 'people'; }
+        this._save();
+    },
+
     /* ---- Trash (soft-delete → recoverable) ---- */
     trash(p) { p.trashed = new Date().toISOString(); this._save(); },
     restore(p) { p.trashed = null; this._save(); },
@@ -1257,6 +1467,13 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         const refs = [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef, ...(p.faceCropRefs || [])];
         const i = this.index.photos.findIndex((x) => x.id === p.id);
         if (i >= 0) this.index.photos.splice(i, 1);
+        // Drop dangling references from albums and face clusters.
+        for (const al of (this.index.albums || [])) {
+            al.photoIds = (al.photoIds || []).filter((id) => id !== p.id);
+            if (al.cover === p.id) al.cover = al.photoIds[0] || null;
+        }
+        for (const pp of (this.index.people || [])) pp.faces = (pp.faces || []).filter((f) => f.photoId !== p.id);
+        delete this._meta[p.id];
         if (this.thumbs[p.id]) { URL.revokeObjectURL(this.thumbs[p.id]); delete this.thumbs[p.id]; }
         this._freeBlobs(refs);
     },
