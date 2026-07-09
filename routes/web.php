@@ -11,6 +11,7 @@ use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
+use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
@@ -240,6 +241,11 @@ Route::middleware('auth')->group(function (): void {
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
     Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('gallery.store.show');
     Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:120,1')->name('gallery.store.save');
+    // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
+    // its derived data (renditions/exif/embedding/faces/place) and discard the
+    // bytes — nothing is persisted server-side. embed-text embeds a search query.
+    Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('gallery.process');
+    Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('gallery.embed-text');
 
     // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
     Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');

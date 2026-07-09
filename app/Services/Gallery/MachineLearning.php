@@ -54,6 +54,41 @@ class MachineLearning
     }
 
     /**
+     * Embed a search query STRING into the same CLIP space as the image
+     * embeddings, so a text query can be matched (client-side, cosine) against
+     * the decrypted image vectors. No image bytes involved.
+     *
+     * @return list<float>|null
+     */
+    public function embedText(string $text): ?array
+    {
+        $text = trim($text);
+        if (! $this->enabled() || $text === '') {
+            return null;
+        }
+
+        $entries = json_encode(['clip' => ['textual' => ['modelName' => (string) config('gallery.ml_clip_model')]]], JSON_THROW_ON_ERROR);
+
+        try {
+            $res = Http::timeout(60)->asMultipart()->post($this->base().'/predict', [
+                ['name' => 'entries', 'contents' => $entries],
+                ['name' => 'text', 'contents' => $text],
+            ]);
+
+            if (! $res->successful()) {
+                return null;
+            }
+
+            $clip = $res->json('clip');
+            $vector = is_string($clip) ? json_decode($clip, true) : $clip;
+
+            return is_array($vector) && $vector !== [] ? array_map('floatval', $vector) : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Detect faces in an image. Returns each face's detection score, its bounding
      * box normalised to 0..1, and its embedding vector.
      *
