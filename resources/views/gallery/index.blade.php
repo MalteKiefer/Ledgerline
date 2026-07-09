@@ -211,30 +211,32 @@
         <template x-if="viewer.kind === 'video'"><video :src="viewer.src" controls autoplay class="max-h-[92vh] max-w-full rounded-lg"></video></template>
       </div>
       {{-- Info panel --}}
-      <aside x-show="viewer.photo" class="hidden w-80 shrink-0 overflow-y-auto border-l border-white/10 bg-gray-950/80 p-6 text-gray-200 backdrop-blur md:block">
-        <h3 class="truncate text-base font-semibold text-white" x-text="viewer.photo?.name"></h3>
+      <aside x-show="viewer.photo" class="hidden w-80 shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-6 text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100 md:block">
+        <h3 class="truncate text-base font-semibold" x-text="viewer.photo?.name"></h3>
         <dl class="mt-5 space-y-4 text-sm">
           <div x-show="viewer.meta?.exif?.taken_at || viewer.photo?.taken_at">
-            <dt class="text-xs uppercase tracking-wide text-gray-500">{{ __('gallery.info_date') }}</dt>
+            <dt class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.info_date') }}</dt>
             <dd class="mt-0.5" x-text="fmtDate(viewer.meta?.exif?.taken_at || viewer.photo?.taken_at)"></dd>
           </div>
-          <div x-show="viewer.meta?.exif?.camera">
-            <dt class="text-xs uppercase tracking-wide text-gray-500">{{ __('gallery.info_camera') }}</dt>
-            <dd class="mt-0.5" x-text="viewer.meta?.exif?.camera"></dd>
+          <div x-show="viewer.meta?.exif?.camera || viewer.photo?.camera">
+            <dt class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.info_camera') }}</dt>
+            <dd class="mt-0.5" x-text="viewer.meta?.exif?.camera || viewer.photo?.camera"></dd>
           </div>
           <div x-show="viewer.photo?.width && viewer.photo?.height">
-            <dt class="text-xs uppercase tracking-wide text-gray-500">{{ __('gallery.info_dimensions') }}</dt>
+            <dt class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.info_dimensions') }}</dt>
             <dd class="mt-0.5" x-text="viewer.photo?.width + ' × ' + viewer.photo?.height"></dd>
           </div>
           <div x-show="placeText(viewer.meta?.place)">
-            <dt class="text-xs uppercase tracking-wide text-gray-500">{{ __('gallery.info_place') }}</dt>
+            <dt class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.info_place') }}</dt>
             <dd class="mt-0.5" x-text="placeText(viewer.meta?.place)"></dd>
           </div>
           <div x-show="viewer.photo?.size">
-            <dt class="text-xs uppercase tracking-wide text-gray-500">{{ __('gallery.info_size') }}</dt>
+            <dt class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.info_size') }}</dt>
             <dd class="mt-0.5" x-text="fmtBytes(viewer.photo?.size)"></dd>
           </div>
         </dl>
+        <div x-ref="minimap" x-show="(viewer.meta?.exif?.lat != null) || (viewer.photo?.lat != null)"
+            class="mt-5 h-40 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800"></div>
       </aside>
     </div>
   </div>
