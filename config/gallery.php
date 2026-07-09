@@ -119,4 +119,20 @@ return [
 
     'geocode_grid_km' => (float) env('GALLERY_GEOCODE_GRID_KM', 0.5),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Zero-knowledge storage (blobs)
+    |--------------------------------------------------------------------------
+    */
+
+    // Per-user gallery storage quota in megabytes (0 = unlimited).
+    'quota_mb' => (int) env('GALLERY_QUOTA_MB', 0),
+
+    // Max single-upload size (MB) for one gallery content blob (non-chunked).
+    'max_upload_mb' => (int) env('GALLERY_MAX_UPLOAD_MB', 512),
+
+    // Grace window (hours) before an orphaned blob (uploaded but not yet
+    // referenced by the sealed index) is eligible for reconcile/sweep reclaim.
+    // (Already declared above as blob_orphan_grace_hours; reused here.)
+
 ];
