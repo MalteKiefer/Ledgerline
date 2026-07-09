@@ -3,6 +3,14 @@
 declare(strict_types=1);
 
 return [
+    'library' => 'Bibliothek',
+    'trash' => 'Papierkorb',
+    'empty_trash' => 'Papierkorb leeren',
+    'restore' => 'Wiederherstellen',
+    'purge' => 'Endgültig löschen',
+    'purge_confirm' => 'Dieses Foto endgültig löschen? Kann nicht rückgängig gemacht werden.',
+    'empty_trash_confirm' => 'Alles im Papierkorb endgültig löschen?',
+    'trash_empty' => 'Papierkorb ist leer.',
     'dismiss' => 'Schließen',
     'load_failed' => 'Element konnte nicht geladen werden.',
     'working' => 'Arbeite…',

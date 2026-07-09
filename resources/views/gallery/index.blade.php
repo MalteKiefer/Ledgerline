@@ -10,6 +10,8 @@
      }, {
         loadFailed: @js(__('gallery.load_failed')),
         deleteConfirm: @js(__('gallery.delete_confirm')),
+        purgeConfirm: @js(__('gallery.purge_confirm')),
+        emptyTrashConfirm: @js(__('gallery.empty_trash_confirm')),
      })">
 
     {{-- Whole-window drop zone --}}
@@ -18,11 +20,9 @@
       <div class="rounded-3xl border-4 border-dashed border-white/70 px-16 py-24 text-center text-lg font-medium text-white">{{ __('gallery.drop_hint') }}</div>
     </div>
 
-    {{-- Zero-knowledge gate: the gallery can only be shown with the vault unlocked. --}}
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
 
-    <x-page-heading :title="__('gallery.title')"
-        :subtitle="null">
+    <x-page-heading :title="__('gallery.title')">
       <x-slot:actions>
         <div class="flex items-center gap-1.5">
           <span x-show="state === 'ready'" x-cloak class="mr-1 text-xs tabular-nums text-gray-400 dark:text-gray-500"
@@ -53,77 +53,111 @@
       </div>
     </template>
 
-    <template x-if="state === 'error'">
-      <p class="mt-8 text-center text-sm text-red-500">{{ __('gallery.load_failed') }}</p>
-    </template>
+    <template x-if="state === 'error'"><p class="mt-8 text-center text-sm text-red-500">{{ __('gallery.load_failed') }}</p></template>
 
-    <div x-show="state === 'ready'" x-cloak class="mt-6">
-      {{-- Empty --}}
-      <template x-if="! libraryPhotos.length && ! progress.active && ! uploading">
-        <button type="button" @click="$refs.picker.click()"
-            class="mx-auto mt-10 flex w-full max-w-lg flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 p-16 text-center hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/50">
-          <x-icon name="photo" class="h-12 w-12 text-gray-300 dark:text-gray-600" />
-          <p class="mt-4 text-sm font-medium text-gray-600 dark:text-gray-300">{{ __('gallery.empty') }}</p>
-          <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('gallery.drop_hint') }}</p>
-        </button>
-      </template>
+    <div x-show="state === 'ready'" x-cloak class="mt-6 flex gap-6">
+      {{-- Sidebar --}}
+      <aside class="hidden w-44 shrink-0 md:block">
+        <nav class="sticky top-6 space-y-1 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
+          <button type="button" @click="view = 'library'"
+              :class="view === 'library' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <x-icon name="photo" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.library') }}</span>
+            <span class="text-xs tabular-nums text-gray-400" x-text="photoCount()"></span>
+          </button>
+          <button type="button" @click="view = 'trash'"
+              :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <x-icon name="trash" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.trash') }}</span>
+            <span x-show="trashCount()" class="text-xs tabular-nums text-gray-400" x-text="trashCount()"></span>
+          </button>
+        </nav>
+      </aside>
 
-      {{-- Grid --}}
-      <div class="grid grid-cols-2 gap-1 sm:grid-cols-3 sm:gap-1.5 md:grid-cols-4 lg:grid-cols-6">
-        <template x-for="p in libraryPhotos" :key="p.id">
-          <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
-               x-data="{ src: '' }" x-effect="if (p.thumbRef && ! src) thumbFor(p).then((u) => { src = u; })">
-            <button type="button" @click="openViewer(p)" class="block h-full w-full">
-              <img x-show="src" :src="src" loading="lazy" x-transition.opacity.duration.400ms
-                   class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
-              {{-- Placeholder while the thumbnail is still processing/decrypting --}}
-              <div x-show="!src" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
-                <svg x-show="!p.thumbRef" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+      {{-- Main --}}
+      <div class="min-w-0 flex-1">
+        {{-- Mobile view switch --}}
+        <div class="mb-4 flex gap-2 md:hidden">
+          <button type="button" @click="view = 'library'" :class="view === 'library' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.library') }}</button>
+          <button type="button" @click="view = 'trash'" :class="view === 'trash' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
+        </div>
+
+        {{-- LIBRARY --}}
+        <div x-show="view === 'library'">
+          <template x-if="! libraryPhotos.length && ! progress.active && ! uploading">
+            <button type="button" @click="$refs.picker.click()"
+                class="mx-auto mt-6 flex w-full max-w-lg flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 p-16 text-center hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/50">
+              <x-icon name="photo" class="h-12 w-12 text-gray-300 dark:text-gray-600" />
+              <p class="mt-4 text-sm font-medium text-gray-600 dark:text-gray-300">{{ __('gallery.empty') }}</p>
+              <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ __('gallery.drop_hint') }}</p>
+            </button>
+          </template>
+
+          <template x-for="group in groupedPhotos" :key="group.day">
+            <section class="mb-6">
+              <h2 class="mb-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300" x-text="group.label"></h2>
+              <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
+                <template x-for="p in group.photos" :key="p.id">
+                  <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-init="thumbFor(p)">
+                    <button type="button" @click="openViewer(p)" class="block h-full w-full">
+                      <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                      <div x-show="!thumbs[p.id]" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
+                        <svg x-show="!p.thumbRef" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                      </div>
+                      <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
+                    </button>
+                    <button type="button" @click.stop="trash(p)" title="{{ __('gallery.delete') }}"
+                        class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition hover:bg-red-500 group-hover:opacity-100">
+                      <x-icon name="trash" class="h-4 w-4" />
+                    </button>
+                  </div>
+                </template>
               </div>
-              {{-- Media badges --}}
-              <template x-if="p.media_type === 'video'">
-                <span class="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span>
-                </span>
-              </template>
-            </button>
-            <button type="button" @click.stop="remove(p)" title="{{ __('gallery.delete') }}"
-                class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition hover:bg-red-500 group-hover:opacity-100">
-              <x-icon name="trash" class="h-4 w-4" />
-            </button>
+            </section>
+          </template>
+        </div>
+
+        {{-- TRASH --}}
+        <div x-show="view === 'trash'">
+          <div class="mb-3 flex items-center justify-between">
+            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="trashCount() + ' ' + @js(__('gallery.trash'))"></p>
+            <button type="button" x-show="trashCount()" @click="emptyTrash()" class="text-xs font-medium text-red-500 hover:text-red-600">{{ __('gallery.empty_trash') }}</button>
           </div>
-        </template>
+          <template x-if="! trashCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.trash_empty') }}</p></template>
+          <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
+            <template x-for="p in trashedPhotos" :key="p.id">
+              <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-init="thumbFor(p)">
+                <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover opacity-70">
+                <div x-show="!thumbs[p.id]" class="h-full w-full bg-gray-200 dark:bg-gray-700"></div>
+                <div class="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/40 opacity-0 transition group-hover:opacity-100">
+                  <button type="button" @click="restore(p)" title="{{ __('gallery.restore') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-800 hover:bg-white"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                  <button type="button" @click="purge(p)" title="{{ __('gallery.purge') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"><x-icon name="trash" class="h-4 w-4" /></button>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
       </div>
     </div>
 
-    {{-- Floating upload / processing card (bottom-right) --}}
+    {{-- Floating upload / processing card --}}
     <div x-show="state === 'ready' && (uploading || progress.active || uploads.length)" x-cloak x-transition
         class="fixed bottom-4 right-4 z-[860] w-72 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-xl">
       <div class="flex items-center justify-between">
-        <span class="text-xs font-semibold text-gray-700 dark:text-gray-200"
-              x-text="progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload'))"></span>
+        <span class="text-xs font-semibold text-gray-700 dark:text-gray-200" x-text="progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload'))"></span>
         <button type="button" @click="dismissUploads()" x-show="! uploading && ! progress.active" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
       </div>
-      {{-- Processing backlog progress --}}
       <template x-if="progress.active">
         <div class="mt-2">
           <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.processing') }}</span><span x-text="progress.done + ' / ' + progress.total"></span></div>
-          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-            <div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${progress.total ? (progress.done / progress.total * 100) : 0}%`"></div>
-          </div>
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${progress.total ? (progress.done / progress.total * 100) : 0}%`"></div></div>
         </div>
       </template>
-      {{-- Per-file upload rows --}}
       <div class="mt-2 max-h-40 space-y-1.5 overflow-y-auto">
         <template x-for="(u, i) in uploads" :key="i">
           <div>
-            <div class="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
-              <span class="truncate" x-text="u.name"></span>
-              <span class="ml-auto tabular-nums" x-text="u.state === 'error' ? '⚠' : (u.state === 'done' ? '✓' : (u.state === 'pending' ? '…' : u.progress + '%'))"></span>
-            </div>
-            <div x-show="u.state === 'uploading'" class="mt-0.5 h-0.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-              <div class="h-full bg-gray-500 transition-all" :style="`width: ${u.progress}%`"></div>
-            </div>
+            <div class="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400"><span class="truncate" x-text="u.name"></span><span class="ml-auto tabular-nums" x-text="u.state === 'error' ? '⚠' : (u.state === 'done' ? '✓' : (u.state === 'pending' ? '…' : u.progress + '%'))"></span></div>
+            <div x-show="u.state === 'uploading'" class="mt-0.5 h-0.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-500 transition-all" :style="`width: ${u.progress}%`"></div></div>
           </div>
         </template>
       </div>
@@ -133,9 +167,7 @@
     <div x-show="viewer.open" x-cloak @keydown.escape.window="closeViewer()"
         class="fixed inset-0 z-[950] flex items-center justify-center bg-black/90 p-4" @click.self="closeViewer()">
       <button type="button" @click="closeViewer()" class="absolute right-4 top-4 z-10 text-white/70 hover:text-white"><x-icon name="x-mark" class="h-7 w-7" /></button>
-      <template x-if="viewer.kind === 'loading'">
-        <svg class="h-8 w-8 animate-spin text-white/60" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
-      </template>
+      <template x-if="viewer.kind === 'loading'"><svg class="h-8 w-8 animate-spin text-white/60" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg></template>
       <template x-if="viewer.kind === 'image'"><img :src="viewer.src" class="max-h-[92vh] max-w-full rounded-lg"></template>
       <template x-if="viewer.kind === 'video'"><video :src="viewer.src" controls autoplay class="max-h-[92vh] max-w-full rounded-lg"></video></template>
     </div>
