@@ -1193,7 +1193,7 @@ return {
     bulkRestore() { this._eachSelected((p) => { p.trashed = null; }); this.selected = []; this._save(); },
     async bulkPurge() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || labels.purgeConfirm || '')) return;
-        this._eachSelected((p) => this._purgeOne(p)); this.selected = []; this._save();
+        this._eachSelected((p) => this._purgeOne(p)); this.selected = []; await this._persist();
     },
 
     /* ---- Search (metadata + CLIP content, all client-side) ---- */
@@ -1485,7 +1485,7 @@ return {
         this.dupMarked = this.dupMarked.filter((id) => ! gone.has(id));
         const remaining = group.filter((p) => ! p.trashed);
         this.dupGroups = (this.dupGroups || []).map((g) => (g === group ? remaining : g)).filter((g) => g.length > 1);
-        this._save();
+        this._persist();
     },
 
     /* ---- People (client-side face clustering over sealed embeddings) ---- */
@@ -1620,13 +1620,20 @@ return {
     async purge(p) {
         if (! await this.$store.confirm.ask(labels.purgeConfirm || labels.deleteConfirm || '')) return;
         this._purgeOne(p);
-        this._save();
+        await this._persist();
     },
     async emptyTrash() {
         if (! this.trashCount()) return;
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
         for (const p of this.index.photos.filter((x) => x.trashed)) this._purgeOne(p);
-        this._save();
+        await this._persist();
+    },
+    // Persist the index immediately. Destructive ops can't wait for the debounce —
+    // a reload right after emptying the trash would otherwise bring photos back.
+    async _persist() {
+        if (this.state !== 'ready') return;
+        window.LLGalleryStore.touch(); // arm the debounce as a retry backstop
+        try { await window.LLGalleryStore.flush(); } catch (e) { /* backstop fires later */ }
     },
     _purgeOne(p) {
         const refs = [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef, ...(p.faceCropRefs || [])];
