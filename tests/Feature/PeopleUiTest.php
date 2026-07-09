@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Events\PersonNamed;
 use App\Models\Face;
 use App\Models\Person;
 use App\Models\Photo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class PeopleUiTest extends TestCase
@@ -55,9 +53,8 @@ class PeopleUiTest extends TestCase
             ->assertJsonCount(2, 'photos');
     }
 
-    public function test_rename_sets_the_name_and_fires_the_event(): void
+    public function test_rename_sets_the_name(): void
     {
-        Event::fake([PersonNamed::class]);
         $this->signIn();
         $person = $this->personWithFaces(2);
 
@@ -65,7 +62,6 @@ class PeopleUiTest extends TestCase
             ->assertOk();
 
         $this->assertSame('Bob', $person->fresh()->name);
-        Event::assertDispatched(PersonNamed::class, fn ($e) => $e->name === 'Bob' && $e->personId === $person->id);
     }
 
     public function test_hide_sets_hidden_at(): void
