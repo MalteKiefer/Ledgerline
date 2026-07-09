@@ -32,4 +32,25 @@ class Vector
             return self::$available = false;
         }
     }
+
+    /**
+     * Write a pgvector embedding to a row, plus any extra scalar columns in the
+     * same UPDATE. $table and the $extra keys are code-controlled column names
+     * (never user input), so they are safe to interpolate; the values bind.
+     *
+     * @param  array<int, int|float>  $vector
+     * @param  array<string, mixed>  $extra  column => value set alongside the embedding
+     */
+    public static function store(string $table, string|int $id, array $vector, array $extra = []): void
+    {
+        $sets = ['embedding = ?::vector'];
+        $bindings = ['['.implode(',', $vector).']'];
+        foreach ($extra as $column => $value) {
+            $sets[] = $column.' = ?';
+            $bindings[] = $value;
+        }
+        $bindings[] = $id;
+
+        DB::update('UPDATE '.$table.' SET '.implode(', ', $sets).' WHERE id = ?', $bindings);
+    }
 }

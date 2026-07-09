@@ -13,7 +13,6 @@ use App\Support\Vector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Computes a photo's CLIP embedding (via the ML sidecar) for content-similarity
@@ -67,11 +66,7 @@ class EmbedPhoto implements ShouldQueue
                 }
 
                 if (Vector::available()) {
-                    DB::update('UPDATE photos SET embedding = ?::vector, embedded_at = ? WHERE id = ?', [
-                        '['.implode(',', $vector).']',
-                        Carbon::now(),
-                        $photo->id,
-                    ]);
+                    Vector::store('photos', $photo->id, $vector, ['embedded_at' => Carbon::now()]);
                 } else {
                     // No pgvector: record that we embedded (pHash still drives dedup).
                     $photo->forceFill(['embedded_at' => Carbon::now()])->save();

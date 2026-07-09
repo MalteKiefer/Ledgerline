@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'link_check_queued' => 'Checking links…',
-    'check_links_now' => 'Check links now',
     'title' => 'Bookmarks',
     'search' => 'Search bookmarks…',
     'new_bookmark' => 'New bookmark',
@@ -42,13 +40,6 @@ return [
     'read_later' => 'Read later',
     'read_later_add' => 'Add to read-later',
     'read_later_remove' => 'Remove from read-later',
-    'dead_links' => 'Dead links',
-    'dead' => 'dead',
-    'dead_hint' => 'This link failed the last automatic check.',
-    'import' => 'Import bookmarks (.html)',
-    'export' => 'Export bookmarks (.html)',
-    'import_result' => ':created imported, :skipped skipped',
-    'fetch_meta' => 'Fetch title and description from the page',
     'url_required' => 'Please enter a URL.',
     'folder_cycle' => 'A folder cannot be moved into itself.',
     'subfolder' => 'New subfolder',

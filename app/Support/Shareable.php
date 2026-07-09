@@ -5,23 +5,19 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Models\Album;
-use App\Models\Note;
 use App\Models\Photo;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Single source of truth for the shareable slug ↔ model-class mapping (the
- * superset across public + cross-user sharing) and owned-resource resolution.
- *
- * Individual controllers restrict this to their own allowed subset — this
- * registry only knows every possible shareable type, it does not grant any
- * of them; e.g. public sharing must never widen to notes/files.
+ * Single source of truth for the shareable slug ↔ model-class mapping and
+ * owned-resource resolution. Only gallery resources remain shareable — notes,
+ * files and folders are zero-knowledge (a recipient can't decrypt them), so
+ * they were removed from the registry entirely.
  */
 final class Shareable
 {
     /** Shareable resource slug → model class (all use SharesWithUsers). */
     private const MAP = [
-        'notes' => Note::class,
         'albums' => Album::class,
         'photos' => Photo::class,
     ];

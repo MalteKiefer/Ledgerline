@@ -57,7 +57,6 @@ return [
     'next_image' => 'Next image',
     'large_zip_confirm' => 'This download is over 2 GB and is built in your browser — it may use a lot of memory. Continue?',
     'decrypting' => 'Decrypting…',
-    'encrypting_keep_open' => 'Keep this page open until encryption is finished.',
     'encrypted_no_preview' => 'No inline preview for this file type.',
     'save_failed' => 'Could not save. Please try again.',
     'empty_explorer' => 'No files here yet.',

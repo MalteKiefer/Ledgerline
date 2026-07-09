@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\RespondsFlexibly;
 use App\Jobs\BuildExport;
 use App\Jobs\ProcessPhoto;
 use App\Models\Album;
@@ -43,6 +44,8 @@ use ZipArchive;
  */
 class GalleryController extends Controller
 {
+    use RespondsFlexibly;
+
     public function index(Request $request): View
     {
         $photos = $this->page($request);
@@ -541,11 +544,7 @@ class GalleryController extends Controller
             ])->save())
             ->count();
 
-        if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'count' => $count]);
-        }
-
-        return back()->with('status', __('flash.photos_location_set', ['count' => $count]));
+        return $this->flexible($request, ['count' => $count], 'flash.photos_location_set', ['count' => $count]);
     }
 
     /**
@@ -801,11 +800,7 @@ class GalleryController extends Controller
         $count = Photo::ownedBy($request->user()->id)->whereNull('deleted_at')
             ->whereIn('id', $validated['photo_ids'])->get()->each->delete()->count();
 
-        if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'ids' => $validated['photo_ids'], 'count' => $count]);
-        }
-
-        return back()->with('status', __('flash.photos_trashed', ['count' => $count]));
+        return $this->flexible($request, ['ids' => $validated['photo_ids'], 'count' => $count], 'flash.photos_trashed', ['count' => $count]);
     }
 
     /**
@@ -824,11 +819,7 @@ class GalleryController extends Controller
             }
         });
 
-        if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'count' => $count]);
-        }
-
-        return back()->with('status', __('flash.photos_trashed', ['count' => $count]));
+        return $this->flexible($request, ['count' => $count], 'flash.photos_trashed', ['count' => $count]);
     }
 
     public function trash(): View
@@ -902,9 +893,7 @@ class GalleryController extends Controller
             }
         }
 
-        return $request->expectsJson()
-            ? response()->json(['ok' => true, 'kept' => (int) $keepId])
-            : back();
+        return $this->flexible($request, ['kept' => (int) $keepId]);
     }
 
     /** Mark a group as "not a duplicate" so it is excluded from future scans. */
@@ -916,9 +905,7 @@ class GalleryController extends Controller
 
         abort_if($affected === 0, 404);
 
-        return $request->expectsJson()
-            ? response()->json(['ok' => true])
-            : back();
+        return $this->flexible($request);
     }
 
     /**
@@ -928,11 +915,7 @@ class GalleryController extends Controller
     {
         $count = $this->trashedQuery($request)->restore();
 
-        if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'count' => $count]);
-        }
-
-        return back()->with('status', __('flash.photos_restored', ['count' => $count]));
+        return $this->flexible($request, ['count' => $count], 'flash.photos_restored', ['count' => $count]);
     }
 
     /**
@@ -958,11 +941,7 @@ class GalleryController extends Controller
             $count++;
         });
 
-        if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'count' => $count]);
-        }
-
-        return back()->with('status', __('flash.photos_deleted', ['count' => $count]));
+        return $this->flexible($request, ['count' => $count], 'flash.photos_deleted', ['count' => $count]);
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Rules\SafeUrl;
 use App\Services\Backup\BackupNotifier;
+use App\Support\CheckboxFlags;
 use App\Support\KeepBlankSecrets;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -52,9 +53,7 @@ class NotificationsController extends Controller
         $settings = AppSettings::current();
 
         // Checkboxes: absent means off.
-        foreach (['mail_enabled', 'ntfy_enabled', 'webhook_enabled'] as $flag) {
-            $data[$flag] = $request->boolean($flag);
-        }
+        $data = CheckboxFlags::apply($data, $request, ['mail_enabled', 'ntfy_enabled', 'webhook_enabled']);
 
         // Secret fields: an empty submission keeps the stored value (the form
         // never renders the current secret back), so it isn't wiped by accident.

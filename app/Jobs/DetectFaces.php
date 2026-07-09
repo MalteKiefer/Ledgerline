@@ -13,7 +13,6 @@ use App\Support\DiskTempFile;
 use App\Support\Vector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Detects faces in a photo (or a video's poster frame) via the ML sidecar,
@@ -87,10 +86,7 @@ class DetectFaces implements ShouldQueue
                 }
 
                 if (Vector::available()) {
-                    DB::update('UPDATE faces SET embedding = ?::vector WHERE id = ?', [
-                        '['.implode(',', $f['embedding']).']',
-                        $face->id,
-                    ]);
+                    Vector::store('faces', $face->id, $f['embedding']);
                 }
 
                 ClusterFace::dispatch($face->id);
