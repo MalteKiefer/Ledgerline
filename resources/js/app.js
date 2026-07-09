@@ -124,6 +124,81 @@ async function bootStore(store) {
     return true;
 }
 
+// Separate sealed store for the gallery index (photos/albums/people), kept apart
+// from the shared workspace manifest so gallery churn never re-seals notes/todos.
+// Same contract as LLStore but against /gallery/store.
+window.LLGalleryStore = {
+    data: null,
+    version: 0,
+    ready: false,
+    loaded: false,
+    _timer: null,
+    _saving: false,
+    _again: false,
+    _onError: null,
+
+    _blank() {
+        return { v: 1, photos: [], albums: [], people: [] };
+    },
+
+    newId() {
+        const b = new Uint8Array(16);
+        crypto.getRandomValues(b);
+        return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+    },
+
+    async load() {
+        const res = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        if (! res.ok) throw new Error('gallery store load failed');
+        const d = await res.json();
+        this.version = d.version ?? 0;
+        this.data = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
+        for (const k of Object.keys(this._blank())) if (! (k in this.data)) this.data[k] = this._blank()[k];
+        this.loaded = true;
+        this.ready = true;
+        return this.data;
+    },
+
+    reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; clearTimeout(this._timer); },
+
+    touch() {
+        clearTimeout(this._timer);
+        this._timer = setTimeout(() => this.flush(), 800);
+    },
+
+    async flush() {
+        if (! this.loaded) return;
+        if (this._saving) { this._again = true; return; }
+        this._saving = true;
+        try {
+            const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(this.data), version: this.version });
+            const res = await fetch('/gallery/store', { method: 'PUT', headers: jsonHeaders(), body });
+            if (res.status === 409) {
+                const cur = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
+                this.version = cur.version ?? this.version;
+                this._again = true;
+            } else if (res.ok) {
+                this.version = (await res.json()).version ?? this.version + 1;
+            } else {
+                throw new Error('gallery store save failed');
+            }
+        } catch (e) {
+            if (this._onError) this._onError();
+        } finally {
+            this._saving = false;
+            if (this._again) { this._again = false; this.touch(); }
+        }
+    },
+};
+
+// Wait for the vault, then load the sealed gallery index once.
+async function bootGalleryStore(store) {
+    while (! store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+    if (! store.vault.unlocked) return false;
+    if (! window.LLGalleryStore.loaded) await window.LLGalleryStore.load();
+    return true;
+}
+
 // App-wide confirm modal store (replaces native window.confirm everywhere).
 // Usage in Alpine components: `if (! await this.$store.confirm.ask(msg)) return;`
 document.addEventListener('alpine:init', () => {
@@ -949,6 +1024,267 @@ Alpine.data('notificationBell', (labels = {}) => ({
  *
  * @param {number[]} allIds  Ids of the files currently listed.
  */
+/* ---- Zero-knowledge gallery (client-driven) ----
+ *
+ * The whole library lives in a sealed index (LLGalleryStore); photo bytes +
+ * renditions + a per-photo metadata blob are opaque blobs. Nothing is server-
+ * readable. On unlock the client processes any un-processed uploads through the
+ * transient /gallery/process endpoint (plaintext in, derived out, discarded),
+ * re-seals the derived data, and renders the grid from decrypted thumbnails.
+ */
+Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
+    state: 'boot', // boot | locked | ready | error
+    index: { v: 1, photos: [], albums: [], people: [] },
+    view: 'library',
+    error: '',
+    busy: 0,
+    uploads: [], // { name, state, progress }
+    uploadBatches: 0,
+    progress: { active: false, done: 0, total: 0 }, // backlog processing
+    thumbs: {}, // photoId -> objectURL (decrypted, in-memory cache)
+    viewer: { open: false, kind: 'none', src: '', photo: null },
+    usage: { used: 0, quota: 0 },
+
+    _track(p) { this.busy++; return Promise.resolve(p).finally(() => { this.busy = Math.max(0, this.busy - 1); }); },
+
+    async init() {
+        this.initDropzone();
+        await this.load();
+        this.$watch('$store.vault.unlocked', (on) => {
+            if (on && this.state !== 'ready') this.load();
+            if (! on) { this.state = 'locked'; this._revokeThumbs(); window.LLGalleryStore.reset(); }
+        });
+    },
+
+    async load() {
+        this.state = 'boot';
+        try {
+            if (! await bootGalleryStore(this.$store)) { this.state = 'locked'; return; }
+        } catch (e) { this.state = 'error'; return; }
+        this.index = window.LLGalleryStore.data;
+        this.state = 'ready';
+        this.refreshUsage();
+        this.runBacklog();
+    },
+
+    _save() { if (this.state === 'ready') window.LLGalleryStore.touch(); },
+
+    initDropzone() {
+        let depth = 0;
+        this.dragging = false;
+        window.addEventListener('dragenter', (e) => { if (e.dataTransfer?.types?.includes('Files')) { depth++; this.dragging = true; } });
+        window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (! depth) this.dragging = false; });
+        window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
+    },
+    dragging: false,
+    drop(event) {
+        this.dragging = false;
+        if (this.state !== 'ready') return;
+        this.upload(event.dataTransfer.files);
+    },
+
+    /* ---- Derived views ---- */
+    get libraryPhotos() {
+        return this.index.photos
+            .filter((p) => ! p.trashed)
+            .sort((a, b) => new Date(b.taken_at || b.created || 0) - new Date(a.taken_at || a.created || 0));
+    },
+    get pendingCount() { return this.index.photos.filter((p) => ! p.trashed && ! p.thumbRef && ! p.failed).length; },
+    photoCount() { return this.libraryPhotos.length; },
+
+    /* ---- Upload ---- */
+    upload(fileList) {
+        const files = [...fileList].filter((f) => /^image\/|^video\//.test(f.type));
+        if (! files.length) return;
+        if (this.uploadBatches === 0) this.uploads = [];
+        this.uploadBatches++;
+        return this._track((async () => {
+            for (const file of files) {
+                const entry = { name: file.name, state: 'uploading', progress: 0 };
+                this.uploads.push(entry);
+                try {
+                    const enc = await window.Vault.encryptFile(file);
+                    const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+                    const id = await this._uploadBlob(cipher, entry);
+                    this.index.photos.unshift({
+                        id: window.LLGalleryStore.newId(),
+                        originalRef: id, originalKey: enc.encFileKey,
+                        name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
+                        media_type: file.type.startsWith('video/') ? 'video' : 'image',
+                        created: new Date().toISOString(),
+                    });
+                    entry.state = 'done'; entry.progress = 100;
+                    this._save();
+                } catch (e) {
+                    entry.state = 'error';
+                }
+            }
+            this.uploadBatches--;
+            this.refreshUsage();
+            this.runBacklog();
+        })());
+    },
+
+    _uploadBlob(file, entry) {
+        return new Promise((resolve, reject) => {
+            const data = new FormData();
+            data.append('_token', config.token);
+            data.append('file', file, file.name);
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', config.uploadUrl);
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            xhr.timeout = 300000;
+            if (entry) xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) entry.progress = Math.round((ev.loaded / ev.total) * 100); };
+            xhr.onload = () => {
+                if (xhr.status === 413) { reject(new Error('quota')); return; }
+                if (xhr.status < 200 || xhr.status >= 300) { reject(new Error('upload failed')); return; }
+                try { resolve(JSON.parse(xhr.responseText).id); } catch (e) { reject(e); }
+            };
+            xhr.onerror = () => reject(new Error('network'));
+            xhr.ontimeout = () => reject(new Error('timeout'));
+            xhr.send(data);
+        });
+    },
+
+    /* ---- Backlog: process un-processed uploads (transient plaintext) ---- */
+    _backlogRunning: false,
+    async runBacklog() {
+        if (this._backlogRunning || this.state !== 'ready') return;
+        const pending = () => this.index.photos.filter((p) => ! p.trashed && ! p.thumbRef && ! p.failed);
+        if (! pending().length) return;
+        this._backlogRunning = true;
+        this.progress = { active: true, done: 0, total: pending().length };
+        try {
+            for (;;) {
+                const p = pending()[0];
+                if (! p) break;
+                try {
+                    await this._processOne(p);
+                } catch (e) {
+                    p.failed = true; // isolate the bad record; never blocks the rest
+                }
+                this.progress.done++;
+                this._save();
+                await window.LLGalleryStore.flush(); // persist each step so a refresh resumes
+            }
+        } finally {
+            this._backlogRunning = false;
+            this.progress.active = false;
+        }
+    },
+
+    async _processOne(p) {
+        // 1. Decrypt the original.
+        const plain = await this._decryptBlob(p.originalRef, p.originalKey);
+        const file = new File([plain], p.name || 'photo', { type: p.mime || 'application/octet-stream' });
+        // 2. Transient transform on the server (plaintext in, derived out, discarded).
+        const fd = new FormData();
+        fd.append('_token', config.token);
+        fd.append('file', file, file.name);
+        const res = await fetch(config.processUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+        if (! res.ok) throw new Error('process failed');
+        const d = await res.json();
+        // 3. Encrypt + store the derived blobs.
+        const meta = {
+            exif: d.exif, place: d.place, embedding: d.embedding, phash: d.phash,
+            faces: [], width: d.width, height: d.height, duration: d.duration, content_id: d.content_id,
+        };
+        if (d.thumb) { const r = await this._encStore(this._b64bytes(d.thumb), 'thumb.enc'); p.thumbRef = r.id; p.thumbKey = r.key; }
+        if (d.medium) { const r = await this._encStore(this._b64bytes(d.medium), 'medium.enc'); p.mediumRef = r.id; p.mediumKey = r.key; }
+        if (d.motion) { const r = await this._encStore(this._b64bytes(d.motion), 'motion.enc'); p.motionRef = r.id; p.motionKey = r.key; }
+        for (const f of (d.faces || [])) {
+            const face = { score: f.score, box: f.box, embedding: f.embedding };
+            if (f.crop) { const r = await this._encStore(this._b64bytes(f.crop), 'crop.enc'); face.cropRef = r.id; face.cropKey = r.key; }
+            meta.faces.push(face);
+        }
+        // 4. Seal the metadata blob.
+        const metaBytes = new TextEncoder().encode(JSON.stringify(meta));
+        const mr = await this._encStore(metaBytes, 'meta.enc');
+        p.metaRef = mr.id; p.metaKey = mr.key;
+        // 5. Promote display fields onto the index entry.
+        p.taken_at = d.exif?.taken_at || p.created;
+        p.width = d.width; p.height = d.height; p.duration = d.duration;
+        p.hasFaces = meta.faces.length;
+    },
+
+    // Encrypt raw bytes with a fresh per-blob key and upload; returns { id, key }.
+    async _encStore(bytes, name) {
+        const enc = window.Vault.encryptContent(bytes, { name, mime: 'application/octet-stream' });
+        const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+        const id = await this._uploadBlob(cipher, null);
+        return { id, key: enc.encFileKey };
+    },
+    async _decryptBlob(ref, key) {
+        const res = await fetch(`${config.rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (! res.ok) throw new Error('fetch failed');
+        return window.Vault.decryptFile(await res.arrayBuffer(), key);
+    },
+    _b64bytes(b64) {
+        const bin = atob(b64); const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+    },
+
+    /* ---- Thumbnails (decrypted, cached) ---- */
+    async thumbFor(p) {
+        if (! p.thumbRef) return '';
+        if (this.thumbs[p.id]) return this.thumbs[p.id];
+        try {
+            const bytes = await this._decryptBlob(p.thumbRef, p.thumbKey);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            this.thumbs[p.id] = url;
+            return url;
+        } catch (e) { return ''; }
+    },
+    _revokeThumbs() { for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]); this.thumbs = {}; },
+
+    /* ---- Viewer ---- */
+    async openViewer(p) {
+        this.viewer = { open: true, kind: 'loading', src: '', photo: p };
+        try {
+            const ref = p.mediumRef || p.originalRef;
+            const key = p.mediumRef ? p.mediumKey : p.originalKey;
+            const bytes = await this._decryptBlob(ref, key);
+            const mime = p.media_type === 'video' && ! p.mediumRef ? (p.mime || 'video/mp4') : 'image/jpeg';
+            this.viewer = { open: true, kind: p.media_type === 'video' && ! p.mediumRef ? 'video' : 'image', src: URL.createObjectURL(new Blob([bytes], { type: mime })), photo: p };
+        } catch (e) { this.error = labels.loadFailed || 'load failed'; this.closeViewer(); }
+    },
+    closeViewer() { if (this.viewer.src) URL.revokeObjectURL(this.viewer.src); this.viewer = { open: false, kind: 'none', src: '', photo: null }; },
+
+    /* ---- Delete ---- */
+    async remove(p) {
+        if (! await this.$store.confirm.ask(labels.deleteConfirm || '')) return;
+        const refs = [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef].filter(Boolean);
+        const i = this.index.photos.findIndex((x) => x.id === p.id);
+        if (i >= 0) this.index.photos.splice(i, 1);
+        if (this.thumbs[p.id]) { URL.revokeObjectURL(this.thumbs[p.id]); delete this.thumbs[p.id]; }
+        this._save();
+        this._freeBlobs(refs);
+    },
+    _freeBlobs(refs) {
+        for (const ref of [...new Set(refs.filter(Boolean))]) {
+            fetch(`${config.blobBase}/${ref}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } }).catch(() => {});
+        }
+        this.refreshUsage();
+    },
+
+    /* ---- Usage + reconcile ---- */
+    async refreshUsage() {
+        try { const r = await fetch(config.usageUrl, { cache: 'no-store', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }); if (r.ok) this.usage = await r.json(); } catch (e) { /* keep */ }
+    },
+    reconcileBlobs() {
+        const blobs = [];
+        for (const p of this.index.photos) for (const ref of [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef]) if (ref) blobs.push(ref);
+        fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) })
+            .then((r) => r.ok && r.json()).then((u) => { if (u) this.usage = u; }).catch(() => {});
+    },
+
+    fmtBytes: formatBytes,
+    dismissUploads() { this.uploads = []; },
+    get uploading() { return this.uploads.some((u) => u.state === 'uploading'); },
+}));
+
 Alpine.data('gallery', (url, token, feedUrl = '', hasMore = false, mapZoom = 13, monthsUrl = '', reverseUrl = '') => ({
     dragging: false,
     queue: [],

@@ -47,19 +47,11 @@ class GalleryController extends Controller
 {
     use RespondsFlexibly;
 
-    public function index(Request $request): View
+    public function index(): View
     {
-        $photos = $this->page($request);
-
-        return view('gallery.index', [
-            'photos' => $photos,
-            'grouped' => $this->groupByDay($photos),
-            'favoritesOnly' => $request->boolean('favorites'),
-            'searchQuery' => trim((string) $request->input('q')),
-            'mapZoom' => (int) (AppSettings::current()->gallery_map_zoom ?? 13),
-            // Cameras already seen, to offer as suggestions when editing.
-            'cameras' => Photo::query()->whereNotNull('camera')->distinct()->orderBy('camera')->pluck('camera')->all(),
-        ]);
+        // Zero-knowledge: the gallery renders entirely client-side from the sealed
+        // index + decrypted blobs. The server ships only the (empty) shell.
+        return view('gallery.index');
     }
 
     /**

@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 return [
+    'dismiss' => 'Schließen',
+    'load_failed' => 'Element konnte nicht geladen werden.',
+    'working' => 'Arbeite…',
     'dup_heading' => 'Duplikate',
     'dup_subheading' => 'Fotos mit gleichem oder ähnlichem Inhalt. Eins behalten, den Rest in den Papierkorb.',
     'dup_empty' => 'Keine Duplikate gefunden. Starte einen Scan in den Galerie-Einstellungen.',
