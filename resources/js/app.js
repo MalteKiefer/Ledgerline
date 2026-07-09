@@ -1493,7 +1493,9 @@ return {
     activePerson: null,
     peopleScanning: false,
     peopleProgress: { done: 0, total: 0 },
-    get people() { return (this.index.people || []).filter((pp) => ! pp.hidden); },
+    // Hide clusters that have no live photos left (all trashed/purged) so a wiped
+    // library doesn't leave ghost people behind.
+    get people() { return (this.index.people || []).filter((pp) => ! pp.hidden && this.personPhotos(pp).length > 0); },
     get currentPerson() { return (this.index.people || []).find((pp) => pp.id === this.activePerson) || null; },
     openPerson(pp) { this.activePerson = pp.id; this.view = 'person'; },
     personPhotos(pp) {
@@ -1636,6 +1638,8 @@ return {
             if (al.cover === p.id) al.cover = al.photoIds[0] || null;
         }
         for (const pp of (this.index.people || [])) pp.faces = (pp.faces || []).filter((f) => f.photoId !== p.id);
+        // A cluster that has lost all (or its last remaining) faces is gone for good.
+        this.index.people = (this.index.people || []).filter((pp) => (pp.faces || []).length >= 2);
         delete metaCache[p.id]; delete searchEmb[p.id];
         if (this.thumbs[p.id]) { URL.revokeObjectURL(this.thumbs[p.id]); delete this.thumbs[p.id]; }
         this._freeBlobs(refs);
