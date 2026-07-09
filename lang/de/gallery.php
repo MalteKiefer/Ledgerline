@@ -35,6 +35,7 @@ return [
     'person_unnamed' => 'Unbenannt',
     'person_name' => 'Name',
     'hide' => 'Ausblenden',
+    'duplicate_skipped' => 'Duplikat',
     'find_duplicates' => 'Duplikate finden',
     'duplicates_hint' => 'Bibliothek nach nahezu identischen Fotos durchsuchen.',
     'no_duplicates' => 'Keine Duplikate gefunden.',
