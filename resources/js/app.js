@@ -872,34 +872,48 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
 
     /* ---- Upload ---- */
     upload(fileList) {
-        const files = [...fileList].filter((f) => /^image\/|^video\//.test(f.type));
+        // Accept images/videos by MIME, plus HEIC/HEIF/MOV by extension (the OS
+        // often reports an empty MIME type for those).
+        const files = [...fileList].filter((f) => /^image\/|^video\//.test(f.type) || /\.(heic|heif|avif|mov|mp4|m4v)$/i.test(f.name));
         if (! files.length) return;
         if (this.uploadBatches === 0) this.uploads = [];
         this.uploadBatches++;
         return this._track((async () => {
-            for (const file of files) {
-                const entry = { name: file.name, state: 'uploading', progress: 0 };
-                this.uploads.push(entry);
-                try {
-                    const enc = await window.Vault.encryptFile(file);
-                    const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
-                    const id = await this._uploadBlob(cipher, entry);
-                    this.index.photos.unshift({
-                        id: window.LLGalleryStore.newId(),
-                        originalRef: id, originalKey: enc.encFileKey,
-                        name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
-                        media_type: file.type.startsWith('video/') ? 'video' : 'image',
-                        created: new Date().toISOString(),
-                    });
-                    entry.state = 'done'; entry.progress = 100;
-                    this._save();
-                } catch (e) {
-                    entry.state = 'error';
+            // Show the whole batch immediately, then encrypt+upload a few in
+            // parallel so the tray doesn't sit at 0% while one large HEIC encrypts.
+            const start = this.uploads.length;
+            for (const f of files) this.uploads.push({ name: f.name, state: 'pending', progress: 0 });
+            let next = 0;
+            const worker = async () => {
+                while (next < files.length) {
+                    const idx = next++;
+                    const file = files[idx];
+                    const entry = this.uploads[start + idx];
+                    try {
+                        entry.state = 'uploading';
+                        const enc = await window.Vault.encryptFile(file);
+                        const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+                        const id = await this._uploadBlob(cipher, entry);
+                        this.index.photos.unshift({
+                            id: window.LLGalleryStore.newId(),
+                            originalRef: id, originalKey: enc.encFileKey,
+                            name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
+                            media_type: (file.type.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(file.name)) ? 'video' : 'image',
+                            created: new Date().toISOString(),
+                        });
+                        entry.state = 'done'; entry.progress = 100;
+                        this._save();
+                    } catch (e) { entry.state = 'error'; }
                 }
-            }
+            };
+            await Promise.all(Array.from({ length: Math.min(2, files.length) }, worker));
             this.uploadBatches--;
             this.refreshUsage();
             this.runBacklog();
+            // Auto-clear a clean tray shortly after finishing.
+            if (! this.uploads.some((u) => u.state === 'error')) {
+                setTimeout(() => { if (! this.uploading) this.uploads = []; }, 4000);
+            }
         })());
     },
 
@@ -949,6 +963,7 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
         } finally {
             this._backlogRunning = false;
             this.progress.active = false;
+            this.refreshUsage();
         }
     },
 
