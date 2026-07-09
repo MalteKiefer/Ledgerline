@@ -213,6 +213,7 @@ export const Vault = {
 
     /** Unlock with the passphrase. Throws if wrong. */
     async unlock(passphrase) {
+        await ready(); // libsodium is lazy-loaded; status() no longer forces it
         const v = await this.status();
         if (! v.configured) {
             throw new Error('not configured');
@@ -224,6 +225,7 @@ export const Vault = {
 
     /** Restore access with the recovery code (spaces ignored). */
     async recover(recoveryCode) {
+        await ready(); // libsodium is lazy-loaded; status() no longer forces it
         const v = await this.status();
         if (! v.configured || ! v.has_recovery) {
             throw new Error('no recovery');
@@ -253,6 +255,7 @@ export const Vault = {
      * same), so everything stays decryptable.
      */
     async setPassphrase(newPass) {
+        await ready(); // libsodium is lazy-loaded; ensure it before any crypto
         if (! this.vk) {
             throw new Error('locked');
         }
