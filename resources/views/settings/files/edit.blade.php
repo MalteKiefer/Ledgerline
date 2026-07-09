@@ -22,9 +22,6 @@
                     @foreach ([
                         'files_quota_mb' => ['settings.files_quota', 'files.quota_mb'],
                         'files_max_upload_mb' => ['settings.files_max_upload', 'files.max_upload_mb'],
-                        'files_trash_retention_days' => ['settings.files_trash_retention', 'files.trash_retention_days'],
-                        'files_archive_max_entries' => ['settings.files_archive_entries', 'files.archive_max_entries'],
-                        'files_archive_max_mb' => ['settings.files_archive_mb', 'files.archive_max_mb'],
                         'files_blob_orphan_grace_hours' => ['settings.files_orphan_grace', 'files.blob_orphan_grace_hours'],
                     ] as $field => [$label, $cfg])
                         <label class="block text-sm">

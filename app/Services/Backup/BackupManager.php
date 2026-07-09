@@ -10,6 +10,7 @@ use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
 use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\GallerySource;
+use App\Support\Bytes;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -97,13 +98,13 @@ final class BackupManager
                 $r = $this->mirror->mirror($fs, self::MIRROR_PREFIX[$job->source], $prefix, $step, $checkCancel);
                 $bytes = $r['bytes'];
                 $filename = $prefix.'/'; // a folder mirror, not a single archive
-                $summary = sprintf('%s → %s (%s, %d new, %d removed)', $job->source, $prefix, $this->human($bytes), $r['uploaded'], $r['removed']);
+                $summary = sprintf('%s → %s (%s, %d new, %d removed)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded'], $r['removed']);
             } else {
                 $step('Building '.$job->source.' archive…');
                 $artifact = $this->source($job->source)->build($workDir);
                 $uploadPath = $artifact->path;
                 $extension = $artifact->extension;
-                $step('Archive built: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
+                $step('Archive built: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
 
                 if ($job->encrypt) {
                     if (! $job->passphrase) {
@@ -115,7 +116,7 @@ final class BackupManager
                     @unlink($artifact->path);
                     $uploadPath = $encPath;
                     $extension .= '.enc';
-                    $step('Encrypted: '.$this->human((int) (filesize($uploadPath) ?: 0)).'.');
+                    $step('Encrypted: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
                 }
 
                 $filename = $prefix.'/'.Carbon::now()->format('Y-m-d_His').'.'.$extension;
@@ -140,7 +141,7 @@ final class BackupManager
                     ? sprintf('Retention: kept %d, removed %d old version(s).', $job->retention, $deleted)
                     : sprintf('Retention: keeping up to %d version(s).', $job->retention));
 
-                $summary = sprintf('%s → %s (%s)', $job->source, $filename, $this->human($bytes));
+                $summary = sprintf('%s → %s (%s)', $job->source, $filename, Bytes::format($bytes));
             }
 
             // Log the completion directly (not via $step) so a cancel requested
@@ -240,18 +241,5 @@ final class BackupManager
         }
 
         return count($old);
-    }
-
-    private function human(int $bytes): string
-    {
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        $i = 0;
-        $n = (float) $bytes;
-        while ($n >= 1024 && $i < count($units) - 1) {
-            $n /= 1024;
-            $i++;
-        }
-
-        return round($n, 1).' '.$units[$i];
     }
 }

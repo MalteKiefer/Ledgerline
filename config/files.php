@@ -26,23 +26,11 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Trash retention (days)
-    |--------------------------------------------------------------------------
-    |
-    | How long a soft-deleted (trashed) file is kept before the daily
-    | files:prune-trash command permanently purges it and its blobs.
-    |
-    */
-
-    'trash_retention_days' => (int) env('FILES_TRASH_RETENTION_DAYS', 30),
-
-    /*
-    |--------------------------------------------------------------------------
     | Per-user storage quota (megabytes)
     |--------------------------------------------------------------------------
     |
-    | Maximum bytes a single user may occupy (live + trashed files + kept
-    | versions). 0 = unlimited.
+    | Maximum bytes a single user may occupy (all stored content blobs).
+    | 0 = unlimited.
     |
     */
 
@@ -51,21 +39,6 @@ return [
     // Minutes the browser keeps the unlocked zero-knowledge vault key cached
     // (session-bound) before it auto-locks and the passphrase is needed again.
     'vault_idle_minutes' => (int) env('FILES_VAULT_IDLE_MINUTES', 10),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Archive (zip) limits
-    |--------------------------------------------------------------------------
-    |
-    | Caps for creating and extracting zip archives in the file browser, to
-    | bound memory/disk and blunt zip bombs. max_entries = number of files an
-    | archive may hold/extract; max_mb = total uncompressed bytes.
-    |
-    */
-
-    'archive_max_entries' => (int) env('FILES_ARCHIVE_MAX_ENTRIES', 5000),
-
-    'archive_max_mb' => (int) env('FILES_ARCHIVE_MAX_MB', 2048),
 
     /*
     | Grace window before an orphaned (never-synced) blob is swept by

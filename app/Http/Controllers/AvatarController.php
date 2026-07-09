@@ -8,7 +8,6 @@ use App\Services\AvatarFetcher;
 use App\Support\BlobStore;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**

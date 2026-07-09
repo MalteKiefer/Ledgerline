@@ -56,14 +56,27 @@ class Export extends Model
      * as a badge on the nav so a finished background export is noticed on the
      * next page load without polling.
      */
+    /** Nav badge count, rendered 3× per page (desktop nav, mobile strip, mobile
+     *  drawer). Memoised in the container: per-request in prod, reset between
+     *  tests. */
+    private static function unseenMemoKey(int $userId): string
+    {
+        return 'memo.export.unseen.'.$userId;
+    }
+
     public static function unseenReadyCount(int $userId): int
     {
-        return static::withoutGlobalScopes()
-            ->where('user_id', $userId)
-            ->where('status', 'ready')
-            ->whereNull('seen_at')
-            ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now()))
-            ->count();
+        $key = self::unseenMemoKey($userId);
+        if (! app()->bound($key)) {
+            app()->instance($key, static::withoutGlobalScopes()
+                ->where('user_id', $userId)
+                ->where('status', 'ready')
+                ->whereNull('seen_at')
+                ->where(fn (Builder $q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', Carbon::now()))
+                ->count());
+        }
+
+        return app($key);
     }
 
     /** Mark all of the user's ready exports as seen (Downloads page visited). */
@@ -74,6 +87,9 @@ class Export extends Model
             ->where('status', 'ready')
             ->whereNull('seen_at')
             ->update(['seen_at' => Carbon::now()]);
+        // The badge count just changed; drop the memo so a same-request re-read
+        // (the layout renders after the Downloads controller) reflects it.
+        app()->forgetInstance(self::unseenMemoKey($userId));
     }
 
     /**

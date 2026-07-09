@@ -99,17 +99,25 @@ class Photo extends Model
      */
     public static function counts(): array
     {
-        $videos = static::query()->where('media_type', 'video')->count();
-        $motion = static::query()->whereNotNull('motion_path')->count();
-        $duplicates = static::query()->whereNotNull('duplicate_group_id')->count();
-        $total = static::query()->count();
+        // One aggregate pass instead of four full-table COUNTs. CASE-WHEN (not
+        // FILTER) so it runs identically on Postgres (prod) and SQLite (tests).
+        $row = static::query()->selectRaw(
+            'count(*) as total,'
+            .' sum(case when media_type = ? then 1 else 0 end) as videos,'
+            .' sum(case when motion_path is not null then 1 else 0 end) as motion,'
+            .' sum(case when duplicate_group_id is not null then 1 else 0 end) as duplicates',
+            ['video'],
+        )->first();
+
+        $total = (int) ($row->total ?? 0);
+        $videos = (int) ($row->videos ?? 0);
 
         return [
             'total' => $total,
             'images' => $total - $videos,
             'videos' => $videos,
-            'motion' => $motion,
-            'duplicates' => $duplicates,
+            'motion' => (int) ($row->motion ?? 0),
+            'duplicates' => (int) ($row->duplicates ?? 0),
         ];
     }
 

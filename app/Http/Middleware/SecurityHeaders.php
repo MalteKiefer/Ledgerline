@@ -33,8 +33,7 @@ final class SecurityHeaders
 
         // Public share pages carry untrusted note content, so they get the
         // strictest treatment (no-referrer, script-less CSP).
-        $isShare = $request->routeIs('shares.*') || $request->routeIs('public-share.album*')
-            || $request->routeIs('file-link.*');
+        $isShare = $request->routeIs('shares.*') || $request->routeIs('public-share.album*');
 
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');

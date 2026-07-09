@@ -1,22 +1,35 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
-import DOMPurify from 'dompurify';
-import { marked } from 'marked';
-import { markedHighlight } from 'marked-highlight';
-import hljs from 'highlight.js/lib/common';
-import 'github-markdown-css/github-markdown-light.css';
-import 'highlight.js/styles/github.css';
 import { Vault } from './vault';
 
-// Syntax-highlight fenced code blocks during markdown render (client-side, since
-// notes are zero-knowledge). github.css styles the .hljs spans.
-marked.use(markedHighlight({
-    langPrefix: 'hljs language-',
-    highlight(code, lang) {
-        const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
-        return hljs.highlight(code, { language }).value;
-    },
-}));
+// The markdown stack (marked + DOMPurify + highlight.js + its CSS) is only ever
+// needed to preview a note, so it is code-split out of the initial bundle and
+// loaded on first use. Returns a memoised { render(md) } that highlights fenced
+// code (client-side — notes are zero-knowledge) and DOMPurify-sanitises output.
+let _markdown = null;
+async function loadMarkdown() {
+    if (_markdown) return _markdown;
+    const [{ marked }, DOMPurify, { markedHighlight }, hljs] = await Promise.all([
+        import('marked'),
+        import('dompurify'),
+        import('marked-highlight'),
+        import('highlight.js/lib/common'),
+    ]);
+    await Promise.all([
+        import('github-markdown-css/github-markdown-light.css'),
+        import('highlight.js/styles/github.css'),
+    ]);
+    const hl = hljs.default;
+    marked.use(markedHighlight({
+        langPrefix: 'hljs language-',
+        highlight(code, lang) {
+            const language = lang && hl.getLanguage(lang) ? lang : 'plaintext';
+            return hl.highlight(code, { language }).value;
+        },
+    }));
+    _markdown = { render: (md) => (md ? DOMPurify.default.sanitize(marked.parse(md, { gfm: true, breaks: true })) : '') };
+    return _markdown;
+}
 
 // Zero-knowledge encryption vault (client-side crypto for the Files module).
 // Exposed globally so the vault UI + files component can lock/unlock/encrypt.
@@ -109,13 +122,6 @@ async function bootStore(store) {
     if (! store.vault.unlocked) return false;
     if (! window.LLStore.loaded) await window.LLStore.load();
     return true;
-}
-
-// Client-side markdown render (notes are zero-knowledge, so the server can't
-// render them). Sanitised with DOMPurify so decrypted content can't inject.
-function renderMarkdown(md) {
-    if (! md) return '';
-    return DOMPurify.sanitize(marked.parse(md, { gfm: true, breaks: true }));
 }
 
 // App-wide confirm modal store (replaces native window.confirm everywhere).
@@ -3650,8 +3656,14 @@ Alpine.data('notes', (labels = {}) => ({
         this.previewTimer = setTimeout(() => this.refreshPreview(), 250);
     },
     // Render the current note's markdown IN THE BROWSER (server never sees it).
-    refreshPreview() {
-        this.previewHtml = this.current ? renderMarkdown(this.current.content || '') : '';
+    // The markdown stack is lazy-loaded on first preview (kept out of the
+    // initial bundle); guard against a stale render if the note changed while
+    // it loaded.
+    async refreshPreview() {
+        if (! this.current) { this.previewHtml = ''; return; }
+        const id = this.currentId;
+        const md = await loadMarkdown();
+        if (this.currentId === id) this.previewHtml = md.render(this.current.content || '');
     },
 
     save() {
@@ -3698,7 +3710,6 @@ const FOLDER_ICONS = {
     cloud: 'M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z',
     cog: 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.281z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
     envelope: 'M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75',
-    calendar: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5',
     chat: 'M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z',
     cart: 'M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z',
     card: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z',

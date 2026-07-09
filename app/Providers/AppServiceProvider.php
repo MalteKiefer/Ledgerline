@@ -94,9 +94,6 @@ class AppServiceProvider extends ServiceProvider
     public const SETTING_OVERRIDES = [
         'files_quota_mb' => ['files.quota_mb', 'int'],
         'files_max_upload_mb' => ['files.max_upload_mb', 'int'],
-        'files_trash_retention_days' => ['files.trash_retention_days', 'int'],
-        'files_archive_max_entries' => ['files.archive_max_entries', 'int'],
-        'files_archive_max_mb' => ['files.archive_max_mb', 'int'],
         'files_blob_orphan_grace_hours' => ['files.blob_orphan_grace_hours', 'int'],
         'gallery_ml_enabled' => ['gallery.ml_enabled', 'bool'],
         'gallery_ml_url' => ['gallery.ml_url', 'string'],

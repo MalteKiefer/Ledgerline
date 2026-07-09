@@ -48,9 +48,17 @@ class UserSetting extends Model
         ];
     }
 
-    /** The settings row for a user, creating defaults on first use. */
+    /** The settings row for a user, creating defaults on first use. Memoised in
+     *  the container (per-request in prod, reset between tests) since the layout
+     *  and nav read the same row several times per page; update() mutates the
+     *  cached instance in place. */
     public static function for(int $userId): self
     {
-        return static::query()->firstOrCreate(['user_id' => $userId]);
+        $key = 'memo.user_setting.'.$userId;
+        if (! app()->bound($key)) {
+            app()->instance($key, static::query()->firstOrCreate(['user_id' => $userId]));
+        }
+
+        return app($key);
     }
 }
