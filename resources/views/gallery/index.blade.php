@@ -6,6 +6,7 @@
         blobBase: '{{ url('/gallery/blob') }}',
         usageUrl: '{{ url('/gallery/usage') }}',
         reconcileUrl: '{{ url('/gallery/blobs/reconcile') }}',
+        embedTextUrl: '{{ url('/gallery/embed-text') }}',
         token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('gallery.load_failed')),
@@ -51,13 +52,18 @@
     <div x-show="state === 'ready'" x-cloak class="mt-6 flex gap-6">
       {{-- Sidebar --}}
       <aside class="hidden w-44 shrink-0 md:block">
-        <nav class="sticky top-6 space-y-1 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
-          <button type="button" @click="view = 'library'; clearSelection()"
+        <nav class="sticky top-6 space-y-0.5 rounded-xl bg-white dark:bg-gray-900 p-2 ring-1 ring-gray-100 dark:ring-gray-800">
+          <button type="button" @click="view = 'library'"
               :class="view === 'library' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="photo" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.library') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="photoCount()"></span>
           </button>
-          <button type="button" @click="view = 'trash'; clearSelection()"
+          <button type="button" @click="view = 'map'"
+              :class="view === 'map' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <x-icon name="map-pin" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.map') }}</span><span x-show="mapPhotos.length" class="text-xs tabular-nums text-gray-400" x-text="mapPhotos.length"></span>
+          </button>
+          <button type="button" @click="view = 'trash'"
               :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="trash" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.trash') }}</span><span x-show="trashCount()" class="text-xs tabular-nums text-gray-400" x-text="trashCount()"></span>
@@ -92,7 +98,19 @@
 
         {{-- LIBRARY --}}
         <div x-show="view === 'library'">
-          <template x-if="! libraryPhotos.length && ! progress.active && ! uploading">
+          {{-- Search (metadata + CLIP content, all client-side) --}}
+          <div class="relative mb-4" x-show="libraryPhotos.length || isSearching">
+            <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input type="search" x-model="query" @input="runSearch()" placeholder="{{ __('gallery.search_placeholder') }}"
+                class="w-full rounded-lg border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-2 pl-9 pr-9 text-sm shadow-sm focus:border-gray-400 focus:ring-0">
+            <button type="button" x-show="query" @click="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+            <svg x-show="searching" x-cloak class="absolute right-9 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+          </div>
+
+          <template x-if="isSearching && ! displayGroups.length && ! searching">
+            <p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_results') }}</p>
+          </template>
+          <template x-if="! isSearching && ! libraryPhotos.length && ! progress.active && ! uploading">
             <button type="button" @click="$refs.picker.click()"
                 class="mx-auto mt-6 flex w-full max-w-lg flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 p-16 text-center hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-900/50">
               <x-icon name="photo" class="h-12 w-12 text-gray-300 dark:text-gray-600" />
@@ -101,9 +119,9 @@
             </button>
           </template>
 
-          <template x-for="group in groupedPhotos" :key="group.day">
+          <template x-for="group in displayGroups" :key="group.day">
             <section class="mb-6">
-              <h2 class="mb-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300" x-text="group.label"></h2>
+              <h2 x-show="group.label" class="mb-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300" x-text="group.label"></h2>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in group.photos" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
@@ -150,6 +168,12 @@
               </div>
             </template>
           </div>
+        </div>
+
+        {{-- MAP --}}
+        <div x-show="view === 'map'">
+          <template x-if="! mapPhotos.length"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_results') }}</p></template>
+          <div x-ref="map" x-show="mapPhotos.length" class="h-[70vh] w-full overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800"></div>
         </div>
       </div>
     </div>
