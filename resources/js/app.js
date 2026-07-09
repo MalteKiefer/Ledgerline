@@ -1088,20 +1088,43 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
 
     /* ---- Viewer ---- */
     async openViewer(p) {
-        this.viewer = { open: true, kind: 'loading', src: '', photo: p, meta: null };
+        this.viewer = { open: true, kind: 'loading', src: '', photo: p, meta: null, hasMotion: ! ! p.motionRef, motionOn: false, motionSrc: '' };
         // Decrypt the sealed metadata blob in parallel for the info panel.
         if (p.metaRef) this._loadViewerMeta(p);
         else if (p.lat != null) this._renderMiniMap(p.lat, p.lng);
         try {
-            const ref = p.mediumRef || p.originalRef;
-            const key = p.mediumRef ? p.mediumKey : p.originalKey;
-            const bytes = await this._decryptBlob(ref, key);
-            if (this.viewer.photo?.id !== p.id) return; // switched/closed meanwhile
-            const isVid = p.media_type === 'video' && ! p.mediumRef;
-            this.viewer.src = URL.createObjectURL(new Blob([bytes], { type: isVid ? (p.mime || 'video/mp4') : 'image/jpeg' }));
-            this.viewer.kind = isVid ? 'video' : 'image';
+            if (p.media_type === 'video') {
+                // Videos play the original clip; the sealed `medium` blob is only a
+                // poster frame and must not be shown as a still image.
+                const bytes = await this._decryptBlob(p.originalRef, p.originalKey);
+                if (this.viewer.photo?.id !== p.id) return; // switched/closed meanwhile
+                this.viewer.src = URL.createObjectURL(new Blob([bytes], { type: p.mime || 'video/mp4' }));
+                this.viewer.kind = 'video';
+            } else {
+                const ref = p.mediumRef || p.originalRef;
+                const key = p.mediumRef ? p.mediumKey : p.originalKey;
+                const bytes = await this._decryptBlob(ref, key);
+                if (this.viewer.photo?.id !== p.id) return;
+                this.viewer.src = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+                this.viewer.kind = 'image';
+            }
         } catch (e) { this.error = labels.loadFailed || 'load failed'; this.closeViewer(); }
     },
+    // Live Photo playback: decrypt the embedded motion clip on demand and overlay
+    // it on the still. Cached for the open viewer session.
+    async playMotion() {
+        const p = this.viewer.photo;
+        if (! p || ! p.motionRef) return;
+        try {
+            if (! this.viewer.motionSrc) {
+                const bytes = await this._decryptBlob(p.motionRef, p.motionKey);
+                if (this.viewer.photo?.id !== p.id) return;
+                this.viewer.motionSrc = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+            }
+            this.viewer.motionOn = true;
+        } catch (e) { /* stay on the still */ }
+    },
+    stopMotion() { this.viewer.motionOn = false; },
     async _loadViewerMeta(p) {
         try {
             const b = await this._decryptBlob(p.metaRef, p.metaKey);
@@ -1115,8 +1138,9 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     },
     closeViewer() {
         if (this.viewer.src) URL.revokeObjectURL(this.viewer.src);
+        if (this.viewer.motionSrc) URL.revokeObjectURL(this.viewer.motionSrc);
         if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
-        this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null };
+        this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null, hasMotion: false, motionOn: false, motionSrc: '' };
     },
 
     /* ---- Multi-select ---- */
