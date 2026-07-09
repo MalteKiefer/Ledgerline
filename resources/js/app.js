@@ -1059,16 +1059,45 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
 
     /* ---- Viewer ---- */
     async openViewer(p) {
-        this.viewer = { open: true, kind: 'loading', src: '', photo: p };
+        this.viewer = { open: true, kind: 'loading', src: '', photo: p, meta: null };
+        // Decrypt the sealed metadata blob in parallel for the info panel.
+        if (p.metaRef) this._loadViewerMeta(p);
         try {
             const ref = p.mediumRef || p.originalRef;
             const key = p.mediumRef ? p.mediumKey : p.originalKey;
             const bytes = await this._decryptBlob(ref, key);
-            const mime = p.media_type === 'video' && ! p.mediumRef ? (p.mime || 'video/mp4') : 'image/jpeg';
-            this.viewer = { open: true, kind: p.media_type === 'video' && ! p.mediumRef ? 'video' : 'image', src: URL.createObjectURL(new Blob([bytes], { type: mime })), photo: p };
+            if (this.viewer.photo?.id !== p.id) return; // switched/closed meanwhile
+            const isVid = p.media_type === 'video' && ! p.mediumRef;
+            this.viewer.src = URL.createObjectURL(new Blob([bytes], { type: isVid ? (p.mime || 'video/mp4') : 'image/jpeg' }));
+            this.viewer.kind = isVid ? 'video' : 'image';
         } catch (e) { this.error = labels.loadFailed || 'load failed'; this.closeViewer(); }
     },
-    closeViewer() { if (this.viewer.src) URL.revokeObjectURL(this.viewer.src); this.viewer = { open: false, kind: 'none', src: '', photo: null }; },
+    async _loadViewerMeta(p) {
+        try {
+            const b = await this._decryptBlob(p.metaRef, p.metaKey);
+            const m = JSON.parse(new TextDecoder().decode(b));
+            if (this.viewer.photo?.id === p.id) this.viewer.meta = m;
+        } catch (e) { /* info panel just stays sparse */ }
+    },
+    closeViewer() { if (this.viewer.src) URL.revokeObjectURL(this.viewer.src); this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null }; },
+
+    /* ---- Multi-select ---- */
+    selected: [],
+    isSelected(id) { return this.selected.includes(id); },
+    toggleSelect(id) { const i = this.selected.indexOf(id); if (i >= 0) this.selected.splice(i, 1); else this.selected.push(id); },
+    clearSelection() { this.selected = []; },
+    get selectedCount() { return this.selected.length; },
+    selectAllVisible() {
+        const ids = (this.view === 'trash' ? this.trashedPhotos : this.libraryPhotos).map((p) => p.id);
+        this.selected = this.selected.length === ids.length ? [] : ids;
+    },
+    _eachSelected(fn) { for (const id of [...this.selected]) { const p = this.index.photos.find((x) => x.id === id); if (p) fn(p); } },
+    bulkTrash() { const t = new Date().toISOString(); this._eachSelected((p) => { if (! p.trashed) p.trashed = t; }); this.selected = []; this._save(); },
+    bulkRestore() { this._eachSelected((p) => { p.trashed = null; }); this.selected = []; this._save(); },
+    async bulkPurge() {
+        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || labels.purgeConfirm || '')) return;
+        this._eachSelected((p) => this._purgeOne(p)); this.selected = []; this._save();
+    },
 
     /* ---- Trash (soft-delete → recoverable) ---- */
     trash(p) { p.trashed = new Date().toISOString(); this._save(); },
@@ -1113,6 +1142,16 @@ Alpine.data('vaultGallery', (config = {}, labels = {}) => ({
     },
 
     fmtBytes: formatBytes,
+    fmtDate(iso) {
+        if (! iso) return '';
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    },
+    placeText(place) {
+        if (! place) return '';
+        if (typeof place === 'string') return place;
+        return place.display || place.name || [place.city, place.state, place.country].filter(Boolean).join(', ') || '';
+    },
     dismissUploads() { this.uploads = []; },
     get uploading() { return this.uploads.some((u) => u.state === 'uploading'); },
 }));

@@ -3,6 +3,13 @@
 declare(strict_types=1);
 
 return [
+    'selected' => ':count ausgewählt',
+    'select_all' => 'Alle auswählen',
+    'info_date' => 'Datum',
+    'info_camera' => 'Kamera',
+    'info_dimensions' => 'Maße',
+    'info_place' => 'Ort',
+    'info_size' => 'Größe',
     'library' => 'Bibliothek',
     'trash' => 'Papierkorb',
     'empty_trash' => 'Papierkorb leeren',
