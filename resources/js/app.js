@@ -1039,10 +1039,8 @@ return {
     _padBlob(blob) {
         return padBlob(blob);
     },
-    async _decryptBlob(ref, key) {
-        const res = await fetch(`${config.rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-        if (! res.ok) throw new Error('fetch failed');
-        return window.Vault.decryptFile(await res.arrayBuffer(), key);
+    _decryptBlob(ref, key) {
+        return fetchDecrypt(config.rawBase, ref, key);
     },
     _b64bytes(b64) {
         const bin = atob(b64); const out = new Uint8Array(bin.length);
@@ -1767,6 +1765,16 @@ async function apiRequest(method, url, body) {
     const res = await fetch(url, { method, headers: jsonHeaders(), body: body ? JSON.stringify(body) : undefined });
     if (! res.ok) throw new Error('request failed');
     return res.json().catch(() => ({}));
+}
+
+// Fetch an opaque content blob and decrypt it in the browser. Shared by the
+// gallery and files views — identical protocol (GET {rawBase}/{ref}, then
+// Vault.decryptFile with the blob's own key); the caller supplies its module's
+// raw-stream base.
+async function fetchDecrypt(rawBase, ref, key) {
+    const res = await fetch(`${rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    if (! res.ok) throw new Error('fetch failed');
+    return window.Vault.decryptFile(await res.arrayBuffer(), key);
 }
 
 // Bounded, rate-limit-aware content-blob deleter shared by the gallery + files
@@ -3020,12 +3028,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Fetch a file's ciphertext and decrypt it in the browser back to plaintext
     // bytes. Central to download + preview, so decrypting here makes every
     // consumer zero-knowledge with no per-caller change.
-    async fetchPlain(row) {
-        const res = await fetch(`${config.rawBase}/${row.blob}`, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        });
-        if (! res.ok) throw new Error('fetch failed');
-        return window.Vault.decryptFile(await res.arrayBuffer(), row.encFileKey);
+    fetchPlain(row) {
+        return fetchDecrypt(config.rawBase, row.blob, row.encFileKey);
     },
 
     async download(row) {
