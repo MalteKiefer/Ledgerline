@@ -128,6 +128,12 @@ window.LLStore = {
                 const cur = await fetch('/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
                 this.version = cur.version ?? this.version;
                 this._again = true; // re-PUT our copy over the fresh version
+            } else if (res.status === 429) {
+                // Rate limited — back off, then re-arm the save (via _again) rather
+                // than dropping it, so a destructive edit is never silently lost.
+                const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+                await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 1500));
+                this._again = true;
             } else if (res.ok) {
                 this.version = (await res.json()).version ?? this.version + 1;
             } else {
@@ -212,6 +218,14 @@ window.LLGalleryStore = {
                 const cur = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
                 this.version = cur.version ?? this.version;
                 if (retry < 3) return this._doFlush(retry + 1);
+            } else if (res.status === 429 && retry < 8) {
+                // Rate limited (e.g. a bulk empty-trash saturated the window). Back
+                // off and retry rather than dropping the save — otherwise a
+                // destructive edit like clearing the trash is silently lost and the
+                // now-deleted blobs 404 on the next load.
+                const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+                await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(500 * 2 ** retry, 8000)));
+                return this._doFlush(retry + 1);
             } else if (res.ok) {
                 this.version = (await res.json()).version ?? this.version + 1;
             } else {

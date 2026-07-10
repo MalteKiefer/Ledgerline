@@ -149,11 +149,11 @@ Route::middleware('auth')->group(function (): void {
     // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
     // Opaque zero-knowledge store: the whole workspace as one sealed manifest.
     Route::get('/store', [StoreController::class, 'show'])->name('store.show');
-    Route::put('/store', [StoreController::class, 'save'])->middleware('throttle:120,1')->name('store.save');
+    Route::put('/store', [StoreController::class, 'save'])->middleware('throttle:600,1')->name('store.save');
 
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
     Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('gallery.store.show');
-    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:120,1')->name('gallery.store.save');
+    Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:600,1')->name('gallery.store.save');
     // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
     // its derived data (renditions/exif/embedding/faces/place) and discard the
     // bytes — nothing is persisted server-side. embed-text embeds a search query.
