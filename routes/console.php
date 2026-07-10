@@ -24,9 +24,11 @@ Schedule::command('exports:prune')->daily()->withoutOverlapping();
 // Fail exports left stuck building by a dead worker so they get pruned.
 Schedule::command('exports:recover-stuck')->hourly()->withoutOverlapping();
 
-// Reclaim stored file bytes on disk with no ownership record (leaked/aborted
-// uploads). The client reconciles manifest-unreferenced blobs on its own.
+// Reclaim stored file/gallery bytes on disk with no ownership record (leaked/
+// aborted uploads, or bytes orphaned by an interrupted erasure). The client
+// reconciles manifest-unreferenced blobs on its own; this is the crash net.
 Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
 
 // Delete expired public note-share snapshots so their plaintext content does not
 // linger past its expiry (these anonymous rows can't be targeted at erasure).

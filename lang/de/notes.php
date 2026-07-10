@@ -24,13 +24,4 @@ return [
     'pin' => 'Anpinnen',
     'unpin' => 'Lösen',
     'active' => 'Notizen',
-    'share' => 'Teilen',
-    'share_expiry_1h' => 'Nach 1 Stunde',
-    'share_expiry_24h' => 'Nach 24 Stunden',
-    'share_expiry_7d' => 'Nach 7 Tagen',
-    'share_expiry_30d' => 'Nach 30 Tagen',
-    'share_password' => 'Passwort (optional)',
-    'share_max_views' => 'Abruf-Limit (optional)',
-    'share_create' => 'Link erzeugen',
-    'share_failed' => 'Link konnte nicht erstellt werden.',
 ];

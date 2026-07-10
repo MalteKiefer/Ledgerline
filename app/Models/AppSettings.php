@@ -49,8 +49,6 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_ml_clip_model',
     'gallery_face_enabled',
     'gallery_face_model',
-    'gallery_ffmpeg_path',
-    'gallery_exiftool_path',
     'gallery_duplicate_threshold',
     'gallery_phash_max_distance',
     'gallery_face_min_score',

@@ -36,6 +36,34 @@ async function loadMarkdown() {
 // The reactive Alpine.store('vault') boots it (restores the cached key) on init.
 window.Vault = Vault;
 
+// Padmé length-hiding for stored ciphertext blobs. Rounds a blob up to a Padmé
+// bucket (leaks O(log log n) bits, ≤~12% overhead) so the stored/on-ledger size
+// can't fingerprint the exact plaintext length. Shared by the gallery and files
+// blob paths (both persist size into their *_blobs ledger + the DB dump). The
+// random pad sits AFTER the self-delimiting secretstream frames, so it is never
+// parsed and decryption is unaffected — no download-side stripping needed.
+function padmeSize(n) {
+    if (n < 2) return n;
+    const e = Math.floor(Math.log2(n));
+    const s = Math.floor(Math.log2(e)) + 1;
+    const bits = e - s;
+    if (bits <= 0) return n;
+    const mask = (1 << bits) - 1;
+    return (n + mask) & ~mask;
+}
+async function padBlob(blob) {
+    let pad = padmeSize(blob.size) - blob.size;
+    if (pad <= 0) return blob;
+    const parts = [blob];
+    while (pad > 0) {
+        const chunk = new Uint8Array(Math.min(pad, 65536));
+        crypto.getRandomValues(chunk);
+        parts.push(chunk);
+        pad -= chunk.length;
+    }
+    return new Blob(parts, { type: 'application/octet-stream' });
+}
+
 /**
  * The opaque zero-knowledge store client. The whole workspace (notes, bookmarks,
  * todos, and their structure/flags) lives in ONE sealed manifest; the server only
@@ -1087,26 +1115,8 @@ return {
     // rounded up to a Padmé bucket (leaks O(log log n) bits, ≤~12% overhead)
     // instead of revealing the exact plaintext length. Random (not zero) padding
     // so an observer of the raw blob can't spot the boundary.
-    _padmeSize(n) {
-        if (n < 2) return n;
-        const e = Math.floor(Math.log2(n));
-        const s = Math.floor(Math.log2(e)) + 1;
-        const bits = e - s;
-        if (bits <= 0) return n;
-        const mask = (1 << bits) - 1;
-        return (n + mask) & ~mask;
-    },
-    async _padBlob(blob) {
-        let pad = this._padmeSize(blob.size) - blob.size;
-        if (pad <= 0) return blob;
-        const parts = [blob];
-        while (pad > 0) {
-            const chunk = new Uint8Array(Math.min(pad, 65536));
-            crypto.getRandomValues(chunk);
-            parts.push(chunk);
-            pad -= chunk.length;
-        }
-        return new Blob(parts, { type: 'application/octet-stream' });
+    _padBlob(blob) {
+        return padBlob(blob);
     },
     async _decryptBlob(ref, key) {
         const res = await fetch(`${config.rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -1719,116 +1729,6 @@ return {
     get uploading() { return this.uploads.some((u) => u.state === 'uploading'); },
 };
 });
-
-/**
- * Editor for an encrypted file: fetches the ciphertext, decrypts it to text in
- * the browser, edits it in CodeMirror, and on save re-encrypts and PUTs the new
- * ciphertext. The server never sees the plaintext. Binary content is refused.
- */
-Alpine.data('locationPicker', (searchUrl) => ({
-    open: false,
-    context: null,
-    lat: null,
-    lng: null,
-    query: '',
-    results: [],
-    searching: false,
-    map: null,
-    marker: null,
-    searchTimer: null,
-
-    initPicker() {
-        window.addEventListener('open-location-picker', (e) => {
-            this.context = e.detail?.context ?? null;
-            const lat = parseFloat(e.detail?.lat);
-            const lng = parseFloat(e.detail?.lng);
-            this.lat = Number.isFinite(lat) ? lat : null;
-            this.lng = Number.isFinite(lng) ? lng : null;
-            this.query = '';
-            this.results = [];
-            this.open = true;
-            this.$nextTick(() => this.mountMap());
-        });
-    },
-
-    async mountMap() {
-        if (this.map) {
-            this.map.remove();
-            this.map = null;
-            this.marker = null;
-        }
-        const L = await loadLeaflet();
-        const hasPin = this.lat != null && this.lng != null;
-        this.map = L.map(this.$refs.pickerMap).setView(hasPin ? [this.lat, this.lng] : [20, 0], hasPin ? 13 : 2);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
-        if (hasPin) {
-            this.setMarker(this.lat, this.lng, false);
-        }
-        this.map.on('click', (e) => this.setMarker(e.latlng.lat, e.latlng.lng, false));
-        this.$nextTick(() => this.map && this.map.invalidateSize());
-    },
-
-    setMarker(lat, lng, recenter = true) {
-        this.lat = lat;
-        this.lng = lng;
-        if (this.marker) {
-            this.marker.setLatLng([lat, lng]);
-        } else {
-            // Leaflet is already loaded here (the map exists).
-            this.marker = leafletModule.marker([lat, lng]).addTo(this.map);
-        }
-        if (recenter) {
-            this.map.setView([lat, lng], Math.max(this.map.getZoom(), 13));
-        }
-    },
-
-    queueSearch() {
-        clearTimeout(this.searchTimer);
-        if (! this.query.trim()) {
-            this.results = [];
-            return;
-        }
-        this.searchTimer = setTimeout(() => this.runSearch(), 500);
-    },
-
-    async runSearch() {
-        this.searching = true;
-        try {
-            const r = await fetch(`${searchUrl}?q=${encodeURIComponent(this.query.trim())}`, { headers: { Accept: 'application/json' } });
-            this.results = (await r.json()).results || [];
-        } catch (e) {
-            this.results = [];
-        } finally {
-            this.searching = false;
-        }
-    },
-
-    choose(res) {
-        this.results = [];
-        this.query = res.display;
-        this.setMarker(res.lat, res.lon, true);
-    },
-
-    apply() {
-        if (this.lat == null || this.lng == null) {
-            return;
-        }
-        window.dispatchEvent(new CustomEvent('location-picked', {
-            detail: { context: this.context, lat: this.lat, lng: this.lng },
-        }));
-        this.close();
-    },
-
-    close() {
-        this.open = false;
-        this.results = [];
-        if (this.map) {
-            this.map.remove();
-            this.map = null;
-            this.marker = null;
-        }
-    },
-}));
 
 /* ---- Zero-knowledge file browser (manifest model) ----
  *
@@ -2954,8 +2854,13 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                     } else {
                         const enc = await window.Vault.encryptFile(item.file);
                         // Neutral filename — the real name is sealed inside encMeta and
-                        // never sent to the server.
-                        const cipher = new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' });
+                        // never sent to the server. Padmé-pad the ciphertext so the
+                        // stored blob size (recorded in file_blobs.size, and thus in the
+                        // DB dump) is length-hidden and can't fingerprint the plaintext —
+                        // the same treatment the gallery blob path already applies. The
+                        // trailing pad sits after the self-delimiting secretstream frames,
+                        // so decryption ignores it (no download-side stripping needed).
+                        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
                         id = await this._uploadOne(cipher, entry);
                         encFileKey = enc.encFileKey;
                     }

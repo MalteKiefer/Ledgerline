@@ -12,6 +12,7 @@ use App\Models\BackupRun;
 use App\Rules\SafeUrl;
 use App\Services\Backup\ArchiveCipher;
 use App\Services\Backup\BackupDestinationFactory;
+use App\Support\OutboundUrl;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -295,7 +296,11 @@ class BackupController extends Controller
             'endpoint' => ['nullable', 'string', 'max:255', new SafeUrl],
             'use_path_style' => ['sometimes', 'boolean'],
             // SFTP / WebDAV
-            'host' => ['nullable', 'string', 'max:255'],
+            'host' => ['nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) {
+                if (is_string($value) && $value !== '' && ! OutboundUrl::hostAllowed($value)) {
+                    $fail('settings.safe_url')->translate(['attribute' => $attribute]);
+                }
+            }],
             'port' => ['nullable', 'integer', 'min:1', 'max:65535'],
             'username' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'max:255'],

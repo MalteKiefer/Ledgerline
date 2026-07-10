@@ -24,13 +24,4 @@ return [
     'pin' => 'Pin',
     'unpin' => 'Unpin',
     'active' => 'Notes',
-    'share' => 'Share',
-    'share_expiry_1h' => 'After 1 hour',
-    'share_expiry_24h' => 'After 24 hours',
-    'share_expiry_7d' => 'After 7 days',
-    'share_expiry_30d' => 'After 30 days',
-    'share_password' => 'Password (optional)',
-    'share_max_views' => 'View limit (optional)',
-    'share_create' => 'Create link',
-    'share_failed' => 'Could not create the link.',
 ];
