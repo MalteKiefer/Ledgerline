@@ -76,8 +76,68 @@
     </div>
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
 
-    {{-- Security & data --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="{ del: false }">
+    {{-- Mobile app: QR device pairing + paired-device management --}}
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing()">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.devices_heading') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.devices_hint') }} {{ __('account.devices_limit_note', ['max' => $deviceMax]) }}</p>
+
+        {{-- Start a pairing / show the active QR + countdown + approval --}}
+        <div class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
+            <template x-if="!active">
+                <button type="button" x-on:click="start()" class="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <x-icon name="qr-code" class="h-4 w-4" />{{ __('account.devices_connect') }}
+                </button>
+            </template>
+
+            <template x-if="active">
+                <div>
+                    <div x-show="status==='pending_scan' || status==='pending_approval'" class="flex flex-col items-start gap-4 sm:flex-row">
+                        <img :src="qr" alt="" class="h-40 w-40 shrink-0 rounded-md border border-gray-200 dark:border-gray-700 bg-white p-1">
+                        <div class="text-sm">
+                            <p x-show="status==='pending_scan'" class="text-gray-600 dark:text-gray-400">{{ __('account.devices_scan_hint') }}</p>
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('account.devices_expires_in') }} <span x-text="remainingText" class="font-mono font-medium text-gray-700 dark:text-gray-300"></span></p>
+                            <div x-show="status==='pending_approval'" class="mt-3">
+                                <p class="text-gray-900 dark:text-gray-100">{{ __('account.devices_approve_q') }} „<span x-text="deviceName" class="font-medium"></span>"?</p>
+                                <div class="mt-2 flex gap-2">
+                                    <button type="button" x-on:click="approve()" class="min-h-11 rounded-md bg-gray-900 dark:bg-gray-100 px-3 text-sm font-medium text-white dark:text-gray-900">{{ __('account.devices_allow') }}</button>
+                                    <button type="button" x-on:click="reject()" class="min-h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_deny') }}</button>
+                                </div>
+                            </div>
+                            <button type="button" x-on:click="regenerate()" class="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('account.devices_regenerate') }}</button>
+                        </div>
+                    </div>
+                    <p x-show="status==='approved' || status==='consumed'" class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ __('account.devices_connected') }}</p>
+                    <p x-show="status==='rejected'" class="text-sm text-gray-600 dark:text-gray-400">{{ __('account.devices_rejected') }}</p>
+                    <p x-show="status==='expired'" class="text-sm text-gray-600 dark:text-gray-400">{{ __('account.devices_expired') }}</p>
+                    <button type="button" x-on:click="reset()" x-show="['approved','consumed','rejected','expired'].includes(status)" class="mt-2 text-xs text-gray-500 underline">{{ __('account.devices_again') }}</button>
+                </div>
+            </template>
+        </div>
+
+        {{-- Paired devices --}}
+        <div class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
+            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_list_heading') }}</h3>
+            <ul class="mt-3 divide-y divide-gray-100 dark:divide-gray-800">
+                @forelse ($devices as $d)
+                    <li class="flex items-center justify-between gap-3 py-2">
+                        <div class="min-w-0">
+                            <p class="truncate text-sm text-gray-900 dark:text-gray-100">{{ $d['name'] ?: __('account.sessions_unknown') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ $d['last_used'] ? __('account.devices_last_used', ['when' => $d['last_used']->diffForHumans()]) : __('account.devices_never_used') }}</p>
+                        </div>
+                        <form method="POST" action="{{ route('devices.revoke', $d['id']) }}" class="shrink-0">
+                            @csrf @method('DELETE')
+                            <button type="submit" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('account.devices_revoke') }}</button>
+                        </form>
+                    </li>
+                @empty
+                    <li class="py-2 text-sm text-gray-500 dark:text-gray-400">{{ __('account.devices_none') }}</li>
+                @endforelse
+            </ul>
+        </div>
+    </div>
+
+    {{-- Web sessions --}}
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.security_heading') }}</h2>
 
         <div class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
@@ -85,7 +145,6 @@
             <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100">{{ $user->last_login_at?->format('Y-m-d H:i') ?: __('account.never') }}</dd>
         </div>
 
-        {{-- Active sessions --}}
         <div class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
             <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.sessions_heading') }}</h3>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('account.sessions_hint') }}</p>
@@ -111,54 +170,20 @@
                 @endforelse
             </ul>
         </div>
+    </div>
 
-        {{-- Paired mobile devices (QR pairing) --}}
-        <div class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4" x-data="devicePairing()">
-            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_heading') }}</h3>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('account.devices_hint') }}</p>
+    {{-- Data export --}}
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.export_heading') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.export_hint') }}</p>
+        <x-button :href="route('account.export')" icon="arrow-down-tray" class="mt-3">{{ __('account.export_button') }}</x-button>
+    </div>
 
-            <template x-if="!active">
-                <button type="button" x-on:click="start()" class="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <x-icon name="qr-code" class="h-4 w-4" />{{ __('account.devices_connect') }}
-                </button>
-            </template>
-
-            <template x-if="active">
-                <div class="mt-3">
-                    <div x-show="status==='pending_scan' || status==='pending_approval'" class="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-                        <img :src="qr" alt="" class="h-40 w-40 rounded-md border border-gray-200 dark:border-gray-700 bg-white p-1">
-                        <div class="text-sm">
-                            <p x-show="status==='pending_scan'" class="text-gray-600 dark:text-gray-400">{{ __('account.devices_scan_hint') }}</p>
-                            <div x-show="status==='pending_approval'">
-                                <p class="text-gray-900 dark:text-gray-100">{{ __('account.devices_approve_q') }} „<span x-text="deviceName" class="font-medium"></span>"?</p>
-                                <div class="mt-2 flex gap-2">
-                                    <button type="button" x-on:click="approve()" class="min-h-11 rounded-md bg-gray-900 dark:bg-gray-100 px-3 text-sm font-medium text-white dark:text-gray-900">{{ __('account.devices_allow') }}</button>
-                                    <button type="button" x-on:click="reject()" class="min-h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_deny') }}</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <p x-show="status==='approved' || status==='consumed'" class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ __('account.devices_connected') }}</p>
-                    <p x-show="status==='rejected'" class="text-sm text-gray-600 dark:text-gray-400">{{ __('account.devices_rejected') }}</p>
-                    <p x-show="status==='expired'" class="text-sm text-gray-600 dark:text-gray-400">{{ __('account.devices_expired') }}</p>
-                    <button type="button" x-on:click="reset()" x-show="['approved','consumed','rejected','expired'].includes(status)" class="mt-2 text-xs text-gray-500 underline">{{ __('account.devices_again') }}</button>
-                </div>
-            </template>
-        </div>
-
-        {{-- Export --}}
-        <div class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
-            <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.export_heading') }}</h3>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('account.export_hint') }}</p>
-            <x-button :href="route('account.export')" icon="arrow-down-tray" class="mt-3">{{ __('account.export_button') }}</x-button>
-        </div>
-
-        {{-- Delete account --}}
-        <div class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
-            <h3 class="text-sm font-medium text-red-700 dark:text-red-300">{{ __('account.delete_heading') }}</h3>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('account.delete_hint') }}</p>
-            <x-button variant="danger" icon="trash" class="mt-3" @click="del = true">{{ __('account.delete_button') }}</x-button>
-        </div>
+    {{-- Danger zone: delete account --}}
+    <div class="mt-6 rounded-lg border border-red-200 dark:border-red-900/50 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="{ del: false }">
+        <h2 class="text-base font-semibold text-red-700 dark:text-red-300">{{ __('account.delete_heading') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.delete_hint') }}</p>
+        <x-button variant="danger" icon="trash" class="mt-3" @click="del = true">{{ __('account.delete_button') }}</x-button>
 
         {{-- Delete confirmation modal --}}
         <div x-show="del" x-cloak class="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto p-4"

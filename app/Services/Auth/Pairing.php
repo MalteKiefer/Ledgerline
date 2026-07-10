@@ -84,8 +84,17 @@ class Pairing
             return ['status' => 'pending'];
         }
 
-        // APPROVED → mint once, then the pairing is spent.
-        $token = $pairing->user->createToken($pairing->device_name ?? 'device');
+        // APPROVED → enforce the device cap (revoke the oldest tokens so this new
+        // one keeps the user at the configured maximum), then mint once.
+        $user = $pairing->user;
+        $max = max(1, (int) config('devices.max', 3));
+        $existing = $user->tokens()->orderBy('id')->pluck('id');
+        $overflow = $existing->count() - ($max - 1);
+        if ($overflow > 0) {
+            $user->tokens()->whereIn('id', $existing->take($overflow))->delete();
+        }
+
+        $token = $user->createToken($pairing->device_name ?? 'device');
         $pairing->update(['status' => DevicePairing::CONSUMED, 'token_id' => $token->accessToken->getKey()]);
 
         return ['status' => 'approved', 'token' => $token->plainTextToken, 'user' => $pairing->user];
