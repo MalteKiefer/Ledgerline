@@ -160,7 +160,7 @@
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in group.photos" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
-                       :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-init="thumbFor(p)">
+                       :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)">
                     <button type="button" @click="openViewer(p)" class="block h-full w-full">
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       <div x-show="!thumbs[p.id]" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
@@ -194,7 +194,7 @@
           <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
             <template x-for="p in trashedPhotos" :key="p.id">
               <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
-                   :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-init="thumbFor(p)">
+                   :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)">
                 <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover opacity-70">
                 <div x-show="!thumbs[p.id]" class="h-full w-full bg-gray-200 dark:bg-gray-700"></div>
                 <label class="absolute left-2 top-2 z-10 cursor-pointer" @click.stop>
@@ -260,7 +260,7 @@
               <template x-if="! albumCount(currentAlbum)"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.album_empty') }}</p></template>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in albumPhotos(currentAlbum)" :key="p.id">
-                  <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-init="thumbFor(p)">
+                  <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-intersect.once="thumbFor(p)">
                     <button type="button" @click="openViewer(p)" class="block h-full w-full">
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
@@ -338,7 +338,7 @@
               </div>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in personPhotos(currentPerson)" :key="p.id">
-                  <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-init="thumbFor(p)">
+                  <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-intersect.once="thumbFor(p)">
                     <button type="button" @click="openViewer(p)" class="block h-full w-full">
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
@@ -403,7 +403,7 @@
                   <template x-for="(p, pi) in group" :key="p.id">
                     <div class="group relative aspect-square cursor-pointer overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800 ring-2 transition"
                          :class="isDupMarked(p.id) ? 'ring-red-500' : (pi === 0 ? 'ring-emerald-400' : 'ring-transparent')"
-                         x-init="thumbFor(p)" @click="toggleDupMark(p.id)">
+                         x-intersect.once="thumbFor(p)" @click="toggleDupMark(p.id)">
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover" :class="isDupMarked(p.id) ? 'opacity-60' : ''">
                       <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
                       {{-- Selection checkmark --}}
