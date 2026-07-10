@@ -114,25 +114,21 @@
             </template>
         </div>
 
-        {{-- Paired devices --}}
+        {{-- Paired devices (live: loaded + refreshed by the devicePairing component) --}}
         <div class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
             <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_list_heading') }}</h3>
-            <ul class="mt-3 divide-y divide-gray-100 dark:divide-gray-800">
-                @forelse ($devices as $d)
+            <ul class="mt-3 divide-y divide-gray-100 dark:divide-gray-800" x-show="devices.length">
+                <template x-for="d in devices" :key="d.id">
                     <li class="flex items-center justify-between gap-3 py-2">
                         <div class="min-w-0">
-                            <p class="truncate text-sm text-gray-900 dark:text-gray-100">{{ $d['name'] ?: __('account.sessions_unknown') }}</p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ $d['last_used'] ? __('account.devices_last_used', ['when' => $d['last_used']->diffForHumans()]) : __('account.devices_never_used') }}</p>
+                            <p class="truncate text-sm text-gray-900 dark:text-gray-100" x-text="d.name"></p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400" x-text="d.meta"></p>
                         </div>
-                        <form method="POST" action="{{ route('devices.revoke', $d['id']) }}" class="shrink-0">
-                            @csrf @method('DELETE')
-                            <button type="submit" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('account.devices_revoke') }}</button>
-                        </form>
+                        <button type="button" x-on:click="revokeDevice(d.id)" class="inline-flex min-h-11 shrink-0 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('account.devices_revoke') }}</button>
                     </li>
-                @empty
-                    <li class="py-2 text-sm text-gray-500 dark:text-gray-400">{{ __('account.devices_none') }}</li>
-                @endforelse
+                </template>
             </ul>
+            <p x-show="!devices.length" class="py-2 text-sm text-gray-500 dark:text-gray-400">{{ __('account.devices_none') }}</p>
         </div>
     </div>
 

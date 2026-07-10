@@ -9,6 +9,7 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\VaultController;
+use App\Http\Middleware\UpdateTokenIp;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -25,7 +26,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/auth/pair', [AuthController::class, 'collect'])->name('api.auth.collect');
     });
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    Route::middleware(['auth:sanctum', UpdateTokenIp::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
 

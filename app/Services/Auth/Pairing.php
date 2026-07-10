@@ -71,7 +71,7 @@ class Pairing
      * App polls with the code. Returns ['status' => 'pending'] until approved, then
      * mints + returns the Sanctum token EXACTLY ONCE and consumes the pairing.
      */
-    public function collect(string $code): array
+    public function collect(string $code, ?string $ip = null): array
     {
         $pairing = DevicePairing::query()->where('code_hash', $this->hash($code))->first();
         abort_if(
@@ -95,6 +95,10 @@ class Pairing
         }
 
         $token = $user->createToken($pairing->device_name ?? 'device');
+        // Record the paired device's IP for the web "Connected devices" list.
+        if ($ip !== null) {
+            $token->accessToken->forceFill(['ip' => $ip])->save();
+        }
         $pairing->update(['status' => DevicePairing::CONSUMED, 'token_id' => $token->accessToken->getKey()]);
 
         return ['status' => 'approved', 'token' => $token->plainTextToken, 'user' => $pairing->user];

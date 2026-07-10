@@ -589,7 +589,20 @@ Alpine.data('downloadsPage', (labels = {}) => ({
  * exchanges the code for a bearer once approved — no token ever touches this UI.
  */
 Alpine.data('devicePairing', () => ({
-    active: false, qr: '', id: null, status: '', deviceName: '', expiresAt: 0, remaining: 0, _timer: null, _tick: null,
+    active: false, qr: '', id: null, status: '', deviceName: '', expiresAt: 0, remaining: 0, devices: [], _timer: null, _tick: null,
+    init() { this.loadDevices(); },
+    async loadDevices() {
+        try {
+            const r = await fetch('/devices', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (r.ok) this.devices = (await r.json()).devices || [];
+        } catch (e) { /* keep current list */ }
+    },
+    async revokeDevice(id) {
+        try {
+            const r = await fetch(`/devices/${id}`, { method: 'DELETE', headers: jsonHeaders() });
+            if (r.ok) this.loadDevices();
+        } catch (e) { /* ignore */ }
+    },
     async start() {
         this._stopTimers();
         try {
@@ -607,10 +620,16 @@ Alpine.data('devicePairing', () => ({
     _poll() {
         clearTimeout(this._timer);
         this._timer = setTimeout(async () => {
-            if (! this.active || ['approved', 'consumed', 'rejected', 'expired'].includes(this.status)) return;
+            // Keep polling through 'approved' until the app actually collects its
+            // token (status becomes 'consumed'), so the device list refreshes live.
+            if (! this.active || ['consumed', 'rejected', 'expired'].includes(this.status)) return;
             try {
                 const r = await fetch(`/device-pairings/${this.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (r.ok) { const d = await r.json(); this.status = d.status; this.deviceName = d.device_name || ''; }
+                if (r.ok) {
+                    const d = await r.json();
+                    this.status = d.status; this.deviceName = d.device_name || '';
+                    if (this.status === 'consumed') this.loadDevices();
+                }
             } catch (e) { /* keep polling */ }
             this._poll();
         }, 2000);

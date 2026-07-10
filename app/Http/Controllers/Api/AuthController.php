@@ -39,7 +39,7 @@ class AuthController extends Controller
     {
         $data = $request->validate(['code' => ['required', 'string']]);
 
-        $result = $pairing->collect($data['code']);
+        $result = $pairing->collect($data['code'], $request->ip());
         if ($result['status'] !== 'approved') {
             return response()->json(['status' => 'pending']);
         }

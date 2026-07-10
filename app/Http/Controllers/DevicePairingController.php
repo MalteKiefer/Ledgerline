@@ -64,6 +64,25 @@ class DevicePairingController extends Controller
         return response()->json(['status' => $devicePairing->refresh()->status]);
     }
 
+    /** The caller's paired devices (Sanctum tokens), newest first — for the live list. */
+    public function devices(Request $request): JsonResponse
+    {
+        $devices = $request->user()->tokens()
+            ->orderByDesc('created_at')->get()
+            ->map(fn ($t): array => [
+                'id' => $t->id,
+                'name' => $t->name ?: __('account.sessions_unknown'),
+                'meta' => trim(implode(' · ', array_filter([
+                    $t->ip,
+                    $t->last_used_at
+                        ? __('account.devices_last_used', ['when' => $t->last_used_at->diffForHumans()])
+                        : __('account.devices_never_used'),
+                ]))),
+            ])->all();
+
+        return response()->json(['devices' => $devices]);
+    }
+
     /** Revoke a paired device (delete its Sanctum token). Owner-scoped. */
     public function revokeDevice(Request $request, string $tokenId): JsonResponse
     {
