@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\User;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -47,6 +50,11 @@ class AppServiceProvider extends ServiceProvider
         // Only members of the configured Pocket-ID admin group (if any) may
         // manage the non-personal, workspace-wide settings.
         Gate::define('manage-global-settings', fn (User $user): bool => $user->managesGlobalSettings());
+
+        // Hard, IP-keyed limit on the public QR-pairing exchange (the one-time
+        // code is the only credential there) — tight, since a legitimate user
+        // pairs a handful of devices by hand.
+        RateLimiter::for('auth-pair', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
 
         $this->applySettingOverrides();
 

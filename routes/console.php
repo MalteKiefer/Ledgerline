@@ -33,3 +33,6 @@ Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
 // Delete expired public note-share snapshots so their plaintext content does not
 // linger past its expiry (these anonymous rows can't be targeted at erasure).
 Schedule::command('shares:prune')->daily()->withoutOverlapping();
+
+// Drop expired/consumed QR device-pairing rows (short-lived, single-use).
+Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();

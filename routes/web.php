@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
@@ -52,6 +53,13 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('account.sessions.revoke');
     Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
     Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->middleware('throttle:6,1')->name('profile.avatar.refresh');
+
+    // QR device pairing: the signed-in owner authorises a new mobile device by
+    // approving the code it scanned from the profile page (see routes/api.php).
+    Route::post('/device-pairings', [DevicePairingController::class, 'store'])->middleware('throttle:20,1')->name('device-pairings.store');
+    Route::get('/device-pairings/{devicePairing}', [DevicePairingController::class, 'show'])->middleware('throttle:120,1')->name('device-pairings.show');
+    Route::post('/device-pairings/{devicePairing}/approve', [DevicePairingController::class, 'approve'])->name('device-pairings.approve');
+    Route::post('/device-pairings/{devicePairing}/reject', [DevicePairingController::class, 'reject'])->name('device-pairings.reject');
 
     // Local in-app notifications (bell menu).
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');

@@ -584,6 +584,44 @@ Alpine.data('downloadsPage', (labels = {}) => ({
 }));
 
 /**
+ * QR device pairing (profile page). Starts a pairing, shows the QR, polls its
+ * state, and lets the owner approve/reject the device that scanned it. The app
+ * exchanges the code for a bearer once approved — no token ever touches this UI.
+ */
+Alpine.data('devicePairing', () => ({
+    active: false, qr: '', id: null, status: '', deviceName: '', _timer: null,
+    async start() {
+        try {
+            const r = await fetch('/device-pairings', { method: 'POST', headers: jsonHeaders() });
+            if (! r.ok) return;
+            const d = await r.json();
+            this.id = d.id; this.qr = d.qr; this.status = 'pending_scan'; this.active = true;
+            this._poll();
+        } catch (e) { /* ignore */ }
+    },
+    _poll() {
+        clearTimeout(this._timer);
+        this._timer = setTimeout(async () => {
+            if (! this.active || ['approved', 'consumed', 'rejected', 'expired'].includes(this.status)) return;
+            try {
+                const r = await fetch(`/device-pairings/${this.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (r.ok) { const d = await r.json(); this.status = d.status; this.deviceName = d.device_name || ''; }
+            } catch (e) { /* keep polling */ }
+            this._poll();
+        }, 2000);
+    },
+    approve() { return this._act('approve'); },
+    reject() { return this._act('reject'); },
+    async _act(what) {
+        try {
+            const r = await fetch(`/device-pairings/${this.id}/${what}`, { method: 'POST', headers: jsonHeaders() });
+            if (r.ok) { const d = await r.json(); this.status = d.status; }
+        } catch (e) { /* ignore */ }
+    },
+    reset() { clearTimeout(this._timer); this.active = false; this.qr = ''; this.id = null; this.status = ''; this.deviceName = ''; },
+}));
+
+/**
  * Paperless settings page: connection test and on-demand cache refresh, both
  * over AJAX so the page needn't reload.
  */
