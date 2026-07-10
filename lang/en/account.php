@@ -13,6 +13,18 @@ return [
     'sessions_none' => 'No other active sessions.',
     'sessions_unknown' => 'Unknown device',
 
+    'devices_heading' => 'Mobile app',
+    'devices_hint' => 'Connect the Ledgerline app by scanning a QR code. Approve each device here before it can sign in.',
+    'devices_connect' => 'Connect a device',
+    'devices_scan_hint' => 'Scan this code with the Ledgerline app.',
+    'devices_approve_q' => 'Connect the device',
+    'devices_allow' => 'Allow',
+    'devices_deny' => 'Deny',
+    'devices_connected' => 'Device connected.',
+    'devices_rejected' => 'Device rejected.',
+    'devices_expired' => 'Code expired.',
+    'devices_again' => 'Connect another device',
+
     'export_heading' => 'Export my data',
     'export_hint' => 'Download a copy of your data (one JSON file per module).',
     'export_button' => 'Download my data',

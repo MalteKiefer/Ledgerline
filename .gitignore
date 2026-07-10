@@ -30,3 +30,8 @@ Thumbs.db
 
 # Stray screenshots dropped in the project root
 /screen*.png
+
+# Visual brainstorm companion (ephemeral)
+.superpowers/
+# Brainstorm specs/audits (project keeps only README/CLAUDE in git)
+docs/superpowers/

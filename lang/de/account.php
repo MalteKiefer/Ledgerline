@@ -13,6 +13,18 @@ return [
     'sessions_none' => 'Keine weiteren aktiven Sitzungen.',
     'sessions_unknown' => 'Unbekanntes Gerät',
 
+    'devices_heading' => 'Mobile App',
+    'devices_hint' => 'Verbinde die Ledgerline-App per QR-Code. Jedes Gerät muss hier bestätigt werden, bevor es sich anmelden kann.',
+    'devices_connect' => 'Gerät verbinden',
+    'devices_scan_hint' => 'Scanne diesen Code mit der Ledgerline-App.',
+    'devices_approve_q' => 'Gerät verbinden:',
+    'devices_allow' => 'Erlauben',
+    'devices_deny' => 'Ablehnen',
+    'devices_connected' => 'Gerät verbunden.',
+    'devices_rejected' => 'Gerät abgelehnt.',
+    'devices_expired' => 'Code abgelaufen.',
+    'devices_again' => 'Weiteres Gerät verbinden',
+
     'export_heading' => 'Meine Daten exportieren',
     'export_hint' => 'Lade eine Kopie deiner Daten herunter (eine JSON-Datei pro Modul).',
     'export_button' => 'Meine Daten herunterladen',
