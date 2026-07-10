@@ -1507,68 +1507,27 @@ return {
                 if (! m || ! Array.isArray(m.faces)) continue;
                 m.faces.forEach((f, idx) => {
                     if (Array.isArray(f.embedding) && f.cropRef) {
-                        faces.push({ photoId: p.id, idx, cropRef: f.cropRef, cropKey: f.cropKey, emb: f.embedding });
+                        faces.push({ emb: f.embedding, meta: { photoId: p.id, idx, cropRef: f.cropRef, cropKey: f.cropKey } });
                     }
                 });
             }
-            // Seed clusters. A scoped (incremental) scan seeds from the existing
-            // people so new faces merge into them instead of wiping the older
-            // clusters; a full scan starts empty and rebuilds everything.
-            const clusters = [];
-            const placed = new Set(); // photoId:idx already assigned
-            if (incremental) {
-                for (const pp of (this.index.people || [])) {
-                    if (! Array.isArray(pp.centroid) || ! pp.centroid.length) continue;
-                    const members = (pp.faces || []).map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey }));
-                    clusters.push({ id: pp.id, name: pp.name || '', hidden: ! ! pp.hidden, centroid: pp.centroid.slice(), count: members.length, members });
-                    for (const f of (pp.faces || [])) placed.add(f.photoId + ':' + f.idx);
-                }
-            }
-            // Greedy single-link clustering. buffalo_l embeddings put same-person
-            // pairs well above 0.5 cosine. Yield periodically so a large face set
-            // keeps the tab responsive and advances the progress bar.
-            let fi = 0;
-            for (const face of faces) {
-                if ((++fi & 127) === 0) { this.peopleProgress = { done: fi, total: faces.length }; await new Promise((r) => setTimeout(r)); }
-                const key = face.photoId + ':' + face.idx;
-                if (placed.has(key)) continue;
-                placed.add(key);
-                let best = null, bestSim = 0.5;
-                for (const c of clusters) {
-                    const s = this.cosine(face.emb, c.centroid);
-                    if (s > bestSim) { bestSim = s; best = c; }
-                }
-                const member = { photoId: face.photoId, idx: face.idx, cropRef: face.cropRef, cropKey: face.cropKey };
-                if (best) {
-                    // Running-mean centroid update (no need to keep every embedding).
-                    const n = best.count || best.members.length;
-                    for (let i = 0; i < best.centroid.length; i++) best.centroid[i] = (best.centroid[i] * n + face.emb[i]) / (n + 1);
-                    best.count = n + 1;
-                    best.members.push(member);
-                } else {
-                    clusters.push({ id: null, name: '', hidden: false, centroid: face.emb.slice(), count: 1, members: [member] });
-                }
-            }
-            // Keep clusters of 2+ faces. A full scan carries over names by matching
-            // the previous scan's centroids so renames survive re-clustering.
-            const prev = incremental ? [] : (this.index.people || []);
-            const built = clusters.filter((c) => c.members.length >= 2)
-                .sort((a, b) => b.members.length - a.members.length)
-                .map((c) => {
-                    let name = c.name || '', hidden = ! ! c.hidden;
-                    if (! incremental) {
-                        let bestSim = 0.6, match = null;
-                        for (const pp of prev) {
-                            if (! pp.centroid) continue;
-                            const s = this.cosine(c.centroid, pp.centroid);
-                            if (s > bestSim) { bestSim = s; match = pp; }
-                        }
-                        if (match) { name = match.name || ''; hidden = ! ! match.hidden; }
-                    }
-                    return { id: c.id || window.LLGalleryStore.newId(), name, hidden, centroid: c.centroid, faces: c.members };
-                });
+            // A scoped (incremental) scan seeds from the existing people so new
+            // faces merge into them; a full scan starts empty and carries names
+            // over by matching the previous scan's centroids.
+            const seeds = incremental
+                ? (this.index.people || [])
+                    .filter((pp) => Array.isArray(pp.centroid) && pp.centroid.length)
+                    .map((pp) => ({ id: pp.id, name: pp.name || '', hidden: ! ! pp.hidden, centroid: pp.centroid, members: (pp.faces || []).map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey })) }))
+                : [];
+            const prev = incremental ? [] : (this.index.people || []).filter((pp) => pp.centroid).map((pp) => ({ name: pp.name || '', hidden: ! ! pp.hidden, centroid: pp.centroid }));
+
+            // Cluster off the main thread (falls back to an inline pass). New
+            // clusters come back with id=null; assign store ids here.
+            let built = await this._computeFaceClusters({ faces, seeds, prev, incremental });
+            built = built.map((b) => (b.id ? b : { ...b, id: window.LLGalleryStore.newId() }));
+
             // Incremental: preserve any existing person that couldn't be seeded
-            // (e.g. legacy entry without a stored centroid) so it isn't dropped.
+            // (e.g. a legacy entry without a stored centroid) so it isn't dropped.
             if (incremental) {
                 const builtIds = new Set(built.map((b) => b.id));
                 for (const pp of (this.index.people || [])) {
@@ -1580,6 +1539,62 @@ return {
         } finally {
             this.peopleScanning = false;
         }
+    },
+    // Resolve face clusters via the Web Worker, with a main-thread fallback.
+    _computeFaceClusters(data) {
+        return new Promise((resolve) => {
+            let worker;
+            try {
+                worker = new Worker(new URL('./scan.worker.js', import.meta.url), { type: 'module' });
+            } catch (e) {
+                resolve(this._faceClustersInline(data));
+                return;
+            }
+            worker.onmessage = (e) => {
+                if (e.data.progress != null) { this.peopleProgress = { done: e.data.progress, total: e.data.total }; return; }
+                worker.terminate();
+                if (e.data.error) { this._faceClustersInline(data).then(resolve); return; }
+                resolve(e.data.built || []);
+            };
+            worker.onerror = () => { worker.terminate(); this._faceClustersInline(data).then(resolve); };
+            worker.postMessage({ type: 'faces', ...data });
+        });
+    },
+    async _faceClustersInline({ faces, seeds, prev, incremental }) {
+        const clusters = [];
+        const placed = new Set();
+        for (const s of seeds) {
+            clusters.push({ id: s.id, name: s.name || '', hidden: ! ! s.hidden, centroid: s.centroid.slice(), count: s.members.length, members: s.members });
+            for (const m of s.members) placed.add(m.photoId + ':' + m.idx);
+        }
+        let fi = 0;
+        for (const face of faces) {
+            if ((++fi & 127) === 0) { this.peopleProgress = { done: fi, total: faces.length }; await new Promise((r) => setTimeout(r)); }
+            const key = face.meta.photoId + ':' + face.meta.idx;
+            if (placed.has(key)) continue;
+            placed.add(key);
+            let best = null, bestSim = 0.5;
+            for (const c of clusters) { const s = this.cosine(face.emb, c.centroid); if (s > bestSim) { bestSim = s; best = c; } }
+            if (best) {
+                const n = best.count || best.members.length;
+                for (let i = 0; i < best.centroid.length; i++) best.centroid[i] = (best.centroid[i] * n + face.emb[i]) / (n + 1);
+                best.count = n + 1;
+                best.members.push(face.meta);
+            } else {
+                clusters.push({ id: null, name: '', hidden: false, centroid: face.emb.slice(), count: 1, members: [face.meta] });
+            }
+        }
+        return clusters.filter((c) => c.members.length >= 2)
+            .sort((a, b) => b.members.length - a.members.length)
+            .map((c) => {
+                let name = c.name || '', hidden = ! ! c.hidden;
+                if (! incremental) {
+                    let bestSim = 0.6, match = null;
+                    for (const pp of prev) { if (! pp.centroid) continue; const s = this.cosine(c.centroid, pp.centroid); if (s > bestSim) { bestSim = s; match = pp; } }
+                    if (match) { name = match.name || ''; hidden = ! ! match.hidden; }
+                }
+                return { id: c.id, name, hidden, centroid: c.centroid, faces: c.members };
+            });
     },
     async renamePerson(pp) {
         const raw = await this.$store.confirm.prompt('', { value: pp.name || '', placeholder: labels.personName || '', ok: labels.save || '' });
