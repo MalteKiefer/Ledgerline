@@ -389,106 +389,6 @@ async function loadCodeMirror() {
 }
 
 /**
- * Spotlight-style global search palette. Opens a centred modal, searches live
- * as the user types (debounced), and supports keyboard navigation. Results come
- * from the JSON suggest endpoint; the URLs are app routes.
- */
-Alpine.data('spotlight', () => ({
-    open: false,
-    query: '',
-    groups: [],
-    flat: [],
-    activeIndex: -1,
-    loading: false,
-    controller: null,
-
-    openPalette() {
-        this.open = true;
-        this.$nextTick(() => this.$refs.input && this.$refs.input.focus());
-    },
-
-    close() {
-        this.open = false;
-        this.query = '';
-        this.groups = [];
-        this.flat = [];
-        this.activeIndex = -1;
-    },
-
-    async runSearch() {
-        const term = this.query.trim();
-
-        if (term === '') {
-            this.groups = [];
-            this.flat = [];
-            this.activeIndex = -1;
-
-            return;
-        }
-
-        this.loading = true;
-
-        try {
-            if (this.controller) {
-                this.controller.abort();
-            }
-
-            this.controller = new AbortController();
-
-            const response = await fetch(
-                '/search/suggest?q=' + encodeURIComponent(term),
-                { headers: { Accept: 'application/json' }, signal: this.controller.signal },
-            );
-
-            if (!response.ok) {
-                this.groups = [];
-                this.flat = [];
-
-                return;
-            }
-
-            const data = await response.json();
-            this.groups = data.groups || [];
-            // Notes, to-dos and bookmarks are plain rows now — all served by
-            // the server suggest endpoint.
-            this.flat = this.groups.flatMap((group) => group.results);
-            this.activeIndex = this.flat.length ? 0 : -1;
-        } catch (error) {
-            // Aborted or network error: leave the previous results in place.
-        } finally {
-            this.loading = false;
-        }
-    },
-
-    move(delta) {
-        if (!this.flat.length) {
-            return;
-        }
-
-        this.activeIndex = (this.activeIndex + delta + this.flat.length) % this.flat.length;
-    },
-
-    isActive(item) {
-        return this.activeIndex >= 0 && this.flat[this.activeIndex] && this.flat[this.activeIndex].url === item.url;
-    },
-
-    go() {
-        const item = this.flat[this.activeIndex];
-
-        if (item) {
-            window.location.href = item.url;
-        } else if (this.query.trim() !== '') {
-            this.seeAll();
-        }
-    },
-
-    seeAll() {
-        window.location.href = '/search?q=' + encodeURIComponent(this.query.trim());
-    },
-}));
-
-/**
-/**
  * Live backup run list: loads recent runs as JSON, refreshes after "back up
  * now" (no page reload) and polls while any run is still running. Each finished
  * run can be expanded to its log or downloaded.
@@ -3393,8 +3293,8 @@ window.Alpine = Alpine;
  * Shared lifecycle for the zero-knowledge manifest modules (notes, bookmarks,
  * to-dos). They all point local arrays at window.LLStore.data.* once the vault
  * is unlocked, mutate them in place, and schedule a debounced sealed save; on
- * lock they clear those arrays and reset the store. Mirrors the shareMixin(cfg)
- * pattern: each component spreads this and supplies its module-specific bits.
+ * lock they clear those arrays and reset the store. Each component spreads
+ * this and supplies its module-specific bits.
  *
  * cfg.map: { <LLStore.data key>: '<component property>' } — the collections to
  *          wire (e.g. { todos: 'tasks', todoLists: 'lists' }).

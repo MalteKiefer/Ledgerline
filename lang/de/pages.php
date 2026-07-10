@@ -3,12 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'spotlight' => [
-        'search_button_label' => 'Suchen (⌘K)',
-        'placeholder' => 'Kunden, Kontakte, Filialen, Projekte durchsuchen…',
-        'no_results' => 'Keine Ergebnisse.',
-        'see_all_results' => 'Alle Ergebnisse anzeigen',
-    ],
     'menu' => [
         'toggle_menu' => 'Menü umschalten',
     ],
@@ -45,12 +39,5 @@ return [
         'avatar_none' => 'Keiner',
         'refresh_avatar' => 'Avatar aktualisieren',
         'account_created' => 'Konto erstellt',
-    ],
-    'search' => [
-        'title' => 'Suche',
-        'heading' => 'Suche',
-        'placeholder' => 'Kunden, Kontakte, Filialen, Projekte durchsuchen…',
-        'prompt' => 'Geben Sie oben einen Begriff ein, um alles zu durchsuchen.',
-        'no_results' => 'Keine Ergebnisse für „:term".',
     ],
 ];

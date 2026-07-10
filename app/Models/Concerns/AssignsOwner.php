@@ -10,8 +10,7 @@ use Illuminate\Support\Facades\Auth;
 /**
  * Shared foundation for the per-user ownership traits: names the owning-user
  * column and stamps it on new rows from the authenticated user. OwnsUserData
- * and SharesWithUsers each build their own read scope on top of this; a model
- * uses exactly one of them, so this trait is pulled in once.
+ * builds its read scope on top of this; the trait is pulled in once per model.
  */
 trait AssignsOwner
 {

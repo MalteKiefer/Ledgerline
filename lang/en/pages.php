@@ -3,12 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'spotlight' => [
-        'search_button_label' => 'Search (⌘K)',
-        'placeholder' => 'Search customers, contacts, branches, projects…',
-        'no_results' => 'No results.',
-        'see_all_results' => 'See all results',
-    ],
     'menu' => [
         'toggle_menu' => 'Toggle menu',
     ],
@@ -45,12 +39,5 @@ return [
         'avatar_none' => 'None',
         'refresh_avatar' => 'Refresh avatar',
         'account_created' => 'Account created',
-    ],
-    'search' => [
-        'title' => 'Search',
-        'heading' => 'Search',
-        'placeholder' => 'Search customers, contacts, branches, projects…',
-        'prompt' => 'Type a term above to search across everything.',
-        'no_results' => 'No results for ":term".',
     ],
 ];
