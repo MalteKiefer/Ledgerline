@@ -952,6 +952,7 @@ return {
         if (! pending().length) return;
         this._backlogRunning = true;
         this.progress = { active: true, done: 0, total: pending().length };
+        let sinceFlush = 0;
         try {
             for (;;) {
                 const p = pending()[0];
@@ -963,9 +964,15 @@ return {
                 }
                 this.progress.done++;
                 this._save();
-                await window.LLGalleryStore.flush(); // persist each step so a refresh resumes
+                // Persist in batches rather than re-sealing + PUTting the whole
+                // manifest after every single photo (which hammered the store-save
+                // rate limit on a large import). A crash only re-processes the few
+                // since the last flush — pending() already makes that idempotent.
+                if (++sinceFlush >= 8) { sinceFlush = 0; await window.LLGalleryStore.flush(); }
             }
         } finally {
+            // Flush the tail so the last (< 8) photos are persisted immediately.
+            try { await window.LLGalleryStore.flush(); } catch (e) { /* debounce backstop */ }
             this._backlogRunning = false;
             this.progress.active = false;
             this.refreshUsage();
