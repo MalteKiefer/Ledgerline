@@ -64,6 +64,14 @@ class DevicePairingController extends Controller
         return response()->json(['status' => $devicePairing->refresh()->status]);
     }
 
+    /** Revoke a paired device (delete its Sanctum token). Owner-scoped. */
+    public function revokeDevice(Request $request, string $tokenId): JsonResponse
+    {
+        $request->user()->tokens()->whereKey($tokenId)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
     /** A pairing belongs to exactly one user; anyone else gets a 404 (not a 403 — no existence leak). */
     private function authorizeOwner(Request $request, DevicePairing $devicePairing): void
     {

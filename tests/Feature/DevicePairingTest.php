@@ -146,6 +146,46 @@ class DevicePairingTest extends TestCase
         $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$token])->assertStatus(401);
     }
 
+    public function test_pairing_enforces_the_device_cap(): void
+    {
+        config(['devices.max' => 2]);
+        $user = User::factory()->create();
+        $user->createToken('Old phone');
+        $user->createToken('Tablet');
+
+        // Pair a third device.
+        [$pairing, $code] = $this->pending($user);
+        $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'New phone']);
+        app(Pairing::class)->approve($pairing->fresh());
+        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertOk()->assertJson(['status' => 'approved']);
+
+        // Still at the cap, and the oldest ("Old phone") was evicted.
+        $names = $user->tokens()->pluck('name');
+        $this->assertCount(2, $names);
+        $this->assertFalse($names->contains('Old phone'));
+        $this->assertTrue($names->contains('New phone'));
+    }
+
+    public function test_a_paired_device_can_be_revoked_from_the_web(): void
+    {
+        $user = User::factory()->create();
+        $id = $user->createToken('Phone')->accessToken->getKey();
+
+        $this->actingAs($user)->deleteJson("/devices/{$id}")->assertOk();
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_a_device_revoke_is_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $id = $owner->createToken('Phone')->accessToken->getKey();
+
+        $this->actingAs($other)->deleteJson("/devices/{$id}")->assertOk();
+        // Not the caller's token — it survives.
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
     public function test_prune_drops_expired_and_consumed(): void
     {
         $user = User::factory()->create();

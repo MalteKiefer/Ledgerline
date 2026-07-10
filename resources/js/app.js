@@ -589,16 +589,21 @@ Alpine.data('downloadsPage', (labels = {}) => ({
  * exchanges the code for a bearer once approved — no token ever touches this UI.
  */
 Alpine.data('devicePairing', () => ({
-    active: false, qr: '', id: null, status: '', deviceName: '', _timer: null,
+    active: false, qr: '', id: null, status: '', deviceName: '', expiresAt: 0, remaining: 0, _timer: null, _tick: null,
     async start() {
+        this._stopTimers();
         try {
             const r = await fetch('/device-pairings', { method: 'POST', headers: jsonHeaders() });
             if (! r.ok) return;
             const d = await r.json();
             this.id = d.id; this.qr = d.qr; this.status = 'pending_scan'; this.active = true;
+            this.expiresAt = Date.parse(d.expires_at) || 0;
+            this._countdown();
             this._poll();
         } catch (e) { /* ignore */ }
     },
+    // "Generate a new code" — start a fresh pairing (invalidates the old one).
+    regenerate() { return this.start(); },
     _poll() {
         clearTimeout(this._timer);
         this._timer = setTimeout(async () => {
@@ -610,15 +615,32 @@ Alpine.data('devicePairing', () => ({
             this._poll();
         }, 2000);
     },
+    _countdown() {
+        clearInterval(this._tick);
+        const step = () => {
+            this.remaining = Math.max(0, Math.round((this.expiresAt - Date.now()) / 1000));
+            if (this.remaining <= 0 && ['pending_scan', 'pending_approval'].includes(this.status)) {
+                this.status = 'expired';
+                clearInterval(this._tick);
+            }
+        };
+        step();
+        this._tick = setInterval(step, 1000);
+    },
+    get remainingText() {
+        const s = Math.max(0, this.remaining);
+        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    },
     approve() { return this._act('approve'); },
     reject() { return this._act('reject'); },
     async _act(what) {
         try {
             const r = await fetch(`/device-pairings/${this.id}/${what}`, { method: 'POST', headers: jsonHeaders() });
-            if (r.ok) { const d = await r.json(); this.status = d.status; }
+            if (r.ok) { const d = await r.json(); this.status = d.status; clearInterval(this._tick); }
         } catch (e) { /* ignore */ }
     },
-    reset() { clearTimeout(this._timer); this.active = false; this.qr = ''; this.id = null; this.status = ''; this.deviceName = ''; },
+    _stopTimers() { clearTimeout(this._timer); clearInterval(this._tick); },
+    reset() { this._stopTimers(); this.active = false; this.qr = ''; this.id = null; this.status = ''; this.deviceName = ''; this.remaining = 0; },
 }));
 
 /**

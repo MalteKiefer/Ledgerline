@@ -31,6 +31,21 @@ class ProfileController extends Controller
                 ])->all()
             : [];
 
-        return view('profile', ['user' => $request->user(), 'sessions' => $sessions]);
+        // Paired mobile devices (Sanctum tokens), newest first.
+        $devices = $request->user()->tokens()
+            ->orderByDesc('created_at')->get()
+            ->map(fn ($t): array => [
+                'id' => $t->id,
+                'name' => $t->name,
+                'last_used' => $t->last_used_at,
+                'created' => $t->created_at,
+            ])->all();
+
+        return view('profile', [
+            'user' => $request->user(),
+            'sessions' => $sessions,
+            'devices' => $devices,
+            'deviceMax' => (int) config('devices.max', 3),
+        ]);
     }
 }
