@@ -8,6 +8,7 @@ use App\Models\DevicePairing;
 use App\Models\User;
 use App\Services\Auth\Pairing;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 class DevicePairingTest extends TestCase
@@ -164,6 +165,23 @@ class DevicePairingTest extends TestCase
         $this->assertCount(2, $names);
         $this->assertFalse($names->contains('Old phone'));
         $this->assertTrue($names->contains('New phone'));
+    }
+
+    public function test_collect_records_the_device_ip_and_the_list_shows_it(): void
+    {
+        $user = User::factory()->create();
+        [$pairing, $code] = $this->pending($user);
+        $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'Pixel']);
+        app(Pairing::class)->approve($pairing->fresh());
+        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertOk();
+
+        $token = PersonalAccessToken::query()->first();
+        $this->assertNotNull($token->ip); // 127.0.0.1 in tests — recorded at collect
+
+        $this->app['auth']->forgetGuards();
+        $list = $this->actingAs($user)->getJson('/devices')->assertOk();
+        $this->assertSame('Pixel', $list->json('devices.0.name'));
+        $this->assertStringContainsString((string) $token->ip, $list->json('devices.0.meta'));
     }
 
     public function test_a_paired_device_can_be_revoked_from_the_web(): void
