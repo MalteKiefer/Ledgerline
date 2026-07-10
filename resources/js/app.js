@@ -1594,9 +1594,11 @@ return {
         this._freeBlobs(refs);
     },
     _freeBlobs(refs) {
-        for (const ref of [...new Set(refs.filter(Boolean))]) {
-            fetch(`${config.blobBase}/${ref}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } }).catch(() => {});
-        }
+        const uniq = [...new Set(refs.filter(Boolean))];
+        // Refresh once all the (paced, 429-retried) deletes have actually landed
+        // so usage reflects the reclaimed bytes, not the mid-flight state.
+        Promise.all(uniq.map((ref) => queueBlobDelete(`${config.blobBase}/${ref}`, config.token)))
+            .then(() => this.refreshUsage());
         this.refreshUsage();
     },
 
@@ -1744,6 +1746,46 @@ async function apiRequest(method, url, body) {
     const res = await fetch(url, { method, headers: jsonHeaders(), body: body ? JSON.stringify(body) : undefined });
     if (! res.ok) throw new Error('request failed');
     return res.json().catch(() => ({}));
+}
+
+// Bounded, rate-limit-aware content-blob deleter shared by the gallery + files
+// trash paths. Emptying a large trash frees hundreds of blobs; firing every
+// DELETE at once tripped the per-route throttle (429) and the errors were
+// swallowed, so the bytes were never reclaimed and usage never dropped. Funnel
+// deletes through a few lanes and back off + retry on 429 (honouring
+// Retry-After) so every owned blob is eventually freed. DELETE is idempotent,
+// so a retried/duplicated call is harmless.
+const _blobDelQueue = [];
+let _blobDelActive = 0;
+const BLOB_DEL_LANES = 4;
+const BLOB_DEL_MAX_TRIES = 10;
+function queueBlobDelete(url, token) {
+    return new Promise((resolve) => {
+        _blobDelQueue.push({ url, token, tries: 0, resolve });
+        _pumpBlobDeletes();
+    });
+}
+function _pumpBlobDeletes() {
+    while (_blobDelActive < BLOB_DEL_LANES && _blobDelQueue.length) {
+        _blobDelActive++;
+        _runBlobDelete(_blobDelQueue.shift());
+    }
+}
+async function _runBlobDelete(job) {
+    try {
+        const res = await fetch(job.url, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': job.token } });
+        if (res.status === 429 && job.tries < BLOB_DEL_MAX_TRIES) {
+            const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+            const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(500 * 2 ** job.tries, 15000);
+            job.tries++;
+            _blobDelActive--;
+            setTimeout(() => { _blobDelQueue.unshift(job); _pumpBlobDeletes(); }, wait);
+            return;
+        }
+    } catch (e) { /* network error — best effort */ }
+    _blobDelActive--;
+    job.resolve();
+    _pumpBlobDeletes();
 }
 
 function escapeHtml(text) {
@@ -2081,10 +2123,12 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // ownership; a still-referenced blob is never passed here.
     _freeBlobs(blobs) {
         const uniq = [...new Set((blobs || []).filter(Boolean))];
-        for (const blob of uniq) {
-            fetch(`${config.blobBase}/${blob}`, { method: 'DELETE', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token } }).catch(() => {});
-        }
-        if (uniq.length) this.refreshUsage();
+        if (! uniq.length) return;
+        // Paced + 429-retried so emptying a large trash reclaims every blob's
+        // bytes instead of tripping the rate limit and silently dropping them.
+        Promise.all(uniq.map((blob) => queueBlobDelete(`${config.blobBase}/${blob}`, config.token)))
+            .then(() => this.refreshUsage());
+        this.refreshUsage();
     },
 
     // Send the manifest's full live blob set so the server frees the rest of the
