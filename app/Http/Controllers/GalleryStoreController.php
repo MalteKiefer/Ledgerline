@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\SealedManifestStore;
 use App\Models\GalleryStore;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Opaque zero-knowledge gallery index store: the whole photo/album/people
@@ -16,56 +14,21 @@ use Illuminate\Support\Facades\DB;
  * or embeddings. The sealed blob is size-padded (see vault.js sealManifest), so
  * this store alone reveals no counts. (Residual structural metadata — photo
  * count, media type, face count — is inferable only from the separate content-
- * blob ledger, see GalleryBlobController.)
+ * blob ledger, see GalleryBlobController.) The show/save protocol is shared via
+ * SealedManifestStore.
  */
 class GalleryStoreController extends Controller
 {
-    /** Return the current user's sealed gallery index + version (empty on first use). */
-    public function show(Request $request): JsonResponse
-    {
-        $uid = $request->user()->id;
-        $row = GalleryStore::query()->where('user_id', $uid)->first();
+    use SealedManifestStore;
 
-        return response()->json([
-            'ciphertext' => $row?->ciphertext,
-            'version' => (int) ($row?->version ?? 0),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    protected function manifestModel(): string
+    {
+        return GalleryStore::class;
     }
 
-    /**
-     * Replace the sealed index. Optimistic concurrency: the client sends the
-     * version it based its edit on; a mismatch means another tab/device wrote in
-     * between (409) and the client must reload + re-apply.
-     */
-    public function save(Request $request): JsonResponse
+    /** Cap generously — this is the sealed index blob, not photo bytes (64 MiB). */
+    protected function manifestMaxBytes(): int
     {
-        $data = $request->validate([
-            // Opaque ciphertext — cap generously (index blob, not photo bytes).
-            'ciphertext' => ['required', 'string', 'max:67108864'],
-            'version' => ['required', 'integer', 'min:0'],
-        ]);
-
-        $uid = $request->user()->id;
-
-        $next = DB::transaction(function () use ($uid, $data): ?int {
-            $row = GalleryStore::query()->where('user_id', $uid)->lockForUpdate()->first();
-            $current = (int) ($row?->version ?? 0);
-            if ($current !== (int) $data['version']) {
-                return null;
-            }
-            $version = $current + 1;
-            GalleryStore::query()->updateOrCreate(
-                ['user_id' => $uid],
-                ['ciphertext' => $data['ciphertext'], 'version' => $version],
-            );
-
-            return $version;
-        });
-
-        if ($next === null) {
-            return response()->json(['error' => 'version_conflict'], 409);
-        }
-
-        return response()->json(['version' => $next]);
+        return 67108864;
     }
 }

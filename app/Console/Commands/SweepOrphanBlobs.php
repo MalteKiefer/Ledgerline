@@ -4,39 +4,49 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\FileBlob;
 use App\Support\BlobStore;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
- * Crash-safety sweep for the zero-knowledge file store. The client reclaims
- * blobs its (sealed) manifest no longer references via /files/blobs/reconcile;
+ * Crash-safety sweep for a zero-knowledge blob store. The client reclaims blobs
+ * its (sealed) manifest no longer references via the module's /blobs/reconcile;
  * this command handles the one case the client cannot: stored bytes on disk with
  * NO ledger row at all — e.g. bytes leaked by a crash between a committed delete
  * and the post-unlink, or an aborted multipart upload. Age-gated by lastModified
- * so an in-flight upload (whose FileBlob row may not exist yet) is never touched.
+ * so an in-flight upload (whose ledger row may not exist yet) is never touched.
  * The server cannot read the manifest, so it never removes a still-referenced
- * blob here — only bytes with no ownership record are swept. Scheduled daily.
+ * blob here — only bytes with no ownership record are swept.
+ *
+ * Concrete per-module commands (files:sweep-orphans, gallery:sweep-orphans) only
+ * supply the disk prefix and ownership-ledger model; the sweep body is shared.
  */
-class SweepOrphanBlobs extends Command
+abstract class SweepOrphanBlobs extends Command
 {
-    protected $signature = 'files:sweep-orphans';
+    /** Disk prefix the module stores its content blobs under (e.g. 'files'). */
+    abstract protected function prefix(): string;
 
-    protected $description = 'Reclaim stored file bytes on disk that have no ownership ledger row (leaked/aborted uploads)';
+    /** Fully-qualified ownership-ledger model (FileBlob / GalleryBlob). */
+    abstract protected function blobModel(): string;
+
+    /** Config namespace holding blob_orphan_grace_hours (e.g. 'files'). */
+    abstract protected function configNs(): string;
 
     public function handle(): int
     {
         $disk = BlobStore::disk();
-        $cutoff = Carbon::now()->subHours((int) config('files.blob_orphan_grace_hours', 24));
+        $cutoff = Carbon::now()->subHours((int) config($this->configNs().'.blob_orphan_grace_hours', 24));
 
         // Every blob with an ownership record is legitimately referenced (or a
         // fresh upload); only disk bytes with no record at all are candidates.
-        $known = FileBlob::query()->pluck('blob')->filter()->flip();
+        /** @var class-string<Model> $model */
+        $model = $this->blobModel();
+        $known = $model::query()->pluck('blob')->filter()->flip();
 
         $swept = 0;
-        foreach ($disk->files('files') as $path) {
+        foreach ($disk->files($this->prefix()) as $path) {
             $blob = basename($path);
             if (! Str::isUuid($blob) || isset($known[$blob])) {
                 continue;

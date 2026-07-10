@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Backup;
 
 use App\Models\BackupDestination;
+use App\Support\OutboundUrl;
 use Aws\S3\S3Client;
 use League\Flysystem\AwsS3V3\AwsS3V3Adapter;
 use League\Flysystem\Filesystem;
@@ -99,6 +100,7 @@ class BackupDestinationFactory
         ];
         // B2 (and other S3-compatible stores) need a custom endpoint + path-style.
         if (! empty($c['endpoint'])) {
+            $this->assertHostAllowed((string) (parse_url((string) $c['endpoint'], PHP_URL_HOST) ?: ''));
             $args['endpoint'] = $c['endpoint'];
             $args['use_path_style_endpoint'] = (bool) ($c['use_path_style'] ?? true);
         }
@@ -118,6 +120,8 @@ class BackupDestinationFactory
         // backup. Without a fingerprint the connection is trust-on-first-use.
         $fingerprint = trim((string) ($c['host_fingerprint'] ?? ''));
 
+        $this->assertHostAllowed((string) ($c['host'] ?? ''));
+
         return new SftpAdapter(
             new SftpConnectionProvider(
                 host: $c['host'] ?? '',
@@ -133,6 +137,8 @@ class BackupDestinationFactory
 
     private function webdav(array $c): WebDAVAdapter
     {
+        $this->assertHostAllowed((string) (parse_url((string) ($c['base_uri'] ?? ''), PHP_URL_HOST) ?: ''));
+
         $client = new WebDavClient([
             'baseUri' => $c['base_uri'] ?? '',
             'userName' => $c['username'] ?? '',
@@ -140,5 +146,18 @@ class BackupDestinationFactory
         ]);
 
         return new WebDAVAdapter($client, trim((string) ($c['path'] ?? ''), '/'));
+    }
+
+    /**
+     * Re-check the resolved destination host against the shared outbound allow
+     * logic immediately before connecting, so a DNS-rebind between validation
+     * and connect (or a config that bypassed validation) cannot reach a
+     * link-local / cloud-metadata address. Fails closed.
+     */
+    private function assertHostAllowed(string $host): void
+    {
+        if ($host !== '' && ! OutboundUrl::hostAllowed($host)) {
+            throw new RuntimeException('Refusing to connect to an unsafe backup host.');
+        }
     }
 }

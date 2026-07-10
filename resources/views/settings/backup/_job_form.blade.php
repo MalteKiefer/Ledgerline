@@ -5,8 +5,8 @@
 <form method="POST" action="{{ $action }}"
     x-data="{
         encrypt: {{ old('encrypt', $j->encrypt ?? false) ? 'true' : 'false' }},
-        source: '{{ old('source', $j->source ?? 'database') }}',
-        mode: '{{ old('mode', $j->mode ?? 'mirror') }}',
+        source: @js(old('source', $j->source ?? 'database')),
+        mode: @js(old('mode', $j->mode ?? 'mirror')),
         get canChooseMode() { return this.source === 'files' || this.source === 'gallery'; },
         get isArchive() { return this.source === 'database' || (this.canChooseMode && this.mode === 'archive'); },
     }" class="space-y-3">
