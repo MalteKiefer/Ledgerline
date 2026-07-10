@@ -84,6 +84,9 @@ final class SecurityHeaders
             // stream from the signed S3/object-storage URL (mirrors img-src).
             "media-src 'self' blob: https:",
             "connect-src 'self'",
+            // The gallery's duplicate scan runs its O(n^2) comparison in a
+            // same-origin Web Worker (bundled by Vite); allow only 'self'.
+            "worker-src 'self'",
             // blob: so the in-app PDF viewer works: some browsers render an
             // <object>/<embed> PDF through an internal frame from a
             // client-generated blob: URL.
