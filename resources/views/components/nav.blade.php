@@ -70,8 +70,6 @@
 
     @auth
         <div class="flex items-center gap-3">
-            <x-spotlight-search />
-
             <div class="relative" x-data="notificationBell({ now: @js(__('common.now')) })" @click.outside="open = false">
                 <button type="button" @click="toggle()" class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800" :aria-label="'{{ __('notifications.title') }}'" title="{{ __('notifications.title') }}">
                     <x-icon name="bell" class="h-5 w-5" />

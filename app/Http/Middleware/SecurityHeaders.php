@@ -31,16 +31,9 @@ final class SecurityHeaders
     {
         $response = $next($request);
 
-        // Public share pages carry untrusted note content, so they get the
-        // strictest treatment (no-referrer, script-less CSP).
-        $isShare = $request->routeIs('shares.*') || $request->routeIs('public-share.album*');
-
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
-        $response->headers->set(
-            'Referrer-Policy',
-            $isShare ? 'no-referrer' : 'strict-origin-when-cross-origin'
-        );
+        $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         // Deny access to powerful browser features the app never uses.
         $response->headers->set(
             'Permissions-Policy',
@@ -56,7 +49,7 @@ final class SecurityHeaders
         if (! app()->environment('local')) {
             $response->headers->set(
                 'Content-Security-Policy',
-                implode('; ', $isShare ? $this->sharePolicy() : $this->appPolicy())
+                implode('; ', $this->appPolicy())
             );
         }
 
@@ -95,30 +88,6 @@ final class SecurityHeaders
             // <object>/<embed> PDF through an internal frame from a
             // client-generated blob: URL.
             "frame-src 'self' blob:",
-        ];
-    }
-
-    /**
-     * Hard, script-less CSP for public note-share pages. They run no
-     * application JS, so any script — including one smuggled past the markdown
-     * renderer — is refused with no exceptions.
-     *
-     * @return list<string>
-     */
-    private function sharePolicy(): array
-    {
-        return [
-            "default-src 'none'",
-            "base-uri 'none'",
-            "script-src 'none'",
-            "object-src 'none'",
-            "frame-ancestors 'none'",
-            "form-action 'self'",
-            "style-src 'self'",
-            // Shared notes may embed images via markdown; allow same-origin,
-            // data: and remote https: images but nothing executable.
-            "img-src 'self' data: https:",
-            "font-src 'self' data:",
         ];
     }
 }

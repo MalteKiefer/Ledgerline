@@ -16,9 +16,6 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\PublicShareController;
-use App\Http\Controllers\ResourceShareController;
-use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
@@ -46,8 +43,6 @@ Route::middleware('guest')->group(function (): void {
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
-    Route::get('/search', [SearchController::class, 'index'])->middleware('throttle:60,1')->name('search');
-    Route::get('/search/suggest', [SearchController::class, 'suggest'])->middleware('throttle:120,1')->name('search.suggest');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
     Route::get('/profile', ProfileController::class)->name('profile');
@@ -179,16 +174,6 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/notes', 'notes.index')->name('notes.index');
     // To-dos: zero-knowledge, living entirely in the opaque store manifest.
     Route::view('/todos', 'todos.index')->name('todos.index');
-    // Cross-user sharing management (grant/revoke access to your resources).
-    Route::get('/shares/data', [ResourceShareController::class, 'data'])->name('shares.data');
-    Route::post('/shares', [ResourceShareController::class, 'store'])->name('shares.store');
-    Route::delete('/shares/{share}', [ResourceShareController::class, 'destroy'])->name('shares.destroy');
-    Route::post('/shares/{share}/email', [ResourceShareController::class, 'email'])->middleware('throttle:5,1')->name('shares.email');
-    // Public (external) tokenised links.
-    Route::post('/shares/public', [PublicShareController::class, 'store'])->name('public-share.store');
-    Route::delete('/shares/public/{publicShare}', [PublicShareController::class, 'destroy'])->name('public-share.destroy');
-    Route::post('/shares/public/{publicShare}/email', [PublicShareController::class, 'email'])->middleware('throttle:5,1')->name('public-share.email');
-    Route::post('/shares/public/{publicShare}/rotate', [PublicShareController::class, 'rotate'])->name('public-share.rotate');
     // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
     // Paperless transfer modal: cached quick-pick terms, term creation and
