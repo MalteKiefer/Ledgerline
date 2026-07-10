@@ -1372,9 +1372,6 @@ return {
     dupGroups: null,
     dupScanning: false,
     dupProgress: { done: 0, total: 0 },
-    // Defensive against a negative BigInt: `>>` never reaches 0 on negatives, so
-    // a signed phash would spin forever. Fold to non-negative first.
-    _popcount(n) { if (n < 0n) n = -n; let c = 0n; while (n > 0n) { c += n & 1n; n >>= 1n; } return Number(c); },
     async scanDuplicates() {
         this.dupScanning = true;
         this.dupGroups = null;
@@ -1383,48 +1380,68 @@ return {
             await this._ensureMeta(targets, (d, t) => { this.dupProgress = { done: d, total: t }; });
             const items = targets.filter((p) => metaCache[p.id]);
             const N = items.length;
-            // Precompute once: normalised Float32 CLIP vector + phash as BigInt.
-            // Then cosine is a plain dot product and Hamming is a BigInt xor.
-            const emb = new Array(N), ph = new Array(N), vid = new Array(N);
+            // Precompute the numeric inputs once: a normalised Float32 CLIP vector
+            // plus the 64-bit pHash split into two 32-bit halves (so the worker can
+            // Hamming-compare with a fast integer popcount instead of BigInt).
+            const emb = new Array(N), phHi = new Array(N), phLo = new Array(N), phNull = new Array(N), vid = new Array(N);
             for (let i = 0; i < N; i++) {
                 const m = metaCache[items[i].id];
                 emb[i] = Array.isArray(m.embedding) ? this._norm(m.embedding) : null;
                 vid[i] = items[i].media_type === 'video';
                 let b = null;
-                // Fold to an unsigned 64-bit value so the difference-hash xor and
-                // its popcount never see a negative (a signed int64 phash would).
+                // Fold to an unsigned 64-bit value so the split never sees a
+                // negative (a signed int64 phash would).
                 if (m.phash != null && Number.isFinite(m.phash)) { try { b = BigInt.asUintN(64, BigInt(Math.trunc(m.phash))); } catch (e) { b = null; } }
-                ph[i] = b;
+                if (b == null) { phNull[i] = true; phHi[i] = 0; phLo[i] = 0; }
+                else { phNull[i] = false; phHi[i] = Number(b >> 32n) >>> 0; phLo[i] = Number(b & 0xffffffffn) >>> 0; }
             }
-            const parent = new Array(N); for (let i = 0; i < N; i++) parent[i] = i;
-            const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-            const union = (i, j) => { const a = find(i), b = find(j); if (a !== b) parent[a] = b; };
-            // O(n²) pairwise, yielding to the event loop every few rows so the tab
-            // stays responsive and the progress bar advances on big libraries.
-            for (let i = 0; i < N; i++) {
-                for (let j = i + 1; j < N; j++) {
-                    const hd = (ph[i] != null && ph[j] != null) ? this._popcount(ph[i] ^ ph[j]) : 64;
-                    let dup;
-                    if (vid[i] || vid[j]) {
-                        // A video's CLIP vector is only its poster frame, so scene-
-                        // similar but different clips score high. Require the poster
-                        // difference-hash to nearly match instead of trusting cosine.
-                        dup = hd <= 4;
-                    } else {
-                        // Stills: high cosine OR a near-identical difference-hash.
-                        dup = (emb[i] && emb[j] && this._dot(emb[i], emb[j]) >= 0.97) || hd <= 3;
-                    }
-                    if (dup) union(i, j);
-                }
-                if ((i & 15) === 0) { this.dupProgress = { done: i, total: N }; await new Promise((r) => setTimeout(r)); }
-            }
-            const groups = new Map();
-            for (let i = 0; i < N; i++) { const r = find(i); if (! groups.has(r)) groups.set(r, []); groups.get(r).push(items[i]); }
-            this.dupGroups = [...groups.values()].filter((g) => g.length > 1)
-                .map((g) => g.sort((a, b) => (b.size || 0) - (a.size || 0)));
+            // Run the O(n²) pairwise comparison off the main thread so a large
+            // library no longer stutters the UI; fall back to an inline scan if the
+            // worker can't be created (unsupported / blocked).
+            const idxGroups = await this._computeDupGroups({ emb, phHi, phLo, phNull, vid, N });
+            this.dupGroups = idxGroups
+                .map((g) => g.map((i) => items[i]).sort((a, b) => (b.size || 0) - (a.size || 0)));
         } finally {
             this.dupScanning = false;
         }
+    },
+    // Resolve the duplicate groups (as arrays of item indices) via a Web Worker,
+    // with a main-thread fallback that yields to the event loop.
+    _computeDupGroups(data) {
+        return new Promise((resolve) => {
+            let worker;
+            try {
+                worker = new Worker(new URL('./scan.worker.js', import.meta.url), { type: 'module' });
+            } catch (e) {
+                resolve(this._dupGroupsInline(data));
+                return;
+            }
+            worker.onmessage = (e) => {
+                if (e.data.progress != null) { this.dupProgress = { done: e.data.progress, total: e.data.total }; return; }
+                worker.terminate();
+                if (e.data.error) { this._dupGroupsInline(data).then(resolve); return; }
+                resolve(e.data.groups || []);
+            };
+            worker.onerror = () => { worker.terminate(); this._dupGroupsInline(data).then(resolve); };
+            worker.postMessage(data);
+        });
+    },
+    async _dupGroupsInline({ emb, phHi, phLo, phNull, vid, N }) {
+        const pc = (x) => { x = x - ((x >>> 1) & 0x55555555); x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); x = (x + (x >>> 4)) & 0x0f0f0f0f; return (x * 0x01010101) >>> 24; };
+        const parent = new Array(N); for (let i = 0; i < N; i++) parent[i] = i;
+        const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+        const union = (i, j) => { const a = find(i), b = find(j); if (a !== b) parent[a] = b; };
+        for (let i = 0; i < N; i++) {
+            for (let j = i + 1; j < N; j++) {
+                const hd = (! phNull[i] && ! phNull[j]) ? pc((phHi[i] ^ phHi[j]) >>> 0) + pc((phLo[i] ^ phLo[j]) >>> 0) : 64;
+                const dup = (vid[i] || vid[j]) ? hd <= 4 : ((emb[i] && emb[j] && this._dot(emb[i], emb[j]) >= 0.97) || hd <= 3);
+                if (dup) union(i, j);
+            }
+            if ((i & 15) === 0) { this.dupProgress = { done: i, total: N }; await new Promise((r) => setTimeout(r)); }
+        }
+        const groups = new Map();
+        for (let i = 0; i < N; i++) { const r = find(i); if (! groups.has(r)) groups.set(r, []); groups.get(r).push(i); }
+        return [...groups.values()].filter((g) => g.length > 1);
     },
     get dupTotal() { return this.dupGroups ? this.dupGroups.reduce((n, g) => n + g.length - 1, 0) : 0; },
     // Per-set trash marks: the user picks any subset to delete (multi-select),
