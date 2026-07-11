@@ -1,7 +1,7 @@
 <x-layouts.app :title="__('settings.security_section')">
     <x-page-heading :title="__('settings.security_section')" :subtitle="__('settings.security_desc')" />
 
-    <form method="POST" action="{{ route('settings.security.update') }}" class="mt-6 max-w-2xl space-y-6">
+    <form method="POST" action="{{ route('settings.security.update') }}" class="mt-6 space-y-6">
         @csrf
         @method('PUT')
 
