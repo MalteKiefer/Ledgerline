@@ -1253,7 +1253,7 @@ return {
 
     /* ---- Viewer ---- */
     async openViewer(p) {
-        this.viewer = { open: true, kind: 'loading', src: '', photo: p, meta: null, hasMotion: ! ! p.motionRef, motionOn: false, motionSrc: '' };
+        this.viewer = { open: true, kind: 'loading', src: '', photo: p, meta: null, hasMotion: ! ! p.motionRef, motionOn: false, motionSrc: '', fit: 1 };
         // Decrypt the sealed metadata blob in parallel for the info panel.
         if (p.metaRef) this._loadViewerMeta(p);
         else if (p.lat != null) this._renderMiniMap(p.lat, p.lng);
@@ -1305,7 +1305,7 @@ return {
         if (this.viewer.src) URL.revokeObjectURL(this.viewer.src);
         if (this.viewer.motionSrc) URL.revokeObjectURL(this.viewer.motionSrc);
         if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
-        this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null, hasMotion: false, motionOn: false, motionSrc: '' };
+        this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null, hasMotion: false, motionOn: false, motionSrc: '', fit: 1 };
     },
 
     /* ---- Non-destructive photo edits (rotate / flip / date / place) ----
@@ -1321,10 +1321,36 @@ return {
         if (! r && sx === 1 && sy === 1) return '';
         return `transform: rotate(${r}deg) scaleX(${sx}) scaleY(${sy});`;
     },
+    // Viewer transform: like photoTransform but folds in a fit scale so a 90/270°
+    // rotation still fills the stage instead of overflowing/shrinking.
+    viewerTransform() {
+        const p = this.viewer.photo;
+        if (! p) return '';
+        const r = p.rotation || 0;
+        const s = this.viewer.fit || 1;
+        const sx = (p.flipH ? -1 : 1) * s;
+        const sy = (p.flipV ? -1 : 1) * s;
+        if (! r && sx === 1 && sy === 1) return '';
+        return `transform: rotate(${r}deg) scaleX(${sx}) scaleY(${sy}); transform-origin: center;`;
+    },
+    // Scale that makes a 90/270°-rotated image fit the stage (0/180° = no scale).
+    _fitViewer() {
+        const img = this.$refs.vimg;
+        const stage = this.$refs.vstage;
+        const r = this.viewer.photo?.rotation || 0;
+        if (! img || ! stage || r % 180 === 0) { this.viewer.fit = 1; return; }
+        const dw = img.clientWidth;
+        const dh = img.clientHeight;
+        const cw = stage.clientWidth - 32; // p-4 padding both sides
+        const ch = stage.clientHeight - 32;
+        if (! dw || ! dh || cw <= 0 || ch <= 0) { this.viewer.fit = 1; return; }
+        this.viewer.fit = Math.min(cw / dh, ch / dw);
+    },
     rotatePhoto(p, dir) {
         if (! p) return;
         p.rotation = ((((p.rotation || 0) + dir * 90) % 360) + 360) % 360;
         this._save();
+        if (p === this.viewer.photo) this.$nextTick(() => this._fitViewer());
     },
     flipPhoto(p, axis) {
         if (! p) return;
