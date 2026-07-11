@@ -2,6 +2,19 @@ import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { Vault } from './vault';
 
+// After a redeploy, Vite regenerates every chunk hash and the old chunks are
+// gone. A still-open tab holding the previous bundle then 404s when it lazily
+// imports a chunk (map/leaflet, markdown, libsodium…). Reload once to pick up
+// the fresh assets. A short cooldown prevents a reload loop if the failure is
+// genuinely persistent.
+window.addEventListener('vite:preloadError', () => {
+    const last = Number(sessionStorage.getItem('ll-chunk-reload') || 0);
+    if (Date.now() - last > 10000) {
+        sessionStorage.setItem('ll-chunk-reload', String(Date.now()));
+        window.location.reload();
+    }
+});
+
 // The markdown stack (marked + DOMPurify + highlight.js + its CSS) is only ever
 // needed to preview a note, so it is code-split out of the initial bundle and
 // loaded on first use. Returns a memoised { render(md) } that highlights fenced
