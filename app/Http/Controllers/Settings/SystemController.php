@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Models\ErrorEvent;
 use App\Providers\AppServiceProvider;
+use App\Services\Ops\StorageHistory;
 use App\Services\Ops\SystemStatus;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\View\View;
@@ -20,8 +21,12 @@ use Illuminate\Support\Facades\Cache;
  */
 class SystemController extends Controller
 {
-    public function edit(Schedule $schedule, SystemStatus $status): View
+    public function edit(Schedule $schedule, SystemStatus $status, StorageHistory $history): View
     {
+        // Keep at least today's data point so the trend is never empty before
+        // the first scheduled snapshot (idempotent — one row per day).
+        $history->capture();
+
         $tasks = collect($schedule->events())
             ->map(function ($event): array {
                 $name = AppServiceProvider::cronName($event);
@@ -42,6 +47,7 @@ class SystemController extends Controller
         return view('settings.system.index', [
             'tasks' => $tasks,
             'status' => $status->snapshot(),
+            'trend' => $history->trend(30),
             'errors' => ErrorEvent::orderByRaw('resolved_at is null desc')
                 ->orderByDesc('last_seen_at')
                 ->limit(20)
