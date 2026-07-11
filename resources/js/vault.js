@@ -477,6 +477,17 @@ export const Vault = {
      * @param {ArrayBuffer|Uint8Array} buffer
      * @param {string} encFileKey  JSON {c,n} of the wrapped file key.
      */
+    /**
+     * Unwrap a blob's per-file key with the vault key. Cheap (a single
+     * secretbox open of ~40 bytes); used to hand a raw per-blob key to the
+     * decrypt worker pool so the vault key itself never leaves this thread.
+     */
+    unwrapContentKey(encFileKey) {
+        const wrapped = JSON.parse(encFileKey);
+
+        return open(wrapped.c, wrapped.n, this.vk);
+    },
+
     decryptFile(buffer, encFileKey) {
         const wrapped = JSON.parse(encFileKey);
         const fk = open(wrapped.c, wrapped.n, this.vk);
