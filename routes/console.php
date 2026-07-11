@@ -29,6 +29,7 @@ Schedule::command('exports:recover-stuck')->hourly()->withoutOverlapping();
 // reconciles manifest-unreferenced blobs on its own; this is the crash net.
 Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('contacts:sweep-orphans')->daily()->withoutOverlapping();
 
 // Delete expired public note-share snapshots so their plaintext content does not
 // linger past its expiry (these anonymous rows can't be targeted at erasure).

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\DownloadsController;
@@ -199,6 +200,14 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/todos', 'todos.index')->name('todos.index');
     // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
+    // Contacts: zero-knowledge, records in the opaque /store manifest; only the
+    // optional avatar images are opaque content blobs (contacts/{blob}).
+    Route::view('/contacts', 'contacts.index')->name('contacts.index');
+    Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('contacts.usage');
+    Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('contacts.blobs.reconcile');
+    Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('contacts.upload');
+    Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('contacts.raw');
+    Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('contacts.blob.destroy');
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
