@@ -123,12 +123,22 @@
                     </div>
                 </div>
 
-                {{-- Name parts + org --}}
-                <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {{-- Name parts --}}
+                <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <input type="text" x-model="current.prefix" @input.debounce.600ms="save()" placeholder="{{ __('contacts.prefix') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="text" x-model="current.first" @input.debounce.600ms="save()" placeholder="{{ __('contacts.first_name') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    <input type="text" x-model="current.last" @input.debounce.600ms="save()" placeholder="{{ __('contacts.last_name') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="current.middle" @input.debounce.600ms="save()" placeholder="{{ __('contacts.middle_name') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="current.suffix" @input.debounce.600ms="save()" placeholder="{{ __('contacts.suffix') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="current.last" @input.debounce.600ms="save()" placeholder="{{ __('contacts.last_name') }}" class="col-span-2 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="current.nickname" @input.debounce.600ms="save()" placeholder="{{ __('contacts.nickname') }}" class="col-span-2 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </div>
+
+                {{-- Work: company, department, title, role --}}
+                <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <input type="text" x-model="current.org" @input.debounce.600ms="save()" placeholder="{{ __('contacts.org') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="current.department" @input.debounce.600ms="save()" placeholder="{{ __('contacts.department') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="text" x-model="current.title" @input.debounce.600ms="save()" placeholder="{{ __('contacts.job_title') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="current.role" @input.debounce.600ms="save()" placeholder="{{ __('contacts.role') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                 </div>
 
                 {{-- Emails --}}
@@ -151,6 +161,18 @@
                             <select x-model="p.type" @change="save()" class="w-24 shrink-0 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500"><option value="cell">{{ __('contacts.type_cell') }}</option><option value="home">{{ __('contacts.type_home') }}</option><option value="work">{{ __('contacts.type_work') }}</option><option value="other">{{ __('contacts.type_other') }}</option></select>
                             <input type="tel" x-model="p.value" @input.debounce.600ms="save()" placeholder="+49 …" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                             <button type="button" @click="removeRow(current.phones, i)" class="shrink-0 text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                        </div>
+                    </template>
+                </div>
+
+                {{-- Messaging (IMPP) --}}
+                <div class="mt-4">
+                    <div class="mb-1 flex items-center justify-between"><span class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.impp') }}</span><button type="button" @click="addImpp()" class="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">+ {{ __('contacts.add') }}</button></div>
+                    <template x-for="(m, i) in current.impp" :key="i">
+                        <div class="mb-1.5 flex items-center gap-2">
+                            <select x-model="m.type" @change="save()" class="w-24 shrink-0 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs shadow-sm focus:border-gray-500 focus:ring-gray-500"><option value="home">{{ __('contacts.type_home') }}</option><option value="work">{{ __('contacts.type_work') }}</option><option value="other">{{ __('contacts.type_other') }}</option></select>
+                            <input type="text" x-model="m.value" @input.debounce.600ms="save()" placeholder="xmpp:… / matrix:…" class="w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            <button type="button" @click="removeRow(current.impp, i)" class="shrink-0 text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
                         </div>
                     </template>
                 </div>
@@ -179,6 +201,9 @@
                 <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label class="text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.birthday') }}
                         <input type="date" x-model="current.bday" @change="save()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </label>
+                    <label class="text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.anniversary') }}
+                        <input type="date" x-model="current.anniversary" @change="save()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     </label>
                     <label class="text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.categories') }}
                         <input type="text" x-model="tagsValue" @change="save()" placeholder="{{ __('contacts.categories_hint') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
