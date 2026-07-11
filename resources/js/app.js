@@ -2444,6 +2444,7 @@ return {
     /* ---- Link a person to a Contact (cross-manifest: /gallery/store + /store) ---- */
     linkPicker: false,
     linkLoading: false,
+    linkQuery: '',
     _linkContacts: [],
     _contactName(c) {
         return (c.fn || [c.first, c.last].filter(Boolean).join(' ') || c.org || (c.emails ?? [])[0]?.value || '').trim();
@@ -2453,6 +2454,7 @@ return {
     async openLinkPicker() {
         if (! this.currentPerson) return;
         this.linkLoading = true;
+        this.linkQuery = '';
         try {
             if (! await bootStore(this.$store)) return;
             this._linkContacts = (window.LLStore.data.contacts || []).filter((c) => ! c.trashed);
@@ -2460,10 +2462,13 @@ return {
         } finally { this.linkLoading = false; }
     },
     closeLinkPicker() { this.linkPicker = false; },
-    // Named-match first (auto-suggest), then the rest by name.
+    // Search-filtered; named-match first (auto-suggest), then the rest by name.
     linkSuggestions() {
+        const q = this.linkQuery.trim().toLowerCase();
         const name = (this.currentPerson?.name || '').trim().toLowerCase();
-        return [...this._linkContacts].sort((a, b) => {
+        let list = this._linkContacts;
+        if (q) list = list.filter((c) => this._contactName(c).toLowerCase().includes(q) || (c.org || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => {
             const am = name && this._contactName(a).toLowerCase().includes(name) ? 0 : 1;
             const bm = name && this._contactName(b).toLowerCase().includes(name) ? 0 : 1;
             return (am - bm) || this._contactName(a).localeCompare(this._contactName(b));
@@ -2471,19 +2476,21 @@ return {
     },
     // Link the current person to a contact: write the person snapshot (name +
     // avatar ref/key, so the gallery renders it without loading /store) and set
-    // contact.personId; optionally seed the contact photo from the cover face.
+    // contact.personId; the person adopts the contact's name; optionally seed the
+    // contact photo from the cover face.
     async linkTo(contact, useFace = false) {
         const p = this.currentPerson;
         if (! p || ! contact) { this.linkPicker = false; return; }
         if (useFace && ! contact.avatarRef) await this._faceToContactAvatar(contact);
+        const cname = this._contactName(contact);
+        if (cname) p.name = cname; // the person takes over the contact's name
         p.contactId = contact.id;
-        p.contactName = this._contactName(contact) || (contact.fn = p.name || contact.fn || '');
+        p.contactName = cname;
         p.contactAvatarRef = contact.avatarRef || null;
         p.contactAvatarKey = contact.avatarKey || null;
         contact.personId = p.id;
         contact.personName = p.name || ''; // snapshot so the contact page shows it
         contact.updated = new Date().toISOString();
-        if (! (contact.fn || '').trim() && (p.name || '').trim()) contact.fn = p.name;
         this._save();
         window.LLStore.touch(); // persist the /store side too
         this.linkPicker = false;
@@ -4695,6 +4702,14 @@ const VCard = {
 
     _date(d) { return String(d || '').replace(/-/g, ''); },
     _fromDate(v) { const s = String(v).replace(/[^0-9]/g, ''); return s.length >= 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : ''; },
+    // Reduce a vCard TYPE list (e.g. "cell,voice,pref") to one known label.
+    normType(raw, fallback) {
+        const toks = String(raw || '').toLowerCase().split(/[,;]/).map((s) => s.trim());
+        if (toks.some((t) => t === 'cell' || t === 'mobile')) return 'cell';
+        if (toks.includes('work')) return 'work';
+        if (toks.includes('home')) return 'home';
+        return fallback || 'other';
+    },
 
     // Build a vCard 4.0 string for one contact. `photo` is an optional base64
     // data URI. Unknown properties captured on import (c._x) are re-emitted, so a
@@ -4759,11 +4774,11 @@ const VCard = {
                 case 'ORG': { const o = value.split(';').map((x) => this.unesc(x)); c.org = o[0] || ''; c.department = o.slice(1).filter(Boolean).join(', '); break; }
                 case 'TITLE': c.title = this.unesc(value); break;
                 case 'ROLE': c.role = this.unesc(value); break;
-                case 'EMAIL': c.emails.push({ value: this.unesc(value), type: type || 'home' }); break;
-                case 'TEL': c.phones.push({ value: this.unesc(value), type: type || 'cell' }); break;
-                case 'IMPP': c.impp.push({ value: this.unesc(value), type: type || 'home' }); break;
-                case 'URL': c.urls.push({ value: this.unesc(value), type: type || 'home' }); break;
-                case 'ADR': { const f = value.split(';').map((x) => this.unesc(x)); c.addresses.push({ street: f[2] || '', city: f[3] || '', region: f[4] || '', zip: f[5] || '', country: f[6] || '', type: type || 'home' }); break; }
+                case 'EMAIL': c.emails.push({ value: this.unesc(value), type: this.normType(type, 'home') }); break;
+                case 'TEL': c.phones.push({ value: this.unesc(value), type: this.normType(type, 'cell') }); break;
+                case 'IMPP': c.impp.push({ value: this.unesc(value), type: this.normType(type, 'home') }); break;
+                case 'URL': c.urls.push({ value: this.unesc(value), type: this.normType(type, 'home') }); break;
+                case 'ADR': { const f = value.split(';').map((x) => this.unesc(x)); c.addresses.push({ street: f[2] || '', city: f[3] || '', region: f[4] || '', zip: f[5] || '', country: f[6] || '', type: this.normType(type, 'home') }); break; }
                 case 'BDAY': c.bday = this._fromDate(value); break;
                 case 'ANNIVERSARY': c.anniversary = this._fromDate(value); break;
                 case 'NOTE': c.note = this.unesc(value); break;
@@ -4912,7 +4927,17 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     open(c) {
         // Backfill fields added in later versions so legacy contacts render/edit.
         c.emails ??= []; c.phones ??= []; c.impp ??= []; c.addresses ??= []; c.urls ??= []; c.categories ??= []; c._x ??= [];
+        // Normalise any raw multi-token vCard types (e.g. "cell,voice,pref") so
+        // the labels/selects match a single known value.
+        for (const e of c.emails) e.type = VCard.normType(e.type, 'home');
+        for (const p of c.phones) p.type = VCard.normType(p.type, 'cell');
+        for (const m of c.impp) m.type = VCard.normType(m.type, 'home');
+        for (const a of c.addresses) a.type = VCard.normType(a.type, 'home');
         this.currentId = c.id; this.editing = false; this.tagsValue = (c.categories ?? []).join(', ');
+    },
+    // Localised label for a normalised contact-field type.
+    typeLabel(t) {
+        return { home: labels.typeHome, work: labels.typeWork, cell: labels.typeCell, other: labels.typeOther }[t] || t || '';
     },
     close() { this.currentId = null; this.editing = false; },
     startEdit() { this.tagsValue = (this.current?.categories ?? []).join(', '); this.editing = true; },
@@ -5097,6 +5122,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     /* ---- Link to a Gallery person (cross-manifest: /store + /gallery/store) ---- */
     personPicker: false,
     personLoading: false,
+    personQuery: '',
     _people: [],
     _personCovers: {},
     get linkedPersonName() { return this.current?.personName || ''; },
@@ -5104,6 +5130,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     async openPersonPicker() {
         if (! this.current) return;
         this.personLoading = true;
+        this.personQuery = '';
         try {
             if (! await bootGalleryStore(this.$store)) return;
             this._people = (window.LLGalleryStore.data.people || []).filter((p) => ! p.hidden && (p.faces || []).length);
@@ -5112,8 +5139,11 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     },
     closePersonPicker() { this.personPicker = false; },
     personSuggestions() {
+        const q = this.personQuery.trim().toLowerCase();
         const name = this.displayName(this.current).toLowerCase();
-        return [...this._people].sort((a, b) => {
+        let list = this._people;
+        if (q) list = list.filter((p) => (p.name || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => {
             const am = name && (a.name || '').toLowerCase().includes(name) ? 0 : 1;
             const bm = name && (b.name || '').toLowerCase().includes(name) ? 0 : 1;
             return (am - bm) || (a.name || '').localeCompare(b.name || '');

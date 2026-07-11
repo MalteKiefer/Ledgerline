@@ -708,6 +708,7 @@
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.link_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.link_hint') }}</p>
         <label class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><input type="checkbox" x-model="useFace" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">{{ __('gallery.link_use_face') }}</label>
+        <input type="search" x-model="linkQuery" placeholder="{{ __('contacts.search') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
         <p x-show="! linkSuggestions().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.link_none') }}</p>
         <div class="mt-3 max-h-80 divide-y divide-gray-100 dark:divide-gray-800 overflow-y-auto">
           <template x-for="c in linkSuggestions()" :key="c.id">

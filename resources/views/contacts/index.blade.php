@@ -13,6 +13,10 @@
         avatarFailed: @js(__('contacts.avatar_failed')),
         imported: @js(__('contacts.imported')),
         importFailed: @js(__('contacts.import_failed')),
+        typeHome: @js(__('contacts.type_home')),
+        typeWork: @js(__('contacts.type_work')),
+        typeCell: @js(__('contacts.type_cell')),
+        typeOther: @js(__('contacts.type_other')),
      })">
 
     {{-- Zero-knowledge gate: contacts decrypt with the vault key. --}}
@@ -142,13 +146,13 @@
                 {{-- Read-only view --}}
                 <div x-show="! editing" x-cloak class="mt-5 space-y-4 text-sm">
                     <template x-if="(current.emails||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.emails') }}</p>
-                        <template x-for="(e, i) in current.emails" :key="i"><p class="mt-0.5"><a :href="'mailto:' + e.value" class="text-gray-800 dark:text-gray-200 hover:underline" x-text="e.value"></a> <span class="text-xs text-gray-400" x-text="e.type"></span></p></template></div></template>
+                        <template x-for="(e, i) in current.emails" :key="i"><p class="mt-0.5"><a :href="'mailto:' + e.value" class="text-gray-800 dark:text-gray-200 hover:underline" x-text="e.value"></a> <span class="text-xs text-gray-400" x-text="typeLabel(e.type)"></span></p></template></div></template>
                     <template x-if="(current.phones||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.phones') }}</p>
-                        <template x-for="(p, i) in current.phones" :key="i"><p class="mt-0.5"><a :href="'tel:' + p.value" class="text-gray-800 dark:text-gray-200 hover:underline" x-text="p.value"></a> <span class="text-xs text-gray-400" x-text="p.type"></span></p></template></div></template>
+                        <template x-for="(p, i) in current.phones" :key="i"><p class="mt-0.5"><a :href="'tel:' + p.value" class="text-gray-800 dark:text-gray-200 hover:underline" x-text="p.value"></a> <span class="text-xs text-gray-400" x-text="typeLabel(p.type)"></span></p></template></div></template>
                     <template x-if="(current.impp||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.impp') }}</p>
                         <template x-for="(m, i) in current.impp" :key="i"><p class="mt-0.5 text-gray-800 dark:text-gray-200" x-text="m.value"></p></template></div></template>
                     <template x-if="(current.addresses||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.addresses') }}</p>
-                        <template x-for="(a, i) in current.addresses" :key="i"><div class="mt-0.5"><template x-for="line in addressLines(a)" :key="line"><span class="block text-gray-800 dark:text-gray-200" x-text="line"></span></template><span class="text-xs text-gray-400" x-text="a.type"></span></div></template></div></template>
+                        <template x-for="(a, i) in current.addresses" :key="i"><div class="mt-0.5"><template x-for="line in addressLines(a)" :key="line"><span class="block text-gray-800 dark:text-gray-200" x-text="line"></span></template><span class="text-xs text-gray-400" x-text="typeLabel(a.type)"></span></div></template></div></template>
                     <template x-if="current.bday || current.anniversary"><div class="flex gap-6">
                         <p x-show="current.bday"><span class="text-xs text-gray-400">{{ __('contacts.birthday') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="current.bday"></span></p>
                         <p x-show="current.anniversary"><span class="text-xs text-gray-400">{{ __('contacts.anniversary') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="current.anniversary"></span></p></div></template>
@@ -270,6 +274,7 @@
         <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.link_person_heading') }}</h3>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.link_person_hint') }}</p>
+            <input type="search" x-model="personQuery" placeholder="{{ __('contacts.search') }}" class="mt-3 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
             <p x-show="! personSuggestions().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.link_person_none') }}</p>
             <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
                 <template x-for="pp in personSuggestions()" :key="pp.id">
