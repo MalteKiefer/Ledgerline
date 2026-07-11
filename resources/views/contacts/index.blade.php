@@ -56,19 +56,19 @@
                     <input type="file" accept=".vcf,text/vcard" class="hidden" @change="importFile($event)">
                 </label>
                 <button type="button" x-show="contacts.some(c => ! c.trashed)" @click="exportAll()" class="inline-flex items-center gap-1 hover:text-gray-800 dark:hover:text-gray-200" title="{{ __('contacts.export_all') }}"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" />{{ __('contacts.export_all') }}</button>
-                <span x-show="importing" x-cloak class="text-gray-400">…</span>
-                <div class="ml-auto flex items-center gap-1.5">
-                    <select x-model="sortBy" @change="_savePrefs()" title="{{ __('contacts.sort') }}" class="rounded border-gray-200 dark:border-gray-700 dark:bg-gray-800 py-0.5 pl-1.5 pr-6 text-xs text-gray-600 dark:text-gray-300 focus:border-gray-400 focus:ring-0">
-                        <option value="name">{{ __('contacts.sort_name') }}</option>
-                        <option value="first">{{ __('contacts.sort_first') }}</option>
-                        <option value="last">{{ __('contacts.sort_last') }}</option>
-                        <option value="updated">{{ __('contacts.sort_updated') }}</option>
-                    </select>
-                    <select x-model="nameFormat" @change="_savePrefs()" title="{{ __('contacts.name_order') }}" class="rounded border-gray-200 dark:border-gray-700 dark:bg-gray-800 py-0.5 pl-1.5 pr-6 text-xs text-gray-600 dark:text-gray-300 focus:border-gray-400 focus:ring-0">
-                        <option value="first">{{ __('contacts.name_first_last') }}</option>
-                        <option value="last">{{ __('contacts.name_last_first') }}</option>
-                    </select>
-                </div>
+                <span x-show="importing" x-cloak class="ml-auto text-gray-400">…</span>
+            </div>
+            <div class="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-3 py-2">
+                <select x-model="sortBy" @change="_savePrefs()" title="{{ __('contacts.sort') }}" class="min-w-0 flex-1 rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 py-1 text-xs text-gray-600 dark:text-gray-300 focus:border-gray-400 focus:ring-0">
+                    <option value="name">{{ __('contacts.sort_name') }}</option>
+                    <option value="first">{{ __('contacts.sort_first') }}</option>
+                    <option value="last">{{ __('contacts.sort_last') }}</option>
+                    <option value="updated">{{ __('contacts.sort_updated') }}</option>
+                </select>
+                <select x-model="nameFormat" @change="_savePrefs()" title="{{ __('contacts.name_order') }}" class="min-w-0 flex-1 rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 py-1 text-xs text-gray-600 dark:text-gray-300 focus:border-gray-400 focus:ring-0">
+                    <option value="first">{{ __('contacts.name_first_last') }}</option>
+                    <option value="last">{{ __('contacts.name_last_first') }}</option>
+                </select>
             </div>
             <div x-show="allCategories.length" class="flex flex-wrap gap-1 border-b border-gray-100 dark:border-gray-800 p-2">
                 <template x-for="t in allCategories" :key="t">

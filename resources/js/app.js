@@ -4831,10 +4831,20 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     get trashCount() { return this._trashCount(this.contacts); },
     get current() { return this.contacts.find((c) => c.id === this.currentId) ?? null; },
 
+    // First/last, from the structured fields or (for imported fn-only cards)
+    // derived from the formatted name so the order/sort toggles still work.
+    _nameParts(c) {
+        let first = (c.first || '').trim(), last = (c.last || '').trim();
+        if (! first && ! last) {
+            const p = (c.fn || '').trim().split(/\s+/).filter(Boolean);
+            if (p.length > 1) { last = p.pop(); first = p.join(' '); } else if (p.length === 1) { first = p[0]; }
+        }
+        return { first, last };
+    },
     // Display label, honouring the chosen name order (First Last / Last, First).
     displayName(c) {
         if (! c) return '';
-        const first = (c.first || '').trim(), last = (c.last || '').trim();
+        const { first, last } = this._nameParts(c);
         if (last || first) {
             return this.nameFormat === 'last'
                 ? [last, first].filter(Boolean).join(', ')
@@ -4843,15 +4853,16 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         return (c.fn || c.org || (c.emails ?? [])[0]?.value || '').trim() || (labels.unnamed || '—');
     },
     initials(c) {
-        const first = (c.first || '')[0] || '', last = (c.last || '')[0] || '';
-        const from = (first + last) || this.displayName(c).replace(/[^\p{L}]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join('');
+        const { first, last } = this._nameParts(c);
+        const from = ((first[0] || '') + (last[0] || '')) || (c.org || '?')[0];
         return (from || '?').toUpperCase();
     },
     // Sort key for the current sort mode.
     _sortKey(c) {
-        if (this.sortBy === 'first') return ((c.first || c.fn || this.displayName(c))).toLowerCase();
-        if (this.sortBy === 'last') return ((c.last || c.fn || this.displayName(c))).toLowerCase();
         if (this.sortBy === 'updated') return c.updated || '';
+        const { first, last } = this._nameParts(c);
+        if (this.sortBy === 'first') return (first || last || c.fn || '').toLowerCase();
+        if (this.sortBy === 'last') return (last || first || c.fn || '').toLowerCase();
         return this.displayName(c).toLowerCase();
     },
 
