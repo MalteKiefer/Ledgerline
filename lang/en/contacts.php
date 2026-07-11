@@ -20,6 +20,13 @@ return [
 
     'avatar' => 'Photo',
     'remove_avatar' => 'Remove photo',
+    'crop_title' => 'Crop photo',
+    'crop_hint' => 'Drag to move, slide to zoom.',
+    'avatar_upload' => 'Upload',
+    'avatar_from_files' => 'From files',
+    'avatar_from_gallery' => 'From gallery',
+    'pick_image' => 'Pick an image',
+    'no_images' => 'No images found.',
     'edit' => 'Edit',
     'done' => 'Done',
     'sort' => 'Sort',

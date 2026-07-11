@@ -702,17 +702,16 @@
     </div>
 
     {{-- Link a person to a contact (loads the /store manifest lazily) --}}
-    <div x-show="linkPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeLinkPicker()" x-data="{ useFace: true }">
+    <div x-show="linkPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeLinkPicker()">
       <div class="absolute inset-0 bg-black/60" @click="closeLinkPicker()"></div>
       <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.link_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.link_hint') }}</p>
-        <label class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><input type="checkbox" x-model="useFace" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">{{ __('gallery.link_use_face') }}</label>
         <input type="search" x-model="linkQuery" placeholder="{{ __('contacts.search') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
         <p x-show="! linkSuggestions().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.link_none') }}</p>
         <div class="mt-3 max-h-80 divide-y divide-gray-100 dark:divide-gray-800 overflow-y-auto">
           <template x-for="c in linkSuggestions()" :key="c.id">
-            <button type="button" @click="linkTo(c, useFace)" class="flex w-full items-center gap-3 px-1 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
+            <button type="button" @click="linkTo(c)" class="flex w-full items-center gap-3 px-1 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
               <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-semibold text-gray-500"><x-icon name="user" class="h-4 w-4 text-gray-400" /></span>
               <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="_contactName(c) || '{{ __('contacts.unnamed') }}'"></span>
             </button>
@@ -720,6 +719,25 @@
         </div>
         <div class="mt-4 flex justify-end">
           <x-button variant="secondary" type="button" @click="closeLinkPicker()">{{ __('common.cancel') }}</x-button>
+        </div>
+      </div>
+    </div>
+
+    {{-- After linking: choose which of the person's photos becomes the contact avatar (then crop) --}}
+    <div x-show="avatarChoose" x-cloak class="fixed inset-0 z-[970] flex items-center justify-center p-4" @keydown.escape.window="closeAvatarChoose()">
+      <div class="absolute inset-0 bg-black/60" @click="closeAvatarChoose()"></div>
+      <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.link_choose_photo') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.link_choose_hint') }}</p>
+        <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+          <template x-for="p in _choosePhotos" :key="p.id">
+            <button type="button" @click="chooseAvatarPhoto(p)" class="group aspect-square overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-gray-900 dark:hover:ring-gray-100 focus:outline-none" x-init="$nextTick(() => thumbFor(p).then(u => u && $el.querySelector('img')?.setAttribute('src', u)))">
+              <img class="h-full w-full object-cover" alt="">
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <x-button variant="secondary" type="button" @click="closeAvatarChoose()">{{ __('gallery.link_skip_photo') }}</x-button>
         </div>
       </div>
     </div>
