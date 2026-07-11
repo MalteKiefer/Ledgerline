@@ -906,6 +906,11 @@ return {
     state: 'boot', // boot | locked | ready | error
     index: { v: 1, photos: [], albums: [], people: [] },
     view: 'library',
+    // Incremental render window: only the newest N library photos are put in the
+    // DOM; a scroll sentinel raises this so the grid never builds thousands of
+    // tiles at once (the killer at 10k+ photos). Grows as you scroll.
+    renderLimit: 300,
+    _renderStep: 300,
     error: '',
     busy: 0,
     uploads: [], // { name, state, progress }
@@ -940,6 +945,7 @@ return {
             if (! await bootGalleryStore(this.$store)) { this.state = 'locked'; return; }
         } catch (e) { this.state = 'error'; return; }
         this.index = window.LLGalleryStore.data;
+        this.renderLimit = this._renderStep; // start with a small render window
         this.state = 'ready';
         this.refreshUsage();
         // Process pending uploads (its finally pairs Live Photos); also run a pair
@@ -977,10 +983,15 @@ return {
         return this.index.photos.filter((p) => p.trashed)
             .sort((a, b) => new Date(b.trashed || 0) - new Date(a.trashed || 0));
     },
-    // Library photos grouped by capture day (newest first) for the timeline.
+    // True while there are still older photos not yet put in the DOM.
+    get hasMore() { return this.searchResults === null && this.renderLimit < this.libraryPhotos.length; },
+    // Scroll sentinel handler: reveal the next page of tiles.
+    loadMore() { if (this.hasMore) this.renderLimit += this._renderStep; },
+    // Library photos grouped by capture day (newest first) for the timeline —
+    // only the current render window, so the DOM never holds the whole library.
     get groupedPhotos() {
         const groups = new Map();
-        for (const p of this.libraryPhotos) {
+        for (const p of this.libraryPhotos.slice(0, this.renderLimit)) {
             const d = new Date(p.taken_at || p.created || 0);
             const day = isNaN(d.getTime()) ? 'unknown' : d.toISOString().slice(0, 10);
             if (! groups.has(day)) groups.set(day, []);
