@@ -960,40 +960,66 @@ return {
         return this._track((async () => {
             // Show the whole batch immediately, then encrypt+upload a few in
             // parallel so the tray doesn't sit at 0% while one large HEIC encrypts.
+            // Live Photos picked as two files (IMG_x.HEIC + IMG_x.MOV, same base
+            // name) are paired up front: the still becomes the photo and the .MOV
+            // its motion clip, so they upload as ONE entry instead of two-then-merge.
+            // (Separately-uploaded pairs are still merged later by content_id.)
+            const base = (n) => n.replace(/\.[^.]+$/, '').toLowerCase();
+            const isVid = (f) => f.type.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(f.name);
+            const byBase = {};
+            for (const f of files) { const b = base(f.name); (byBase[b] = byBase[b] || []).push(f); }
+            const motionFor = new Map();
+            const consumed = new Set();
+            for (const g of Object.values(byBase)) {
+                if (g.length !== 2) continue;
+                const still = g.find((f) => ! isVid(f));
+                const clip = g.find(isVid);
+                if (still && clip) { motionFor.set(still, clip); consumed.add(clip); }
+            }
+            const queue = files.filter((f) => ! consumed.has(f)); // .MOV partners ride along with their still
+
             const start = this.uploads.length;
-            for (const f of files) this.uploads.push({ name: f.name, state: 'pending', progress: 0 });
+            for (const f of queue) this.uploads.push({ name: f.name, state: 'pending', progress: 0 });
             let next = 0;
             // Exact-duplicate guard: skip re-uploading a byte-identical file. The
             // signature (size + hash of head/tail) is computed client-side before
             // encryption, so an identical file is never uploaded in the first place.
             const seen = new Set(this.index.photos.filter((p) => ! p.trashed && p.sig).map((p) => p.sig));
+            const uploadOne = async (file, entry) => {
+                const enc = await window.Vault.encryptFile(file);
+                const cipher = new File([await this._padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+                const id = await this._uploadBlob(cipher, entry);
+                return { id, key: enc.encFileKey };
+            };
             const worker = async () => {
-                while (next < files.length) {
+                while (next < queue.length) {
                     const idx = next++;
-                    const file = files[idx];
+                    const file = queue[idx];
                     const entry = this.uploads[start + idx];
                     try {
                         const sig = await this._fileSig(file);
                         if (sig && seen.has(sig)) { entry.state = 'duplicate'; continue; }
                         if (sig) seen.add(sig);
                         entry.state = 'uploading';
-                        const enc = await window.Vault.encryptFile(file);
-                        const cipher = new File([await this._padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-                        const id = await this._uploadBlob(cipher, entry);
-                        this.index.photos.unshift({
+                        const orig = await uploadOne(file, entry);
+                        const photo = {
                             id: window.LLGalleryStore.newId(),
-                            originalRef: id, originalKey: enc.encFileKey,
+                            originalRef: orig.id, originalKey: orig.key,
                             name: file.name, mime: file.type || 'application/octet-stream', size: file.size,
-                            media_type: (file.type.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(file.name)) ? 'video' : 'image',
+                            media_type: isVid(file) ? 'video' : 'image',
                             sig,
                             created: new Date().toISOString(),
-                        });
+                        };
+                        // Upload the paired .MOV as this still's motion clip.
+                        const clip = motionFor.get(file);
+                        if (clip) { const m = await uploadOne(clip, null); photo.motionRef = m.id; photo.motionKey = m.key; }
+                        this.index.photos.unshift(photo);
                         entry.state = 'done'; entry.progress = 100;
                         this._save();
                     } catch (e) { entry.state = 'error'; entry.error = this._uploadErrorText(e); }
                 }
             };
-            await Promise.all(Array.from({ length: Math.min(2, files.length) }, worker));
+            await Promise.all(Array.from({ length: Math.min(2, queue.length) }, worker));
             this.uploadBatches--;
             this.refreshUsage();
             this.runBacklog();
