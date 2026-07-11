@@ -37,7 +37,6 @@ return [
     'jobs_done' => 'Up to date',
     'jobs_run' => 'Run',
     'bulk_date' => 'Set date & time for the selection',
-    'bulk_date_apply' => 'Apply date & time',
     'search_place' => 'Search address…',
     'no_place_results' => 'No places found.',
     'library' => 'Library',

@@ -108,12 +108,12 @@
         <div x-show="selectedCount" x-cloak class="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-full border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 px-4 py-2 shadow-xl backdrop-blur">
           <button type="button" @click="clearSelection()" class="shrink-0 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>
           <span class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-800 dark:text-gray-200" x-text="@js(__('gallery.selected', ['count' => '{n}'])).replace('{n}', selectedCount)"></span>
-          <button type="button" @click="selectAllVisible()" class="shrink-0 whitespace-nowrap text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">{{ __('gallery.select_all') }}</button>
+          <button type="button" @click="selectAllVisible()" title="{{ __('gallery.select_all') }}" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="check-circle" class="h-5 w-5" /></button>
           <div class="flex shrink-0 items-center gap-2">
             <template x-if="view === 'library'">
               <span class="flex items-center gap-2">
                 <div x-data="{ open: false }" class="relative">
-                  <button type="button" @click="open = ! open" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="folder" class="h-4 w-4" />{{ __('gallery.add_to_album') }}</button>
+                  <button type="button" @click="open = ! open" title="{{ __('gallery.add_to_album') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="folder" class="h-5 w-5" /></button>
                   <div x-show="open" x-cloak @click.outside="open = false" class="absolute bottom-full right-0 z-30 mb-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
                     <template x-for="al in albums" :key="al.id">
                       <button type="button" @click="addSelectedToAlbum(al); open = false" class="block w-full truncate rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" x-text="al.name"></button>
@@ -121,19 +121,15 @@
                     <button type="button" @click="open = false; createAlbum()" class="mt-0.5 flex w-full items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
                   </div>
                 </div>
-                <span class="flex items-center gap-1">
-                  <input type="datetime-local" x-model="bulkDate" title="{{ __('gallery.bulk_date') }}"
-                      class="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300">
-                  <button type="button" @click="bulkApplyDate()" :disabled="! bulkDate" title="{{ __('gallery.bulk_date_apply') }}" class="inline-flex items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"><x-icon name="check" class="h-4 w-4" /></button>
-                </span>
-                <button type="button" @click="openBulkLocPicker()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="map-pin" class="h-4 w-4" />{{ __('gallery.edit_location') }}</button>
-                <button type="button" @click="bulkTrash()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900"><x-icon name="trash" class="h-4 w-4" />{{ __('gallery.delete') }}</button>
+                <button type="button" @click="openBulkDate()" title="{{ __('gallery.bulk_date') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="calendar" class="h-5 w-5" /></button>
+                <button type="button" @click="openBulkLocPicker()" title="{{ __('gallery.edit_location') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="map-pin" class="h-5 w-5" /></button>
+                <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white"><x-icon name="trash" class="h-5 w-5" /></button>
               </span>
             </template>
             <template x-if="view === 'trash'">
               <span class="flex gap-2">
-                <button type="button" @click="bulkRestore()" class="rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">{{ __('gallery.restore') }}</button>
-                <button type="button" @click="bulkPurge()" class="rounded-lg bg-red-500 px-3 py-1.5 text-sm font-medium text-white">{{ __('gallery.purge') }}</button>
+                <button type="button" @click="bulkRestore()" title="{{ __('gallery.restore') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="arrow-path" class="h-5 w-5" /></button>
+                <button type="button" @click="bulkPurge()" title="{{ __('gallery.purge') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"><x-icon name="trash" class="h-5 w-5" /></button>
               </span>
             </template>
           </div>
@@ -615,6 +611,19 @@
             <x-button variant="secondary" type="button" @click="closeLocPicker()">{{ __('common.cancel') }}</x-button>
             <x-button type="button" @click="saveLoc()">{{ __('common.save') }}</x-button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk date/time picker -->
+    <div x-show="dateModal" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeBulkDate()">
+      <div class="absolute inset-0 bg-black/60" @click="closeBulkDate()"></div>
+      <div class="relative w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.bulk_date') }}</h3>
+        <input type="datetime-local" x-model="bulkDate" class="mt-3 w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
+        <div class="mt-4 flex justify-end gap-2">
+          <x-button variant="secondary" type="button" @click="closeBulkDate()">{{ __('common.cancel') }}</x-button>
+          <x-button type="button" @click="bulkApplyDate()">{{ __('common.save') }}</x-button>
         </div>
       </div>
     </div>

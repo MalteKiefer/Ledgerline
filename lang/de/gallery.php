@@ -37,7 +37,6 @@ return [
     'jobs_done' => 'Aktuell',
     'jobs_run' => 'Starten',
     'bulk_date' => 'Datum & Uhrzeit für die Auswahl setzen',
-    'bulk_date_apply' => 'Datum & Uhrzeit übernehmen',
     'search_place' => 'Adresse suchen…',
     'no_place_results' => 'Keine Orte gefunden.',
     'library' => 'Bibliothek',
