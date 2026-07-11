@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_columns',
     'file_max_versions',
     'theme',
+    'contact_birthday_channels',
+    'contact_anniversary_channels',
 ])]
 class UserSetting extends Model
 {
@@ -45,6 +47,8 @@ class UserSetting extends Model
             'paperless_synced_at' => 'datetime',
             'gallery_columns' => 'integer',
             'file_max_versions' => 'integer',
+            'contact_birthday_channels' => 'array',
+            'contact_anniversary_channels' => 'array',
         ];
     }
 

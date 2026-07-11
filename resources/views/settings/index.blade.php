@@ -7,6 +7,7 @@
         // Personal — apply to the signed-in user only.
         $personal = [
             ['url' => route('settings.files.edit'), 'title' => __('settings.files_section'), 'desc' => __('settings.files_desc')],
+            ['url' => route('settings.contacts.edit'), 'title' => __('settings.contacts_section'), 'desc' => __('settings.contacts_desc')],
             ['url' => route('settings.paperless.edit'), 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
             // Mail sync cadence is a per-user preference, not a workspace setting.
         ];
