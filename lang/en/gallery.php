@@ -20,6 +20,12 @@ return [
     'edit_location' => 'Set location',
     'location_hint' => 'Click the map to set where this photo was taken.',
     'location_clear' => 'Remove location',
+
+    'upload_err_quota' => 'Storage quota exceeded',
+    'upload_err_network' => 'Network error — check your connection',
+    'upload_err_timeout' => 'Upload timed out',
+    'upload_err_failed' => 'Upload failed',
+    'upload_err_generic' => 'Could not upload this file',
     'library' => 'Library',
     'map' => 'Map',
     'albums' => 'Albums',
