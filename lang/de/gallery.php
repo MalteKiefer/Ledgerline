@@ -20,6 +20,12 @@ return [
     'edit_location' => 'Ort festlegen',
     'location_hint' => 'Klicke auf die Karte, um den Aufnahmeort zu setzen.',
     'location_clear' => 'Ort entfernen',
+
+    'upload_err_quota' => 'Speicherkontingent überschritten',
+    'upload_err_network' => 'Netzwerkfehler — Verbindung prüfen',
+    'upload_err_timeout' => 'Zeitüberschreitung beim Upload',
+    'upload_err_failed' => 'Upload fehlgeschlagen',
+    'upload_err_generic' => 'Datei konnte nicht hochgeladen werden',
     'library' => 'Bibliothek',
     'map' => 'Karte',
     'albums' => 'Alben',

@@ -990,7 +990,7 @@ return {
                         });
                         entry.state = 'done'; entry.progress = 100;
                         this._save();
-                    } catch (e) { entry.state = 'error'; }
+                    } catch (e) { entry.state = 'error'; entry.error = this._uploadErrorText(e); }
                 }
             };
             await Promise.all(Array.from({ length: Math.min(2, files.length) }, worker));
@@ -1016,14 +1016,32 @@ return {
             xhr.timeout = 300000;
             if (entry) xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) entry.progress = Math.round((ev.loaded / ev.total) * 100); };
             xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try { resolve(JSON.parse(xhr.responseText).id); } catch (e) { reject(new Error('bad_response')); }
+                    return;
+                }
                 if (xhr.status === 413) { reject(new Error('quota')); return; }
-                if (xhr.status < 200 || xhr.status >= 300) { reject(new Error('upload failed')); return; }
-                try { resolve(JSON.parse(xhr.responseText).id); } catch (e) { reject(e); }
+                // Surface the server's own reason (Laravel returns {message} for JSON).
+                let detail = '';
+                try { detail = JSON.parse(xhr.responseText).message || ''; } catch (e) { /* not JSON */ }
+                reject(new Error(detail ? 'server:' + detail : 'http:' + xhr.status));
             };
             xhr.onerror = () => reject(new Error('network'));
             xhr.ontimeout = () => reject(new Error('timeout'));
             xhr.send(data);
         });
+    },
+    // Turn an upload error into a human reason for the tray (the server already
+    // sends a localized {message} for most failures; we pass it through).
+    _uploadErrorText(e) {
+        const m = (e && e.message) || '';
+        if (m === 'quota') return labels.uploadErrQuota || 'Storage quota exceeded';
+        if (m === 'network') return labels.uploadErrNetwork || 'Network error';
+        if (m === 'timeout') return labels.uploadErrTimeout || 'Timed out';
+        if (m.startsWith('server:')) return m.slice(7);
+        if (m.startsWith('http:')) return `${labels.uploadErrFailed || 'Upload failed'} (${m.slice(5)})`;
+        if (m === 'bad_response') return labels.uploadErrFailed || 'Upload failed';
+        return m || labels.uploadErrGeneric || 'Error';
     },
 
     /* ---- Backlog: process un-processed uploads (transient plaintext) ---- */

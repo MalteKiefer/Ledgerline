@@ -18,6 +18,11 @@
         personName: @js(__('gallery.person_name')),
         create: @js(__('gallery.create')),
         save: @js(__('gallery.save')),
+        uploadErrQuota: @js(__('gallery.upload_err_quota')),
+        uploadErrNetwork: @js(__('gallery.upload_err_network')),
+        uploadErrTimeout: @js(__('gallery.upload_err_timeout')),
+        uploadErrFailed: @js(__('gallery.upload_err_failed')),
+        uploadErrGeneric: @js(__('gallery.upload_err_generic')),
      })">
 
     <div x-show="dragging && state === 'ready'" x-cloak @drop.prevent="drop($event)" @dragover.prevent
@@ -443,8 +448,9 @@
       <div class="mt-2 max-h-40 space-y-1.5 overflow-y-auto">
         <template x-for="(u, i) in uploads" :key="i">
           <div>
-            <div class="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400"><span class="truncate" x-text="u.name"></span><span class="ml-auto tabular-nums" :class="u.state === 'duplicate' ? 'text-gray-400' : ''" x-text="u.state === 'error' ? '⚠' : (u.state === 'done' ? '✓' : (u.state === 'duplicate' ? @js(__('gallery.duplicate_skipped')) : (u.state === 'pending' ? '…' : u.progress + '%')))"></span></div>
+            <div class="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-400"><span class="truncate" x-text="u.name"></span><span class="ml-auto tabular-nums" :class="u.state === 'error' ? 'text-red-500' : (u.state === 'duplicate' ? 'text-gray-400' : '')" :title="u.state === 'error' ? u.error : ''" x-text="u.state === 'error' ? '⚠' : (u.state === 'done' ? '✓' : (u.state === 'duplicate' ? @js(__('gallery.duplicate_skipped')) : (u.state === 'pending' ? '…' : u.progress + '%')))"></span></div>
             <div x-show="u.state === 'uploading'" class="mt-0.5 h-0.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-500 transition-all" :style="`width: ${u.progress}%`"></div></div>
+            <p x-show="u.state === 'error' && u.error" class="mt-0.5 text-[10px] leading-tight text-red-500" x-text="u.error"></p>
           </div>
         </template>
       </div>
