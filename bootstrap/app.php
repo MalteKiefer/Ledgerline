@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
+use App\Services\Ops\ErrorRecorder;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -36,4 +37,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        // Mirror unhandled exceptions into the in-app error log (no external
+        // service). Recording is best-effort and must never affect the request.
+        $exceptions->report(function (Throwable $e): void {
+            app(ErrorRecorder::class)->record($e);
+        });
     })->create();

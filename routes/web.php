@@ -14,6 +14,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
@@ -32,6 +33,10 @@ use Illuminate\Support\Facades\Route;
 // The root simply forwards to the dashboard; unauthenticated visitors are then
 // redirected to the login page by the "auth" middleware.
 Route::get('/', static fn () => redirect()->route('dashboard'));
+
+// Prometheus metrics for external scraping — no session; guarded by its own
+// token (OPS_METRICS_TOKEN) and disabled when unset. Rate-limited.
+Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttle:60,1')->name('metrics');
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
 // endpoints are throttled to blunt handshake replay/hammering.
@@ -85,6 +90,7 @@ Route::middleware('auth')->group(function (): void {
     // group (config services.pocketid.admin_group; open to all when unset).
     Route::middleware('can:manage-global-settings')->group(function (): void {
         Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
+        Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');
 
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
