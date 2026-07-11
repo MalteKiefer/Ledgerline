@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Gallery\GalleryProcessor;
 use App\Services\Gallery\MachineLearning;
+use App\Services\Support\NominatimClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -71,6 +72,36 @@ class GalleryProcessController extends Controller
         $data = $request->validate(['q' => ['required', 'string', 'max:1024']]);
 
         return response()->json(['embedding' => $ml->embedText($data['q'])])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+
+    /**
+     * Forward-geocode a free-text place query to candidate coordinates for the
+     * bulk location picker. The query and results pass through the server only
+     * (client CSP forbids third-party calls) and are never persisted.
+     */
+    public function geocode(Request $request, NominatimClient $nominatim): JsonResponse
+    {
+        $data = $request->validate(['q' => ['required', 'string', 'max:256']]);
+
+        $json = $nominatim->get('search', [
+            'q' => $data['q'],
+            'format' => 'jsonv2',
+            'limit' => 6,
+            'addressdetails' => 0,
+        ]);
+
+        $results = collect(is_array($json) ? $json : [])
+            ->map(fn ($r): array => [
+                'display' => (string) ($r['display_name'] ?? ''),
+                'lat' => isset($r['lat']) ? (float) $r['lat'] : null,
+                'lng' => isset($r['lon']) ? (float) $r['lon'] : null,
+            ])
+            ->filter(fn (array $r): bool => $r['display'] !== '' && $r['lat'] !== null && $r['lng'] !== null)
+            ->values()
+            ->all();
+
+        return response()->json(['results' => $results])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 }

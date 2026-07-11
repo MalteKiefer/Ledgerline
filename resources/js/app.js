@@ -1478,6 +1478,10 @@ return {
     loc: { open: false, target: null, lat: null, lng: null },
     _locMap: null,
     _locMarker: null,
+    geoQuery: '',
+    geoResults: [],
+    geoBusy: false,
+    geoSearched: false,
     // Single photo (viewer) location.
     openLocPicker(p) {
         if (! p) return;
@@ -1541,6 +1545,32 @@ return {
         if (this._locMap) { this._locMap.remove(); this._locMap = null; }
         this._locMarker = null;
         this.loc = { open: false, bulk: false, target: null, lat: null, lng: null };
+        this.geoQuery = ''; this.geoResults = []; this.geoBusy = false; this.geoSearched = false;
+    },
+    // Forward-geocode an address query (server-proxied) to candidate places.
+    async geoSearch() {
+        const q = this.geoQuery.trim();
+        if (! q) { this.geoResults = []; this.geoSearched = false; return; }
+        this.geoBusy = true;
+        try {
+            const res = await fetch(config.geocodeUrl + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
+            this.geoResults = res.ok ? ((await res.json()).results || []) : [];
+        } catch (e) { this.geoResults = []; } finally { this.geoBusy = false; this.geoSearched = true; }
+    },
+    // Drop the map marker on a chosen search result.
+    pickGeoResult(r) {
+        if (r == null || r.lat == null || r.lng == null) return;
+        this.loc.lat = r.lat; this.loc.lng = r.lng;
+        this.geoResults = []; this.geoSearched = false;
+        if (this._locMap) {
+            this._locMap.setView([r.lat, r.lng], 14);
+            if (this._locMarker) this._locMarker.setLatLng([r.lat, r.lng]);
+            else this._mountLocMarker(r.lat, r.lng);
+        }
+    },
+    async _mountLocMarker(lat, lng) {
+        const L = await loadLeaflet();
+        if (this._locMap && ! this._locMarker) this._locMarker = L.marker([lat, lng]).addTo(this._locMap);
     },
 
     /* ---- Multi-select ---- */
@@ -1575,13 +1605,16 @@ return {
         this.selected = this.selected.length === ids.length ? [] : ids;
     },
     _eachSelected(fn) { for (const id of [...this.selected]) { const p = this.index.photos.find((x) => x.id === id); if (p) fn(p); } },
-    // Set the same capture date/time on every selected photo.
-    bulkSetDate(value) {
-        if (! value) return;
-        const d = new Date(value);
+    // Draft date/time for the selection; only applied on the confirm button so a
+    // half-typed value never commits.
+    bulkDate: '',
+    bulkApplyDate() {
+        if (! this.bulkDate) return;
+        const d = new Date(this.bulkDate);
         if (isNaN(d.getTime())) return;
         const iso = d.toISOString();
         this._eachSelected((p) => { p.taken_at = iso; });
+        this.bulkDate = '';
         this.selected = [];
         this._save();
     },

@@ -169,6 +169,7 @@ Route::middleware('auth')->group(function (): void {
     // bytes — nothing is persisted server-side. embed-text embeds a search query.
     Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('gallery.process');
     Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('gallery.embed-text');
+    Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('gallery.geocode');
 
     // Opaque zero-knowledge gallery content blobs (ciphertext bytes only).
     Route::get('/gallery/usage', [GalleryBlobController::class, 'usage'])->name('gallery.usage');

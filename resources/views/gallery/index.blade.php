@@ -7,6 +7,7 @@
         usageUrl: '{{ url('/gallery/usage') }}',
         reconcileUrl: '{{ url('/gallery/blobs/reconcile') }}',
         embedTextUrl: '{{ url('/gallery/embed-text') }}',
+        geocodeUrl: '{{ url('/gallery/geocode') }}',
         token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('gallery.load_failed')),
@@ -104,24 +105,27 @@
 
       <div class="min-w-0 flex-1">
         {{-- Bulk-select bar --}}
-        <div x-show="selectedCount" x-cloak class="sticky top-2 z-20 mb-3 flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 shadow-sm">
-          <button type="button" @click="clearSelection()" class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>
-          <span class="text-sm font-medium text-gray-800 dark:text-gray-200" x-text="@js(__('gallery.selected', ['count' => '{n}'])).replace('{n}', selectedCount)"></span>
-          <button type="button" @click="selectAllVisible()" class="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">{{ __('gallery.select_all') }}</button>
-          <div class="ml-auto flex items-center gap-2">
+        <div x-show="selectedCount" x-cloak class="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-full border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 px-4 py-2 shadow-xl backdrop-blur">
+          <button type="button" @click="clearSelection()" class="shrink-0 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>
+          <span class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-800 dark:text-gray-200" x-text="@js(__('gallery.selected', ['count' => '{n}'])).replace('{n}', selectedCount)"></span>
+          <button type="button" @click="selectAllVisible()" class="shrink-0 whitespace-nowrap text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">{{ __('gallery.select_all') }}</button>
+          <div class="flex shrink-0 items-center gap-2">
             <template x-if="view === 'library'">
               <span class="flex items-center gap-2">
                 <div x-data="{ open: false }" class="relative">
                   <button type="button" @click="open = ! open" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="folder" class="h-4 w-4" />{{ __('gallery.add_to_album') }}</button>
-                  <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
+                  <div x-show="open" x-cloak @click.outside="open = false" class="absolute bottom-full right-0 z-30 mb-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
                     <template x-for="al in albums" :key="al.id">
                       <button type="button" @click="addSelectedToAlbum(al); open = false" class="block w-full truncate rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" x-text="al.name"></button>
                     </template>
                     <button type="button" @click="open = false; createAlbum()" class="mt-0.5 flex w-full items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
                   </div>
                 </div>
-                <input type="datetime-local" @change="bulkSetDate($event.target.value)" title="{{ __('gallery.bulk_date') }}"
-                    class="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+                <span class="flex items-center gap-1">
+                  <input type="datetime-local" x-model="bulkDate" title="{{ __('gallery.bulk_date') }}"
+                      class="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+                  <button type="button" @click="bulkApplyDate()" :disabled="! bulkDate" title="{{ __('gallery.bulk_date_apply') }}" class="inline-flex items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"><x-icon name="check" class="h-4 w-4" /></button>
+                </span>
                 <button type="button" @click="openBulkLocPicker()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="map-pin" class="h-4 w-4" />{{ __('gallery.edit_location') }}</button>
                 <button type="button" @click="bulkTrash()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900"><x-icon name="trash" class="h-4 w-4" />{{ __('gallery.delete') }}</button>
               </span>
@@ -189,8 +193,8 @@
                       <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
                       <template x-if="p.motionRef && p.media_type !== 'video'"><span class="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">Live</span></template>
                     </button>
-                    <label class="absolute left-2 top-2 z-10 cursor-pointer" :class="selectedCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop>
-                      <input type="checkbox" :checked="isSelected(p.id)" @click.stop.prevent="clickSelect(p.id, $event)" class="h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
+                    <label class="absolute left-2 top-2 z-10 cursor-pointer" :class="selectedCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop.prevent="clickSelect(p.id, $event)">
+                      <input type="checkbox" :checked="isSelected(p.id)" class="pointer-events-none h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
                     </label>
                     <button type="button" @click.stop="trash(p)" title="{{ __('gallery.delete') }}"
                         class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition hover:bg-red-500 group-hover:opacity-100"><x-icon name="trash" class="h-4 w-4" /></button>
@@ -262,8 +266,8 @@
                    :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)">
                 <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover opacity-70">
                 <div x-show="!thumbs[p.id]" class="h-full w-full bg-gray-200 dark:bg-gray-700"></div>
-                <label class="absolute left-2 top-2 z-10 cursor-pointer" @click.stop>
-                  <input type="checkbox" :checked="isSelected(p.id)" @change="toggleSelect(p.id)" class="h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
+                <label class="absolute left-2 top-2 z-10 cursor-pointer" @click.stop.prevent="clickSelect(p.id, $event)">
+                  <input type="checkbox" :checked="isSelected(p.id)" class="pointer-events-none h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
                 </label>
                 <div class="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/40 opacity-0 transition group-hover:opacity-100">
                   <button type="button" @click="restore(p)" title="{{ __('gallery.restore') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-800 hover:bg-white"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
@@ -591,6 +595,19 @@
       <div class="relative w-full max-w-2xl rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.edit_location') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.location_hint') }}</p>
+        <div class="relative mt-3">
+          <form @submit.prevent="geoSearch()" class="flex gap-2">
+            <input type="search" x-model="geoQuery" placeholder="{{ __('gallery.search_place') }}"
+                class="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+            <button type="submit" :disabled="geoBusy || ! geoQuery.trim()" class="inline-flex shrink-0 items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"><x-icon name="magnifying-glass" class="h-4 w-4" /></button>
+          </form>
+          <div x-show="geoResults.length" x-cloak class="absolute z-10 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
+            <template x-for="(r, i) in geoResults" :key="i">
+              <button type="button" @click="pickGeoResult(r)" class="block w-full truncate rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" x-text="r.display"></button>
+            </template>
+          </div>
+          <p x-show="geoSearched && ! geoBusy && ! geoResults.length" x-cloak class="mt-1 text-xs text-gray-400">{{ __('gallery.no_place_results') }}</p>
+        </div>
         <div x-ref="locmap" class="mt-3 h-72 w-full overflow-hidden rounded-md border border-gray-200 dark:border-gray-800"></div>
         <div class="mt-3 flex items-center justify-between">
           <button type="button" @click="clearLoc()" class="text-sm text-gray-500 hover:text-red-600">{{ __('gallery.location_clear') }}</button>
