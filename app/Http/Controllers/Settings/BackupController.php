@@ -12,6 +12,7 @@ use App\Models\BackupRun;
 use App\Rules\SafeUrl;
 use App\Services\Backup\ArchiveCipher;
 use App\Services\Backup\BackupDestinationFactory;
+use App\Services\Backup\BackupVerifier;
 use App\Support\OutboundUrl;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
@@ -168,7 +169,34 @@ class BackupController extends Controller
                 'encrypted' => $r->status === 'success' && str_ends_with((string) $r->filename, '.enc'),
                 'cancellable' => $r->status === 'running' && ! $r->cancel_requested,
                 'cancelling' => $r->status === 'running' && $r->cancel_requested,
+                // Any successful run (archive or mirror) can be integrity-checked.
+                'verifiable' => $r->status === 'success' && $r->filename !== null,
+                // Verifying an encrypted archive needs the passphrase.
+                'needsPassphrase' => $r->status === 'success' && str_ends_with((string) $r->filename, '.enc'),
+                'verifyStatus' => $r->verify_status,
+                'verifyMessage' => $r->verify_message,
+                'verifiedHuman' => $r->verified_at?->diffForHumans(),
             ]),
+        ]);
+    }
+
+    /**
+     * Non-destructively verify a completed backup: confirm the archive is
+     * present and intact, that the passphrase decrypts an encrypted archive, and
+     * that the inner dump is a restorable database image (a dry run — nothing is
+     * ever written to live data). The result is recorded on the run.
+     */
+    public function verifyRun(Request $request, BackupRun $run, BackupVerifier $verifier): JsonResponse
+    {
+        abort_unless($run->status === 'success' && $run->filename, 404);
+        $data = $request->validate(['passphrase' => ['nullable', 'string', 'max:255']]);
+
+        $result = $verifier->verify($run, $data['passphrase'] ?? null);
+
+        return response()->json([
+            'ok' => $result['ok'],
+            'message' => $result['message'],
+            'verifiedHuman' => $run->verified_at?->diffForHumans(),
         ]);
     }
 

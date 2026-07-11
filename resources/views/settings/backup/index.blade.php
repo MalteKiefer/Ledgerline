@@ -166,7 +166,7 @@
 
     {{-- Recent runs — live-updating (no page reload) --}}
     <section class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6"
-        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', decryptBase: '{{ route('settings.backup.runs.decrypt', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
+        x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', decryptBase: '{{ route('settings.backup.runs.decrypt', ['run' => '__id__']) }}', verifyBase: '{{ route('settings.backup.runs.verify', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_runs_heading') }}</h2>
         @error('passphrase')<p class="mt-2 rounded-md bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">{{ $message }}</p>@enderror
 
@@ -185,6 +185,44 @@
                         <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.backup_decrypt_download') }}</button>
                     </div>
                 </form>
+            </div>
+        </template>
+
+        {{-- Guided restore: verify integrity (dry run), then recover the archive. Nothing is applied to live data. --}}
+        <template x-teleport="body">
+            <div x-show="restore.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="closeRestore()">
+                <div class="absolute inset-0 bg-gray-900/40" @click="closeRestore()"></div>
+                <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_restore_heading') }}</h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_restore_intro') }}</p>
+
+                    {{-- Step 1: verify (dry run) --}}
+                    <div class="mt-4 rounded-md border border-gray-200 dark:border-gray-800 p-3">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('settings.backup_verify_step') }}</p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_verify_hint') }}</p>
+                        <input x-show="restore.run && restore.run.needsPassphrase" type="password" x-model="verifyPass" autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
+                            class="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <button type="button" @click="runVerify()" :disabled="verifyBusy" class="mt-2 inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50">
+                            <x-icon name="shield" class="h-4 w-4" />
+                            <span x-text="verifyBusy ? '{{ __('settings.backup_verifying') }}' : '{{ __('settings.backup_verify') }}'"></span>
+                        </button>
+                        <p x-show="verifyResult" x-cloak class="mt-2 rounded-md px-3 py-2 text-xs" :class="verifyResult && verifyResult.ok ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300'" x-text="verifyResult ? verifyResult.message : ''"></p>
+                    </div>
+
+                    {{-- Step 2: recover --}}
+                    <div class="mt-3 rounded-md border border-gray-200 dark:border-gray-800 p-3">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('settings.backup_recover_step') }}</p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_recover_hint') }}</p>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <a x-show="restore.run && restore.run.downloadable && ! restore.run.needsPassphrase" :href="restoreDownloadUrl()" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.backup_download') }}</a>
+                            <button x-show="restore.run && restore.run.needsPassphrase" type="button" @click="openDecrypt(restore.run.id); closeRestore()" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="lock-open" class="h-4 w-4" />{{ __('settings.backup_decrypt_download') }}</button>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex justify-end">
+                        <button type="button" @click="closeRestore()" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
+                    </div>
+                </div>
             </div>
         </template>
         <p x-show="runs.length === 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_no_runs') }}</p>
@@ -218,6 +256,9 @@
                         <td class="py-1.5 pr-3 align-top text-gray-500 dark:text-gray-400" x-text="r.startedHuman"></td>
                         <td class="py-1.5 pr-3 align-top text-gray-500 dark:text-gray-400" x-text="r.size ?? '—'"></td>
                         <td class="py-1.5 pr-3 align-top">
+                            <span x-show="r.verifyStatus === 'ok'" title="{{ __('settings.backup_verify_ok') }}" class="inline-flex text-green-600 dark:text-green-400"><x-icon name="check-circle" class="h-4 w-4" /></span>
+                            <span x-show="r.verifyStatus === 'failed'" :title="r.verifyMessage" class="inline-flex text-amber-500 dark:text-amber-400"><x-icon name="exclamation-triangle" class="h-4 w-4" /></span>
+                            <button x-show="r.verifiable" type="button" @click="openRestore(r)" title="{{ __('settings.backup_restore') }}" :aria-label="'{{ __('settings.backup_restore') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
                             <a x-show="r.downloadable" :href="downloadUrl(r.id)" title="{{ __('settings.backup_download') }}" :aria-label="'{{ __('settings.backup_download') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
                             <button x-show="r.encrypted" type="button" @click="openDecrypt(r.id)" title="{{ __('settings.backup_decrypt') }}" :aria-label="'{{ __('settings.backup_decrypt') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="lock-open" class="h-4 w-4" /></button>
                             <button x-show="r.cancellable" type="button" @click="cancel(r.id)" title="{{ __('settings.backup_cancel') }}" :aria-label="'{{ __('settings.backup_cancel') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
