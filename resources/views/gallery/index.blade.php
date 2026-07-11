@@ -23,6 +23,7 @@
         uploadErrTimeout: @js(__('gallery.upload_err_timeout')),
         uploadErrFailed: @js(__('gallery.upload_err_failed')),
         uploadErrGeneric: @js(__('gallery.upload_err_generic')),
+        procErrFailed: @js(__('gallery.proc_err_failed')),
      })">
 
     <div x-show="dragging && state === 'ready'" x-cloak @drop.prevent="drop($event)" @dragover.prevent
@@ -171,7 +172,8 @@
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" :style="photoTransform(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       <template x-if="p.motionRef && p.media_type !== 'video'"><video data-motion muted loop playsinline preload="none" style="display:none" class="pointer-events-none absolute inset-0 h-full w-full object-cover"></video></template>
                       <div x-show="!thumbs[p.id]" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
-                        <svg x-show="!p.thumbRef" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                        <svg x-show="!p.thumbRef && !p.failed" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                        <span x-show="p.failed" :title="p.procError" class="text-amber-500 dark:text-amber-400"><x-icon name="exclamation-triangle" class="h-6 w-6" /></span>
                       </div>
                       <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
                       <template x-if="p.motionRef && p.media_type !== 'video'"><span class="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">Live</span></template>
@@ -433,7 +435,7 @@
     </div>
 
     {{-- Floating upload / processing card --}}
-    <div x-show="state === 'ready' && (uploading || progress.active || uploads.length)" x-cloak x-transition
+    <div x-show="state === 'ready' && (uploading || progress.active || uploads.length || failedCount)" x-cloak x-transition
         class="fixed bottom-4 right-4 z-[860] w-72 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-xl">
       <div class="flex items-center justify-between">
         <span class="text-xs font-semibold text-gray-700 dark:text-gray-200" x-text="progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload'))"></span>
@@ -443,6 +445,12 @@
         <div class="mt-2">
           <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.processing') }}</span><span x-text="progress.done + ' / ' + progress.total"></span></div>
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${progress.total ? (progress.done / progress.total * 100) : 0}%`"></div></div>
+        </div>
+      </template>
+      <template x-if="failedCount && !progress.active">
+        <div class="mt-2 flex items-center justify-between gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1.5">
+          <span class="text-[11px] text-amber-700 dark:text-amber-300" x-text="failedCount + ' ' + @js(__('gallery.failed_label'))"></span>
+          <button type="button" @click="retryFailed()" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-2 py-1 text-[11px] font-medium text-white dark:text-gray-900">{{ __('gallery.retry_failed') }}</button>
         </div>
       </template>
       <div class="mt-2 max-h-40 space-y-1.5 overflow-y-auto">
