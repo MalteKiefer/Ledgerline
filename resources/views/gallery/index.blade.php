@@ -89,6 +89,11 @@
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="square-2-stack" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.duplicates') }}</span><span x-show="dupTotal" class="text-xs tabular-nums text-gray-400" x-text="dupTotal"></span>
           </button>
+          <button type="button" @click="view = 'jobs'"
+              :class="view === 'jobs' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <span :class="_pipelineRunning ? 'animate-spin' : ''"><x-icon name="arrow-path" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.jobs') }}</span><span x-show="failedCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-xs font-medium tabular-nums text-amber-700 dark:text-amber-300" x-text="failedCount"></span>
+          </button>
           <button type="button" @click="view = 'trash'"
               :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
@@ -188,6 +193,51 @@
               </div>
             </section>
           </template>
+        </div>
+
+        {{-- ACTIVITY / BATCHES --}}
+        <div x-show="view === 'jobs'">
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.jobs_heading') }}</h2>
+            <button type="button" @click="runPipeline()" :disabled="_pipelineRunning || progress.active || peopleScanning || dupScanning"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
+              <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.jobs_run_all') }}
+            </button>
+          </div>
+          <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.jobs_hint') }}</p>
+          <div class="space-y-3">
+            {{-- Processing --}}
+            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.jobs_processing') }}</span>
+                <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="progress.active ? (progress.done + ' / ' + progress.total) : (failedCount ? (failedCount + ' ' + @js(__('gallery.failed_label'))) : @js(__('gallery.jobs_done')))"></span>
+              </div>
+              <div x-show="progress.active" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${progress.total ? (progress.done / progress.total * 100) : 0}%`"></div></div>
+              <button type="button" x-show="failedCount && !progress.active" @click="retryFailed()" class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300 underline">{{ __('gallery.retry_failed') }}</button>
+            </div>
+            {{-- Faces --}}
+            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.people') }}</span>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="peopleScanning ? (peopleProgress.done + ' / ' + peopleProgress.total) : people.length"></span>
+                  <button type="button" x-show="!peopleScanning && !progress.active" @click="scanFaces()" class="text-xs font-medium text-gray-700 dark:text-gray-300 underline">{{ __('gallery.jobs_run') }}</button>
+                </div>
+              </div>
+              <div x-show="peopleScanning" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${peopleProgress.total ? (peopleProgress.done / peopleProgress.total * 100) : 0}%`"></div></div>
+            </div>
+            {{-- Duplicates --}}
+            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.duplicates') }}</span>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="dupScanning ? (dupProgress.done + ' / ' + dupProgress.total) : dupTotal"></span>
+                  <button type="button" x-show="!dupScanning && !progress.active" @click="scanDuplicates()" class="text-xs font-medium text-gray-700 dark:text-gray-300 underline">{{ __('gallery.jobs_run') }}</button>
+                </div>
+              </div>
+              <div x-show="dupScanning" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${dupProgress.total ? (dupProgress.done / dupProgress.total * 100) : 0}%`"></div></div>
+            </div>
+          </div>
         </div>
 
         {{-- TRASH --}}
