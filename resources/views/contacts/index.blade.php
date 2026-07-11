@@ -47,6 +47,7 @@
     </template>
 
     <template x-if="state === 'ready'">
+     <div>
       <div class="flex h-[calc(100dvh-11rem)] gap-4 md:h-[calc(100vh-10rem)]">
         {{-- List pane --}}
         <aside class="w-full flex-col rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm md:w-80 md:shrink-0"
@@ -351,6 +352,7 @@
             </div>
         </div>
       </div>
+     </div>
     </template>
   </div>
 </x-layouts.app>
