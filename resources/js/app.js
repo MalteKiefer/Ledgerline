@@ -4582,6 +4582,96 @@ Alpine.data('notes', (labels = {}) => ({
 }));
 
 /**
+ * vCard 4.0 read/write, entirely in the browser (the server never sees a
+ * plaintext vCard — zero-knowledge). Maps our contact record to/from the RFC
+ * 6350 properties; PHOTO is a base64 data URI (decoded from / encoded to the
+ * encrypted avatar blob by the caller). Lines are folded at 75 octets on write
+ * and unfolded on read.
+ */
+const VCard = {
+    esc(v) { return String(v ?? '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;'); },
+    unesc(v) { return String(v ?? '').replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\'); },
+    fold(line) {
+        if (line.length <= 75) return line;
+        const out = [];
+        let s = line;
+        out.push(s.slice(0, 75));
+        s = s.slice(75);
+        while (s.length) { out.push(' ' + s.slice(0, 74)); s = s.slice(74); }
+        return out.join('\r\n');
+    },
+
+    // Build a vCard string for one contact. `photo` is an optional base64 data URI.
+    build(c, photo) {
+        const L = [];
+        const add = (line) => L.push(this.fold(line));
+        add('BEGIN:VCARD');
+        add('VERSION:4.0');
+        if (c.uid) add('UID:' + c.uid);
+        add('FN:' + this.esc(c.fn || [c.first, c.last].filter(Boolean).join(' ')));
+        add('N:' + this.esc(c.last) + ';' + this.esc(c.first) + ';;;');
+        if (c.nickname) add('NICKNAME:' + this.esc(c.nickname));
+        if (c.org) add('ORG:' + this.esc(c.org));
+        if (c.title) add('TITLE:' + this.esc(c.title));
+        for (const e of (c.emails ?? [])) if (e.value) add('EMAIL;TYPE=' + (e.type || 'home') + ':' + this.esc(e.value));
+        for (const p of (c.phones ?? [])) if (p.value) add('TEL;TYPE=' + (p.type || 'cell') + ':' + this.esc(p.value));
+        for (const a of (c.addresses ?? [])) {
+            add('ADR;TYPE=' + (a.type || 'home') + ':;;' + this.esc(a.street) + ';' + this.esc(a.city) + ';' + this.esc(a.region) + ';' + this.esc(a.zip) + ';' + this.esc(a.country));
+        }
+        for (const u of (c.urls ?? [])) if (u.value) add('URL:' + this.esc(u.value));
+        if (c.bday) add('BDAY:' + c.bday.replace(/-/g, ''));
+        if (c.note) add('NOTE:' + this.esc(c.note));
+        if ((c.categories ?? []).length) add('CATEGORIES:' + c.categories.map((g) => this.esc(g)).join(','));
+        if (photo) add('PHOTO:' + photo);
+        add('END:VCARD');
+        return L.join('\r\n') + '\r\n';
+    },
+
+    // Parse a vCard file into an array of { contact, photo } (photo = data URI).
+    parse(text) {
+        const cards = [];
+        // Unfold continuation lines (CRLF/LF followed by space or tab).
+        const raw = text.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '');
+        let cur = null;
+        for (const line of raw.split('\n')) {
+            if (! line.trim()) continue;
+            const up = line.toUpperCase();
+            if (up === 'BEGIN:VCARD') { cur = { c: this._blank(), photo: null }; continue; }
+            if (up === 'END:VCARD') { if (cur) cards.push(cur); cur = null; continue; }
+            if (! cur) continue;
+            const idx = line.indexOf(':');
+            if (idx < 0) continue;
+            const left = line.slice(0, idx);
+            const value = line.slice(idx + 1);
+            const [nameRaw, ...paramParts] = left.split(';');
+            const name = nameRaw.toUpperCase();
+            const params = {};
+            for (const p of paramParts) { const [k, v] = p.split('='); if (v) params[k.toUpperCase()] = v.toUpperCase(); }
+            const type = (params.TYPE || '').toLowerCase();
+            const c = cur.c;
+            switch (name) {
+                case 'UID': c.uid = value; break;
+                case 'FN': c.fn = this.unesc(value); break;
+                case 'N': { const [last, first] = value.split(';').map((x) => this.unesc(x)); c.last = last || ''; c.first = first || ''; break; }
+                case 'NICKNAME': c.nickname = this.unesc(value); break;
+                case 'ORG': c.org = this.unesc(value.split(';')[0]); break;
+                case 'TITLE': c.title = this.unesc(value); break;
+                case 'EMAIL': c.emails.push({ value: this.unesc(value), type: type || 'home' }); break;
+                case 'TEL': c.phones.push({ value: this.unesc(value), type: type || 'cell' }); break;
+                case 'URL': c.urls.push({ value: this.unesc(value), type: type || 'home' }); break;
+                case 'ADR': { const f = value.split(';').map((x) => this.unesc(x)); c.addresses.push({ street: f[2] || '', city: f[3] || '', region: f[4] || '', zip: f[5] || '', country: f[6] || '', type: type || 'home' }); break; }
+                case 'BDAY': { const v = value.replace(/[^0-9]/g, ''); if (v.length >= 8) c.bday = `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`; break; }
+                case 'NOTE': c.note = this.unesc(value); break;
+                case 'CATEGORIES': c.categories = value.split(',').map((x) => this.unesc(x.trim())).filter(Boolean); break;
+                case 'PHOTO': cur.photo = value.startsWith('data:') ? value : null; break;
+            }
+        }
+        return cards;
+    },
+    _blank() { return { fn: '', first: '', last: '', nickname: '', org: '', title: '', emails: [], phones: [], addresses: [], urls: [], bday: '', note: '', categories: [] }; },
+};
+
+/**
  * Contacts. Zero-knowledge: every record lives in the opaque /store manifest
  * (shared with notes/todos) — plaintext inside the sealed blob, so CRUD just
  * edits the in-memory array and schedules a debounced sealed save. The only
@@ -4756,6 +4846,76 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         const blobs = [];
         for (const c of this.contacts) if (c.avatarRef) blobs.push(c.avatarRef);
         fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) }).catch(() => {});
+    },
+
+    /* ---- vCard import / export (client-side, ZK) ---- */
+    importing: false,
+    // Decrypt an avatar blob into a base64 data URI for the PHOTO property.
+    async _avatarDataUri(c) {
+        if (! c?.avatarRef) return null;
+        try {
+            const bytes = await fetchDecrypt(config.rawBase, c.avatarRef, c.avatarKey);
+            let bin = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+            return 'data:image/jpeg;base64,' + btoa(bin);
+        } catch (e) { return null; }
+    },
+    _download(name, text) {
+        const url = URL.createObjectURL(new Blob([text], { type: 'text/vcard;charset=utf-8' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = name; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    },
+    async exportOne(c) {
+        const vcf = VCard.build(c, await this._avatarDataUri(c));
+        this._download((this.displayName(c).replace(/[^\w.-]+/g, '_') || 'contact') + '.vcf', vcf);
+    },
+    async exportAll() {
+        const active = this.contacts.filter((c) => ! c.trashed);
+        let out = '';
+        for (const c of active) out += VCard.build(c, await this._avatarDataUri(c));
+        this._download('contacts.vcf', out);
+    },
+    async importFile(ev) {
+        const file = ev.target?.files?.[0];
+        ev.target.value = '';
+        if (! file) return;
+        this.importing = true;
+        try {
+            const text = await file.text();
+            const cards = VCard.parse(text);
+            const known = new Set(this.contacts.map((c) => c.uid).filter(Boolean));
+            let added = 0;
+            for (const { c: parsed, photo } of cards) {
+                if (parsed.uid && known.has(parsed.uid)) continue; // dedupe by UID
+                const c = {
+                    id: window.LLStore.newId(), uid: parsed.uid || this._newUid(),
+                    fn: parsed.fn, first: parsed.first, last: parsed.last, nickname: parsed.nickname,
+                    org: parsed.org, title: parsed.title,
+                    emails: parsed.emails, phones: parsed.phones, addresses: parsed.addresses, urls: parsed.urls,
+                    bday: parsed.bday, note: parsed.note, categories: parsed.categories, favorite: false,
+                    avatarRef: null, avatarKey: null, personId: null,
+                    trashed: false, updated: new Date().toISOString(),
+                };
+                if (photo) {
+                    try {
+                        const b64 = photo.slice(photo.indexOf(',') + 1);
+                        const bin = atob(b64);
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        const sq = await this._squareJpeg(new Blob([bytes]), 256);
+                        const enc = window.Vault.encryptContent(sq, { name: 'avatar.jpg', mime: 'image/jpeg' });
+                        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+                        c.avatarRef = await this._uploadContactBlob(cipher); c.avatarKey = enc.encFileKey;
+                    } catch (e) { /* skip a bad photo, keep the contact */ }
+                }
+                this.contacts.unshift(c);
+                if (parsed.uid) known.add(parsed.uid);
+                added++;
+            }
+            this._save();
+            window.llToast?.((labels.imported || ':n imported').replace(':n', added));
+        } catch (e) { window.llToast?.(labels.importFailed || 'Import failed'); } finally { this.importing = false; }
     },
 }));
 

@@ -49,4 +49,10 @@ return [
     'restore' => 'Restore',
     'to_trash' => 'Move to trash',
     'delete_forever' => 'Delete permanently',
+
+    'import' => 'Import vCard',
+    'export' => 'Export vCard',
+    'export_all' => 'Export all',
+    'imported' => ':n contact(s) imported',
+    'import_failed' => 'Could not read that vCard file.',
 ];

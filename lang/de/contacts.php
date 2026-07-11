@@ -49,4 +49,10 @@ return [
     'restore' => 'Wiederherstellen',
     'to_trash' => 'In den Papierkorb',
     'delete_forever' => 'Endgültig löschen',
+
+    'import' => 'vCard importieren',
+    'export' => 'vCard exportieren',
+    'export_all' => 'Alle exportieren',
+    'imported' => ':n Kontakt(e) importiert',
+    'import_failed' => 'vCard-Datei konnte nicht gelesen werden.',
 ];
