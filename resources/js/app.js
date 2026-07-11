@@ -5141,6 +5141,9 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
             const ref = await this._uploadContactBlob(cipher);
             const old = c.avatarRef;
             c.avatarRef = ref; c.avatarKey = enc.encFileKey; c.updated = new Date().toISOString();
+            // Seed the display cache from the plaintext crop so the avatar updates
+            // immediately (no decrypt round-trip, no reload).
+            this.avatarUrls[ref] = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
             this._save();
             if (old) this._freeAvatar(old);
         } catch (e) { window.llToast?.(labels.avatarFailed || 'Upload failed'); }
