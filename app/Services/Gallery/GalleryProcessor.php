@@ -44,7 +44,7 @@ class GalleryProcessor
      *   thumb: ?string, medium: ?string, motion: ?string
      * }
      */
-    public function process(string $path, string $mime): array
+    public function process(string $path, string $mime, bool $withMl = true): array
     {
         $isVideo = str_starts_with($mime, 'video/');
 
@@ -109,21 +109,11 @@ class GalleryProcessor
                 }
             }
 
-            // Vision models run on the image source (poster for video).
-            $embedding = $this->ml->embed($imageSource);
-            foreach ($this->ml->detectFaces($imageSource) as $face) {
-                $crop = null;
-                try {
-                    $crop = $this->faces->crop($imageSource, $face['box']);
-                } catch (Throwable) {
-                    $crop = null;
-                }
-                $faces[] = [
-                    'score' => $face['score'],
-                    'box' => $face['box'],
-                    'embedding' => $face['embedding'],
-                    'crop' => $crop,
-                ];
+            // Vision models (CLIP embedding + face detection) are the slow part —
+            // they call the ML sidecar. On a "fast" upload we skip them so the
+            // photo is visible immediately; a deferred pass runs analyze() later.
+            if ($withMl) {
+                [$embedding, $faces] = $this->analyzeSource($imageSource);
             }
 
             $phash = $this->phash->hash($imageSource);
@@ -164,5 +154,49 @@ class GalleryProcessor
             'medium' => $medium,
             'motion' => $motionBytes,
         ];
+    }
+
+    /**
+     * Deferred vision pass: run the CLIP embedding + face detection on an already
+     * decoded image (the client sends the medium rendition). Returns only the ML
+     * outputs so the client can merge them into a photo's sealed metadata after
+     * the fast upload has already made the photo visible.
+     *
+     * @return array{embedding: ?list<float>, faces: list<array{score: float, box: array{0:float,1:float,2:float,3:float}, embedding: list<float>, crop: ?string}>}
+     */
+    public function analyze(string $path): array
+    {
+        [$embedding, $faces] = $this->analyzeSource($path);
+
+        return ['embedding' => $embedding, 'faces' => $faces];
+    }
+
+    /**
+     * Run the vision models on one decoded image source and collect the CLIP
+     * embedding plus detected faces (each with its crop). Shared by the inline
+     * process() and the deferred analyze().
+     *
+     * @return array{0: ?list<float>, 1: list<array{score: float, box: array{0:float,1:float,2:float,3:float}, embedding: list<float>, crop: ?string}>}
+     */
+    private function analyzeSource(string $imageSource): array
+    {
+        $embedding = $this->ml->embed($imageSource);
+        $faces = [];
+        foreach ($this->ml->detectFaces($imageSource) as $face) {
+            $crop = null;
+            try {
+                $crop = $this->faces->crop($imageSource, $face['box']);
+            } catch (Throwable) {
+                $crop = null;
+            }
+            $faces[] = [
+                'score' => $face['score'],
+                'box' => $face['box'],
+                'embedding' => $face['embedding'],
+                'crop' => $crop,
+            ];
+        }
+
+        return [$embedding, $faces];
     }
 }

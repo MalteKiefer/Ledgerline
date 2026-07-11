@@ -1197,6 +1197,9 @@ return {
                 await new Promise((r) => setTimeout(r, 4000));
                 await this.retryFailed(true);
             }
+            // Deferred vision pass: fills in embeddings + faces that the fast
+            // upload skipped, so photos appear first and ML catches up after.
+            await this.runMlBacklog();
             if (withScans && this.state === 'ready' && ! this.dupScanning && ! this.peopleScanning) {
                 await this.scanFaces();
                 await this.scanDuplicates();
@@ -1278,6 +1281,9 @@ return {
         const fd = new FormData();
         fd.append('_token', config.token);
         fd.append('file', file, file.name);
+        // Fast upload: skip the CLIP embedding + face detection so the photo
+        // appears immediately; the deferred ML backlog fills them in later.
+        fd.append('ml', '0');
         const res = await fetch(config.processUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
         if (! res.ok) {
             let detail = '';
@@ -1312,8 +1318,90 @@ return {
         // Face-crop blob ids on the entry too, so reconcile keeps them (they live
         // inside the meta blob otherwise, invisible to the live-set builder).
         p.faceCropRefs = meta.faces.map((f) => f.cropRef).filter(Boolean);
+        // The CLIP embedding + faces were skipped (fast upload) — mark the photo
+        // for the deferred ML pass and cache its fresh meta for the merge.
+        p.mlPending = true;
+        metaCache[p.id] = meta;
         // Prime the decrypted thumbnail so the grid updates live (reactive cache).
         this.thumbFor(p);
+    },
+
+    /**
+     * Deferred vision pass for one photo: decrypt its medium rendition, get the
+     * CLIP embedding + faces from the server, and merge them into the sealed
+     * metadata. Runs in the background after the fast upload already made the
+     * photo visible. The old meta blob is replaced (reconcile frees the orphan).
+     */
+    async _analyzeOne(p) {
+        const ref = p.mediumRef || p.originalRef;
+        const key = p.mediumKey || p.originalKey;
+        if (! ref) { p.mlPending = false; return; }
+        const bytes = await this._decryptBlob(ref, key);
+        const file = new File([bytes], 'medium.jpg', { type: 'image/jpeg' });
+        const fd = new FormData();
+        fd.append('_token', config.token);
+        fd.append('file', file, file.name);
+        const res = await fetch(config.analyzeUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+        if (! res.ok) {
+            let detail = '';
+            try { detail = (await res.json()).message || ''; } catch (e) { /* not JSON */ }
+            throw new Error(detail ? 'server:' + detail : 'http:' + res.status);
+        }
+        const d = await res.json();
+        // Merge into the current meta (decrypt if not cached).
+        let meta = metaCache[p.id];
+        if (! meta) {
+            try { meta = JSON.parse(new TextDecoder().decode(await this._decryptBlob(p.metaRef, p.metaKey))); }
+            catch (e) { meta = { faces: [] }; }
+        }
+        meta.embedding = d.embedding;
+        meta.faces = [];
+        for (const f of (d.faces || [])) {
+            const face = { score: f.score, box: f.box, embedding: f.embedding };
+            if (f.crop) { const r = await this._encStore(this._b64bytes(f.crop), 'crop.enc'); face.cropRef = r.id; face.cropKey = r.key; }
+            meta.faces.push(face);
+        }
+        // Re-seal the meta blob (replaces the old one; reconcile frees the orphan).
+        const mr = await this._encStore(new TextEncoder().encode(JSON.stringify(meta)), 'meta.enc');
+        p.metaRef = mr.id; p.metaKey = mr.key;
+        metaCache[p.id] = meta;
+        if (Array.isArray(meta.embedding)) searchEmb[p.id] = this._norm(meta.embedding);
+        p.hasFaces = meta.faces.length;
+        p.faceCropRefs = meta.faces.map((f) => f.cropRef).filter(Boolean);
+        p.mlPending = false;
+    },
+
+    /**
+     * Background pass that runs the deferred ML (embedding + faces) for every
+     * photo still marked mlPending. Throttled + batched like the upload backlog so
+     * a large import doesn't hammer the ML sidecar; resumes across sessions.
+     */
+    async runMlBacklog() {
+        if (this._mlRunning || this.state !== 'ready') return;
+        const pending = () => this.index.photos.filter((p) => p.mlPending && ! p.trashed && ! p.failed && (p.mediumRef || p.originalRef));
+        if (! pending().length) return;
+        this._mlRunning = true;
+        let sinceFlush = 0;
+        let done = 0;
+        try {
+            for (;;) {
+                const p = pending()[0];
+                if (! p) break;
+                try {
+                    await this._analyzeOne(p);
+                } catch (e) {
+                    // Leave mlPending set so it retries next run; don't fail the photo.
+                    p._mlTries = (p._mlTries || 0) + 1;
+                    if (p._mlTries >= 3) p.mlPending = false; // give up quietly after a few tries
+                }
+                this._save();
+                if (++sinceFlush >= 8) { sinceFlush = 0; await window.LLGalleryStore.flush(); }
+                if (++done % 8 === 0) await new Promise((r) => setTimeout(r, 700));
+            }
+        } finally {
+            try { await window.LLGalleryStore.flush(); } catch (e) { /* debounce backstop */ }
+            this._mlRunning = false;
+        }
     },
 
     // Encrypt raw bytes with a fresh per-blob key and upload; returns { id, key }.
