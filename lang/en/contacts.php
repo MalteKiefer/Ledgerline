@@ -1,0 +1,52 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    'title' => 'Contacts',
+    'new' => 'New contact',
+    'search' => 'Search contacts',
+    'all' => 'All',
+    'favorites' => 'Favorites',
+    'trash' => 'Trash',
+    'empty_trash' => 'Empty trash',
+    'empty' => 'No contacts yet.',
+    'pick' => 'Select a contact or create one.',
+    'unnamed' => 'No name',
+    'save_failed' => 'Could not save — the vault may be locked.',
+    'delete_confirm' => 'Delete this contact permanently?',
+    'empty_trash_confirm' => 'Permanently delete everything in the trash?',
+    'avatar_failed' => 'Could not upload the photo.',
+
+    'avatar' => 'Photo',
+    'remove_avatar' => 'Remove photo',
+    'name' => 'Name',
+    'first_name' => 'First name',
+    'last_name' => 'Last name',
+    'org' => 'Organization',
+    'job_title' => 'Title',
+    'favorite' => 'Favorite',
+
+    'emails' => 'Email',
+    'phones' => 'Phone',
+    'addresses' => 'Address',
+    'add' => 'Add',
+    'street' => 'Street',
+    'zip' => 'ZIP',
+    'city' => 'City',
+    'region' => 'Region',
+    'country' => 'Country',
+    'birthday' => 'Birthday',
+    'categories' => 'Groups',
+    'categories_hint' => 'comma-separated',
+    'note' => 'Note',
+
+    'type_home' => 'Home',
+    'type_work' => 'Work',
+    'type_cell' => 'Mobile',
+    'type_other' => 'Other',
+
+    'restore' => 'Restore',
+    'to_trash' => 'Move to trash',
+    'delete_forever' => 'Delete permanently',
+];

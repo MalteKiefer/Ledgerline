@@ -95,7 +95,7 @@ window.LLStore = {
     _onError: null,
 
     _blank() {
-        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [] };
+        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [] };
     },
 
     // A random client-side id for a new item (server never assigns ids now).
@@ -4579,6 +4579,184 @@ Alpine.data('notes', (labels = {}) => ({
         this._save();
     },
     emptyTrash() { return this._emptyTrashArr(this.notes, labels.emptyTrashConfirm); },
+}));
+
+/**
+ * Contacts. Zero-knowledge: every record lives in the opaque /store manifest
+ * (shared with notes/todos) — plaintext inside the sealed blob, so CRUD just
+ * edits the in-memory array and schedules a debounced sealed save. The only
+ * per-record blob is the optional avatar (kept OUT of the manifest so it stays
+ * small): encrypted + uploaded to the contacts blob store, referenced by
+ * avatarRef/avatarKey. vCard mapping + gallery-person linking build on this.
+ */
+Alpine.data('contacts', (config = {}, labels = {}) => ({
+    ...zkModule({ map: { contacts: 'contacts' }, onLock: (self) => { self.currentId = null; self._revokeAvatars(); } }),
+    contacts: [],
+    currentId: null,
+    view: 'active', // active | trash
+    onlyFav: false,
+    avatarUrls: {}, // avatarRef -> objectURL (decrypted, cached)
+    _avatarPending: {},
+
+    async init() { await this._initZk(); this.reconcileBlobs(); },
+
+    get allCategories() {
+        const set = new Set();
+        for (const c of this.contacts) if (! c.trashed) for (const g of (c.categories ?? [])) set.add(g);
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    get trashCount() { return this._trashCount(this.contacts); },
+    get current() { return this.contacts.find((c) => c.id === this.currentId) ?? null; },
+
+    // Display label: formatted name, else first/last, else org/email.
+    displayName(c) {
+        if (! c) return '';
+        const n = (c.fn || [c.first, c.last].filter(Boolean).join(' ') || c.org || (c.emails ?? [])[0]?.value || '').trim();
+        return n || (labels.unnamed || '—');
+    },
+    initials(c) {
+        const n = this.displayName(c);
+        return n.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('') || '?';
+    },
+
+    get filtered() {
+        const q = this.query.trim().toLowerCase();
+        let list = this.contacts.filter((c) => this.view === 'trash' ? c.trashed : ! c.trashed);
+        if (this.onlyFav && this.view !== 'trash') list = list.filter((c) => c.favorite);
+        if (this.activeTag !== '') list = list.filter((c) => (c.categories ?? []).includes(this.activeTag));
+        if (q !== '') {
+            list = list.filter((c) => this.displayName(c).toLowerCase().includes(q)
+                || (c.org ?? '').toLowerCase().includes(q)
+                || (c.emails ?? []).some((e) => (e.value ?? '').toLowerCase().includes(q))
+                || (c.phones ?? []).some((p) => (p.value ?? '').toLowerCase().includes(q))
+                || (c.categories ?? []).some((g) => g.toLowerCase().includes(q)));
+        }
+        // Named/sortable first by display name.
+        return [...list].sort((a, b) => this.displayName(a).localeCompare(this.displayName(b)));
+    },
+
+    _newUid() { return 'urn:uuid:' + window.LLStore.newId(); },
+    newContact() {
+        const c = {
+            id: window.LLStore.newId(), uid: this._newUid(),
+            fn: '', first: '', last: '', nickname: '', org: '', title: '',
+            emails: [], phones: [], addresses: [], urls: [],
+            bday: '', note: '', categories: [], favorite: false,
+            avatarRef: null, avatarKey: null, personId: null,
+            trashed: false, updated: new Date().toISOString(),
+        };
+        this.contacts.unshift(c);
+        this._save();
+        this.open(c);
+    },
+    open(c) { this.currentId = c.id; this.tagsValue = (c.categories ?? []).join(', '); },
+    close() { this.currentId = null; },
+
+    // Persist the current contact (categories parsed from the tag input).
+    save() {
+        const c = this.current;
+        if (! c) return;
+        c.categories = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
+        if (! (c.fn || '').trim()) c.fn = [c.first, c.last].filter(Boolean).join(' ').trim();
+        c.updated = new Date().toISOString();
+        this._save();
+    },
+
+    // Repeatable-field rows.
+    addEmail() { (this.current.emails ??= []).push({ value: '', type: 'home' }); this._save(); },
+    addPhone() { (this.current.phones ??= []).push({ value: '', type: 'cell' }); this._save(); },
+    addUrl() { (this.current.urls ??= []).push({ value: '', type: 'home' }); this._save(); },
+    addAddress() { (this.current.addresses ??= []).push({ street: '', city: '', region: '', zip: '', country: '', type: 'home' }); this._save(); },
+    removeRow(list, i) { list.splice(i, 1); this._save(); },
+
+    toggleFavorite(c) { c.favorite = ! c.favorite; c.updated = new Date().toISOString(); this._save(); },
+    trash(c) { c.trashed = new Date().toISOString(); if (this.currentId === c.id) this.currentId = null; this._save(); },
+    restore(c) { c.trashed = false; this._save(); },
+    async remove(c) {
+        if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
+        if (c.avatarRef) this._freeAvatar(c.avatarRef);
+        const i = this.contacts.findIndex((x) => x.id === c.id);
+        if (i >= 0) this.contacts.splice(i, 1);
+        if (this.currentId === c.id) this.currentId = null;
+        this._save();
+    },
+    async emptyTrash() {
+        if (! await this.$store.confirm.ask(labels.emptyTrashConfirm)) return;
+        for (const c of this.contacts.filter((x) => x.trashed)) if (c.avatarRef) this._freeAvatar(c.avatarRef);
+        this.contacts = this.contacts.filter((x) => ! x.trashed);
+        this._save();
+    },
+
+    /* ---- Avatar (encrypted blob, kept out of the manifest) ---- */
+    async pickAvatar(ev) {
+        const file = ev.target?.files?.[0];
+        ev.target.value = '';
+        const c = this.current;
+        if (! file || ! c) return;
+        try {
+            const bytes = await this._squareJpeg(file, 256);
+            const enc = window.Vault.encryptContent(bytes, { name: 'avatar.jpg', mime: 'image/jpeg' });
+            const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+            const ref = await this._uploadContactBlob(cipher);
+            const old = c.avatarRef;
+            c.avatarRef = ref; c.avatarKey = enc.encFileKey; c.updated = new Date().toISOString();
+            this._save();
+            if (old) this._freeAvatar(old);
+        } catch (e) { window.llToast?.(labels.avatarFailed || 'Upload failed'); }
+    },
+    removeAvatar(c) {
+        if (! c?.avatarRef) return;
+        const old = c.avatarRef;
+        c.avatarRef = null; c.avatarKey = null; c.updated = new Date().toISOString();
+        this._save();
+        this._freeAvatar(old);
+    },
+    async avatarFor(c) {
+        if (! c?.avatarRef) return '';
+        if (this.avatarUrls[c.avatarRef]) return this.avatarUrls[c.avatarRef];
+        if (this._avatarPending[c.avatarRef]) return this._avatarPending[c.avatarRef];
+        const job = (async () => {
+            const bytes = await fetchDecrypt(config.rawBase, c.avatarRef, c.avatarKey);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            this.avatarUrls[c.avatarRef] = url;
+            return url;
+        })().catch(() => '').finally(() => { delete this._avatarPending[c.avatarRef]; });
+        this._avatarPending[c.avatarRef] = job;
+        return job;
+    },
+    _revokeAvatars() { for (const k in this.avatarUrls) URL.revokeObjectURL(this.avatarUrls[k]); this.avatarUrls = {}; },
+
+    // Decode + center-crop + downscale to a square JPEG (keeps avatars tiny).
+    async _squareJpeg(file, size) {
+        const img = await createImageBitmap(file);
+        const s = Math.min(img.width, img.height);
+        const sx = (img.width - s) / 2, sy = (img.height - s) / 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        canvas.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, size, size);
+        const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.82));
+        return new Uint8Array(await blob.arrayBuffer());
+    },
+
+    _uploadContactBlob(file) {
+        const data = new FormData();
+        data.append('_token', config.token);
+        data.append('file', file, file.name);
+        return fetch(config.uploadUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: data })
+            .then((r) => { if (! r.ok) throw new Error('upload'); return r.json(); })
+            .then((j) => j.id);
+    },
+    _freeAvatar(ref) {
+        if (this.avatarUrls[ref]) { URL.revokeObjectURL(this.avatarUrls[ref]); delete this.avatarUrls[ref]; }
+        queueBlobDelete(config.blobBase.replace('__id__', ref), config.token);
+    },
+    // Tell the server which avatar blobs are still referenced; it frees the rest.
+    reconcileBlobs() {
+        if (this.state !== 'ready') return;
+        const blobs = [];
+        for (const c of this.contacts) if (c.avatarRef) blobs.push(c.avatarRef);
+        fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) }).catch(() => {});
+    },
 }));
 
 // Monochrome icon paths a bookmark folder can be given (rendered inline so the

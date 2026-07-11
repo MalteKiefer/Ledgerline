@@ -21,6 +21,7 @@ return [
         ['label' => 'messages.nav.notes', 'route' => 'notes.index', 'pattern' => 'notes.*', 'icon' => 'pencil'],
         ['label' => 'messages.nav.todos', 'route' => 'todos.index', 'pattern' => 'todos.*', 'icon' => 'todos'],
         ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index', 'pattern' => 'bookmarks.*', 'icon' => 'bookmark'],
+        ['label' => 'messages.nav.contacts', 'route' => 'contacts.index', 'pattern' => 'contacts.*', 'icon' => 'users'],
         ['label' => 'messages.nav.downloads', 'route' => 'downloads.index', 'pattern' => 'downloads.*', 'icon' => 'arrow-down-tray'],
     ],
 ];
