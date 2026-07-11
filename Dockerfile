@@ -22,7 +22,7 @@ FROM ${PHP_BASE} AS runtime
 USER root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      curl \
+      curl ca-certificates gnupg gzip \
       # HEIC/HEIF + Apple stills + HEVC still: decode (libde265) AND encode
       # (x265 for HEIC, aom for AVIF) so edited exports can be re-saved in format
       libheif1 libheif-examples libde265-0 imagemagick \
@@ -34,6 +34,13 @@ RUN apt-get update \
       # document OCR (searchable PDFs) + text/image extraction
       ocrmypdf ghostscript qpdf poppler-utils \
       tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu \
+      # database backups shell out to pg_dump + gzip. The app DB is Postgres 17,
+      # so the client must be 17 too (an older pg_dump refuses a newer server).
+      # Debian ships an older default, so pull postgresql-client-17 from PGDG.
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
+ && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(. /etc/os-release; echo $VERSION_CODENAME)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client-17 \
  && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
