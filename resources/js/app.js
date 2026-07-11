@@ -4914,6 +4914,17 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         return [...list].sort((a, b) => dir * this._sortKey(a).localeCompare(this._sortKey(b)));
     },
 
+    // OpenStreetMap search link for an address (opened in a new tab on click).
+    osmUrl(a) {
+        const q = [a.street, [a.zip, a.city].filter(Boolean).join(' '), a.region, a.country].filter(Boolean).join(', ');
+        return 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(q);
+    },
+    // Format an ISO date (yyyy-mm-dd) for display in the reader's locale.
+    fmtDate(d) {
+        if (! d) return '';
+        const dt = new Date(d + (d.length === 10 ? 'T00:00:00' : ''));
+        return isNaN(dt.getTime()) ? d : dt.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    },
     // Human address block (for the read-only view): street / zip city / region / country.
     addressLines(a) {
         if (! a) return [];

@@ -55,6 +55,7 @@ return [
     'region' => 'Region',
     'country' => 'Country',
     'birthday' => 'Birthday',
+    'open_map' => 'Open in OpenStreetMap',
     'categories' => 'Groups',
     'categories_hint' => 'comma-separated',
     'note' => 'Note',

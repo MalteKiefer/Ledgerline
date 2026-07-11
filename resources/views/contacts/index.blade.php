@@ -152,10 +152,15 @@
                     <template x-if="(current.impp||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.impp') }}</p>
                         <template x-for="(m, i) in current.impp" :key="i"><p class="mt-0.5 text-gray-800 dark:text-gray-200" x-text="m.value"></p></template></div></template>
                     <template x-if="(current.addresses||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.addresses') }}</p>
-                        <template x-for="(a, i) in current.addresses" :key="i"><div class="mt-0.5"><template x-for="line in addressLines(a)" :key="line"><span class="block text-gray-800 dark:text-gray-200" x-text="line"></span></template><span class="text-xs text-gray-400" x-text="typeLabel(a.type)"></span></div></template></div></template>
-                    <template x-if="current.bday || current.anniversary"><div class="flex gap-6">
-                        <p x-show="current.bday"><span class="text-xs text-gray-400">{{ __('contacts.birthday') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="current.bday"></span></p>
-                        <p x-show="current.anniversary"><span class="text-xs text-gray-400">{{ __('contacts.anniversary') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="current.anniversary"></span></p></div></template>
+                        <template x-for="(a, i) in current.addresses" :key="i">
+                            <a :href="osmUrl(a)" target="_blank" rel="noopener noreferrer" :title="'{{ __('contacts.open_map') }}'" class="group mt-1 flex items-start gap-1.5 rounded-md p-1 -mx-1 hover:bg-gray-50 dark:hover:bg-gray-800">
+                                <x-icon name="map-pin" class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200" />
+                                <span class="min-w-0"><template x-for="line in addressLines(a)" :key="line"><span class="block text-gray-800 dark:text-gray-200 group-hover:underline" x-text="line"></span></template><span class="text-xs text-gray-400" x-text="typeLabel(a.type)"></span></span>
+                            </a>
+                        </template></div></template>
+                    <template x-if="current.bday || current.anniversary"><div class="flex flex-wrap gap-6">
+                        <p x-show="current.bday"><span class="text-xs text-gray-400">{{ __('contacts.birthday') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="fmtDate(current.bday)"></span></p>
+                        <p x-show="current.anniversary"><span class="text-xs text-gray-400">{{ __('contacts.anniversary') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="fmtDate(current.anniversary)"></span></p></div></template>
                     <template x-if="(current.categories||[]).length"><div class="flex flex-wrap gap-1"><template x-for="g in current.categories" :key="g"><span class="rounded bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs text-gray-700 dark:text-gray-300" x-text="g"></span></template></div></template>
                     <template x-if="current.note"><p class="whitespace-pre-wrap text-gray-700 dark:text-gray-300" x-text="current.note"></p></template>
                 </div>
