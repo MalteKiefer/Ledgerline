@@ -1215,9 +1215,38 @@ return {
     _revokeThumbs() {
         for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]);
         for (const k in this.faceThumbs) URL.revokeObjectURL(this.faceThumbs[k]);
-        this.thumbs = {}; this.faceThumbs = {}; this.dupGroups = null;
+        for (const k in this.motionUrls) URL.revokeObjectURL(this.motionUrls[k]);
+        this.thumbs = {}; this.faceThumbs = {}; this.motionUrls = {}; this.dupGroups = null;
         for (const k in metaCache) delete metaCache[k];
         for (const k in searchEmb) delete searchEmb[k];
+    },
+
+    /* ---- Live Photo hover-to-play (grid) ---- */
+    motionUrls: {}, // photoId -> decrypted motion object URL (cached per session)
+
+    // Hover over a Live Photo tile → decrypt + overlay-play its motion clip. Only
+    // on true hover devices (pointer:fine) so a touch tap still just opens it.
+    async hoverMotion(p, tile) {
+        if (! p.motionRef || ! window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+        const video = tile.querySelector('video[data-motion]');
+        if (! video) return;
+        try {
+            if (! this.motionUrls[p.id]) {
+                const bytes = await this._decryptBlob(p.motionRef, p.motionKey);
+                this.motionUrls[p.id] = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+            }
+            if (! tile.matches(':hover')) return; // pointer left while decrypting
+            video.src = this.motionUrls[p.id];
+            video.currentTime = 0;
+            video.style.display = 'block';
+            await video.play().catch(() => {});
+        } catch (e) { /* ignore — the still stays */ }
+    },
+    unhoverMotion(tile) {
+        const video = tile.querySelector('video[data-motion]');
+        if (! video) return;
+        video.pause();
+        video.style.display = 'none';
     },
 
     /* ---- Viewer ---- */
