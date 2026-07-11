@@ -57,6 +57,18 @@
                 </label>
                 <button type="button" x-show="contacts.some(c => ! c.trashed)" @click="exportAll()" class="inline-flex items-center gap-1 hover:text-gray-800 dark:hover:text-gray-200" title="{{ __('contacts.export_all') }}"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" />{{ __('contacts.export_all') }}</button>
                 <span x-show="importing" x-cloak class="text-gray-400">…</span>
+                <div class="ml-auto flex items-center gap-1.5">
+                    <select x-model="sortBy" @change="_savePrefs()" title="{{ __('contacts.sort') }}" class="rounded border-gray-200 dark:border-gray-700 dark:bg-gray-800 py-0.5 pl-1.5 pr-6 text-xs text-gray-600 dark:text-gray-300 focus:border-gray-400 focus:ring-0">
+                        <option value="name">{{ __('contacts.sort_name') }}</option>
+                        <option value="first">{{ __('contacts.sort_first') }}</option>
+                        <option value="last">{{ __('contacts.sort_last') }}</option>
+                        <option value="updated">{{ __('contacts.sort_updated') }}</option>
+                    </select>
+                    <select x-model="nameFormat" @change="_savePrefs()" title="{{ __('contacts.name_order') }}" class="rounded border-gray-200 dark:border-gray-700 dark:bg-gray-800 py-0.5 pl-1.5 pr-6 text-xs text-gray-600 dark:text-gray-300 focus:border-gray-400 focus:ring-0">
+                        <option value="first">{{ __('contacts.name_first_last') }}</option>
+                        <option value="last">{{ __('contacts.name_last_first') }}</option>
+                    </select>
+                </div>
             </div>
             <div x-show="allCategories.length" class="flex flex-wrap gap-1 border-b border-gray-100 dark:border-gray-800 p-2">
                 <template x-for="t in allCategories" :key="t">
@@ -99,17 +111,21 @@
                             <img x-show="current.avatarRef && avatarUrls[current.avatarRef]" :src="current.avatarRef && avatarUrls[current.avatarRef]" class="h-full w-full object-cover">
                             <span x-show="! (current.avatarRef && avatarUrls[current.avatarRef])" x-text="initials(current)"></span>
                         </span>
-                        <label class="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 shadow" title="{{ __('contacts.avatar') }}">
+                        <label x-show="editing" class="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 shadow" title="{{ __('contacts.avatar') }}">
                             <x-icon name="camera" class="h-3.5 w-3.5" />
                             <input type="file" accept="image/*" class="hidden" @change="pickAvatar($event)">
                         </label>
                     </div>
                     <div class="min-w-0 flex-1">
-                        <input type="text" x-model="current.fn" @input.debounce.600ms="save()" placeholder="{{ __('contacts.name') }}" class="w-full border-0 border-b border-gray-100 dark:border-gray-800 dark:bg-transparent px-0 text-lg font-semibold text-gray-900 dark:text-gray-100 focus:border-gray-400 focus:ring-0">
+                        <input x-show="editing" type="text" x-model="current.fn" @input.debounce.600ms="save()" placeholder="{{ __('contacts.name') }}" class="w-full border-0 border-b border-gray-100 dark:border-gray-800 dark:bg-transparent px-0 text-lg font-semibold text-gray-900 dark:text-gray-100 focus:border-gray-400 focus:ring-0">
+                        <h2 x-show="! editing" class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="displayName(current)"></h2>
+                        <p x-show="! editing && (current.title || current.org)" x-cloak class="truncate text-sm text-gray-500 dark:text-gray-400" x-text="[current.title, current.org].filter(Boolean).join(' · ')"></p>
                         <div class="mt-1 flex items-center gap-2">
                             <button type="button" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600'" title="{{ __('contacts.favorite') }}"><x-icon name="star" class="h-4 w-4" /></button>
-                            <button type="button" x-show="current.avatarRef" @click="removeAvatar(current)" class="text-xs text-gray-400 hover:text-red-600">{{ __('contacts.remove_avatar') }}</button>
+                            <button type="button" x-show="editing && current.avatarRef" @click="removeAvatar(current)" class="text-xs text-gray-400 hover:text-red-600">{{ __('contacts.remove_avatar') }}</button>
                             <span class="ml-auto flex items-center gap-1">
+                                <button type="button" x-show="! editing && view !== 'trash'" @click="startEdit()" title="{{ __('contacts.edit') }}" class="rounded p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
+                                <button type="button" x-show="editing" @click="save(); editing = false" class="rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1 text-xs font-medium text-white dark:text-gray-900">{{ __('contacts.done') }}</button>
                                 <button type="button" @click="exportOne(current)" title="{{ __('contacts.export') }}" class="rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
                                 <template x-if="view === 'trash'">
                                     <span class="flex gap-1">
@@ -122,6 +138,26 @@
                         </div>
                     </div>
                 </div>
+
+                {{-- Read-only view --}}
+                <div x-show="! editing" x-cloak class="mt-5 space-y-4 text-sm">
+                    <template x-if="(current.emails||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.emails') }}</p>
+                        <template x-for="(e, i) in current.emails" :key="i"><p class="mt-0.5"><a :href="'mailto:' + e.value" class="text-gray-800 dark:text-gray-200 hover:underline" x-text="e.value"></a> <span class="text-xs text-gray-400" x-text="e.type"></span></p></template></div></template>
+                    <template x-if="(current.phones||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.phones') }}</p>
+                        <template x-for="(p, i) in current.phones" :key="i"><p class="mt-0.5"><a :href="'tel:' + p.value" class="text-gray-800 dark:text-gray-200 hover:underline" x-text="p.value"></a> <span class="text-xs text-gray-400" x-text="p.type"></span></p></template></div></template>
+                    <template x-if="(current.impp||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.impp') }}</p>
+                        <template x-for="(m, i) in current.impp" :key="i"><p class="mt-0.5 text-gray-800 dark:text-gray-200" x-text="m.value"></p></template></div></template>
+                    <template x-if="(current.addresses||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.addresses') }}</p>
+                        <template x-for="(a, i) in current.addresses" :key="i"><div class="mt-0.5"><template x-for="line in addressLines(a)" :key="line"><span class="block text-gray-800 dark:text-gray-200" x-text="line"></span></template><span class="text-xs text-gray-400" x-text="a.type"></span></div></template></div></template>
+                    <template x-if="current.bday || current.anniversary"><div class="flex gap-6">
+                        <p x-show="current.bday"><span class="text-xs text-gray-400">{{ __('contacts.birthday') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="current.bday"></span></p>
+                        <p x-show="current.anniversary"><span class="text-xs text-gray-400">{{ __('contacts.anniversary') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="current.anniversary"></span></p></div></template>
+                    <template x-if="(current.categories||[]).length"><div class="flex flex-wrap gap-1"><template x-for="g in current.categories" :key="g"><span class="rounded bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs text-gray-700 dark:text-gray-300" x-text="g"></span></template></div></template>
+                    <template x-if="current.note"><p class="whitespace-pre-wrap text-gray-700 dark:text-gray-300" x-text="current.note"></p></template>
+                </div>
+
+                {{-- Editor form --}}
+                <div x-show="editing" x-cloak>
 
                 {{-- Name parts --}}
                 <div class="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -210,6 +246,7 @@
                     </label>
                 </div>
                 <textarea x-model="current.note" @input.debounce.600ms="save()" placeholder="{{ __('contacts.note') }}" class="mt-3 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500" rows="3"></textarea>
+                </div>{{-- /editor form --}}
 
                 {{-- Linked gallery person --}}
                 <div class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
