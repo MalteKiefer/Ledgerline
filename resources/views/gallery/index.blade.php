@@ -2,6 +2,7 @@
   <div x-data="vaultGallery({
         uploadUrl: '{{ url('/gallery/upload') }}',
         processUrl: '{{ url('/gallery/process') }}',
+        analyzeUrl: '{{ url('/gallery/analyze') }}',
         rawBase: '{{ url('/gallery/raw') }}',
         blobBase: '{{ url('/gallery/blob') }}',
         usageUrl: '{{ url('/gallery/usage') }}',

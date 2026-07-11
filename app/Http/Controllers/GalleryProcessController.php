@@ -36,7 +36,9 @@ class GalleryProcessController extends Controller
         $upload->move(dirname($tmp), basename($tmp));
 
         try {
-            $d = $processor->process($tmp, $mime);
+            // ml=0 → "fast" upload: skip the CLIP embedding + face detection so
+            // the photo is visible immediately; the client runs analyze() later.
+            $d = $processor->process($tmp, $mime, $request->boolean('ml', true));
 
             // Binary outputs are base64-encoded for the JSON envelope; the client
             // decodes, encrypts and stores each as its own opaque blob.
@@ -62,6 +64,40 @@ class GalleryProcessController extends Controller
             ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
         } finally {
             // Never leave plaintext at rest — discard immediately.
+            @unlink($tmp);
+        }
+    }
+
+    /**
+     * Deferred vision pass. The client POSTs a photo's medium rendition
+     * (plaintext, discarded after) and gets back only the CLIP embedding + faces,
+     * which it merges into the photo's sealed metadata — so the heavy ML work no
+     * longer blocks a photo from appearing at upload time. Same transient
+     * zero-knowledge window as process().
+     */
+    public function analyze(Request $request, GalleryProcessor $processor): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'max:'.((int) config('gallery.max_upload_mb', 512) * 1024)],
+        ]);
+
+        $upload = $request->file('file');
+        $tmp = tempnam(sys_get_temp_dir(), 'ganalyze');
+        $upload->move(dirname($tmp), basename($tmp));
+
+        try {
+            $d = $processor->analyze($tmp);
+
+            return response()->json([
+                'embedding' => $d['embedding'],
+                'faces' => array_map(fn (array $f): array => [
+                    'score' => $f['score'],
+                    'box' => $f['box'],
+                    'embedding' => $f['embedding'],
+                    'crop' => $f['crop'] !== null ? base64_encode($f['crop']) : null,
+                ], $d['faces']),
+            ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+        } finally {
             @unlink($tmp);
         }
     }

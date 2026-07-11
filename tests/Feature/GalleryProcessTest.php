@@ -60,4 +60,34 @@ class GalleryProcessTest extends TestCase
         $this->postJson(route('gallery.embed-text'), ['q' => 'a red car'])
             ->assertOk()->assertJson(['embedding' => null]);
     }
+
+    public function test_fast_upload_skips_ml_but_still_renders(): void
+    {
+        $this->signIn();
+
+        // ml=0 → the fast path: no embedding/faces, but the thumbnail still renders.
+        $res = $this->post(route('gallery.process'), [
+            'file' => UploadedFile::fake()->image('photo.jpg', 800, 600),
+            'ml' => '0',
+        ])->assertOk();
+
+        $res->assertJson(['embedding' => null, 'faces' => []]);
+        $this->assertNotNull($res->json('thumb'));
+    }
+
+    public function test_analyze_endpoint_returns_only_vision_outputs(): void
+    {
+        $this->signIn();
+
+        $before = glob(sys_get_temp_dir().'/ganalyze*') ?: [];
+
+        $this->post(route('gallery.analyze'), [
+            'file' => UploadedFile::fake()->image('medium.jpg', 800, 600),
+        ])->assertOk()
+            ->assertJsonStructure(['embedding', 'faces'])
+            ->assertJson(['embedding' => null, 'faces' => []]);
+
+        // No plaintext temp file is left behind.
+        $this->assertSame($before, glob(sys_get_temp_dir().'/ganalyze*') ?: []);
+    }
 }
