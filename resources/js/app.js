@@ -1086,7 +1086,9 @@ return {
                 try {
                     await this._processOne(p);
                 } catch (e) {
+                    p._tries = (p._tries || 0) + 1;
                     p.failed = true; // isolate the bad record; never blocks the rest
+                    p.procError = this._procErrorText(e);
                 }
                 this.progress.done++;
                 this._save();
@@ -1104,7 +1106,34 @@ return {
             this.refreshUsage();
             // Merge Apple Live Photos uploaded as separate HEIC + MOV files.
             await this.pairLivePhotos();
+            // One automatic retry for records that just failed — most failures in a
+            // big import are transient server overload on /gallery/process, which a
+            // short wait clears. Persistent failures keep their error after 2 tries.
+            if (this.index.photos.some((p) => p.failed && (p._tries || 0) < 2)) {
+                setTimeout(() => this.retryFailed(true), 8000);
+            }
         }
+    },
+    get failedCount() { return this.index.photos.filter((p) => p.failed).length; },
+    // Reprocess failed photos. Auto retries only those under the try cap (so it
+    // converges); a manual retry resets the cap and re-tries everything failed.
+    retryFailed(auto = false) {
+        let any = false;
+        for (const p of this.index.photos) {
+            if (! p.failed) continue;
+            if (auto && (p._tries || 0) >= 2) continue;
+            if (! auto) p._tries = 0;
+            p.failed = false; delete p.procError; any = true;
+        }
+        if (any) { this._save(); this.runBacklog(); }
+    },
+    _procErrorText(e) {
+        const m = (e && e.message) || '';
+        if (m === 'network') return labels.uploadErrNetwork || 'Network error';
+        if (m === 'timeout') return labels.uploadErrTimeout || 'Timed out';
+        if (m.startsWith('server:')) return m.slice(7);
+        if (m.startsWith('http:')) return `${labels.procErrFailed || 'Processing failed'} (${m.slice(5)})`;
+        return m || labels.procErrFailed || 'Processing failed';
     },
 
     /**
@@ -1172,7 +1201,11 @@ return {
         fd.append('_token', config.token);
         fd.append('file', file, file.name);
         const res = await fetch(config.processUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
-        if (! res.ok) throw new Error('process failed');
+        if (! res.ok) {
+            let detail = '';
+            try { detail = (await res.json()).message || ''; } catch (e) { /* not JSON (e.g. 502/504) */ }
+            throw new Error(detail ? 'server:' + detail : 'http:' + res.status);
+        }
         const d = await res.json();
         // 3. Encrypt + store the derived blobs.
         const meta = {
