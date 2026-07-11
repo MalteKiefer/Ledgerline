@@ -77,10 +77,6 @@
                     <option value="last">{{ __('contacts.sort_last') }}</option>
                     <option value="updated">{{ __('contacts.sort_updated') }}</option>
                 </select>
-                <select x-model="nameFormat" @change="_savePrefs()" title="{{ __('contacts.name_order') }}" class="min-w-0 flex-1 rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 py-1 text-xs text-gray-600 dark:text-gray-300 focus:border-gray-400 focus:ring-0">
-                    <option value="first">{{ __('contacts.name_first_last') }}</option>
-                    <option value="last">{{ __('contacts.name_last_first') }}</option>
-                </select>
             </div>
             <div x-show="allCategories.length" class="flex flex-wrap gap-1 border-b border-gray-100 dark:border-gray-800 p-2">
                 <template x-for="t in allCategories" :key="t">

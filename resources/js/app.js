@@ -4914,7 +4914,6 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     editing: false, // detail pane opens read-only; edit via a button
     view: 'active', // active | trash
     onlyFav: false,
-    nameFormat: 'first', // first = "First Last", last = "Last, First"
     sortBy: 'name', // name | first | last | updated
     prefsOpen: false,
     avatarUrls: {}, // avatarRef -> objectURL (decrypted, cached)
@@ -4968,14 +4967,12 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     _loadPrefs() {
         try {
             const p = JSON.parse(localStorage.getItem('ll-contacts-prefs') || '{}');
-            if (p.nameFormat) this.nameFormat = p.nameFormat;
             if (p.sortBy) this.sortBy = p.sortBy;
         } catch (e) { /* defaults */ }
     },
     _savePrefs() {
-        try { localStorage.setItem('ll-contacts-prefs', JSON.stringify({ nameFormat: this.nameFormat, sortBy: this.sortBy })); } catch (e) { /* ignore */ }
+        try { localStorage.setItem('ll-contacts-prefs', JSON.stringify({ sortBy: this.sortBy })); } catch (e) { /* ignore */ }
     },
-    setNameFormat(v) { this.nameFormat = v; this._savePrefs(); },
     setSortBy(v) { this.sortBy = v; this._savePrefs(); },
 
     get allCategories() {
@@ -4996,15 +4993,11 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         }
         return { first, last };
     },
-    // Display label, honouring the chosen name order (First Last / Last, First).
+    // Display label — always "Last, First".
     displayName(c) {
         if (! c) return '';
         const { first, last } = this._nameParts(c);
-        if (last || first) {
-            return this.nameFormat === 'last'
-                ? [last, first].filter(Boolean).join(', ')
-                : [first, last].filter(Boolean).join(' ');
-        }
+        if (last || first) return [last, first].filter(Boolean).join(', ');
         return (c.fn || c.org || (c.emails ?? [])[0]?.value || '').trim() || (labels.unnamed || '—');
     },
     initials(c) {
