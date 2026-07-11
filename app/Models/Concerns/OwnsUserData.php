@@ -13,11 +13,10 @@ use Illuminate\Support\Facades\Auth;
  * middleware) a global scope constrains every query to `user_id = Auth::id()`
  * and new rows get that user_id automatically.
  *
- * Outside web auth — queue jobs, scheduled commands, and the CalDAV/CardDAV
- * server (which authenticates via DavContext, not the Laravel guard) — no
- * automatic constraint is applied; those paths already scope explicitly by the
- * owning record. This keeps strict per-user isolation on the web without
- * breaking background processing.
+ * Outside web auth — queue jobs and scheduled commands — no automatic
+ * constraint is applied; those paths already scope explicitly by the owning
+ * record. This keeps strict per-user isolation on the web without breaking
+ * background processing.
  */
 trait OwnsUserData
 {

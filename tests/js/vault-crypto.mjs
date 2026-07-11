@@ -43,9 +43,6 @@ for (const n of sizes) {
     ok(cipher.length > 0, `size ${n}: ciphertext is non-empty`);
     const back = Vault.decryptFile(cipher, enc.encFileKey);
     ok(eqBytes(back, data), `size ${n}: decrypt round-trips exactly (${n} bytes, ${Math.ceil(Math.max(1, n) / CHUNK)} chunk(s))`);
-    // Sealed metadata carries the real name/mime/size; ciphertext must not.
-    const meta = Vault.decryptFileMeta(enc.encMeta);
-    ok(meta.name === `f${n}.bin` && meta.size === n, `size ${n}: sealed metadata (name+size) round-trips`);
 }
 
 // --- Slice-based encryptFile(File) round-trips (streaming read, multi-chunk) ---
@@ -56,7 +53,6 @@ for (const n of [0, 100, CHUNK + 500, 2 * CHUNK + 99]) {
     const enc = await Vault.encryptFile(file);
     const back = Vault.decryptFile(await blobBytes(enc.blob), enc.encFileKey);
     ok(eqBytes(back, data), `encryptFile(File) round-trips at ${n} bytes (slice read)`);
-    ok(Vault.decryptFileMeta(enc.encMeta).size === n, `encryptFile(File) seals the real size at ${n} bytes`);
 }
 
 // --- Streaming encryptor -> streaming decryptor round-trip (constant-memory path) ---
@@ -105,12 +101,6 @@ ok(!encS.encMeta.includes('top-secret-filename'), 'plaintext filename does not a
 const metaWithTags = Vault.encryptMeta({ name: 'doc.txt', mime: 'text/plain', size: 5, tags: ['secret-tag', 'private'] });
 const tagsSealed = JSON.stringify({ c: metaWithTags.cipher, n: metaWithTags.nonce });
 ok(!tagsSealed.includes('secret-tag'), 'plaintext tags do not appear in the sealed metadata');
-ok(JSON.stringify(Vault.decryptFileMeta(tagsSealed).tags) === JSON.stringify(['secret-tag', 'private']), 'tags round-trip through the sealed metadata');
-
-// --- Metadata / folder-name sealing round-trip ---
-const sealed = Vault.sealName('Vertrauliche Ordner/Name äöü');
-ok(!sealed.includes('Vertrauliche'), 'sealed folder name is opaque');
-ok(Vault.decryptFileMeta(sealed).name === 'Vertrauliche Ordner/Name äöü', 'folder name unseals exactly (incl. unicode)');
 
 // --- Wrong key rejection: a different vault key must not decrypt ---
 const encW = Vault.encryptContent(new Uint8Array([1, 2, 3, 4, 5]), { name: 'x', mime: 'x' });

@@ -32,8 +32,8 @@ class SetLocale
         }
 
         // Persist the detected browser language onto the user once, so background
-        // work (e.g. derived birthday calendars, whose localised titles are baked
-        // into the stored ICS) can build in the user's language outside a request.
+        // work (queue jobs, scheduled notifications) can render in the user's
+        // language outside a request.
         $user = $request->user();
         if ($user !== null && $user->locale === null && $browser !== null) {
             $user->forceFill(['locale' => $browser])->saveQuietly();

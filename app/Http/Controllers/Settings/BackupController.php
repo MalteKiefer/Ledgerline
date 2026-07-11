@@ -401,9 +401,9 @@ class BackupController extends Controller
         $data['encrypt'] = $request->boolean('encrypt');
         $data['enabled'] = $request->boolean('enabled');
         $data['notify_channels'] = array_values($data['notify_channels'] ?? []);
-        // A database dump carries every non-zero-knowledge module in plaintext
-        // (todos, bookmarks, contacts, calendar, mail headers). It must never be
-        // written to an off-box destination unencrypted.
+        // A database dump carries the non-ZK rows in plaintext plus the wrapped
+        // vault-key material (an offline passphrase-cracking oracle). It must
+        // never be written to an off-box destination unencrypted.
         if ($data['source'] === 'database' && ! $data['encrypt']) {
             throw ValidationException::withMessages(['encrypt' => __('settings.backup_db_encrypt_required')]);
         }
