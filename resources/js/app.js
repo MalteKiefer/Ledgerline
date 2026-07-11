@@ -4702,6 +4702,23 @@ const VCard = {
 
     _date(d) { return String(d || '').replace(/-/g, ''); },
     _fromDate(v) { const s = String(v).replace(/[^0-9]/g, ''); return s.length >= 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : ''; },
+    // Some exporters cram the whole address into the street subfield with
+    // newline separators, leaving city/zip/country empty (shows as one run in a
+    // single-line input). Split it back out heuristically.
+    normAddr(a) {
+        if (! a || ! /[\r\n]/.test(a.street || '')) return a;
+        const lines = String(a.street).split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
+        const out = { ...a, street: '', city: a.city || '', zip: a.zip || '', region: a.region || '', country: a.country || '' };
+        out.street = lines.shift() || '';
+        for (const ln of lines) {
+            const m = ln.match(/^(\d{4,6})\s*(.*)$/); // "79364" or "79364 Town"
+            if (m && ! out.zip) { out.zip = m[1]; if (m[2] && ! out.city) out.city = m[2]; continue; }
+            if (! out.city) { out.city = ln; continue; }
+            if (! out.country) { out.country = ln; continue; }
+            out.street += '\n' + ln;
+        }
+        return out;
+    },
     // Reduce a vCard TYPE list (e.g. "cell,voice,pref") to one known label.
     normType(raw, fallback) {
         const toks = String(raw || '').toLowerCase().split(/[,;]/).map((s) => s.trim());
@@ -4778,7 +4795,7 @@ const VCard = {
                 case 'TEL': c.phones.push({ value: this.unesc(value), type: this.normType(type, 'cell') }); break;
                 case 'IMPP': c.impp.push({ value: this.unesc(value), type: this.normType(type, 'home') }); break;
                 case 'URL': c.urls.push({ value: this.unesc(value), type: this.normType(type, 'home') }); break;
-                case 'ADR': { const f = value.split(';').map((x) => this.unesc(x)); c.addresses.push({ street: f[2] || '', city: f[3] || '', region: f[4] || '', zip: f[5] || '', country: f[6] || '', type: this.normType(type, 'home') }); break; }
+                case 'ADR': { const f = value.split(';').map((x) => this.unesc(x)); c.addresses.push(this.normAddr({ street: f[2] || '', city: f[3] || '', region: f[4] || '', zip: f[5] || '', country: f[6] || '', type: this.normType(type, 'home') })); break; }
                 case 'BDAY': c.bday = this._fromDate(value); break;
                 case 'ANNIVERSARY': c.anniversary = this._fromDate(value); break;
                 case 'NOTE': c.note = this.unesc(value); break;
@@ -4932,7 +4949,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         for (const e of c.emails) e.type = VCard.normType(e.type, 'home');
         for (const p of c.phones) p.type = VCard.normType(p.type, 'cell');
         for (const m of c.impp) m.type = VCard.normType(m.type, 'home');
-        for (const a of c.addresses) a.type = VCard.normType(a.type, 'home');
+        for (const a of c.addresses) { a.type = VCard.normType(a.type, 'home'); Object.assign(a, VCard.normAddr(a)); }
         this.currentId = c.id; this.editing = false; this.tagsValue = (c.categories ?? []).join(', ');
     },
     // Localised label for a normalised contact-field type.
