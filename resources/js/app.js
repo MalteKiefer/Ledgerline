@@ -2305,6 +2305,38 @@ return {
         this._save();
     },
 
+    /* ---- Merge two people into one ---- */
+    mergePicker: false,
+    openMergePicker() { if (this.currentPerson) this.mergePicker = true; },
+    closeMergePicker() { this.mergePicker = false; },
+    // Every other visible person that could be merged into the current one.
+    mergeCandidates() {
+        return (this.index.people || []).filter((pp) => pp.id !== this.activePerson && ! pp.hidden && this.personPhotos(pp).length > 0);
+    },
+    // Merge `other` INTO the current person: combine faces (dedup), average the
+    // centroids by face count so future scans still match, keep a name, and drop
+    // the merged-away person. Client-side over the sealed index — one save.
+    mergeInto(other) {
+        const target = this.currentPerson;
+        if (! target || ! other || target.id === other.id) { this.mergePicker = false; return; }
+        const aFaces = target.faces || (target.faces = []);
+        const bFaces = other.faces || [];
+        const na = aFaces.length, nb = bFaces.length;
+        // Weighted-mean centroid (guard shape/absence so a legacy person still merges).
+        if (Array.isArray(target.centroid) && Array.isArray(other.centroid) && target.centroid.length === other.centroid.length && (na + nb) > 0) {
+            target.centroid = target.centroid.map((v, i) => (v * na + other.centroid[i] * nb) / (na + nb));
+        } else if (! Array.isArray(target.centroid) && Array.isArray(other.centroid)) {
+            target.centroid = other.centroid.slice();
+        }
+        const seen = new Set(aFaces.map((f) => f.photoId + ':' + f.idx));
+        for (const f of bFaces) { const k = f.photoId + ':' + f.idx; if (! seen.has(k)) { seen.add(k); aFaces.push(f); } }
+        // Keep the target's name; adopt the other's only if the target is unnamed.
+        if (! (target.name || '').trim() && (other.name || '').trim()) target.name = other.name;
+        this.index.people = (this.index.people || []).filter((pp) => pp.id !== other.id);
+        this.mergePicker = false;
+        this._save();
+    },
+
     /* ---- Trash (soft-delete → recoverable) ---- */
     trash(p) { p.trashed = new Date().toISOString(); this._save(); },
     restore(p) { p.trashed = null; this._save(); },

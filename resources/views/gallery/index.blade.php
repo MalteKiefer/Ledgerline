@@ -404,6 +404,7 @@
                 <span class="text-xs tabular-nums text-gray-400" x-text="personCount(currentPerson)"></span>
                 <div class="ml-auto flex items-center gap-1.5">
                   <button type="button" @click="renamePerson(currentPerson)" title="{{ __('gallery.rename') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
+                  <button type="button" @click="openMergePicker()" title="{{ __('gallery.merge') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrows-pointing-in" class="h-4 w-4" /></button>
                   <button type="button" @click="hidePerson(currentPerson)" title="{{ __('gallery.hide') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
               </div>
@@ -630,6 +631,32 @@
         <div class="mt-4 flex justify-end gap-2">
           <x-button variant="secondary" type="button" @click="closeBulkDate()">{{ __('common.cancel') }}</x-button>
           <x-button type="button" @click="bulkApplyDate()">{{ __('common.save') }}</x-button>
+        </div>
+      </div>
+    </div>
+
+    {{-- Merge people: pick another person to fold into the current one --}}
+    <div x-show="mergePicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeMergePicker()">
+      <div class="absolute inset-0 bg-black/60" @click="closeMergePicker()"></div>
+      <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.merge_heading') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.merge_hint') }}</p>
+        <p x-show="! mergeCandidates().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.merge_none') }}</p>
+        <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+          <template x-for="pp in mergeCandidates()" :key="pp.id">
+            <button type="button" @click="mergeInto(pp)" class="group flex flex-col items-center focus:outline-none">
+              <span class="relative h-20 w-20 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 group-hover:ring-gray-900 dark:group-hover:ring-gray-100"
+                    x-init="$nextTick(() => personCover(pp) && faceThumb(personCover(pp)))">
+                <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover">
+                <span x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])" class="flex h-full w-full items-center justify-center"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></span>
+              </span>
+              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></span>
+              <span class="text-[11px] tabular-nums text-gray-400" x-text="personCount(pp)"></span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <x-button variant="secondary" type="button" @click="closeMergePicker()">{{ __('common.cancel') }}</x-button>
         </div>
       </div>
     </div>
