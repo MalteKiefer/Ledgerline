@@ -901,7 +901,7 @@ return {
         // Process pending uploads (its finally pairs Live Photos); also run a pair
         // pass for the backfill case where nothing is pending but split Live Photos
         // already exist. The guard makes a double call a no-op.
-        this.runBacklog().finally(() => this.pairLivePhotos());
+        this.runPipeline(false); // catch up unprocessed thumbnails; no auto face/dup scan on plain load
     },
 
     _save() { if (this.state === 'ready') window.LLGalleryStore.touch(); },
@@ -1022,7 +1022,8 @@ return {
             await Promise.all(Array.from({ length: Math.min(2, queue.length) }, worker));
             this.uploadBatches--;
             this.refreshUsage();
-            this.runBacklog();
+            // Full pipeline after an upload: process → retry → faces → duplicates.
+            this.runPipeline();
             // Auto-clear once every entry finished cleanly (keep errors/dupes visible).
             if (this.uploads.every((u) => u.state === 'done')) {
                 setTimeout(() => { if (! this.uploading) this.uploads = []; }, 4000);
@@ -1097,6 +1098,9 @@ return {
                 // rate limit on a large import). A crash only re-processes the few
                 // since the last flush — pending() already makes that idempotent.
                 if (++sinceFlush >= 8) { sinceFlush = 0; await window.LLGalleryStore.flush(); }
+                // Batched: a short breather every 10 photos so a big import doesn't
+                // hammer /gallery/process into timeouts/502s.
+                if (this.progress.done % 10 === 0) await new Promise((r) => setTimeout(r, 700));
             }
         } finally {
             // Flush the tail so the last (< 8) photos are persisted immediately.
@@ -1106,17 +1110,12 @@ return {
             this.refreshUsage();
             // Merge Apple Live Photos uploaded as separate HEIC + MOV files.
             await this.pairLivePhotos();
-            // One automatic retry for records that just failed — most failures in a
-            // big import are transient server overload on /gallery/process, which a
-            // short wait clears. Persistent failures keep their error after 2 tries.
-            if (this.index.photos.some((p) => p.failed && (p._tries || 0) < 2)) {
-                setTimeout(() => this.retryFailed(true), 8000);
-            }
         }
     },
     get failedCount() { return this.index.photos.filter((p) => p.failed).length; },
     // Reprocess failed photos. Auto retries only those under the try cap (so it
     // converges); a manual retry resets the cap and re-tries everything failed.
+    // Returns the backlog promise so the pipeline can await it.
     retryFailed(auto = false) {
         let any = false;
         for (const p of this.index.photos) {
@@ -1125,7 +1124,31 @@ return {
             if (! auto) p._tries = 0;
             p.failed = false; delete p.procError; any = true;
         }
-        if (any) { this._save(); this.runBacklog(); }
+        if (! any) return Promise.resolve();
+        this._save();
+        return this.runBacklog();
+    },
+    // Full post-upload pipeline, run sequentially to spread load: process the
+    // thumbnail backlog (batched) → retry transient failures once → cluster faces
+    // → detect duplicates. `withScans=false` (on plain page load) skips the heavy
+    // face/duplicate passes and only catches up unprocessed thumbnails.
+    _pipelineRunning: false,
+    async runPipeline(withScans = true) {
+        if (this._pipelineRunning || this.state !== 'ready') return;
+        this._pipelineRunning = true;
+        try {
+            await this.runBacklog();
+            if (this.index.photos.some((p) => p.failed && (p._tries || 0) < 2)) {
+                await new Promise((r) => setTimeout(r, 4000));
+                await this.retryFailed(true);
+            }
+            if (withScans && this.state === 'ready' && ! this.dupScanning && ! this.peopleScanning) {
+                await this.scanFaces();
+                await this.scanDuplicates();
+            }
+        } finally {
+            this._pipelineRunning = false;
+        }
     },
     _procErrorText(e) {
         const m = (e && e.message) || '';
