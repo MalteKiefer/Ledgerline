@@ -405,8 +405,18 @@
                 <div class="ml-auto flex items-center gap-1.5">
                   <button type="button" @click="renamePerson(currentPerson)" title="{{ __('gallery.rename') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
                   <button type="button" @click="openMergePicker()" title="{{ __('gallery.merge') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrows-pointing-in" class="h-4 w-4" /></button>
+                  <button type="button" @click="openLinkPicker()" :title="'{{ __('gallery.link_contact') }}'" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" :class="currentPerson?.contactId ? 'text-gray-900 dark:text-gray-100' : ''"><x-icon name="users" class="h-4 w-4" /></button>
                   <button type="button" @click="hidePerson(currentPerson)" title="{{ __('gallery.hide') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
                 </div>
+              </div>
+              {{-- Linked contact chip --}}
+              <div x-show="currentPerson?.contactId" x-cloak class="mb-4 inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-1 pl-1 pr-3 text-sm">
+                <span class="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 text-[10px] font-semibold text-gray-500" x-init="$nextTick(() => currentPerson?.contactAvatarRef && contactAvatarFor(currentPerson))">
+                    <img x-show="currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef]" :src="currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef]" class="h-full w-full object-cover">
+                    <x-icon x-show="! (currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef])" name="user" class="h-3.5 w-3.5 text-gray-400" />
+                </span>
+                <a :href="'/contacts?c=' + currentPerson.contactId" class="font-medium text-gray-800 dark:text-gray-200 hover:underline" x-text="currentPerson.contactName || '{{ __('gallery.linked_contact') }}'"></a>
+                <button type="button" @click="unlinkContact()" title="{{ __('gallery.unlink') }}" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
               </div>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in personPhotos(currentPerson)" :key="p.id">
@@ -687,6 +697,28 @@
         </div>
         <div class="mt-4 flex justify-end">
           <x-button variant="secondary" type="button" @click="closeReassign()">{{ __('common.cancel') }}</x-button>
+        </div>
+      </div>
+    </div>
+
+    {{-- Link a person to a contact (loads the /store manifest lazily) --}}
+    <div x-show="linkPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeLinkPicker()" x-data="{ useFace: true }">
+      <div class="absolute inset-0 bg-black/60" @click="closeLinkPicker()"></div>
+      <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.link_heading') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.link_hint') }}</p>
+        <label class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><input type="checkbox" x-model="useFace" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">{{ __('gallery.link_use_face') }}</label>
+        <p x-show="! linkSuggestions().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.link_none') }}</p>
+        <div class="mt-3 max-h-80 divide-y divide-gray-100 dark:divide-gray-800 overflow-y-auto">
+          <template x-for="c in linkSuggestions()" :key="c.id">
+            <button type="button" @click="linkTo(c, useFace)" class="flex w-full items-center gap-3 px-1 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-semibold text-gray-500"><x-icon name="user" class="h-4 w-4 text-gray-400" /></span>
+              <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="_contactName(c) || '{{ __('contacts.unnamed') }}'"></span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <x-button variant="secondary" type="button" @click="closeLinkPicker()">{{ __('common.cancel') }}</x-button>
         </div>
       </div>
     </div>

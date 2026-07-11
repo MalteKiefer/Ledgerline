@@ -1052,6 +1052,9 @@ return {
         this.index = window.LLGalleryStore.data;
         this.renderLimit = this._renderStep; // start with a small render window
         this.state = 'ready';
+        // Deep link from a linked contact (?person=<id>) → open that person.
+        const pid = new URLSearchParams(location.search).get('person');
+        if (pid && (this.index.people || []).some((pp) => pp.id === pid)) { this.activePerson = pid; this.view = 'person'; }
         this.refreshUsage();
         // Process pending uploads (its finally pairs Live Photos); also run a pair
         // pass for the backfill case where nothing is pending but split Live Photos
@@ -2436,6 +2439,95 @@ return {
         this._dropIfEmpty(pp);
         this.reassignFor = null;
         this._save();
+    },
+
+    /* ---- Link a person to a Contact (cross-manifest: /gallery/store + /store) ---- */
+    linkPicker: false,
+    linkLoading: false,
+    _linkContacts: [],
+    _contactName(c) {
+        return (c.fn || [c.first, c.last].filter(Boolean).join(' ') || c.org || (c.emails ?? [])[0]?.value || '').trim();
+    },
+    // Open the contact picker — lazily boots the /store manifest (contacts live
+    // there, a different sealed manifest than the gallery), suggests by name.
+    async openLinkPicker() {
+        if (! this.currentPerson) return;
+        this.linkLoading = true;
+        try {
+            if (! await bootStore(this.$store)) return;
+            this._linkContacts = (window.LLStore.data.contacts || []).filter((c) => ! c.trashed);
+            this.linkPicker = true;
+        } finally { this.linkLoading = false; }
+    },
+    closeLinkPicker() { this.linkPicker = false; },
+    // Named-match first (auto-suggest), then the rest by name.
+    linkSuggestions() {
+        const name = (this.currentPerson?.name || '').trim().toLowerCase();
+        return [...this._linkContacts].sort((a, b) => {
+            const am = name && this._contactName(a).toLowerCase().includes(name) ? 0 : 1;
+            const bm = name && this._contactName(b).toLowerCase().includes(name) ? 0 : 1;
+            return (am - bm) || this._contactName(a).localeCompare(this._contactName(b));
+        });
+    },
+    // Link the current person to a contact: write the person snapshot (name +
+    // avatar ref/key, so the gallery renders it without loading /store) and set
+    // contact.personId; optionally seed the contact photo from the cover face.
+    async linkTo(contact, useFace = false) {
+        const p = this.currentPerson;
+        if (! p || ! contact) { this.linkPicker = false; return; }
+        if (useFace && ! contact.avatarRef) await this._faceToContactAvatar(contact);
+        p.contactId = contact.id;
+        p.contactName = this._contactName(contact) || (contact.fn = p.name || contact.fn || '');
+        p.contactAvatarRef = contact.avatarRef || null;
+        p.contactAvatarKey = contact.avatarKey || null;
+        contact.personId = p.id;
+        contact.personName = p.name || ''; // snapshot so the contact page shows it
+        contact.updated = new Date().toISOString();
+        if (! (contact.fn || '').trim() && (p.name || '').trim()) contact.fn = p.name;
+        this._save();
+        window.LLStore.touch(); // persist the /store side too
+        this.linkPicker = false;
+    },
+    async unlinkContact() {
+        const p = this.currentPerson;
+        if (! p?.contactId) return;
+        const cid = p.contactId;
+        p.contactId = null; p.contactName = null; p.contactAvatarRef = null; p.contactAvatarKey = null;
+        this._save();
+        try {
+            if (await bootStore(this.$store)) {
+                const c = (window.LLStore.data?.contacts || []).find((x) => x.id === cid);
+                if (c && c.personId === p.id) { c.personId = null; c.personName = null; window.LLStore.touch(); }
+            }
+        } catch (e) { /* best effort */ }
+    },
+    // Encrypt the person's cover-face crop and store it as the contact's avatar.
+    async _faceToContactAvatar(contact) {
+        const cover = this.personCover(this.currentPerson);
+        if (! cover?.cropRef) return;
+        try {
+            const bytes = await this._decryptBlob(cover.cropRef, cover.cropKey);
+            const enc = window.Vault.encryptContent(bytes, { name: 'avatar.jpg', mime: 'image/jpeg' });
+            const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+            const fd = new FormData();
+            fd.append('_token', config.token);
+            fd.append('file', cipher, cipher.name);
+            const res = await fetch('/contacts/upload', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+            if (! res.ok) return;
+            contact.avatarRef = (await res.json()).id; contact.avatarKey = enc.encFileKey;
+        } catch (e) { /* best effort */ }
+    },
+    // Decrypt + cache the linked contact's avatar (from the person snapshot).
+    _contactAvatars: {},
+    async contactAvatarFor(p) {
+        if (! p?.contactAvatarRef) return '';
+        if (this._contactAvatars[p.contactAvatarRef]) return this._contactAvatars[p.contactAvatarRef];
+        try {
+            const bytes = await fetchDecrypt('/contacts/raw', p.contactAvatarRef, p.contactAvatarKey);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            this._contactAvatars[p.contactAvatarRef] = url;
+            return url;
+        } catch (e) { return ''; }
     },
 
     /* ---- Trash (soft-delete → recoverable) ---- */
@@ -4688,7 +4780,13 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     avatarUrls: {}, // avatarRef -> objectURL (decrypted, cached)
     _avatarPending: {},
 
-    async init() { await this._initZk(); this.reconcileBlobs(); },
+    async init() {
+        await this._initZk();
+        this.reconcileBlobs();
+        // Deep link from a linked gallery person (?c=<id>) → open that contact.
+        const cid = new URLSearchParams(location.search).get('c');
+        if (cid && this.contacts.some((c) => c.id === cid)) this.open(this.contacts.find((c) => c.id === cid));
+    },
 
     get allCategories() {
         const set = new Set();
@@ -4916,6 +5014,70 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
             this._save();
             window.llToast?.((labels.imported || ':n imported').replace(':n', added));
         } catch (e) { window.llToast?.(labels.importFailed || 'Import failed'); } finally { this.importing = false; }
+    },
+
+    /* ---- Link to a Gallery person (cross-manifest: /store + /gallery/store) ---- */
+    personPicker: false,
+    personLoading: false,
+    _people: [],
+    _personCovers: {},
+    get linkedPersonName() { return this.current?.personName || ''; },
+    galleryHref(c) { return c?.personId ? ('/gallery?person=' + encodeURIComponent(c.personId)) : '#'; },
+    async openPersonPicker() {
+        if (! this.current) return;
+        this.personLoading = true;
+        try {
+            if (! await bootGalleryStore(this.$store)) return;
+            this._people = (window.LLGalleryStore.data.people || []).filter((p) => ! p.hidden && (p.faces || []).length);
+            this.personPicker = true;
+        } finally { this.personLoading = false; }
+    },
+    closePersonPicker() { this.personPicker = false; },
+    personSuggestions() {
+        const name = this.displayName(this.current).toLowerCase();
+        return [...this._people].sort((a, b) => {
+            const am = name && (a.name || '').toLowerCase().includes(name) ? 0 : 1;
+            const bm = name && (b.name || '').toLowerCase().includes(name) ? 0 : 1;
+            return (am - bm) || (a.name || '').localeCompare(b.name || '');
+        });
+    },
+    personInitials(pp) { const n = (pp.name || '').trim(); return n ? n.split(/\s+/).slice(0, 2).map((s) => s[0].toUpperCase()).join('') : '?'; },
+    linkPerson(pp) {
+        const c = this.current;
+        if (! c || ! pp) { this.personPicker = false; return; }
+        c.personId = pp.id; c.personName = pp.name || ''; c.updated = new Date().toISOString();
+        // Write the gallery-person snapshot so the gallery shows the link too.
+        pp.contactId = c.id;
+        pp.contactName = this.displayName(c);
+        pp.contactAvatarRef = c.avatarRef || null;
+        pp.contactAvatarKey = c.avatarKey || null;
+        window.LLGalleryStore.touch();
+        this._save();
+        this.personPicker = false;
+    },
+    async unlinkPerson() {
+        const c = this.current;
+        if (! c?.personId) return;
+        const pid = c.personId;
+        c.personId = null; c.personName = null;
+        this._save();
+        try {
+            if (await bootGalleryStore(this.$store)) {
+                const pp = (window.LLGalleryStore.data?.people || []).find((x) => x.id === pid);
+                if (pp && pp.contactId === c.id) { pp.contactId = null; pp.contactName = null; pp.contactAvatarRef = null; pp.contactAvatarKey = null; window.LLGalleryStore.touch(); }
+            }
+        } catch (e) { /* best effort */ }
+    },
+    async personCoverUrl(pp) {
+        const cover = (pp.faces || [])[0];
+        if (! cover?.cropRef) return '';
+        if (this._personCovers[cover.cropRef]) return this._personCovers[cover.cropRef];
+        try {
+            const bytes = await fetchDecrypt('/gallery/raw', cover.cropRef, cover.cropKey);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            this._personCovers[cover.cropRef] = url;
+            return url;
+        } catch (e) { return ''; }
     },
 }));
 
