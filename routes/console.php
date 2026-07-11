@@ -36,3 +36,6 @@ Schedule::command('shares:prune')->daily()->withoutOverlapping();
 
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).
 Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
+
+// Alert the configured channels about new recorded server errors.
+Schedule::command('ops:alert-errors')->hourly()->withoutOverlapping();
