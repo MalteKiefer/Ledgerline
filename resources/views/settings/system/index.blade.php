@@ -1,8 +1,9 @@
 <x-layouts.app :title="__('settings.system_section')">
     <x-page-heading :title="__('settings.system_section')" :subtitle="__('settings.system_desc')" />
 
+    <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
     {{-- Operational status --}}
-    <div class="mt-6 max-w-2xl rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6 xl:col-span-2">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_status_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_status_desc') }}</p>
         <dl class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -87,7 +88,7 @@
     </div>
 
     {{-- In-app error log --}}
-    <div class="mt-6 max-w-2xl rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_errors_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_errors_desc') }}</p>
         @if ($errors->isEmpty())
@@ -119,7 +120,7 @@
         @endif
     </div>
 
-    <div class="mt-6 max-w-2xl rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_cron_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_cron_hint') }}</p>
         <div class="-mx-4 mt-3 overflow-x-auto px-4 sm:mx-0 sm:px-0">
@@ -151,5 +152,6 @@
                 </tbody>
             </table>
         </div>
+    </div>
     </div>
 </x-layouts.app>
