@@ -509,6 +509,20 @@ Alpine.data('backupRuns', (labels = {}) => ({
     verifyPass: '',
     verifyBusy: false,
     verifyResult: null, // { ok, message }
+    // Per-row actions live in a 3-dot menu, teleported to <body> and positioned
+    // by the trigger's rect so the runs table's horizontal scroll can't clip it.
+    menuRunId: null,
+    menuX: 0,
+    menuY: 0,
+    get menuRun() { return this.runs.find((r) => r.id === this.menuRunId) || null; },
+    toggleMenu(r, ev) {
+        if (this.menuRunId === r.id) { this.menuRunId = null; return; }
+        const rect = ev.currentTarget.getBoundingClientRect();
+        this.menuX = Math.round(rect.right);
+        this.menuY = Math.round(rect.bottom + 4);
+        this.menuRunId = r.id;
+    },
+    closeMenu() { this.menuRunId = null; },
 
     openDecrypt(id) {
         this.decrypt = { open: true, id };

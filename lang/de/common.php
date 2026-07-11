@@ -9,6 +9,7 @@ return [
     'back' => 'Zurück',
     'save' => 'Speichern',
     'close' => 'Schließen',
+    'actions' => 'Aktionen',
     'confirm' => 'Bestätigen',
     'confirm_title' => 'Sind Sie sicher?',
     'confirm_message' => 'Diese Aktion kann nicht rückgängig gemacht werden.',

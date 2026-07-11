@@ -9,6 +9,7 @@ return [
     'back' => 'Back',
     'save' => 'Save',
     'close' => 'Close',
+    'actions' => 'Actions',
     'confirm' => 'Confirm',
     'confirm_title' => 'Are you sure?',
     'confirm_message' => 'This action cannot be undone.',
