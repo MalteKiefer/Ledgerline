@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
@@ -62,5 +63,15 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.gallery.blob.destroy');
         Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('api.gallery.process');
         Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('api.gallery.embed-text');
+
+        // Contacts: the records themselves live in the workspace manifest above
+        // (GET/PUT /store). These are only the optional avatar content blobs, so
+        // the native app can show/upload a contact photo. Same controller-reuse,
+        // guard-agnostic, zero-knowledge as the web routes.
+        Route::get('/contacts/usage', [ContactBlobController::class, 'usage'])->name('api.contacts.usage');
+        Route::post('/contacts/blobs/reconcile', [ContactBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.contacts.reconcile');
+        Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.contacts.upload');
+        Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.contacts.raw');
+        Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.contacts.blob.destroy');
     });
 });
