@@ -2184,7 +2184,18 @@ return {
     peopleProgress: { done: 0, total: 0 },
     // Hide clusters that have no live photos left (all trashed/purged) so a wiped
     // library doesn't leave ghost people behind.
-    get people() { return (this.index.people || []).filter((pp) => ! pp.hidden && this.personPhotos(pp).length > 0); },
+    get people() {
+        return (this.index.people || [])
+            .filter((pp) => ! pp.hidden && this.personPhotos(pp).length > 0)
+            // Named people first (alphabetical), then the unnamed rest by size.
+            .sort((a, b) => {
+                const an = (a.name || '').trim(), bn = (b.name || '').trim();
+                if (an && ! bn) return -1;
+                if (! an && bn) return 1;
+                if (an && bn) return an.localeCompare(bn);
+                return this.personCount(b) - this.personCount(a);
+            });
+    },
     get currentPerson() { return (this.index.people || []).find((pp) => pp.id === this.activePerson) || null; },
     openPerson(pp) { this.activePerson = pp.id; this.view = 'person'; },
     personPhotos(pp) {
@@ -2347,6 +2358,69 @@ return {
         if (! (target.name || '').trim() && (other.name || '').trim()) target.name = other.name;
         this.index.people = (this.index.people || []).filter((pp) => pp.id !== other.id);
         this.mergePicker = false;
+        this._save();
+    },
+
+    /* ---- Correct a face: remove from a person, or reassign to another ---- */
+    reassignFor: null, // the photo being reassigned (opens the target picker)
+    openReassign(photo) { this.reassignFor = photo; },
+    closeReassign() { this.reassignFor = null; },
+
+    // The stored face embedding for a person-face descriptor, from the photo meta.
+    _faceEmb(f) { return metaCache[f.photoId]?.faces?.[f.idx]?.embedding || null; },
+    // Update a person's running-mean centroid when a face leaves / joins. Call
+    // BEFORE mutating pp.faces so the count reflects the pre-change size.
+    _centroidRemove(pp, emb) {
+        const n = (pp.faces || []).length;
+        if (! Array.isArray(emb) || ! Array.isArray(pp.centroid) || n <= 1) return;
+        for (let i = 0; i < pp.centroid.length && i < emb.length; i++) pp.centroid[i] = (pp.centroid[i] * n - emb[i]) / (n - 1);
+    },
+    _centroidAdd(pp, emb) {
+        if (! Array.isArray(emb)) return;
+        if (! Array.isArray(pp.centroid)) { pp.centroid = emb.slice(); return; }
+        const n = (pp.faces || []).length;
+        for (let i = 0; i < pp.centroid.length && i < emb.length; i++) pp.centroid[i] = (pp.centroid[i] * n + emb[i]) / (n + 1);
+    },
+    // Drop a person that fell below the 2-face cluster floor, leaving its view.
+    _dropIfEmpty(pp) {
+        if ((pp.faces || []).length >= 2) return false;
+        this.index.people = (this.index.people || []).filter((x) => x.id !== pp.id);
+        if (this.activePerson === pp.id) { this.activePerson = null; this.view = 'people'; }
+        return true;
+    },
+
+    // "Not this person": remove the current person's face(s) in this photo.
+    async removeFaceFromPerson(photo) {
+        const pp = this.currentPerson;
+        if (! pp || ! photo) return;
+        const removed = (pp.faces || []).filter((f) => f.photoId === photo.id);
+        if (! removed.length) return;
+        await this._ensureMeta([photo]);
+        for (const f of removed) { this._centroidRemove(pp, this._faceEmb(f)); pp.faces = pp.faces.filter((x) => x !== f); }
+        this._dropIfEmpty(pp);
+        this._save();
+    },
+
+    // Reassign this photo's face(s) from the current person to `target`.
+    async moveFaceToPerson(target) {
+        const photo = this.reassignFor;
+        const pp = this.currentPerson;
+        if (! pp || ! target || ! photo || target.id === pp.id) { this.reassignFor = null; return; }
+        const moving = (pp.faces || []).filter((f) => f.photoId === photo.id);
+        if (! moving.length) { this.reassignFor = null; return; }
+        await this._ensureMeta([photo]);
+        const tf = target.faces || (target.faces = []);
+        const seen = new Set(tf.map((f) => f.photoId + ':' + f.idx));
+        for (const f of moving) {
+            const emb = this._faceEmb(f);
+            this._centroidRemove(pp, emb);
+            pp.faces = pp.faces.filter((x) => x !== f);
+            this._centroidAdd(target, emb);
+            const k = f.photoId + ':' + f.idx;
+            if (! seen.has(k)) { seen.add(k); tf.push(f); }
+        }
+        this._dropIfEmpty(pp);
+        this.reassignFor = null;
         this._save();
     },
 
