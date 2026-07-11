@@ -415,6 +415,10 @@
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
                     </button>
+                    <div class="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                      <button type="button" @click.stop="openReassign(p)" title="{{ __('gallery.reassign') }}" class="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-black/70"><x-icon name="arrows-right-left" class="h-3.5 w-3.5" /></button>
+                      <button type="button" @click.stop="removeFaceFromPerson(p)" title="{{ __('gallery.not_this_person') }}" class="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-red-500"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -657,6 +661,32 @@
         </div>
         <div class="mt-4 flex justify-end">
           <x-button variant="secondary" type="button" @click="closeMergePicker()">{{ __('common.cancel') }}</x-button>
+        </div>
+      </div>
+    </div>
+
+    {{-- Reassign a photo's face to another person --}}
+    <div x-show="reassignFor" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeReassign()">
+      <div class="absolute inset-0 bg-black/60" @click="closeReassign()"></div>
+      <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.reassign_heading') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.reassign_hint') }}</p>
+        <p x-show="! mergeCandidates().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.merge_none') }}</p>
+        <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+          <template x-for="pp in mergeCandidates()" :key="pp.id">
+            <button type="button" @click="moveFaceToPerson(pp)" class="group flex flex-col items-center focus:outline-none">
+              <span class="relative h-20 w-20 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 group-hover:ring-gray-900 dark:group-hover:ring-gray-100"
+                    x-init="$nextTick(() => personCover(pp) && faceThumb(personCover(pp)))">
+                <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover">
+                <span x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])" class="flex h-full w-full items-center justify-center"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></span>
+              </span>
+              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></span>
+              <span class="text-[11px] tabular-nums text-gray-400" x-text="personCount(pp)"></span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <x-button variant="secondary" type="button" @click="closeReassign()">{{ __('common.cancel') }}</x-button>
         </div>
       </div>
     </div>
