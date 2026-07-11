@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'backup_job_id', 'status', 'cancel_requested', 'started_at', 'finished_at', 'bytes', 'filename', 'message', 'log',
+    'verified_at', 'verify_status', 'verify_message',
 ])]
 class BackupRun extends Model
 {
@@ -21,6 +22,7 @@ class BackupRun extends Model
         return [
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'verified_at' => 'datetime',
             'bytes' => 'integer',
             'cancel_requested' => 'boolean',
         ];

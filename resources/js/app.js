@@ -413,12 +413,55 @@ Alpine.data('backupRuns', (labels = {}) => ({
     pollUntil: 0, // keep polling until this timestamp (covers queue lag + run time)
     _timer: null,
     decrypt: { open: false, id: null },
+    // Guided restore + non-destructive verify (dry run).
+    restore: { open: false, run: null },
+    verifyPass: '',
+    verifyBusy: false,
+    verifyResult: null, // { ok, message }
 
     openDecrypt(id) {
         this.decrypt = { open: true, id };
     },
     get decryptAction() {
         return (labels.decryptBase || '').replace('__id__', this.decrypt.id);
+    },
+
+    openRestore(r) {
+        this.restore = { open: true, run: r };
+        this.verifyPass = '';
+        this.verifyBusy = false;
+        this.verifyResult = null;
+    },
+    closeRestore() {
+        this.restore = { open: false, run: null };
+    },
+    restoreDecryptAction() {
+        return this.restore.run ? (labels.decryptBase || '').replace('__id__', this.restore.run.id) : '';
+    },
+    restoreDownloadUrl() {
+        return this.restore.run ? this.downloadUrl(this.restore.run.id) : '';
+    },
+    async runVerify() {
+        const r = this.restore.run;
+        if (! r) return;
+        this.verifyBusy = true;
+        this.verifyResult = null;
+        try {
+            const body = new URLSearchParams();
+            if (this.verifyPass) body.set('passphrase', this.verifyPass);
+            const res = await fetch((labels.verifyBase || '').replace('__id__', r.id), {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            });
+            const data = res.ok ? await res.json() : { ok: false, message: 'Request failed.' };
+            this.verifyResult = { ok: !! data.ok, message: data.message || '' };
+            this.load(); // refresh the row's stored verify badge
+        } catch (e) {
+            this.verifyResult = { ok: false, message: 'Verification could not be started.' };
+        } finally {
+            this.verifyBusy = false;
+        }
     },
 
     init() {
