@@ -6,6 +6,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
+use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\DownloadsController;
@@ -20,6 +21,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
+use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
@@ -78,6 +80,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/settings', SettingsController::class)->name('settings');
 
     // Per-user Files preferences (version-history depth).
+    Route::get('/settings/contacts', [SettingsContactsController::class, 'edit'])->name('settings.contacts.edit');
+    Route::put('/settings/contacts', [SettingsContactsController::class, 'update'])->name('settings.contacts.update');
     Route::get('/settings/files', [SettingsFilesController::class, 'edit'])->name('settings.files.edit');
     Route::put('/settings/files', [SettingsFilesController::class, 'update'])->name('settings.files.update');
 
@@ -208,6 +212,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('contacts.upload');
     Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('contacts.raw');
     Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('contacts.blob.destroy');
+    // Client-relayed birthday/anniversary alert (ZK: the client detects the due
+    // date; the server only forwards to the user's chosen channels).
+    Route::post('/contacts/notify', [ContactNotifyController::class, 'send'])->middleware('throttle:60,1')->name('contacts.notify');
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');

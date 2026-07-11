@@ -4835,9 +4835,43 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         this._loadPrefs();
         await this._initZk();
         this.reconcileBlobs();
+        this._checkAnniversaries();
         // Deep link from a linked gallery person (?c=<id>) → open that contact.
         const cid = new URLSearchParams(location.search).get('c');
         if (cid && this.contacts.some((c) => c.id === cid)) this.open(this.contacts.find((c) => c.id === cid));
+    },
+
+    // Zero-knowledge birthday / anniversary alerts: the client (which holds the
+    // decrypted data) detects a due date and relays a one-off message through the
+    // user's chosen channels. Deduped once per year per contact via a flag in the
+    // sealed manifest; a 7-day look-back catches days the app wasn't opened.
+    _checkAnniversaries() {
+        if (this.state !== 'ready') return;
+        const bch = config.birthdayChannels || [], ach = config.anniversaryChannels || [];
+        if (! bch.length && ! ach.length) return;
+        const now = new Date();
+        const year = now.getFullYear();
+        const startOfToday = new Date(year, now.getMonth(), now.getDate());
+        const due = (iso) => {
+            if (! iso || iso.length < 10) return false;
+            const [, m, d] = iso.split('-').map(Number);
+            if (! m || ! d) return false;
+            const diff = (startOfToday - new Date(year, m - 1, d)) / 86400000;
+            return diff >= 0 && diff <= 7;
+        };
+        let changed = false;
+        for (const c of this.contacts) {
+            if (c.trashed) continue;
+            if (bch.length && c.bday && c.bdayNotified !== year && due(c.bday)) { this._fireAlert('birthday', c); c.bdayNotified = year; changed = true; }
+            if (ach.length && c.anniversary && c.annivNotified !== year && due(c.anniversary)) { this._fireAlert('anniversary', c); c.annivNotified = year; changed = true; }
+        }
+        if (changed) this._save();
+    },
+    _fireAlert(kind, c) {
+        const name = this.displayName(c);
+        const title = kind === 'birthday' ? labels.bdayTitle : labels.annivTitle;
+        const body = (kind === 'birthday' ? labels.bdayBody : labels.annivBody).replace(':name', name);
+        fetch(config.notifyUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ kind, title, body }) }).catch(() => {});
     },
 
     // Display preferences (name order + sort) are per-device UI state, not
