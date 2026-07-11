@@ -160,9 +160,11 @@
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in group.photos" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
-                       :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)">
+                       :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)"
+                       @mouseenter="hoverMotion(p, $event.currentTarget)" @mouseleave="unhoverMotion($event.currentTarget)">
                     <button type="button" @click="openViewer(p)" class="block h-full w-full">
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                      <template x-if="p.motionRef && p.media_type !== 'video'"><video data-motion muted loop playsinline preload="none" style="display:none" class="pointer-events-none absolute inset-0 h-full w-full object-cover"></video></template>
                       <div x-show="!thumbs[p.id]" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
                         <svg x-show="!p.thumbRef" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
                       </div>
