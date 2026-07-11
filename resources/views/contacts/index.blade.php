@@ -11,6 +11,8 @@
         deleteConfirm: @js(__('contacts.delete_confirm')),
         emptyTrashConfirm: @js(__('contacts.empty_trash_confirm')),
         avatarFailed: @js(__('contacts.avatar_failed')),
+        imported: @js(__('contacts.imported')),
+        importFailed: @js(__('contacts.import_failed')),
      })">
 
     {{-- Zero-knowledge gate: contacts decrypt with the vault key. --}}
@@ -47,6 +49,14 @@
                 <button type="button" @click="onlyFav = ! onlyFav" x-show="view === 'active'" :class="onlyFav ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">{{ __('contacts.favorites') }}</button>
                 <button type="button" @click="view = 'trash'" :class="view === 'trash' ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">{{ __('contacts.trash') }} (<span x-text="trashCount"></span>)</button>
                 <button type="button" x-show="view === 'trash' && trashCount" @click="emptyTrash()" class="ml-auto text-red-600 hover:text-red-700">{{ __('contacts.empty_trash') }}</button>
+            </div>
+            <div class="flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                <label class="inline-flex cursor-pointer items-center gap-1 hover:text-gray-800 dark:hover:text-gray-200" title="{{ __('contacts.import') }}">
+                    <x-icon name="arrow-up-tray" class="h-3.5 w-3.5" />{{ __('contacts.import') }}
+                    <input type="file" accept=".vcf,text/vcard" class="hidden" @change="importFile($event)">
+                </label>
+                <button type="button" x-show="contacts.some(c => ! c.trashed)" @click="exportAll()" class="inline-flex items-center gap-1 hover:text-gray-800 dark:hover:text-gray-200" title="{{ __('contacts.export_all') }}"><x-icon name="arrow-down-tray" class="h-3.5 w-3.5" />{{ __('contacts.export_all') }}</button>
+                <span x-show="importing" x-cloak class="text-gray-400">…</span>
             </div>
             <div x-show="allCategories.length" class="flex flex-wrap gap-1 border-b border-gray-100 dark:border-gray-800 p-2">
                 <template x-for="t in allCategories" :key="t">
@@ -100,6 +110,7 @@
                             <button type="button" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600'" title="{{ __('contacts.favorite') }}"><x-icon name="star" class="h-4 w-4" /></button>
                             <button type="button" x-show="current.avatarRef" @click="removeAvatar(current)" class="text-xs text-gray-400 hover:text-red-600">{{ __('contacts.remove_avatar') }}</button>
                             <span class="ml-auto flex items-center gap-1">
+                                <button type="button" @click="exportOne(current)" title="{{ __('contacts.export') }}" class="rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
                                 <template x-if="view === 'trash'">
                                     <span class="flex gap-1">
                                         <button type="button" @click="restore(current)" title="{{ __('contacts.restore') }}" class="rounded p-1 text-gray-400 hover:text-gray-700"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
