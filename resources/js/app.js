@@ -5186,18 +5186,52 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     /* ---- Avatar source 3: pick from Gallery (lazy-boot the gallery manifest) ---- */
     galleryPicker: false,
     galleryLoading: false,
+    gTab: 'all',            // 'all' | 'people' | 'albums'
+    gSel: null,             // drilled person/album id
     _galleryPhotos: [],
+    _galleryPeople: [],
+    _galleryAlbums: [],
+    _galleryById: {},
     _galleryThumbs: {},
     async openGalleryPicker() {
         this.avatarMenu = false;
         this.galleryLoading = true;
         try {
-            if (! await bootGalleryStore(this.$store)) return;
-            this._galleryPhotos = (window.LLGalleryStore.data.photos || []).filter((p) => ! p.trashed && p.media_type !== 'video' && p.thumbRef);
+            if (! await bootGalleryStore(this.$store)) { window.llToast?.(labels.avatarFailed || 'Vault locked'); return; }
+            const d = window.LLGalleryStore.data || {};
+            this._galleryPhotos = (d.photos || []).filter((p) => ! p.trashed && p.media_type !== 'video' && p.thumbRef);
+            this._galleryById = Object.fromEntries(this._galleryPhotos.map((p) => [p.id, p]));
+            this._galleryPeople = (d.people || []).filter((pp) => ! pp.hidden && (pp.faces || []).length);
+            this._galleryAlbums = (d.albums || []).filter((a) => (a.photoIds || []).length);
+            this.gTab = 'all'; this.gSel = null;
             this.galleryPicker = true;
         } finally { this.galleryLoading = false; }
     },
-    closeGalleryPicker() { this.galleryPicker = false; },
+    closeGalleryPicker() { this.galleryPicker = false; this.gSel = null; },
+    gSetTab(t) { this.gTab = t; this.gSel = null; },
+    gShowChooser() { return (this.gTab === 'people' || this.gTab === 'albums') && ! this.gSel; },
+    gGridPhotos() {
+        if (this.gTab === 'all') return this._galleryPhotos;
+        if (this.gTab === 'people') {
+            const pp = this._galleryPeople.find((x) => x.id === this.gSel);
+            if (! pp) return [];
+            const ids = [...new Set((pp.faces || []).map((f) => f.photoId))];
+            return ids.map((id) => this._galleryById[id]).filter(Boolean);
+        }
+        const al = this._galleryAlbums.find((x) => x.id === this.gSel);
+        return al ? (al.photoIds || []).map((id) => this._galleryById[id]).filter(Boolean) : [];
+    },
+    gInitials(name) { return (name || '?').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '?'; },
+    async gPersonCover(pp) {
+        const f = (pp.faces || [])[0];
+        if (! f?.cropRef) return '';
+        if (this._galleryThumbs[f.cropRef]) return this._galleryThumbs[f.cropRef];
+        try { const b = await fetchDecrypt('/gallery/raw', f.cropRef, f.cropKey); const u = URL.createObjectURL(new Blob([b], { type: 'image/jpeg' })); this._galleryThumbs[f.cropRef] = u; return u; } catch (e) { return ''; }
+    },
+    async gAlbumCover(al) {
+        const p = this._galleryById[al.cover] || this._galleryById[(al.photoIds || [])[0]];
+        return p ? this.galleryThumb(p) : '';
+    },
     async galleryThumb(p) {
         if (this._galleryThumbs[p.thumbRef]) return this._galleryThumbs[p.thumbRef];
         try { const b = await fetchDecrypt('/gallery/raw', p.thumbRef, p.thumbKey); const u = URL.createObjectURL(new Blob([b], { type: 'image/jpeg' })); this._galleryThumbs[p.thumbRef] = u; return u; } catch (e) { return ''; }
