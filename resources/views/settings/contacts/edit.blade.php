@@ -10,7 +10,7 @@
         ];
     @endphp
 
-    <form method="POST" action="{{ route('settings.contacts.update') }}" class="mt-6 max-w-2xl space-y-6">
+    <form method="POST" action="{{ route('settings.contacts.update') }}" class="mt-6 space-y-6">
         @csrf
         @method('PUT')
 
