@@ -4790,18 +4790,38 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     ...zkModule({ map: { contacts: 'contacts' }, onLock: (self) => { self.currentId = null; self._revokeAvatars(); } }),
     contacts: [],
     currentId: null,
+    editing: false, // detail pane opens read-only; edit via a button
     view: 'active', // active | trash
     onlyFav: false,
+    nameFormat: 'first', // first = "First Last", last = "Last, First"
+    sortBy: 'name', // name | first | last | updated
+    prefsOpen: false,
     avatarUrls: {}, // avatarRef -> objectURL (decrypted, cached)
     _avatarPending: {},
 
     async init() {
+        this._loadPrefs();
         await this._initZk();
         this.reconcileBlobs();
         // Deep link from a linked gallery person (?c=<id>) → open that contact.
         const cid = new URLSearchParams(location.search).get('c');
         if (cid && this.contacts.some((c) => c.id === cid)) this.open(this.contacts.find((c) => c.id === cid));
     },
+
+    // Display preferences (name order + sort) are per-device UI state, not
+    // sensitive contact data — kept in localStorage, not the sealed manifest.
+    _loadPrefs() {
+        try {
+            const p = JSON.parse(localStorage.getItem('ll-contacts-prefs') || '{}');
+            if (p.nameFormat) this.nameFormat = p.nameFormat;
+            if (p.sortBy) this.sortBy = p.sortBy;
+        } catch (e) { /* defaults */ }
+    },
+    _savePrefs() {
+        try { localStorage.setItem('ll-contacts-prefs', JSON.stringify({ nameFormat: this.nameFormat, sortBy: this.sortBy })); } catch (e) { /* ignore */ }
+    },
+    setNameFormat(v) { this.nameFormat = v; this._savePrefs(); },
+    setSortBy(v) { this.sortBy = v; this._savePrefs(); },
 
     get allCategories() {
         const set = new Set();
@@ -4811,15 +4831,28 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     get trashCount() { return this._trashCount(this.contacts); },
     get current() { return this.contacts.find((c) => c.id === this.currentId) ?? null; },
 
-    // Display label: formatted name, else first/last, else org/email.
+    // Display label, honouring the chosen name order (First Last / Last, First).
     displayName(c) {
         if (! c) return '';
-        const n = (c.fn || [c.first, c.last].filter(Boolean).join(' ') || c.org || (c.emails ?? [])[0]?.value || '').trim();
-        return n || (labels.unnamed || '—');
+        const first = (c.first || '').trim(), last = (c.last || '').trim();
+        if (last || first) {
+            return this.nameFormat === 'last'
+                ? [last, first].filter(Boolean).join(', ')
+                : [first, last].filter(Boolean).join(' ');
+        }
+        return (c.fn || c.org || (c.emails ?? [])[0]?.value || '').trim() || (labels.unnamed || '—');
     },
     initials(c) {
-        const n = this.displayName(c);
-        return n.split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('') || '?';
+        const first = (c.first || '')[0] || '', last = (c.last || '')[0] || '';
+        const from = (first + last) || this.displayName(c).replace(/[^\p{L}]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join('');
+        return (from || '?').toUpperCase();
+    },
+    // Sort key for the current sort mode.
+    _sortKey(c) {
+        if (this.sortBy === 'first') return ((c.first || c.fn || this.displayName(c))).toLowerCase();
+        if (this.sortBy === 'last') return ((c.last || c.fn || this.displayName(c))).toLowerCase();
+        if (this.sortBy === 'updated') return c.updated || '';
+        return this.displayName(c).toLowerCase();
     },
 
     get filtered() {
@@ -4834,8 +4867,19 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
                 || (c.phones ?? []).some((p) => (p.value ?? '').toLowerCase().includes(q))
                 || (c.categories ?? []).some((g) => g.toLowerCase().includes(q)));
         }
-        // Named/sortable first by display name.
-        return [...list].sort((a, b) => this.displayName(a).localeCompare(this.displayName(b)));
+        const dir = this.sortBy === 'updated' ? -1 : 1; // most-recent first for updated
+        return [...list].sort((a, b) => dir * this._sortKey(a).localeCompare(this._sortKey(b)));
+    },
+
+    // Human address block (for the read-only view): street / zip city / region / country.
+    addressLines(a) {
+        if (! a) return [];
+        return [
+            (a.street || '').trim(),
+            [a.zip, a.city].filter(Boolean).join(' ').trim(),
+            (a.region || '').trim(),
+            (a.country || '').trim(),
+        ].filter(Boolean);
     },
 
     _newUid() { return 'urn:uuid:' + window.LLStore.newId(); },
@@ -4852,9 +4896,15 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         this.contacts.unshift(c);
         this._save();
         this.open(c);
+        this.editing = true; // a fresh contact opens straight in edit mode
     },
-    open(c) { this.currentId = c.id; this.tagsValue = (c.categories ?? []).join(', '); },
-    close() { this.currentId = null; },
+    open(c) {
+        // Backfill fields added in later versions so legacy contacts render/edit.
+        c.emails ??= []; c.phones ??= []; c.impp ??= []; c.addresses ??= []; c.urls ??= []; c.categories ??= []; c._x ??= [];
+        this.currentId = c.id; this.editing = false; this.tagsValue = (c.categories ?? []).join(', ');
+    },
+    close() { this.currentId = null; this.editing = false; },
+    startEdit() { this.tagsValue = (this.current?.categories ?? []).join(', '); this.editing = true; },
 
     // Persist the current contact (categories parsed from the tag input).
     save() {
