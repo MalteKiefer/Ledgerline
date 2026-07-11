@@ -225,6 +225,21 @@
                 </div>
             </div>
         </template>
+
+        {{-- Per-run action menu (teleported so the table's scroll can't clip it) --}}
+        <template x-teleport="body">
+            <div x-show="menuRunId" x-cloak @click.outside="closeMenu()" @keydown.escape.window="closeMenu()"
+                 :style="`position:fixed; top:${menuY}px; left:${menuX}px; transform:translateX(-100%)`"
+                 class="z-50 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
+                <template x-if="menuRun">
+                    <div>
+                        <button x-show="menuRun.verifiable" type="button" @click="openRestore(menuRun); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('settings.backup_restore') }}</button>
+                        <a x-show="menuRun.downloadable" :href="downloadUrl(menuRun.id)" @click="closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.backup_download') }}</a>
+                        <button x-show="menuRun.encrypted" type="button" @click="openDecrypt(menuRun.id); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="lock-open" class="h-4 w-4" />{{ __('settings.backup_decrypt') }}</button>
+                    </div>
+                </template>
+            </div>
+        </template>
         <p x-show="runs.length === 0" class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_no_runs') }}</p>
         <div class="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <table x-show="runs.length > 0" x-cloak class="mt-3 w-full text-left text-sm">
@@ -256,16 +271,17 @@
                         <td class="py-1.5 pr-3 align-top text-gray-500 dark:text-gray-400" x-text="r.startedHuman"></td>
                         <td class="py-1.5 pr-3 align-top text-gray-500 dark:text-gray-400" x-text="r.size ?? '—'"></td>
                         <td class="py-1.5 pr-3 align-top">
+                          <div class="flex items-center justify-end gap-1.5">
                             <span x-show="r.verifyStatus === 'ok'" title="{{ __('settings.backup_verify_ok') }}" class="inline-flex text-green-600 dark:text-green-400"><x-icon name="check-circle" class="h-4 w-4" /></span>
                             <span x-show="r.verifyStatus === 'failed'" :title="r.verifyMessage" class="inline-flex text-amber-500 dark:text-amber-400"><x-icon name="exclamation-triangle" class="h-4 w-4" /></span>
-                            <button x-show="r.verifiable" type="button" @click="openRestore(r)" title="{{ __('settings.backup_restore') }}" :aria-label="'{{ __('settings.backup_restore') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
-                            <a x-show="r.downloadable" :href="downloadUrl(r.id)" title="{{ __('settings.backup_download') }}" :aria-label="'{{ __('settings.backup_download') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="arrow-down-tray" class="h-4 w-4" /></a>
-                            <button x-show="r.encrypted" type="button" @click="openDecrypt(r.id)" title="{{ __('settings.backup_decrypt') }}" :aria-label="'{{ __('settings.backup_decrypt') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"><x-icon name="lock-open" class="h-4 w-4" /></button>
                             <button x-show="r.cancellable" type="button" @click="cancel(r.id)" title="{{ __('settings.backup_cancel') }}" :aria-label="'{{ __('settings.backup_cancel') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             <span x-show="r.cancelling" class="inline-flex items-center gap-1.5">
                                 <span class="text-xs text-gray-400 dark:text-gray-500">{{ __('settings.backup_cancelling') }}</span>
                                 <button type="button" @click="cancel(r.id)" title="{{ __('settings.backup_force_stop') }}" :aria-label="'{{ __('settings.backup_force_stop') }}'" class="rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="stop" class="h-4 w-4" /></button>
                             </span>
+                            {{-- Success-run actions live behind a 3-dot menu --}}
+                            <button x-show="r.verifiable || r.downloadable || r.encrypted" type="button" @click.stop="toggleMenu(r, $event)" title="{{ __('common.actions') }}" :aria-label="'{{ __('common.actions') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="ellipsis" class="h-4 w-4" /></button>
+                          </div>
                         </td>
                     </tr>
                     <tr x-show="expanded[r.id]" x-cloak>
