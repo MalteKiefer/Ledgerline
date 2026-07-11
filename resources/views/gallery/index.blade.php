@@ -454,13 +454,13 @@
     <div x-show="viewer.open" x-cloak @keydown.escape.window="closeViewer()"
         class="fixed inset-0 z-[950] flex bg-black/90" @click.self="closeViewer()">
       <button type="button" @click="closeViewer()" class="absolute right-4 top-4 z-10 text-white/70 hover:text-white"><x-icon name="x-mark" class="h-7 w-7" /></button>
-      <div class="flex flex-1 items-center justify-center p-4" @click.self="closeViewer()">
+      <div class="flex flex-1 items-center justify-center p-4" x-ref="vstage" @resize.window="_fitViewer()" @click.self="closeViewer()">
         <template x-if="viewer.kind === 'loading'"><svg class="h-8 w-8 animate-spin text-white/60" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg></template>
         <template x-if="viewer.kind === 'image'">
           <div class="relative" @click.stop>
-            <img :src="viewer.src" x-show="! viewer.motionOn" :style="photoTransform(viewer.photo)" class="max-h-[92vh] max-w-full rounded-lg">
+            <img :src="viewer.src" x-ref="vimg" @load="_fitViewer()" x-show="! viewer.motionOn" :style="viewerTransform()" class="max-h-[92vh] max-w-full rounded-lg">
             <template x-if="viewer.motionOn">
-              <video :src="viewer.motionSrc" autoplay muted playsinline @ended="stopMotion()" :style="photoTransform(viewer.photo)" class="max-h-[92vh] max-w-full rounded-lg"></video>
+              <video :src="viewer.motionSrc" autoplay muted playsinline @ended="stopMotion()" :style="viewerTransform()" class="max-h-[92vh] max-w-full rounded-lg"></video>
             </template>
             <button type="button" x-show="viewer.hasMotion && ! viewer.motionOn" @click.stop="playMotion()"
                 class="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-black/70">
