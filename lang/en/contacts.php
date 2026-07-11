@@ -50,6 +50,13 @@ return [
     'to_trash' => 'Move to trash',
     'delete_forever' => 'Delete permanently',
 
+    'link_person' => 'Link a gallery person',
+    'linked_person' => 'Gallery person',
+    'show_photos' => 'Show photos',
+    'unlink' => 'Unlink',
+    'link_person_heading' => 'Link this contact to a gallery person',
+    'link_person_hint' => 'Pick the person in your photos.',
+    'link_person_none' => 'No people yet — scan faces in the gallery first.',
     'import' => 'Import vCard',
     'export' => 'Export vCard',
     'export_all' => 'Export all',

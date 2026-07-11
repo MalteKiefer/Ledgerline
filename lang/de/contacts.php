@@ -50,6 +50,13 @@ return [
     'to_trash' => 'In den Papierkorb',
     'delete_forever' => 'Endgültig löschen',
 
+    'link_person' => 'Galerie-Person verknüpfen',
+    'linked_person' => 'Galerie-Person',
+    'show_photos' => 'Fotos anzeigen',
+    'unlink' => 'Verknüpfung lösen',
+    'link_person_heading' => 'Diesen Kontakt mit einer Galerie-Person verknüpfen',
+    'link_person_hint' => 'Wähle die Person in deinen Fotos.',
+    'link_person_none' => 'Noch keine Personen — scanne zuerst Gesichter in der Galerie.',
     'import' => 'vCard importieren',
     'export' => 'vCard exportieren',
     'export_all' => 'Alle exportieren',

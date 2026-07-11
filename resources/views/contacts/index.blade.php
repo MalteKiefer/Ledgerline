@@ -185,9 +185,45 @@
                     </label>
                 </div>
                 <textarea x-model="current.note" @input.debounce.600ms="save()" placeholder="{{ __('contacts.note') }}" class="mt-3 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500" rows="3"></textarea>
+
+                {{-- Linked gallery person --}}
+                <div class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.linked_person') }}</span>
+                    <div x-show="current.personId" x-cloak class="mt-1 flex items-center gap-2 text-sm">
+                        <x-icon name="user" class="h-4 w-4 text-gray-400" />
+                        <span class="text-gray-800 dark:text-gray-200" x-text="linkedPersonName || '{{ __('contacts.linked_person') }}'"></span>
+                        <a :href="galleryHref(current)" class="text-gray-500 hover:underline">{{ __('contacts.show_photos') }}</a>
+                        <button type="button" @click="unlinkPerson()" class="text-gray-400 hover:text-red-600">{{ __('contacts.unlink') }}</button>
+                    </div>
+                    <button type="button" x-show="! current.personId" @click="openPersonPicker()" class="mt-1 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><x-icon name="users" class="h-4 w-4" />{{ __('contacts.link_person') }}</button>
+                </div>
               </div>
             </template>
         </section>
+      </div>
+
+      {{-- Person picker: loads the gallery manifest lazily --}}
+      <div x-show="personPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closePersonPicker()">
+        <div class="absolute inset-0 bg-black/60" @click="closePersonPicker()"></div>
+        <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.link_person_heading') }}</h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.link_person_hint') }}</p>
+            <p x-show="! personSuggestions().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.link_person_none') }}</p>
+            <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+                <template x-for="pp in personSuggestions()" :key="pp.id">
+                    <button type="button" @click="linkPerson(pp)" class="group flex flex-col items-center focus:outline-none">
+                        <span class="relative h-16 w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 group-hover:ring-gray-900 dark:group-hover:ring-gray-100 flex items-center justify-center text-sm font-semibold text-gray-500" x-init="$nextTick(() => personCoverUrl(pp))">
+                            <img x-show="_personCovers[(pp.faces?.[0]?.cropRef)]" :src="_personCovers[(pp.faces?.[0]?.cropRef)]" class="h-full w-full object-cover">
+                            <span x-show="! _personCovers[(pp.faces?.[0]?.cropRef)]" x-text="personInitials(pp)"></span>
+                        </span>
+                        <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || '{{ __('contacts.unnamed') }}'"></span>
+                    </button>
+                </template>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <x-button variant="secondary" type="button" @click="closePersonPicker()">{{ __('common.cancel') }}</x-button>
+            </div>
+        </div>
       </div>
     </template>
   </div>
