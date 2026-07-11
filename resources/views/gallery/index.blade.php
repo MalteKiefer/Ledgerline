@@ -199,6 +199,11 @@
               </div>
             </section>
           </template>
+          {{-- Infinite-scroll sentinel: reveals the next page of tiles as it
+               nears the viewport, so the grid never builds the whole library. --}}
+          <div x-show="hasMore" x-intersect.margin.800px="loadMore()" class="flex items-center justify-center py-6">
+            <svg class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+          </div>
         </div>
 
         {{-- ACTIVITY / BATCHES --}}
