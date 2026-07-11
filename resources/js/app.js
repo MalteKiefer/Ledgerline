@@ -4693,28 +4693,37 @@ const VCard = {
         return out.join('\r\n');
     },
 
-    // Build a vCard string for one contact. `photo` is an optional base64 data URI.
+    _date(d) { return String(d || '').replace(/-/g, ''); },
+    _fromDate(v) { const s = String(v).replace(/[^0-9]/g, ''); return s.length >= 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : ''; },
+
+    // Build a vCard 4.0 string for one contact. `photo` is an optional base64
+    // data URI. Unknown properties captured on import (c._x) are re-emitted, so a
+    // round-trip preserves fields we don't model.
     build(c, photo) {
         const L = [];
         const add = (line) => L.push(this.fold(line));
         add('BEGIN:VCARD');
         add('VERSION:4.0');
         if (c.uid) add('UID:' + c.uid);
-        add('FN:' + this.esc(c.fn || [c.first, c.last].filter(Boolean).join(' ')));
-        add('N:' + this.esc(c.last) + ';' + this.esc(c.first) + ';;;');
+        add('FN:' + this.esc(c.fn || [c.prefix, c.first, c.middle, c.last, c.suffix].filter(Boolean).join(' ')));
+        add('N:' + [c.last, c.first, c.middle, c.prefix, c.suffix].map((x) => this.esc(x)).join(';'));
         if (c.nickname) add('NICKNAME:' + this.esc(c.nickname));
-        if (c.org) add('ORG:' + this.esc(c.org));
+        if (c.org || c.department) add('ORG:' + this.esc(c.org) + (c.department ? ';' + this.esc(c.department) : ''));
         if (c.title) add('TITLE:' + this.esc(c.title));
+        if (c.role) add('ROLE:' + this.esc(c.role));
         for (const e of (c.emails ?? [])) if (e.value) add('EMAIL;TYPE=' + (e.type || 'home') + ':' + this.esc(e.value));
         for (const p of (c.phones ?? [])) if (p.value) add('TEL;TYPE=' + (p.type || 'cell') + ':' + this.esc(p.value));
+        for (const m of (c.impp ?? [])) if (m.value) add('IMPP;TYPE=' + (m.type || 'home') + ':' + this.esc(m.value));
         for (const a of (c.addresses ?? [])) {
             add('ADR;TYPE=' + (a.type || 'home') + ':;;' + this.esc(a.street) + ';' + this.esc(a.city) + ';' + this.esc(a.region) + ';' + this.esc(a.zip) + ';' + this.esc(a.country));
         }
         for (const u of (c.urls ?? [])) if (u.value) add('URL:' + this.esc(u.value));
-        if (c.bday) add('BDAY:' + c.bday.replace(/-/g, ''));
+        if (c.bday) add('BDAY:' + this._date(c.bday));
+        if (c.anniversary) add('ANNIVERSARY:' + this._date(c.anniversary));
         if (c.note) add('NOTE:' + this.esc(c.note));
         if ((c.categories ?? []).length) add('CATEGORIES:' + c.categories.map((g) => this.esc(g)).join(','));
         if (photo) add('PHOTO:' + photo);
+        for (const x of (c._x ?? [])) add(x); // pass-through unknown properties
         add('END:VCARD');
         return L.join('\r\n') + '\r\n';
     },
@@ -4736,7 +4745,8 @@ const VCard = {
             const left = line.slice(0, idx);
             const value = line.slice(idx + 1);
             const [nameRaw, ...paramParts] = left.split(';');
-            const name = nameRaw.toUpperCase();
+            // Strip any Apple-style group prefix (item1.EMAIL → EMAIL).
+            const name = nameRaw.split('.').pop().toUpperCase();
             const params = {};
             for (const p of paramParts) { const [k, v] = p.split('='); if (v) params[k.toUpperCase()] = v.toUpperCase(); }
             const type = (params.TYPE || '').toLowerCase();
@@ -4744,23 +4754,28 @@ const VCard = {
             switch (name) {
                 case 'UID': c.uid = value; break;
                 case 'FN': c.fn = this.unesc(value); break;
-                case 'N': { const [last, first] = value.split(';').map((x) => this.unesc(x)); c.last = last || ''; c.first = first || ''; break; }
+                case 'N': { const f = value.split(';').map((x) => this.unesc(x)); c.last = f[0] || ''; c.first = f[1] || ''; c.middle = f[2] || ''; c.prefix = f[3] || ''; c.suffix = f[4] || ''; break; }
                 case 'NICKNAME': c.nickname = this.unesc(value); break;
-                case 'ORG': c.org = this.unesc(value.split(';')[0]); break;
+                case 'ORG': { const o = value.split(';').map((x) => this.unesc(x)); c.org = o[0] || ''; c.department = o.slice(1).filter(Boolean).join(', '); break; }
                 case 'TITLE': c.title = this.unesc(value); break;
+                case 'ROLE': c.role = this.unesc(value); break;
                 case 'EMAIL': c.emails.push({ value: this.unesc(value), type: type || 'home' }); break;
                 case 'TEL': c.phones.push({ value: this.unesc(value), type: type || 'cell' }); break;
+                case 'IMPP': c.impp.push({ value: this.unesc(value), type: type || 'home' }); break;
                 case 'URL': c.urls.push({ value: this.unesc(value), type: type || 'home' }); break;
                 case 'ADR': { const f = value.split(';').map((x) => this.unesc(x)); c.addresses.push({ street: f[2] || '', city: f[3] || '', region: f[4] || '', zip: f[5] || '', country: f[6] || '', type: type || 'home' }); break; }
-                case 'BDAY': { const v = value.replace(/[^0-9]/g, ''); if (v.length >= 8) c.bday = `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`; break; }
+                case 'BDAY': c.bday = this._fromDate(value); break;
+                case 'ANNIVERSARY': c.anniversary = this._fromDate(value); break;
                 case 'NOTE': c.note = this.unesc(value); break;
                 case 'CATEGORIES': c.categories = value.split(',').map((x) => this.unesc(x.trim())).filter(Boolean); break;
                 case 'PHOTO': cur.photo = value.startsWith('data:') ? value : null; break;
+                case 'VERSION': case 'PRODID': case 'REV': break; // regenerated on export
+                default: c._x.push(line); // preserve anything we don't model
             }
         }
         return cards;
     },
-    _blank() { return { fn: '', first: '', last: '', nickname: '', org: '', title: '', emails: [], phones: [], addresses: [], urls: [], bday: '', note: '', categories: [] }; },
+    _blank() { return { fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '', org: '', department: '', title: '', role: '', emails: [], phones: [], impp: [], addresses: [], urls: [], bday: '', anniversary: '', note: '', categories: [], _x: [] }; },
 };
 
 /**
@@ -4827,10 +4842,11 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     newContact() {
         const c = {
             id: window.LLStore.newId(), uid: this._newUid(),
-            fn: '', first: '', last: '', nickname: '', org: '', title: '',
-            emails: [], phones: [], addresses: [], urls: [],
-            bday: '', note: '', categories: [], favorite: false,
-            avatarRef: null, avatarKey: null, personId: null,
+            fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '',
+            org: '', department: '', title: '', role: '',
+            emails: [], phones: [], impp: [], addresses: [], urls: [],
+            bday: '', anniversary: '', note: '', categories: [], favorite: false,
+            avatarRef: null, avatarKey: null, personId: null, _x: [],
             trashed: false, updated: new Date().toISOString(),
         };
         this.contacts.unshift(c);
@@ -4854,6 +4870,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     addEmail() { (this.current.emails ??= []).push({ value: '', type: 'home' }); this._save(); },
     addPhone() { (this.current.phones ??= []).push({ value: '', type: 'cell' }); this._save(); },
     addUrl() { (this.current.urls ??= []).push({ value: '', type: 'home' }); this._save(); },
+    addImpp() { (this.current.impp ??= []).push({ value: '', type: 'home' }); this._save(); },
     addAddress() { (this.current.addresses ??= []).push({ street: '', city: '', region: '', zip: '', country: '', type: 'home' }); this._save(); },
     removeRow(list, i) { list.splice(i, 1); this._save(); },
 
@@ -4988,11 +5005,11 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
                 if (parsed.uid && known.has(parsed.uid)) continue; // dedupe by UID
                 const c = {
                     id: window.LLStore.newId(), uid: parsed.uid || this._newUid(),
-                    fn: parsed.fn, first: parsed.first, last: parsed.last, nickname: parsed.nickname,
-                    org: parsed.org, title: parsed.title,
-                    emails: parsed.emails, phones: parsed.phones, addresses: parsed.addresses, urls: parsed.urls,
-                    bday: parsed.bday, note: parsed.note, categories: parsed.categories, favorite: false,
-                    avatarRef: null, avatarKey: null, personId: null,
+                    fn: parsed.fn, first: parsed.first, last: parsed.last, middle: parsed.middle, prefix: parsed.prefix, suffix: parsed.suffix, nickname: parsed.nickname,
+                    org: parsed.org, department: parsed.department, title: parsed.title, role: parsed.role,
+                    emails: parsed.emails, phones: parsed.phones, impp: parsed.impp, addresses: parsed.addresses, urls: parsed.urls,
+                    bday: parsed.bday, anniversary: parsed.anniversary, note: parsed.note, categories: parsed.categories, favorite: false,
+                    avatarRef: null, avatarKey: null, personId: null, _x: parsed._x,
                     trashed: false, updated: new Date().toISOString(),
                 };
                 if (photo) {
