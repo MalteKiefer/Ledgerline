@@ -648,6 +648,69 @@ Alpine.data('toastHub', (labels = {}) => ({
 }));
 
 /**
+ * Shared square-crop modal. `await window.llCrop(blobOrUrl)` opens it and
+ * resolves to a 256px square JPEG as a Uint8Array (or null if cancelled). Pan by
+ * dragging, zoom with the slider; the visible square window is drawn to a canvas.
+ * Rendered once in the layout so contacts + gallery reuse the same UI.
+ */
+Alpine.data('cropModal', () => ({
+    open: false,
+    url: '',
+    scale: 1, minScale: 1, maxScale: 8,
+    tx: 0, ty: 0, natW: 0, natH: 0,
+    VP: 300, // viewport px used for the crop math
+    _img: null, _objUrl: null, _resolve: null, _drag: null,
+
+    init() { window.llCrop = (src) => this._start(src); },
+
+    async _start(src) {
+        const isBlob = src instanceof Blob;
+        const url = isBlob ? URL.createObjectURL(src) : src;
+        this._objUrl = isBlob ? url : null;
+        this.url = url;
+        try { await this._load(url); } catch (e) { if (this._objUrl) URL.revokeObjectURL(this._objUrl); return null; }
+        this.open = true;
+        return new Promise((res) => { this._resolve = res; });
+    },
+    _load(url) {
+        return new Promise((res, rej) => {
+            const img = new Image();
+            img.onload = () => { this._img = img; this.natW = img.naturalWidth; this.natH = img.naturalHeight; this.minScale = this.VP / Math.min(this.natW, this.natH); this.scale = this.minScale; this._center(); res(); };
+            img.onerror = rej;
+            img.src = url;
+        });
+    },
+    _center() { this.tx = (this.VP - this.natW * this.scale) / 2; this.ty = (this.VP - this.natH * this.scale) / 2; this._clamp(); },
+    _clamp() {
+        const dw = this.natW * this.scale, dh = this.natH * this.scale;
+        this.tx = Math.min(0, Math.max(this.VP - dw, this.tx));
+        this.ty = Math.min(0, Math.max(this.VP - dh, this.ty));
+    },
+    setScale(v) {
+        const c = this.VP / 2;
+        const sx = (c - this.tx) / this.scale, sy = (c - this.ty) / this.scale;
+        this.scale = Math.max(this.minScale, Math.min(this.minScale * this.maxScale, +v));
+        this.tx = c - sx * this.scale; this.ty = c - sy * this.scale; this._clamp();
+    },
+    startDrag(e) { this._drag = { x: e.clientX, y: e.clientY, tx: this.tx, ty: this.ty }; },
+    onDrag(e) { if (! this._drag) return; this.tx = this._drag.tx + (e.clientX - this._drag.x); this.ty = this._drag.ty + (e.clientY - this._drag.y); this._clamp(); },
+    endDrag() { this._drag = null; },
+    imgStyle() { return `width:${Math.round(this.natW * this.scale)}px;height:${Math.round(this.natH * this.scale)}px;transform:translate(${Math.round(this.tx)}px,${Math.round(this.ty)}px);`; },
+
+    cancel() { this._finish(null); },
+    confirm() {
+        const OUT = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = OUT;
+        const sSize = this.VP / this.scale;
+        const sx = -this.tx / this.scale, sy = -this.ty / this.scale;
+        canvas.getContext('2d').drawImage(this._img, sx, sy, sSize, sSize, 0, 0, OUT, OUT);
+        canvas.toBlob(async (b) => { this._finish(b ? new Uint8Array(await b.arrayBuffer()) : null); }, 'image/jpeg', 0.85);
+    },
+    _finish(bytes) { this.open = false; if (this._objUrl) URL.revokeObjectURL(this._objUrl); this._objUrl = null; const r = this._resolve; this._resolve = null; if (r) r(bytes); },
+}));
+
+/**
  * Downloads center: lists the user's async exports, polls while any are still
  * building, supports multiselect delete, and streams finished zip parts.
  */
@@ -2478,10 +2541,9 @@ return {
     // avatar ref/key, so the gallery renders it without loading /store) and set
     // contact.personId; the person adopts the contact's name; optionally seed the
     // contact photo from the cover face.
-    async linkTo(contact, useFace = false) {
+    async linkTo(contact) {
         const p = this.currentPerson;
         if (! p || ! contact) { this.linkPicker = false; return; }
-        if (useFace && ! contact.avatarRef) await this._faceToContactAvatar(contact);
         const cname = this._contactName(contact);
         if (cname) p.name = cname; // the person takes over the contact's name
         p.contactId = contact.id;
@@ -2494,6 +2556,49 @@ return {
         this._save();
         window.LLStore.touch(); // persist the /store side too
         this.linkPicker = false;
+        // Second step: let the user pick which of the person's photos becomes the
+        // contact avatar (and crop it). Skippable if the person has no photos.
+        this._avatarContact = contact;
+        this._choosePhotos = this.personPhotos(p);
+        if (this._choosePhotos.length) this.avatarChoose = true;
+    },
+    // ---- Pick + crop a photo for the linked contact's avatar ----
+    avatarChoose: false,
+    _avatarContact: null,
+    _choosePhotos: [],
+    closeAvatarChoose() { this.avatarChoose = false; this._avatarContact = null; this._choosePhotos = []; },
+    async chooseAvatarPhoto(photo) {
+        const contact = this._avatarContact;
+        if (! contact || ! photo) return;
+        this.avatarChoose = false;
+        try {
+            const ref = photo.mediumRef || photo.originalRef || photo.thumbRef;
+            const key = photo.mediumKey || photo.originalKey || photo.thumbKey;
+            const bytes = await this._decryptBlob(ref, key);
+            const out = await window.llCrop(new Blob([bytes], { type: 'image/jpeg' }));
+            if (out) await this._bytesToContactAvatar(contact, out);
+        } catch (e) { /* best effort */ } finally { this.closeAvatarChoose(); }
+    },
+    // Encrypt avatar bytes, upload to the contacts blob store, update both sides.
+    async _bytesToContactAvatar(contact, bytes) {
+        try {
+            const enc = window.Vault.encryptContent(bytes, { name: 'avatar.jpg', mime: 'image/jpeg' });
+            const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+            const fd = new FormData();
+            fd.append('_token', config.token);
+            fd.append('file', cipher, cipher.name);
+            const res = await fetch('/contacts/upload', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+            if (! res.ok) return;
+            const ref = (await res.json()).id;
+            const old = contact.avatarRef;
+            contact.avatarRef = ref; contact.avatarKey = enc.encFileKey;
+            contact.updated = new Date().toISOString();
+            // Refresh the person snapshot so the gallery renders the new avatar.
+            const p = (this.index.people || []).find((pp) => pp.id === contact.personId);
+            if (p) { p.contactAvatarRef = ref; p.contactAvatarKey = enc.encFileKey; this._save(); }
+            window.LLStore.touch();
+            if (old) { try { await fetch(`/contacts/blob/${old}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': config.token, 'X-Requested-With': 'XMLHttpRequest' } }); } catch (e) { /* orphan sweep handles it */ } }
+        } catch (e) { /* best effort */ }
     },
     async unlinkContact() {
         const p = this.currentPerson;
@@ -2506,22 +2611,6 @@ return {
                 const c = (window.LLStore.data?.contacts || []).find((x) => x.id === cid);
                 if (c && c.personId === p.id) { c.personId = null; c.personName = null; window.LLStore.touch(); }
             }
-        } catch (e) { /* best effort */ }
-    },
-    // Encrypt the person's cover-face crop and store it as the contact's avatar.
-    async _faceToContactAvatar(contact) {
-        const cover = this.personCover(this.currentPerson);
-        if (! cover?.cropRef) return;
-        try {
-            const bytes = await this._decryptBlob(cover.cropRef, cover.cropKey);
-            const enc = window.Vault.encryptContent(bytes, { name: 'avatar.jpg', mime: 'image/jpeg' });
-            const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-            const fd = new FormData();
-            fd.append('_token', config.token);
-            fd.append('file', cipher, cipher.name);
-            const res = await fetch('/contacts/upload', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
-            if (! res.ok) return;
-            contact.avatarRef = (await res.json()).id; contact.avatarKey = enc.encFileKey;
         } catch (e) { /* best effort */ }
     },
     // Decrypt + cache the linked contact's avatar (from the person snapshot).
@@ -5041,13 +5130,12 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     },
 
     /* ---- Avatar (encrypted blob, kept out of the manifest) ---- */
-    async pickAvatar(ev) {
-        const file = ev.target?.files?.[0];
-        ev.target.value = '';
+    avatarMenu: false,
+    // Encrypt cropped avatar bytes → upload → set on the current contact.
+    async _setAvatarFromBytes(bytes) {
         const c = this.current;
-        if (! file || ! c) return;
+        if (! bytes || ! c) return;
         try {
-            const bytes = await this._squareJpeg(file, 256);
             const enc = window.Vault.encryptContent(bytes, { name: 'avatar.jpg', mime: 'image/jpeg' });
             const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
             const ref = await this._uploadContactBlob(cipher);
@@ -5057,12 +5145,72 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
             if (old) this._freeAvatar(old);
         } catch (e) { window.llToast?.(labels.avatarFailed || 'Upload failed'); }
     },
+    // Source 1: upload a file → crop → set.
+    async pickAvatar(ev) {
+        const file = ev.target?.files?.[0];
+        ev.target.value = '';
+        this.avatarMenu = false;
+        if (! file || ! this.current) return;
+        const bytes = await window.llCrop(file);
+        if (bytes) await this._setAvatarFromBytes(bytes);
+    },
     removeAvatar(c) {
         if (! c?.avatarRef) return;
         const old = c.avatarRef;
         c.avatarRef = null; c.avatarKey = null; c.updated = new Date().toISOString();
         this._save();
         this._freeAvatar(old);
+    },
+
+    /* ---- Avatar source 2: pick from Files (images in the /store manifest) ---- */
+    filePicker: false,
+    _fileThumbs: {},
+    fileImages() {
+        return (window.LLStore?.data?.files || []).filter((f) => ! f.trashed && (f.mime || '').startsWith('image/') && f.blob);
+    },
+    openFilePicker() { this.avatarMenu = false; this.filePicker = true; },
+    closeFilePicker() { this.filePicker = false; },
+    async fileThumb(f) {
+        if (this._fileThumbs[f.blob]) return this._fileThumbs[f.blob];
+        try { const b = await fetchDecrypt('/files/raw', f.blob, f.encFileKey); const u = URL.createObjectURL(new Blob([b], { type: f.mime || 'image/jpeg' })); this._fileThumbs[f.blob] = u; return u; } catch (e) { return ''; }
+    },
+    async pickFromFile(f) {
+        this.filePicker = false;
+        try {
+            const bytes = await fetchDecrypt('/files/raw', f.blob, f.encFileKey);
+            const out = await window.llCrop(new Blob([bytes], { type: f.mime || 'image/jpeg' }));
+            if (out) await this._setAvatarFromBytes(out);
+        } catch (e) { window.llToast?.(labels.avatarFailed || 'Failed'); }
+    },
+
+    /* ---- Avatar source 3: pick from Gallery (lazy-boot the gallery manifest) ---- */
+    galleryPicker: false,
+    galleryLoading: false,
+    _galleryPhotos: [],
+    _galleryThumbs: {},
+    async openGalleryPicker() {
+        this.avatarMenu = false;
+        this.galleryLoading = true;
+        try {
+            if (! await bootGalleryStore(this.$store)) return;
+            this._galleryPhotos = (window.LLGalleryStore.data.photos || []).filter((p) => ! p.trashed && p.media_type !== 'video' && p.thumbRef);
+            this.galleryPicker = true;
+        } finally { this.galleryLoading = false; }
+    },
+    closeGalleryPicker() { this.galleryPicker = false; },
+    async galleryThumb(p) {
+        if (this._galleryThumbs[p.thumbRef]) return this._galleryThumbs[p.thumbRef];
+        try { const b = await fetchDecrypt('/gallery/raw', p.thumbRef, p.thumbKey); const u = URL.createObjectURL(new Blob([b], { type: 'image/jpeg' })); this._galleryThumbs[p.thumbRef] = u; return u; } catch (e) { return ''; }
+    },
+    async pickFromGallery(p) {
+        this.galleryPicker = false;
+        try {
+            const ref = p.mediumRef || p.originalRef || p.thumbRef;
+            const key = p.mediumKey || p.originalKey || p.thumbKey;
+            const bytes = await fetchDecrypt('/gallery/raw', ref, key);
+            const out = await window.llCrop(new Blob([bytes], { type: 'image/jpeg' }));
+            if (out) await this._setAvatarFromBytes(out);
+        } catch (e) { window.llToast?.(labels.avatarFailed || 'Failed'); }
     },
     async avatarFor(c) {
         if (! c?.avatarRef) return '';

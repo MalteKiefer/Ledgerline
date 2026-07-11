@@ -20,6 +20,13 @@ return [
 
     'avatar' => 'Foto',
     'remove_avatar' => 'Foto entfernen',
+    'crop_title' => 'Foto zuschneiden',
+    'crop_hint' => 'Ziehen zum Verschieben, Regler zum Zoomen.',
+    'avatar_upload' => 'Hochladen',
+    'avatar_from_files' => 'Aus Dateien',
+    'avatar_from_gallery' => 'Aus Galerie',
+    'pick_image' => 'Bild auswählen',
+    'no_images' => 'Keine Bilder gefunden.',
     'edit' => 'Bearbeiten',
     'done' => 'Fertig',
     'sort' => 'Sortierung',

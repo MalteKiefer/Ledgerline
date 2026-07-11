@@ -122,6 +122,26 @@
                 </div>
             </template>
         </div>
+
+        {{-- Shared square-crop modal (window.llCrop) — used by contacts + gallery --}}
+        <div x-data="cropModal()" x-show="open" x-cloak class="fixed inset-0 z-[1120] flex items-center justify-center p-4" @keydown.escape.window="cancel()">
+            <div class="absolute inset-0 bg-gray-900/60" @click="cancel()"></div>
+            <div class="relative w-full max-w-sm rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.crop_title') }}</h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.crop_hint') }}</p>
+                <div class="mx-auto mt-3 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 select-none touch-none"
+                     style="width:300px;height:300px;position:relative;cursor:grab"
+                     @pointerdown="startDrag($event); $event.target.setPointerCapture?.($event.pointerId)" @pointermove="onDrag($event)" @pointerup="endDrag()" @pointercancel="endDrag()">
+                    <img :src="url" :style="'position:absolute;left:0;top:0;max-width:none;'+imgStyle()" draggable="false" alt="">
+                    <div class="pointer-events-none absolute inset-0 rounded-full ring-1 ring-black/10"></div>
+                </div>
+                <input type="range" min="1" max="8" step="0.01" :value="scale/minScale" @input="setScale(minScale * $event.target.value)" class="mt-3 w-full">
+                <div class="mt-3 flex justify-end gap-2">
+                    <x-button variant="secondary" type="button" @click="cancel()">{{ __('common.cancel') }}</x-button>
+                    <x-button type="button" @click="confirm()">{{ __('common.save') }}</x-button>
+                </div>
+            </div>
+        </div>
     @endauth
 </body>
 </html>

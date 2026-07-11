@@ -122,10 +122,19 @@
                             <img x-show="current.avatarRef && avatarUrls[current.avatarRef]" :src="current.avatarRef && avatarUrls[current.avatarRef]" class="h-full w-full object-cover">
                             <span x-show="! (current.avatarRef && avatarUrls[current.avatarRef])" x-text="initials(current)"></span>
                         </span>
-                        <label x-show="editing" class="absolute -bottom-1 -right-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 shadow" title="{{ __('contacts.avatar') }}">
-                            <x-icon name="camera" class="h-3.5 w-3.5" />
-                            <input type="file" accept="image/*" class="hidden" @change="pickAvatar($event)">
-                        </label>
+                        <div x-show="editing" class="absolute -bottom-1 -right-1" @click.outside="avatarMenu = false">
+                            <button type="button" @click="avatarMenu = ! avatarMenu" class="flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 shadow" title="{{ __('contacts.avatar') }}">
+                                <x-icon name="camera" class="h-3.5 w-3.5" />
+                            </button>
+                            <div x-show="avatarMenu" x-cloak x-transition class="absolute left-0 top-8 z-10 w-40 rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                                <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
+                                    <x-icon name="arrow-up-tray" class="h-4 w-4" /> {{ __('contacts.avatar_upload') }}
+                                    <input type="file" accept="image/*" class="hidden" @change="pickAvatar($event)">
+                                </label>
+                                <button type="button" @click="openFilePicker()" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"><x-icon name="folder" class="h-4 w-4" /> {{ __('contacts.avatar_from_files') }}</button>
+                                <button type="button" @click="openGalleryPicker()" class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"><x-icon name="photo" class="h-4 w-4" /> {{ __('contacts.avatar_from_gallery') }}</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="min-w-0 flex-1">
                         <input x-show="editing" type="text" x-model="current.fn" @input.debounce.600ms="save()" placeholder="{{ __('contacts.name') }}" class="w-full border-0 border-b border-gray-100 dark:border-gray-800 dark:bg-transparent px-0 text-lg font-semibold text-gray-900 dark:text-gray-100 focus:border-gray-400 focus:ring-0">
@@ -301,6 +310,44 @@
             </div>
             <div class="mt-4 flex justify-end">
                 <x-button variant="secondary" type="button" @click="closePersonPicker()">{{ __('common.cancel') }}</x-button>
+            </div>
+        </div>
+      </div>
+
+      {{-- Avatar source: pick an image from Files --}}
+      <div x-show="filePicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeFilePicker()">
+        <div class="absolute inset-0 bg-black/60" @click="closeFilePicker()"></div>
+        <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.pick_image') }}</h3>
+            <p x-show="! fileImages().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.no_images') }}</p>
+            <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+                <template x-for="f in fileImages()" :key="f.id">
+                    <button type="button" @click="pickFromFile(f)" class="group aspect-square overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-gray-900 dark:hover:ring-gray-100 focus:outline-none" x-init="$nextTick(() => fileThumb(f).then(u => $el.querySelector('img')?.setAttribute('src', u)))">
+                        <img class="h-full w-full object-cover" alt="">
+                    </button>
+                </template>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <x-button variant="secondary" type="button" @click="closeFilePicker()">{{ __('common.cancel') }}</x-button>
+            </div>
+        </div>
+      </div>
+
+      {{-- Avatar source: pick an image from the Gallery --}}
+      <div x-show="galleryPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeGalleryPicker()">
+        <div class="absolute inset-0 bg-black/60" @click="closeGalleryPicker()"></div>
+        <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.pick_image') }}</h3>
+            <p x-show="! _galleryPhotos.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.no_images') }}</p>
+            <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+                <template x-for="p in _galleryPhotos" :key="p.id">
+                    <button type="button" @click="pickFromGallery(p)" class="group aspect-square overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-gray-900 dark:hover:ring-gray-100 focus:outline-none" x-init="$nextTick(() => galleryThumb(p).then(u => $el.querySelector('img')?.setAttribute('src', u)))">
+                        <img class="h-full w-full object-cover" alt="">
+                    </button>
+                </template>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <x-button variant="secondary" type="button" @click="closeGalleryPicker()">{{ __('common.cancel') }}</x-button>
             </div>
         </div>
       </div>
