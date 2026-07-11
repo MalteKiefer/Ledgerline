@@ -912,6 +912,7 @@ return {
     uploadBatches: 0,
     progress: { active: false, done: 0, total: 0 }, // backlog processing
     thumbs: {}, // photoId -> objectURL (decrypted, in-memory cache)
+    _thumbPending: {}, // photoId -> in-flight thumbFor promise (dedupe)
     viewer: { open: false, kind: 'none', src: '', photo: null },
     usage: { used: 0, quota: 0 },
 
@@ -1348,12 +1349,17 @@ return {
     async thumbFor(p) {
         if (! p.thumbRef) return '';
         if (this.thumbs[p.id]) return this.thumbs[p.id];
-        try {
+        // Dedupe: x-intersect can fire this several times for the same tile before
+        // it resolves — share the one in-flight job instead of decrypting twice.
+        if (this._thumbPending[p.id]) return this._thumbPending[p.id];
+        const job = thumbLane(async () => {
             const bytes = await this._decryptBlob(p.thumbRef, p.thumbKey);
             const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
             this.thumbs[p.id] = url;
             return url;
-        } catch (e) { return ''; }
+        }).catch(() => '').finally(() => { delete this._thumbPending[p.id]; });
+        this._thumbPending[p.id] = job;
+        return job;
     },
     _revokeThumbs() {
         for (const k in this.thumbs) URL.revokeObjectURL(this.thumbs[k]);
@@ -2322,6 +2328,26 @@ async function fetchDecrypt(rawBase, ref, key) {
     const res = await fetch(`${rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     if (! res.ok) throw new Error('fetch failed');
     return window.Vault.decryptFile(await res.arrayBuffer(), key);
+}
+
+// Bounded lane pool for thumbnail loading. A fast scroll can intersect dozens of
+// tiles at once; without a cap that fires dozens of parallel fetch+decrypts (and
+// each decrypt runs on the main thread), janking the UI. Load several at a time
+// and queue the rest — the browser's immutable blob cache makes repeat loads
+// essentially free anyway.
+let _thumbActive = 0;
+const _thumbWaiters = [];
+const THUMB_LANES = 8;
+function thumbLane(task) {
+    if (_thumbActive >= THUMB_LANES) {
+        return new Promise((resolve) => _thumbWaiters.push(resolve)).then(() => thumbLane(task));
+    }
+    _thumbActive++;
+    return Promise.resolve().then(task).finally(() => {
+        _thumbActive--;
+        const next = _thumbWaiters.shift();
+        if (next) next();
+    });
 }
 
 // Bounded, rate-limit-aware content-blob deleter shared by the gallery + files

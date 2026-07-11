@@ -57,7 +57,11 @@ class GalleryBlobStoreTest extends TestCase
         Storage::disk(config('files.disk'))->put('gallery/'.$blob, 'ciphertext');
         GalleryBlob::create(['blob' => $blob, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()]);
 
-        $this->get(route('gallery.raw', ['blob' => $blob]))->assertOk();
+        $this->get(route('gallery.raw', ['blob' => $blob]))
+            ->assertOk()
+            // Ciphertext is content-addressed and immutable, so it caches hard in
+            // the browser — a second visit skips re-downloading every thumbnail.
+            ->assertHeader('Cache-Control', 'immutable, max-age=31536000, private');
         $this->actingAs(User::factory()->create())->get(route('gallery.raw', ['blob' => $blob]))->assertNotFound();
         $this->actingAs(User::factory()->create())->deleteJson(route('gallery.blob.destroy', ['blob' => $blob]))->assertForbidden();
 

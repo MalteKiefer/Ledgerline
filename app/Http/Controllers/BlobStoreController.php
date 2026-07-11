@@ -323,11 +323,18 @@ abstract class BlobStoreController extends Controller
 
         // The bytes are ciphertext, but force download + a script-less sandbox as
         // defense in depth (the client decrypts in memory; nothing renders here).
+        //
+        // Blobs are content-addressed: a UUID's bytes never change (a new version
+        // is a new blob; deletion 404s). So the ciphertext is safe to cache hard
+        // in the browser — this is what lets a second gallery/files visit skip
+        // re-downloading every thumbnail. `private` keeps it out of shared proxies;
+        // the bytes are ciphertext regardless, so a local disk cache stays ZK-safe.
         return $this->disk()->response($path, 'file', [
             'Content-Type' => 'application/octet-stream',
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => "default-src 'none'; sandbox",
-            'Cache-Control' => 'private, no-store',
+            'Cache-Control' => 'private, max-age=31536000, immutable',
+            'ETag' => '"'.$blob.'"',
         ], 'attachment');
     }
 
