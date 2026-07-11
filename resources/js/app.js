@@ -898,7 +898,10 @@ return {
         this.index = window.LLGalleryStore.data;
         this.state = 'ready';
         this.refreshUsage();
-        this.runBacklog();
+        // Process pending uploads (its finally pairs Live Photos); also run a pair
+        // pass for the backfill case where nothing is pending but split Live Photos
+        // already exist. The guard makes a double call a no-op.
+        this.runBacklog().finally(() => this.pairLivePhotos());
     },
 
     _save() { if (this.state === 'ready') window.LLGalleryStore.touch(); },
@@ -1055,6 +1058,62 @@ return {
             this._backlogRunning = false;
             this.progress.active = false;
             this.refreshUsage();
+            // Merge Apple Live Photos uploaded as separate HEIC + MOV files.
+            await this.pairLivePhotos();
+        }
+    },
+
+    /**
+     * Pair Apple Live Photos that were uploaded as two separate files (a still +
+     * its .MOV). Both carry the same `content_id` (Apple asset id, sealed in the
+     * meta blob); the still adopts the MOV's original as its motion clip and the
+     * redundant video entry is dropped, its derived blobs freed. Idempotent —
+     * only touches unpaired stills that have a matching video. Returns the count.
+     */
+    async pairLivePhotos() {
+        if (this._pairing || this.state !== 'ready') return 0;
+        const photos = this.index.photos.filter((p) => ! p.trashed);
+        const stills = photos.filter((p) => p.media_type !== 'video' && ! p.motionRef);
+        const videos = photos.filter((p) => p.media_type === 'video');
+        if (! stills.length || ! videos.length) return 0;
+        this._pairing = true;
+        try {
+            await this._ensureMeta(photos);
+            const cid = (p) => metaCache[p.id]?.content_id || null;
+            const videoByCid = {};
+            for (const v of videos) { const c = cid(v); if (c && ! videoByCid[c]) videoByCid[c] = v; }
+
+            const removed = new Set();
+            const freed = [];
+            for (const s of stills) {
+                const c = cid(s);
+                const v = c ? videoByCid[c] : null;
+                if (! v || removed.has(v)) continue;
+                // The MOV becomes the still's motion clip (keep its original blob).
+                s.motionRef = v.originalRef; s.motionKey = v.originalKey;
+                s.duration = s.duration || metaCache[v.id]?.duration || null;
+                removed.add(v);
+                for (const ref of [v.thumbRef, v.mediumRef, v.motionRef, v.metaRef, ...(v.faceCropRefs || [])]) if (ref) freed.push(ref);
+                delete metaCache[v.id];
+            }
+            if (! removed.size) return 0;
+
+            const removedIds = new Set([...removed].map((v) => v.id));
+            this.index.photos = this.index.photos.filter((p) => ! removed.has(p));
+            // Drop any face members / empty clusters that pointed at a removed video.
+            if (Array.isArray(this.index.people)) {
+                this.index.people = this.index.people
+                    .map((pp) => ({ ...pp, faces: (pp.faces || []).filter((f) => ! removedIds.has(f.photoId)) }))
+                    .filter((pp) => (pp.faces || []).length >= 2);
+            }
+            for (const v of removed) { if (this.thumbs?.[v.id]) { URL.revokeObjectURL(this.thumbs[v.id]); delete this.thumbs[v.id]; } }
+
+            this._save();
+            await window.LLGalleryStore.flush();
+            if (freed.length) this._freeBlobs(freed);
+            return removed.size;
+        } finally {
+            this._pairing = false;
         }
     },
 
