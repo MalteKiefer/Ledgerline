@@ -1605,9 +1605,12 @@ return {
         this.selected = this.selected.length === ids.length ? [] : ids;
     },
     _eachSelected(fn) { for (const id of [...this.selected]) { const p = this.index.photos.find((x) => x.id === id); if (p) fn(p); } },
-    // Draft date/time for the selection; only applied on the confirm button so a
-    // half-typed value never commits.
+    // Draft date/time for the selection, edited in its own modal (like the
+    // location picker) so a half-typed value never commits.
     bulkDate: '',
+    dateModal: false,
+    openBulkDate() { if (! this.selectedCount) return; this.bulkDate = ''; this.dateModal = true; },
+    closeBulkDate() { this.dateModal = false; this.bulkDate = ''; },
     bulkApplyDate() {
         if (! this.bulkDate) return;
         const d = new Date(this.bulkDate);
@@ -1615,6 +1618,7 @@ return {
         const iso = d.toISOString();
         this._eachSelected((p) => { p.taken_at = iso; });
         this.bulkDate = '';
+        this.dateModal = false;
         this.selected = [];
         this._save();
     },
