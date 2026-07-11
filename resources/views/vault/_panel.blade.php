@@ -3,6 +3,7 @@
 <div x-data="{
         open: false,
         mode: 'unlock',
+        publicComputer: false, // ticked = don't persist; keep the 10-min idle lock
         pass: '', pass2: '', code: '', recovery: '', error: '', busy: false,
         init() {
             // No vault yet: prompt setup automatically, once per tab session.
@@ -24,13 +25,13 @@
             if (this.pass.length < 10) { this.error = '{{ __('vault.err_short') }}'; return; }
             if (this.pass !== this.pass2) { this.error = '{{ __('vault.err_mismatch') }}'; return; }
             this.busy = true;
-            try { this.recovery = await $store.vault.setup(this.pass); this.mode = 'recovery'; }
+            try { this.recovery = await $store.vault.setup(this.pass, ! this.publicComputer); this.mode = 'recovery'; }
             catch (e) { this.error = '{{ __('vault.err_generic') }}'; }
             finally { this.busy = false; }
         },
         async doUnlock() {
             this.error = ''; this.busy = true;
-            try { await $store.vault.unlock(this.pass); this.open = false; }
+            try { await $store.vault.unlock(this.pass, ! this.publicComputer); this.open = false; }
             catch (e) { this.error = '{{ __('vault.err_wrong') }}'; }
             // Don't leave the passphrase resident in component memory after use.
             finally { this.busy = false; this.pass = this.pass2 = this.code = ''; }
@@ -39,7 +40,7 @@
             this.error = ''; this.busy = true;
             // Recovery unlocks the in-memory key; then FORCE a new passphrase (the
             // forgotten one is unknown) — this also mints a fresh recovery code.
-            try { await $store.vault.recover(this.code); this.pass = this.pass2 = ''; this.mode = 'setnew'; }
+            try { await $store.vault.recover(this.code, ! this.publicComputer); this.pass = this.pass2 = ''; this.mode = 'setnew'; }
             catch (e) { this.error = '{{ __('vault.err_recover') }}'; }
             finally { this.busy = false; }
         },
@@ -117,7 +118,8 @@
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.unlock_hint') }}</p>
                         <input type="password" x-model="pass" @keydown.enter="doUnlock()" placeholder="{{ __('vault.passphrase') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
-                        <div class="mt-5 flex items-center justify-between">
+                        <label class="mt-3 flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" x-model="publicComputer" class="rounded border-gray-300 text-gray-900 focus:ring-0">{{ __('vault.public_computer') }}</label>
+                        <div class="mt-4 flex items-center justify-between">
                             <button type="button" @click="mode = 'recover'; error = ''" class="text-sm text-gray-500 hover:text-gray-900">{{ __('vault.forgot') }}</button>
                             <button type="button" @click="doUnlock()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.unlock') }}</button>
                         </div>

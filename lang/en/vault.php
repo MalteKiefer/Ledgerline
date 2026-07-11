@@ -39,6 +39,7 @@ return [
     'setup_hint' => 'Choose a strong passphrase. Files are encrypted in your browser; the server never sees your passphrase or your data.',
     'setup_title' => 'Set up encryption',
     'unlock' => 'Unlock',
+    'public_computer' => "Public computer (lock after idle, don't stay signed in)",
     'unlock_hint' => 'Enter your passphrase to unlock encrypted files for this session.',
     'unlock_title' => 'Unlock the vault',
     'unlocked' => 'Unlocked',

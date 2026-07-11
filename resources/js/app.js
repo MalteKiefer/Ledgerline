@@ -414,13 +414,13 @@ document.addEventListener('alpine:init', () => {
             // watchdog above — so it correctly survives navigation but not a real
             // tab close, logout or idle timeout.
         },
-        async setup(passphrase) {
-            const code = await window.Vault.setup(passphrase);
+        async setup(passphrase, remember = true) {
+            const code = await window.Vault.setup(passphrase, remember);
             this.configured = true; this._unlockedAt++;
             return code;
         },
-        async unlock(passphrase) { await window.Vault.unlock(passphrase); this._unlockedAt++; },
-        async recover(code) { await window.Vault.recover(code); this._unlockedAt++; },
+        async unlock(passphrase, remember = true) { await window.Vault.unlock(passphrase, remember); this._unlockedAt++; },
+        async recover(code, remember = true) { await window.Vault.recover(code, remember); this._unlockedAt++; },
         async changePassphrase(a, b) { const code = await window.Vault.changePassphrase(a, b); this._unlockedAt++; return code; },
         async setPassphrase(b) { const code = await window.Vault.setPassphrase(b); this._unlockedAt++; return code; },
         lock() { window.Vault.lock(); this._unlockedAt++; },

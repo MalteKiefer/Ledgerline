@@ -26,6 +26,7 @@ use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsContro
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
+use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\StoreController;
@@ -96,6 +97,10 @@ Route::middleware('auth')->group(function (): void {
     Route::middleware('can:manage-global-settings')->group(function (): void {
         Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
         Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');
+
+        // Vault lock policy (trusted-device days + public-computer idle timeout).
+        Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
+        Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
 
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
