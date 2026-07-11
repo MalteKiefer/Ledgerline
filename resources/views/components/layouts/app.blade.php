@@ -10,7 +10,11 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     {{-- Binds the cached vault key to this login so it can't outlive a logout/re-login. --}}
     <meta name="vault-owner" content="{{ auth()->id() ? sha1(auth()->id().'|'.session()->getId()) : '' }}">
-    <meta name="vault-idle-minutes" content="{{ (int) config('files.vault_idle_minutes', 10) }}">
+    {{-- Trusted-device binding: userId-only so a persisted key survives a session
+         refresh (7-day stay-unlocked), but never a different login on the browser. --}}
+    <meta name="vault-user" content="{{ auth()->id() ? sha1('vault-user|'.auth()->id()) : '' }}">
+    <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\AppSettings::current()->vault_public_idle_minutes ?: config('files.vault_idle_minutes', 10)) }}">
+    <meta name="vault-remember-days" content="{{ (int) (\App\Models\AppSettings::current()->vault_remember_days ?: 7) }}">
     <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
     <title>{{ $title }} — Ledgerline</title>
     <link rel="manifest" href="/manifest.webmanifest">

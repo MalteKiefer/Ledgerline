@@ -21,12 +21,48 @@ function idleMs() {
     return minutes * 60 * 1000;
 }
 
+// How long a "trusted device" stays unlocked across browser restarts (days),
+// configurable in Security settings; default 7.
+function rememberDays() {
+    const meta = document.querySelector('meta[name="vault-remember-days"]')?.getAttribute('content');
+    return Number(meta) > 0 ? Number(meta) : 7;
+}
+
 // Per-login token the cached vault key is bound to. Empty when signed out. A
 // cached key only counts if its stored owner matches the current login, so the
 // key cannot survive a logout + new login (nor be reused by a different login).
 function currentOwner() {
     return document.querySelector('meta[name="vault-owner"]')?.getAttribute('content') || '';
 }
+
+// Stable per-user tag for the trusted persisted key: survives a session refresh
+// (so a 7-day stay-unlocked works) but not a different login on the browser.
+function currentUser() {
+    return document.querySelector('meta[name="vault-user"]')?.getAttribute('content') || '';
+}
+
+// ---- Persistent (trusted-device) key storage ----
+// On a trusted device the vault key is kept across browser restarts for
+// rememberDays(), wrapped with a NON-EXTRACTABLE AES-GCM key held in IndexedDB:
+// a stolen disk yields only ciphertext plus an unusable key handle (unwrapping
+// needs code execution in this origin). This trades some at-rest strength for a
+// Proton-style stay-unlocked window; a "public computer" unlock skips it and
+// keeps the session-only + idle-lock behaviour.
+const IDB_NAME = 'll-vault';
+const IDB_STORE = 'session';
+function idbReq(req) { return new Promise((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); }); }
+async function idb(mode, fn) {
+    const db = await new Promise((res, rej) => {
+        const r = indexedDB.open(IDB_NAME, 1);
+        r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+    });
+    try { return await fn(db.transaction(IDB_STORE, mode).objectStore(IDB_STORE)); } finally { db.close(); }
+}
+async function idbGet(key) { try { return await idb('readonly', (s) => idbReq(s.get(key))); } catch (e) { return undefined; } }
+async function idbPut(key, val) { try { await idb('readwrite', (s) => idbReq(s.put(val, key))); } catch (e) { /* best effort */ } }
+async function idbDel(key) { try { await idb('readwrite', (s) => idbReq(s.delete(key))); } catch (e) { /* best effort */ } }
 
 const b64 = (bytes) => sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
 const unb64 = (str) => sodium.from_base64(str, sodium.base64_variants.ORIGINAL);
@@ -115,28 +151,28 @@ function open(cipherB64, nonceB64, key) {
 
 export const Vault = {
     vk: null,
+    mode: 'trusted', // 'trusted' (persist N days) | 'public' (session + idle lock)
 
     async boot() {
-        // Nothing cached = the vault was never unlocked this session, so there is
-        // nothing to restore. Return WITHOUT loading libsodium, so a page that
-        // never touches the vault (gallery, dashboard, settings) never pays for
-        // the ~400 KB crypto lib. It loads on the first unlock() instead.
+        // Trusted device: a persisted, wrapped key survives a browser restart for
+        // the configured window — try it first (IndexedDB, async).
+        if (await this._restoreTrusted()) {
+            return;
+        }
+        // Public computer / older session: a session-only key that dies with the
+        // tab and idle-locks. Nothing cached = never unlocked this tab; return
+        // WITHOUT loading libsodium so vault-free pages don't pay for it.
         const cached = sessionStorage.getItem(CACHE_KEY);
         if (! cached) {
             return;
         }
-
         await ready();
-
         const owner = currentOwner();
         const expires = Number(sessionStorage.getItem(CACHE_EXPIRES) || 0);
         const cachedOwner = sessionStorage.getItem(CACHE_OWNER) || '';
-
-        // Only restore the key if it belongs to the current login and has not
-        // expired. A signed-out page (empty owner) or a different/new login
-        // (owner mismatch) drops the key — it can never outlive its login.
         if (owner !== '' && cachedOwner === owner && expires > Date.now()) {
             this.vk = unb64(cached);
+            this.mode = 'public';
             this.touch();
         } else {
             this.lock();
@@ -147,6 +183,51 @@ export const Vault = {
         return this.vk !== null;
     },
 
+    // Apply the unlocked key according to the chosen device trust: persist on a
+    // trusted device, or session-cache + idle-lock on a public one.
+    async _apply(remember) {
+        if (remember) {
+            this.mode = 'trusted';
+            this._clearPublic();
+            await this._persistTrusted();
+        } else {
+            this.mode = 'public';
+            await this._clearTrusted();
+            this.cache();
+        }
+    },
+
+    async _persistTrusted() {
+        try {
+            let wrapKey = await idbGet('wrapKey');
+            if (! (wrapKey instanceof CryptoKey)) {
+                wrapKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+                await idbPut('wrapKey', wrapKey);
+            }
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, this.vk));
+            await idbPut('vk', { ct: b64(ct), iv: b64(iv), expires: Date.now() + rememberDays() * 86400000, owner: currentUser() });
+        } catch (e) { /* persistence is best-effort; the tab still holds the key */ }
+    },
+    async _restoreTrusted() {
+        try {
+            const rec = await idbGet('vk');
+            const wrapKey = await idbGet('wrapKey');
+            if (! rec || ! (wrapKey instanceof CryptoKey)) return false;
+            if (rec.owner !== currentUser() || Date.now() > rec.expires) { await this._clearTrusted(); return false; }
+            await ready();
+            this.vk = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(rec.iv) }, wrapKey, unb64(rec.ct)));
+            this.mode = 'trusted';
+            return true;
+        } catch (e) { return false; }
+    },
+    async _clearTrusted() { await idbDel('vk'); },
+    _clearPublic() {
+        sessionStorage.removeItem(CACHE_KEY);
+        sessionStorage.removeItem(CACHE_EXPIRES);
+        sessionStorage.removeItem(CACHE_OWNER);
+    },
+
     cache() {
         sessionStorage.setItem(CACHE_KEY, b64(this.vk));
         sessionStorage.setItem(CACHE_OWNER, currentOwner());
@@ -154,22 +235,24 @@ export const Vault = {
     },
 
     touch() {
-        if (this.vk) {
+        // Only the public (session) mode idle-locks; a trusted device stays open.
+        if (this.vk && this.mode !== 'trusted') {
             sessionStorage.setItem(CACHE_EXPIRES, String(Date.now() + idleMs()));
         }
     },
 
-    // When the cached key is set to expire (ms epoch); 0 if none. Lets an in-page
-    // idle watchdog auto-lock once this passes.
+    // When the session key idle-expires (ms epoch); 0 for a trusted device (no
+    // idle lock). Lets the in-page watchdog auto-lock a public session.
     expiresAt() {
+        if (this.mode === 'trusted') return 0;
         return Number(sessionStorage.getItem(CACHE_EXPIRES) || 0);
     },
 
     lock() {
         this.vk = null;
-        sessionStorage.removeItem(CACHE_KEY);
-        sessionStorage.removeItem(CACHE_EXPIRES);
-        sessionStorage.removeItem(CACHE_OWNER);
+        this.mode = 'trusted';
+        this._clearPublic();
+        this._clearTrusted();
     },
 
     // Just fetches the server's public KDF params — no crypto, so it must NOT
@@ -179,7 +262,7 @@ export const Vault = {
     },
 
     /** First-time setup: create the vault, return the recovery code to show once. */
-    async setup(passphrase) {
+    async setup(passphrase, remember = true) {
         await ready();
         const salt = sodium.randombytes_buf(sodium.crypto_pwhash_SALTBYTES);
         const ops = sodium.crypto_pwhash_OPSLIMIT_SENSITIVE;
@@ -205,14 +288,14 @@ export const Vault = {
         });
 
         this.vk = vk;
-        this.cache();
+        await this._apply(remember);
 
         // Grouped hex, easy to write down.
         return sodium.to_hex(recoveryBytes).replace(/(.{4})/g, '$1 ').trim();
     },
 
     /** Unlock with the passphrase. Throws if wrong. */
-    async unlock(passphrase) {
+    async unlock(passphrase, remember = true) {
         await ready(); // libsodium is lazy-loaded; status() no longer forces it
         const v = await this.status();
         if (! v.configured) {
@@ -220,11 +303,11 @@ export const Vault = {
         }
         const kek = deriveKek(passphrase, unb64(v.salt), v.kdf_ops, v.kdf_mem);
         this.vk = open(v.wrapped_vault_key, v.wrap_nonce, kek); // throws on wrong passphrase
-        this.cache();
+        await this._apply(remember);
     },
 
     /** Restore access with the recovery code (spaces ignored). */
-    async recover(recoveryCode) {
+    async recover(recoveryCode, remember = true) {
         await ready(); // libsodium is lazy-loaded; status() no longer forces it
         const v = await this.status();
         if (! v.configured || ! v.has_recovery) {
@@ -233,7 +316,7 @@ export const Vault = {
         const recoveryBytes = sodium.from_hex(recoveryCode.replace(/\s+/g, ''));
         const recoveryKey = sodium.crypto_generichash(sodium.crypto_secretbox_KEYBYTES, recoveryBytes);
         this.vk = open(v.wrapped_vault_key_recovery, v.recovery_nonce, recoveryKey); // throws on wrong code
-        this.cache();
+        await this._apply(remember);
     },
 
     /**

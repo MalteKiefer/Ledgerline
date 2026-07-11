@@ -39,6 +39,7 @@ return [
     'setup_hint' => 'Wähle ein starkes Passwort. Dateien werden im Browser verschlüsselt; der Server sieht weder dein Passwort noch deine Daten.',
     'setup_title' => 'Verschlüsselung einrichten',
     'unlock' => 'Entsperren',
+    'public_computer' => 'Öffentlicher Computer (nach Inaktivität sperren, nicht angemeldet bleiben)',
     'unlock_hint' => 'Passwort eingeben, um verschlüsselte Dateien für diese Sitzung zu entsperren.',
     'unlock_title' => 'Tresor entsperren',
     'unlocked' => 'Entsperrt',

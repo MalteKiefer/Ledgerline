@@ -16,6 +16,7 @@
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc')],
             ['url' => route('settings.downloads.edit'), 'title' => __('settings.downloads_section'), 'desc' => __('settings.downloads_desc')],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc')],
+            ['url' => route('settings.security.edit'), 'title' => __('settings.security_section'), 'desc' => __('settings.security_desc')],
             ['url' => route('settings.system.edit'), 'title' => __('settings.system_section'), 'desc' => __('settings.system_desc')],
         ];
         // Show every settings card alphabetically by its (localised) title.
