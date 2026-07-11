@@ -163,7 +163,7 @@
                        :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)"
                        @mouseenter="hoverMotion(p, $event.currentTarget)" @mouseleave="unhoverMotion($event.currentTarget)">
                     <button type="button" @click="openViewer(p)" class="block h-full w-full">
-                      <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                      <img x-show="thumbs[p.id]" :src="thumbs[p.id]" :style="photoTransform(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       <template x-if="p.motionRef && p.media_type !== 'video'"><video data-motion muted loop playsinline preload="none" style="display:none" class="pointer-events-none absolute inset-0 h-full w-full object-cover"></video></template>
                       <div x-show="!thumbs[p.id]" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
                         <svg x-show="!p.thumbRef" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
@@ -458,9 +458,9 @@
         <template x-if="viewer.kind === 'loading'"><svg class="h-8 w-8 animate-spin text-white/60" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg></template>
         <template x-if="viewer.kind === 'image'">
           <div class="relative" @click.stop>
-            <img :src="viewer.src" x-show="! viewer.motionOn" class="max-h-[92vh] max-w-full rounded-lg">
+            <img :src="viewer.src" x-show="! viewer.motionOn" :style="photoTransform(viewer.photo)" class="max-h-[92vh] max-w-full rounded-lg">
             <template x-if="viewer.motionOn">
-              <video :src="viewer.motionSrc" autoplay muted playsinline @ended="stopMotion()" class="max-h-[92vh] max-w-full rounded-lg"></video>
+              <video :src="viewer.motionSrc" autoplay muted playsinline @ended="stopMotion()" :style="photoTransform(viewer.photo)" class="max-h-[92vh] max-w-full rounded-lg"></video>
             </template>
             <button type="button" x-show="viewer.hasMotion && ! viewer.motionOn" @click.stop="playMotion()"
                 class="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-black/70">
@@ -495,9 +495,41 @@
             <dd class="mt-0.5" x-text="fmtBytes(viewer.photo?.size)"></dd>
           </div>
         </dl>
+        {{-- Non-destructive edit: rotate / flip / date-time / location --}}
+        <div x-show="viewer.photo && view !== 'trash'" class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
+          <h4 class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.edit_heading') }}</h4>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button type="button" @click="rotatePhoto(viewer.photo, -1)" title="{{ __('gallery.rotate_left') }}" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+            <button type="button" @click="rotatePhoto(viewer.photo, 1)" title="{{ __('gallery.rotate_right') }}" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-right" class="h-4 w-4" /></button>
+            <button type="button" @click="flipPhoto(viewer.photo, 'h')" title="{{ __('gallery.flip_h') }}" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrows-right-left" class="h-4 w-4" /></button>
+            <button type="button" @click="flipPhoto(viewer.photo, 'v')" title="{{ __('gallery.flip_v') }}" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrows-up-down" class="h-4 w-4" /></button>
+          </div>
+          <label class="mt-3 block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.edit_datetime') }}
+            <input type="datetime-local" :value="toLocalInput(viewer.photo?.taken_at)" @change="setTakenAt(viewer.photo, $event.target.value)"
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+          </label>
+          <button type="button" @click="openLocPicker(viewer.photo)" class="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="map-pin" class="h-4 w-4" />{{ __('gallery.edit_location') }}</button>
+        </div>
         <div x-ref="minimap" x-show="(viewer.meta?.exif?.lat != null) || (viewer.photo?.lat != null)"
             class="mt-5 h-40 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800"></div>
       </aside>
+    </div>
+
+    {{-- Location picker (Leaflet): click the map to set the photo's place --}}
+    <div x-show="loc.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeLocPicker()">
+      <div class="absolute inset-0 bg-black/60" @click="closeLocPicker()"></div>
+      <div class="relative w-full max-w-2xl rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.edit_location') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.location_hint') }}</p>
+        <div x-ref="locmap" class="mt-3 h-72 w-full overflow-hidden rounded-md border border-gray-200 dark:border-gray-800"></div>
+        <div class="mt-3 flex items-center justify-between">
+          <button type="button" @click="clearLoc()" class="text-sm text-gray-500 hover:text-red-600">{{ __('gallery.location_clear') }}</button>
+          <div class="flex gap-2">
+            <x-button variant="secondary" type="button" @click="closeLocPicker()">{{ __('common.cancel') }}</x-button>
+            <x-button type="button" @click="saveLoc()">{{ __('common.save') }}</x-button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </x-layouts.app>

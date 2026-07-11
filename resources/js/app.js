@@ -1238,6 +1238,8 @@ return {
             if (! tile.matches(':hover')) return; // pointer left while decrypting
             video.src = this.motionUrls[p.id];
             video.currentTime = 0;
+            video.style.transform = (p.rotation || p.flipH || p.flipV)
+                ? `rotate(${p.rotation || 0}deg) scaleX(${p.flipH ? -1 : 1}) scaleY(${p.flipV ? -1 : 1})` : '';
             video.style.display = 'block';
             await video.play().catch(() => {});
         } catch (e) { /* ignore — the still stays */ }
@@ -1304,6 +1306,98 @@ return {
         if (this.viewer.motionSrc) URL.revokeObjectURL(this.viewer.motionSrc);
         if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
         this.viewer = { open: false, kind: 'none', src: '', photo: null, meta: null, hasMotion: false, motionOn: false, motionSrc: '' };
+    },
+
+    /* ---- Non-destructive photo edits (rotate / flip / date / place) ----
+     * All edits live on the sealed manifest entry (and are mirrored into the
+     * open viewer's decrypted meta for display). Rotation/flip are applied as a
+     * CSS transform everywhere the photo is shown — the original bytes are never
+     * re-encoded, so edits are instant and fully reversible. */
+    photoTransform(p) {
+        if (! p) return '';
+        const r = p.rotation || 0;
+        const sx = p.flipH ? -1 : 1;
+        const sy = p.flipV ? -1 : 1;
+        if (! r && sx === 1 && sy === 1) return '';
+        return `transform: rotate(${r}deg) scaleX(${sx}) scaleY(${sy});`;
+    },
+    rotatePhoto(p, dir) {
+        if (! p) return;
+        p.rotation = ((((p.rotation || 0) + dir * 90) % 360) + 360) % 360;
+        this._save();
+    },
+    flipPhoto(p, axis) {
+        if (! p) return;
+        if (axis === 'h') p.flipH = ! p.flipH; else p.flipV = ! p.flipV;
+        this._save();
+    },
+    // datetime-local <-> ISO (local wall-clock, no timezone maths).
+    toLocalInput(iso) {
+        if (! iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    },
+    setTakenAt(p, value) {
+        if (! p || ! value) return;
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return;
+        p.taken_at = d.toISOString();
+        if (this.viewer.meta?.exif) this.viewer.meta.exif.taken_at = p.taken_at;
+        this._save();
+    },
+
+    /* ---- Location picker (Leaflet: click the map to set the spot) ---- */
+    loc: { open: false, target: null, lat: null, lng: null },
+    _locMap: null,
+    _locMarker: null,
+    async openLocPicker(p) {
+        if (! p) return;
+        const startLat = p.lat ?? this.viewer.meta?.exif?.lat ?? 48.2082;
+        const startLng = p.lng ?? this.viewer.meta?.exif?.lon ?? 16.3738;
+        this.loc = { open: true, target: p, lat: p.lat ?? null, lng: p.lng ?? null };
+        const L = await loadLeaflet();
+        this.$nextTick(() => {
+            const el = this.$refs.locmap;
+            if (! el || ! this.loc.open) return;
+            if (this._locMap) { this._locMap.remove(); this._locMap = null; }
+            this._locMarker = null;
+            this._locMap = L.map(el).setView([startLat, startLng], p.lat != null ? 13 : 4);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this._locMap);
+            if (p.lat != null) this._locMarker = L.marker([p.lat, p.lng]).addTo(this._locMap);
+            this._locMap.on('click', (e) => {
+                this.loc.lat = e.latlng.lat; this.loc.lng = e.latlng.lng;
+                if (this._locMarker) this._locMarker.setLatLng(e.latlng);
+                else this._locMarker = L.marker(e.latlng).addTo(this._locMap);
+            });
+            setTimeout(() => { if (this._locMap) this._locMap.invalidateSize(); }, 120);
+        });
+    },
+    saveLoc() {
+        const p = this.loc.target;
+        if (p && this.loc.lat != null) {
+            p.lat = this.loc.lat; p.lng = this.loc.lng;
+            if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = p.lat; this.viewer.meta.exif.lon = p.lng; }
+            this._renderMiniMap(p.lat, p.lng);
+            this._save();
+        }
+        this.closeLocPicker();
+    },
+    clearLoc() {
+        const p = this.loc.target;
+        if (p) {
+            p.lat = null; p.lng = null;
+            if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = null; this.viewer.meta.exif.lon = null; }
+            if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
+            this._save();
+        }
+        this.closeLocPicker();
+    },
+    closeLocPicker() {
+        if (this._locMap) { this._locMap.remove(); this._locMap = null; }
+        this._locMarker = null;
+        this.loc = { open: false, target: null, lat: null, lng: null };
     },
 
     /* ---- Multi-select ---- */
