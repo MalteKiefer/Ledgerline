@@ -161,6 +161,17 @@ async function bootStore(store) {
 // Separate sealed store for the gallery index (photos/albums/people), kept apart
 // from the shared workspace manifest so gallery churn never re-seals notes/todos.
 // Same contract as LLStore but against /gallery/store.
+// Photos per sealed shard. The whole library used to live in ONE sealed
+// manifest, so every edit re-sealed + re-uploaded all of it (multi-MB at scale).
+// Now photo records are split into content-addressed shard blobs; the small root
+// manifest just lists them, and a save re-seals only the shards that changed.
+const GALLERY_SHARD_SIZE = 1000;
+
+async function sha256Hex(str) {
+    const dig = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(dig)].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
 window.LLGalleryStore = {
     data: null,
     version: 0,
@@ -169,9 +180,28 @@ window.LLGalleryStore = {
     _timer: null,
     _chain: null,
     _onError: null,
+    _shards: [], // [{ ref, key, hash, count }] descriptors from the last load/save
 
     _blank() {
-        return { v: 1, photos: [], albums: [], people: [] };
+        return { v: 2, photos: [], albums: [], people: [] };
+    },
+
+    // Refs of the current photo shards, so the gallery's blob reconcile keeps
+    // them (they hold the photo records, not referenced by any photo entry).
+    shardRefs() {
+        return this._shards.map((s) => s.ref).filter(Boolean);
+    },
+
+    // Seal raw bytes into a padded, content-addressed gallery blob → { ref, key }.
+    async _sealBlob(bytes) {
+        const enc = window.Vault.encryptContent(bytes, { name: 'shard.enc', mime: 'application/octet-stream' });
+        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+        const fd = new FormData();
+        fd.append('_token', csrfToken());
+        fd.append('file', cipher, cipher.name);
+        const res = await fetch('/gallery/upload', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+        if (! res.ok) throw new Error('shard upload failed');
+        return { ref: (await res.json()).id, key: enc.encFileKey };
     },
 
     newId() {
@@ -185,14 +215,34 @@ window.LLGalleryStore = {
         if (! res.ok) throw new Error('gallery store load failed');
         const d = await res.json();
         this.version = d.version ?? 0;
-        this.data = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
-        for (const k of Object.keys(this._blank())) if (! (k in this.data)) this.data[k] = this._blank()[k];
+        this._shards = [];
+        const root = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
+
+        if (root.v === 2 && Array.isArray(root.shards)) {
+            // Sharded format: root lists the photo shards; load + decrypt them in
+            // parallel (cheap on repeat visits — shard blobs cache immutably). A
+            // failed shard THROWS (fails the whole load) rather than silently
+            // dropping its photos — a partial in-memory set could then be saved and
+            // would free the "missing" shard, losing data for good.
+            const parts = await Promise.all(root.shards.map((s) => fetchDecryptWorker('/gallery/raw', s.ref, s.key)
+                .then((b) => JSON.parse(new TextDecoder().decode(b)))));
+            const photos = [];
+            for (const arr of parts) if (Array.isArray(arr)) photos.push(...arr);
+            this.data = { v: 2, photos, albums: root.albums || [], people: root.people || [] };
+            this._shards = root.shards.map((s) => ({ ...s }));
+        } else {
+            // Legacy monolith (v1) or blank: load the inline photos as-is. Nothing
+            // is lost — the next save writes them out as shards and shrinks the
+            // root manifest. No migration step, no re-upload.
+            this.data = { v: 2, photos: root.photos || [], albums: root.albums || [], people: root.people || [] };
+        }
+
         this.loaded = true;
         this.ready = true;
         return this.data;
     },
 
-    reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; clearTimeout(this._timer); },
+    reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; this._shards = []; clearTimeout(this._timer); },
 
     touch() {
         clearTimeout(this._timer);
@@ -208,10 +258,38 @@ window.LLGalleryStore = {
         return this._chain;
     },
 
+    // Split photos into shards, (re-)seal only the ones whose contents changed,
+    // free shards that vanished, and return the small root manifest. Index-based
+    // shards stay stable for the common cases (append new / edit in place); only
+    // a mid-array purge cascades, which is rare.
+    async _buildRoot() {
+        const photos = this.data.photos || [];
+        const descriptors = [];
+        for (let i = 0; i < photos.length; i += GALLERY_SHARD_SIZE) {
+            const chunk = photos.slice(i, i + GALLERY_SHARD_SIZE);
+            const json = JSON.stringify(chunk);
+            const hash = await sha256Hex(json);
+            const prev = this._shards[descriptors.length];
+            if (prev && prev.hash === hash && prev.ref) {
+                descriptors.push(prev); // unchanged → reuse the existing shard blob
+            } else {
+                const sealed = await this._sealBlob(new TextEncoder().encode(json));
+                descriptors.push({ ref: sealed.ref, key: sealed.key, hash, count: chunk.length });
+            }
+        }
+        // Free shard blobs no longer referenced (shrunk library or replaced shards).
+        const live = new Set(descriptors.map((d) => d.ref));
+        for (const old of this._shards) if (old.ref && ! live.has(old.ref)) queueBlobDelete('/gallery/blob/' + old.ref, csrfToken());
+        this._shards = descriptors;
+
+        return { v: 2, shards: descriptors.map(({ ref, key, hash, count }) => ({ ref, key, hash, count })), albums: this.data.albums || [], people: this.data.people || [] };
+    },
+
     async _doFlush(retry = 0) {
         if (! this.loaded || ! this.data) return;
         try {
-            const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(this.data), version: this.version });
+            const root = await this._buildRoot();
+            const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(root), version: this.version });
             const res = await fetch('/gallery/store', { method: 'PUT', headers: jsonHeaders(), body });
             if (res.status === 409) {
                 // Someone else advanced the version; adopt it and re-seal our data.
@@ -2283,6 +2361,9 @@ return {
             for (const ref of [p.originalRef, p.thumbRef, p.mediumRef, p.motionRef, p.metaRef]) if (ref) blobs.push(ref);
             for (const ref of (p.faceCropRefs || [])) if (ref) blobs.push(ref);
         }
+        // The shard blobs hold the photo records themselves — keep them too, or the
+        // sweep would treat the whole library index as orphaned.
+        for (const ref of window.LLGalleryStore.shardRefs()) blobs.push(ref);
         fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) })
             .then((r) => r.ok && r.json()).then((u) => { if (u) this.usage = u; }).catch(() => {});
     },
