@@ -1478,20 +1478,28 @@ return {
     loc: { open: false, target: null, lat: null, lng: null },
     _locMap: null,
     _locMarker: null,
-    async openLocPicker(p) {
+    // Single photo (viewer) location.
+    openLocPicker(p) {
         if (! p) return;
-        const startLat = p.lat ?? this.viewer.meta?.exif?.lat ?? 48.2082;
-        const startLng = p.lng ?? this.viewer.meta?.exif?.lon ?? 16.3738;
-        this.loc = { open: true, target: p, lat: p.lat ?? null, lng: p.lng ?? null };
+        this.loc = { open: true, bulk: false, target: p, lat: p.lat ?? null, lng: p.lng ?? null };
+        this._mountLocMap(p.lat ?? this.viewer.meta?.exif?.lat ?? 48.2082, p.lng ?? this.viewer.meta?.exif?.lon ?? 16.3738, p.lat != null);
+    },
+    // Set one location on every selected photo.
+    openBulkLocPicker() {
+        if (! this.selectedCount) return;
+        this.loc = { open: true, bulk: true, target: null, lat: null, lng: null };
+        this._mountLocMap(48.2082, 16.3738, false);
+    },
+    async _mountLocMap(startLat, startLng, hasMarker) {
         const L = await loadLeaflet();
         this.$nextTick(() => {
             const el = this.$refs.locmap;
             if (! el || ! this.loc.open) return;
             if (this._locMap) { this._locMap.remove(); this._locMap = null; }
             this._locMarker = null;
-            this._locMap = L.map(el).setView([startLat, startLng], p.lat != null ? 13 : 4);
+            this._locMap = L.map(el).setView([startLat, startLng], hasMarker ? 13 : 4);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this._locMap);
-            if (p.lat != null) this._locMarker = L.marker([p.lat, p.lng]).addTo(this._locMap);
+            if (hasMarker) this._locMarker = L.marker([startLat, startLng]).addTo(this._locMap);
             this._locMap.on('click', (e) => {
                 this.loc.lat = e.latlng.lat; this.loc.lng = e.latlng.lng;
                 if (this._locMarker) this._locMarker.setLatLng(e.latlng);
@@ -1501,42 +1509,82 @@ return {
         });
     },
     saveLoc() {
-        const p = this.loc.target;
-        if (p && this.loc.lat != null) {
-            p.lat = this.loc.lat; p.lng = this.loc.lng;
-            if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = p.lat; this.viewer.meta.exif.lon = p.lng; }
-            this._renderMiniMap(p.lat, p.lng);
-            this._save();
+        if (this.loc.lat != null) {
+            if (this.loc.bulk) {
+                this._eachSelected((p) => { p.lat = this.loc.lat; p.lng = this.loc.lng; });
+                this.selected = [];
+                this._save();
+            } else if (this.loc.target) {
+                const p = this.loc.target;
+                p.lat = this.loc.lat; p.lng = this.loc.lng;
+                if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = p.lat; this.viewer.meta.exif.lon = p.lng; }
+                this._renderMiniMap(p.lat, p.lng);
+                this._save();
+            }
         }
         this.closeLocPicker();
     },
     clearLoc() {
-        const p = this.loc.target;
-        if (p) {
+        if (this.loc.bulk) {
+            this._eachSelected((p) => { p.lat = null; p.lng = null; });
+            this.selected = [];
+        } else if (this.loc.target) {
+            const p = this.loc.target;
             p.lat = null; p.lng = null;
             if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = null; this.viewer.meta.exif.lon = null; }
             if (this._miniMap) { this._miniMap.remove(); this._miniMap = null; }
-            this._save();
         }
+        this._save();
         this.closeLocPicker();
     },
     closeLocPicker() {
         if (this._locMap) { this._locMap.remove(); this._locMap = null; }
         this._locMarker = null;
-        this.loc = { open: false, target: null, lat: null, lng: null };
+        this.loc = { open: false, bulk: false, target: null, lat: null, lng: null };
     },
 
     /* ---- Multi-select ---- */
     selected: [],
+    _lastSel: null, // last tile clicked, for shift-range selection
     isSelected(id) { return this.selected.includes(id); },
     toggleSelect(id) { const i = this.selected.indexOf(id); if (i >= 0) this.selected.splice(i, 1); else this.selected.push(id); },
-    clearSelection() { this.selected = []; },
+    // Click a tile's checkbox: shift extends a range from the last one, otherwise toggles.
+    clickSelect(id, ev) {
+        if (ev && ev.shiftKey && this._lastSel && this._lastSel !== id) this.selectRange(this._lastSel, id);
+        else this.toggleSelect(id);
+        this._lastSel = id;
+    },
+    selectRange(fromId, toId) {
+        const ids = this.displayGroups.flatMap((g) => g.photos.map((p) => p.id));
+        const a = ids.indexOf(fromId), b = ids.indexOf(toId);
+        if (a < 0 || b < 0) { this.toggleSelect(toId); return; }
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        for (let i = lo; i <= hi; i++) if (! this.selected.includes(ids[i])) this.selected.push(ids[i]);
+    },
+    // Per-day-group select-all checkbox.
+    groupSelected(group) { return group.photos.length > 0 && group.photos.every((p) => this.selected.includes(p.id)); },
+    toggleGroup(group) {
+        const ids = group.photos.map((p) => p.id);
+        if (this.groupSelected(group)) this.selected = this.selected.filter((id) => ! ids.includes(id));
+        else for (const id of ids) if (! this.selected.includes(id)) this.selected.push(id);
+    },
+    clearSelection() { this.selected = []; this._lastSel = null; },
     get selectedCount() { return this.selected.length; },
     selectAllVisible() {
         const ids = (this.view === 'trash' ? this.trashedPhotos : this.libraryPhotos).map((p) => p.id);
         this.selected = this.selected.length === ids.length ? [] : ids;
     },
     _eachSelected(fn) { for (const id of [...this.selected]) { const p = this.index.photos.find((x) => x.id === id); if (p) fn(p); } },
+    // Set the same capture date/time on every selected photo.
+    bulkSetDate(value) {
+        if (! value) return;
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return;
+        const iso = d.toISOString();
+        this._eachSelected((p) => { p.taken_at = iso; });
+        this.selected = [];
+        this._save();
+    },
     bulkTrash() { const t = new Date().toISOString(); this._eachSelected((p) => { if (! p.trashed) p.trashed = t; }); this.selected = []; this._save(); },
     bulkRestore() { this._eachSelected((p) => { p.trashed = null; }); this.selected = []; this._save(); },
     async bulkPurge() {

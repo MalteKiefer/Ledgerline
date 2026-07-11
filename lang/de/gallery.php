@@ -36,6 +36,7 @@ return [
     'jobs_processing' => 'Verarbeitung',
     'jobs_done' => 'Aktuell',
     'jobs_run' => 'Starten',
+    'bulk_date' => 'Datum & Uhrzeit für die Auswahl setzen',
     'library' => 'Bibliothek',
     'map' => 'Karte',
     'albums' => 'Alben',
