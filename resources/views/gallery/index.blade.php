@@ -120,6 +120,9 @@
                     <button type="button" @click="open = false; createAlbum()" class="mt-0.5 flex w-full items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
                   </div>
                 </div>
+                <input type="datetime-local" @change="bulkSetDate($event.target.value)" title="{{ __('gallery.bulk_date') }}"
+                    class="rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+                <button type="button" @click="openBulkLocPicker()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="map-pin" class="h-4 w-4" />{{ __('gallery.edit_location') }}</button>
                 <button type="button" @click="bulkTrash()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900"><x-icon name="trash" class="h-4 w-4" />{{ __('gallery.delete') }}</button>
               </span>
             </template>
@@ -167,7 +170,10 @@
 
           <template x-for="group in displayGroups" :key="group.day">
             <section class="mb-6">
-              <h2 x-show="group.label" class="mb-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300" x-text="group.label"></h2>
+              <label x-show="group.label" class="mb-2.5 flex cursor-pointer items-center gap-2">
+                <input type="checkbox" :checked="groupSelected(group)" @change="toggleGroup(group)" title="{{ __('gallery.select_all') }}" class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0 focus:ring-offset-0">
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300" x-text="group.label"></h2>
+              </label>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in group.photos" :key="p.id">
                   <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
@@ -184,7 +190,7 @@
                       <template x-if="p.motionRef && p.media_type !== 'video'"><span class="pointer-events-none absolute left-1.5 top-1.5 rounded bg-black/45 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">Live</span></template>
                     </button>
                     <label class="absolute left-2 top-2 z-10 cursor-pointer" :class="selectedCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop>
-                      <input type="checkbox" :checked="isSelected(p.id)" @change="toggleSelect(p.id)" class="h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
+                      <input type="checkbox" :checked="isSelected(p.id)" @click.stop.prevent="clickSelect(p.id, $event)" class="h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
                     </label>
                     <button type="button" @click.stop="trash(p)" title="{{ __('gallery.delete') }}"
                         class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition hover:bg-red-500 group-hover:opacity-100"><x-icon name="trash" class="h-4 w-4" /></button>

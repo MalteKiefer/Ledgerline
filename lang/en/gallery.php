@@ -36,6 +36,7 @@ return [
     'jobs_processing' => 'Processing',
     'jobs_done' => 'Up to date',
     'jobs_run' => 'Run',
+    'bulk_date' => 'Set date & time for the selection',
     'library' => 'Library',
     'map' => 'Map',
     'albums' => 'Albums',
