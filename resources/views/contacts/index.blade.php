@@ -334,19 +334,63 @@
         </div>
       </div>
 
-      {{-- Avatar source: pick an image from the Gallery --}}
+      {{-- Avatar source: pick an image from the Gallery (People / Albums / All tabs) --}}
       <div x-show="galleryPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeGalleryPicker()">
         <div class="absolute inset-0 bg-black/60" @click="closeGalleryPicker()"></div>
         <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('contacts.pick_image') }}</h3>
-            <p x-show="! _galleryPhotos.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.no_images') }}</p>
-            <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
-                <template x-for="p in _galleryPhotos" :key="p.id">
-                    <button type="button" @click="pickFromGallery(p)" class="group aspect-square overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-gray-900 dark:hover:ring-gray-100 focus:outline-none" x-init="$nextTick(() => galleryThumb(p).then(u => $el.querySelector('img')?.setAttribute('src', u)))">
-                        <img class="h-full w-full object-cover" alt="">
-                    </button>
+            {{-- Tabs --}}
+            <div class="mt-3 flex gap-1 border-b border-gray-200 dark:border-gray-800 text-sm">
+                <template x-for="t in [['people','{{ __('contacts.tab_people') }}'],['albums','{{ __('contacts.tab_albums') }}'],['all','{{ __('contacts.tab_all') }}']]" :key="t[0]">
+                    <button type="button" @click="gSetTab(t[0])" :class="gTab === t[0] ? 'border-gray-900 dark:border-gray-100 text-gray-900 dark:text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'" class="-mb-px border-b-2 px-3 py-2" x-text="t[1]"></button>
                 </template>
             </div>
+            {{-- Drill-back --}}
+            <button type="button" x-show="gSel" x-cloak @click="gSel = null" class="mt-2 inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-uturn-left" class="h-3.5 w-3.5" />{{ __('contacts.back') }}</button>
+
+            {{-- People chooser --}}
+            <div x-show="gTab === 'people' && ! gSel" x-cloak>
+                <p x-show="! _galleryPeople.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.no_images') }}</p>
+                <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+                    <template x-for="pp in _galleryPeople" :key="pp.id">
+                        <button type="button" @click="gSel = pp.id" class="group flex flex-col items-center focus:outline-none">
+                            <span class="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 group-hover:ring-gray-900 dark:group-hover:ring-gray-100 text-sm font-semibold text-gray-500" x-init="$nextTick(() => gPersonCover(pp).then(u => u && $el.querySelector('img')?.setAttribute('src', u)))">
+                                <img class="absolute inset-0 h-full w-full object-cover" alt="">
+                                <span x-text="gInitials(pp.name)"></span>
+                            </span>
+                            <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || '{{ __('contacts.unnamed') }}'"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            {{-- Albums chooser --}}
+            <div x-show="gTab === 'albums' && ! gSel" x-cloak>
+                <p x-show="! _galleryAlbums.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.no_images') }}</p>
+                <div class="mt-3 grid max-h-80 grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
+                    <template x-for="al in _galleryAlbums" :key="al.id">
+                        <button type="button" @click="gSel = al.id" class="group focus:outline-none">
+                            <span class="block aspect-square overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 group-hover:ring-gray-900 dark:group-hover:ring-gray-100" x-init="$nextTick(() => gAlbumCover(al).then(u => u && $el.querySelector('img')?.setAttribute('src', u)))">
+                                <img class="h-full w-full object-cover" alt="">
+                            </span>
+                            <span class="mt-1 block truncate text-xs text-gray-700 dark:text-gray-300" x-text="al.name || '{{ __('contacts.unnamed') }}'"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            {{-- Photo grid (All tab, or drilled person/album) --}}
+            <div x-show="! gShowChooser()" x-cloak>
+                <p x-show="! gGridPhotos().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('contacts.no_images') }}</p>
+                <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+                    <template x-for="p in gGridPhotos()" :key="p.id">
+                        <button type="button" @click="pickFromGallery(p)" class="group aspect-square overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-gray-900 dark:hover:ring-gray-100 focus:outline-none" x-init="$nextTick(() => galleryThumb(p).then(u => u && $el.querySelector('img')?.setAttribute('src', u)))">
+                            <img class="h-full w-full object-cover" alt="">
+                        </button>
+                    </template>
+                </div>
+            </div>
+
             <div class="mt-4 flex justify-end">
                 <x-button variant="secondary" type="button" @click="closeGalleryPicker()">{{ __('common.cancel') }}</x-button>
             </div>
