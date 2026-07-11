@@ -45,6 +45,44 @@
                 <dd class="font-mono font-medium text-gray-900 dark:text-gray-100">{{ \Illuminate\Support\Number::fileSize($status['storage']['total']) }}</dd>
             </div>
         </dl>
+
+        {{-- Growth trend (daily snapshots) --}}
+        @php
+            $pts = $trend['points'];
+            $spark = '';
+            if (count($pts) >= 2) {
+                $vals = array_map(fn ($p) => $p['total'], $pts);
+                $min = min($vals);
+                $range = max(1, max($vals) - $min);
+                $n = count($pts);
+                $coords = [];
+                foreach ($pts as $i => $p) {
+                    $x = round(($i / ($n - 1)) * 100, 1);
+                    $y = round(26 - (($p['total'] - $min) / $range) * 24, 1);
+                    $coords[] = $x.','.$y;
+                }
+                $spark = implode(' ', $coords);
+            }
+        @endphp
+        <div class="mt-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('settings.system_trend') }}</h3>
+                @if ($trend['deltaDays'] > 0)
+                    <span class="text-xs {{ $trend['deltaBytes'] >= 0 ? 'text-gray-500 dark:text-gray-400' : 'text-green-600 dark:text-green-400' }}">
+                        {{ $trend['deltaBytes'] >= 0 ? '+' : '−' }}{{ \Illuminate\Support\Number::fileSize(abs($trend['deltaBytes'])) }}
+                        · {{ __('settings.system_trend_days', ['n' => $trend['deltaDays']]) }}
+                    </span>
+                @endif
+            </div>
+            @if ($spark !== '')
+                <svg viewBox="0 0 100 28" preserveAspectRatio="none" class="mt-2 h-12 w-full text-gray-400 dark:text-gray-500" aria-hidden="true">
+                    <polyline points="{{ $spark }}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+                </svg>
+            @else
+                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ __('settings.system_trend_collecting') }}</p>
+            @endif
+        </div>
+
         <p class="mt-4 text-xs text-gray-400 dark:text-gray-500">{{ __('settings.system_metrics_hint') }}</p>
     </div>
 

@@ -39,3 +39,6 @@ Schedule::command('device-pairings:prune')->hourly()->withoutOverlapping();
 
 // Alert the configured channels about new recorded server errors.
 Schedule::command('ops:alert-errors')->hourly()->withoutOverlapping();
+
+// Record a daily per-module storage snapshot for the System page trend.
+Schedule::command('ops:snapshot-storage')->dailyAt('00:10')->withoutOverlapping();
