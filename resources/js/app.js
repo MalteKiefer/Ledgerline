@@ -1564,6 +1564,7 @@ return {
      * a large import doesn't hammer the ML sidecar; resumes across sessions.
      */
     mlProgress: { done: 0, total: 0 },
+    _mlRunning: false, // reactive so the activity panel can show ML backlog state
     async runMlBacklog() {
         if (this._mlRunning || this.state !== 'ready') return;
         const pending = () => this.index.photos.filter((p) => p.mlPending && ! p.trashed && ! p.failed && (p.mediumRef || p.originalRef));
@@ -2166,6 +2167,7 @@ return {
 
     /* ---- Albums (plain client-side grouping, sealed in the index) ---- */
     activeAlbum: null,
+    albumPicker: false, // "add selected to album" modal (from the bulk bar)
     get albums() {
         return (this.index.albums || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     },
