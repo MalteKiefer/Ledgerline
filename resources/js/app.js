@@ -823,7 +823,10 @@ Alpine.data('devicePairing', (opts = {}) => ({
         this.copied = false;
         try {
             const r = await fetch(this.cli ? '/device-pairings/cli' : '/device-pairings', { method: 'POST', headers: jsonHeaders() });
-            if (! r.ok) return;
+            if (! r.ok) {
+                window.llToast?.(r.status === 429 ? (opts.rateLimited || 'Too many attempts — wait a moment') : (opts.startFailed || 'Could not start pairing'));
+                return;
+            }
             const d = await r.json();
             this.id = d.id; this.qr = d.qr || ''; this.code = d.code || ''; this.status = 'pending_scan'; this.active = true;
             this.expiresAt = Date.parse(d.expires_at) || 0;

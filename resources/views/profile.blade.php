@@ -77,7 +77,7 @@
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
 
     {{-- Mobile app: QR device pairing + paired-device management --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing()">
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing({ rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')) })">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.devices_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.devices_hint') }} {{ __('account.devices_limit_note', ['max' => $deviceMax]) }}</p>
 
@@ -133,7 +133,7 @@
     </div>
 
     {{-- Command-line client: copy/paste code pairing (same approval flow as the app) --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing({ cli: true })">
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing({ cli: true, rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')) })">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.cli_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.cli_hint') }}</p>
 
