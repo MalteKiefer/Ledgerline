@@ -1082,6 +1082,8 @@ return {
     error: '',
     busy: 0,
     uploads: [], // { name, state, progress }
+    // Settled (finished) uploads — for the always-visible overall counter.
+    uploadDone() { return this.uploads.filter((u) => u.state === 'done' || u.state === 'duplicate' || u.state === 'error').length; },
     uploadBatches: 0,
     progress: { active: false, done: 0, total: 0 }, // backlog processing
     thumbs: {}, // photoId -> objectURL (decrypted, in-memory cache)
@@ -2309,6 +2311,25 @@ return {
     },
     get currentPerson() { return (this.index.people || []).find((pp) => pp.id === this.activePerson) || null; },
     openPerson(pp) { this.activePerson = pp.id; this.view = 'person'; },
+    openPersonById(id) {
+        const pp = (this.index.people || []).find((x) => x.id === id);
+        if (! pp) return;
+        this.closeViewer();
+        this.openPerson(pp);
+    },
+    // Detected faces on the currently open photo, each tagged with the person it
+    // was clustered into (if any). Drives the "Faces" section in the info panel.
+    viewerFaces() {
+        const p = this.viewer.photo, m = this.viewer.meta;
+        if (! p || ! m || ! Array.isArray(m.faces)) return [];
+        const out = [];
+        m.faces.forEach((f, idx) => {
+            if (! f.cropRef) return;
+            const person = (this.index.people || []).find((pp) => (pp.faces || []).some((x) => x.photoId === p.id && x.idx === idx));
+            out.push({ cropRef: f.cropRef, cropKey: f.cropKey, name: person?.name || '', personId: person?.id || null });
+        });
+        return out;
+    },
     personPhotos(pp) {
         if (! pp) return [];
         const ids = [...new Set((pp.faces || []).map((f) => f.photoId))];
