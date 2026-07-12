@@ -27,6 +27,8 @@ return [
     'devices_limit_note' => 'Bis zu :max Geräte; ein neues Pairing entfernt bei vollem Limit das älteste.',
     'devices_expires_in' => 'Code läuft ab in',
     'devices_regenerate' => 'Neuer Code',
+    'pair_rate_limited' => 'Zu viele Versuche — kurz warten und erneut probieren.',
+    'pair_start_failed' => 'Kopplung konnte nicht gestartet werden. Erneut versuchen.',
     'devices_list_heading' => 'Verbundene Geräte',
     'devices_last_used' => 'Zuletzt genutzt :when',
     'devices_never_used' => 'Noch nie genutzt',

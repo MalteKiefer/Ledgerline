@@ -27,6 +27,8 @@ return [
     'devices_limit_note' => 'Up to :max devices; pairing a new one when full removes the oldest.',
     'devices_expires_in' => 'Code expires in',
     'devices_regenerate' => 'New code',
+    'pair_rate_limited' => 'Too many attempts — wait a moment and try again.',
+    'pair_start_failed' => 'Could not start pairing. Try again.',
     'devices_list_heading' => 'Connected devices',
     'devices_last_used' => 'Last used :when',
     'devices_never_used' => 'Never used yet',
