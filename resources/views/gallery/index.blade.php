@@ -366,7 +366,7 @@
               <button type="button" x-show="unanalyzedCount() > 0" x-cloak @click="deepFaceRescan()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white" :title="'{{ __('gallery.analyze_all_hint') }}'">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.analyze_all') }} <span class="tabular-nums opacity-80" x-text="'(' + unanalyzedCount() + ')'"></span>
               </button>
-              <button type="button" @click="scanFaces()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+              <button type="button" @click="smartRescan()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
                 <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
               </button>
             </div>
@@ -399,7 +399,7 @@
               <button type="button" x-show="unanalyzedCount() > 0" x-cloak @click="deepFaceRescan()" class="inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white" :title="'{{ __('gallery.analyze_all_hint') }}'">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.analyze_all') }} <span class="tabular-nums opacity-80" x-text="'(' + unanalyzedCount() + ')'"></span>
               </button>
-              <button type="button" @click="scanFaces()" class="inline-flex items-center gap-2 rounded-xl border border-gray-300 dark:border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 transition hover:bg-gray-50 dark:hover:bg-gray-800">
+              <button type="button" @click="smartRescan()" class="inline-flex items-center gap-2 rounded-xl border border-gray-300 dark:border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 transition hover:bg-gray-50 dark:hover:bg-gray-800">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.scan_faces') }}
               </button>
             </div>
@@ -539,7 +539,7 @@
     </div>
 
     {{-- Floating upload / processing card --}}
-    <div x-show="state === 'ready' && (uploading || progress.active || uploads.length || failedCount)" x-cloak x-transition
+    <div x-show="state === 'ready' && (uploading || progress.active || uploads.length || failedCount || _mlRunning || peopleScanning)" x-cloak x-transition
         class="fixed bottom-4 right-4 z-[860] w-72 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-xl">
       <div class="flex items-center justify-between">
         <span class="text-xs font-semibold text-gray-700 dark:text-gray-200" x-text="progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload'))"></span>
@@ -556,6 +556,19 @@
         <div class="mt-2">
           <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.processing') }}</span><span x-text="progress.done + ' / ' + progress.total"></span></div>
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${progress.total ? (progress.done / progress.total * 100) : 0}%`"></div></div>
+        </div>
+      </template>
+      {{-- Face analysis (ML) — visible so the background face pass isn't a mystery --}}
+      <template x-if="_mlRunning">
+        <div class="mt-2">
+          <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.jobs_analyze') }}</span><span class="tabular-nums" x-text="mlProgress.done + ' / ' + mlProgress.total"></span></div>
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${mlProgress.total ? (mlProgress.done / mlProgress.total * 100) : 8}%`"></div></div>
+        </div>
+      </template>
+      <template x-if="peopleScanning && ! _mlRunning">
+        <div class="mt-2">
+          <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.people') }}</span><span class="tabular-nums" x-text="peopleProgress.done + ' / ' + peopleProgress.total"></span></div>
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${peopleProgress.total ? (peopleProgress.done / peopleProgress.total * 100) : 8}%`"></div></div>
         </div>
       </template>
       <template x-if="failedCount && !progress.active">
