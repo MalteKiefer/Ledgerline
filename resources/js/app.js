@@ -2521,11 +2521,13 @@ return {
                 if (! m || ! Array.isArray(m.faces)) continue;
                 m.faces.forEach((f, idx) => {
                     if (Array.isArray(f.embedding) && f.cropRef) {
-                        faces.push({ emb: f.embedding, meta: { photoId: p.id, idx, cropRef: f.cropRef, cropKey: f.cropKey } });
+                        faces.push({ emb: Array.from(f.embedding), meta: { photoId: p.id, idx, cropRef: f.cropRef, cropKey: f.cropKey } });
                     }
                 });
             }
-            const seedShape = (pp) => ({ id: pp.id, name: pp.name || '', hidden: ! ! pp.hidden, pinned: ! ! pp.pinned, centroid: pp.centroid, members: (pp.faces || []).map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey, manual: ! ! f.manual })) });
+            // Unwrap Alpine's reactive proxies into plain arrays/objects — the Web
+            // Worker's structured clone can't serialise a Proxy (DataCloneError).
+            const seedShape = (pp) => ({ id: pp.id, name: pp.name || '', hidden: ! ! pp.hidden, pinned: ! ! pp.pinned, centroid: Array.from(pp.centroid || []), members: (pp.faces || []).map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey, manual: ! ! f.manual })) });
             // A scoped (incremental) scan seeds from the existing people so new
             // faces merge into them; a full scan starts empty and carries names
             // over by matching the previous scan's centroids. Manually trained
@@ -2536,7 +2538,7 @@ return {
             const seedIds = new Set();
             const seeds = [];
             for (const pp of base) { if (! seedIds.has(pp.id)) { seedIds.add(pp.id); seeds.push(seedShape(pp)); } }
-            const prev = incremental ? [] : (this.index.people || []).filter((pp) => pp.centroid).map((pp) => ({ name: pp.name || '', hidden: ! ! pp.hidden, centroid: pp.centroid }));
+            const prev = incremental ? [] : (this.index.people || []).filter((pp) => pp.centroid).map((pp) => ({ name: pp.name || '', hidden: ! ! pp.hidden, centroid: Array.from(pp.centroid || []) }));
 
             // Cluster off the main thread (falls back to an inline pass). New
             // clusters come back with id=null; assign store ids here.
@@ -2577,7 +2579,10 @@ return {
                 resolve(e.data.built || []);
             };
             worker.onerror = () => { worker.terminate(); this._faceClustersInline(data).then(resolve); };
-            worker.postMessage({ type: 'faces', ...data });
+            // postMessage can throw synchronously (e.g. DataCloneError on a value
+            // structured-clone can't serialise) — fall back to the inline pass.
+            try { worker.postMessage({ type: 'faces', ...data }); }
+            catch (e) { worker.terminate(); this._faceClustersInline(data).then(resolve); }
         });
     },
     async _faceClustersInline({ faces, seeds, prev, incremental }) {
