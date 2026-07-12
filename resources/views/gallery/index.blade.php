@@ -214,7 +214,7 @@
         <div x-show="view === 'jobs'">
           <div class="mb-2 flex items-center justify-between gap-3">
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.jobs_heading') }}</h2>
-            <button type="button" @click="runPipeline()" :disabled="_pipelineRunning || progress.active || peopleScanning || dupScanning"
+            <button type="button" @click="runAllJobs()" :disabled="_pipelineRunning || progress.active || peopleScanning || dupScanning || deepScanning"
                 class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
               <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.jobs_run_all') }}
             </button>
@@ -230,13 +230,25 @@
               <div x-show="progress.active" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${progress.total ? (progress.done / progress.total * 100) : 0}%`"></div></div>
               <button type="button" x-show="failedCount && !progress.active" @click="retryFailed()" class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300 underline">{{ __('gallery.retry_failed') }}</button>
             </div>
+            {{-- Face analysis (ML detection backlog — must run before faces can be grouped) --}}
+            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.jobs_analyze') }}</span>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400"
+                        x-text="(deepScanning || _mlRunning) ? (mlProgress.done + ' / ' + mlProgress.total) : (unanalyzedCount() ? (unanalyzedCount() + ' ' + @js(__('gallery.jobs_pending'))) : @js(__('gallery.jobs_done')))"></span>
+                  <button type="button" x-show="!deepScanning && !_mlRunning && !peopleScanning && unanalyzedCount() > 0" @click="deepFaceRescan()" class="text-xs font-medium text-gray-700 dark:text-gray-300 underline">{{ __('gallery.jobs_run') }}</button>
+                </div>
+              </div>
+              <div x-show="deepScanning || _mlRunning" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${mlProgress.total ? (mlProgress.done / mlProgress.total * 100) : 8}%`"></div></div>
+            </div>
             {{-- Faces --}}
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.people') }}</span>
                 <div class="flex items-center gap-3">
                   <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="peopleScanning ? (peopleProgress.done + ' / ' + peopleProgress.total) : people.length"></span>
-                  <button type="button" x-show="!peopleScanning && !progress.active" @click="scanFaces()" class="text-xs font-medium text-gray-700 dark:text-gray-300 underline">{{ __('gallery.jobs_run') }}</button>
+                  <button type="button" x-show="!peopleScanning && !progress.active && !deepScanning" @click="scanFaces()" class="text-xs font-medium text-gray-700 dark:text-gray-300 underline">{{ __('gallery.jobs_run') }}</button>
                 </div>
               </div>
               <div x-show="peopleScanning" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${peopleProgress.total ? (peopleProgress.done / peopleProgress.total * 100) : 0}%`"></div></div>
@@ -285,7 +297,11 @@
 
         {{-- MAP --}}
         <div x-show="view === 'map'">
-          <template x-if="! mapPhotos.length"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_results') }}</p></template>
+          <div x-show="geoProgress.total && geoProgress.done < geoProgress.total" x-cloak class="mb-3 flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2 text-sm text-gray-600 dark:text-gray-300">
+            <svg class="h-4 w-4 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+            <span>{{ __('gallery.map_loading') }} <span class="tabular-nums" x-text="geoProgress.done + ' / ' + geoProgress.total"></span></span>
+          </div>
+          <template x-if="! mapPhotos.length && ! (geoProgress.total && geoProgress.done < geoProgress.total)"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_results') }}</p></template>
           <div x-ref="map" x-show="mapPhotos.length" class="h-[70vh] w-full overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800"></div>
         </div>
 

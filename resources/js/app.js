@@ -1106,6 +1106,7 @@ return {
             this.selected = [];
             if (v !== 'library') this.clearSearch();
             if (v === 'map') this.renderMap();
+            else this._destroyMap();
         });
     },
 
@@ -1381,6 +1382,18 @@ return {
             this._pipelineRunning = false;
         }
     },
+    // "Run all" from the Activity panel: if photos still need the ML face pass,
+    // force it (deepFaceRescan analyzes + clusters), else run the normal pipeline;
+    // finish with a duplicate pass either way.
+    async runAllJobs() {
+        if (this._pipelineRunning || this.deepScanning || this.state !== 'ready') return;
+        if (this.unanalyzedCount() > 0) {
+            await this.deepFaceRescan();
+            if (! this.dupScanning) await this.scanDuplicates();
+        } else {
+            await this.runPipeline();
+        }
+    },
     _procErrorText(e) {
         const m = (e && e.message) || '';
         if (m === 'network') return labels.uploadErrNetwork || 'Network error';
@@ -1486,6 +1499,7 @@ return {
         p.taken_at = d.exif?.taken_at || p.created;
         p.width = d.width; p.height = d.height; p.duration = d.duration;
         p.lat = d.exif?.lat ?? null; p.lng = d.exif?.lon ?? null;
+        p.geoChecked = true; // coords are now known (or known-absent) — map skip
         p.camera = d.exif?.camera ?? null;
         p.hasFaces = meta.faces.length;
         // Face-crop blob ids on the entry too, so reconcile keeps them (they live
@@ -2078,21 +2092,34 @@ return {
     get mapPhotos() { return this.libraryPhotos.filter((p) => p.lat != null && p.lng != null); },
     // Photos processed before GPS was promoted onto the index carry their
     // coordinates only inside the meta blob; backfill lat/lng from there once.
+    geoProgress: { done: 0, total: 0 },
     async _ensureGeo() {
         if (this._geoLoaded) return;
-        let changed = false;
-        for (const p of this.libraryPhotos) {
-            if (p.lat != null || ! p.metaRef) continue;
-            try {
-                const b = await this._decryptBlob(p.metaRef, p.metaKey);
-                const m = JSON.parse(new TextDecoder().decode(b));
-                if (m.exif && m.exif.lat != null) {
-                    p.lat = m.exif.lat; p.lng = m.exif.lon;
-                    if (! p.camera && m.exif.camera) p.camera = m.exif.camera;
-                    changed = true;
-                }
-            } catch (e) { /* skip */ }
-        }
+        // Only photos we've never inspected: those with promoted coords are done,
+        // and `geoChecked` marks the geo-less ones so we never decrypt them again
+        // (across sessions), which is what made the first map open crawl.
+        const targets = this.libraryPhotos.filter((p) => p.lat == null && ! p.geoChecked && p.metaRef);
+        if (! targets.length) { this._geoLoaded = true; return; }
+        this.geoProgress = { done: 0, total: targets.length };
+        let changed = false, i = 0, done = 0;
+        // Decrypt the meta blobs in parallel on the worker pool (off the main
+        // thread; the ciphertext fetch hits the immutable blob cache).
+        const worker = async () => {
+            while (i < targets.length) {
+                const p = targets[i++];
+                try {
+                    const b = await fetchDecryptWorker('/gallery/raw', p.metaRef, p.metaKey);
+                    const m = JSON.parse(new TextDecoder().decode(b));
+                    if (m.exif && m.exif.lat != null) {
+                        p.lat = m.exif.lat; p.lng = m.exif.lon;
+                        if (! p.camera && m.exif.camera) p.camera = m.exif.camera;
+                    }
+                } catch (e) { /* skip */ }
+                p.geoChecked = true; changed = true;
+                this.geoProgress = { done: ++done, total: targets.length };
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(8, targets.length) }, worker));
         this._geoLoaded = true;
         if (changed) this._save();
     },
@@ -2117,18 +2144,25 @@ return {
             const el = this.$refs.map;
             if (! el) return;
             if (this._map) { this._map.remove(); this._map = null; }
-            this._map = L.map(el).setView([20, 0], 2);
+            // Zoom animation off: with markercluster + fitBounds/double-click, an
+            // in-flight animateZoom can fire on a torn-down pane and throw
+            // "_latLngToNewLayerPoint of null". Instant zoom sidesteps it entirely.
+            this._map = L.map(el, { zoomAnimation: false, markerZoomAnimation: false }).setView([20, 0], 2);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(this._map);
-            const cluster = L.markerClusterGroup ? L.markerClusterGroup() : L.layerGroup();
+            const cluster = L.markerClusterGroup ? L.markerClusterGroup({ animate: false }) : L.layerGroup();
             for (const p of this.mapPhotos) {
                 const m = L.marker([p.lat, p.lng]);
                 m.on('click', () => this.openViewer(p));
                 cluster.addLayer(m);
             }
             this._map.addLayer(cluster);
-            if (this.mapPhotos.length) this._map.fitBounds(L.latLngBounds(this.mapPhotos.map((p) => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 14 });
+            if (this.mapPhotos.length) this._map.fitBounds(L.latLngBounds(this.mapPhotos.map((p) => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 14, animate: false });
+            setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 120);
         });
     },
+    // Tear the map down when leaving the map view so stray animation callbacks
+    // can't fire on a hidden/half-removed container.
+    _destroyMap() { if (this._map) { this._map.remove(); this._map = null; } },
 
     /* ---- Albums (plain client-side grouping, sealed in the index) ---- */
     activeAlbum: null,
