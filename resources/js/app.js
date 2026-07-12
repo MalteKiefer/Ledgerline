@@ -2733,11 +2733,22 @@ return {
 
     /* ---- Merge two people into one ---- */
     mergePicker: false,
-    openMergePicker() { if (this.currentPerson) this.mergePicker = true; },
+    mergeQuery: '',
+    openMergePicker() { if (this.currentPerson) { this.mergeQuery = ''; this.mergePicker = true; } },
     closeMergePicker() { this.mergePicker = false; },
-    // Every other visible person that could be merged into the current one.
+    // Every other visible person that could be merged into the current one, filtered
+    // by the search box and ordered named-first (alphabetical), then the unnamed.
     mergeCandidates() {
-        return (this.index.people || []).filter((pp) => pp.id !== this.activePerson && ! pp.hidden && this.personPhotos(pp).length > 0);
+        const q = this.mergeQuery.trim().toLowerCase();
+        let list = (this.index.people || []).filter((pp) => pp.id !== this.activePerson && ! pp.hidden && this.personPhotos(pp).length > 0);
+        if (q) list = list.filter((pp) => (pp.name || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => {
+            const an = (a.name || '').trim(), bn = (b.name || '').trim();
+            if (an && ! bn) return -1;
+            if (! an && bn) return 1;
+            if (an && bn) return an.localeCompare(bn);
+            return this.personCount(b) - this.personCount(a);
+        });
     },
     // Merge `other` INTO the current person: combine faces (dedup), average the
     // centroids by face count so future scans still match, keep a name, and drop
