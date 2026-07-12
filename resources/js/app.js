@@ -1138,10 +1138,41 @@ return {
         window.addEventListener('drop', () => { depth = 0; this.dragging = false; });
     },
     dragging: false,
-    drop(event) {
+    async drop(event) {
         this.dragging = false;
         if (this.state !== 'ready') return;
+        // A dropped FOLDER isn't expanded by dataTransfer.files — walk the entry
+        // tree so nested files aren't silently missed. Capture the entries before
+        // any await (the item list is cleared once the handler returns).
+        const items = event.dataTransfer.items;
+        const entries = items && items.length && items[0].webkitGetAsEntry
+            ? [...items].map((it) => it.webkitGetAsEntry?.()).filter(Boolean)
+            : [];
+        if (entries.length) {
+            const files = await this._filesFromEntries(entries);
+            if (files.length) return this.upload(files);
+        }
         this.upload(event.dataTransfer.files);
+    },
+    // Recursively collect every file under the dropped entries (files + folders).
+    async _filesFromEntries(entries) {
+        const out = [];
+        const walk = async (entry) => {
+            if (! entry) return;
+            if (entry.isFile) {
+                await new Promise((res) => entry.file((f) => { out.push(f); res(); }, () => res()));
+            } else if (entry.isDirectory) {
+                const reader = entry.createReader();
+                // readEntries returns at most ~100 per call — drain it fully.
+                for (;;) {
+                    const batch = await new Promise((res) => reader.readEntries(res, () => res([])));
+                    if (! batch.length) break;
+                    for (const e of batch) await walk(e);
+                }
+            }
+        };
+        for (const e of entries) await walk(e);
+        return out;
     },
 
     /* ---- Derived views ---- */
@@ -1182,6 +1213,7 @@ return {
     upload(fileList) {
         // Accept images/videos by MIME, plus HEIC/HEIF/MOV by extension (the OS
         // often reports an empty MIME type for those).
+        const rawCount = [...fileList].length;
         const files = [...fileList].filter((f) => /^image\/|^video\//.test(f.type) || /\.(heic|heif|avif|mov|mp4|m4v)$/i.test(f.name));
         if (! files.length) return;
         if (this.uploadBatches === 0) this.uploads = [];
@@ -1206,6 +1238,17 @@ return {
                 if (still && clip) { motionFor.set(still, clip); consumed.add(clip); }
             }
             const queue = files.filter((f) => ! consumed.has(f)); // .MOV partners ride along with their still
+
+            // Transparency: a big drop that yields fewer photos than files is almost
+            // always Live Photos (still+.MOV folded into one) or non-media files
+            // filtered out — report it so the number isn't a mystery.
+            const skipped = rawCount - files.length;
+            if (consumed.size || skipped) {
+                const parts = [(labels.uploadAdded || ':n photos').replace(':n', queue.length)];
+                if (consumed.size) parts.push((labels.uploadMerged || ':n Live Photo videos merged').replace(':n', consumed.size));
+                if (skipped) parts.push((labels.uploadSkipped || ':n skipped').replace(':n', skipped));
+                window.llToast?.(parts.join(' · '));
+            }
 
             const start = this.uploads.length;
             for (const f of queue) this.uploads.push({ name: f.name, state: 'pending', progress: 0 });
@@ -2520,6 +2563,14 @@ return {
         } catch (e) { return ''; }
     },
     personCover(pp) { return (pp.faces || [])[0] || null; },
+    // Choose which photo's face represents the person in the people grid: move
+    // that face to the front (personCover returns faces[0]).
+    setPersonCover(photo) {
+        const pp = this.currentPerson;
+        if (! pp || ! photo) return;
+        const i = (pp.faces || []).findIndex((f) => f.photoId === photo.id);
+        if (i > 0) { const [f] = pp.faces.splice(i, 1); pp.faces.unshift(f); this._save(); }
+    },
     async scanFaces() {
         this.peopleScanning = true;
         try {
@@ -5370,8 +5421,9 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
             const old = c.avatarRef;
             c.avatarRef = ref; c.avatarKey = enc.encFileKey; c.updated = new Date().toISOString();
             // Seed the display cache from the plaintext crop so the avatar updates
-            // immediately (no decrypt round-trip, no reload).
-            this.avatarUrls[ref] = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            // immediately (no decrypt round-trip, no reload). Reassign the whole map
+            // so the new key is reliably reactive in the list + header at once.
+            this.avatarUrls = { ...this.avatarUrls, [ref]: URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' })) };
             this._save();
             if (old) this._freeAvatar(old);
         } catch (e) { window.llToast?.(labels.avatarFailed || 'Upload failed'); }
