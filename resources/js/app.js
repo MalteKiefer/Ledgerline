@@ -1373,9 +1373,14 @@ return {
             }
             // Deferred vision pass: fills in embeddings + faces that the fast
             // upload skipped, so photos appear first and ML catches up after.
-            await this.runMlBacklog();
-            if (withScans && this.state === 'ready' && ! this.dupScanning && ! this.peopleScanning) {
+            const mlDone = await this.runMlBacklog();
+            // Cluster if asked to, OR whenever the ML pass just detected faces on
+            // new photos — otherwise a reload that finishes the backlog would fill
+            // faces into the meta but never group them into people.
+            if ((withScans || mlDone > 0) && this.state === 'ready' && ! this.dupScanning && ! this.peopleScanning) {
                 await this.scanFaces();
+            }
+            if (withScans && this.state === 'ready' && ! this.dupScanning && ! this.peopleScanning) {
                 await this.scanDuplicates();
             }
         } finally {
@@ -1501,10 +1506,10 @@ return {
         p.lat = d.exif?.lat ?? null; p.lng = d.exif?.lon ?? null;
         p.geoChecked = true; // coords are now known (or known-absent) — map skip
         p.camera = d.exif?.camera ?? null;
-        p.hasFaces = meta.faces.length;
-        // Face-crop blob ids on the entry too, so reconcile keeps them (they live
-        // inside the meta blob otherwise, invisible to the live-set builder).
-        p.faceCropRefs = meta.faces.map((f) => f.cropRef).filter(Boolean);
+        // Faces were skipped in this fast pass — leave hasFaces UNKNOWN (null), not
+        // 0, so the photo counts as un-analyzed until the ML pass actually runs.
+        p.hasFaces = null;
+        p.faceCropRefs = [];
         // The CLIP embedding + faces were skipped (fast upload) — mark the photo
         // for the deferred ML pass and cache its fresh meta for the merge.
         p.mlPending = true;
@@ -1566,10 +1571,10 @@ return {
     mlProgress: { done: 0, total: 0 },
     _mlRunning: false, // reactive so the activity panel can show ML backlog state
     async runMlBacklog() {
-        if (this._mlRunning || this.state !== 'ready') return;
+        if (this._mlRunning || this.state !== 'ready') return 0;
         const pending = () => this.index.photos.filter((p) => p.mlPending && ! p.trashed && ! p.failed && (p.mediumRef || p.originalRef));
         const total = pending().length;
-        if (! total) return;
+        if (! total) return 0;
         this._mlRunning = true;
         this.mlProgress = { done: 0, total };
         let sinceFlush = 0;
@@ -1595,6 +1600,7 @@ return {
             try { await window.LLGalleryStore.flush(); } catch (e) { /* debounce backstop */ }
             this._mlRunning = false;
         }
+        return done;
     },
     // Photos never successfully run through the ML face pass yet (no face count
     // recorded) or that gave up earlier — these carry faces the clustering can't
@@ -1606,6 +1612,14 @@ return {
     // then re-cluster. This is what actually surfaces people across a large
     // library where the background pass never finished.
     deepScanning: false,
+    // What the People "Rescan" button should do: if photos still need the ML
+    // face pass (detection), run that first — clustering alone can only regroup
+    // faces that were already detected, so on an un-analyzed library it finds
+    // nothing new. Otherwise just re-cluster.
+    async smartRescan() {
+        if (this.unanalyzedCount() > 0) return this.deepFaceRescan();
+        return this.scanFaces();
+    },
     async deepFaceRescan() {
         if (this.peopleScanning || this._mlRunning || this.deepScanning || this.state !== 'ready') return;
         this.deepScanning = true;
