@@ -230,6 +230,64 @@ class DevicePairingTest extends TestCase
         $this->assertStringContainsString((string) $token->ip, $list->json('devices.0.meta'));
     }
 
+    public function test_heartbeat_records_sync_state_and_reports_no_wipe(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('CLI')->plainTextToken;
+
+        $this->postJson('/api/v1/device/heartbeat', ['state' => 'syncing', 'detail' => 'gallery 10/50'],
+            ['Authorization' => 'Bearer '.$token])
+            ->assertOk()->assertJson(['wipe' => false]);
+
+        $row = PersonalAccessToken::query()->first();
+        $this->assertSame('syncing', $row->sync_state);
+        $this->assertSame('gallery 10/50', $row->sync_detail);
+        $this->assertNotNull($row->sync_reported_at);
+    }
+
+    public function test_wipe_flag_is_delivered_via_heartbeat_and_me(): void
+    {
+        $user = User::factory()->create();
+        $pat = $user->createToken('CLI');
+        $token = $pat->plainTextToken;
+        $id = $pat->accessToken->getKey();
+
+        // Owner flags the device for a remote wipe (web, session).
+        $this->actingAs($user)->postJson("/devices/{$id}/wipe")->assertOk();
+        $this->assertNotNull(PersonalAccessToken::query()->find($id)->wipe_requested_at);
+
+        $this->app['auth']->forgetGuards();
+        // The client learns of the wipe from both heartbeat and /me.
+        $this->postJson('/api/v1/device/heartbeat', ['state' => 'idle'], ['Authorization' => 'Bearer '.$token])
+            ->assertOk()->assertJson(['wipe' => true]);
+        $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$token])
+            ->assertOk()->assertJson(['wipe' => true]);
+    }
+
+    public function test_wipe_is_owner_scoped(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $id = $owner->createToken('CLI')->accessToken->getKey();
+
+        $this->actingAs($other)->postJson("/devices/{$id}/wipe")->assertOk();
+        $this->assertNull(PersonalAccessToken::query()->find($id)->wipe_requested_at);
+    }
+
+    public function test_devices_list_reports_sync_and_wipe_state(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('CLI')->plainTextToken;
+        $this->postJson('/api/v1/device/heartbeat', ['state' => 'syncing', 'detail' => 'files'],
+            ['Authorization' => 'Bearer '.$token])->assertOk();
+
+        $this->app['auth']->forgetGuards();
+        $list = $this->actingAs($user)->getJson('/devices')->assertOk();
+        $this->assertTrue($list->json('devices.0.syncing'));
+        $this->assertSame('files', $list->json('devices.0.syncDetail'));
+        $this->assertFalse($list->json('devices.0.wipeRequested'));
+    }
+
     public function test_a_paired_device_can_be_revoked_from_the_web(): void
     {
         $user = User::factory()->create();

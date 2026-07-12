@@ -10,6 +10,7 @@ use Endroid\QrCode\QrCode;
 use Endroid\QrCode\Writer\SvgWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 /**
  * Web (session) side of QR device pairing. The signed-in owner starts a pairing
@@ -86,16 +87,28 @@ class DevicePairingController extends Controller
     {
         $devices = $request->user()->tokens()
             ->orderByDesc('created_at')->get()
-            ->map(fn ($t): array => [
-                'id' => $t->id,
-                'name' => $t->name ?: __('account.sessions_unknown'),
-                'meta' => trim(implode(' · ', array_filter([
-                    $t->ip,
-                    $t->last_used_at
-                        ? __('account.devices_last_used', ['when' => $t->last_used_at->diffForHumans()])
-                        : __('account.devices_never_used'),
-                ]))),
-            ])->all();
+            ->map(function ($t): array {
+                // Custom (non-Sanctum) columns come back as strings; parse the
+                // heartbeat time. A client counts as actively syncing only if it
+                // reported so recently (a stale "syncing" is treated as idle).
+                $reportedAt = $t->sync_reported_at ? Carbon::parse($t->sync_reported_at) : null;
+                $syncing = $t->sync_state === 'syncing' && $reportedAt && $reportedAt->gt(now()->subMinutes(3));
+
+                return [
+                    'id' => $t->id,
+                    'name' => $t->name ?: __('account.sessions_unknown'),
+                    'meta' => trim(implode(' · ', array_filter([
+                        $t->ip,
+                        $t->last_used_at
+                            ? __('account.devices_last_used', ['when' => $t->last_used_at->diffForHumans()])
+                            : __('account.devices_never_used'),
+                    ]))),
+                    'syncing' => $syncing,
+                    'syncDetail' => $syncing ? $t->sync_detail : null,
+                    'syncSeen' => $reportedAt?->diffForHumans(),
+                    'wipeRequested' => $t->wipe_requested_at !== null,
+                ];
+            })->all();
 
         return response()->json(['devices' => $devices]);
     }
@@ -104,6 +117,18 @@ class DevicePairingController extends Controller
     public function revokeDevice(Request $request, string $tokenId): JsonResponse
     {
         $request->user()->tokens()->whereKey($tokenId)->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Flag a device to wipe its local state on next contact (remote kill switch).
+     * The token stays valid so the client can fetch the flag and self-erase; the
+     * owner can still revoke it outright. Owner-scoped.
+     */
+    public function wipeDevice(Request $request, string $tokenId): JsonResponse
+    {
+        $request->user()->tokens()->whereKey($tokenId)->update(['wipe_requested_at' => now()]);
 
         return response()->json(['ok' => true]);
     }
