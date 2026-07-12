@@ -1617,9 +1617,21 @@ return {
     // faces that were already detected, so on an un-analyzed library it finds
     // nothing new. Otherwise just re-cluster.
     async smartRescan() {
-        if (this.unanalyzedCount() > 0) return this.deepFaceRescan();
-        return this.scanFaces();
+        // People scanning always covers the whole library (the scope selector is
+        // for the duplicate scan) — a scoped re-cluster of a few photos surprised
+        // users by finishing instantly with no visible change.
+        const prev = this.scanLimit;
+        this.scanLimit = 0;
+        try {
+            if (this.unanalyzedCount() > 0) return await this.deepFaceRescan();
+            return await this.scanFaces();
+        } finally { this.scanLimit = prev; }
     },
+    // Diagnostics for the People panel: how many faces were actually detected and
+    // in how many photos — makes it obvious whether detection (vs clustering) is
+    // the problem when few or no people show up.
+    facesDetected() { return this.index.photos.reduce((s, p) => s + (Number(p.hasFaces) || 0), 0); },
+    photosWithFaces() { return this.index.photos.filter((p) => (Number(p.hasFaces) || 0) > 0).length; },
     async deepFaceRescan() {
         if (this.peopleScanning || this._mlRunning || this.deepScanning || this.state !== 'ready') return;
         this.deepScanning = true;
