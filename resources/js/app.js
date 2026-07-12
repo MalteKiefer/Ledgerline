@@ -1128,7 +1128,23 @@ return {
         this.runPipeline(false); // catch up unprocessed thumbnails; no auto face/dup scan on plain load
     },
 
-    _save() { if (this.state === 'ready') window.LLGalleryStore.touch(); },
+    _save() { this._mut++; if (this.state === 'ready') window.LLGalleryStore.touch(); },
+
+    /* ---- Derived-data memoisation. Getters like libraryPhotos / people are read
+       many times per reactive frame; at a few thousand photos, recomputing a sort
+       + a photoId map on every read froze the tab. Cache by a mutation counter
+       (bumped on every _save) so each is computed at most once between changes. --- */
+    _mut: 0,
+    _memo: {},
+    _cache(key, fn) {
+        const sig = this._mut + '|' + this.index.photos.length + '|' + ((this.index.people || []).length);
+        const hit = this._memo[key];
+        if (hit && hit.sig === sig) return hit.val;
+        const val = fn();
+        this._memo[key] = { sig, val };
+        return val;
+    },
+    _photoIndex() { return this._cache('idx', () => new Map(this.libraryPhotos.map((p) => [p.id, p]))); },
 
     initDropzone() {
         let depth = 0;
@@ -1177,16 +1193,16 @@ return {
 
     /* ---- Derived views ---- */
     get libraryPhotos() {
-        return this.index.photos
+        return this._cache('lib', () => this.index.photos
             .filter((p) => ! p.trashed)
-            .sort((a, b) => new Date(b.taken_at || b.created || 0) - new Date(a.taken_at || a.created || 0));
+            .sort((a, b) => new Date(b.taken_at || b.created || 0) - new Date(a.taken_at || a.created || 0)));
     },
-    get pendingCount() { return this.index.photos.filter((p) => ! p.trashed && ! p.thumbRef && ! p.failed).length; },
+    get pendingCount() { return this._cache('pending', () => this.index.photos.filter((p) => ! p.trashed && ! p.thumbRef && ! p.failed).length); },
     photoCount() { return this.libraryPhotos.length; },
-    trashCount() { return this.index.photos.filter((p) => p.trashed).length; },
+    trashCount() { return this._cache('trashN', () => this.index.photos.filter((p) => p.trashed).length); },
     get trashedPhotos() {
-        return this.index.photos.filter((p) => p.trashed)
-            .sort((a, b) => new Date(b.trashed || 0) - new Date(a.trashed || 0));
+        return this._cache('trashed', () => this.index.photos.filter((p) => p.trashed)
+            .sort((a, b) => new Date(b.trashed || 0) - new Date(a.trashed || 0)));
     },
     // True while there are still older photos not yet put in the DOM.
     get hasMore() { return this.searchResults === null && this.renderLimit < this.libraryPhotos.length; },
@@ -1649,7 +1665,7 @@ return {
     // recorded) or that gave up earlier — these carry faces the clustering can't
     // see until they're analyzed.
     unanalyzedCount() {
-        return this.index.photos.filter((p) => ! p.trashed && (p.mediumRef || p.originalRef) && (p.hasFaces == null || p.mlFailed)).length;
+        return this._cache('unan', () => this.index.photos.filter((p) => ! p.trashed && (p.mediumRef || p.originalRef) && (p.hasFaces == null || p.mlFailed)).length);
     },
     // Force the deferred ML (embedding + faces) on every not-yet-analyzed photo,
     // then re-cluster. This is what actually surfaces people across a large
@@ -1673,8 +1689,8 @@ return {
     // Diagnostics for the People panel: how many faces were actually detected and
     // in how many photos — makes it obvious whether detection (vs clustering) is
     // the problem when few or no people show up.
-    facesDetected() { return this.index.photos.reduce((s, p) => s + (Number(p.hasFaces) || 0), 0); },
-    photosWithFaces() { return this.index.photos.filter((p) => (Number(p.hasFaces) || 0) > 0).length; },
+    facesDetected() { return this._cache('facesDet', () => this.index.photos.reduce((s, p) => s + (Number(p.hasFaces) || 0), 0)); },
+    photosWithFaces() { return this._cache('photosFaces', () => this.index.photos.filter((p) => (Number(p.hasFaces) || 0) > 0).length); },
     async deepFaceRescan() {
         if (this.peopleScanning || this._mlRunning || this.deepScanning || this.state !== 'ready') return;
         this.deepScanning = true;
@@ -2159,7 +2175,7 @@ return {
     _map: null,
     _miniMap: null,
     _geoLoaded: false,
-    get mapPhotos() { return this.libraryPhotos.filter((p) => p.lat != null && p.lng != null); },
+    get mapPhotos() { return this._cache('mapPhotos', () => this.libraryPhotos.filter((p) => p.lat != null && p.lng != null)); },
     // Photos processed before GPS was promoted onto the index carry their
     // coordinates only inside the meta blob; backfill lat/lng from there once.
     geoProgress: { done: 0, total: 0 },
@@ -2403,16 +2419,23 @@ return {
     // Hide clusters that have no live photos left (all trashed/purged) so a wiped
     // library doesn't leave ghost people behind.
     get people() {
-        return (this.index.people || [])
-            .filter((pp) => ! pp.hidden && this.personPhotos(pp).length > 0)
+        return this._cache('people', () => {
+            // Precompute each person's photo count once (not inside the comparator,
+            // which would rebuild it O(n log n) times).
+            const rows = (this.index.people || [])
+                .filter((pp) => ! pp.hidden)
+                .map((pp) => ({ pp, n: this.personPhotos(pp).length }))
+                .filter((r) => r.n > 0);
             // Named people first (alphabetical), then the unnamed rest by size.
-            .sort((a, b) => {
-                const an = (a.name || '').trim(), bn = (b.name || '').trim();
+            rows.sort((a, b) => {
+                const an = (a.pp.name || '').trim(), bn = (b.pp.name || '').trim();
                 if (an && ! bn) return -1;
                 if (! an && bn) return 1;
                 if (an && bn) return an.localeCompare(bn);
-                return this.personCount(b) - this.personCount(a);
+                return b.n - a.n;
             });
+            return rows.map((r) => r.pp);
+        });
     },
     get currentPerson() { return (this.index.people || []).find((pp) => pp.id === this.activePerson) || null; },
     openPerson(pp) { this.activePerson = pp.id; this.view = 'person'; },
@@ -2547,8 +2570,8 @@ return {
     },
     personPhotos(pp) {
         if (! pp) return [];
+        const byId = this._photoIndex(); // memoised map, not rebuilt per call
         const ids = [...new Set((pp.faces || []).map((f) => f.photoId))];
-        const byId = new Map(this.libraryPhotos.map((p) => [p.id, p]));
         return ids.map((id) => byId.get(id)).filter(Boolean);
     },
     personCount(pp) { return this.personPhotos(pp).length; },
