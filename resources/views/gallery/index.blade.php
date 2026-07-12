@@ -360,9 +360,11 @@
         <div x-show="view === 'people'">
           {{-- Toolbar: only when results exist --}}
           <div x-show="people.length && ! peopleScanning && ! deepScanning" class="mb-5 flex items-center justify-between gap-3">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.people') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="people.length"></span></h2>
-            <div class="flex items-center gap-2">
-              @include('gallery._scan_scope')
+            <div class="min-w-0">
+              <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.people') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="people.length"></span></h2>
+              <p class="text-xs text-gray-400 dark:text-gray-500" x-text="facesDetected() + ' {{ __('gallery.faces_found') }} · ' + photosWithFaces() + ' {{ __('gallery.photos_label') }}' + (unanalyzedCount() ? ' · ' + unanalyzedCount() + ' {{ __('gallery.jobs_pending') }}' : '')"></p>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
               <button type="button" x-show="unanalyzedCount() > 0" x-cloak @click="deepFaceRescan()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white" :title="'{{ __('gallery.analyze_all_hint') }}'">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.analyze_all') }} <span class="tabular-nums opacity-80" x-text="'(' + unanalyzedCount() + ')'"></span>
               </button>
@@ -395,7 +397,6 @@
             <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="user" class="h-8 w-8 text-gray-400 dark:text-gray-500" /></div>
             <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_people') }}</p>
             <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
-              @include('gallery._scan_scope')
               <button type="button" x-show="unanalyzedCount() > 0" x-cloak @click="deepFaceRescan()" class="inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white" :title="'{{ __('gallery.analyze_all_hint') }}'">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.analyze_all') }} <span class="tabular-nums opacity-80" x-text="'(' + unanalyzedCount() + ')'"></span>
               </button>

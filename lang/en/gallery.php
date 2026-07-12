@@ -62,6 +62,7 @@ return [
     'tag_face' => 'Tag face',
     'jobs_analyze' => 'Face analysis',
     'jobs_pending' => 'pending',
+    'photos_label' => 'photos',
     'map_loading' => 'Loading locations…',
     'assign_heading' => 'Who is this?',
     'assign_hint' => 'Pick a person or type a new name. This face trains recognition and is matched across your other photos.',

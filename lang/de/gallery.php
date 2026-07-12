@@ -62,6 +62,7 @@ return [
     'tag_face' => 'Gesicht markieren',
     'jobs_analyze' => 'Gesichtsanalyse',
     'jobs_pending' => 'offen',
+    'photos_label' => 'Fotos',
     'map_loading' => 'Orte werden geladen…',
     'assign_heading' => 'Wer ist das?',
     'assign_hint' => 'Person wählen oder neuen Namen eingeben. Dieses Gesicht trainiert die Erkennung und wird in deinen anderen Fotos gesucht.',
