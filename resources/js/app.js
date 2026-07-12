@@ -305,10 +305,14 @@ window.LLGalleryStore = {
             const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(root), version: this.version });
             const res = await fetch('/gallery/store', { method: 'PUT', headers: jsonHeaders(), body });
             if (res.status === 409) {
-                // Someone else advanced the version; adopt it and re-seal our data.
+                // Another writer (e.g. the background ML pass, or a second tab)
+                // advanced the version. Adopt it and re-seal our data (this tab holds
+                // the authoritative in-memory copy). Back off a touch so a burst of
+                // concurrent flushes doesn't livelock.
                 const cur = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
                 this.version = cur.version ?? this.version;
-                if (retry < 3) return this._doFlush(retry + 1);
+                if (retry < 8) { await new Promise((r) => setTimeout(r, Math.min(120 * 2 ** retry, 2000))); return this._doFlush(retry + 1); }
+                throw new Error('gallery store save conflict');
             } else if (res.status === 429 && retry < 8) {
                 // Rate limited (e.g. a bulk empty-trash saturated the window). Back
                 // off and retry rather than dropping the save — otherwise a
