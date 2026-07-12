@@ -2330,6 +2330,116 @@ return {
         });
         return out;
     },
+    /* ---- Manual face tagging: draw a box → detect → assign to a person ---- */
+    faceTag: { active: false, drawing: false, box: null, busy: false },
+    _manualFace: null,
+    // Drawing needs a linear screen↔pixel map, so only at identity orientation.
+    canTagFace() {
+        const p = this.viewer.photo;
+        return !! p && this.viewer.kind === 'image' && ! p.rotation && ! p.flipH && ! p.flipV;
+    },
+    toggleFaceTag() {
+        if (! this.faceTag.active && ! this.canTagFace()) { window.llToast?.(labels.faceTagReset || 'Reset rotation/flip first'); return; }
+        this.faceTag = { active: ! this.faceTag.active, drawing: false, box: null, busy: false };
+    },
+    faceDragStart(e) {
+        if (! this.faceTag.active || this.faceTag.busy) return;
+        e.target.setPointerCapture?.(e.pointerId);
+        const r = this.$refs.vimg.getBoundingClientRect();
+        this._fdOrigin = { x: e.clientX - r.left, y: e.clientY - r.top };
+        this.faceTag.drawing = true;
+        this.faceTag.box = { x: this._fdOrigin.x, y: this._fdOrigin.y, w: 0, h: 0 };
+    },
+    faceDragMove(e) {
+        if (! this.faceTag.drawing) return;
+        const r = this.$refs.vimg.getBoundingClientRect();
+        const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+        const y = Math.max(0, Math.min(r.height, e.clientY - r.top));
+        this.faceTag.box = { x: Math.min(x, this._fdOrigin.x), y: Math.min(y, this._fdOrigin.y), w: Math.abs(x - this._fdOrigin.x), h: Math.abs(y - this._fdOrigin.y) };
+    },
+    async faceDragEnd() {
+        if (! this.faceTag.drawing) return;
+        this.faceTag.drawing = false;
+        const b = this.faceTag.box;
+        if (! b || b.w < 16 || b.h < 16) { this.faceTag.box = null; return; }
+        await this._analyzeManualFace(b);
+    },
+    // Crop the drawn region (padded) from the displayed image, run detection on
+    // it, take the best face, seal it into the photo meta, open the assign picker.
+    async _analyzeManualFace(boxPx) {
+        const img = this.$refs.vimg, p = this.viewer.photo;
+        if (! img || ! p) return;
+        this.faceTag.busy = true;
+        try {
+            const sx = img.naturalWidth / img.clientWidth, sy = img.naturalHeight / img.clientHeight;
+            const padX = boxPx.w * 0.45, padY = boxPx.h * 0.45;
+            let nx = Math.max(0, (boxPx.x - padX) * sx), ny = Math.max(0, (boxPx.y - padY) * sy);
+            let nw = Math.min(img.naturalWidth - nx, (boxPx.w + 2 * padX) * sx), nh = Math.min(img.naturalHeight - ny, (boxPx.h + 2 * padY) * sy);
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(nw); canvas.height = Math.round(nh);
+            canvas.getContext('2d').drawImage(img, nx, ny, nw, nh, 0, 0, canvas.width, canvas.height);
+            const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.92));
+            const fd = new FormData();
+            fd.append('_token', config.token);
+            fd.append('file', new File([blob], 'face.jpg', { type: 'image/jpeg' }));
+            const res = await fetch(config.analyzeUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+            if (! res.ok) throw new Error('http');
+            const d = await res.json();
+            const det = (d.faces || []).filter((f) => Array.isArray(f.embedding)).sort((a, b) => (b.score || 0) - (a.score || 0))[0];
+            if (! det) { window.llToast?.(labels.faceTagNone || 'No face found — draw a larger area'); this.faceTag.box = null; return; }
+            let meta = metaCache[p.id];
+            if (! meta) { try { meta = JSON.parse(new TextDecoder().decode(await this._decryptBlob(p.metaRef, p.metaKey))); } catch (e) { meta = { faces: [] }; } }
+            if (! Array.isArray(meta.faces)) meta.faces = [];
+            const cropBytes = det.crop ? this._b64bytes(det.crop) : new Uint8Array(await blob.arrayBuffer());
+            const cr = await this._encStore(cropBytes, 'crop.enc');
+            const face = { score: det.score, box: det.box, embedding: det.embedding, cropRef: cr.id, cropKey: cr.key, manual: true };
+            const idx = meta.faces.push(face) - 1;
+            const mr = await this._encStore(new TextEncoder().encode(JSON.stringify(meta)), 'meta.enc');
+            p.metaRef = mr.id; p.metaKey = mr.key;
+            metaCache[p.id] = meta;
+            p.hasFaces = meta.faces.length;
+            p.faceCropRefs = meta.faces.map((f) => f.cropRef).filter(Boolean);
+            this.viewer.meta = meta;
+            this._save();
+            this._manualFace = { photoId: p.id, idx, cropRef: cr.id, cropKey: cr.key, embedding: det.embedding };
+            this.faceTag.box = null; this.faceTag.active = false;
+            this.assignQuery = ''; this.assignPicker = true;
+        } catch (e) {
+            window.llToast?.(labels.faceTagFailed || 'Could not analyze the face');
+            this.faceTag.box = null;
+        } finally {
+            this.faceTag.busy = false;
+        }
+    },
+    /* ---- Assign a manually tagged face to a person (existing or new) ---- */
+    assignPicker: false,
+    assignQuery: '',
+    closeAssign() { this.assignPicker = false; this._manualFace = null; },
+    assignCandidates() {
+        const q = this.assignQuery.trim().toLowerCase();
+        let list = (this.index.people || []).filter((pp) => ! pp.hidden);
+        if (q) list = list.filter((pp) => (pp.name || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    },
+    assignToPerson(pp) {
+        const mf = this._manualFace;
+        if (! mf || ! pp) return;
+        if (! (pp.faces || (pp.faces = [])).some((f) => f.photoId === mf.photoId && f.idx === mf.idx)) {
+            this._centroidAdd(pp, mf.embedding);
+            pp.faces.push({ photoId: mf.photoId, idx: mf.idx, cropRef: mf.cropRef, cropKey: mf.cropKey, manual: true });
+        }
+        pp.pinned = true; // manual training — anchor this person in every future scan
+        this._save();
+        this.closeAssign();
+    },
+    assignToNew() {
+        const mf = this._manualFace;
+        if (! mf) return;
+        const pp = { id: window.LLGalleryStore.newId(), name: this.assignQuery.trim(), hidden: false, pinned: true, centroid: mf.embedding.slice(), faces: [{ photoId: mf.photoId, idx: mf.idx, cropRef: mf.cropRef, cropKey: mf.cropKey, manual: true }] };
+        (this.index.people = this.index.people || []).push(pp);
+        this._save();
+        this.closeAssign();
+    },
     personPhotos(pp) {
         if (! pp) return [];
         const ids = [...new Set((pp.faces || []).map((f) => f.photoId))];
@@ -2365,14 +2475,17 @@ return {
                     }
                 });
             }
+            const seedShape = (pp) => ({ id: pp.id, name: pp.name || '', hidden: ! ! pp.hidden, pinned: ! ! pp.pinned, centroid: pp.centroid, members: (pp.faces || []).map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey, manual: ! ! f.manual })) });
             // A scoped (incremental) scan seeds from the existing people so new
             // faces merge into them; a full scan starts empty and carries names
-            // over by matching the previous scan's centroids.
-            const seeds = incremental
-                ? (this.index.people || [])
-                    .filter((pp) => Array.isArray(pp.centroid) && pp.centroid.length)
-                    .map((pp) => ({ id: pp.id, name: pp.name || '', hidden: ! ! pp.hidden, centroid: pp.centroid, members: (pp.faces || []).map((f) => ({ photoId: f.photoId, idx: f.idx, cropRef: f.cropRef, cropKey: f.cropKey })) }))
-                : [];
+            // over by matching the previous scan's centroids. Manually trained
+            // (pinned) people ALWAYS seed — even a full scan — so a hand-drawn face
+            // anchors its person and pulls matching faces in from other photos.
+            const withCentroid = (this.index.people || []).filter((pp) => Array.isArray(pp.centroid) && pp.centroid.length);
+            const base = incremental ? withCentroid : withCentroid.filter((pp) => pp.pinned);
+            const seedIds = new Set();
+            const seeds = [];
+            for (const pp of base) { if (! seedIds.has(pp.id)) { seedIds.add(pp.id); seeds.push(seedShape(pp)); } }
             const prev = incremental ? [] : (this.index.people || []).filter((pp) => pp.centroid).map((pp) => ({ name: pp.name || '', hidden: ! ! pp.hidden, centroid: pp.centroid }));
 
             // Cluster off the main thread (falls back to an inline pass). New
@@ -2380,14 +2493,17 @@ return {
             let built = await this._computeFaceClusters({ faces, seeds, prev, incremental });
             built = built.map((b) => (b.id ? b : { ...b, id: window.LLGalleryStore.newId() }));
 
-            // Incremental: preserve any existing person that couldn't be seeded
-            // (e.g. a legacy entry without a stored centroid) so it isn't dropped.
-            if (incremental) {
-                const builtIds = new Set(built.map((b) => b.id));
-                for (const pp of (this.index.people || [])) {
-                    if (! builtIds.has(pp.id) && (pp.faces || []).length >= 2) built.push(pp);
-                }
+            // Preserve people the scan couldn't rebuild: incremental keeps any that
+            // weren't seeded; every scan keeps pinned (manually trained) people so a
+            // hand-tagged person is never dropped.
+            const builtIds = new Set(built.map((b) => b.id));
+            for (const pp of (this.index.people || [])) {
+                if (builtIds.has(pp.id)) continue;
+                if (pp.pinned || (incremental && (pp.faces || []).length >= 2)) built.push(pp);
             }
+            // Carry the pinned flag onto rebuilt clusters (worker returns plain data).
+            const pinnedIds = new Set((this.index.people || []).filter((pp) => pp.pinned).map((pp) => pp.id));
+            for (const b of built) if (pinnedIds.has(b.id)) b.pinned = true;
             this.index.people = built;
             this._save();
         } finally {
@@ -2418,7 +2534,7 @@ return {
         const clusters = [];
         const placed = new Set();
         for (const s of seeds) {
-            clusters.push({ id: s.id, name: s.name || '', hidden: ! ! s.hidden, centroid: s.centroid.slice(), count: s.members.length, members: s.members });
+            clusters.push({ id: s.id, name: s.name || '', hidden: ! ! s.hidden, pinned: ! ! s.pinned, centroid: s.centroid.slice(), count: s.members.length, members: s.members });
             for (const m of s.members) placed.add(m.photoId + ':' + m.idx);
         }
         let fi = 0;
@@ -2438,16 +2554,16 @@ return {
                 clusters.push({ id: null, name: '', hidden: false, centroid: face.emb.slice(), count: 1, members: [face.meta] });
             }
         }
-        return clusters.filter((c) => c.members.length >= 2)
+        return clusters.filter((c) => c.members.length >= 2 || c.pinned)
             .sort((a, b) => b.members.length - a.members.length)
             .map((c) => {
                 let name = c.name || '', hidden = ! ! c.hidden;
-                if (! incremental) {
+                if (! incremental && ! c.pinned) {
                     let bestSim = 0.6, match = null;
                     for (const pp of prev) { if (! pp.centroid) continue; const s = this.cosine(c.centroid, pp.centroid); if (s > bestSim) { bestSim = s; match = pp; } }
                     if (match) { name = match.name || ''; hidden = ! ! match.hidden; }
                 }
-                return { id: c.id, name, hidden, centroid: c.centroid, faces: c.members };
+                return { id: c.id, name, hidden, pinned: ! ! c.pinned, centroid: c.centroid, faces: c.members };
             });
     },
     async renamePerson(pp) {

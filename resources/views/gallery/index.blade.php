@@ -26,6 +26,9 @@
         uploadErrFailed: @js(__('gallery.upload_err_failed')),
         uploadErrGeneric: @js(__('gallery.upload_err_generic')),
         procErrFailed: @js(__('gallery.proc_err_failed')),
+        faceTagNone: @js(__('gallery.face_tag_none')),
+        faceTagFailed: @js(__('gallery.face_tag_failed')),
+        faceTagReset: @js(__('gallery.face_tag_reset')),
      })">
 
     <div x-show="dragging && state === 'ready'" x-cloak @drop.prevent="drop($event)" @dragover.prevent
@@ -576,9 +579,25 @@
             <template x-if="viewer.motionOn">
               <video :src="viewer.motionSrc" autoplay muted playsinline @ended="stopMotion()" :style="viewerTransform()" class="max-h-[92vh] max-w-full rounded-lg"></video>
             </template>
+            {{-- Manual face-tag draw overlay --}}
+            <div x-show="faceTag.active && ! viewer.motionOn" class="absolute inset-0 rounded-lg" style="cursor:crosshair;touch-action:none"
+                 @pointerdown.stop.prevent="faceDragStart($event)" @pointermove="faceDragMove($event)" @pointerup="faceDragEnd()" @pointercancel="faceDragEnd()">
+              <template x-if="faceTag.box">
+                <div class="absolute rounded-sm border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]" :style="`left:${faceTag.box.x}px;top:${faceTag.box.y}px;width:${faceTag.box.w}px;height:${faceTag.box.h}px`"></div>
+              </template>
+              <div x-show="faceTag.busy" class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
+                <svg class="h-8 w-8 animate-spin text-white" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+              </div>
+            </div>
             <button type="button" x-show="viewer.hasMotion && ! viewer.motionOn" @click.stop="playMotion()"
                 class="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white backdrop-blur-sm transition hover:bg-black/70">
               <x-icon name="play" class="h-4 w-4" />Live
+            </button>
+            {{-- Toggle manual face tagging (works without the info panel, e.g. on mobile) --}}
+            <button type="button" x-show="viewer.kind === 'image' && view !== 'trash'" @click.stop="toggleFaceTag()" :title="'{{ __('gallery.tag_face') }}'"
+                :class="faceTag.active ? 'bg-white text-gray-900' : 'bg-black/50 text-white hover:bg-black/70'"
+                class="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold backdrop-blur-sm transition">
+              <x-icon name="user-plus" class="h-4 w-4" /><span x-text="faceTag.active ? '{{ __('common.cancel') }}' : '{{ __('gallery.tag_face') }}'"></span>
             </button>
           </div>
         </template>
@@ -687,6 +706,34 @@
     </div>
 
     {{-- Merge people: pick another person to fold into the current one --}}
+    {{-- Assign a manually tagged face to a person (existing or new) --}}
+    <div x-show="assignPicker" x-cloak class="fixed inset-0 z-[975] flex items-center justify-center p-4" @keydown.escape.window="closeAssign()">
+      <div class="absolute inset-0 bg-black/60" @click="closeAssign()"></div>
+      <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.assign_heading') }}</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.assign_hint') }}</p>
+        <input type="search" x-model="assignQuery" placeholder="{{ __('gallery.person_name') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+        <button type="button" x-show="assignQuery.trim().length" x-cloak @click="assignToNew()" class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white">
+          <x-icon name="user-plus" class="h-4 w-4" /><span x-text="'{{ __('gallery.assign_new') }}: ' + assignQuery.trim()"></span>
+        </button>
+        <div class="mt-3 grid max-h-72 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
+          <template x-for="pp in assignCandidates()" :key="pp.id">
+            <button type="button" @click="assignToPerson(pp)" class="group flex flex-col items-center focus:outline-none">
+              <span class="relative h-16 w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 group-hover:ring-gray-900 dark:group-hover:ring-gray-100 flex items-center justify-center"
+                    x-init="$nextTick(() => personCover(pp) && faceThumb(personCover(pp)))">
+                <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover">
+                <span x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])"><x-icon name="user" class="h-7 w-7 text-gray-300 dark:text-gray-600" /></span>
+              </span>
+              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <x-button variant="secondary" type="button" @click="closeAssign()">{{ __('common.cancel') }}</x-button>
+        </div>
+      </div>
+    </div>
+
     <div x-show="mergePicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeMergePicker()">
       <div class="absolute inset-0 bg-black/60" @click="closeMergePicker()"></div>
       <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">

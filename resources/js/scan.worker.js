@@ -37,7 +37,7 @@ function clusterFaces({ faces, seeds, prev, incremental }) {
     const clusters = [];
     const placed = new Set();
     for (const s of seeds) {
-        clusters.push({ id: s.id, name: s.name || '', hidden: ! ! s.hidden, centroid: s.centroid.slice(), count: s.members.length, members: s.members });
+        clusters.push({ id: s.id, name: s.name || '', hidden: ! ! s.hidden, pinned: ! ! s.pinned, centroid: s.centroid.slice(), count: s.members.length, members: s.members });
         for (const m of s.members) placed.add(m.photoId + ':' + m.idx);
     }
     let fi = 0;
@@ -57,17 +57,19 @@ function clusterFaces({ faces, seeds, prev, incremental }) {
             clusters.push({ id: null, name: '', hidden: false, centroid: face.emb.slice(), count: 1, members: [face.meta] });
         }
     }
-    return clusters.filter((c) => c.members.length >= 2)
+    // Keep clusters of 2+ members, plus any pinned (manually trained) person even
+    // if it drew no matches this pass — it must never be dropped.
+    return clusters.filter((c) => c.members.length >= 2 || c.pinned)
         .sort((a, b) => b.members.length - a.members.length)
         .map((c) => {
             let name = c.name || '', hidden = ! ! c.hidden;
-            if (! incremental) {
+            if (! incremental && ! c.pinned) {
                 // Carry a previous person's name/hidden onto the matching new cluster.
                 let bestSim = 0.6, match = null;
                 for (const pp of prev) { if (! pp.centroid) continue; const s = cosineFull(c.centroid, pp.centroid); if (s > bestSim) { bestSim = s; match = pp; } }
                 if (match) { name = match.name || ''; hidden = ! ! match.hidden; }
             }
-            return { id: c.id, name, hidden, centroid: c.centroid, faces: c.members };
+            return { id: c.id, name, hidden, pinned: ! ! c.pinned, centroid: c.centroid, faces: c.members };
         });
 }
 
