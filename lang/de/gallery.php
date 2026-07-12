@@ -57,6 +57,8 @@ return [
     'back' => 'Zurück',
     'scan_faces' => 'Gesichter scannen',
     'rescan' => 'Neu scannen',
+    'uploaded_label' => 'Hochgeladen',
+    'faces_found' => 'Gesichter',
     'analyze_all' => 'Alle analysieren',
     'analyze_all_hint' => 'Führt die Gesichtserkennung auf noch nicht analysierten Fotos aus und gruppiert die Gesichter. Nötig, um Personen in der ganzen Bibliothek zu finden.',
     'analyzing' => 'Fotos werden analysiert…',

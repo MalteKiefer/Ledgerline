@@ -57,6 +57,8 @@ return [
     'back' => 'Back',
     'scan_faces' => 'Scan faces',
     'rescan' => 'Rescan',
+    'uploaded_label' => 'Uploaded',
+    'faces_found' => 'Faces',
     'analyze_all' => 'Analyze all',
     'analyze_all_hint' => 'Run face detection on photos that were never analyzed, then group the faces. Needed to find people across the whole library.',
     'analyzing' => 'Analyzing photos…',

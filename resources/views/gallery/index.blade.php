@@ -534,6 +534,13 @@
         <span class="text-xs font-semibold text-gray-700 dark:text-gray-200" x-text="progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload'))"></span>
         <button type="button" @click="dismissUploads()" x-show="! uploading && ! progress.active" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
       </div>
+      {{-- Always-visible overall upload counter, so progress is readable without scrolling the list --}}
+      <template x-if="uploads.length">
+        <div class="mt-2">
+          <div class="flex justify-between text-[11px] font-medium text-gray-600 dark:text-gray-300"><span>{{ __('gallery.uploaded_label') }}</span><span class="tabular-nums" x-text="uploadDone() + ' / ' + uploads.length"></span></div>
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${uploads.length ? (uploadDone() / uploads.length * 100) : 0}%`"></div></div>
+        </div>
+      </template>
       <template x-if="progress.active">
         <div class="mt-2">
           <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.processing') }}</span><span x-text="progress.done + ' / ' + progress.total"></span></div>
@@ -602,6 +609,20 @@
             <dd class="mt-0.5" x-text="fmtBytes(viewer.photo?.size)"></dd>
           </div>
         </dl>
+        {{-- Faces detected on this photo (with the linked person, if any) --}}
+        <div x-show="viewerFaces().length" x-cloak class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
+          <h4 class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.faces_found') }} <span class="tabular-nums" x-text="'(' + viewerFaces().length + ')'"></span></h4>
+          <div class="mt-3 flex flex-wrap gap-3">
+            <template x-for="(f, i) in viewerFaces()" :key="i">
+              <button type="button" @click="f.personId && openPersonById(f.personId)" :class="f.personId ? 'cursor-pointer' : 'cursor-default'" class="flex w-14 flex-col items-center focus:outline-none">
+                <span class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700" :class="f.personId ? 'hover:ring-gray-900 dark:hover:ring-gray-100' : ''" x-init="$nextTick(() => faceThumb(f).then(u => u && $el.querySelector('img')?.setAttribute('src', u)))">
+                  <img class="h-full w-full object-cover" alt="">
+                </span>
+                <span class="mt-1 w-full truncate text-center text-[10px] text-gray-600 dark:text-gray-400" x-text="f.name || '—'"></span>
+              </button>
+            </template>
+          </div>
+        </div>
         {{-- Non-destructive edit: rotate / flip / date-time / location --}}
         <div x-show="viewer.photo && view !== 'trash'" class="mt-6 border-t border-gray-100 dark:border-gray-800 pt-4">
           <h4 class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.edit_heading') }}</h4>
