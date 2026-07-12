@@ -803,7 +803,8 @@ Alpine.data('downloadsPage', (labels = {}) => ({
 // the command-line pairing shows a copyable text code (shorter-lived). The claim,
 // approval and token-collect states are shared by both.
 Alpine.data('devicePairing', (opts = {}) => ({
-    cli: !! opts.cli,
+    method: 'app', // 'app' = QR (mobile), 'cli' = copy/paste code
+    get cli() { return this.method === 'cli'; },
     active: false, qr: '', code: '', copied: false, id: null, status: '', deviceName: '', expiresAt: 0, remaining: 0, devices: [], _timer: null, _tick: null,
     init() { this.loadDevices(); },
     async loadDevices() {
@@ -818,7 +819,8 @@ Alpine.data('devicePairing', (opts = {}) => ({
             if (r.ok) this.loadDevices();
         } catch (e) { /* ignore */ }
     },
-    async start() {
+    async start(kind) {
+        if (kind) this.method = kind;
         this._stopTimers();
         this.copied = false;
         try {
