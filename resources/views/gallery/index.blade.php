@@ -116,15 +116,7 @@
           <div class="flex shrink-0 items-center gap-2">
             <template x-if="view === 'library'">
               <span class="flex items-center gap-2">
-                <div x-data="{ open: false }" class="relative">
-                  <button type="button" @click="open = ! open" title="{{ __('gallery.add_to_album') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="folder" class="h-5 w-5" /></button>
-                  <div x-show="open" x-cloak @click.outside="open = false" class="absolute bottom-full right-0 z-30 mb-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
-                    <template x-for="al in albums" :key="al.id">
-                      <button type="button" @click="addSelectedToAlbum(al); open = false" class="block w-full truncate rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" x-text="al.name"></button>
-                    </template>
-                    <button type="button" @click="open = false; createAlbum()" class="mt-0.5 flex w-full items-center gap-1.5 border-t border-gray-100 dark:border-gray-800 px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
-                  </div>
-                </div>
+                <button type="button" @click="albumPicker = true" title="{{ __('gallery.add_to_album') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="folder" class="h-5 w-5" /></button>
                 <button type="button" @click="openBulkDate()" title="{{ __('gallery.bulk_date') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="calendar" class="h-5 w-5" /></button>
                 <button type="button" @click="openBulkLocPicker()" title="{{ __('gallery.edit_location') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="map-pin" class="h-5 w-5" /></button>
                 <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white"><x-icon name="trash" class="h-5 w-5" /></button>
@@ -722,6 +714,28 @@
     </div>
 
     {{-- Merge people: pick another person to fold into the current one --}}
+    {{-- Add the selected photos to an album --}}
+    <div x-show="albumPicker" x-cloak class="fixed inset-0 z-[965] flex items-center justify-center p-4" @keydown.escape.window="albumPicker = false">
+      <div class="absolute inset-0 bg-black/60" @click="albumPicker = false"></div>
+      <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
+        <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.add_to_album') }}</h3>
+        <p x-show="! albums.length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_albums') }}</p>
+        <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
+          <template x-for="al in albums" :key="al.id">
+            <button type="button" @click="addSelectedToAlbum(al); albumPicker = false" class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800"><x-icon name="folder" class="h-5 w-5 text-gray-400" /></span>
+              <span class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="al.name"></span>
+              <span class="shrink-0 text-xs tabular-nums text-gray-400" x-text="albumCount(al)"></span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-4 flex items-center justify-between gap-2">
+          <button type="button" @click="albumPicker = false; createAlbum()" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"><x-icon name="plus" class="h-4 w-4" />{{ __('gallery.new_album') }}</button>
+          <x-button variant="secondary" type="button" @click="albumPicker = false">{{ __('common.cancel') }}</x-button>
+        </div>
+      </div>
+    </div>
+
     {{-- Assign a manually tagged face to a person (existing or new) --}}
     <div x-show="assignPicker" x-cloak class="fixed inset-0 z-[975] flex items-center justify-center p-4" @keydown.escape.window="closeAssign()">
       <div class="absolute inset-0 bg-black/60" @click="closeAssign()"></div>
