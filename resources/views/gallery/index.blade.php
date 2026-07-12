@@ -348,38 +348,54 @@
         {{-- PEOPLE (list) --}}
         <div x-show="view === 'people'">
           {{-- Toolbar: only when results exist --}}
-          <div x-show="people.length && ! peopleScanning" class="mb-5 flex items-center justify-between gap-3">
+          <div x-show="people.length && ! peopleScanning && ! deepScanning" class="mb-5 flex items-center justify-between gap-3">
             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.people') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="people.length"></span></h2>
             <div class="flex items-center gap-2">
               @include('gallery._scan_scope')
+              <button type="button" x-show="unanalyzedCount() > 0" x-cloak @click="deepFaceRescan()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white" :title="'{{ __('gallery.analyze_all_hint') }}'">
+                <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.analyze_all') }} <span class="tabular-nums opacity-80" x-text="'(' + unanalyzedCount() + ')'"></span>
+              </button>
               <button type="button" @click="scanFaces()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
                 <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
               </button>
             </div>
           </div>
 
-          {{-- Scanning card --}}
-          <div x-show="peopleScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center shadow-sm">
+          {{-- Scanning card (face clustering OR deep ML re-analysis) --}}
+          <div x-show="peopleScanning || deepScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center shadow-sm">
             <svg class="h-8 w-8 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
-            <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ __('gallery.scanning') }}</p>
-            <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div class="h-full rounded-full bg-gray-800 dark:bg-gray-200 transition-all duration-300" :style="`width: ${peopleProgress.total ? (peopleProgress.done / peopleProgress.total * 100) : 8}%`"></div></div>
-            <p class="mt-2 text-xs tabular-nums text-gray-400" x-text="peopleProgress.done + ' / ' + peopleProgress.total"></p>
+            <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200" x-text="deepScanning && _mlRunning ? '{{ __('gallery.analyzing') }}' : '{{ __('gallery.scanning') }}'"></p>
+            <template x-if="deepScanning && _mlRunning">
+              <div class="w-full">
+                <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div class="h-full rounded-full bg-gray-800 dark:bg-gray-200 transition-all duration-300" :style="`width: ${mlProgress.total ? (mlProgress.done / mlProgress.total * 100) : 8}%`"></div></div>
+                <p class="mt-2 text-xs tabular-nums text-gray-400" x-text="mlProgress.done + ' / ' + mlProgress.total"></p>
+              </div>
+            </template>
+            <template x-if="! (deepScanning && _mlRunning)">
+              <div class="w-full">
+                <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div class="h-full rounded-full bg-gray-800 dark:bg-gray-200 transition-all duration-300" :style="`width: ${peopleProgress.total ? (peopleProgress.done / peopleProgress.total * 100) : 8}%`"></div></div>
+                <p class="mt-2 text-xs tabular-nums text-gray-400" x-text="peopleProgress.done + ' / ' + peopleProgress.total"></p>
+              </div>
+            </template>
           </div>
 
           {{-- Empty / first-run hero --}}
-          <div x-show="! people.length && ! peopleScanning" x-cloak class="mx-auto mt-8 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
+          <div x-show="! people.length && ! peopleScanning && ! deepScanning" x-cloak class="mx-auto mt-8 flex max-w-md flex-col items-center rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
             <div class="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="user" class="h-8 w-8 text-gray-400 dark:text-gray-500" /></div>
             <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_people') }}</p>
-            <div class="mt-5 flex items-center gap-2">
+            <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
               @include('gallery._scan_scope')
-              <button type="button" @click="scanFaces()" class="inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white">
+              <button type="button" x-show="unanalyzedCount() > 0" x-cloak @click="deepFaceRescan()" class="inline-flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900 shadow-sm transition hover:bg-gray-800 dark:hover:bg-white" :title="'{{ __('gallery.analyze_all_hint') }}'">
+                <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.analyze_all') }} <span class="tabular-nums opacity-80" x-text="'(' + unanalyzedCount() + ')'"></span>
+              </button>
+              <button type="button" @click="scanFaces()" class="inline-flex items-center gap-2 rounded-xl border border-gray-300 dark:border-gray-700 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 transition hover:bg-gray-50 dark:hover:bg-gray-800">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.scan_faces') }}
               </button>
             </div>
           </div>
 
           {{-- People grid --}}
-          <div x-show="people.length && ! peopleScanning" class="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 lg:grid-cols-6">
+          <div x-show="people.length && ! peopleScanning && ! deepScanning" class="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-4 lg:grid-cols-6">
             <template x-for="pp in people" :key="pp.id">
               <button type="button" @click="openPerson(pp)" class="group flex flex-col items-center focus:outline-none">
                 <div class="relative aspect-square w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 transition duration-300 group-hover:ring-2 group-hover:ring-gray-900 dark:group-hover:ring-gray-100 group-hover:shadow-md"

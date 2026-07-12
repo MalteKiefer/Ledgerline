@@ -1547,11 +1547,14 @@ return {
      * photo still marked mlPending. Throttled + batched like the upload backlog so
      * a large import doesn't hammer the ML sidecar; resumes across sessions.
      */
+    mlProgress: { done: 0, total: 0 },
     async runMlBacklog() {
         if (this._mlRunning || this.state !== 'ready') return;
         const pending = () => this.index.photos.filter((p) => p.mlPending && ! p.trashed && ! p.failed && (p.mediumRef || p.originalRef));
-        if (! pending().length) return;
+        const total = pending().length;
+        if (! total) return;
         this._mlRunning = true;
+        this.mlProgress = { done: 0, total };
         let sinceFlush = 0;
         let done = 0;
         try {
@@ -1563,15 +1566,43 @@ return {
                 } catch (e) {
                     // Leave mlPending set so it retries next run; don't fail the photo.
                     p._mlTries = (p._mlTries || 0) + 1;
-                    if (p._mlTries >= 3) p.mlPending = false; // give up quietly after a few tries
+                    // Give up after a few tries, but flag it so a deep rescan can retry.
+                    if (p._mlTries >= 3) { p.mlPending = false; p.mlFailed = true; }
                 }
                 this._save();
+                this.mlProgress = { done: Math.min(++done, total), total };
                 if (++sinceFlush >= 8) { sinceFlush = 0; await window.LLGalleryStore.flush(); }
-                if (++done % 8 === 0) await new Promise((r) => setTimeout(r, 700));
+                if (done % 8 === 0) await new Promise((r) => setTimeout(r, 700));
             }
         } finally {
             try { await window.LLGalleryStore.flush(); } catch (e) { /* debounce backstop */ }
             this._mlRunning = false;
+        }
+    },
+    // Photos never successfully run through the ML face pass yet (no face count
+    // recorded) or that gave up earlier — these carry faces the clustering can't
+    // see until they're analyzed.
+    unanalyzedCount() {
+        return this.index.photos.filter((p) => ! p.trashed && (p.mediumRef || p.originalRef) && (p.hasFaces == null || p.mlFailed)).length;
+    },
+    // Force the deferred ML (embedding + faces) on every not-yet-analyzed photo,
+    // then re-cluster. This is what actually surfaces people across a large
+    // library where the background pass never finished.
+    deepScanning: false,
+    async deepFaceRescan() {
+        if (this.peopleScanning || this._mlRunning || this.deepScanning || this.state !== 'ready') return;
+        this.deepScanning = true;
+        try {
+            let any = false;
+            for (const p of this.index.photos) {
+                if (p.trashed || ! (p.mediumRef || p.originalRef)) continue;
+                if (p.hasFaces == null || p.mlFailed) { p.mlPending = true; p._mlTries = 0; delete p.mlFailed; any = true; }
+            }
+            if (any) this._save();
+            await this.runMlBacklog();
+            await this.scanFaces();
+        } finally {
+            this.deepScanning = false;
         }
     },
 
