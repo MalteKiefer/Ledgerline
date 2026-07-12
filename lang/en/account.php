@@ -42,6 +42,12 @@ return [
     'cli_copy' => 'Copy',
     'cli_copied' => 'Copied',
 
+    'devices_syncing' => 'syncing',
+    'devices_last_sync' => 'last sync',
+    'devices_wipe' => 'Remote wipe',
+    'devices_wipe_pending' => 'wipe pending',
+    'devices_wipe_confirm' => 'Wipe this client\'s local data on its next connection? It stays logged in until then — use Remove to revoke it entirely.',
+
     'export_heading' => 'Export my data',
     'export_hint' => 'Download a copy of your data (one JSON file per module).',
     'export_button' => 'Download my data',

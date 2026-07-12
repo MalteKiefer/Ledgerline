@@ -823,6 +823,14 @@ Alpine.data('devicePairing', (opts = {}) => ({
             if (r.ok) this.loadDevices();
         } catch (e) { /* ignore */ }
     },
+    // Remote kill switch: flag a client to erase its local state on next contact.
+    async wipeDevice(id) {
+        if (! await this.$store.confirm.ask(opts.wipeConfirm || 'Wipe this client on its next connection?')) return;
+        try {
+            const r = await fetch(`/devices/${id}/wipe`, { method: 'POST', headers: jsonHeaders() });
+            if (r.ok) this.loadDevices();
+        } catch (e) { /* ignore */ }
+    },
     async start(kind) {
         if (kind) this.method = kind;
         this._stopTimers();

@@ -29,6 +29,7 @@ Route::prefix('v1')->group(function (): void {
 
     Route::middleware(['auth:sanctum', UpdateTokenIp::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
+        Route::post('/device/heartbeat', [AuthController::class, 'heartbeat'])->middleware('throttle:120,1')->name('api.device.heartbeat');
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
 
         // Zero-knowledge vault: KDF params + wrapped keys (unlock).

@@ -78,7 +78,7 @@
 
     {{-- Devices: one card for both the mobile app (QR) and the command-line client
          (copy/paste code). Both share the same approval flow + device cap. --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing({ rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')) })">
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing({ rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')), wipeConfirm: @js(__('account.devices_wipe_confirm')) })">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.devices_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.devices_hint') }} {{ __('account.devices_limit_note', ['max' => $deviceMax]) }}</p>
 
@@ -140,10 +140,19 @@
                 <template x-for="d in devices" :key="d.id">
                     <li class="flex items-center justify-between gap-3 py-2">
                         <div class="min-w-0">
-                            <p class="truncate text-sm text-gray-900 dark:text-gray-100" x-text="d.name"></p>
+                            <p class="truncate text-sm text-gray-900 dark:text-gray-100">
+                                <span x-text="d.name"></span>
+                                <span x-show="d.syncing" class="ml-1 inline-flex items-center gap-1 rounded bg-green-100 dark:bg-green-900/40 px-1.5 py-0.5 text-[11px] font-medium text-green-700 dark:text-green-300"><span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>{{ __('account.devices_syncing') }}</span>
+                                <span x-show="d.wipeRequested" class="ml-1 rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[11px] font-medium text-red-700 dark:text-red-300">{{ __('account.devices_wipe_pending') }}</span>
+                            </p>
                             <p class="text-xs text-gray-500 dark:text-gray-400" x-text="d.meta"></p>
+                            <p x-show="d.syncing && d.syncDetail" class="text-xs text-green-700 dark:text-green-400" x-text="d.syncDetail"></p>
+                            <p x-show="!d.syncing && d.syncSeen" class="text-xs text-gray-400" x-text="'{{ __('account.devices_last_sync') }} ' + d.syncSeen"></p>
                         </div>
-                        <button type="button" x-on:click="revokeDevice(d.id)" class="inline-flex min-h-11 shrink-0 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('account.devices_revoke') }}</button>
+                        <div class="flex shrink-0 gap-2">
+                            <button type="button" x-on:click="wipeDevice(d.id)" x-show="!d.wipeRequested" class="inline-flex min-h-11 items-center rounded-md border border-red-300 dark:border-red-800 px-3 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30">{{ __('account.devices_wipe') }}</button>
+                            <button type="button" x-on:click="revokeDevice(d.id)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('account.devices_revoke') }}</button>
+                        </div>
                     </li>
                 </template>
             </ul>

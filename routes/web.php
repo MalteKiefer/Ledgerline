@@ -73,6 +73,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/device-pairings/{devicePairing}/reject', [DevicePairingController::class, 'reject'])->name('device-pairings.reject');
     Route::get('/devices', [DevicePairingController::class, 'devices'])->name('devices.index');
     Route::delete('/devices/{token}', [DevicePairingController::class, 'revokeDevice'])->name('devices.revoke');
+    Route::post('/devices/{token}/wipe', [DevicePairingController::class, 'wipeDevice'])->middleware('throttle:20,1')->name('devices.wipe');
 
     // Local in-app notifications (bell menu).
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
