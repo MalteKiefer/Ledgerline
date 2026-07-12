@@ -29,6 +29,9 @@
         faceTagNone: @js(__('gallery.face_tag_none')),
         faceTagFailed: @js(__('gallery.face_tag_failed')),
         faceTagReset: @js(__('gallery.face_tag_reset')),
+        uploadAdded: @js(__('gallery.upload_added')),
+        uploadMerged: @js(__('gallery.upload_merged')),
+        uploadSkipped: @js(__('gallery.upload_skipped')),
      })">
 
     <div x-show="dragging && state === 'ready'" x-cloak @drop.prevent="drop($event)" @dragover.prevent
@@ -454,6 +457,7 @@
                       <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
                     </button>
                     <div class="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                      <button type="button" @click.stop="setPersonCover(p)" title="{{ __('gallery.set_cover') }}" class="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-black/70"><x-icon name="photo" class="h-3.5 w-3.5" /></button>
                       <button type="button" @click.stop="openReassign(p)" title="{{ __('gallery.reassign') }}" class="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-black/70"><x-icon name="arrows-right-left" class="h-3.5 w-3.5" /></button>
                       <button type="button" @click.stop="removeFaceFromPerson(p)" title="{{ __('gallery.not_this_person') }}" class="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-red-500"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
                     </div>
