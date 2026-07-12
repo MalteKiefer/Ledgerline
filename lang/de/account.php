@@ -33,6 +33,13 @@ return [
     'devices_revoke' => 'Entfernen',
     'devices_none' => 'Keine Geräte verbunden.',
 
+    'cli_heading' => 'Kommandozeilen-Client',
+    'cli_hint' => 'Verbinde das Tool ledgerline-cli. Erzeuge unten einen Code, füge ihn in die CLI ein und bestätige das Gerät hier.',
+    'cli_connect' => 'CLI verbinden',
+    'cli_paste_hint' => 'Diesen Code in die CLI einfügen, wenn danach gefragt wird:',
+    'cli_copy' => 'Kopieren',
+    'cli_copied' => 'Kopiert',
+
     'export_heading' => 'Meine Daten exportieren',
     'export_hint' => 'Lade eine Kopie deiner Daten herunter (eine JSON-Datei pro Modul).',
     'export_button' => 'Meine Daten herunterladen',

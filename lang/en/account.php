@@ -33,6 +33,13 @@ return [
     'devices_revoke' => 'Remove',
     'devices_none' => 'No devices connected.',
 
+    'cli_heading' => 'Command-line client',
+    'cli_hint' => 'Connect the ledgerline-cli tool. Generate a code below, paste it into the CLI, then approve the device here.',
+    'cli_connect' => 'Connect a CLI',
+    'cli_paste_hint' => 'Paste this code into the CLI when prompted:',
+    'cli_copy' => 'Copy',
+    'cli_copied' => 'Copied',
+
     'export_heading' => 'Export my data',
     'export_hint' => 'Download a copy of your data (one JSON file per module).',
     'export_button' => 'Download my data',

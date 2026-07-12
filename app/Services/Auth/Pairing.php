@@ -20,8 +20,18 @@ class Pairing
     /** Codes are valid for two minutes — long enough to scan + approve, short enough to blunt replay. */
     public const TTL_SECONDS = 120;
 
-    /** Create a fresh pairing for the (web-authenticated) user; returns the row + the raw code. */
-    public function create(User $user): array
+    /**
+     * CLI codes are copied/pasted by hand (no QR), so they live for a tighter
+     * 60-second window. The state machine is otherwise identical to the app's.
+     */
+    public const CLI_TTL_SECONDS = 60;
+
+    /**
+     * Create a fresh pairing for the (web-authenticated) user; returns the row +
+     * the raw code. The lifetime defaults to the app's QR window but callers may
+     * pass a shorter one (e.g. the copy/paste CLI flow).
+     */
+    public function create(User $user, ?int $ttlSeconds = null): array
     {
         // Discard the user's superseded, still-pending pairings so the table stays tidy.
         DevicePairing::query()
@@ -35,7 +45,7 @@ class Pairing
             'user_id' => $user->id,
             'code_hash' => $this->hash($code),
             'status' => DevicePairing::PENDING_SCAN,
-            'expires_at' => now()->addSeconds(self::TTL_SECONDS),
+            'expires_at' => now()->addSeconds(max(1, $ttlSeconds ?? self::TTL_SECONDS)),
         ]);
 
         return ['pairing' => $pairing, 'code' => $code];

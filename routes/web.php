@@ -66,6 +66,8 @@ Route::middleware('auth')->group(function (): void {
     // QR device pairing: the signed-in owner authorises a new mobile device by
     // approving the code it scanned from the profile page (see routes/api.php).
     Route::post('/device-pairings', [DevicePairingController::class, 'store'])->middleware('throttle:20,1')->name('device-pairings.store');
+    // Copy/paste pairing for the command-line client — same state machine, code shown as text.
+    Route::post('/device-pairings/cli', [DevicePairingController::class, 'storeCli'])->middleware('throttle:20,1')->name('device-pairings.store-cli');
     Route::get('/device-pairings/{devicePairing}', [DevicePairingController::class, 'show'])->middleware('throttle:120,1')->name('device-pairings.show');
     Route::post('/device-pairings/{devicePairing}/approve', [DevicePairingController::class, 'approve'])->name('device-pairings.approve');
     Route::post('/device-pairings/{devicePairing}/reject', [DevicePairingController::class, 'reject'])->name('device-pairings.reject');
