@@ -35,6 +35,23 @@ class DevicePairingController extends Controller
         ]);
     }
 
+    /**
+     * Begin a pairing for a command-line client. Unlike the app flow the code is
+     * shown to the owner as copyable text (there is nothing to scan), and it lives
+     * for a shorter 60-second window. Everything downstream — the app-side claim,
+     * the owner's approval, and the one-time token collect — is unchanged.
+     */
+    public function storeCli(Request $request, Pairing $pairing): JsonResponse
+    {
+        ['pairing' => $row, 'code' => $code] = $pairing->create($request->user(), Pairing::CLI_TTL_SECONDS);
+
+        return response()->json([
+            'id' => $row->id,
+            'code' => $code,
+            'expires_at' => $row->expires_at->toIso8601String(),
+        ]);
+    }
+
     /** Poll a pairing's state (the web page shows the claiming device + approve/reject). */
     public function show(Request $request, DevicePairing $devicePairing): JsonResponse
     {

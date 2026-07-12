@@ -799,8 +799,12 @@ Alpine.data('downloadsPage', (labels = {}) => ({
  * state, and lets the owner approve/reject the device that scanned it. The app
  * exchanges the code for a bearer once approved — no token ever touches this UI.
  */
-Alpine.data('devicePairing', () => ({
-    active: false, qr: '', id: null, status: '', deviceName: '', expiresAt: 0, remaining: 0, devices: [], _timer: null, _tick: null,
+// `opts.cli` switches the code channel: the app pairing renders a scannable QR,
+// the command-line pairing shows a copyable text code (shorter-lived). The claim,
+// approval and token-collect states are shared by both.
+Alpine.data('devicePairing', (opts = {}) => ({
+    cli: !! opts.cli,
+    active: false, qr: '', code: '', copied: false, id: null, status: '', deviceName: '', expiresAt: 0, remaining: 0, devices: [], _timer: null, _tick: null,
     init() { this.loadDevices(); },
     async loadDevices() {
         try {
@@ -816,15 +820,19 @@ Alpine.data('devicePairing', () => ({
     },
     async start() {
         this._stopTimers();
+        this.copied = false;
         try {
-            const r = await fetch('/device-pairings', { method: 'POST', headers: jsonHeaders() });
+            const r = await fetch(this.cli ? '/device-pairings/cli' : '/device-pairings', { method: 'POST', headers: jsonHeaders() });
             if (! r.ok) return;
             const d = await r.json();
-            this.id = d.id; this.qr = d.qr; this.status = 'pending_scan'; this.active = true;
+            this.id = d.id; this.qr = d.qr || ''; this.code = d.code || ''; this.status = 'pending_scan'; this.active = true;
             this.expiresAt = Date.parse(d.expires_at) || 0;
             this._countdown();
             this._poll();
         } catch (e) { /* ignore */ }
+    },
+    async copyCode() {
+        try { await navigator.clipboard.writeText(this.code); this.copied = true; setTimeout(() => { this.copied = false; }, 1500); } catch (e) { /* ignore */ }
     },
     // "Generate a new code" — start a fresh pairing (invalidates the old one).
     regenerate() { return this.start(); },

@@ -36,6 +36,52 @@ class DevicePairingTest extends TestCase
         ]);
     }
 
+    public function test_cli_store_returns_a_plain_code_with_a_60s_ttl(): void
+    {
+        $user = User::factory()->create();
+
+        $res = $this->actingAs($user)->postJson('/device-pairings/cli');
+
+        $res->assertOk()->assertJsonStructure(['id', 'code', 'expires_at']);
+        $res->assertJsonMissing(['qr' => true]);
+        // Copy/paste codes are the raw 43-char secret, not a QR data URI.
+        $this->assertSame(43, strlen((string) $res->json('code')));
+        $this->assertStringStartsNotWith('data:', (string) $res->json('code'));
+
+        $pairing = DevicePairing::findOrFail($res->json('id'));
+        $this->assertSame(DevicePairing::PENDING_SCAN, $pairing->status);
+        // Bounded to the tighter CLI window (allow a second of clock slack).
+        $this->assertEqualsWithDelta(
+            Pairing::CLI_TTL_SECONDS,
+            now()->diffInSeconds($pairing->expires_at, false),
+            1.5,
+        );
+    }
+
+    public function test_cli_pairing_uses_the_same_flow_and_yields_a_bearer(): void
+    {
+        $user = User::factory()->create();
+
+        $start = $this->actingAs($user)->postJson('/device-pairings/cli')->assertOk();
+        $code = $start->json('code');
+        $id = $start->json('id');
+
+        // The CLI claims the pasted code just like the app does.
+        $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'ledgerline-cli@host'])
+            ->assertOk()->assertJson(['status' => 'pending']);
+        $this->actingAs($user)->postJson("/device-pairings/{$id}/approve")->assertOk();
+
+        $collect = $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertOk();
+        $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$collect->json('token')])
+            ->assertOk()->assertJson(['user' => ['id' => $user->id]]);
+    }
+
+    public function test_cli_store_requires_authentication(): void
+    {
+        // Web (session) route — a guest is redirected to login, never served a code.
+        $this->post('/device-pairings/cli')->assertRedirect();
+    }
+
     public function test_full_pairing_flow_yields_a_working_bearer_token(): void
     {
         $user = User::factory()->create();

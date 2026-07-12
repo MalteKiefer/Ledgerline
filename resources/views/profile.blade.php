@@ -132,6 +132,47 @@
         </div>
     </div>
 
+    {{-- Command-line client: copy/paste code pairing (same approval flow as the app) --}}
+    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing({ cli: true })">
+        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.cli_heading') }}</h2>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.cli_hint') }}</p>
+
+        <div class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
+            <template x-if="!active">
+                <button type="button" x-on:click="start()" class="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <x-icon name="command-line" class="h-4 w-4" />{{ __('account.cli_connect') }}
+                </button>
+            </template>
+
+            <template x-if="active">
+                <div class="text-sm">
+                    <div x-show="status==='pending_scan' || status==='pending_approval'">
+                        <p class="text-gray-600 dark:text-gray-400">{{ __('account.cli_paste_hint') }}</p>
+                        <div class="mt-2 flex items-center gap-2">
+                            <code x-text="code" class="min-w-0 flex-1 truncate rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 font-mono text-sm text-gray-800 dark:text-gray-200"></code>
+                            <button type="button" x-on:click="copyCode()" class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                                <x-icon name="clipboard" class="h-4 w-4" /><span x-text="copied ? @js(__('account.cli_copied')) : @js(__('account.cli_copy'))"></span>
+                            </button>
+                        </div>
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ __('account.devices_expires_in') }} <span x-text="remainingText" class="font-mono font-medium text-gray-700 dark:text-gray-300"></span></p>
+                        <div x-show="status==='pending_approval'" class="mt-3">
+                            <p class="text-gray-900 dark:text-gray-100">{{ __('account.devices_approve_q') }} „<span x-text="deviceName" class="font-medium"></span>"?</p>
+                            <div class="mt-2 flex gap-2">
+                                <button type="button" x-on:click="approve()" class="min-h-11 rounded-md bg-gray-900 dark:bg-gray-100 px-3 text-sm font-medium text-white dark:text-gray-900">{{ __('account.devices_allow') }}</button>
+                                <button type="button" x-on:click="reject()" class="min-h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_deny') }}</button>
+                            </div>
+                        </div>
+                        <button type="button" x-on:click="regenerate()" class="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('account.devices_regenerate') }}</button>
+                    </div>
+                    <p x-show="status==='approved' || status==='consumed'" class="font-medium text-gray-900 dark:text-gray-100">{{ __('account.devices_connected') }}</p>
+                    <p x-show="status==='rejected'" class="text-gray-600 dark:text-gray-400">{{ __('account.devices_rejected') }}</p>
+                    <p x-show="status==='expired'" class="text-gray-600 dark:text-gray-400">{{ __('account.devices_expired') }}</p>
+                    <button type="button" x-on:click="reset()" x-show="['approved','consumed','rejected','expired'].includes(status)" class="mt-2 text-xs text-gray-500 underline">{{ __('account.devices_again') }}</button>
+                </div>
+            </template>
+        </div>
+    </div>
+
     {{-- Web sessions --}}
     <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.security_heading') }}</h2>
