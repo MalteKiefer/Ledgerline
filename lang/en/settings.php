@@ -9,8 +9,6 @@ return [
     'personal_subheading' => 'Preferences that apply to your account only.',
     'admin_heading' => 'Administration',
     'admin_note' => 'These settings apply to the whole workspace and affect every user.',
-    'downloads_section' => 'Downloads & exports',
-    'downloads_desc' => 'Maximum export zip size and export-completion notifications.',
     'files_limits_heading' => 'Global file limits',
     'files_limits_hint' => 'Admin only. Leave a field empty to use the built-in default.',
     'files_quota' => 'Storage quota per user (MB, 0 = unlimited)',

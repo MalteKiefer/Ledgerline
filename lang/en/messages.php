@@ -10,7 +10,6 @@ return [
         'files' => 'Files',
         'gallery' => 'Gallery',
         'todos' => 'To-dos',
-        'downloads' => 'Downloads',
         'more' => 'More',
     ],
     'menu' => [

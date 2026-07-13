@@ -58,7 +58,6 @@ class GlobalSettingsAccessTest extends TestCase
 
         $this->get(route('settings'))->assertOk()
             ->assertSee(__('settings.personal_heading'))
-            ->assertSee(__('settings.admin_heading'))
-            ->assertSee(__('settings.downloads_desc'));
+            ->assertSee(__('settings.admin_heading'));
     }
 }
