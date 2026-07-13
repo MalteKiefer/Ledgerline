@@ -178,6 +178,41 @@ class DevicePairingTest extends TestCase
         $this->deleteJson('/api/v1/auth/session')->assertStatus(401);
     }
 
+    public function test_a_wiped_token_is_revoked_after_the_grace_window(): void
+    {
+        config(['devices.wipe_grace_minutes' => 15]);
+        $user = User::factory()->create();
+        $plain = $user->createToken('dev', ['device'])->plainTextToken;
+        $row = $user->tokens()->first();
+
+        // Flagged but still inside the grace window → the client can still reach
+        // /me (to fetch the flag and self-erase).
+        $row->forceFill(['wipe_requested_at' => now()->subMinutes(5)])->save();
+        $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$plain])
+            ->assertOk()->assertJsonPath('wipe', true);
+
+        // Past the grace window → hard revoked on next contact.
+        $row->forceFill(['wipe_requested_at' => now()->subMinutes(30)])->save();
+        $this->app['auth']->forgetGuards();
+        $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$plain])->assertStatus(401);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_the_prune_command_revokes_idle_and_wiped_tokens(): void
+    {
+        config(['devices.idle_days' => 90, 'devices.wipe_grace_minutes' => 15]);
+        $user = User::factory()->create();
+        $user->createToken('idle', ['device']);
+        $user->createToken('wiped', ['device']);
+        $user->createToken('fresh', ['device']);
+        $user->tokens()->where('name', 'idle')->first()->forceFill(['last_used_at' => now()->subDays(120)])->save();
+        $user->tokens()->where('name', 'wiped')->first()->forceFill(['wipe_requested_at' => now()->subMinutes(30)])->save();
+
+        $this->artisan('devices:prune-tokens')->assertSuccessful();
+
+        $this->assertSame(['fresh'], $user->tokens()->pluck('name')->all());
+    }
+
     public function test_destroy_revokes_the_current_token(): void
     {
         $user = User::factory()->create();

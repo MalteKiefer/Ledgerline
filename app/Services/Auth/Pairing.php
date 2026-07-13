@@ -116,7 +116,9 @@ class Pairing
             $user->tokens()->whereIn('id', $existing->take($overflow))->delete();
         }
 
-        $token = $user->createToken($pairing->device_name ?? 'device');
+        // Scope the token to a named 'device' ability (not the '*' wildcard) so a
+        // future ability check can constrain what a paired device may reach.
+        $token = $user->createToken($pairing->device_name ?? 'device', ['device']);
         // Record the paired device's IP for the web "Connected devices" list.
         if ($ip !== null) {
             $token->accessToken->forceFill(['ip' => $ip])->save();
