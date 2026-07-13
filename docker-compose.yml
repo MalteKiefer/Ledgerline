@@ -17,7 +17,7 @@ x-app-image: &app-image
     # fail otherwise. Host-net build uses the host's working resolver.
     network: host
     args:
-      PHP_BASE: serversideup/php:8.4-fpm-nginx
+      PHP_BASE: serversideup/php:8.4-fpm-nginx@sha256:519720d9ff5d50aad9eb83fac290746460dfc1346faa8fdb25c75d28a3feb2ab
   env_file: .env
   environment:
     # This host has no route to the EC2 instance-metadata IP (169.254.169.254),
@@ -112,7 +112,7 @@ services:
   db:
     # pgvector image (Postgres 17 + the `vector` extension) for image-similarity
     # duplicate detection. Drop-in for postgres:17-alpine — same PG17 data dir.
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg17@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
     environment:
       POSTGRES_DB: ${DB_DATABASE:-ledgerline}
       POSTGRES_USER: ${DB_USERNAME:-ledgerline}
@@ -134,7 +134,7 @@ services:
       start_period: 20s
 
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:8-alpine@sha256:cfe71288f087704b06be45e270afa7a2abbf820093d6b11a23762081f5ff321d
     command: ["valkey-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--appendonly", "yes"]
     environment:
       # so the healthcheck below (which runs $$REDIS_PASSWORD inside the
