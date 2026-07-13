@@ -28,7 +28,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.450.1'),
+    'version' => env('APP_VERSION', '1.451.0'),
 
     /*
     |--------------------------------------------------------------------------
@@ -110,7 +110,7 @@ return [
     |
     */
 
-    'cipher' => 'AES-256-CBC',
+    'cipher' => 'AES-256-GCM',
 
     'key' => Secret::get('APP_KEY'),
 
