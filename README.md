@@ -1,272 +1,207 @@
 # Ledgerline
 
-Ledgerline is a small, security-focused ERP application built with Laravel. It
-manages customers, their contact persons, and their projects. Authentication is
-delegated entirely to a Pocket-ID OIDC provider; the application stores no
-passwords of its own.
+Ledgerline is a **self-hosted, zero-knowledge personal cloud**. It keeps your
+photos, files, notes, todos, bookmarks and contacts on your own server while the
+server itself only ever holds **ciphertext** — everything is encrypted and
+decrypted in your browser. Even the person running the server cannot read your
+data.
 
-The codebase follows Laravel conventions strictly and avoids unnecessary
-abstractions. All assets are bundled and served locally — no external CDNs,
-fonts, or trackers are used.
+Authentication is delegated to a [Pocket-ID](https://github.com/pocket-id/pocket-id)
+OIDC provider; the application stores no login passwords of its own. All assets
+are bundled and served locally — no external CDNs, fonts, or trackers.
+
+---
+
+## What "zero-knowledge" means here
+
+- **Content is encrypted client-side.** A per-user vault key is derived in the
+  browser from your passphrase (libsodium Argon2id) and never leaves it. File and
+  photo bytes are sealed with XChaCha20-Poly1305 **before** upload.
+- **The server stores only opaque blobs and sealed manifests.** Each module's
+  data (notes, bookmarks, todos, files, contacts) lives as ciphertext in a single
+  sealed workspace manifest; the gallery uses its own sharded sealed manifest.
+  The server sees ciphertext + a version + a timestamp, nothing else.
+- **Metadata is padded.** Blobs are padded to Padmé buckets and manifests to a
+  Padmé bucket with a 4 KiB floor, so stored sizes don't reveal content sizes.
+- **The database backup is treated as sensitive.** A DB dump contains the sealed
+  ciphertext rows plus the wrapped vault-key material, so backup archives are
+  **force-encrypted** (Argon2id SENSITIVE) before they leave the host.
+
+Deliberate, user-initiated boundary crossings (documented in code): the optional
+**machine-learning sidecar** receives transiently-decrypted photo bytes to detect
+faces / build search embeddings, and **address/place geocoding** sends a lookup to
+OpenStreetMap Nominatim. Both are optional and never automatic on upload; both go
+through the app's SSRF guard. Self-host Nominatim/Photon and keep the ML sidecar
+on the internal network to keep these in-boundary.
+
+---
+
+## Modules
+
+- **Gallery** — photos & videos, HEIC/AVIF + Apple Live Photos, albums, a map
+  view, timeline, duplicate detection (pHash + CLIP), and **People**: in-browser
+  face clustering with manual face tagging that trains recognition. All ML runs
+  over decrypted-in-memory renditions; blobs at rest stay sealed.
+- **Files** — a nestable folder browser with versioning and per-user quota.
+- **Notes / Todos / Bookmarks** — sealed records rendered client-side (Markdown
+  via marked + DOMPurify).
+- **Contacts** — zero-knowledge vCard 4.0 contacts (no CardDAV), encrypted
+  avatars, address mini-maps, and a bidirectional link to gallery People.
+- **Backup** — encrypted, incremental backups to S3/B2/SFTP/WebDAV (see below).
+- **Global search & dashboard** across all modules, all client-side.
+
+---
 
 ## Stack
 
-Versions verified against their authoritative sources on **2026-06-30** and
-pinned in `composer.json` / `package.json`:
+| Component     | Version        | Notes                                                   |
+| ------------- | -------------- | ------------------------------------------------------- |
+| PHP           | 8.4            | `declare(strict_types=1)`, full type hints              |
+| Laravel       | 13.x           | Framework                                               |
+| PostgreSQL    | 17 (pgvector)  | `vector` extension for CLIP/face similarity             |
+| Valkey        | 8.x            | Cache, session, queue (Redis-compatible, `predis`)      |
+| Node.js       | 22 LTS / Vite 8 / Tailwind 4 | Asset build                               |
+| Alpine.js     | 3.x            | Single-file frontend (`resources/js/app.js`)            |
+| libsodium     | wrappers-sumo  | Client crypto (`resources/js/vault.js`)                 |
+| Laravel Sanctum | 4.x          | Bearer tokens for the mobile/CLI API                    |
+| sabre/dav     | 4.x            | WebDAV (files-over-WebDAV + a backup destination)       |
+| socialiteproviders/pocketid | 5.x | Pocket-ID OIDC provider                            |
+| immich-machine-learning | optional | Face detection + CLIP embeddings (profile-gated)      |
 
-| Component        | Version        | Notes                                            |
-| ---------------- | -------------- | ------------------------------------------------ |
-| PHP              | 8.5.x          | `declare(strict_types=1)`, full type hints       |
-| Laravel          | 13.x           | Latest stable framework                          |
-| PostgreSQL       | 18.x           | Sole database                                    |
-| Valkey           | 9.x            | Cache, session and queue store (Redis-compatible)|
-| Composer         | 2.10.x         |                                                  |
-| Node.js          | 22.x LTS       | For Vite asset builds                            |
-| Vite             | 8.x            | Asset bundler                                    |
-| Tailwind CSS     | 4.x            | CSS-first configuration                          |
-| Alpine.js        | 3.x            | Added with the contact-function autocomplete     |
-| laravel/socialite| 5.x            | OAuth2 client                                    |
-| socialiteproviders/pocketid | 5.x | Pocket-ID OIDC provider                          |
+---
 
-### Why Valkey, not Redis
+## Deployment (Docker + host Caddy)
 
-Valkey is the open-source fork of Redis and is wire-compatible with the Redis
-protocol. Laravel's Redis driver connects to it unchanged. We use the pure-PHP
-`predis` client (`REDIS_CLIENT=predis`), so the `phpredis` C extension is not
-required.
-
-## Requirements
-
-- PHP 8.5 with the `pdo_pgsql` extension
-- Composer 2.10+
-- Node.js 22 LTS and npm
-- A running PostgreSQL 18 server
-- A running Valkey 9 server
-- Access to a Pocket-ID instance (OIDC provider)
-
-## Setup
+Production runs as a Docker Compose stack; TLS + routing are handled by **Caddy
+on the host**, reverse-proxying to `127.0.0.1:${APP_PORT}`.
 
 ```bash
-# 1. Install dependencies
-composer install
-npm install
+cp .env.docker.example .env      # fill APP_KEY, DB/REDIS passwords, POCKETID_*, S3
+docker compose build
+docker compose up -d             # app + worker + scheduler + db + valkey
+docker compose --profile ml up -d   # optionally add the ML sidecar
+```
 
-# 2. Create the environment file and generate the application key
-cp .env.example .env
-php artisan key:generate
+Services: `app` (nginx + php-fpm, runs migrations on start), `worker`
+(`queue:work`, scale with `--scale worker=N`), `scheduler` (`schedule:work`),
+`db` (pgvector/pg17), `valkey`, and the optional `ml` sidecar. Every service runs
+with `no-new-privileges` and drops `CAP_NET_RAW`. The app port is bound to
+`127.0.0.1` only — put Caddy in front for TLS.
 
-# 3. Configure the database and Valkey connections in .env
-#    (DB_*, REDIS_*) and the Pocket-ID credentials (POCKETID_*).
+Health check: `curl -fsS https://<your-domain>/up` → `200`.
 
-# 4. Create the PostgreSQL database and role, e.g.:
-#    CREATE ROLE ledgerline LOGIN PASSWORD '...';
-#    CREATE DATABASE ledgerline OWNER ledgerline;
+### Local development (without Docker)
 
-# 5. Run migrations
+```bash
+composer install && npm install
+cp .env.example .env && php artisan key:generate
+# configure DB_*, REDIS_*, POCKETID_*, and the "files" S3 disk (MinIO locally)
 php artisan migrate
-
-# 6. Build assets (or run the dev server)
-npm run build      # production build
-npm run dev        # development with HMR
-
-# 7. Serve the application
+npm run dev            # or: npm run build
 php artisan serve
 ```
 
-The application is then available at the `APP_URL` (default
-`http://localhost:8000`).
+---
 
 ## Environment variables
 
-| Variable               | Purpose                                                        |
-| ---------------------- | -------------------------------------------------------------- |
-| `DB_CONNECTION`        | Must be `pgsql`.                                                |
-| `DB_HOST` / `DB_PORT`  | PostgreSQL host and port (default `127.0.0.1:5432`).           |
-| `DB_DATABASE`          | Database name (`ledgerline`).                                  |
-| `DB_USERNAME` / `DB_PASSWORD` | PostgreSQL credentials.                                 |
-| `REDIS_CLIENT`         | Must be `predis` (pure PHP, no extension needed).             |
-| `REDIS_HOST` / `REDIS_PORT` | Valkey host and port (default `127.0.0.1:6379`).         |
-| `CACHE_STORE` / `SESSION_DRIVER` / `QUEUE_CONNECTION` | All set to `redis` → Valkey. |
-| `POCKETID_BASE_URL`    | OIDC issuer base URL of your Pocket-ID instance.              |
-| `POCKETID_CLIENT_ID` / `POCKETID_CLIENT_SECRET` | OIDC client credentials.            |
-| `POCKETID_REDIRECT_URI`| Must match a redirect URI registered in Pocket-ID; points at `/auth/callback`. |
-| `POCKETID_USE_PKCE`    | Enables PKCE for the authorization-code flow (default `true`).|
+| Variable | Purpose |
+| --- | --- |
+| `APP_KEY` | Laravel app key (`php artisan key:generate --show`). |
+| `APP_URL` | Public URL; must be HTTPS in production. |
+| `DB_CONNECTION` / `DB_HOST` / `DB_PORT` / `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | PostgreSQL (pgvector) connection. |
+| `REDIS_CLIENT` | `predis` (pure PHP) — no `phpredis` extension needed. |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Valkey connection. |
+| `CACHE_STORE` / `SESSION_DRIVER` / `QUEUE_CONNECTION` | All `redis` → Valkey. |
+| `POCKETID_BASE_URL` / `POCKETID_CLIENT_ID` / `POCKETID_CLIENT_SECRET` / `POCKETID_REDIRECT_URI` | Pocket-ID OIDC client. Redirect URI = `<APP_URL>/auth/callback`. |
+| `POCKETID_ADMIN_GROUP` | OIDC group whose members may change global/infra settings (fail-closed in multi-user). |
+| `AWS_*` / `FILES_S3_*` | The `files` blob disk (Hetzner/S3/R2/MinIO). Bucket is private; app streams all bytes behind auth. |
+| `AWS_EC2_METADATA_DISABLED` | `true` — always pass explicit S3 keys; skip the IMDS probe. |
+| `TRUSTED_PROXIES` | The private ranges the host reverse-proxy uses (e.g. `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`). **Never `*`** — that lets a remote client forge `X-Forwarded-For`. |
+| `ML_ENABLED` / `ML_URL` / `FACE_ENABLED` / `ML_FACE_MODEL` | Machine-learning sidecar (optional). `ML_URL` defaults to `http://ml:3003`. |
+| `ML_IMAGE_TAG` | Pinned immich ML image tag (default a concrete version, not `:release`). |
+| `SANCTUM_EXPIRATION` | Absolute device-token lifetime in minutes (default 180 days). |
+| `DEVICE_IDLE_DAYS` | Revoke a device token unused this many days (default 90; 0 disables). |
+| `DEVICE_WIPE_GRACE_MINUTES` | Grace before a remotely-wiped token is hard-revoked (default 15). |
+| `PAIRING_MAX_DEVICES` | Max paired devices (app + CLI) per user (default 3). |
+| `BACKUP_RECONCILE_HOURS` | How often a mirror backup does a full list-and-prune vs. a fast incremental delta (default 24). |
+| `OPS_METRICS_TOKEN` | Bearer for the Prometheus `/metrics` endpoint. Unset → `/metrics` returns 404. |
+| `VAULT_REMEMBER_DAYS` / `VAULT_PUBLIC_IDLE_MINUTES` | Trusted-device vault-unlock persistence vs. public-computer idle lock. |
 
-## Authentication
+See `.env.example` (local) and `.env.docker.example` (Docker) for the full set.
 
-All sign-in goes through Pocket-ID:
+---
 
-1. The user visits `/login` and clicks "Continue with Pocket-ID".
-2. `/auth/redirect` sends the user to Pocket-ID via Socialite (PKCE-protected).
-3. Pocket-ID returns the user to `/auth/callback`, where the account is matched
-   on its stable OIDC subject (`sub`) and a local session is started.
-4. `/logout` invalidates the session.
+## Authentication & access model
 
-Register an OIDC client in Pocket-ID with the redirect URI set to
-`<APP_URL>/auth/callback` and copy the client ID/secret into `.env`.
+- **Sign-in** goes through Pocket-ID (OIDC, PKCE). Accounts are matched on the
+  stable `sub`. The app stores no login passwords.
+- **Per-user isolation.** Every module is scoped to its owner (`OwnsUserData` /
+  `AssignsOwner`); one server can host many independent users.
+- **Vault unlock (Proton-style).** After signing in you enter your vault
+  passphrase once. On a **trusted device** the key persists across restarts for
+  `VAULT_REMEMBER_DAYS` (wrapped by a non-extractable key in IndexedDB, bound to
+  your user id). Ticking **public computer** keeps a session-only key with a
+  short idle lock. Logout clears both.
+- **Mobile / CLI pairing.** A signed-in owner authorises a new device from the
+  profile page — scan a QR (app) or copy a short-lived code (CLI). The device
+  collects a one-time Sanctum bearer. Tokens are capped per user, expire, idle-
+  expire, and can be **remotely wiped** (the wipe is enforced, not advisory —
+  after a self-erase grace the token is hard-revoked).
 
-## Access model
+---
 
-All authenticated users share a single workspace: everyone who can sign in via
-Pocket-ID sees the same customers, projects, files and finance records. There is
-no per-team data isolation. Authentication is handled entirely by Pocket-ID
-(OIDC); the application never stores passwords.
+## Backups
 
-## File storage
+Backups are zero-knowledge-aware and incremental.
 
-Files can be attached to customers and projects, or uploaded as general company
-files (logos, letterhead, templates) with no owner. **Files** is a folder
-browser: nestable virtual folders organise files like a file browser, with
-breadcrumb navigation. They are stored on a private, S3-compatible object store
-(the `files` disk): **MinIO** locally, **Cloudflare R2 / S3** in production.
+- **Files / gallery** are mirrored blob-by-blob. Blobs are already client-side
+  ciphertext, so they're copied as-is. Routine runs upload only the blobs added
+  since the last run (a high-water mark over the blob ledger); a full
+  list-and-prune reconcile that removes deletions runs once per
+  `BACKUP_RECONCILE_HOURS`. Backing up a large library every few hours stays fast.
+- **The database dump** carries sealed rows plus wrapped vault-key material and is
+  therefore **always encrypted** (Argon2id SENSITIVE, versioned container format,
+  minimum passphrase length) before upload.
+- **Destinations:** S3 / Backblaze B2 / SFTP / WebDAV, credentials stored
+  encrypted. Every destination connection passes the SSRF guard.
+- **Restore** is non-destructive to verify: a dry-run verifier checks integrity +
+  the passphrase; `php artisan backups:decrypt` decrypts an archive on the CLI.
 
-- Uploads stream through the app, which detects the file type from its content
-  and, for unencrypted text-extractable files, captures searchable text.
-- Downloads always stream through the app behind authentication; the bucket
-  is never public and no object ACLs are set (R2 rejects ACLs).
-- Files are tagged and included in global search (by name, type, tags, and
-  extracted content when unencrypted).
+---
 
-Local development uses `FILES_S3_*` (see `.env.example`) pointed at MinIO:
+## Security posture
 
-```bash
-# Start MinIO and create the bucket (root creds match FILES_S3_KEY/SECRET):
-MINIO_ROOT_USER=ledgerline MINIO_ROOT_PASSWORD=ledgerline-secret \
-  minio server ~/ledgerline-minio-data --address 127.0.0.1:9000 &
-mc alias set local http://127.0.0.1:9000 ledgerline ledgerline-secret
-mc mb --ignore-existing local/ledgerline-files
-```
+- **Zero-knowledge at rest** — server holds only ciphertext blobs + sealed,
+  size-padded manifests.
+- **SSRF guard** (`App\Support\OutboundUrl`) on every outbound call — geocoding,
+  the ML sidecar, backup destinations, notification webhooks — with IP pinning and
+  metadata/link-local blocking.
+- **Strict CSP / HSTS**, script-less CSP for public share pages, sandboxed
+  iframes, nosniff; no `unsafe-inline` scripts.
+- **Rate limiting** across auth, pairing, geocoding, ML, store writes, blob
+  uploads, backups and WebDAV; array/manifest size caps and streaming caps.
+- **Owner-scoped everything**, including bulk/destructive paths that bypass
+  Eloquent events.
+- **Device-token lifecycle** — bounded lifetime, idle revocation, enforced remote
+  wipe, per-device abilities.
+- **In-app error log + Prometheus `/metrics`** (token-gated) instead of shipping
+  data to a third-party APM.
 
-In production the `files` disk falls back to the standard `AWS_*` variables, so
-a Laravel Cloud R2 bucket works by setting only `AWS_*` (with
-`AWS_DEFAULT_REGION=auto`) — leave `FILES_S3_*` unset.
-
-## Deployment to Laravel Cloud
-
-The application is built with Laravel conventions only and runs on
-[Laravel Cloud](https://cloud.laravel.com) without code changes. The checklist
-below covers what must be configured there; nothing in this list requires
-editing application code.
-
-### 1. Provision managed services
-
-- **PostgreSQL** — create a Postgres database in the Laravel Cloud project.
-  Cloud injects the connection details; map them to `DB_*` (see below).
-- **Key–Value store (Valkey)** — create a Laravel Cloud KV store. It is
-  Valkey-based and speaks the Redis protocol, so it backs the cache, session
-  and queue stores exactly as the local Valkey does.
-
-### 2. Environment variables
-
-Set these in the Laravel Cloud environment settings (not committed to the repo):
-
-```dotenv
-APP_NAME=Ledgerline
-APP_ENV=production
-APP_DEBUG=false
-APP_KEY=            # generate once: `php artisan key:generate --show`
-APP_URL=https://your-app.laravel.cloud
-
-# PostgreSQL — use the values from the provisioned Cloud database.
-DB_CONNECTION=pgsql
-DB_HOST=...
-DB_PORT=5432
-DB_DATABASE=...
-DB_USERNAME=...
-DB_PASSWORD=...
-
-# Valkey (Cloud KV) — drives cache, sessions and queues.
-REDIS_CLIENT=phpredis     # phpredis is available on Cloud; predis also works
-REDIS_HOST=...
-REDIS_PORT=6379
-REDIS_PASSWORD=...
-CACHE_STORE=redis
-SESSION_DRIVER=redis
-QUEUE_CONNECTION=redis
-
-# Pocket-ID OIDC client (must use HTTPS in production).
-POCKETID_BASE_URL=https://id.your-domain.com
-POCKETID_CLIENT_ID=...
-POCKETID_CLIENT_SECRET=...
-POCKETID_REDIRECT_URI=https://your-app.laravel.cloud/auth/callback
-POCKETID_USE_PKCE=true
-
-# File storage bucket (Laravel Cloud provides these for a Cloudflare R2 bucket).
-# The "files" disk falls back to these AWS_* variables, so no FILES_S3_* are
-# needed in the cloud — just leave them unset.
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_DEFAULT_REGION=auto                 # R2 uses "auto"
-AWS_BUCKET=...
-AWS_ENDPOINT=https://<account>.eu.r2.cloudflarestorage.com
-AWS_USE_PATH_STYLE_ENDPOINT=false
-```
-
-Notes:
-
-- `APP_DEBUG` must be `false` in production so stack traces are never exposed.
-- On Cloud the `phpredis` C extension is present, so `REDIS_CLIENT=phpredis` is
-  the faster default; `predis` (used locally) remains a valid fallback.
-- Cloud terminates TLS at its proxy. Laravel 11+ trusts the Cloud proxy
-  out of the box, so HTTPS URLs and secure cookies are generated correctly.
-
-### 3. Build & deploy commands
-
-Laravel Cloud auto-detects the build, but ensure the pipeline runs:
-
-```bash
-composer install --no-dev --optimize-autoloader
-npm ci
-npm run build
-```
-
-And add a deploy/release step that runs the migrations:
-
-```bash
-php artisan migrate --force
-```
-
-Optionally cache configuration and routes for performance:
-
-```bash
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-```
-
-### 4. Pocket-ID configuration
-
-In the Pocket-ID admin UI, register (or update) the OIDC client so its redirect
-URI exactly matches `https://your-app.laravel.cloud/auth/callback`. Mismatched
-redirect URIs are rejected by the provider.
-
-### 5. Background work
-
-There is currently no queued work or scheduled task, so no worker or scheduler
-needs to be enabled. When queues are introduced later, add a Laravel Cloud
-worker pointed at the Valkey-backed `redis` queue connection.
-
-## Security notes
-
-- **No local passwords.** Identity is owned by Pocket-ID; the `password` column
-  is nullable and unused for login.
-- **PKCE** hardens the OAuth2 authorization-code exchange against interception.
-- **CSRF protection** is enabled on all state-changing routes (Laravel default).
-- **Mass-assignment protection** via explicit `$fillable` on every model.
-- **Authorization** is enforced through Laravel Policies on every domain model.
-- **Validation** of all input happens in dedicated Form Requests.
-- **Parameterized queries only** — Eloquent and the query builder; no raw SQL.
-- **Sessions** are stored server-side in Valkey.
-- **No third-party assets or telemetry** — everything is self-hosted.
+---
 
 ## Development workflow
 
-The project follows the Git Flow branching model:
+- **Git Flow.** `develop` is the working branch; every `main` commit is a tagged
+  `vX.Y.Z` release. Merge with `--no-ff`.
+- **Tests:** `php artisan test --teamcity`. Run in filtered chunks — `PhotoEditTest`
+  can segfault under imagick/GD and mask later tests.
+- **Conventions:** monochrome icons via `<x-icon>` only; EN/DE language parity for
+  every string; no AI references in code, comments, commits or releases; assets
+  bundled locally (no CDNs/telemetry).
 
-- `main` — production-ready; every commit is a release, tagged `vX.Y.Z`.
-- `develop` — integration branch and default working branch.
-- `feature/*` — branched from and merged back into `develop`.
-- `release/*` — release preparation, merged into `main` and `develop`.
-- `hotfix/*` — urgent fixes branched from `main`.
+---
 
-Branches are merged with `--no-ff` to preserve history.
+## License
+
+See the repository for licensing terms.
