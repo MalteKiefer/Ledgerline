@@ -52,7 +52,7 @@ COPY docker/imagemagick/policy.xml /etc/ImageMagick-7/policy.xml
 
 # Let WebDAV serve its own dotfiles (macOS AppleDouble/._*), bypassing the
 # base image's dotfile deny so Finder does not retry-storm and crawl.
-COPY --chown=www-data:www-data docker/nginx/00-dav.conf /etc/nginx/server-opts.d/00-dav.conf
+COPY --chown=www-data:www-data docker/nginx/00-assets.conf /etc/nginx/server-opts.d/00-assets.conf
 
 # serversideup automations are driven per-service via env in compose; default off.
 ENV PHP_OPCACHE_ENABLE=1 \
