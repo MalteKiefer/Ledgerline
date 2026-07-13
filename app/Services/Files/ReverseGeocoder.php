@@ -6,17 +6,19 @@ namespace App\Services\Files;
 
 use App\Models\AppSettings;
 use App\Services\Support\NominatimClient;
+use App\Support\OutboundUrl;
 use Throwable;
 
 /**
- * Reverse-geocodes coordinates to a human-readable address via a Nominatim-
- * compatible endpoint (config gallery.geocoder_url — the OSM public server by
- * default, or a self-hosted instance). Triggered by the viewer's place-picker,
- * and by upload only when gallery.geocode_on_upload is enabled (off by default).
- * The resolved place is handed straight back to the browser (which seals it into
- * an opaque blob) and is NEVER cached server-side — caching the resolved address
- * at rest would be a plaintext-location leak. Only a rate-limit timestamp (no
- * location content) is kept in the cache.
+ * Reverse-geocodes coordinates to a human-readable address. A self-hosted Photon
+ * (config gallery.photon_url) is tried first so covered points never leave the
+ * zero-knowledge boundary; anything it does not cover falls back to a Nominatim-
+ * compatible endpoint (gallery.geocoder_url, public OSM by default). Triggered by
+ * the viewer's place-picker, and by upload only when gallery.geocode_on_upload is
+ * enabled (off by default). The resolved place is handed straight back to the
+ * browser (which seals it into an opaque blob) and is NEVER cached server-side —
+ * caching the resolved address at rest would be a plaintext-location leak. Only a
+ * rate-limit timestamp (no location content) is kept in the cache.
  */
 class ReverseGeocoder
 {
@@ -36,16 +38,25 @@ class ReverseGeocoder
      */
     public function lookupDetailed(float $lat, float $lon): array
     {
-        // Snap to a coarse grid so the coordinates sent to OSM are blurred.
+        // Snap to a coarse grid so the coordinates sent out are blurred.
         [$lat, $lon] = $this->snapToGrid($lat, $lon);
 
-        return $this->request($lat, $lon);
+        // In-boundary first; only fall through to OSM when Photon has no match.
+        $photonUrl = (string) config('gallery.photon_url', '');
+        if ($photonUrl !== '') {
+            $viaPhoton = $this->viaPhoton($photonUrl, $lat, $lon);
+            if ($viaPhoton['display'] !== null) {
+                return $viaPhoton;
+            }
+        }
+
+        return $this->viaNominatim($lat, $lon);
     }
 
     /**
      * @return array{display: ?string, address: array<string, string>}
      */
-    private function request(float $lat, float $lon): array
+    private function viaNominatim(float $lat, float $lon): array
     {
         $json = $this->nominatim->get('reverse', [
             'lat' => $lat,
@@ -63,6 +74,83 @@ class ReverseGeocoder
             'display' => ($json['display_name'] ?? null) ?: null,
             'address' => array_map('strval', $json['address'] ?? []),
         ];
+    }
+
+    /**
+     * Query a self-hosted Photon (/reverse → GeoJSON). Returns display=null when
+     * the point is uncovered (empty features) or on any error, so the caller
+     * falls back to Nominatim. No throttle: a self-hosted instance has no policy.
+     *
+     * @return array{display: ?string, address: array<string, string>}
+     */
+    private function viaPhoton(string $base, float $lat, float $lon): array
+    {
+        try {
+            $response = OutboundUrl::client($base, 5)
+                ->get($base.'/reverse', ['lat' => $lat, 'lon' => $lon, 'limit' => 1]);
+
+            if (! $response->successful()) {
+                return ['display' => null, 'address' => []];
+            }
+
+            $props = $response->json('features.0.properties');
+            if (! is_array($props)) {
+                return ['display' => null, 'address' => []];
+            }
+
+            return [
+                'display' => $this->photonDisplay($props),
+                'address' => $this->photonAddress($props),
+            ];
+        } catch (Throwable) {
+            return ['display' => null, 'address' => []];
+        }
+    }
+
+    /**
+     * Build a single display line from Photon's structured GeoJSON properties
+     * (it has no display_name field), or null if there is nothing usable.
+     *
+     * @param  array<string, mixed>  $p
+     */
+    private function photonDisplay(array $p): ?string
+    {
+        $street = $p['street'] ?? $p['name'] ?? '';
+        $line1 = trim($street.' '.($p['housenumber'] ?? ''));
+        $city = $p['city'] ?? $p['town'] ?? $p['village'] ?? $p['district'] ?? $p['county'] ?? '';
+
+        $parts = array_values(array_filter([
+            $line1,
+            trim(($p['postcode'] ?? '').' '.$city),
+            (string) ($p['state'] ?? ''),
+            (string) ($p['country'] ?? ''),
+        ], static fn (string $s): bool => $s !== ''));
+
+        $display = implode(', ', $parts);
+
+        return $display !== '' ? $display : null;
+    }
+
+    /**
+     * Map Photon properties to the same Nominatim-style address keys the client
+     * already understands.
+     *
+     * @param  array<string, mixed>  $p
+     * @return array<string, string>
+     */
+    private function photonAddress(array $p): array
+    {
+        $city = $p['city'] ?? $p['town'] ?? $p['village'] ?? $p['district'] ?? null;
+
+        return array_map('strval', array_filter([
+            'road' => $p['street'] ?? null,
+            'house_number' => $p['housenumber'] ?? null,
+            'city' => $city,
+            'state' => $p['state'] ?? null,
+            'postcode' => $p['postcode'] ?? null,
+            'country' => $p['country'] ?? null,
+            'country_code' => isset($p['countrycode']) ? strtolower((string) $p['countrycode']) : null,
+        ], static fn ($v): bool => $v !== null && $v !== ''));
     }
 
     /**
