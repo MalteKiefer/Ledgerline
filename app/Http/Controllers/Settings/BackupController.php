@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\RunBackupJob;
+use App\Models\AuditLog;
 use App\Models\BackupDestination;
 use App\Models\BackupJob;
 use App\Models\BackupRun;
@@ -51,7 +52,9 @@ class BackupController extends Controller
         $data = $this->validateDestination($request);
         // Only persist a destination we can actually reach and write to.
         $this->assertReachable($data['driver'], $data['config']);
-        BackupDestination::create($data);
+        $destination = BackupDestination::create($data);
+
+        AuditLog::record('backup.destination.created', $destination);
 
         return back()->with('status', __('flash.backup_saved'));
     }
@@ -61,6 +64,8 @@ class BackupController extends Controller
         $data = $this->validateDestination($request, $destination);
         $this->assertReachable($data['driver'], $data['config']);
         $destination->update($data);
+
+        AuditLog::record('backup.destination.updated', $destination);
 
         return redirect()->route('settings.backup.index')->with('status', __('flash.backup_saved'));
     }
@@ -103,6 +108,8 @@ class BackupController extends Controller
     {
         $destination->delete();
 
+        AuditLog::record('backup.destination.deleted', null, ['id' => $destination->id]);
+
         return back()->with('status', __('flash.backup_deleted'));
     }
 
@@ -111,7 +118,9 @@ class BackupController extends Controller
     public function storeJob(Request $request): RedirectResponse
     {
         $data = $this->validateJob($request, requirePassphrase: true);
-        BackupJob::create($data);
+        $job = BackupJob::create($data);
+
+        AuditLog::record('backup.job.created', $job);
 
         return back()->with('status', __('flash.backup_saved'));
     }
@@ -125,12 +134,16 @@ class BackupController extends Controller
         }
         $job->update($data);
 
+        AuditLog::record('backup.job.updated', $job);
+
         return redirect()->route('settings.backup.index')->with('status', __('flash.backup_saved'));
     }
 
     public function destroyJob(BackupJob $job): RedirectResponse
     {
         $job->delete();
+
+        AuditLog::record('backup.job.deleted', null, ['id' => $job->id]);
 
         return back()->with('status', __('flash.backup_deleted'));
     }

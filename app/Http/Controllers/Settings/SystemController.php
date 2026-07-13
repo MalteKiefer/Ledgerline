@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\ErrorEvent;
 use App\Providers\AppServiceProvider;
 use App\Services\Ops\StorageHistory;
@@ -51,6 +52,10 @@ class SystemController extends Controller
             'errors' => ErrorEvent::orderByRaw('resolved_at is null desc')
                 ->orderByDesc('last_seen_at')
                 ->limit(20)
+                ->get(),
+            'audit' => AuditLog::with('actor')
+                ->orderByDesc('created_at')
+                ->limit(30)
                 ->get(),
         ]);
     }

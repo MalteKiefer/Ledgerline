@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Services\AvatarFetcher;
 use Illuminate\Http\RedirectResponse;
@@ -50,6 +51,8 @@ class PocketIdController extends Controller
             $oidcUser = Socialite::driver('pocketid')->user();
         } catch (Throwable) {
             // Covers invalid/expired state, denied consent or token errors.
+            AuditLog::record('auth.login_failed', null, ['reason' => 'token_or_state'], null);
+
             return redirect()
                 ->route('login')
                 ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
@@ -66,6 +69,8 @@ class PocketIdController extends Controller
         if (! $this->mayProvision($sub, $email)) {
             // Deliberately generic: never reveal whether the account exists or
             // why a subject was rejected.
+            AuditLog::record('auth.login_denied', null, ['sub' => $sub], null);
+
             return redirect()
                 ->route('login')
                 ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
@@ -120,6 +125,7 @@ class PocketIdController extends Controller
             config(['session.expire_on_close' => true]);
         }
         Auth::login($user, remember: ! $public);
+        AuditLog::record('auth.login', $user, ['public_computer' => $public], $user->id);
 
         // Keep the provider id_token so logout can end the SSO session too.
         $idToken = $oidcUser->accessTokenResponseBody['id_token'] ?? null;
@@ -194,7 +200,9 @@ class PocketIdController extends Controller
     {
         $idToken = $request->session()->get('oidc_id_token');
 
+        $actorId = Auth::id();
         Auth::logout();
+        AuditLog::record('auth.logout', null, [], $actorId);
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 

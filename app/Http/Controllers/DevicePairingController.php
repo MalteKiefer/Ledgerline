@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use App\Models\DevicePairing;
 use App\Services\Auth\Pairing;
 use Endroid\QrCode\QrCode;
@@ -70,6 +71,8 @@ class DevicePairingController extends Controller
         $this->authorizeOwner($request, $devicePairing);
         $pairing->approve($devicePairing);
 
+        AuditLog::record('device.paired', $devicePairing);
+
         return response()->json(['status' => $devicePairing->refresh()->status]);
     }
 
@@ -78,6 +81,8 @@ class DevicePairingController extends Controller
     {
         $this->authorizeOwner($request, $devicePairing);
         $pairing->reject($devicePairing);
+
+        AuditLog::record('device.pairing_rejected', $devicePairing);
 
         return response()->json(['status' => $devicePairing->refresh()->status]);
     }
@@ -118,6 +123,8 @@ class DevicePairingController extends Controller
     {
         $request->user()->tokens()->whereKey($tokenId)->delete();
 
+        AuditLog::record('device.revoked', null, ['token_id' => $tokenId]);
+
         return response()->json(['ok' => true]);
     }
 
@@ -129,6 +136,8 @@ class DevicePairingController extends Controller
     public function wipeDevice(Request $request, string $tokenId): JsonResponse
     {
         $request->user()->tokens()->whereKey($tokenId)->update(['wipe_requested_at' => now()]);
+
+        AuditLog::record('device.wipe_requested', null, ['token_id' => $tokenId]);
 
         return response()->json(['ok' => true]);
     }

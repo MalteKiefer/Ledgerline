@@ -41,6 +41,7 @@ class SystemStatus
 
         $lastError = ErrorEvent::whereNull('resolved_at')->max('last_seen_at');
         $lastBackup = BackupRun::where('status', 'success')->max('finished_at');
+        $lastVerified = BackupRun::whereNotNull('verified_at')->orderByDesc('verified_at')->first();
 
         return [
             'version' => (string) config('app.version'),
@@ -61,6 +62,8 @@ class SystemStatus
             ],
             'backup' => [
                 'lastSuccessAt' => $lastBackup ? CarbonImmutable::parse($lastBackup)->toIso8601String() : null,
+                'lastVerifyStatus' => $lastVerified?->verify_status,
+                'lastVerifyAt' => $lastVerified?->verified_at ? CarbonImmutable::parse($lastVerified->verified_at)->toIso8601String() : null,
             ],
             'scheduler' => [
                 'lastRunAt' => $this->schedulerLastRun(),

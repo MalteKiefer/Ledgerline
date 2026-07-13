@@ -14,4 +14,16 @@ return [
      * hourly ops:alert-errors command reports at most once per this window.
      */
     'error_alerts' => (bool) env('OPS_ERROR_ALERTS', true),
+
+    /*
+     * Retention (days) for the append-only security audit log. Entries older
+     * than this are pruned daily. 0 keeps them forever.
+     */
+    'audit_retention_days' => (int) env('OPS_AUDIT_RETENTION_DAYS', 365),
+
+    /*
+     * Alert when the most recent successful backup is older than this many hours
+     * (backup staleness). 0 disables the staleness check.
+     */
+    'backup_stale_hours' => (int) env('OPS_BACKUP_STALE_HOURS', 48),
 ];

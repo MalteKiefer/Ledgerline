@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Actions\PurgeUserAccount;
+use App\Models\AuditLog;
 use App\Support\UserData\UserDataContributor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -70,7 +71,13 @@ class AccountController extends Controller
             'confirmation' => ['required', 'string', 'in:'.$user->email],
         ], ['confirmation.in' => __('account.delete_confirm_mismatch')]);
 
+        // Capture the pre-purge identity: after the purge + logout, $request->user() is null.
+        $deletedUser = $user;
+        $deletedUserId = $user->id;
+
         $purge->handle($user);
+
+        AuditLog::record('account.deleted', $deletedUser, [], $deletedUserId);
 
         Auth::logout();
         $request->session()->invalidate();
