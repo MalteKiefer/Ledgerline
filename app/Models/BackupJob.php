@@ -43,6 +43,19 @@ class BackupJob extends Model
         ];
     }
 
+    /**
+     * The passphrase actually used to encrypt this job's archives: the
+     * environment-provided one (config/backup.php → BACKUP_PASSPHRASE) wins so the
+     * key can live outside the database that gets dumped into the backups; the
+     * per-job DB column is the legacy fallback.
+     */
+    public function effectivePassphrase(): ?string
+    {
+        $env = (string) config('backup.passphrase', '');
+
+        return $env !== '' ? $env : ($this->passphrase ?: null);
+    }
+
     /** @return BelongsTo<BackupDestination, $this> */
     public function destination(): BelongsTo
     {

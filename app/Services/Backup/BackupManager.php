@@ -80,7 +80,7 @@ final class BackupManager
             // oracle). It must never leave the box unencrypted — enforce here, not
             // only in the controller, so a job created via seeder/console/legacy
             // can't ship a cleartext dump.
-            if ($job->source === 'database' && (! $job->encrypt || ! $job->passphrase)) {
+            if ($job->source === 'database' && (! $job->encrypt || ! $job->effectivePassphrase())) {
                 throw new RuntimeException('A database backup must be encrypted (set encryption + a passphrase).');
             }
             if ($job->destination === null) {
@@ -147,12 +147,13 @@ final class BackupManager
                 $step('Archive built: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');
 
                 if ($job->encrypt) {
-                    if (! $job->passphrase) {
+                    $passphrase = $job->effectivePassphrase();
+                    if ($passphrase === null) {
                         throw new RuntimeException('Encryption is enabled but no passphrase is set.');
                     }
                     $step('Encrypting archive…');
                     $encPath = $artifact->path.'.enc';
-                    $this->cipher->encryptFile($artifact->path, $encPath, (string) $job->passphrase);
+                    $this->cipher->encryptFile($artifact->path, $encPath, $passphrase);
                     @unlink($artifact->path);
                     $uploadPath = $encPath;
                     $extension .= '.enc';

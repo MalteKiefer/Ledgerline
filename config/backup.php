@@ -21,4 +21,20 @@ return [
 
     'reconcile_hours' => (int) env('BACKUP_RECONCILE_HOURS', 24),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Backup archive passphrase
+    |--------------------------------------------------------------------------
+    |
+    | The passphrase that encrypts backup archives (incl. the sensitive DB dump)
+    | can be supplied here instead of stored per-job in the database. When set, it
+    | takes precedence over any DB-stored passphrase and is used for every job, so
+    | the key that protects the archives never lives in the same database that
+    | gets dumped into them. Prefer a Docker secret / file-based env for this.
+    | Leave empty to keep the legacy per-job DB passphrase behaviour.
+    |
+    */
+
+    'passphrase' => env('BACKUP_PASSPHRASE'),
+
 ];

@@ -38,3 +38,7 @@ docs/superpowers/
 
 # Docker secret files (never commit)
 /secrets/
+
+# Host deploy artifacts (never commit)
+/db-snapshots/
+/deploy-provenance.log
