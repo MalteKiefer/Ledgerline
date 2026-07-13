@@ -5226,25 +5226,41 @@ const VCard = {
     // Parse a vCard file into an array of { contact, photo } (photo = data URI).
     parse(text) {
         const cards = [];
-        // Unfold continuation lines (CRLF/LF followed by space or tab).
-        const raw = text.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '');
+        // RFC 6350 unfolding: a continuation line begins with a space or tab.
+        const rfc = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n[ \t]/g, '');
+        const lines = rfc.split('\n');
         let cur = null;
-        for (const line of raw.split('\n')) {
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
             if (! line.trim()) continue;
             const up = line.toUpperCase();
             if (up === 'BEGIN:VCARD') { cur = { c: this._blank(), photo: null }; continue; }
             if (up === 'END:VCARD') { if (cur) cards.push(cur); cur = null; continue; }
             if (! cur) continue;
-            const idx = line.indexOf(':');
+            // Split on the first colon OUTSIDE double-quotes: a quoted parameter
+            // value may legitimately contain a colon (e.g. ADR;LABEL="a:b":...).
+            const idx = this._vColon(line);
             if (idx < 0) continue;
             const left = line.slice(0, idx);
-            const value = line.slice(idx + 1);
+            let value = line.slice(idx + 1);
             const [nameRaw, ...paramParts] = left.split(';');
             // Strip any Apple-style group prefix (item1.EMAIL → EMAIL).
             const name = nameRaw.split('.').pop().toUpperCase();
             const params = {};
-            for (const p of paramParts) { const [k, v] = p.split('='); if (v) params[k.toUpperCase()] = v.toUpperCase(); }
-            const type = (params.TYPE || '').toLowerCase();
+            for (const p of paramParts) {
+                const eq = p.indexOf('=');
+                if (eq < 0) { params[p.toUpperCase()] = true; continue; } // bare param (vCard 2.1)
+                params[p.slice(0, eq).toUpperCase()] = p.slice(eq + 1).replace(/^"(.*)"$/, '$1').toUpperCase();
+            }
+            const enc = typeof params.ENCODING === 'string' ? params.ENCODING : '';
+            // QUOTED-PRINTABLE (vCard 2.1): join soft line breaks (trailing '=')
+            // then decode, honouring CHARSET. Only QP-encoded properties consume
+            // following physical lines, so folded base64 is unaffected.
+            if (enc === 'QUOTED-PRINTABLE') {
+                while (value.endsWith('=') && i + 1 < lines.length) { value = value.slice(0, -1) + lines[++i]; }
+                value = this._qpDecode(value, typeof params.CHARSET === 'string' ? params.CHARSET : 'UTF-8');
+            }
+            const type = (typeof params.TYPE === 'string' ? params.TYPE : '').toLowerCase();
             const c = cur.c;
             switch (name) {
                 case 'UID': c.uid = value; break;
@@ -5263,12 +5279,50 @@ const VCard = {
                 case 'ANNIVERSARY': c.anniversary = this._fromDate(value); break;
                 case 'NOTE': c.note = this.unesc(value); break;
                 case 'CATEGORIES': c.categories = value.split(',').map((x) => this.unesc(x.trim())).filter(Boolean); break;
-                case 'PHOTO': cur.photo = value.startsWith('data:') ? value : null; break;
+                // Accept an inline data: URI (vCard 4.0) OR base64-encoded photo
+                // (vCard 3.0 / CardDAV: PHOTO;ENCODING=b;TYPE=JPEG:...). Either way
+                // the image is re-encoded via canvas downstream, neutralising it.
+                case 'PHOTO': cur.photo = this._vPhoto(value, enc, typeof params.TYPE === 'string' ? params.TYPE : ''); break;
                 case 'VERSION': case 'PRODID': case 'REV': break; // regenerated on export
                 default: c._x.push(line); // preserve anything we don't model
             }
         }
         return cards;
+    },
+
+    // Index of the first colon outside a double-quoted parameter value, or -1.
+    _vColon(line) {
+        let quoted = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') quoted = ! quoted;
+            else if (ch === ':' && ! quoted) return i;
+        }
+        return -1;
+    },
+
+    // Decode a quoted-printable value to text, collecting bytes first so a
+    // multi-byte UTF-8 (or other CHARSET) sequence decodes correctly.
+    _qpDecode(s, charset) {
+        const bytes = [];
+        for (let i = 0; i < s.length; i++) {
+            if (s[i] === '=' && i + 2 < s.length && /[0-9A-Fa-f]{2}/.test(s.substr(i + 1, 2))) {
+                bytes.push(parseInt(s.substr(i + 1, 2), 16)); i += 2;
+            } else { bytes.push(s.charCodeAt(i) & 0xff); }
+        }
+        try { return new TextDecoder(charset || 'utf-8').decode(new Uint8Array(bytes)); } catch { return s; }
+    },
+
+    // Normalise a PHOTO value to a data: URI (or null): pass through a data: URI,
+    // else wrap a base64 payload (ENCODING=b/BASE64) using its TYPE as the mime.
+    _vPhoto(value, enc, type) {
+        if (value.startsWith('data:')) return value;
+        if (enc === 'B' || enc === 'BASE64') {
+            const t = (type || 'JPEG').toLowerCase();
+            const mime = t.includes('/') ? t : 'image/' + (t === 'jpg' ? 'jpeg' : t);
+            return 'data:' + mime + ';base64,' + value.replace(/\s+/g, '');
+        }
+        return null;
     },
     _blank() { return { fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '', org: '', department: '', title: '', role: '', emails: [], phones: [], impp: [], addresses: [], urls: [], bday: '', anniversary: '', note: '', categories: [], _x: [] }; },
 };
