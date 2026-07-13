@@ -74,6 +74,7 @@ return [
     'face_tag_none' => 'No face detected — draw a tighter box around the face.',
     'face_tag_failed' => 'Could not analyze the face. Try again.',
     'face_tag_reset' => 'Reset rotation/flip before tagging a face.',
+    'face_tag_hint' => 'Tap a face, or drag a box around it.',
     'analyze_all' => 'Analyze all',
     'analyze_all_hint' => 'Run face detection on photos that were never analyzed, then group the faces. Needed to find people across the whole library.',
     'analyzing' => 'Analyzing photos…',
