@@ -3574,6 +3574,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
     extractProgress: null, // {done,total} while text extraction runs, else null
     _extracting: false,
+    _contentReady: 0,    // reactive tick: bumped as content decrypts so search re-runs
+    _warming: false,
+    _contentWarmed: false,
     // Points at the shared opaque store's file arrays once loaded; the tree is
     // plaintext inside the sealed blob, so mutations edit these in place.
     manifest: { v: 1, folders: [], files: [] },
@@ -3707,7 +3710,6 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.manifest.folders = window.LLStore.data.fileFolders;
         this.manifest.files = window.LLStore.data.files;
         this.state = 'ready';
-        this._warmFileText(); // background: load extracted text into the search index
         this.refreshUsage();
         // Tell the server which blobs the manifest still references so it can
         // reclaim the quota held by any it no longer does (grace-gated).
@@ -3870,6 +3872,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
     get rows() {
         const q = this.query.trim().toLowerCase();
+        void this._contentReady; // re-filter as file content decrypts into the index
         const tag = this.activeTag;
         const factor = this.sortDir === 'desc' ? -1 : 1;
         const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
@@ -4589,13 +4592,25 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             }
         } finally { this._extractQDraining = false; }
     },
-    async _warmFileText() {
-        for (const f of (this.manifest.files || [])) {
-            if (f.trashed || ! f.textRef || fileText[f.id] != null) continue;
-            try { const buf = await fetchDecrypt(config.rawBase, f.textRef, f.textKey); fileText[f.id] = new TextDecoder().decode(buf).toLowerCase(); }
-            catch (e) { /* skip */ }
-            await new Promise((r) => setTimeout(r, 0));
-        }
+    // Gently decrypt extracted-text blobs into the in-memory index — ONLY when the
+    // user actually searches, once per session, throttled so it never floods
+    // /files/raw. Opening Files (or the contacts avatar picker, which also boots
+    // this component) must not trigger it. Bumps _contentReady so the results
+    // re-filter as content arrives.
+    async _ensureContentIndex() {
+        if (this._warming || this._contentWarmed) return;
+        this._warming = true;
+        try {
+            let n = 0;
+            for (const f of (this.manifest.files || [])) {
+                if (f.trashed || ! f.textRef || fileText[f.id] != null) continue;
+                try { const buf = await fetchDecrypt(config.rawBase, f.textRef, f.textKey); fileText[f.id] = new TextDecoder().decode(buf).toLowerCase(); }
+                catch (e) { /* skip */ }
+                if (++n % 10 === 0) { this._contentReady++; await new Promise((r) => setTimeout(r, 150)); }
+            }
+            this._contentWarmed = true;
+            this._contentReady++;
+        } finally { this._warming = false; }
     },
 
     _uploadOne(file, entry) {

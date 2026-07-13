@@ -140,7 +140,7 @@
 
         {{-- Search (client-side, over the decrypted manifest) + sort --}}
         <div class="mt-6 flex flex-wrap items-center gap-3">
-            <input type="search" x-model="query" placeholder="{{ __('files.search') }}"
+            <input type="search" x-model="query" @input="query && _ensureContentIndex()" placeholder="{{ __('files.search') }}"
                 class="w-full sm:w-64 rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
             <div class="flex items-center gap-1 text-sm">
                 <select x-model="sortKey" aria-label="{{ __('files.sort_by') }}" class="rounded-md border-gray-300 dark:border-gray-700 py-1.5 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
