@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Services\Files\ReverseGeocoder;
 use App\Services\Gallery\GalleryProcessor;
 use App\Services\Gallery\MachineLearning;
 use App\Services\Support\NominatimClient;
@@ -118,7 +119,7 @@ class GalleryProcessController extends Controller
             return;
         }
         $info = @getimagesize($path);
-        if (is_array($info) && isset($info[0], $info[1])) {
+        if (is_array($info)) {
             $megapixels = ((int) $info[0] * (int) $info[1]) / 1_000_000;
             abort_if($megapixels > $cap, 422, 'Image dimensions exceed the allowed limit.');
         }
@@ -161,5 +162,29 @@ class GalleryProcessController extends Controller
 
         return response()->json(['results' => $results])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+
+    /**
+     * Reverse-geocode a coordinate to a place name for the mobile viewer's location
+     * display. Resolution stays in the ZK boundary when a self-hosted Photon is set
+     * (config gallery.photon_url), falling back to the configured Nominatim otherwise;
+     * the coordinate is snapped to a coarse grid inside ReverseGeocoder before egress.
+     * The resolved address is returned to the caller only and NEVER cached server-side —
+     * caching a plaintext location at rest would be a location leak. The mobile client
+     * caches the result encrypted (sealed with the vault key) on the device.
+     */
+    public function reverse(Request $request, ReverseGeocoder $geocoder): JsonResponse
+    {
+        $data = $request->validate([
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lng' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        $result = $geocoder->lookupDetailed((float) $data['lat'], (float) $data['lng']);
+
+        return response()->json([
+            'place' => $result['display'],
+            'address' => $result['address'],
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 }

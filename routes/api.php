@@ -68,6 +68,9 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.gallery.blob.destroy');
         Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('api.gallery.process');
         Route::post('/gallery/embed-text', [GalleryProcessController::class, 'embedText'])->middleware('throttle:300,1')->name('api.gallery.embed-text');
+        // Reverse-geocode a photo coordinate to a place name (viewer display). Self-hosted
+        // Photon first (ZK), snap-to-grid before egress, never cached server-side.
+        Route::get('/gallery/reverse', [GalleryProcessController::class, 'reverse'])->middleware('throttle:60,1')->name('api.gallery.reverse');
 
         // Contacts: the records themselves live in the workspace manifest above
         // (GET/PUT /store). These are only the optional avatar content blobs, so
