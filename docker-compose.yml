@@ -223,17 +223,20 @@ services:
   #   docker compose --profile geocode up -d
   # then set PHOTON_URL=http://photon:2322 in .env (and, for automatic on-upload
   # geocoding, GALLERY_GEOCODE_ON_UPLOAD=true). PHOTON_REGION picks the coverage;
-  # the default "europe,north-america" builds (jsonl mode) an index for those two
-  # continents (a one-off download+build of a few tens of GB into photon-data,
-  # far smaller than a full Nominatim planet). Points OUTSIDE the imported regions
+  # the default "germany" pulls a PREBUILT index (db mode: a light ~few-GB
+  # download into photon-data, ~2 GB heap, no heavy build) to fit a modest box.
+  # Points OUTSIDE the imported region
   # fall back to the public GEOCODER_URL (OSM) — the app queries Photon first and
   # Nominatim only on a miss. Reverse endpoint: /reverse (GeoJSON).
   photon:
     image: ghcr.io/rtuszik/photon-docker:2.3.0@sha256:827cedf9fa3337e657611d62ada669def75dff61c56b51ae55056155d1a9b236
     profiles: ["geocode"]
     environment:
-      IMPORT_MODE: jsonl
-      REGION: ${PHOTON_REGION:-europe,north-america}
+      # db mode = prebuilt single-region index (light, ~2 GB heap, no build).
+      # For wider coverage on a bigger box, set PHOTON_IMPORT_MODE=jsonl and
+      # PHOTON_REGION to a comma list (e.g. europe,north-america).
+      IMPORT_MODE: ${PHOTON_IMPORT_MODE:-db}
+      REGION: ${PHOTON_REGION:-germany}
       UPDATE_STRATEGY: DISABLED
     volumes:
       - photon-data:/photon/data
