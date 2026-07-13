@@ -152,7 +152,7 @@ services:
     image: valkey/valkey:8-alpine@sha256:cfe71288f087704b06be45e270afa7a2abbf820093d6b11a23762081f5ff321d
     # Build the config from the mounted secret at start so the password is never
     # on the command line (visible in `ps`/`docker inspect`) nor in an env var.
-    command: ["sh", "-c", "printf 'requirepass %s\\nappendonly yes\\n' \"$$(cat /run/secrets/redis_password)\" > /tmp/valkey.conf && exec valkey-server /tmp/valkey.conf"]
+    command: ["sh", "-c", "printf 'requirepass %s\\ndir /data\\nappendonly yes\\n' \"$$(cat /run/secrets/redis_password)\" > /tmp/valkey.conf && exec valkey-server /tmp/valkey.conf"]
     secrets:
       - redis_password
     volumes:
