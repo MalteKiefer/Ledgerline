@@ -205,6 +205,37 @@ services:
       retries: 3
       start_period: 60s
 
+  # Optional self-hosted reverse-geocoder exposing a Nominatim-compatible
+  # /reverse API, so photo coordinates never leave the host. Enable with:
+  #   docker compose --profile geocode up -d
+  # then set GEOCODER_URL=http://nominatim:8080 in .env (and, if you want it to
+  # run automatically on upload, GALLERY_GEOCODE_ON_UPLOAD=true). Choose a region
+  # extract via NOMINATIM_PBF_URL from https://download.geofabrik.de — the whole
+  # planet needs ~100 GB+ disk and lots of RAM; a single country extract is a few
+  # GB. The FIRST start imports the extract into nominatim-data (slow, one-off);
+  # later starts are fast. Pin a digest for your platform in production.
+  nominatim:
+    image: mediagis/nominatim:4.5
+    profiles: ["geocode"]
+    environment:
+      PBF_URL: ${NOMINATIM_PBF_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
+      REPLICATION_URL: ${NOMINATIM_REPLICATION_URL:-https://download.geofabrik.de/europe/germany-updates/}
+      IMPORT_STYLE: address
+    volumes:
+      - nominatim-data:/var/lib/postgresql/16/main
+    shm_size: 1gb
+    networks:
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:8080/status' >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
 networks:
   internal:
 
@@ -224,4 +255,5 @@ volumes:
   valkey-data:
   app-storage:
   ml-cache:
+  nominatim-data:
 

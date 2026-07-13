@@ -9,12 +9,14 @@ use App\Services\Support\NominatimClient;
 use Throwable;
 
 /**
- * Reverse-geocodes coordinates to a human-readable address via OpenStreetMap's
- * Nominatim service. Runs only inside the transient zero-knowledge
- * /gallery/process window: the resolved place is handed straight back to the
- * browser (which seals it into an opaque blob) and is NEVER cached server-side —
- * caching the resolved address at rest would be a plaintext-location leak. Only
- * a Nominatim rate-limit timestamp (no location content) is kept in the cache.
+ * Reverse-geocodes coordinates to a human-readable address via a Nominatim-
+ * compatible endpoint (config gallery.geocoder_url — the OSM public server by
+ * default, or a self-hosted instance). Triggered by the viewer's place-picker,
+ * and by upload only when gallery.geocode_on_upload is enabled (off by default).
+ * The resolved place is handed straight back to the browser (which seals it into
+ * an opaque blob) and is NEVER cached server-side — caching the resolved address
+ * at rest would be a plaintext-location leak. Only a rate-limit timestamp (no
+ * location content) is kept in the cache.
  */
 class ReverseGeocoder
 {
