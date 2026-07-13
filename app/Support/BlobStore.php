@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * Single entry point for the unencrypted blob disk that backs files, photos,
- * mail archives and exports. Every module used to inline the files disk;
+ * contact avatars and exports. Every module used to inline the files disk;
  * routing them through here makes the backing disk (local / S3 / R2) a
  * one-line change.
  */

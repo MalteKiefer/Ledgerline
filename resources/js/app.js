@@ -2597,7 +2597,9 @@ return {
         if (! pp) return [];
         const byId = this._photoIndex(); // memoised map, not rebuilt per call
         const ids = [...new Set((pp.faces || []).map((f) => f.photoId))];
-        return ids.map((id) => byId.get(id)).filter(Boolean);
+        // Newest capture first — not the order faces happened to be detected.
+        return ids.map((id) => byId.get(id)).filter(Boolean)
+            .sort((a, b) => new Date(b.taken_at || b.created || 0) - new Date(a.taken_at || a.created || 0));
     },
     personCount(pp) { return this.personPhotos(pp).length; },
     async faceThumb(f) {
