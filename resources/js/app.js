@@ -1590,6 +1590,7 @@ return {
      */
     mlProgress: { done: 0, total: 0 },
     _mlRunning: false, // reactive so the activity panel can show ML backlog state
+    reindexProgress: null, // {done,total} while a CLIP re-embed runs, else null
     async runMlBacklog() {
         if (this._mlRunning || this.state !== 'ready') return 0;
         const pending = () => this.index.photos.filter((p) => p.mlPending && ! p.trashed && ! p.failed && (p.mediumRef || p.originalRef));
@@ -1652,20 +1653,14 @@ return {
     // the problem when few or no people show up.
     facesDetected() { return this._cache('facesDet', () => this.index.photos.reduce((s, p) => s + (Number(p.hasFaces) || 0), 0)); },
     photosWithFaces() { return this._cache('photosFaces', () => this.index.photos.filter((p) => (Number(p.hasFaces) || 0) > 0).length); },
-    async deepFaceRescan(force = false) {
+    async deepFaceRescan() {
         if (this.peopleScanning || this._mlRunning || this.deepScanning || this.state !== 'ready') return;
         this.deepScanning = true;
         try {
             let any = false;
             for (const p of this.index.photos) {
                 if (p.trashed || ! (p.mediumRef || p.originalRef)) continue;
-                // force → re-embed everything (e.g. after a CLIP model swap);
-                // otherwise only the un/failed ones, plus any tagged with a stale
-                // model so a future swap re-embeds them without a full force.
-                const stale = p.embModel && p.embModel !== config.clipModel;
-                if (force || p.hasFaces == null || p.mlFailed || stale) {
-                    p.mlPending = true; p._mlTries = 0; delete p.mlFailed; any = true;
-                }
+                if (p.hasFaces == null || p.mlFailed) { p.mlPending = true; p._mlTries = 0; delete p.mlFailed; any = true; }
             }
             if (any) this._save();
             await this.runMlBacklog();
@@ -1674,13 +1669,51 @@ return {
             this.deepScanning = false;
         }
     },
-    // One-off full re-index: re-run analyse on every photo. Needed after changing
-    // the CLIP model (embeddings live in a different vector space), so smart
-    // search works again once it completes.
+    // Re-embed ONLY the CLIP search vector for photos on a stale/absent model
+    // (e.g. after a CLIP model swap). Deliberately does NOT touch faces or
+    // re-cluster people — a model change only affects text/image search, and
+    // the buffalo_l face model is unchanged, so the existing people stay intact.
+    async _reembedOne(p) {
+        const ref = p.mediumRef || p.originalRef, key = p.mediumKey || p.originalKey;
+        if (! ref) return;
+        const bytes = await this._decryptBlob(ref, key);
+        const fd = new FormData();
+        fd.append('_token', config.token);
+        fd.append('file', new File([bytes], 'medium.jpg', { type: 'image/jpeg' }), 'medium.jpg');
+        const res = await fetch(config.analyzeUrl, { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
+        if (! res.ok) return;
+        const d = await res.json();
+        if (! Array.isArray(d.embedding)) return;
+        let meta = metaCache[p.id];
+        if (! meta) { try { meta = JSON.parse(new TextDecoder().decode(await this._decryptBlob(p.metaRef, p.metaKey))); } catch (e) { return; } }
+        meta.embedding = d.embedding;
+        meta.embModel = config.clipModel; // faces untouched
+        const mr = await this._encStore(new TextEncoder().encode(JSON.stringify(meta)), 'meta.enc');
+        p.metaRef = mr.id; p.metaKey = mr.key;
+        metaCache[p.id] = meta;
+        p.embModel = config.clipModel;
+        searchEmb[p.id] = this._norm(meta.embedding);
+    },
     async reindexAll() {
         if (this.deepScanning || this._mlRunning || this.state !== 'ready') return;
-        if (! await this.$store.confirm.ask(labels.reindexConfirm || 'Re-analyze all photos? This can take a while.')) return;
-        await this.deepFaceRescan(true);
+        const todo = this.index.photos.filter((p) => ! p.trashed && (p.mediumRef || p.originalRef) && p.embModel !== config.clipModel);
+        if (! todo.length) { window.llToast?.(labels.reindexNone || 'Search index is already up to date.'); return; }
+        if (! await this.$store.confirm.ask((labels.reindexConfirm || 'Re-index :n photos for search?').replace(':n', todo.length))) return;
+        this._mlRunning = true;
+        this.reindexProgress = { done: 0, total: todo.length };
+        try {
+            let sinceFlush = 0;
+            for (const p of todo) {
+                try { await this._reembedOne(p); } catch (e) { /* skip, retry on a later run */ }
+                this.reindexProgress = { done: this.reindexProgress.done + 1, total: todo.length };
+                if (++sinceFlush >= 8) { sinceFlush = 0; this._save(); await window.LLGalleryStore.flush(); }
+            }
+            this._save();
+            await window.LLGalleryStore.flush();
+            window.llToast?.(labels.reindexDone || 'Search re-indexing complete.');
+        } finally {
+            this._mlRunning = false; this.reindexProgress = null;
+        }
     },
 
     // Encrypt raw bytes with a fresh per-blob key and upload; returns { id, key }.
@@ -2734,9 +2767,11 @@ return {
     // Merge `other` INTO the current person: combine faces (dedup), average the
     // centroids by face count so future scans still match, keep a name, and drop
     // the merged-away person. Client-side over the sealed index — one save.
-    mergeInto(other) {
-        const target = this.currentPerson;
-        if (! target || ! other || target.id === other.id) { this.mergePicker = false; return; }
+    // Merge person `other` into `target` (combine faces + weighted centroid, keep
+    // the target's name/contact, drop `other`). Shared by the manual merge picker
+    // and the same-name auto-merge.
+    _mergePair(target, other) {
+        if (! target || ! other || target.id === other.id) return;
         const aFaces = target.faces || (target.faces = []);
         const bFaces = other.faces || [];
         const na = aFaces.length, nb = bFaces.length;
@@ -2750,9 +2785,52 @@ return {
         for (const f of bFaces) { const k = f.photoId + ':' + f.idx; if (! seen.has(k)) { seen.add(k); aFaces.push(f); } }
         // Keep the target's name; adopt the other's only if the target is unnamed.
         if (! (target.name || '').trim() && (other.name || '').trim()) target.name = other.name;
+        if (other.pinned) target.pinned = true;
+        if (other.contactId && ! target.contactId) {
+            target.contactId = other.contactId; target.contactName = other.contactName;
+            target.contactAvatarRef = other.contactAvatarRef; target.contactAvatarKey = other.contactAvatarKey;
+        }
         this.index.people = (this.index.people || []).filter((pp) => pp.id !== other.id);
+    },
+    mergeInto(other) {
+        const target = this.currentPerson;
+        if (! target || ! other || target.id === other.id) { this.mergePicker = false; return; }
+        this._mergePair(target, other);
         this.mergePicker = false;
         this._save();
+    },
+    // Count of person clusters that share a name with another (the duplicates).
+    duplicatePeopleCount() {
+        return this._cache('dupPeople', () => {
+            const byName = {};
+            for (const pp of (this.index.people || [])) {
+                const k = (pp.name || '').trim().toLowerCase();
+                if (k) byName[k] = (byName[k] || 0) + 1;
+            }
+            return Object.values(byName).reduce((s, n) => s + (n > 1 ? n - 1 : 0), 0);
+        });
+    },
+    // Consolidate clusters that carry the SAME name — same name means the user (or
+    // a linked contact) already declared them one person, so the clustering simply
+    // fragmented them. Merges each group into its largest cluster.
+    async mergeDuplicates() {
+        const byName = {};
+        for (const pp of (this.index.people || [])) {
+            const k = (pp.name || '').trim().toLowerCase();
+            if (! k) continue;
+            (byName[k] = byName[k] || []).push(pp);
+        }
+        const groups = Object.values(byName).filter((g) => g.length > 1);
+        const count = groups.reduce((s, g) => s + g.length - 1, 0);
+        if (! count) { window.llToast?.(labels.mergeDupNone || 'No same-named clusters to merge.'); return; }
+        if (! await this.$store.confirm.ask((labels.mergeDupConfirm || 'Merge :n duplicate clusters?').replace(':n', count))) return;
+        for (const g of groups) {
+            g.sort((a, b) => (b.faces?.length || 0) - (a.faces?.length || 0)); // largest = best centroid
+            const target = g[0];
+            for (let i = 1; i < g.length; i++) this._mergePair(target, g[i]);
+        }
+        this._save();
+        window.llToast?.((labels.mergeDupDone || 'Merged :n clusters.').replace(':n', count));
     },
 
     /* ---- Correct a face: remove from a person, or reassign to another ---- */
