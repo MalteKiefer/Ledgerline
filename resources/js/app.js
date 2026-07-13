@@ -5382,6 +5382,34 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         const q = [a.street, [a.zip, a.city].filter(Boolean).join(' '), a.region, a.country].filter(Boolean).join(', ');
         return 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(q);
     },
+    _addrQuery(a) {
+        return [a.street, a.zip, a.city, a.region, a.country].filter(Boolean).join(', ').trim();
+    },
+    _geoCache: {},
+    // Geocode an address (server proxy) and drop a small pin map beside it in the
+    // read-only view. Results are cached per address string; a miss hides the map.
+    async contactMap(el, a) {
+        const q = this._addrQuery(a);
+        if (! el || ! q) { if (el) el.style.display = 'none'; return; }
+        let pt = this._geoCache[q];
+        if (pt === undefined) {
+            try {
+                const res = await fetch('/gallery/geocode?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                const r = res.ok ? ((await res.json()).results || [])[0] : null;
+                pt = r && r.lat != null ? { lat: r.lat, lng: r.lng } : null;
+            } catch (e) { pt = null; }
+            this._geoCache[q] = pt;
+        }
+        if (! pt) { el.style.display = 'none'; return; }
+        el.style.display = '';
+        if (el._map) { el._map.remove(); el._map = null; }
+        const L = await loadLeaflet();
+        const map = L.map(el, { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, keyboard: false, touchZoom: false, zoomAnimation: false }).setView([pt.lat, pt.lng], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+        L.marker([pt.lat, pt.lng]).addTo(map);
+        el._map = map;
+        setTimeout(() => { if (el._map) el._map.invalidateSize(); }, 120);
+    },
     // Format an ISO date (yyyy-mm-dd) for display in the reader's locale.
     fmtDate(d) {
         if (! d) return '';
@@ -5424,6 +5452,12 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         for (const p of c.phones) p.type = VCard.normType(p.type, 'cell');
         for (const m of c.impp) m.type = VCard.normType(m.type, 'home');
         for (const a of c.addresses) { a.type = VCard.normType(a.type, 'home'); Object.assign(a, VCard.normAddr(a)); }
+        // The dedicated full-name field was removed; split a legacy fn-only contact
+        // into the first/last parts so those editor fields are populated + editable.
+        if (! (c.first || '').trim() && ! (c.last || '').trim() && (c.fn || '').trim()) {
+            const { first, last } = this._nameParts(c);
+            c.first = first; c.last = last;
+        }
         this.currentId = c.id; this.editing = false; this.tagsValue = (c.categories ?? []).join(', ');
     },
     // Localised label for a normalised contact-field type.
@@ -5438,7 +5472,11 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         const c = this.current;
         if (! c) return;
         c.categories = this.tagsValue.split(',').map((s) => s.trim()).filter(Boolean);
-        if (! (c.fn || '').trim()) c.fn = [c.first, c.last].filter(Boolean).join(' ').trim();
+        // Compose the full name (vCard FN) from the parts — the standalone name
+        // field is gone, so the parts are the source of truth.
+        const parts = [c.prefix, c.first, c.middle, c.last, c.suffix].filter(Boolean).join(' ').trim();
+        if (parts) c.fn = parts;
+        else if (! (c.fn || '').trim()) c.fn = (c.org || '').trim();
         c.updated = new Date().toISOString();
         this._save();
     },

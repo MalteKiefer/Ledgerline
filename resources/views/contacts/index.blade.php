@@ -134,8 +134,7 @@
                         </div>
                     </div>
                     <div class="min-w-0 flex-1">
-                        <input x-show="editing" type="text" x-model="current.fn" @input.debounce.600ms="save()" placeholder="{{ __('contacts.name') }}" class="w-full border-0 border-b border-gray-100 dark:border-gray-800 dark:bg-transparent px-0 text-lg font-semibold text-gray-900 dark:text-gray-100 focus:border-gray-400 focus:ring-0">
-                        <h2 x-show="! editing" class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="displayName(current)"></h2>
+                        <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="displayName(current)"></h2>
                         <p x-show="! editing && (current.title || current.org)" x-cloak class="truncate text-sm text-gray-500 dark:text-gray-400" x-text="[current.title, current.org].filter(Boolean).join(' · ')"></p>
                         <div class="mt-1 flex items-center gap-2">
                             <button type="button" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600'" title="{{ __('contacts.favorite') }}"><x-icon name="star" class="h-4 w-4" /></button>
@@ -166,10 +165,13 @@
                         <template x-for="(m, i) in current.impp" :key="i"><p class="mt-0.5 text-gray-800 dark:text-gray-200" x-text="m.value"></p></template></div></template>
                     <template x-if="(current.addresses||[]).length"><div><p class="text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('contacts.addresses') }}</p>
                         <template x-for="(a, i) in current.addresses" :key="i">
-                            <a :href="osmUrl(a)" target="_blank" rel="noopener noreferrer" :title="'{{ __('contacts.open_map') }}'" class="group mt-1 flex items-start gap-1.5 rounded-md p-1 -mx-1 hover:bg-gray-50 dark:hover:bg-gray-800">
-                                <x-icon name="map-pin" class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200" />
-                                <span class="min-w-0"><template x-for="line in addressLines(a)" :key="line"><span class="block text-gray-800 dark:text-gray-200 group-hover:underline" x-text="line"></span></template><span class="text-xs text-gray-400" x-text="typeLabel(a.type)"></span></span>
-                            </a>
+                            <div class="mt-1 flex flex-col gap-1.5 sm:flex-row sm:items-start">
+                                <a :href="osmUrl(a)" target="_blank" rel="noopener noreferrer" :title="'{{ __('contacts.open_map') }}'" class="group flex min-w-0 flex-1 items-start gap-1.5 rounded-md p-1 -mx-1 hover:bg-gray-50 dark:hover:bg-gray-800">
+                                    <x-icon name="map-pin" class="mt-0.5 h-4 w-4 shrink-0 text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200" />
+                                    <span class="min-w-0"><template x-for="line in addressLines(a)" :key="line"><span class="block text-gray-800 dark:text-gray-200 group-hover:underline" x-text="line"></span></template><span class="text-xs text-gray-400" x-text="typeLabel(a.type)"></span></span>
+                                </a>
+                                <div class="h-28 w-full shrink-0 overflow-hidden rounded-md border border-gray-200 dark:border-gray-700 sm:w-44" x-init="$nextTick(() => contactMap($el, a))"></div>
+                            </div>
                         </template></div></template>
                     <template x-if="current.bday || current.anniversary"><div class="flex flex-wrap gap-6">
                         <p x-show="current.bday"><span class="text-xs text-gray-400">{{ __('contacts.birthday') }}: </span><span class="text-gray-800 dark:text-gray-200" x-text="fmtDate(current.bday)"></span></p>
