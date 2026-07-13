@@ -376,17 +376,26 @@ export const Vault = {
 
     /**
      * Seal the whole opaque workspace manifest into a {c,n} JSON string. The JSON
-     * is padded with trailing whitespace to the next 4 KiB bucket so the stored
-     * ciphertext size blurs the true content size (JSON.parse ignores the
-     * padding). Returns the sealed string for the store API.
+     * is padded with trailing whitespace to a Padmé bucket (leaks only
+     * O(log log n) bits — a bounded ~12% overhead — instead of a fixed 4 KiB grid
+     * whose relative leak grows with the manifest), with a 4 KiB floor so small
+     * manifests don't reveal fine-grained sizes. JSON.parse ignores the padding.
      */
     sealManifest(obj) {
         let json = JSON.stringify(obj);
-        const bucket = 4096;
-        const target = Math.ceil((json.length + 1) / bucket) * bucket;
+        const target = Math.max(4096, this._padme(json.length + 1));
         json += ' '.repeat(target - json.length);
         const m = seal(sodium.from_string(json), this.vk);
         return JSON.stringify({ c: m.cipher, n: m.nonce });
+    },
+
+    /** Padmé (Nikitin et al.): round n up so at most O(log log n) size bits leak. */
+    _padme(n) {
+        if (n < 2) return n;
+        const e = Math.floor(Math.log2(n));
+        const s = Math.floor(Math.log2(e)) + 1;
+        const step = Math.pow(2, e - s);
+        return Math.ceil(n / step) * step;
     },
 
     /** Open a sealed manifest string back into the workspace object. */

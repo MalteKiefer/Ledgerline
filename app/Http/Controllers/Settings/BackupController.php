@@ -387,7 +387,9 @@ class BackupController extends Controller
             'cron' => ['required', 'string', 'max:64'],
             'retention' => ['required', 'integer', 'min:1', 'max:9999'],
             'encrypt' => ['sometimes', 'boolean'],
-            'passphrase' => ['nullable', 'string', 'max:255'],
+            // Min length: this passphrase is the only thing standing between an
+            // offline attacker and the wrapped vault-key material in the dump.
+            'passphrase' => ['nullable', 'string', 'min:12', 'max:255'],
             'notify_channels' => ['nullable', 'array'],
             'notify_channels.*' => [Rule::in(BackupJob::NOTIFY_CHANNELS)],
             'enabled' => ['sometimes', 'boolean'],

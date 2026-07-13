@@ -98,7 +98,6 @@ abstract class BlobStoreController extends Controller
                             continue;
                         }
                         $disk->delete($prefix.'/'.$row->blob);
-                        $disk->delete('thumbs/'.$row->blob.'.jpg');
                         $row->delete();
                     }
                 }, 'blob');
@@ -356,7 +355,6 @@ abstract class BlobStoreController extends Controller
         abort_if((int) $row->user_id !== (int) auth()->id(), 403);
 
         $this->disk()->delete($this->module().'/'.$blob);
-        $this->disk()->delete('thumbs/'.$blob.'.jpg');
         $row->delete();
 
         return response()->json(['deleted' => true]);

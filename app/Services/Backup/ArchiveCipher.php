@@ -19,7 +19,12 @@ use RuntimeException;
  */
 final class ArchiveCipher
 {
-    private const MAGIC = "LLBK1\0";
+    /** Legacy format: MODERATE KDF params, not stored in the header. */
+    private const MAGIC_V1 = "LLBK1\0";
+
+    /** Current format: KDF opslimit + memlimit are stored so they can be raised
+     *  without breaking older archives. */
+    private const MAGIC_V2 = "LLBK2\0";
 
     private const CHUNK = 65536; // plaintext bytes per secretstream chunk
 
@@ -28,11 +33,19 @@ final class ArchiveCipher
         $in = $this->open($inPath, 'rb');
         $out = $this->open($outPath, 'wb');
         try {
+            // Argon2id at SENSITIVE cost — this passphrase protects the DB dump +
+            // wrapped vault-key material at rest on untrusted remote storage, so it
+            // is an offline-cracking target and warrants the strongest KDF preset.
+            $ops = SODIUM_CRYPTO_PWHASH_OPSLIMIT_SENSITIVE;
+            $mem = SODIUM_CRYPTO_PWHASH_MEMLIMIT_SENSITIVE;
             $salt = random_bytes(SODIUM_CRYPTO_PWHASH_SALTBYTES);
-            $key = $this->deriveKey($passphrase, $salt);
+            $key = $this->deriveKey($passphrase, $salt, $ops, $mem);
             [$state, $header] = $this->initPush($key);
 
-            $this->write($out, self::MAGIC);
+            // Header: magic | opslimit(u32) | memlimit(u32) | salt | stream-header.
+            $this->write($out, self::MAGIC_V2);
+            $this->write($out, pack('N', $ops));
+            $this->write($out, pack('N', $mem));
             $this->write($out, $salt);
             $this->write($out, $header);
 
@@ -59,12 +72,21 @@ final class ArchiveCipher
         $in = $this->open($inPath, 'rb');
         $out = $this->open($outPath, 'wb');
         try {
-            if (fread($in, strlen(self::MAGIC)) !== self::MAGIC) {
+            $magic = fread($in, strlen(self::MAGIC_V2));
+            if ($magic === self::MAGIC_V2) {
+                // KDF params are stored in the header (raisable without a break).
+                $ops = unpack('N', (string) fread($in, 4))[1];
+                $mem = unpack('N', (string) fread($in, 4))[1];
+            } elseif ($magic === self::MAGIC_V1) {
+                // Legacy archives derived with the MODERATE preset.
+                $ops = SODIUM_CRYPTO_PWHASH_OPSLIMIT_MODERATE;
+                $mem = SODIUM_CRYPTO_PWHASH_MEMLIMIT_MODERATE;
+            } else {
                 throw new RuntimeException('Not a Ledgerline backup archive.');
             }
             $salt = fread($in, SODIUM_CRYPTO_PWHASH_SALTBYTES);
             $header = fread($in, SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_HEADERBYTES);
-            $key = $this->deriveKey($passphrase, $salt);
+            $key = $this->deriveKey($passphrase, $salt, $ops, $mem);
             $state = sodium_crypto_secretstream_xchacha20poly1305_init_pull($header, $key);
 
             $sawFinal = false;
@@ -103,14 +125,14 @@ final class ArchiveCipher
         }
     }
 
-    private function deriveKey(string $passphrase, string $salt): string
+    private function deriveKey(string $passphrase, string $salt, int $opslimit, int $memlimit): string
     {
         return sodium_crypto_pwhash(
             SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_KEYBYTES,
             $passphrase,
             $salt,
-            SODIUM_CRYPTO_PWHASH_OPSLIMIT_MODERATE,
-            SODIUM_CRYPTO_PWHASH_MEMLIMIT_MODERATE,
+            $opslimit,
+            $memlimit,
         );
     }
 

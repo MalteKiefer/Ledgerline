@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Gallery;
 
-use Illuminate\Support\Facades\Http;
+use App\Support\OutboundUrl;
+use Illuminate\Http\Client\PendingRequest;
 use Throwable;
 
 /**
@@ -34,7 +35,7 @@ class MachineLearning
         $entries = json_encode(['clip' => ['visual' => ['modelName' => (string) config('gallery.ml_clip_model')]]], JSON_THROW_ON_ERROR);
 
         try {
-            $res = Http::timeout(120)
+            $res = $this->client(120)
                 ->attach('image', (string) file_get_contents($path), basename($path))
                 ->post($this->base().'/predict', ['entries' => $entries]);
 
@@ -70,7 +71,7 @@ class MachineLearning
         $entries = json_encode(['clip' => ['textual' => ['modelName' => (string) config('gallery.ml_clip_model')]]], JSON_THROW_ON_ERROR);
 
         try {
-            $res = Http::timeout(60)->asMultipart()->post($this->base().'/predict', [
+            $res = $this->client(60)->asMultipart()->post($this->base().'/predict', [
                 ['name' => 'entries', 'contents' => $entries],
                 ['name' => 'text', 'contents' => $text],
             ]);
@@ -110,7 +111,7 @@ class MachineLearning
         ], JSON_THROW_ON_ERROR);
 
         try {
-            $res = Http::timeout(180)
+            $res = $this->client(180)
                 ->attach('image', (string) file_get_contents($path), basename($path))
                 ->post($this->base().'/predict', ['entries' => $entries]);
 
@@ -157,5 +158,15 @@ class MachineLearning
     private function base(): string
     {
         return rtrim((string) config('gallery.ml_url'), '/');
+    }
+
+    /**
+     * SSRF-guarded, IP-pinned client for the ML sidecar. Transiently-decrypted
+     * plaintext image bytes cross this hop, so a misconfigured ML_URL must not be
+     * pointable at cloud metadata / link-local / an arbitrary external host.
+     */
+    private function client(int $timeout): PendingRequest
+    {
+        return OutboundUrl::client($this->base(), $timeout);
     }
 }
