@@ -3540,6 +3540,13 @@ Alpine.store('paperless', {
 // Module-scoped + non-reactive: never proxied by Alpine, never leaves the client.
 const fileText = {};
 
+// Last files-blob reconcile (module-scoped): the files component boots on every
+// mount — the Files page AND the contacts avatar picker — so without this a burst
+// of mounts would fire a reconcile each and blow the 120/min throttle. Reconcile
+// is only quota self-healing, so once per minute across mounts is plenty.
+let _filesReconAt = 0;
+let _contactsReconAt = 0;
+
 // Lazy, singleton OCR worker (tesseract.js). All assets are self-hosted under
 // /tesseract (worker + WASM core + eng/deu data) so nothing is fetched from a
 // CDN — the whole OCR runs in the browser, keeping the ZK boundary intact.
@@ -3754,6 +3761,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
     async _reconcileNow() {
         if (this.state !== 'ready') return;
+        // Dedupe across component mounts (Files page + contacts avatar picker).
+        if (Date.now() - _filesReconAt < 60000) return;
+        _filesReconAt = Date.now();
         const blobs = [];
         for (const f of this.manifest.files) {
             if (f.blob) blobs.push(f.blob);
@@ -5979,6 +5989,8 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     // Tell the server which avatar blobs are still referenced; it frees the rest.
     reconcileBlobs() {
         if (this.state !== 'ready') return;
+        if (Date.now() - _contactsReconAt < 60000) return; // dedupe across mounts
+        _contactsReconAt = Date.now();
         const blobs = [];
         for (const c of this.contacts) if (c.avatarRef) blobs.push(c.avatarRef);
         fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) }).catch(() => {});
