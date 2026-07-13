@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\AppSettings;
+use App\Models\User;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -51,6 +52,26 @@ class RecryptEncryptedColumnsTest extends TestCase
         // And it is no longer decryptable as CBC — i.e. it really was rewritten.
         $this->expectException(DecryptException::class);
         $cbc->decrypt($raw, false);
+    }
+
+    public function test_it_reencrypts_user_settings_keyed_by_user_id(): void
+    {
+        // user_settings has no `id` column — its primary key is user_id. Seed a
+        // row with a CBC-encrypted paperless token and confirm it migrates.
+        $cbc = $this->encrypter('AES-256-CBC');
+        $gcm = $this->encrypter('AES-256-GCM');
+
+        $user = User::factory()->create();
+        $secret = 'paperless-api-token';
+        DB::table('user_settings')->insert([
+            'user_id' => $user->id,
+            'paperless_token' => $cbc->encrypt($secret, false),
+        ]);
+
+        $this->migration()->up();
+
+        $raw = DB::table('user_settings')->where('user_id', $user->id)->value('paperless_token');
+        $this->assertSame($secret, $gcm->decrypt($raw, false));
     }
 
     public function test_it_is_idempotent_and_skips_already_gcm_values(): void

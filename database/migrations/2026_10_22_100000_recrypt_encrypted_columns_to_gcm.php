@@ -28,12 +28,16 @@ use Illuminate\Support\Facades\DB;
  */
 return new class extends Migration
 {
-    /** [table, [encrypted columns]] — every `encrypted` cast in the codebase. */
+    /**
+     * [table, primary-key column, [encrypted columns]] — every `encrypted` cast
+     * in the codebase. The key column is explicit because not every table is
+     * keyed by `id` (user_settings is keyed by user_id).
+     */
     private const TARGETS = [
-        ['backup_destinations', ['config']],
-        ['backup_jobs', ['passphrase']],
-        ['user_settings', ['paperless_url', 'paperless_token']],
-        ['app_settings', [
+        ['backup_destinations', 'id', ['config']],
+        ['backup_jobs', 'id', ['passphrase']],
+        ['user_settings', 'user_id', ['paperless_url', 'paperless_token']],
+        ['app_settings', 'id', [
             'smtp_host', 'smtp_username', 'smtp_password', 'smtp_from_address', 'smtp_from_name',
             'ntfy_url', 'ntfy_topic', 'ntfy_token',
             'webhook_url', 'webhook_secret',
@@ -61,8 +65,10 @@ return new class extends Migration
         $dst = new Encrypter($key, $to);
 
         DB::transaction(function () use ($src, $dst): void {
-            foreach (self::TARGETS as [$table, $columns]) {
-                DB::table($table)->orderBy('id')->each(function (object $row) use ($src, $dst, $table, $columns): void {
+            foreach (self::TARGETS as [$table, $keyColumn, $columns]) {
+                DB::table($table)->orderBy($keyColumn)->each(function (object $row) use ($src, $dst, $table, $keyColumn, $columns): void {
+                    $keyValue = $row->{$keyColumn};
+
                     foreach ($columns as $column) {
                         $raw = $row->{$column} ?? null;
                         if (! is_string($raw) || $raw === '') {
@@ -81,10 +87,10 @@ return new class extends Migration
                         $reencrypted = $dst->encrypt($plain, false);
 
                         if ($dst->decrypt($reencrypted, false) !== $plain) {
-                            throw new RuntimeException("Re-encrypt verify failed for {$table}.{$column} id={$row->id}");
+                            throw new RuntimeException("Re-encrypt verify failed for {$table}.{$column} {$keyColumn}={$keyValue}");
                         }
 
-                        DB::table($table)->where('id', $row->id)->update([$column => $reencrypted]);
+                        DB::table($table)->where($keyColumn, $keyValue)->update([$column => $reencrypted]);
                     }
                 });
             }
