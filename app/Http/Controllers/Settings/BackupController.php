@@ -409,7 +409,10 @@ class BackupController extends Controller
         if ($data['source'] === 'database' && ! $data['encrypt']) {
             throw ValidationException::withMessages(['encrypt' => __('settings.backup_db_encrypt_required')]);
         }
-        if ($requirePassphrase && $data['encrypt'] && ($data['passphrase'] ?? '') === '') {
+        // A per-job passphrase is only required when there is no environment
+        // passphrase (BACKUP_PASSPHRASE); the latter keeps the key out of the DB.
+        if ($requirePassphrase && $data['encrypt']
+            && ($data['passphrase'] ?? '') === '' && (string) config('backup.passphrase', '') === '') {
             throw ValidationException::withMessages(['passphrase' => __('settings.backup_passphrase_required')]);
         }
 

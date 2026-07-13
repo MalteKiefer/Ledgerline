@@ -68,6 +68,33 @@ wait_healthy() {
     die "${svc} did not become healthy in time — check: $0 logs ${svc}"
 }
 
+# Pre-deploy Postgres snapshot so a bad forward-only migration is recoverable
+# (auto-migrations aren't reverted on rollback). Local socket dump, newest 3 kept.
+snapshot_db() {
+    local tag="$1" ts u d; ts="$(date -u +%Y%m%dT%H%M%SZ)"
+    u="$(grep -E '^DB_USERNAME=' .env | cut -d= -f2-)"; u="${u:-ledgerline}"
+    d="$(grep -E '^DB_DATABASE=' .env | cut -d= -f2-)"; d="${d:-ledgerline}"
+    mkdir -p db-snapshots
+    local i; for i in $(seq 1 30); do DC exec -T db pg_isready -U "$u" >/dev/null 2>&1 && break; sleep 1; done
+    log "pre-deploy DB snapshot (rollback safety)"
+    if DC exec -T db pg_dump -U "$u" "$d" 2>>"$LOG_FILE" | gzip > "db-snapshots/pre-${tag}-${ts}.sql.gz"; then
+        chmod 600 "db-snapshots/pre-${tag}-${ts}.sql.gz"
+        ls -1t db-snapshots/pre-*.sql.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
+    else
+        warn "DB snapshot failed — continuing (roll back the app image manually if a migration breaks)"
+        rm -f "db-snapshots/pre-${tag}-${ts}.sql.gz"
+    fi
+}
+
+# Append a deploy provenance record (what ran, when, from which image id).
+record_provenance() {
+    local ref="$1" tag="$2"
+    printf '%s\tref=%s\timage=ledgerline:%s\tid=%s\n' \
+        "$(date -u +%FT%TZ)" "$ref" "$tag" \
+        "$(docker image inspect --format '{{.Id}}' "ledgerline:${tag}" 2>/dev/null)" \
+        >> deploy-provenance.log
+}
+
 cmd_deploy() {
     preflight
     local ref="${1:-}"
@@ -94,6 +121,9 @@ cmd_deploy() {
     log "bringing up datastores"
     DC up -d db valkey >>"$LOG_FILE" 2>&1
 
+    # Snapshot the DB before the app starts (migrations run on app start).
+    snapshot_db "$tag"
+
     log "rolling out app/worker/scheduler (migrations run on app start)"
     DC up -d >>"$LOG_FILE" 2>&1
 
@@ -102,6 +132,7 @@ cmd_deploy() {
 
     log "pruning dangling images"
     docker image prune -f >>"$LOG_FILE" 2>&1 || true
+    record_provenance "$ref" "$tag"
     ok "deployed ${ref} (image ledgerline:${tag}). Previous tag: ${prev}"
 }
 
