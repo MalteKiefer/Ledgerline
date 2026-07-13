@@ -7,8 +7,10 @@
 # listens on :8080. TLS + routing are handled by Caddy on the host.
 
 # Base images pinned by immutable digest (reproducible, tamper-evident builds).
-# Bump the tag + digest together, deliberately, after review.
-ARG PHP_BASE=serversideup/php:8.4-fpm-nginx@sha256:519720d9ff5d50aad9eb83fac290746460dfc1346faa8fdb25c75d28a3feb2ab
+# Bump the tag + digest together, deliberately, after review. The runtime base is
+# the ALPINE (musl) variant — a far smaller package set than Debian, which cuts
+# the untrusted-media OS-CVE attack surface substantially.
+ARG PHP_BASE=serversideup/php:8.4-fpm-nginx-alpine@sha256:49ae73887fbb65c92312c61eb4612808d823485f0510eb27afc61e1bd2ee2390
 
 # --- Front-end assets (Vite build) -----------------------------------------
 FROM node:22-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS assets
@@ -22,29 +24,23 @@ RUN npm run build
 FROM ${PHP_BASE} AS runtime
 
 USER root
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
       curl ca-certificates gnupg gzip \
-      # HEIC/HEIF + Apple stills + HEVC still: decode (libde265) AND encode
-      # (x265 for HEIC, aom for AVIF) so edited exports can be re-saved in format
-      libheif1 libde265-0 imagemagick \
-      libheif-plugin-x265 libheif-plugin-aomenc libheif-plugin-libde265 \
+      # HEIC/HEIF decode (libde265) AND encode (x265 for HEIC, aom for AVIF) so
+      # edited exports can be re-saved in format; imagemagick-heic wires the HEIC
+      # delegate into ImageMagick (the imagick extension reads/writes HEIC).
+      libheif libde265 x265-libs aom-libs imagemagick imagemagick-heic \
       # video / Apple Motion + Live Photos (HEVC, MOV, ProRes) + thumbnails
       ffmpeg \
       # rich media metadata (EXIF/XMP, Motion-Photo + Live-Photo detection)
-      libimage-exiftool-perl \
-      # NOTE: no OCR/PDF toolchain here (ghostscript/tesseract/ocrmypdf/qpdf/
-      # poppler) — the app never shells out to them (OCR is external Paperless),
-      # so they are omitted to shrink the untrusted-decode CVE/RCE surface.
-      # database backups shell out to pg_dump + gzip. The app DB is Postgres 17,
-      # so the client must be 17 too (an older pg_dump refuses a newer server).
-      # Debian ships an older default, so pull postgresql-client-17 from PGDG.
- && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
- && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(. /etc/os-release; echo $VERSION_CODENAME)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
- && apt-get update \
- && apt-get install -y --no-install-recommends postgresql-client-17 \
- && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
+      exiftool \
+      # database backups shell out to pg_dump + gzip; it must match the PG17
+      # server (an older pg_dump refuses a newer server). Alpine ships pg17.
+      # NOTE: no OCR/PDF toolchain (ghostscript/tesseract/ocrmypdf/qpdf/poppler)
+      # — the app never shells out to it (OCR is external Paperless) — so that
+      # large untrusted-decode CVE/RCE surface is omitted entirely.
+      postgresql17-client \
+ && install-php-extensions pdo_pgsql pgsql pdo_sqlite intl gd exif imagick bcmath zip
 
 # Hardened ImageMagick coder/delegate policy (untrusted image decoding).
 COPY docker/imagemagick/policy.xml /etc/ImageMagick-6/policy.xml
