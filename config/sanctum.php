@@ -50,7 +50,10 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Absolute device-token lifetime (minutes). Bounded by default (180 days) so
+    // a minted mobile/CLI bearer cannot live forever; re-pair to renew. Idle +
+    // remote-wipe revocation (see config/devices.php) apply on top.
+    'expiration' => (int) env('SANCTUM_EXPIRATION', 60 * 24 * 180),
 
     /*
     |--------------------------------------------------------------------------
