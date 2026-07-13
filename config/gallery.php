@@ -86,15 +86,26 @@ return [
     |
     | geocode_on_upload is therefore OFF by default: no coordinate leaves the
     | host automatically. The place-picker in the viewer still lets a user
-    | resolve an address on demand. Turn it on only if you accept the OSM egress
-    | or — better — point geocoder_url at a SELF-HOSTED Nominatim (docker compose
-    | --profile geocode) so the lookup never leaves your network. Any
-    | Nominatim-compatible /reverse endpoint (jsonv2) works as a drop-in.
+    | resolve an address on demand.
+    |
+    | Resolution is two-tier. When photon_url is set (a SELF-HOSTED Photon, e.g.
+    | docker compose --profile geocode with the europe + north-america regions),
+    | it is tried FIRST and every lookup it covers stays inside the boundary. A
+    | point Photon does not cover (outside its imported regions) falls back to
+    | geocoder_url — the public OSM Nominatim by default — which does leave the
+    | boundary. So a traveller's home continents resolve in-boundary and only the
+    | occasional far-flung photo reaches OSM. Leave photon_url empty to use
+    | geocoder_url alone (the previous behaviour).
     |
     */
 
     'geocode_on_upload' => (bool) env('GALLERY_GEOCODE_ON_UPLOAD', false),
 
+    // Self-hosted Photon (in-boundary), tried first. Empty = disabled.
+    'photon_url' => rtrim((string) env('PHOTON_URL', ''), '/'),
+
+    // Nominatim-compatible endpoint (jsonv2). Fallback when Photon misses, or the
+    // sole geocoder when photon_url is empty. Public OSM by default.
     'geocoder_url' => rtrim((string) env('GEOCODER_URL', 'https://nominatim.openstreetmap.org'), '/'),
 
     /*

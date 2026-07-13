@@ -218,36 +218,36 @@ services:
       retries: 3
       start_period: 60s
 
-  # Optional self-hosted reverse-geocoder exposing a Nominatim-compatible
-  # /reverse API, so photo coordinates never leave the host. Enable with:
+  # Optional self-hosted Photon reverse-geocoder, so photo coordinates for the
+  # imported regions never leave the host. Enable with:
   #   docker compose --profile geocode up -d
-  # then set GEOCODER_URL=http://nominatim:8080 in .env (and, if you want it to
-  # run automatically on upload, GALLERY_GEOCODE_ON_UPLOAD=true). Choose a region
-  # extract via NOMINATIM_PBF_URL from https://download.geofabrik.de — the whole
-  # planet needs ~100 GB+ disk and lots of RAM; a single country extract is a few
-  # GB. The FIRST start imports the extract into nominatim-data (slow, one-off);
-  # later starts are fast. Pin a digest for your platform in production.
-  nominatim:
-    image: mediagis/nominatim:4.5@sha256:e25b434212b46fadb378fab8054fb3e96bdd69e8d174b0274e5f20e53f15e9f1
+  # then set PHOTON_URL=http://photon:2322 in .env (and, for automatic on-upload
+  # geocoding, GALLERY_GEOCODE_ON_UPLOAD=true). PHOTON_REGION picks the coverage;
+  # the default "europe,north-america" builds (jsonl mode) an index for those two
+  # continents (a one-off download+build of a few tens of GB into photon-data,
+  # far smaller than a full Nominatim planet). Points OUTSIDE the imported regions
+  # fall back to the public GEOCODER_URL (OSM) — the app queries Photon first and
+  # Nominatim only on a miss. Reverse endpoint: /reverse (GeoJSON).
+  photon:
+    image: ghcr.io/rtuszik/photon-docker:2.3.0@sha256:827cedf9fa3337e657611d62ada669def75dff61c56b51ae55056155d1a9b236
     profiles: ["geocode"]
     environment:
-      PBF_URL: ${NOMINATIM_PBF_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
-      REPLICATION_URL: ${NOMINATIM_REPLICATION_URL:-https://download.geofabrik.de/europe/germany-updates/}
-      IMPORT_STYLE: address
+      IMPORT_MODE: jsonl
+      REGION: ${PHOTON_REGION:-europe,north-america}
+      UPDATE_STRATEGY: DISABLED
     volumes:
-      - nominatim-data:/var/lib/postgresql/16/main
-    shm_size: 1gb
+      - photon-data:/photon/data
     networks:
       - internal
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS 'http://localhost:8080/status' >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:2322/status' >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 180s
 
 networks:
   internal:
@@ -268,5 +268,5 @@ volumes:
   valkey-data:
   app-storage:
   ml-cache:
-  nominatim-data:
+  photon-data:
 
