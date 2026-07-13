@@ -32,6 +32,11 @@
         faceTagReset: @js(__('gallery.face_tag_reset')),
         faceTagHint: @js(__('gallery.face_tag_hint')),
         reindexConfirm: @js(__('gallery.reindex_confirm')),
+        reindexNone: @js(__('gallery.reindex_none')),
+        reindexDone: @js(__('gallery.reindex_done')),
+        mergeDupConfirm: @js(__('gallery.merge_dup_confirm')),
+        mergeDupNone: @js(__('gallery.merge_dup_none')),
+        mergeDupDone: @js(__('gallery.merge_dup_done')),
         uploadAdded: @js(__('gallery.upload_added')),
         uploadMerged: @js(__('gallery.upload_merged')),
         uploadSkipped: @js(__('gallery.upload_skipped')),
@@ -374,12 +379,19 @@
               <button type="button" x-show="unanalyzedCount() > 0" x-cloak @click="deepFaceRescan()" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white" :title="'{{ __('gallery.analyze_all_hint') }}'">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.analyze_all') }} <span class="tabular-nums opacity-80" x-text="'(' + unanalyzedCount() + ')'"></span>
               </button>
+              <button type="button" x-show="duplicatePeopleCount() > 0" x-cloak @click="mergeDuplicates()" :title="'{{ __('gallery.merge_dup_hint') }}'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">
+                <x-icon name="users" class="h-4 w-4" />{{ __('gallery.merge_duplicates') }} <span class="tabular-nums opacity-70" x-text="'(' + duplicatePeopleCount() + ')'"></span>
+              </button>
               <button type="button" @click="smartRescan()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
                 <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
               </button>
-              <button type="button" @click="reindexAll()" x-show="! deepScanning" x-cloak :title="'{{ __('gallery.reindex_hint') }}'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+              <button type="button" @click="reindexAll()" x-show="! _mlRunning" x-cloak :title="'{{ __('gallery.reindex_hint') }}'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.reindex_all') }}
               </button>
+              <span x-show="reindexProgress" x-cloak class="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 tabular-nums">
+                <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                <span x-text="(reindexProgress?.done || 0) + ' / ' + (reindexProgress?.total || 0)"></span>
+              </span>
             </div>
           </div>
 
