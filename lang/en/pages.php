@@ -10,6 +10,7 @@ return [
         'title' => 'Sign in',
         'subtitle' => 'Sign in with your Pocket-ID account to continue.',
         'continue' => 'Continue with Pocket-ID',
+        'public_computer' => 'Public or shared computer',
     ],
     'dashboard' => [
         'title' => 'Dashboard',

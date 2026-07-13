@@ -42,8 +42,10 @@ final class SecurityHeaders
 
         // Pin HTTPS only when the deployment is actually served over TLS
         // (secure session cookies configured); never on a plaintext local box.
+        // Include preload so the domain can be added to the browser HSTS list,
+        // closing the first-visit downgrade window on the passphrase page.
         if (config('session.secure')) {
-            $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+            $response->headers->set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
         }
 
         if (! app()->environment('local')) {

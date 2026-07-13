@@ -44,6 +44,6 @@ final class SecurityHeadersTest extends TestCase
         $this->assertNull($this->get('/')->headers->get('Strict-Transport-Security'));
 
         config(['session.secure' => true]);
-        $this->get('/')->assertHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        $this->get('/')->assertHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
     }
 }
