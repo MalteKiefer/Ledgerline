@@ -31,6 +31,11 @@ x-app-image: &app-image
     # post/upload limits and Caddy's request_body max_size.
     NGINX_CLIENT_MAX_BODY_SIZE: "560M"
   restart: unless-stopped
+  # NOTE: a fully read-only root filesystem is NOT used — the serversideup base
+  # renders /etc/nginx/nginx.conf from a template at boot (entrypoint
+  # 10-init-webserver-config.sh), which fails on a read-only /etc; S6_READ_ONLY_
+  # ROOT only redirects s6's own /run state, not that write. The container is
+  # already hardened via non-root (www-data), cap_drop:[ALL] and no-new-privileges.
   security_opt:
     - no-new-privileges:true
   # Drop ALL Linux capabilities, then add back only what the serversideup base
@@ -223,7 +228,7 @@ services:
   # GB. The FIRST start imports the extract into nominatim-data (slow, one-off);
   # later starts are fast. Pin a digest for your platform in production.
   nominatim:
-    image: mediagis/nominatim:4.5
+    image: mediagis/nominatim:4.5@sha256:e25b434212b46fadb378fab8054fb3e96bdd69e8d174b0274e5f20e53f15e9f1
     profiles: ["geocode"]
     environment:
       PBF_URL: ${NOMINATIM_PBF_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
