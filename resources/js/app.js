@@ -64,10 +64,10 @@ function padmeSize(n) {
     if (n < 2) return n;
     const e = Math.floor(Math.log2(n));
     const s = Math.floor(Math.log2(e)) + 1;
-    const bits = e - s;
-    if (bits <= 0) return n;
-    const mask = (1 << bits) - 1;
-    return (n + mask) & ~mask;
+    // Float arithmetic (matches vault.js _padme): a 32-bit bitwise mask would
+    // overflow and silently disable padding for blobs >= 2 GiB.
+    const step = Math.pow(2, e - s);
+    return Math.ceil(n / step) * step;
 }
 async function padBlob(blob) {
     let pad = padmeSize(blob.size) - blob.size;
@@ -4423,10 +4423,16 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         entry.state = 'uploading';
         const enc = window.Vault.newContentEncryptor();
         const cipherSize = window.Vault.ciphertextSize(file.size);
+        // Length-hiding: the stored/ledger size is the Padmé bucket, not the exact
+        // ciphertext length, so a large file's plaintext size can't be read off
+        // the DB dump. The pad is random bytes streamed AFTER the self-delimiting
+        // secretstream frames (past TAG_FINAL), so the decryptor never reads it —
+        // exactly as padBlob() does on the buffered path.
+        const paddedSize = padmeSize(cipherSize);
         const init = await fetch(config.chunkInitUrl, {
             method: 'POST',
             headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
-            body: JSON.stringify({ name: 'blob.enc', size: cipherSize }),
+            body: JSON.stringify({ name: 'blob.enc', size: paddedSize }),
         });
         if (init.status === 413) { const e = new Error('quota'); e.quota = true; throw e; }
         if (! init.ok) throw new Error('init failed');
@@ -4453,7 +4459,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         };
         const flush = async (bytes) => {
             partNum++;
-            const etag = await this._uploadPart(token, partNum, new Blob([bytes]), entry, sent, cipherSize);
+            const etag = await this._uploadPart(token, partNum, new Blob([bytes]), entry, sent, paddedSize);
             parts.push({ part: partNum, etag });
             sent += bytes.length;
         };
@@ -4473,6 +4479,14 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 await feed(enc.encryptChunk(slice, last));
                 off = end;
                 if (last) { break; }
+            }
+            // Stream the Padmé pad (random bytes) after the final frame so the
+            // uploaded/stored length is the bucket size, not the exact ciphertext.
+            for (let padLeft = paddedSize - cipherSize; padLeft > 0;) {
+                const chunk = new Uint8Array(Math.min(padLeft, 1 << 20));
+                crypto.getRandomValues(chunk);
+                await feed(chunk);
+                padLeft -= chunk.length;
             }
             if (bufLen > 0) { await flush(pull(bufLen)); } // final part (any size)
 
