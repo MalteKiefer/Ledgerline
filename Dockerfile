@@ -6,10 +6,12 @@
 # Assets are built with Node in a separate stage. Runs as non-root (www-data),
 # listens on :8080. TLS + routing are handled by Caddy on the host.
 
-ARG PHP_BASE=serversideup/php:8.4-fpm-nginx
+# Base images pinned by immutable digest (reproducible, tamper-evident builds).
+# Bump the tag + digest together, deliberately, after review.
+ARG PHP_BASE=serversideup/php:8.4-fpm-nginx@sha256:519720d9ff5d50aad9eb83fac290746460dfc1346faa8fdb25c75d28a3feb2ab
 
 # --- Front-end assets (Vite build) -----------------------------------------
-FROM node:22-bookworm-slim AS assets
+FROM node:22-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS assets
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
