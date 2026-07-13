@@ -94,8 +94,20 @@ class Pairing
             return ['status' => 'pending'];
         }
 
-        // APPROVED → enforce the device cap (revoke the oldest tokens so this new
-        // one keeps the user at the configured maximum), then mint once.
+        // APPROVED → atomically claim the pairing (CAS from APPROVED to CONSUMED)
+        // so two concurrent polls can never both mint a token and blow past the
+        // device cap. Only the request that flips exactly one row proceeds.
+        $claimed = DevicePairing::query()
+            ->whereKey($pairing->id)
+            ->where('status', DevicePairing::APPROVED)
+            ->update(['status' => DevicePairing::CONSUMED]);
+        if ($claimed !== 1) {
+            // Lost the race — the concurrent winner already minted the token.
+            return ['status' => 'pending'];
+        }
+
+        // Enforce the device cap (revoke the oldest tokens so this new one keeps
+        // the user at the configured maximum), then mint once.
         $user = $pairing->user;
         $max = max(1, (int) config('devices.max', 3));
         $existing = $user->tokens()->orderBy('id')->pluck('id');
@@ -109,7 +121,7 @@ class Pairing
         if ($ip !== null) {
             $token->accessToken->forceFill(['ip' => $ip])->save();
         }
-        $pairing->update(['status' => DevicePairing::CONSUMED, 'token_id' => $token->accessToken->getKey()]);
+        $pairing->forceFill(['token_id' => $token->accessToken->getKey()])->save();
 
         return ['status' => 'approved', 'token' => $token->plainTextToken, 'user' => $pairing->user];
     }

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Support;
 
+use App\Support\OutboundUrl;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
@@ -13,14 +13,20 @@ use Throwable;
  * requests across all workers so the one-per-second usage policy is honoured
  * during bulk imports as well as interactive lookups. Nothing location-bearing
  * is cached here — only a request timestamp for the throttle window.
+ *
+ * NOTE — this is a DELIBERATE third-party egress: a user-initiated place/address
+ * lookup (or a photo's GPS) is sent to nominatim.openstreetmap.org, so it leaves
+ * the zero-knowledge boundary. It is never automatic on upload. Requests go
+ * through the SSRF guard like every other outbound call; self-host Nominatim or
+ * Photon to keep the lookup in-boundary.
  */
 class NominatimClient
 {
     private const BASE = 'https://nominatim.openstreetmap.org';
 
     /**
-     * Perform a throttled Nominatim request with the shared User-Agent and
-     * timeout, returning the decoded JSON body or null on any failure.
+     * Perform a throttled Nominatim request through the SSRF-guarded client,
+     * returning the decoded JSON body or null on any failure.
      *
      * @param  array<string, mixed>  $query
      * @return array<mixed>|null
@@ -30,8 +36,8 @@ class NominatimClient
         try {
             $this->throttle();
 
-            $response = Http::withHeaders(['User-Agent' => 'Ledgerline ERP (self-hosted)'])
-                ->timeout(5)
+            $response = OutboundUrl::client(self::BASE, 5)
+                ->withHeaders(['User-Agent' => 'Ledgerline (self-hosted personal cloud)'])
                 ->get(self::BASE.'/'.ltrim($endpoint, '/'), $query);
 
             if (! $response->successful()) {
