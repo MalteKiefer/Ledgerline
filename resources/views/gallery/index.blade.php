@@ -8,6 +8,7 @@
         usageUrl: '{{ url('/gallery/usage') }}',
         reconcileUrl: '{{ url('/gallery/blobs/reconcile') }}',
         embedTextUrl: '{{ url('/gallery/embed-text') }}',
+        clipModel: @js(config('gallery.ml_clip_model')),
         geocodeUrl: '{{ url('/gallery/geocode') }}',
         token: '{{ csrf_token() }}',
      }, {
@@ -30,6 +31,7 @@
         faceTagFailed: @js(__('gallery.face_tag_failed')),
         faceTagReset: @js(__('gallery.face_tag_reset')),
         faceTagHint: @js(__('gallery.face_tag_hint')),
+        reindexConfirm: @js(__('gallery.reindex_confirm')),
         uploadAdded: @js(__('gallery.upload_added')),
         uploadMerged: @js(__('gallery.upload_merged')),
         uploadSkipped: @js(__('gallery.upload_skipped')),
@@ -374,6 +376,9 @@
               </button>
               <button type="button" @click="smartRescan()" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
                 <x-icon name="arrow-path" class="h-4 w-4" />{{ __('gallery.rescan') }}
+              </button>
+              <button type="button" @click="reindexAll()" x-show="! deepScanning" x-cloak :title="'{{ __('gallery.reindex_hint') }}'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+                <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.reindex_all') }}
               </button>
             </div>
           </div>

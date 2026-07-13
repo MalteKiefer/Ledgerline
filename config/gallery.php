@@ -51,7 +51,12 @@ return [
 
     'ml_url' => env('ML_URL', 'http://ml:3003'),
 
-    'ml_clip_model' => env('ML_CLIP_MODEL', 'ViT-B-32__openai'),
+    // Multilingual CLIP (M-CLIP) so smart search understands German + English
+    // queries regardless of the UI language. Swapping the model invalidates
+    // existing embeddings (different vector space) — the client tags each
+    // embedding with its model and ignores stale-model vectors until the photo
+    // is re-analysed, so a full re-analyse is needed after a change here.
+    'ml_clip_model' => env('ML_CLIP_MODEL', 'XLM-Roberta-Large-Vit-B-32'),
 
     // Grace before an unreferenced gallery blob on disk is swept (so an in-flight
     // upload whose row isn't saved yet is never reaped).
