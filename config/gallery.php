@@ -11,9 +11,9 @@ return [
     |
     | Path to the ffmpeg binary used to generate video thumbnails. Read through
     | config (not env() directly) so it keeps working when the configuration is
-    | cached in production. On Laravel Cloud this is installed by
-    | deploy/ffmpeg.sh; set GALLERY_FFMPEG_PATH to the installed binary. The
-    | matching ffprobe binary is derived from this path.
+    | cached in production. The Docker image installs ffmpeg via its Alpine base;
+    | set GALLERY_FFMPEG_PATH only to point at a non-PATH binary. The matching
+    | ffprobe binary is derived from this path.
     |
     | A per-workspace override may be set in the gallery settings, which takes
     | precedence over this value.
@@ -76,12 +76,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Reverse-geocoding endpoint + automatic-on-upload opt-in
+    |--------------------------------------------------------------------------
+    |
+    | A photo's GPS coordinates are reverse-geocoded to a place name through a
+    | Nominatim-compatible endpoint. By default this is OpenStreetMap's public
+    | server, so enabling automatic geocoding sends (coarsened) coordinates off
+    | the zero-knowledge boundary to a third party.
+    |
+    | geocode_on_upload is therefore OFF by default: no coordinate leaves the
+    | host automatically. The place-picker in the viewer still lets a user
+    | resolve an address on demand. Turn it on only if you accept the OSM egress
+    | or — better — point geocoder_url at a SELF-HOSTED Nominatim (docker compose
+    | --profile geocode) so the lookup never leaves your network. Any
+    | Nominatim-compatible /reverse endpoint (jsonv2) works as a drop-in.
+    |
+    */
+
+    'geocode_on_upload' => (bool) env('GALLERY_GEOCODE_ON_UPLOAD', false),
+
+    'geocoder_url' => rtrim((string) env('GEOCODER_URL', 'https://nominatim.openstreetmap.org'), '/'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reverse-geocoding rate limit
     |--------------------------------------------------------------------------
     |
     | Minimum spacing (milliseconds) between Nominatim requests, enforced across
     | all workers. OpenStreetMap's usage policy allows at most one request per
-    | second; bulk imports would otherwise get the server blocked.
+    | second; bulk imports would otherwise get the server blocked. A self-hosted
+    | endpoint has no such policy — set to 0 to disable spacing.
     |
     */
 

@@ -9,20 +9,25 @@ use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
- * Shared, rate-limited client for OpenStreetMap's Nominatim service. Serialises
+ * Shared, rate-limited client for a Nominatim-compatible geocoding endpoint
+ * (config gallery.geocoder_url; the OSM public server by default). Serialises
  * requests across all workers so the one-per-second usage policy is honoured
  * during bulk imports as well as interactive lookups. Nothing location-bearing
  * is cached here — only a request timestamp for the throttle window.
  *
- * NOTE — this is a DELIBERATE third-party egress: a user-initiated place/address
- * lookup (or a photo's GPS) is sent to nominatim.openstreetmap.org, so it leaves
- * the zero-knowledge boundary. It is never automatic on upload. Requests go
- * through the SSRF guard like every other outbound call; self-host Nominatim or
- * Photon to keep the lookup in-boundary.
+ * NOTE — when geocoder_url is the public OSM server this is a third-party
+ * egress: the (coarsened) coordinates leave the zero-knowledge boundary. That
+ * is why automatic on-upload geocoding is OFF by default (gallery.geocode_on_
+ * upload) and only the user-initiated place-picker triggers a lookup. Point
+ * geocoder_url at a self-hosted Nominatim (docker compose --profile geocode) to
+ * keep every lookup in-boundary. Requests go through the SSRF guard regardless.
  */
 class NominatimClient
 {
-    private const BASE = 'https://nominatim.openstreetmap.org';
+    private function base(): string
+    {
+        return (string) config('gallery.geocoder_url', 'https://nominatim.openstreetmap.org');
+    }
 
     /**
      * Perform a throttled Nominatim request through the SSRF-guarded client,
@@ -36,9 +41,10 @@ class NominatimClient
         try {
             $this->throttle();
 
-            $response = OutboundUrl::client(self::BASE, 5)
+            $base = $this->base();
+            $response = OutboundUrl::client($base, 5)
                 ->withHeaders(['User-Agent' => 'Ledgerline (self-hosted personal cloud)'])
-                ->get(self::BASE.'/'.ltrim($endpoint, '/'), $query);
+                ->get($base.'/'.ltrim($endpoint, '/'), $query);
 
             if (! $response->successful()) {
                 return null;

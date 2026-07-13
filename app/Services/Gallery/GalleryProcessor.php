@@ -118,7 +118,13 @@ class GalleryProcessor
 
             $phash = $this->phash->hash($imageSource);
 
-            if ($exif['lat'] !== null && $exif['lon'] !== null) {
+            // Reverse-geocoding is OFF by default: with the public OSM endpoint it
+            // would send the photo's coordinates off the ZK boundary on every
+            // upload. Enable gallery.geocode_on_upload only with a self-hosted
+            // geocoder (or when the OSM egress is acceptable); the viewer's
+            // place-picker still resolves an address on demand either way.
+            if (config('gallery.geocode_on_upload', false)
+                && $exif['lat'] !== null && $exif['lon'] !== null) {
                 try {
                     $place = $this->geo->lookupDetailed((float) $exif['lat'], (float) $exif['lon']);
                 } catch (Throwable) {
