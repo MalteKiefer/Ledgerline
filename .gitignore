@@ -35,3 +35,6 @@ Thumbs.db
 .superpowers/
 # Brainstorm specs/audits (project keeps only README/CLAUDE in git)
 docs/superpowers/
+
+# Docker secret files (never commit)
+/secrets/

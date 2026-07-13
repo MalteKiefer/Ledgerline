@@ -33,12 +33,18 @@ x-app-image: &app-image
   restart: unless-stopped
   security_opt:
     - no-new-privileges:true
-  # Drop the raw-socket capability everywhere: nothing here sends raw packets,
-  # and removing it blocks ARP/packet spoofing between containers on the shared
-  # bridge. (A full cap_drop:[ALL] is avoided — the base images su-exec down from
-  # root and need SETUID/SETGID/CHOWN.)
+  # Drop ALL Linux capabilities, then add back only what the serversideup base
+  # needs to su-exec from root down to www-data and fix file ownership. Verified
+  # to boot cleanly; blocks NET_RAW (ARP spoofing) and every other unused cap.
   cap_drop:
-    - NET_RAW
+    - ALL
+  cap_add:
+    - CHOWN
+    - SETUID
+    - SETGID
+    - DAC_OVERRIDE
+    - FOWNER
+    - KILL
   depends_on:
     db:
       condition: service_healthy
@@ -116,7 +122,10 @@ services:
     environment:
       POSTGRES_DB: ${DB_DATABASE:-ledgerline}
       POSTGRES_USER: ${DB_USERNAME:-ledgerline}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      # Password read from a Docker secret file, not a process-visible env var.
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -125,7 +134,13 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop:
-      - NET_RAW
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ledgerline} -d ${DB_DATABASE:-ledgerline}"]
       interval: 10s
@@ -135,11 +150,11 @@ services:
 
   valkey:
     image: valkey/valkey:8-alpine@sha256:cfe71288f087704b06be45e270afa7a2abbf820093d6b11a23762081f5ff321d
-    command: ["valkey-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--appendonly", "yes"]
-    environment:
-      # so the healthcheck below (which runs $$REDIS_PASSWORD inside the
-      # container) can authenticate — the password is otherwise only on the CLI.
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    # Build the config from the mounted secret at start so the password is never
+    # on the command line (visible in `ps`/`docker inspect`) nor in an env var.
+    command: ["sh", "-c", "printf 'requirepass %s\\nappendonly yes\\n' \"$$(cat /run/secrets/redis_password)\" > /tmp/valkey.conf && exec valkey-server /tmp/valkey.conf"]
+    secrets:
+      - redis_password
     volumes:
       - valkey-data:/data
     networks:
@@ -148,9 +163,13 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop:
-      - NET_RAW
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
     healthcheck:
-      test: ["CMD-SHELL", "valkey-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      test: ["CMD-SHELL", "valkey-cli -a \"$$(cat /run/secrets/redis_password)\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -184,6 +203,17 @@ services:
 
 networks:
   internal:
+
+# Datastore passwords sourced from the existing .env vars but delivered to the
+# containers as mounted secret FILES (/run/secrets/*), never as a process env
+# var or on the command line — so they don't show in `docker inspect` env or
+# `/proc/<pid>/environ`. No operator file management needed; the value still
+# comes from DB_PASSWORD / REDIS_PASSWORD in .env.
+secrets:
+  db_password:
+    environment: DB_PASSWORD
+  redis_password:
+    environment: REDIS_PASSWORD
 
 volumes:
   pgdata:
