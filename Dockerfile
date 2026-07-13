@@ -27,15 +27,15 @@ RUN apt-get update \
       curl ca-certificates gnupg gzip \
       # HEIC/HEIF + Apple stills + HEVC still: decode (libde265) AND encode
       # (x265 for HEIC, aom for AVIF) so edited exports can be re-saved in format
-      libheif1 libheif-examples libde265-0 imagemagick \
+      libheif1 libde265-0 imagemagick \
       libheif-plugin-x265 libheif-plugin-aomenc libheif-plugin-libde265 \
       # video / Apple Motion + Live Photos (HEVC, MOV, ProRes) + thumbnails
       ffmpeg \
       # rich media metadata (EXIF/XMP, Motion-Photo + Live-Photo detection)
       libimage-exiftool-perl \
-      # document OCR (searchable PDFs) + text/image extraction
-      ocrmypdf ghostscript qpdf poppler-utils \
-      tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu \
+      # NOTE: no OCR/PDF toolchain here (ghostscript/tesseract/ocrmypdf/qpdf/
+      # poppler) — the app never shells out to them (OCR is external Paperless),
+      # so they are omitted to shrink the untrusted-decode CVE/RCE surface.
       # database backups shell out to pg_dump + gzip. The app DB is Postgres 17,
       # so the client must be 17 too (an older pg_dump refuses a newer server).
       # Debian ships an older default, so pull postgresql-client-17 from PGDG.
