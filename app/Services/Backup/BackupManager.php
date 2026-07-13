@@ -30,7 +30,9 @@ final class BackupManager
     /** Sources mirrored object-by-object (already-encrypted blobs), not archived. */
     private const MIRROR_SOURCES = ['files', 'gallery'];
 
-    private const MIRROR_PREFIX = ['files' => 'files', 'gallery' => 'photos'];
+    // Disk prefix per source = the blob controller's module() (where blobs are
+    // actually written): files→'files', gallery→'gallery' (NOT the old 'photos').
+    private const MIRROR_PREFIX = ['files' => 'files', 'gallery' => 'gallery'];
 
     /** Blob ownership ledger per mirror source — drives the incremental delta + byte total. */
     private const MIRROR_LEDGER = ['files' => FileBlob::class, 'gallery' => GalleryBlob::class];
