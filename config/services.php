@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Secret;
+
 return [
 
     /*
@@ -50,7 +52,7 @@ return [
     'pocketid' => [
         'base_url' => env('POCKETID_BASE_URL'),
         'client_id' => env('POCKETID_CLIENT_ID'),
-        'client_secret' => env('POCKETID_CLIENT_SECRET'),
+        'client_secret' => Secret::get('POCKETID_CLIENT_SECRET'),
         'redirect' => env('POCKETID_REDIRECT_URI'),
         'use_pkce' => env('POCKETID_USE_PKCE', true),
 

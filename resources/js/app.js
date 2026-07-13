@@ -22,7 +22,7 @@ window.addEventListener('vite:preloadError', () => {
 let _markdown = null;
 async function loadMarkdown() {
     if (_markdown) return _markdown;
-    const [{ marked }, DOMPurify, { markedHighlight }, hljs] = await Promise.all([
+    const [{ Marked }, DOMPurify, { markedHighlight }, hljs] = await Promise.all([
         import('marked'),
         import('dompurify'),
         import('marked-highlight'),
@@ -33,14 +33,19 @@ async function loadMarkdown() {
         import('highlight.js/styles/github.css'),
     ]);
     const hl = hljs.default;
-    marked.use(markedHighlight({
-        langPrefix: 'hljs language-',
-        highlight(code, lang) {
-            const language = lang && hl.getLanguage(lang) ? lang : 'plaintext';
-            return hl.highlight(code, { language }).value;
-        },
-    }));
-    _markdown = { render: (md) => (md ? DOMPurify.default.sanitize(marked.parse(md, { gfm: true, breaks: true })) : '') };
+    // marked v18: a per-instance Marked with GFM + hard line breaks and the
+    // highlight extension (client-side highlighting — notes are zero-knowledge).
+    const marked = new Marked(
+        { gfm: true, breaks: true },
+        markedHighlight({
+            langPrefix: 'hljs language-',
+            highlight(code, lang) {
+                const language = lang && hl.getLanguage(lang) ? lang : 'plaintext';
+                return hl.highlight(code, { language }).value;
+            },
+        }),
+    );
+    _markdown = { render: (md) => (md ? DOMPurify.default.sanitize(marked.parse(md)) : '') };
     return _markdown;
 }
 

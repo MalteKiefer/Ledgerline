@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Secret;
+
 return [
 
     /*
@@ -26,7 +28,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.449.1'),
+    'version' => env('APP_VERSION', '1.450.0'),
 
     /*
     |--------------------------------------------------------------------------
@@ -110,7 +112,7 @@ return [
 
     'cipher' => 'AES-256-CBC',
 
-    'key' => env('APP_KEY'),
+    'key' => Secret::get('APP_KEY'),
 
     'previous_keys' => [
         ...array_filter(
