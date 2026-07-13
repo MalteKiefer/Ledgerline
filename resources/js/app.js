@@ -3536,8 +3536,14 @@ Alpine.store('paperless', {
     },
 });
 
+// Decrypted extracted file text (fileId -> lowercased text), for content search.
+// Module-scoped + non-reactive: never proxied by Alpine, never leaves the client.
+const fileText = {};
+
 Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
+    extractProgress: null, // {done,total} while text extraction runs, else null
+    _extracting: false,
     // Points at the shared opaque store's file arrays once loaded; the tree is
     // plaintext inside the sealed blob, so mutations edit these in place.
     manifest: { v: 1, folders: [], files: [] },
@@ -3671,6 +3677,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         this.manifest.folders = window.LLStore.data.fileFolders;
         this.manifest.files = window.LLStore.data.files;
         this.state = 'ready';
+        this._warmFileText(); // background: load extracted text into the search index
         this.refreshUsage();
         // Tell the server which blobs the manifest still references so it can
         // reclaim the quota held by any it no longer does (grace-gated).
@@ -3718,6 +3725,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const blobs = [];
         for (const f of this.manifest.files) {
             if (f.blob) blobs.push(f.blob);
+            if (f.textRef) blobs.push(f.textRef); // extracted-text index blob
             for (const v of f.versions ?? []) if (v.blob) blobs.push(v.blob);
         }
         try {
@@ -3839,7 +3847,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             : this.sortKey === 'date' ? ((a, b) => new Date(a.created || 0) - new Date(b.created || 0))
                 : byName;
         const cmp = (a, b) => factor * (base(a, b) || byName(a, b));
-        const search = (list) => q === '' ? list : list.filter((x) => x.name.toLowerCase().includes(q));
+        // Match the filename OR the extracted file content (lazily decrypted into
+        // the module-scoped fileText index; warmed in the background on load).
+        const search = (list) => q === '' ? list : list.filter((x) => x.name.toLowerCase().includes(q) || (fileText[x.id] || '').includes(q));
 
         // Flat views (trash / favorites / recent): a tree-wide file list, not
         // folder-scoped.
@@ -3990,7 +4000,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
             if (del) {
                 const src = this.manifest.files.find((x) => x.id === row.id);
-                const blobs = src ? [src.blob, ...(src.versions ?? []).map((v) => v.blob)] : [];
+                const blobs = src ? [src.blob, ...(src.textRef ? [src.textRef] : []), ...(src.versions ?? []).map((v) => v.blob)] : [];
                 this._spliceWhere(this.manifest.files, (x) => x.id === row.id);
                 this.persist();
                 this._freeBlobs(blobs);
@@ -4204,7 +4214,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
 
         if (permanent) {
             const blobs = [];
-            for (const f of targets) { blobs.push(f.blob); for (const v of f.versions ?? []) blobs.push(v.blob); }
+            for (const f of targets) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
             const kill = new Set(targets.map((f) => f.id));
             this._spliceWhere(this.manifest.files, (f) => kill.has(f.id));
             this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
@@ -4254,7 +4264,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         if (! await this.$store.confirm.ask(labels.purgeConfirm || '')) return;
         const f = this.manifest.files.find((x) => x.id === row.id);
         if (! f) return;
-        const blobs = [f.blob, ...(f.versions ?? []).map((v) => v.blob)];
+        const blobs = [f.blob, ...(f.textRef ? [f.textRef] : []), ...(f.versions ?? []).map((v) => v.blob)];
         this._spliceWhere(this.manifest.files, (x) => x.id === row.id);
         this.persist();
         this._freeBlobs(blobs);
@@ -4266,7 +4276,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
         const trashed = this.manifest.files.filter((f) => f.trashed);
         const blobs = [];
-        for (const f of trashed) { blobs.push(f.blob); for (const v of f.versions ?? []) blobs.push(v.blob); }
+        for (const f of trashed) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
         this._spliceWhere(this.manifest.files, (f) => f.trashed);
         this.persist();
         this._freeBlobs(blobs);
@@ -4385,7 +4395,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                     }
                     entry.state = 'done';
                     entry.progress = 100;
-                    this.manifest.files.push({
+                    const row = {
                         id: crypto.randomUUID(),
                         blob: id,
                         encFileKey,
@@ -4395,7 +4405,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                         folder: folderFor(item.path),
                         created: new Date().toISOString(),
                         versions: [],
-                    });
+                    };
+                    this.manifest.files.push(row);
+                    // Index its text in the background so content search covers it.
+                    if (this._textCapable(row)) this._queueExtract(row);
                     // Persist incrementally (debounced) so an interrupted bulk
                     // upload doesn't strand every uploaded blob without a row —
                     // the manifest is saved every ~2s instead of only at the end.
@@ -4425,6 +4438,100 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     // XHR upload of a single file, reporting byte progress into the tray entry.
+    // ---- Content search: client-side text extraction (zero-knowledge) ----
+    // Which files can yield searchable text (plain-text family + PDF).
+    _textCapable(f) {
+        const ext = ((f.name || '').split('.').pop() || '').toLowerCase();
+        return /^text\//.test(f.mime || '') || f.mime === 'application/pdf'
+            || ['txt', 'md', 'markdown', 'csv', 'tsv', 'log', 'json', 'xml', 'yaml', 'yml', 'ini', 'conf', 'html', 'htm', 'js', 'ts', 'jsx', 'tsx', 'css', 'scss', 'py', 'sh', 'bash', 'c', 'h', 'cpp', 'hpp', 'cs', 'java', 'go', 'rs', 'php', 'rb', 'sql', 'pdf'].includes(ext);
+    },
+    async _extractText(bytes, mime, name) {
+        const ext = ((name || '').split('.').pop() || '').toLowerCase();
+        if (mime === 'application/pdf' || ext === 'pdf') return await this._extractPdfText(bytes);
+        try {
+            let t = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+            if (ext === 'html' || ext === 'htm' || /html/.test(mime || '')) t = t.replace(/<[^>]+>/g, ' ');
+            return t;
+        } catch (e) { return null; }
+    },
+    // PDF text via pdf.js (lazy-loaded + code-split so it never bloats the main
+    // bundle; runs entirely in the browser, so the ZK boundary is untouched).
+    async _extractPdfText(bytes) {
+        try {
+            const pdfjs = await import('pdfjs-dist');
+            pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+            const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
+            let out = '';
+            const pages = Math.min(doc.numPages, 300);
+            for (let i = 1; i <= pages && out.length < 2_000_000; i++) {
+                const page = await doc.getPage(i);
+                const content = await page.getTextContent();
+                out += content.items.map((it) => it.str || '').join(' ') + '\n';
+            }
+            try { await doc.destroy(); } catch (e) { /* ignore */ }
+            return out;
+        } catch (e) { return null; }
+    },
+    // Store extracted text as its own sealed blob (keeps the manifest small).
+    async _storeText(text) {
+        const bytes = new TextEncoder().encode(text.slice(0, 2_000_000));
+        const enc = await window.Vault.encryptFile(new File([bytes], 'text.txt', { type: 'text/plain' }));
+        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
+        const id = await this._uploadOne(cipher, {});
+        return { ref: id, key: enc.encFileKey };
+    },
+    async _extractInto(f) {
+        const buf = await fetchDecrypt(config.rawBase, f.blob, f.encFileKey);
+        const text = await this._extractText(new Uint8Array(buf), f.mime, f.name);
+        if (text && text.trim()) { const s = await this._storeText(text); f.textRef = s.ref; f.textKey = s.key; fileText[f.id] = text.toLowerCase(); return true; }
+        f.textSkip = true; // nothing extractable — don't retry
+        return false;
+    },
+    unextractedCount() {
+        return (this.manifest.files || []).filter((f) => ! f.trashed && ! f.textRef && ! f.textSkip && this._textCapable(f)).length;
+    },
+    // Backfill: index every capable file not done yet.
+    async extractAllText() {
+        if (this._extracting || this.state !== 'ready') return;
+        const todo = (this.manifest.files || []).filter((f) => ! f.trashed && ! f.textRef && ! f.textSkip && this._textCapable(f));
+        if (! todo.length) { window.llToast?.(labels.extractNone || 'Nothing to index.'); return; }
+        if (! await this.$store.confirm.ask((labels.extractConfirm || 'Index :n files for content search?').replace(':n', todo.length))) return;
+        this._extracting = true; this.extractProgress = { done: 0, total: todo.length };
+        try {
+            let since = 0;
+            for (const f of todo) {
+                try { await this._extractInto(f); } catch (e) { /* leave for a later run */ }
+                this.extractProgress = { done: this.extractProgress.done + 1, total: todo.length };
+                if (++since >= 5) { since = 0; window.LLStore.touch(); }
+            }
+            window.LLStore.touch();
+            window.llToast?.(labels.extractDone || 'Content indexing complete.');
+        } finally { this._extracting = false; this.extractProgress = null; }
+    },
+    // Background: index a freshly uploaded file (fire-and-forget queue), and warm
+    // the in-memory index from already-extracted blobs so a search matches
+    // content right after opening Files.
+    _queueExtract(f) { (this._extractQ = this._extractQ || []).push(f); this._drainExtractQ(); },
+    async _drainExtractQ() {
+        if (this._extractQDraining) return;
+        this._extractQDraining = true;
+        try {
+            while ((this._extractQ || []).length) {
+                const f = this._extractQ.shift();
+                if (! f || f.trashed || f.textRef || f.textSkip || ! this._textCapable(f)) continue;
+                try { if (await this._extractInto(f)) window.LLStore.touch(); } catch (e) { /* skip */ }
+            }
+        } finally { this._extractQDraining = false; }
+    },
+    async _warmFileText() {
+        for (const f of (this.manifest.files || [])) {
+            if (f.trashed || ! f.textRef || fileText[f.id] != null) continue;
+            try { const buf = await fetchDecrypt(config.rawBase, f.textRef, f.textKey); fileText[f.id] = new TextDecoder().decode(buf).toLowerCase(); }
+            catch (e) { /* skip */ }
+            await new Promise((r) => setTimeout(r, 0));
+        }
+    },
+
     _uploadOne(file, entry) {
         return new Promise((resolve, reject) => {
             const data = new FormData();

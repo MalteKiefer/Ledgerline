@@ -29,6 +29,9 @@
         quotaExceeded: @js(__('files.quota_exceeded')),
         purgeConfirm: @js(__('files.purge_confirm')),
         emptyTrashConfirm: @js(__('files.empty_trash_confirm')),
+        extractConfirm: @js(__('files.extract_confirm')),
+        extractNone: @js(__('files.extract_none')),
+        extractDone: @js(__('files.extract_done')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -154,6 +157,14 @@
                 <button type="button" @click="setLayout('list')" :class="layout === 'list' ? 'bg-gray-800 text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_list') }}" aria-label="{{ __('files.view_list') }}" class="rounded p-1.5"><x-icon name="bars-3" class="h-4 w-4" /></button>
                 <button type="button" @click="setLayout('grid')" :class="layout === 'grid' ? 'bg-gray-800 text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_grid') }}" aria-label="{{ __('files.view_grid') }}" class="rounded p-1.5"><x-icon name="squares-2x2" class="h-4 w-4" /></button>
             </div>
+            {{-- Index file contents for search (client-side text extraction) --}}
+            <button type="button" x-show="unextractedCount() > 0 && ! _extracting" x-cloak @click="extractAllText()" :title="'{{ __('files.extract_hint') }}'" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                <x-icon name="sparkles" class="h-4 w-4" />{{ __('files.extract_all') }} <span class="tabular-nums opacity-70" x-text="'(' + unextractedCount() + ')'"></span>
+            </button>
+            <span x-show="extractProgress" x-cloak class="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 tabular-nums">
+                <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                <span x-text="(extractProgress?.done || 0) + ' / ' + (extractProgress?.total || 0)"></span>
+            </span>
             <span x-show="activeTag" x-cloak class="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-800 dark:text-blue-300">
                 {{ __('files.filtered_by') }}: <span x-text="activeTag"></span>
                 <button type="button" @click="activeTag = ''" class="text-blue-500 hover:text-blue-700"><x-icon name="x-mark" class="h-3 w-3" /></button>

@@ -27,6 +27,7 @@
         "leaflet.markercluster": "^1.5.3",
         "libsodium-wrappers-sumo": "^0.8.4",
         "marked": "^18.0.6",
-        "marked-highlight": "^2.2.4"
+        "marked-highlight": "^2.2.4",
+        "pdfjs-dist": "^4.10.38"
     }
 }
