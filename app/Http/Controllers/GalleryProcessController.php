@@ -36,6 +36,7 @@ class GalleryProcessController extends Controller
         $upload->move(dirname($tmp), basename($tmp));
 
         try {
+            $this->guardPixelBudget($tmp);
             // ml=0 → "fast" upload: skip the CLIP embedding + face detection so
             // the photo is visible immediately; the client runs analyze() later.
             $d = $processor->process($tmp, $mime, $request->boolean('ml', true));
@@ -86,6 +87,7 @@ class GalleryProcessController extends Controller
         $upload->move(dirname($tmp), basename($tmp));
 
         try {
+            $this->guardPixelBudget($tmp);
             $d = $processor->analyze($tmp);
 
             return response()->json([
@@ -99,6 +101,26 @@ class GalleryProcessController extends Controller
             ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
         } finally {
             @unlink($tmp);
+        }
+    }
+
+    /**
+     * Fast-fail a pixel-flood / decompression bomb before ImageMagick decodes it:
+     * a highly compressible image can sit well under the byte limit yet expand to
+     * a huge canvas. getimagesize() reads only the header (cheap) and covers the
+     * common bomb formats (JPEG/PNG/GIF/WEBP/BMP); HEIC/AVIF return nothing here
+     * and fall back to the ImageMagick area policy as the backstop.
+     */
+    private function guardPixelBudget(string $path): void
+    {
+        $cap = (int) config('gallery.max_megapixels', 120);
+        if ($cap <= 0) {
+            return;
+        }
+        $info = @getimagesize($path);
+        if (is_array($info) && isset($info[0], $info[1])) {
+            $megapixels = ((int) $info[0] * (int) $info[1]) / 1_000_000;
+            abort_if($megapixels > $cap, 422, 'Image dimensions exceed the allowed limit.');
         }
     }
 

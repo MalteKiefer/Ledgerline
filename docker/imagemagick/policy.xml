@@ -21,6 +21,9 @@
   <policy domain="resource" name="width" value="32KP"/>
   <policy domain="resource" name="height" value="32KP"/>
   <policy domain="resource" name="disk" value="2GiB"/>
+  <!-- Bound per-decode CPU wall-clock so a crafted image that stays within the
+       area/memory caps still can't burn a worker until the PHP timeout. -->
+  <policy domain="resource" name="time" value="60"/>
   <policy domain="delegate" rights="none" pattern="URL"/>
   <policy domain="delegate" rights="none" pattern="HTTPS"/>
   <policy domain="delegate" rights="none" pattern="HTTP"/>

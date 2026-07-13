@@ -138,6 +138,12 @@ return [
     // Max single-upload size (MB) for one gallery content blob (non-chunked).
     'max_upload_mb' => (int) env('GALLERY_MAX_UPLOAD_MB', 512),
 
+    // Reject images above this many megapixels before decoding them, so a
+    // pixel-flood / decompression bomb that stays under the byte limit is
+    // fast-failed instead of driving a full ImageMagick decode. 0 disables the
+    // pre-check (the ImageMagick area policy still applies as a backstop).
+    'max_megapixels' => (int) env('GALLERY_MAX_MEGAPIXELS', 120),
+
     // Grace window (hours) before an orphaned blob (uploaded but not yet
     // referenced by the sealed index) is eligible for reconcile/sweep reclaim.
     // (Already declared above as blob_orphan_grace_hours; reused here.)

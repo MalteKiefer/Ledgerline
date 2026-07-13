@@ -54,6 +54,14 @@ x-app-image: &app-image
     - internal
   volumes:
     - app-storage:/var/www/html/storage/app
+    # The /gallery/process transform decrypts each original to the system temp
+    # dir before deriving renditions and unlinking it. Back that dir with a
+    # size-capped tmpfs so the plaintext lives only in RAM and never lands on the
+    # container's writable layer (crash/backup/forensic recovery of ZK content).
+    - type: tmpfs
+      target: /tmp
+      tmpfs:
+        size: 2147483648
 
 services:
   app:
