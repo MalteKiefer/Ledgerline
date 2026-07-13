@@ -33,6 +33,12 @@ x-app-image: &app-image
   restart: unless-stopped
   security_opt:
     - no-new-privileges:true
+  # Drop the raw-socket capability everywhere: nothing here sends raw packets,
+  # and removing it blocks ARP/packet spoofing between containers on the shared
+  # bridge. (A full cap_drop:[ALL] is avoided — the base images su-exec down from
+  # root and need SETUID/SETGID/CHOWN.)
+  cap_drop:
+    - NET_RAW
   depends_on:
     db:
       condition: service_healthy
@@ -118,6 +124,8 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-ledgerline} -d ${DB_DATABASE:-ledgerline}"]
       interval: 10s
@@ -139,6 +147,8 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
     healthcheck:
       test: ["CMD-SHELL", "valkey-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
@@ -151,7 +161,7 @@ services:
   # downloaded on first use into the ml-cache volume. Enable with:
   #   docker compose --profile ml up -d
   ml:
-    image: ghcr.io/immich-app/immich-machine-learning:release
+    image: ghcr.io/immich-app/immich-machine-learning:${ML_IMAGE_TAG:-v2.7.5}
     profiles: ["ml"]
     environment:
       MACHINE_LEARNING_WORKERS: "1"
@@ -163,6 +173,8 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://localhost:3003/ping')\" || exit 1"]
       interval: 30s
