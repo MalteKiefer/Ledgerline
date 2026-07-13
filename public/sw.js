@@ -8,7 +8,7 @@
  *
  * Bump CACHE whenever the precached set changes; activate() drops old caches.
  */
-const CACHE = 'll-v2';
+const CACHE = 'll-v3';
 const PRECACHE = ['/offline.html', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
