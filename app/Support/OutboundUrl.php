@@ -78,10 +78,16 @@ final class OutboundUrl
                 // private in hardened mode) — never connect.
                 throw new RuntimeException('Refusing to fetch an unsafe URL.');
             }
-            // Pin the verified IP so a DNS-rebind can't swap it at connect time.
-            $addr = str_contains($allowed[0], ':') ? "[{$allowed[0]}]" : $allowed[0];
+            // Pin the verified IP so a DNS-rebind can't swap it at connect time,
+            // and force the resolved address family so curl can't fall back to an
+            // unverified A/AAAA record of the other family.
+            $isV6 = str_contains($allowed[0], ':');
+            $addr = $isV6 ? "[{$allowed[0]}]" : $allowed[0];
             $port = (int) (parse_url($url, PHP_URL_PORT) ?: ($scheme === 'https' ? 443 : 80));
-            $options['curl'] = [CURLOPT_RESOLVE => ["{$host}:{$port}:{$addr}"]];
+            $options['curl'] = [
+                CURLOPT_RESOLVE => ["{$host}:{$port}:{$addr}"],
+                CURLOPT_IPRESOLVE => $isV6 ? CURL_IPRESOLVE_V6 : CURL_IPRESOLVE_V4,
+            ];
         } elseif (config('security.block_private_hosts', false)) {
             // Hardened posture: an unresolvable host cannot be verified — refuse.
             throw new RuntimeException('Refusing to fetch an unresolvable URL.');

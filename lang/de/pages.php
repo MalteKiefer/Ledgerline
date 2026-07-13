@@ -10,6 +10,7 @@ return [
         'title' => 'Anmelden',
         'subtitle' => 'Melden Sie sich mit Ihrem Pocket-ID-Konto an, um fortzufahren.',
         'continue' => 'Mit Pocket-ID fortfahren',
+        'public_computer' => 'Öffentlicher oder geteilter Computer',
     ],
     'dashboard' => [
         'title' => 'Übersicht',

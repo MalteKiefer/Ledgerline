@@ -29,8 +29,13 @@ class PocketIdController extends Controller
      * The flow is stateful (an anti-CSRF "state" value is stored in the
      * session) and PKCE-protected, as configured in config/services.php.
      */
-    public function redirect(): RedirectResponse
+    public function redirect(Request $request): RedirectResponse
     {
+        // Carry the "public / shared computer" choice through the OIDC round-trip
+        // in the session, so the callback can decline the long-lived remember-me
+        // cookie (mirrors the vault's own public-computer control).
+        $request->session()->put('oidc_public_computer', $request->boolean('public'));
+
         return Socialite::driver('pocketid')
             ->scopes(['openid', 'profile', 'email', 'groups'])
             ->redirect();
@@ -108,7 +113,13 @@ class PocketIdController extends Controller
                 ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
         }
 
-        Auth::login($user, remember: true);
+        // On a public/shared computer, don't issue the persistent remember-me
+        // cookie and let the session cookie die when the browser closes.
+        $public = (bool) $request->session()->pull('oidc_public_computer', false);
+        if ($public) {
+            config(['session.expire_on_close' => true]);
+        }
+        Auth::login($user, remember: ! $public);
 
         // Keep the provider id_token so logout can end the SSO session too.
         $idToken = $oidcUser->accessTokenResponseBody['id_token'] ?? null;
