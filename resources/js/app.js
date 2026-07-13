@@ -267,12 +267,21 @@ window.LLGalleryStore = {
         this._timer = setTimeout(() => this.flush(), 800);
     },
 
-    // Serialised, awaitable save. Callers can `await flush()` and be sure the
-    // CURRENT data was persisted — a save in flight no longer turns the call into
-    // a no-op (which lost destructive edits like emptying the trash on reload).
+    // Serialised, awaitable, COALESCING save. Callers can `await flush()` and be
+    // sure the CURRENT data was persisted. While a save is in flight, extra
+    // flush() calls collapse into a single queued save (each _doFlush always
+    // seals the latest in-memory data), so a burst of edits — a bulk/motion
+    // delete cascading many shard re-seals plus the background ML/pairing passes
+    // all flushing — no longer queues dozens of racing PUTs that fight over the
+    // version counter and exhaust the 409 retry budget.
     flush() {
         if (! this.loaded) return Promise.resolve();
-        this._chain = (this._chain || Promise.resolve()).then(() => this._doFlush()).catch(() => {});
+        if (this._queued) return this._chain; // a save is already scheduled after the running one
+        this._queued = true;
+        this._chain = (this._chain || Promise.resolve())
+            .catch(() => {})
+            .then(() => { this._queued = false; return this._doFlush(); })
+            .catch(() => {});
         return this._chain;
     },
 
