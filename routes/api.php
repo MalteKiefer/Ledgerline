@@ -24,7 +24,9 @@ Route::prefix('v1')->group(function (): void {
     // Public pairing exchange — the one-time code is the credential; hard-throttled.
     Route::middleware('throttle:auth-pair')->group(function (): void {
         Route::post('/auth/pair', [AuthController::class, 'pair'])->name('api.auth.pair');
-        Route::get('/auth/pair', [AuthController::class, 'collect'])->name('api.auth.collect');
+        // Poll for the token via POST so the one-time code travels in the request
+        // body, never in a URL/query string (which lands in access logs/proxies).
+        Route::post('/auth/pair/collect', [AuthController::class, 'collect'])->name('api.auth.collect');
     });
 
     // Enforce the scoped 'device' ability minted at pairing (legacy '*' tokens

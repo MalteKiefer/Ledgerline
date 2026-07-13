@@ -9,13 +9,16 @@ use App\Models\ErrorEvent;
 use App\Services\Notifications\ChannelNotifier;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
  * Notifies the configured channels when new server errors have been recorded
  * since the last alert. Keeps operators aware of faults without an external
  * error-tracking service. Runs hourly.
+ *
+ * Delivery state is tracked per error signature (error_events.alerted_at), not
+ * via a cache cursor: a cache flush must not drop the alert window, and the
+ * marker only advances AFTER a successful send so a failed delivery retries.
  */
 class AlertErrors extends Command
 {
@@ -23,23 +26,21 @@ class AlertErrors extends Command
 
     protected $description = 'Alert configured channels about new recorded errors';
 
-    private const CURSOR = 'ops:error-alert:since';
-
     public function handle(ChannelNotifier $notifier): int
     {
         if (! config('ops.error_alerts', true)) {
             return self::SUCCESS;
         }
 
-        $since = Cache::get(self::CURSOR);
-        $since = $since ? Carbon::parse($since) : Carbon::now()->subHour();
-
+        // Unresolved signatures never alerted, or seen again since their last
+        // alert (a recurrence worth re-surfacing).
         $fresh = ErrorEvent::whereNull('resolved_at')
-            ->where('last_seen_at', '>', $since)
+            ->where(function ($q): void {
+                $q->whereNull('alerted_at')
+                    ->orWhereColumn('last_seen_at', '>', 'alerted_at');
+            })
             ->orderByDesc('last_seen_at')
             ->get();
-
-        Cache::forever(self::CURSOR, Carbon::now()->toIso8601String());
 
         if ($fresh->isEmpty()) {
             $this->info('No new errors.');
@@ -52,6 +53,8 @@ class AlertErrors extends Command
             $top = $fresh->take(5)
                 ->map(fn (ErrorEvent $e): string => '• '.class_basename($e->exception).': '.Str::limit($e->message, 120))
                 ->implode("\n");
+            // send() swallows per-channel failures internally; only mark the
+            // signatures alerted once we have attempted delivery to a channel.
             $notifier->send(
                 $channels,
                 __('settings.system_error_alert_title', ['count' => $fresh->count()]),
@@ -59,6 +62,8 @@ class AlertErrors extends Command
                 ['event' => 'error', 'priority' => 'high'],
             );
         }
+
+        ErrorEvent::whereIn('id', $fresh->pluck('id'))->update(['alerted_at' => Carbon::now()]);
 
         $this->info($fresh->count().' new error(s) reported.');
 

@@ -80,11 +80,15 @@ final class SecurityHeaders
             // Function constructor; cross-origin scripts stay forbidden.
             "script-src 'self' 'unsafe-eval' ".ThemeBootstrap::cspHash(),
             "style-src 'self' 'unsafe-inline'",
-            "img-src 'self' data: blob: https:",
+            // App content is same-origin (encrypted /raw blobs -> blob: URLs,
+            // avatars, QR as data:). The ONLY remote images are Leaflet OSM map
+            // tiles, so scope to that host instead of a blanket 'https:' — this
+            // closes the "any https host" exfil channel the backstop is meant to
+            // contain while keeping the maps working.
+            "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
             "font-src 'self' data:",
-            // blob: for client-generated URLs; https: so inline video/audio can
-            // stream from the signed S3/object-storage URL (mirrors img-src).
-            "media-src 'self' blob: https:",
+            // blob: for client-decrypted video/audio; no remote media origin.
+            "media-src 'self' blob:",
             "connect-src 'self'",
             // The gallery's duplicate scan runs its O(n^2) comparison in a
             // same-origin Web Worker (bundled by Vite); allow only 'self'.

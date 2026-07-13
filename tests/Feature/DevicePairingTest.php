@@ -71,7 +71,7 @@ class DevicePairingTest extends TestCase
             ->assertOk()->assertJson(['status' => 'pending']);
         $this->actingAs($user)->postJson("/device-pairings/{$id}/approve")->assertOk();
 
-        $collect = $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertOk();
+        $collect = $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertOk();
         $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$collect->json('token')])
             ->assertOk()->assertJson(['user' => ['id' => $user->id]]);
     }
@@ -101,7 +101,7 @@ class DevicePairingTest extends TestCase
             ->assertOk()->assertJson(['status' => DevicePairing::APPROVED]);
 
         // App collects the token exactly once.
-        $collect = $this->getJson('/api/v1/auth/pair?code='.urlencode($code));
+        $collect = $this->postJson('/api/v1/auth/pair/collect', ['code' => $code]);
         $collect->assertOk()->assertJson(['status' => 'approved'])->assertJsonStructure(['token', 'user' => ['id']]);
         $token = $collect->json('token');
         $this->assertSame($user->id, $collect->json('user.id'));
@@ -111,7 +111,7 @@ class DevicePairingTest extends TestCase
             ->assertOk()->assertJson(['user' => ['id' => $user->id]])->assertJsonStructure(['usage' => ['files', 'gallery']]);
 
         // The pairing is spent — a second collect fails.
-        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertStatus(410);
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertStatus(410);
     }
 
     public function test_collect_is_pending_until_approved(): void
@@ -120,7 +120,7 @@ class DevicePairingTest extends TestCase
         [, $code] = $this->pending($user);
         $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'Tab']);
 
-        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])
             ->assertOk()->assertJson(['status' => 'pending']);
     }
 
@@ -131,7 +131,7 @@ class DevicePairingTest extends TestCase
         $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'Tab']);
         $this->actingAs($user)->postJson("/device-pairings/{$pairing->id}/reject")->assertOk();
 
-        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertStatus(410);
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertStatus(410);
     }
 
     public function test_expired_code_is_gone(): void
@@ -143,12 +143,12 @@ class DevicePairingTest extends TestCase
         $pairing->update(['code_hash' => hash('sha256', $code)]);
 
         $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'Tab'])->assertStatus(410);
-        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertStatus(410);
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertStatus(410);
     }
 
     public function test_unknown_code_is_gone(): void
     {
-        $this->getJson('/api/v1/auth/pair?code=nope')->assertStatus(410);
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => 'nope'])->assertStatus(410);
         $this->postJson('/api/v1/auth/pair', ['code' => 'nope', 'device_name' => 'x'])->assertStatus(410);
     }
 
@@ -239,7 +239,7 @@ class DevicePairingTest extends TestCase
         [$pairing, $code] = $this->pending($user);
         $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'New phone']);
         app(Pairing::class)->approve($pairing->fresh());
-        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertOk()->assertJson(['status' => 'approved']);
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertOk()->assertJson(['status' => 'approved']);
 
         // Still at the cap, and the oldest ("Old phone") was evicted.
         $names = $user->tokens()->pluck('name');
@@ -254,7 +254,7 @@ class DevicePairingTest extends TestCase
         [$pairing, $code] = $this->pending($user);
         $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'Pixel']);
         app(Pairing::class)->approve($pairing->fresh());
-        $this->getJson('/api/v1/auth/pair?code='.urlencode($code))->assertOk();
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertOk();
 
         $token = PersonalAccessToken::query()->first();
         $this->assertNotNull($token->ip); // 127.0.0.1 in tests — recorded at collect
