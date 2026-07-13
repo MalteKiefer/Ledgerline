@@ -165,6 +165,10 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      # CHOWN + FOWNER so RDB/AOF rewrites can rename over data files left by a
+      # prior (root-owned) run; without them the save fails with EPERM.
+      - CHOWN
+      - FOWNER
       - SETUID
       - SETGID
       - DAC_OVERRIDE
