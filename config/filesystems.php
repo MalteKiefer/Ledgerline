@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Secret;
+
 return [
 
     /*
@@ -50,7 +52,7 @@ return [
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'secret' => Secret::get('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
@@ -71,7 +73,7 @@ return [
         'files' => [
             'driver' => 's3',
             'key' => env('FILES_S3_KEY', env('AWS_ACCESS_KEY_ID')),
-            'secret' => env('FILES_S3_SECRET', env('AWS_SECRET_ACCESS_KEY')),
+            'secret' => Secret::get('FILES_S3_SECRET', Secret::get('AWS_SECRET_ACCESS_KEY')),
             'region' => env('FILES_S3_REGION', env('AWS_DEFAULT_REGION', 'auto')),
             'bucket' => env('FILES_S3_BUCKET', env('AWS_BUCKET')),
             'endpoint' => env('FILES_S3_ENDPOINT', env('AWS_ENDPOINT')),
