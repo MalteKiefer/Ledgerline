@@ -71,9 +71,9 @@ class AlertErrors extends Command
         $s = AppSettings::current();
 
         return array_values(array_filter([
-            $s->notify_ntfy ? 'ntfy' : null,
-            $s->notify_webhook ? 'webhook' : null,
-            $s->notify_mail ? 'mail' : null,
+            $s->ntfy_enabled ? 'ntfy' : null,
+            $s->webhook_enabled ? 'webhook' : null,
+            $s->mail_enabled ? 'mail' : null,
         ]));
     }
 }

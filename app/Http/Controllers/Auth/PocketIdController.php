@@ -7,7 +7,6 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AvatarFetcher;
-use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -100,9 +99,10 @@ class PocketIdController extends Controller
             }
 
             $user->forceFill(['last_login_at' => now()])->save();
-        } catch (QueryException|Throwable) {
+        } catch (Throwable) {
             // A UNIQUE clash (e.g. two authorized subjects sharing one verified
-            // e-mail) or any other persistence error must not surface as a 500.
+            // e-mail — a QueryException, itself a Throwable) or any other
+            // persistence error must not surface as a 500.
             return redirect()
                 ->route('login')
                 ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);

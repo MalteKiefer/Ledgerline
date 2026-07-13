@@ -27,9 +27,10 @@ class SecurityAuditFixesTest extends TestCase
             'file' => UploadedFile::fake()->create('a.bin', 4),
         ])->assertCreated()->json('id');
 
-        // Bob can neither download nor delete Alice's blob by guessing its UUID.
+        // Bob cannot download Alice's blob; his delete is a uniform idempotent
+        // no-op (no 403-vs-200 ownership oracle) and Alice's bytes survive.
         $this->actingAs($bob)->get(route('files.raw', ['blob' => $blob]))->assertNotFound();
-        $this->actingAs($bob)->deleteJson(route('files.blob.destroy', ['blob' => $blob]))->assertForbidden();
+        $this->actingAs($bob)->deleteJson(route('files.blob.destroy', ['blob' => $blob]))->assertOk();
         Storage::disk(config('files.disk'))->assertExists('files/'.$blob);
     }
 

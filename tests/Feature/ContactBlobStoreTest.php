@@ -43,9 +43,11 @@ class ContactBlobStoreTest extends TestCase
             ->assertOk()
             ->assertHeader('Cache-Control', 'immutable, max-age=31536000, private');
 
-        // Another user cannot read or delete it.
+        // Another user cannot read it, and a foreign delete is a uniform idempotent
+        // no-op (no 403-vs-200 ownership oracle) that leaves the blob intact.
         $this->actingAs(User::factory()->create())->get(route('contacts.raw', ['blob' => $blob]))->assertNotFound();
-        $this->actingAs(User::factory()->create())->deleteJson(route('contacts.blob.destroy', ['blob' => $blob]))->assertForbidden();
+        $this->actingAs(User::factory()->create())->deleteJson(route('contacts.blob.destroy', ['blob' => $blob]))->assertOk();
+        $this->assertDatabaseHas('contact_blobs', ['blob' => $blob]);
 
         // The owner can delete it.
         $this->actingAs($user)->deleteJson(route('contacts.blob.destroy', ['blob' => $blob]))->assertOk();
