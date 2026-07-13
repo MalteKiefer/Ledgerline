@@ -9,8 +9,8 @@ namespace App\Support;
  *
  * Every module that streams files into an archive needs the same "if this
  * entry name was already used, append a counter before the extension" logic.
- * This class captures that once so ExportArchiver, GalleryController and
- * MailArchiveController stay in sync.
+ * This class captures that once so archive builders (e.g. ExportArchiver)
+ * stay in sync.
  */
 final class ArchiveName
 {
