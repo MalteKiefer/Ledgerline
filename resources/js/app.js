@@ -1499,8 +1499,10 @@ return {
         // 3. Encrypt + store the derived blobs.
         const meta = {
             exif: d.exif, place: d.place, embedding: d.embedding, phash: d.phash,
+            embModel: Array.isArray(d.embedding) ? config.clipModel : null,
             faces: [], width: d.width, height: d.height, duration: d.duration, content_id: d.content_id,
         };
+        p.embModel = meta.embModel; // mirror on the index for cheap re-embed checks
         if (d.thumb) { const r = await this._encStore(this._b64bytes(d.thumb), 'thumb.enc'); p.thumbRef = r.id; p.thumbKey = r.key; }
         if (d.medium) { const r = await this._encStore(this._b64bytes(d.medium), 'medium.enc'); p.mediumRef = r.id; p.mediumKey = r.key; }
         if (d.motion) { const r = await this._encStore(this._b64bytes(d.motion), 'motion.enc'); p.motionRef = r.id; p.motionKey = r.key; }
@@ -1561,6 +1563,9 @@ return {
             catch (e) { meta = { faces: [] }; }
         }
         meta.embedding = d.embedding;
+        // Tag the CLIP model so a later model swap can ignore stale-space vectors
+        // (they'd give meaningless cosine scores) until the photo is re-analysed.
+        meta.embModel = Array.isArray(d.embedding) ? config.clipModel : null;
         meta.faces = [];
         for (const f of (d.faces || [])) {
             const face = { score: f.score, box: f.box, embedding: f.embedding };
@@ -1571,7 +1576,8 @@ return {
         const mr = await this._encStore(new TextEncoder().encode(JSON.stringify(meta)), 'meta.enc');
         p.metaRef = mr.id; p.metaKey = mr.key;
         metaCache[p.id] = meta;
-        if (Array.isArray(meta.embedding)) searchEmb[p.id] = this._norm(meta.embedding);
+        p.embModel = meta.embModel; // mirror on the index for cheap re-embed checks
+        if (Array.isArray(meta.embedding) && meta.embModel === config.clipModel) searchEmb[p.id] = this._norm(meta.embedding);
         p.hasFaces = meta.faces.length;
         p.faceCropRefs = meta.faces.map((f) => f.cropRef).filter(Boolean);
         p.mlPending = false;
@@ -1646,14 +1652,20 @@ return {
     // the problem when few or no people show up.
     facesDetected() { return this._cache('facesDet', () => this.index.photos.reduce((s, p) => s + (Number(p.hasFaces) || 0), 0)); },
     photosWithFaces() { return this._cache('photosFaces', () => this.index.photos.filter((p) => (Number(p.hasFaces) || 0) > 0).length); },
-    async deepFaceRescan() {
+    async deepFaceRescan(force = false) {
         if (this.peopleScanning || this._mlRunning || this.deepScanning || this.state !== 'ready') return;
         this.deepScanning = true;
         try {
             let any = false;
             for (const p of this.index.photos) {
                 if (p.trashed || ! (p.mediumRef || p.originalRef)) continue;
-                if (p.hasFaces == null || p.mlFailed) { p.mlPending = true; p._mlTries = 0; delete p.mlFailed; any = true; }
+                // force → re-embed everything (e.g. after a CLIP model swap);
+                // otherwise only the un/failed ones, plus any tagged with a stale
+                // model so a future swap re-embeds them without a full force.
+                const stale = p.embModel && p.embModel !== config.clipModel;
+                if (force || p.hasFaces == null || p.mlFailed || stale) {
+                    p.mlPending = true; p._mlTries = 0; delete p.mlFailed; any = true;
+                }
             }
             if (any) this._save();
             await this.runMlBacklog();
@@ -1661,6 +1673,14 @@ return {
         } finally {
             this.deepScanning = false;
         }
+    },
+    // One-off full re-index: re-run analyse on every photo. Needed after changing
+    // the CLIP model (embeddings live in a different vector space), so smart
+    // search works again once it completes.
+    async reindexAll() {
+        if (this.deepScanning || this._mlRunning || this.state !== 'ready') return;
+        if (! await this.$store.confirm.ask(labels.reindexConfirm || 'Re-analyze all photos? This can take a while.')) return;
+        await this.deepFaceRescan(true);
     },
 
     // Encrypt raw bytes with a fresh per-blob key and upload; returns { id, key }.
@@ -2093,7 +2113,7 @@ return {
         await this._ensureMeta();
         for (const p of this.libraryPhotos) {
             const m = metaCache[p.id];
-            if (m && Array.isArray(m.embedding) && ! searchEmb[p.id]) searchEmb[p.id] = this._norm(m.embedding);
+            if (m && Array.isArray(m.embedding) && m.embModel === config.clipModel && ! searchEmb[p.id]) searchEmb[p.id] = this._norm(m.embedding);
         }
     },
     // Shared decrypted-metadata cache (embedding/phash/faces/place). Every
