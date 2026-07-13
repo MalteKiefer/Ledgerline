@@ -17,7 +17,7 @@ x-app-image: &app-image
     # fail otherwise. Host-net build uses the host's working resolver.
     network: host
     args:
-      PHP_BASE: serversideup/php:8.4-fpm-nginx@sha256:519720d9ff5d50aad9eb83fac290746460dfc1346faa8fdb25c75d28a3feb2ab
+      PHP_BASE: serversideup/php:8.4-fpm-nginx-alpine@sha256:49ae73887fbb65c92312c61eb4612808d823485f0510eb27afc61e1bd2ee2390
   env_file: .env
   environment:
     # This host has no route to the EC2 instance-metadata IP (169.254.169.254),
