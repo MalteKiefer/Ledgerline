@@ -3540,6 +3540,36 @@ Alpine.store('paperless', {
 // Module-scoped + non-reactive: never proxied by Alpine, never leaves the client.
 const fileText = {};
 
+// Lazy, singleton OCR worker (tesseract.js). All assets are self-hosted under
+// /tesseract (worker + WASM core + eng/deu data) so nothing is fetched from a
+// CDN — the whole OCR runs in the browser, keeping the ZK boundary intact.
+let _ocrWorker = null, _ocrInit = null;
+async function ocrWorker() {
+    if (_ocrWorker) return _ocrWorker;
+    if (! _ocrInit) {
+        _ocrInit = (async () => {
+            const { createWorker } = await import('tesseract.js');
+            _ocrWorker = await createWorker(['eng', 'deu'], 1, {
+                workerPath: '/tesseract/worker.min.js',
+                corePath: '/tesseract/core',
+                langPath: '/tesseract/lang',
+                workerBlobURL: false, // same-origin worker (CSP worker-src 'self')
+                gzip: false,          // raw .traineddata (not gzipped)
+            });
+            return _ocrWorker;
+        })();
+    }
+    return _ocrInit;
+}
+// OCR a Blob / canvas / ImageData → recognised text ('' on any failure).
+async function ocrImage(input) {
+    try {
+        const w = await ocrWorker();
+        const { data } = await w.recognize(input);
+        return (data && data.text) ? data.text : '';
+    } catch (e) { return ''; }
+}
+
 Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
     extractProgress: null, // {done,total} while text extraction runs, else null
@@ -4407,8 +4437,10 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                         versions: [],
                     };
                     this.manifest.files.push(row);
-                    // Index its text in the background so content search covers it.
-                    if (this._textCapable(row)) this._queueExtract(row);
+                    // Auto-index text/PDF in the background. Images need OCR (slow)
+                    // and most uploads aren't documents, so those index only via
+                    // the explicit "Index contents" backfill.
+                    if (this._textCapable(row) && ! /^image\//.test(row.mime || '')) this._queueExtract(row);
                     // Persist incrementally (debounced) so an interrupted bulk
                     // upload doesn't strand every uploaded blob without a row —
                     // the manifest is saved every ~2s instead of only at the end.
@@ -4442,17 +4474,51 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Which files can yield searchable text (plain-text family + PDF).
     _textCapable(f) {
         const ext = ((f.name || '').split('.').pop() || '').toLowerCase();
-        return /^text\//.test(f.mime || '') || f.mime === 'application/pdf'
-            || ['txt', 'md', 'markdown', 'csv', 'tsv', 'log', 'json', 'xml', 'yaml', 'yml', 'ini', 'conf', 'html', 'htm', 'js', 'ts', 'jsx', 'tsx', 'css', 'scss', 'py', 'sh', 'bash', 'c', 'h', 'cpp', 'hpp', 'cs', 'java', 'go', 'rs', 'php', 'rb', 'sql', 'pdf'].includes(ext);
+        return /^text\//.test(f.mime || '') || f.mime === 'application/pdf' || /^image\//.test(f.mime || '')
+            || ['txt', 'md', 'markdown', 'csv', 'tsv', 'log', 'json', 'xml', 'yaml', 'yml', 'ini', 'conf', 'html', 'htm', 'js', 'ts', 'jsx', 'tsx', 'css', 'scss', 'py', 'sh', 'bash', 'c', 'h', 'cpp', 'hpp', 'cs', 'java', 'go', 'rs', 'php', 'rb', 'sql', 'pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'].includes(ext);
     },
     async _extractText(bytes, mime, name) {
         const ext = ((name || '').split('.').pop() || '').toLowerCase();
-        if (mime === 'application/pdf' || ext === 'pdf') return await this._extractPdfText(bytes);
+        if (mime === 'application/pdf' || ext === 'pdf') {
+            const t = await this._extractPdfText(bytes);
+            // A real text layer → done; otherwise it's a scan → OCR the pages.
+            if (t && t.replace(/\s+/g, '').length > 8) return t;
+            return await this._ocrPdf(bytes);
+        }
+        // Images (scans, photos of documents) → OCR. Only keep a result that
+        // has enough real characters, so an ordinary photo (which OCRs to noise)
+        // doesn't pollute the index.
+        if (/^image\//.test(mime || '') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff'].includes(ext)) {
+            const t = await ocrImage(new Blob([bytes], { type: mime || 'image/png' }));
+            return (t && t.replace(/\s+/g, '').length >= 12) ? t : '';
+        }
         try {
             let t = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
             if (ext === 'html' || ext === 'htm' || /html/.test(mime || '')) t = t.replace(/<[^>]+>/g, ' ');
             return t;
         } catch (e) { return null; }
+    },
+    // OCR a scanned PDF: render each page to a canvas (pdf.js) and recognise it.
+    // Capped + slow, so it only runs when there is no embedded text layer.
+    async _ocrPdf(bytes) {
+        try {
+            const pdfjs = await import('pdfjs-dist');
+            pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+            const doc = await pdfjs.getDocument({ data: bytes.slice(0), isEvalSupported: false }).promise;
+            let out = '';
+            const pages = Math.min(doc.numPages, 30);
+            for (let i = 1; i <= pages && out.length < 2_000_000; i++) {
+                const page = await doc.getPage(i);
+                const vp = page.getViewport({ scale: 2 });
+                const canvas = document.createElement('canvas');
+                canvas.width = vp.width; canvas.height = vp.height;
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+                out += await ocrImage(canvas) + '\n';
+                canvas.width = canvas.height = 0; // free
+            }
+            try { await doc.destroy(); } catch (e) { /* ignore */ }
+            return out;
+        } catch (e) { return ''; }
     },
     // PDF text via pdf.js (lazy-loaded + code-split so it never bloats the main
     // bundle; runs entirely in the browser, so the ZK boundary is untouched).

@@ -83,7 +83,7 @@ return [
     'save' => 'Save',
     'search' => 'Search name or content',
     'extract_all' => 'Index contents',
-    'extract_hint' => 'Extract text from documents (PDF, text files) so search finds words inside them. Runs in your browser; nothing is sent unencrypted.',
+    'extract_hint' => 'Extract text from documents (PDF, text files) and OCR scans/images so search finds words inside them. Runs entirely in your browser; nothing is sent unencrypted. OCR is slow — keep the tab open.',
     'extract_confirm' => 'Index the contents of :n files for search? They are decrypted and read in your browser only.',
     'extract_none' => 'Nothing to index.',
     'extract_done' => 'Content indexing complete.',

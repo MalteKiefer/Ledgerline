@@ -83,7 +83,7 @@ return [
     'save' => 'Speichern',
     'search' => 'Name oder Inhalt suchen',
     'extract_all' => 'Inhalte indizieren',
-    'extract_hint' => 'Extrahiert Text aus Dokumenten (PDF, Textdateien), damit die Suche Wörter darin findet. Läuft im Browser; nichts wird unverschlüsselt gesendet.',
+    'extract_hint' => 'Extrahiert Text aus Dokumenten (PDF, Textdateien) und per OCR aus Scans/Bildern, damit die Suche Wörter darin findet. Läuft komplett im Browser; nichts wird unverschlüsselt gesendet. OCR ist langsam — Tab offen lassen.',
     'extract_confirm' => 'Inhalte von :n Dateien für die Suche indizieren? Sie werden nur in deinem Browser entschlüsselt und gelesen.',
     'extract_none' => 'Nichts zu indizieren.',
     'extract_done' => 'Inhalts-Indizierung abgeschlossen.',
