@@ -38,6 +38,8 @@ class BackupJob extends Model
             'enabled' => 'boolean',
             'notify_channels' => 'array',
             'last_run_at' => 'datetime',
+            'mirror_cursor' => 'datetime',
+            'last_full_mirror_at' => 'datetime',
         ];
     }
 

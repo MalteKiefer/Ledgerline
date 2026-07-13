@@ -6,6 +6,8 @@ namespace App\Services\Backup;
 
 use App\Models\BackupJob;
 use App\Models\BackupRun;
+use App\Models\FileBlob;
+use App\Models\GalleryBlob;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
 use App\Services\Backup\Sources\FilesSource;
@@ -29,6 +31,9 @@ final class BackupManager
     private const MIRROR_SOURCES = ['files', 'gallery'];
 
     private const MIRROR_PREFIX = ['files' => 'files', 'gallery' => 'photos'];
+
+    /** Blob ownership ledger per mirror source — drives the incremental delta + byte total. */
+    private const MIRROR_LEDGER = ['files' => FileBlob::class, 'gallery' => GalleryBlob::class];
 
     public function __construct(
         private readonly BackupDestinationFactory $destinations,
@@ -92,13 +97,46 @@ final class BackupManager
             $useMirror = in_array($job->source, self::MIRROR_SOURCES, true) && ($job->mode ?? 'mirror') !== 'archive';
 
             if ($useMirror) {
-                // Incremental mirror: upload only new objects, remove vanished
-                // ones (no archive, no gzip, no local staging).
-                $step('Mirroring '.$job->source.' to '.$prefix.'…');
-                $r = $this->mirror->mirror($fs, self::MIRROR_PREFIX[$job->source], $prefix, $step, $checkCancel);
-                $bytes = $r['bytes'];
+                $diskPrefix = self::MIRROR_PREFIX[$job->source];
+                $ledger = self::MIRROR_LEDGER[$job->source];
+                // Total stored size comes straight from the blob ledger (one SQL
+                // sum) instead of a size() HEAD per object — the metric no longer
+                // costs tens of thousands of storage calls per run.
+                $bytes = (int) $ledger::query()->sum('size');
                 $filename = $prefix.'/'; // a folder mirror, not a single archive
-                $summary = sprintf('%s → %s (%s, %d new, %d removed)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded'], $r['removed']);
+
+                // Full list-and-prune reconcile only once per window; every other
+                // run is a fast delta of just the blobs added since the cursor.
+                $reconcileHours = max(0, (int) config('backup.reconcile_hours', 24));
+                $needFull = $reconcileHours === 0
+                    || $job->last_full_mirror_at === null
+                    || $job->last_full_mirror_at->lt(Carbon::now()->subHours($reconcileHours));
+
+                if ($needFull) {
+                    $step('Full reconcile of '.$job->source.' → '.$prefix.'…');
+                    $r = $this->mirror->mirror($fs, $diskPrefix, $prefix, $step, $checkCancel);
+                    $cursor = $ledger::query()->max('created_at');
+                    $job->forceFill([
+                        'last_full_mirror_at' => Carbon::now(),
+                        'mirror_cursor' => $cursor,
+                    ])->save();
+                    $summary = sprintf('%s → %s (%s, %d uploaded, %d removed, full reconcile)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded'], $r['removed']);
+                } else {
+                    $step('Incremental mirror of '.$job->source.' → '.$prefix.'…');
+                    $newBlobs = $ledger::query()
+                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>', $job->mirror_cursor))
+                        ->orderBy('created_at')
+                        ->pluck('blob');
+                    $r = $this->mirror->delta($fs, $diskPrefix, $prefix, $newBlobs, $step, $checkCancel);
+                    // Advance the cursor to the newest blob we considered.
+                    $cursor = $ledger::query()
+                        ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>', $job->mirror_cursor))
+                        ->max('created_at') ?? $job->mirror_cursor;
+                    if ($cursor !== null) {
+                        $job->forceFill(['mirror_cursor' => $cursor])->save();
+                    }
+                    $summary = sprintf('%s → %s (%s, %d new)', $job->source, $prefix, Bytes::format($bytes), $r['uploaded']);
+                }
             } else {
                 $step('Building '.$job->source.' archive…');
                 $artifact = $this->source($job->source)->build($workDir);
