@@ -13,7 +13,9 @@ storage/logs/**
 tests
 .env
 .env.*
-!.env.docker.example
+# Do NOT re-include any env file into the build context — a template baked into
+# an image layer leaks the secret-variable names (or real secrets if filled in
+# place). The example lives in the repo for humans, not in the image.
 *.md
 scripts/*.log
 .phpunit.cache

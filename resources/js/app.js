@@ -5127,12 +5127,20 @@ const VCard = {
     esc(v) { return String(v ?? '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;'); },
     unesc(v) { return String(v ?? '').replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\'); },
     fold(line) {
-        if (line.length <= 75) return line;
+        // RFC 6350 §3.2: fold at 75 OCTETS (UTF-8), never mid-multibyte-char, with
+        // each continuation line starting with a single space (counted in its 75).
+        // Iterating with for..of yields whole code points, so a multibyte name
+        // (umlauts etc.) is never split into a broken continuation.
+        const enc = new TextEncoder();
+        if (enc.encode(line).length <= 75) return line;
         const out = [];
-        let s = line;
-        out.push(s.slice(0, 75));
-        s = s.slice(75);
-        while (s.length) { out.push(' ' + s.slice(0, 74)); s = s.slice(74); }
+        let cur = '', bytes = 0;
+        for (const ch of line) {
+            const b = enc.encode(ch).length;
+            if (bytes + b > 75) { out.push(cur); cur = ' '; bytes = 1; }
+            cur += ch; bytes += b;
+        }
+        out.push(cur);
         return out.join('\r\n');
     },
 

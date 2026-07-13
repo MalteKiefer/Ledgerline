@@ -27,9 +27,14 @@ class PruneDeviceTokens extends Command
 
         $idle = 0;
         if ($idleDays > 0) {
+            // A token that was paired but never used has last_used_at = NULL — fall
+            // back to created_at so a leaked, never-touched token still dies.
+            $cutoff = now()->subDays($idleDays);
             $idle = PersonalAccessToken::query()
-                ->whereNotNull('last_used_at')
-                ->where('last_used_at', '<', now()->subDays($idleDays))
+                ->where(function ($q) use ($cutoff): void {
+                    $q->where('last_used_at', '<', $cutoff)
+                        ->orWhere(fn ($q2) => $q2->whereNull('last_used_at')->where('created_at', '<', $cutoff));
+                })
                 ->delete();
         }
 

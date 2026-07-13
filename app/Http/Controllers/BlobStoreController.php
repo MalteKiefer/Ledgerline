@@ -347,15 +347,15 @@ abstract class BlobStoreController extends Controller
     {
         abort_unless(Str::isUuid($blob), 404);
 
+        // Owner-scope the lookup and always answer identically (idempotent), so a
+        // foreign or missing blob is indistinguishable — no 403-vs-200 ownership
+        // oracle, mirroring raw()'s uniform-404 pattern.
         $model = $this->blobModel();
-        $row = $model::where('blob', $blob)->first();
-        if ($row === null) {
-            return response()->json(['deleted' => true]);
+        $row = $model::where('blob', $blob)->where('user_id', auth()->id())->first();
+        if ($row !== null) {
+            $this->disk()->delete($this->module().'/'.$blob);
+            $row->delete();
         }
-        abort_if((int) $row->user_id !== (int) auth()->id(), 403);
-
-        $this->disk()->delete($this->module().'/'.$blob);
-        $row->delete();
 
         return response()->json(['deleted' => true]);
     }

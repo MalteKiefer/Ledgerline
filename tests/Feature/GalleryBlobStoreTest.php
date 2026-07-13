@@ -63,7 +63,10 @@ class GalleryBlobStoreTest extends TestCase
             // the browser — a second visit skips re-downloading every thumbnail.
             ->assertHeader('Cache-Control', 'immutable, max-age=31536000, private');
         $this->actingAs(User::factory()->create())->get(route('gallery.raw', ['blob' => $blob]))->assertNotFound();
-        $this->actingAs(User::factory()->create())->deleteJson(route('gallery.blob.destroy', ['blob' => $blob]))->assertForbidden();
+        // A foreign delete is a uniform, idempotent no-op (no 403-vs-200 oracle);
+        // the blob must survive it.
+        $this->actingAs(User::factory()->create())->deleteJson(route('gallery.blob.destroy', ['blob' => $blob]))->assertOk();
+        $this->assertNotNull(GalleryBlob::find($blob));
 
         $this->actingAs($user)->deleteJson(route('gallery.blob.destroy', ['blob' => $blob]))->assertOk();
         Storage::disk(config('files.disk'))->assertMissing('gallery/'.$blob);

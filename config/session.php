@@ -47,7 +47,10 @@ return [
     |
     */
 
-    'encrypt' => env('SESSION_ENCRYPT', false),
+    // Encrypt session payloads at rest by default: on the untrusted-host threat
+    // model the ZK design assumes, a Valkey/DB dump must not expose CSRF tokens,
+    // OIDC state or session identifiers in the clear.
+    'encrypt' => env('SESSION_ENCRYPT', true),
 
     /*
     |--------------------------------------------------------------------------

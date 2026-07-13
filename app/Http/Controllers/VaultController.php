@@ -86,8 +86,12 @@ class VaultController extends Controller
     {
         return $request->validate([
             'salt' => ['required', 'string', 'max:255'],
-            'kdf_ops' => ['required', 'integer', 'min:1'],
-            'kdf_mem' => ['required', 'integer', 'min:1'],
+            // Enforce a real Argon2id cost floor so a tampered/downgraded row can't
+            // leave the passphrase near-unstretched for an offline attacker. The
+            // legit client uses OPSLIMIT_SENSITIVE (4) + MEMLIMIT_MODERATE (256 MiB),
+            // so this floor (3 ops, 64 MiB) never rejects a genuine setup.
+            'kdf_ops' => ['required', 'integer', 'min:3'],
+            'kdf_mem' => ['required', 'integer', 'min:67108864'],
             'wrapped_vault_key' => ['required', 'string', 'max:1024'],
             'wrap_nonce' => ['required', 'string', 'max:255'],
             'wrapped_vault_key_recovery' => [$withRecovery ? 'required' : 'nullable', 'string', 'max:1024'],

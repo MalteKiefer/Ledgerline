@@ -97,9 +97,10 @@ class FilesBlobStoreTest extends TestCase
         Storage::disk(config('files.disk'))->put('files/'.$blob, 'ciphertext');
         FileBlob::create(['blob' => $blob, 'user_id' => $user->id, 'size' => 10, 'created_at' => now()]);
 
-        // A stranger may not delete it.
+        // A stranger's delete is a uniform idempotent no-op (no ownership oracle);
+        // the bytes survive.
         $this->actingAs(User::factory()->create())
-            ->deleteJson(route('files.blob.destroy', ['blob' => $blob]))->assertForbidden();
+            ->deleteJson(route('files.blob.destroy', ['blob' => $blob]))->assertOk();
         Storage::disk(config('files.disk'))->assertExists('files/'.$blob);
 
         // The owner deletes bytes + row; deleting again is a harmless no-op.
