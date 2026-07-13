@@ -4569,6 +4569,23 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     unextractedCount() {
         return (this.manifest.files || []).filter((f) => ! f.trashed && ! f.textRef && ! f.textSkip && this._textCapable(f)).length;
     },
+    // Index / OCR ONE file on demand (e.g. "scan this PDF"). Forces a redo even if
+    // it was skipped before (so a scan that had no text layer gets OCR'd now).
+    async indexFile(f) {
+        if (this._extracting || ! this._textCapable(f)) return;
+        this._extracting = true;
+        this.extractProgress = { done: 0, total: 1 };
+        try {
+            delete f.textRef; delete f.textKey; f.textSkip = false; delete fileText[f.id];
+            const ok = await this._extractInto(f);
+            window.LLStore.touch();
+            window.llToast?.(ok ? (labels.extractOne || 'File indexed for search.') : (labels.extractEmptyOne || 'No readable text found in this file.'));
+        } catch (e) {
+            window.llToast?.(labels.extractFailedOne || 'Could not index this file.');
+        } finally {
+            this._extracting = false; this.extractProgress = null; this._contentReady++;
+        }
+    },
     // Backfill: index every capable file not done yet.
     async extractAllText() {
         if (this._extracting || this.state !== 'ready') return;

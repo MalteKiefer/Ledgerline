@@ -32,6 +32,9 @@
         extractConfirm: @js(__('files.extract_confirm')),
         extractNone: @js(__('files.extract_none')),
         extractDone: @js(__('files.extract_done')),
+        extractOne: @js(__('files.extract_one')),
+        extractEmptyOne: @js(__('files.extract_empty_one')),
+        extractFailedOne: @js(__('files.extract_failed_one')),
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -211,6 +214,7 @@
                                             <button type="button" @click="openInfo(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="info" />{{ __('files.info') }}</button>
                                             <button type="button" @click="startRename(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="pencil" />{{ __('files.rename') }}</button>
                                             <button type="button" @click="openMove(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>
+                                            <button type="button" x-show="row.kind === 'file' && _textCapable(row)" @click="indexFile(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="sparkles" />{{ __('files.make_searchable') }}</button>
                                             <button type="button" @click="confirmDelete(row); menu = false" class="flex w-full items-center gap-2 px-3 py-1.5 text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="trash" />{{ __('common.delete') }}</button>
                                         </div>
                                     </template>
