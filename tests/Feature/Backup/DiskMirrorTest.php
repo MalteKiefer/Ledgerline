@@ -52,6 +52,27 @@ class DiskMirrorTest extends TestCase
         (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($dir);
     }
 
+    public function test_delta_uploads_only_the_given_blobs_and_tolerates_missing(): void
+    {
+        Storage::fake('files');
+        config(['files.disk' => 'files']);
+        Storage::disk('files')->put('photos/x', 'xxx');
+        Storage::disk('files')->put('photos/y', 'yyy');
+        // 'z' is in the ledger list but already gone from disk.
+
+        [$dest, $dir] = $this->destFs();
+        $mirror = new DiskMirror;
+
+        $r = $mirror->delta($dest, 'photos', 'job-1', ['x', 'y', 'z'], fn (string $m) => null);
+        $this->assertSame(2, $r['uploaded']);
+        $this->assertSame(1, $r['missing']);
+        $this->assertTrue($dest->fileExists('job-1/photos/x'));
+        $this->assertTrue($dest->fileExists('job-1/photos/y'));
+        $this->assertFalse($dest->fileExists('job-1/photos/z'));
+
+        (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($dir);
+    }
+
     public function test_a_cancel_rolls_back_objects_uploaded_so_far(): void
     {
         Storage::fake('files');
