@@ -1,15 +1,11 @@
 {{-- Desktop persistent top bar (hidden on phones; the bottom tab bar takes over
      < sm). Consumes config/navigation.php so it never drifts from x-mobile-nav. --}}
 @php
-    // Ready-but-unseen exports surface as a badge on Downloads (and a dot on
-    // "More" since Downloads lives inside the dropdown).
-    $dlBadge = auth()->check() ? \App\Models\Export::unseenReadyCount((int) auth()->id()) : 0;
     $resolve = fn ($items) => collect($items)->map(fn ($i) => [
         'label' => __($i['label']),
         'url' => route($i['route']),
         'active' => request()->routeIs($i['pattern']),
         'icon' => $i['icon'],
-        'badge' => $i['route'] === 'downloads.index' ? $dlBadge : 0,
     ]);
     $primary = $resolve(config('navigation.primary'));
     $more = $resolve(config('navigation.more'));
@@ -41,9 +37,6 @@
                         ])>
                         <x-icon name="ellipsis" class="h-4 w-4" />
                         {{ __('messages.nav.more') }}
-                        @if ($dlBadge > 0)
-                            <span class="h-1.5 w-1.5 rounded-full bg-gray-900" title="{{ __('downloads.new_ready') }}"></span>
-                        @endif
                         <x-icon name="chevron-down" class="h-3.5 w-3.5 transition" x-bind:class="open && 'rotate-180'" />
                     </button>
                     <div x-show="open" x-cloak x-transition class="absolute left-0 z-40 mt-2 w-52 overflow-hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
@@ -56,10 +49,6 @@
                                 ])>
                                 <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
                                 {{ $item['label'] }}
-                                @if ($item['badge'] > 0)
-                                    <span class="ml-auto min-w-[1.1rem] rounded-full bg-gray-900 dark:bg-gray-100 px-1.5 text-center text-[10px] font-semibold leading-4 text-white dark:text-gray-900"
-                                        title="{{ __('downloads.new_ready') }}">{{ $item['badge'] > 99 ? '99+' : $item['badge'] }}</span>
-                                @endif
                             </a>
                         @endforeach
                     </div>

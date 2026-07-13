@@ -9,8 +9,6 @@ return [
     'personal_subheading' => 'Einstellungen, die nur für dein Konto gelten.',
     'admin_heading' => 'Administration',
     'admin_note' => 'Diese Einstellungen gelten für den gesamten Workspace und betreffen alle Nutzer.',
-    'downloads_section' => 'Downloads & Exporte',
-    'downloads_desc' => 'Maximale Export-Zip-Größe und Benachrichtigungen bei fertigen Exporten.',
     'files_limits_heading' => 'Globale Datei-Limits',
     'files_limits_hint' => 'Nur Admin. Feld leer lassen = eingebauter Standard.',
     'files_quota' => 'Speicher-Quota pro Nutzer (MB, 0 = unbegrenzt)',

@@ -9,7 +9,6 @@ use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
-use App\Http\Controllers\DownloadsController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
@@ -22,7 +21,6 @@ use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
-use App\Http\Controllers\Settings\DownloadsController as SettingsDownloadsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
@@ -127,12 +125,6 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/backup/runs/{run}/cancel', [SettingsBackupController::class, 'cancelRun'])->name('settings.backup.runs.cancel');
     });
 
-    // Downloads/exports: max zip part size (files + gallery) and notify channels.
-    Route::middleware('can:manage-global-settings')->group(function (): void {
-        Route::get('/settings/downloads', [SettingsDownloadsController::class, 'edit'])->name('settings.downloads.edit');
-        Route::put('/settings/downloads', [SettingsDownloadsController::class, 'update'])->name('settings.downloads.update');
-    });
-
     Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
 
     // Zero-knowledge gallery: the client holds all keys and renders entirely
@@ -169,13 +161,6 @@ Route::middleware('auth')->group(function (): void {
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');
 
-    // Downloads center: asynchronous, worker-built export zips (gallery + files),
-    // kept for a retention window and collected here.
-    Route::get('/downloads', [DownloadsController::class, 'index'])->name('downloads.index');
-    Route::get('/downloads/data', [DownloadsController::class, 'data'])->name('downloads.data');
-    Route::get('/downloads/{export}/parts/{index}', [DownloadsController::class, 'download'])
-        ->whereNumber('index')->name('downloads.part');
-    Route::delete('/downloads', [DownloadsController::class, 'destroy'])->name('downloads.destroy');
     // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
     // Opaque zero-knowledge store: the whole workspace as one sealed manifest.
     Route::get('/store', [StoreController::class, 'show'])->name('store.show');

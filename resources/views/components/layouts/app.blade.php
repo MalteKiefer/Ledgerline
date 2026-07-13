@@ -40,9 +40,6 @@
                         <button type="button" @click="$store.nav.toggleNav()" aria-label="{{ __('pages.menu.toggle_menu') }}"
                             class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800">
                             <x-icon name="bars-3" class="h-6 w-6" />
-                            @if (\App\Models\Export::unseenReadyCount((int) auth()->id()) > 0)
-                                <span class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-gray-900" title="{{ __('downloads.new_ready') }}"></span>
-                            @endif
                         </button>
                     @endauth
                     <a href="{{ route('dashboard') }}" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Ledgerline</a>
@@ -113,7 +110,7 @@
     </div>
 
     @auth
-        <div x-data="toastHub(@js(['link' => __('downloads.heading')]))" class="fixed bottom-4 right-4 z-50 space-y-2" x-cloak>
+        <div x-data="toastHub({})" class="fixed bottom-4 right-4 z-50 space-y-2" x-cloak>
             <template x-for="t in items" :key="t.id">
                 <div class="flex items-center gap-3 rounded-md bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
                     <span x-text="t.message"></span>
