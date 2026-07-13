@@ -158,8 +158,9 @@ final class OutboundUrl
         // loopback / the cloud metadata endpoint.
         $ip = self::embeddedIpv4($ip) ?? $ip;
 
-        // Always refuse link-local (covers the 169.254.169.254 metadata service).
-        if (self::isLinkLocal($ip)) {
+        // Always refuse cloud-metadata / unusable addresses (link-local incl. the
+        // 169.254.169.254 IMDS, the AWS IPv6 IMDS fd00:ec2::254, 0.0.0.0/8, ::).
+        if (self::isAlwaysRefused($ip)) {
             return false;
         }
 
@@ -197,17 +198,35 @@ final class OutboundUrl
         return ($v4 !== false && filter_var($v4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) ? $v4 : null;
     }
 
-    private static function isLinkLocal(string $ip): bool
+    /**
+     * Addresses that are never a legitimate outbound destination and are refused
+     * regardless of the block_private_hosts posture: link-local (both families,
+     * covering the 169.254.169.254 cloud-metadata service), the AWS IPv6
+     * instance-metadata endpoint fd00:ec2::254 (the only ULA address blocked —
+     * the rest of fc00::/7 is legitimate LAN in a self-hosted deployment),
+     * 0.0.0.0/8 "this network", and the :: unspecified address. Loopback and
+     * private LAN stay ALLOWED by default (an on-host Paperless/ntfy is a valid
+     * target); enable block_private_hosts to refuse those too.
+     */
+    private static function isAlwaysRefused(string $ip): bool
     {
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
-            return str_starts_with($ip, '169.254.');
+            // 169.254.0.0/16 link-local (metadata) and 0.0.0.0/8 this-network.
+            return str_starts_with($ip, '169.254.') || str_starts_with($ip, '0.');
         }
 
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
-            // fe80::/10 → first hextet fe8x..febx.
-            $head = substr(strtolower($ip), 0, 3);
+            // Normalise to the canonical form so every textual spelling is caught.
+            $packed = @inet_pton($ip);
+            $norm = $packed !== false ? strtolower((string) @inet_ntop($packed)) : strtolower($ip);
 
-            return in_array($head, ['fe8', 'fe9', 'fea', 'feb'], true);
+            // fe80::/10 → first hextet fe8x..febx.
+            if (in_array(substr($norm, 0, 3), ['fe8', 'fe9', 'fea', 'feb'], true)) {
+                return true;
+            }
+
+            // AWS IPv6 instance-metadata endpoint + the unspecified address.
+            return $norm === 'fd00:ec2::254' || $norm === '::';
         }
 
         return false;

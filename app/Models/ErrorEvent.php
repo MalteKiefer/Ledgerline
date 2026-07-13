@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 #[Fillable([
     'fingerprint', 'level', 'exception', 'message', 'file', 'line',
-    'context', 'trace', 'count', 'first_seen_at', 'last_seen_at', 'resolved_at',
+    'context', 'trace', 'count', 'first_seen_at', 'last_seen_at', 'resolved_at', 'alerted_at',
 ])]
 class ErrorEvent extends Model
 {
@@ -29,6 +29,7 @@ class ErrorEvent extends Model
             'first_seen_at' => 'datetime',
             'last_seen_at' => 'datetime',
             'resolved_at' => 'datetime',
+            'alerted_at' => 'datetime',
         ];
     }
 }

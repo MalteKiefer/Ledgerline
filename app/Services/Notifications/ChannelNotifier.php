@@ -128,6 +128,12 @@ class ChannelNotifier
         if (! $s->mail_enabled || ! $s->smtp_host || ! $s->smtp_from_address) {
             throw new \RuntimeException('Mail is not enabled or has no host / from address.');
         }
+        // Egress-guard the SMTP host at send time (mirrors ntfy/webhook/backup):
+        // refuse the cloud-metadata surface / hardened-blocked ranges even if a
+        // host was persisted before the guard existed. Fails closed.
+        if (! OutboundUrl::hostAllowed((string) $s->smtp_host)) {
+            throw new \RuntimeException('Refusing to send mail to a disallowed SMTP host.');
+        }
         $implicitTls = $s->smtp_encryption === 'ssl';
         $port = (int) ($s->smtp_port ?: ($implicitTls ? 465 : 587));
         $transport = new EsmtpTransport((string) $s->smtp_host, $port, $implicitTls);
