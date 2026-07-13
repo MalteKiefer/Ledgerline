@@ -120,6 +120,28 @@
         @endif
     </div>
 
+    {{-- Append-only security audit log --}}
+    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_audit_heading') }}</h2>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_audit_desc') }}</p>
+        @if ($audit->isEmpty())
+            <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.system_no_audit') }}</p>
+        @else
+            <ul class="mt-3 divide-y divide-gray-100 dark:divide-gray-800">
+                @foreach ($audit as $a)
+                    <li class="py-2.5">
+                        <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{{ $a->action }}</p>
+                        <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                            <span>{{ $a->actor?->name ?? '—' }}</span>
+                            @if ($a->ip)· <span class="font-mono">{{ $a->ip }}</span>@endif
+                            · {{ \Illuminate\Support\Carbon::parse($a->created_at)->diffForHumans() }}
+                        </p>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </div>
+
     <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_cron_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_cron_hint') }}</p>

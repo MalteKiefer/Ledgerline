@@ -46,3 +46,9 @@ Schedule::command('ops:alert-errors')->hourly()->withoutOverlapping();
 
 // Record a daily per-module storage snapshot for the System page trend.
 Schedule::command('ops:snapshot-storage')->dailyAt('00:10')->withoutOverlapping();
+
+// Enforce retention on the append-only security audit log.
+Schedule::command('audit:prune')->dailyAt('00:20')->withoutOverlapping();
+
+// Verify the latest successful backup restores, and alert on staleness/failure.
+Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();

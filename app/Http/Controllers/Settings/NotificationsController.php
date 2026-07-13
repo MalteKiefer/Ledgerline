@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
+use App\Models\AuditLog;
 use App\Rules\SafeUrl;
 use App\Services\Backup\BackupNotifier;
 use App\Support\CheckboxFlags;
@@ -60,6 +61,8 @@ class NotificationsController extends Controller
         $data = KeepBlankSecrets::preserve($data, ['smtp_password', 'ntfy_token', 'webhook_secret']);
 
         $settings->update($data);
+
+        AuditLog::record('settings.updated', null, ['group' => 'notifications']);
 
         return $this->savedRedirect('settings.notifications.edit', 'flash.notifications_saved');
     }

@@ -60,6 +60,9 @@ class MetricsController extends Controller
         $gauge('ledgerline_errors_unresolved', 'Unresolved recorded errors.', $s['errors']['unresolved']);
         $gauge('ledgerline_errors_total', 'Total recorded error occurrences.', $s['errors']['total']);
         $gauge('ledgerline_backup_last_success_timestamp_seconds', 'Last successful backup (unix time).', $ts($s['backup']['lastSuccessAt']));
+        $lastSuccessTs = $ts($s['backup']['lastSuccessAt']);
+        $gauge('ledgerline_backup_age_seconds', 'Seconds since the last successful backup (0 if none).', $lastSuccessTs > 0 ? max(0, CarbonImmutable::now()->getTimestamp() - $lastSuccessTs) : 0);
+        $gauge('ledgerline_backup_verify_status', 'Latest backup verification (1 ok, 0 failed/none).', ($s['backup']['lastVerifyStatus'] ?? null) === 'ok' ? 1 : 0);
         $gauge('ledgerline_scheduler_last_run_timestamp_seconds', 'Last scheduler run (unix time).', $ts($s['scheduler']['lastRunAt']));
         $gauge('ledgerline_disk_free_bytes', 'Free bytes on the storage volume.', $s['disk']['free']);
         $gauge('ledgerline_disk_total_bytes', 'Total bytes on the storage volume.', $s['disk']['total']);

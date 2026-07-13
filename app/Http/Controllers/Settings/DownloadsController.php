@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
+use App\Models\AuditLog;
 use App\Support\CheckboxFlags;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -41,6 +42,8 @@ class DownloadsController extends Controller
         $data = CheckboxFlags::apply($data, $request, ['export_notify_desktop', 'export_notify_ntfy', 'export_notify_mail', 'export_notify_webhook']);
 
         AppSettings::current()->update($data);
+
+        AuditLog::record('settings.updated', null, ['group' => 'downloads']);
 
         return $this->savedRedirect('settings.downloads.edit', 'flash.downloads_saved');
     }
