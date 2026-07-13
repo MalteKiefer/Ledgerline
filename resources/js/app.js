@@ -2414,11 +2414,15 @@ return {
     },
     toggleFaceTag() {
         if (! this.faceTag.active && ! this.canTagFace()) { window.llToast?.(labels.faceTagReset || 'Reset rotation/flip first'); return; }
-        this.faceTag = { active: ! this.faceTag.active, drawing: false, box: null, busy: false };
+        const activating = ! this.faceTag.active;
+        this.faceTag = { active: activating, drawing: false, box: null, busy: false };
+        if (activating) { window.llToast?.(labels.faceTagHint || 'Tap a face, or drag a box around it.'); }
     },
     faceDragStart(e) {
         if (! this.faceTag.active || this.faceTag.busy) return;
-        e.target.setPointerCapture?.(e.pointerId);
+        // Capture on the overlay (currentTarget) so every pointermove/up routes
+        // here even if the drawn box slides under the cursor mid-drag.
+        e.currentTarget.setPointerCapture?.(e.pointerId);
         const r = this.$refs.vimg.getBoundingClientRect();
         this._fdOrigin = { x: e.clientX - r.left, y: e.clientY - r.top };
         this.faceTag.drawing = true;
@@ -2434,7 +2438,20 @@ return {
     async faceDragEnd() {
         if (! this.faceTag.drawing) return;
         this.faceTag.drawing = false;
-        const b = this.faceTag.box;
+        let b = this.faceTag.box;
+        const img = this.$refs.vimg;
+        // A tap / tiny drag → synthesize a sensible square around the point so
+        // tagging works like "tap a face" (Google/Apple), not only draw-a-box.
+        if (img && (! b || b.w < 16 || b.h < 16)) {
+            const side = Math.max(64, Math.round(Math.min(img.clientWidth, img.clientHeight) * 0.18));
+            const cx = this._fdOrigin ? this._fdOrigin.x : (b ? b.x : 0);
+            const cy = this._fdOrigin ? this._fdOrigin.y : (b ? b.y : 0);
+            b = {
+                x: Math.max(0, Math.min(img.clientWidth - side, cx - side / 2)),
+                y: Math.max(0, Math.min(img.clientHeight - side, cy - side / 2)),
+                w: side, h: side,
+            };
+        }
         if (! b || b.w < 16 || b.h < 16) { this.faceTag.box = null; return; }
         await this._analyzeManualFace(b);
     },

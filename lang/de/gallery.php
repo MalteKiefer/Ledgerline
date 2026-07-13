@@ -74,6 +74,7 @@ return [
     'face_tag_none' => 'Kein Gesicht erkannt — zeichne enger um das Gesicht.',
     'face_tag_failed' => 'Gesicht konnte nicht analysiert werden. Erneut versuchen.',
     'face_tag_reset' => 'Vor dem Markieren Drehung/Spiegelung zurücksetzen.',
+    'face_tag_hint' => 'Auf ein Gesicht tippen oder einen Rahmen ziehen.',
     'analyze_all' => 'Alle analysieren',
     'analyze_all_hint' => 'Führt die Gesichtserkennung auf noch nicht analysierten Fotos aus und gruppiert die Gesichter. Nötig, um Personen in der ganzen Bibliothek zu finden.',
     'analyzing' => 'Fotos werden analysiert…',

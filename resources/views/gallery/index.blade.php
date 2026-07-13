@@ -29,6 +29,7 @@
         faceTagNone: @js(__('gallery.face_tag_none')),
         faceTagFailed: @js(__('gallery.face_tag_failed')),
         faceTagReset: @js(__('gallery.face_tag_reset')),
+        faceTagHint: @js(__('gallery.face_tag_hint')),
         uploadAdded: @js(__('gallery.upload_added')),
         uploadMerged: @js(__('gallery.upload_merged')),
         uploadSkipped: @js(__('gallery.upload_skipped')),
@@ -609,7 +610,7 @@
             <div x-show="faceTag.active && ! viewer.motionOn" class="absolute inset-0 rounded-lg" style="cursor:crosshair;touch-action:none"
                  @pointerdown.stop.prevent="faceDragStart($event)" @pointermove="faceDragMove($event)" @pointerup="faceDragEnd()" @pointercancel="faceDragEnd()">
               <template x-if="faceTag.box">
-                <div class="absolute rounded-sm border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]" :style="`left:${faceTag.box.x}px;top:${faceTag.box.y}px;width:${faceTag.box.w}px;height:${faceTag.box.h}px`"></div>
+                <div class="pointer-events-none absolute rounded-sm border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]" :style="`left:${faceTag.box.x}px;top:${faceTag.box.y}px;width:${faceTag.box.w}px;height:${faceTag.box.h}px`"></div>
               </template>
               <div x-show="faceTag.busy" class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
                 <svg class="h-8 w-8 animate-spin text-white" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
