@@ -19,6 +19,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npm run build
+# Self-host the OCR (tesseract.js) worker + WASM core + eng/deu language data so
+# nothing is fetched from a CDN at runtime (our CSP is worker-src/connect-src
+# 'self'). Downloads the language data over the build network.
+RUN node scripts/stage-tesseract.mjs
 
 # --- Runtime ----------------------------------------------------------------
 FROM ${PHP_BASE} AS runtime
@@ -67,6 +71,7 @@ RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-in
 
 COPY --chown=www-data:www-data . .
 COPY --from=assets --chown=www-data:www-data /app/public/build ./public/build
+COPY --from=assets --chown=www-data:www-data /app/public/tesseract ./public/tesseract
 
 RUN composer dump-autoload --optimize --no-dev --classmap-authoritative \
  && php artisan package:discover --ansi
