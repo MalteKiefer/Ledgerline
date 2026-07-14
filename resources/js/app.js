@@ -3590,6 +3590,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     version: 0,
     cwd: null,
     query: '',
+    _q: '',            // debounced search term the row filter actually uses
+    _searchTimer: null,
     sortDir: 'asc',
     sortKey: 'name', // name | size | date
     layout: (typeof localStorage !== 'undefined' && localStorage.getItem('ll-files-layout')) || 'list', // list | grid
@@ -3881,7 +3883,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     get rows() {
-        const q = this.query.trim().toLowerCase();
+        const q = (this._q || '').trim(); // debounced + lowercased search term
         void this._contentReady; // re-filter as file content decrypts into the index
         const tag = this.activeTag;
         const factor = this.sortDir === 'desc' ? -1 : 1;
@@ -4626,6 +4628,16 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // /files/raw. Opening Files (or the contacts avatar picker, which also boots
     // this component) must not trigger it. Bumps _contentReady so the results
     // re-filter as content arrives.
+    // Debounce the search: re-filtering (and rendering) the whole tree + the
+    // content index on every keystroke was slow; run it ~250ms after typing
+    // stops. The input keeps updating `query` for display; `_q` drives the filter.
+    _debounceSearch() {
+        clearTimeout(this._searchTimer);
+        this._searchTimer = setTimeout(() => {
+            this._q = this.query.trim().toLowerCase();
+            if (this._q) this._ensureContentIndex();
+        }, 250);
+    },
     async _ensureContentIndex() {
         if (this._warming || this._contentWarmed) return;
         this._warming = true;
