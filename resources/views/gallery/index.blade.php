@@ -464,7 +464,7 @@
                     <img x-show="currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef]" :src="currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef]" class="h-full w-full object-cover">
                     <x-icon x-show="! (currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef])" name="user" class="h-3.5 w-3.5 text-gray-400" />
                 </span>
-                <a :href="'/contacts?c=' + currentPerson.contactId" class="font-medium text-gray-800 dark:text-gray-200 hover:underline" x-text="currentPerson.contactName || '{{ __('gallery.linked_contact') }}'"></a>
+                <a :href="'/contacts?c=' + currentPerson.contactId" class="font-medium text-gray-800 dark:text-gray-200 hover:underline" x-text="_normName(currentPerson.contactName) || '{{ __('gallery.linked_contact') }}'"></a>
                 <button type="button" @click="unlinkContact()" title="{{ __('gallery.unlink') }}" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
               </div>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
