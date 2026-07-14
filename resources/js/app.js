@@ -3914,7 +3914,9 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             let scoped = (q === '' && tag === '')
                 ? list.filter((x) => (x.parent ?? x.folder ?? null) === this.cwd)
                 : list;
-            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q));
+            // Match filename OR extracted content (folders have no content, so
+            // fileText[id] is '' and they fall back to a name match).
+            if (q !== '') scoped = scoped.filter((x) => x.name.toLowerCase().includes(q) || (fileText[x.id] || '').includes(q));
             if (tag !== '') scoped = scoped.filter((x) => (x.tags ?? []).includes(tag));
             return scoped;
         };
