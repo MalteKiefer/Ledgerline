@@ -2901,8 +2901,21 @@ return {
     linkLoading: false,
     linkQuery: '',
     _linkContacts: [],
+    // Normalise a display name to natural "First Last" order. Some contacts
+    // (vCard-imported) carry an FN like "Last, First"; the contacts module also
+    // snapshots links as "Last, First". Flip that single-comma form so People
+    // always shows one consistent order.
+    _normName(n) {
+        n = (n || '').trim();
+        const i = n.indexOf(',');
+        if (i > 0 && n.indexOf(',', i + 1) === -1) {
+            const last = n.slice(0, i).trim(), first = n.slice(i + 1).trim();
+            if (last && first) return first + ' ' + last;
+        }
+        return n;
+    },
     _contactName(c) {
-        return (c.fn || [c.first, c.last].filter(Boolean).join(' ') || c.org || (c.emails ?? [])[0]?.value || '').trim();
+        return this._normName((c.fn || [c.first, c.last].filter(Boolean).join(' ') || c.org || (c.emails ?? [])[0]?.value || '').trim());
     },
     // Open the contact picker — lazily boots the /store manifest (contacts live
     // there, a different sealed manifest than the gallery), suggests by name.
@@ -6209,7 +6222,10 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         c.personId = pp.id; c.personName = pp.name || ''; c.updated = new Date().toISOString();
         // Write the gallery-person snapshot so the gallery shows the link too.
         pp.contactId = c.id;
-        pp.contactName = this.displayName(c);
+        // Store the natural "First Last" order so the gallery snapshot matches
+        // what the People picker shows (displayName is "Last, First").
+        const np = this._nameParts(c);
+        pp.contactName = (np.first || np.last) ? [np.first, np.last].filter(Boolean).join(' ') : (c.fn || c.org || '').trim();
         pp.contactAvatarRef = c.avatarRef || null;
         pp.contactAvatarKey = c.avatarKey || null;
         window.LLGalleryStore.touch();
