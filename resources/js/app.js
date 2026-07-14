@@ -4589,7 +4589,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // CLIP-embed an image file via the gallery vision endpoint (transient
     // plaintext window, like /gallery/process). Returns the raw vector or null.
     async _embedImage(bytes, f) {
-        if (! config.analyzeUrl) return null;
+        if (! config.semanticEnabled || ! config.analyzeUrl) return null; // opt-out: keeps Files fully in-browser
         try {
             const fd = new FormData();
             fd.append('_token', config.token);
@@ -4695,6 +4695,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // finds the scan even when the filename/text don't contain the words.
     async _semanticSearch(q) {
         try {
+            if (! config.semanticEnabled) return; // server-assisted; disabled → no query egress
             if (! Object.keys(fileEmb).length) return; // nothing embedded yet
             const res = await fetch(config.embedTextUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ q }) });
             if (! res.ok) return;

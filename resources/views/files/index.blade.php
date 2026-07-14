@@ -10,6 +10,7 @@
         rawBase: '{{ url('/files/raw') }}',
         analyzeUrl: '{{ url('/gallery/analyze') }}',
         embedTextUrl: '{{ url('/gallery/embed-text') }}',
+        semanticEnabled: {{ config('gallery.files_semantic') ? 'true' : 'false' }},
         blobBase: '{{ url('/files/blob') }}',
         chunkInitUrl: '{{ url('/files/upload/init') }}',
         chunkPartUrl: '{{ url('/files/upload/part') }}',

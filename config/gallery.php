@@ -115,6 +115,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Semantic image search for the Files module
+    |--------------------------------------------------------------------------
+    |
+    | When on, IMAGE files in the Files module are CLIP-embedded through the ML
+    | sidecar (the same transient-plaintext hop the gallery smart search uses)
+    | so they can be found by what they depict, and the search term is embedded
+    | there too. Unlike text/PDF/OCR extraction — which is 100% in-browser — this
+    | briefly sends image bytes and the query to the sidecar. It stays inside the
+    | host (your own ML container) and the server still stores only ciphertext,
+    | but it is NOT browser-only, so it is a deliberate opt-out kill-switch.
+    | Set FILES_SEMANTIC_SEARCH=false to keep Files content search fully
+    | in-browser (text + OCR only).
+    |
+    */
+
+    'files_semantic' => (bool) env('FILES_SEMANTIC_SEARCH', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reverse-geocoding rate limit
     |--------------------------------------------------------------------------
     |
