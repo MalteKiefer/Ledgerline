@@ -8,6 +8,8 @@
         reconcileUrl: '{{ url('/files/blobs/reconcile') }}',
         uploadUrl: '{{ url('/files/upload') }}',
         rawBase: '{{ url('/files/raw') }}',
+        analyzeUrl: '{{ url('/gallery/analyze') }}',
+        embedTextUrl: '{{ url('/gallery/embed-text') }}',
         blobBase: '{{ url('/files/blob') }}',
         chunkInitUrl: '{{ url('/files/upload/init') }}',
         chunkPartUrl: '{{ url('/files/upload/part') }}',
