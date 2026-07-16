@@ -2998,6 +2998,13 @@ return {
             const old = contact.avatarRef;
             contact.avatarRef = ref; contact.avatarKey = enc.encFileKey;
             contact.updated = new Date().toISOString();
+            // Seed the decrypt cache from the bytes we already hold so the gallery
+            // <img> (keyed by ref) updates immediately instead of blanking until a
+            // reload re-runs x-init. Revoke the stale object URL to avoid a leak.
+            try {
+                if (old && this._contactAvatars[old]) { URL.revokeObjectURL(this._contactAvatars[old]); delete this._contactAvatars[old]; }
+                this._contactAvatars[ref] = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            } catch (e) { /* non-fatal; falls back to fetchDecrypt */ }
             // Refresh the person snapshot so the gallery renders the new avatar.
             const p = (this.index.people || []).find((pp) => pp.id === contact.personId);
             if (p) { p.contactAvatarRef = ref; p.contactAvatarKey = enc.encFileKey; this._save(); }
