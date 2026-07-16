@@ -5526,6 +5526,12 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
     // Currencies offered per invoice.
     currencyOptions: ['EUR', 'USD', 'CHF'],
     vatRatesOf(inv) { return Object.keys(this.computeTotals(inv).vatByRate).map(Number).sort((a, b) => a - b); },
+    // Locale-formatted quantity (German uses a decimal comma).
+    fmtQty(n, lang) {
+        const loc = (lang || this.current?.lang || 'de') === 'en' ? 'en' : 'de';
+        try { return new Intl.NumberFormat(loc, { maximumFractionDigits: 2 }).format(parseFloat(n) || 0); }
+        catch (e) { return String(n ?? ''); }
+    },
 
     // ---- Customer picker (reads zero-knowledge contacts) ----
     customerPicker: false,
