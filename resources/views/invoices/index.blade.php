@@ -406,7 +406,7 @@
                   <div class="ie-header">
                     <div class="ie-brand">
                       <template x-if="company.logo"><div class="ie-logo"><img :src="company.logo" alt=""></div></template>
-                      <div class="ie-brand-text"><div class="ie-co-name" x-text="company.name"></div></div>
+                      <template x-if="! company.logo"><div class="ie-brand-text"><div class="ie-co-name" x-text="company.name"></div></div></template>
                     </div>
                     <div class="ie-doc-meta">
                       <div class="ie-doc-kind" x-text="pl('print_title')"></div>
@@ -483,8 +483,8 @@
   <style>
     #invoice-print .ie { font-family:'Inter','SF Pro Text',system-ui,-apple-system,sans-serif; color:#313a4a; background:#fff; font-size:10px; line-height:1.55; --ink:#0b1220; --body:#313a4a; --soft:#5d6878; --faint:#97a1b1; --hair:#e6eaef; --wash:#f6f8fb; }
     #invoice-print .ie .num { font-variant-numeric:tabular-nums; }
-    #invoice-print .ie-page { padding:60px 64px 120px; }
-    #invoice-print .ie-header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:24px; margin-bottom:40px; border-bottom:1px solid var(--ink); position:relative; }
+    #invoice-print .ie-page { padding:46px 56px 78px; }
+    #invoice-print .ie-header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:20px; margin-bottom:26px; border-bottom:1px solid var(--ink); position:relative; }
     #invoice-print .ie-header::after { content:""; position:absolute; left:0; bottom:-1px; width:96px; height:2px; background:var(--ac); }
     #invoice-print .ie-brand { display:flex; align-items:center; gap:16px; }
     #invoice-print .ie-logo img { height:52px; display:block; }
@@ -492,8 +492,8 @@
     #invoice-print .ie-doc-meta { text-align:right; }
     #invoice-print .ie-doc-kind { font-size:9px; font-weight:600; letter-spacing:3.5px; text-transform:uppercase; color:var(--faint); }
     #invoice-print .ie-doc-no { font-size:28px; font-weight:600; color:var(--ink); letter-spacing:-0.8px; margin-top:6px; line-height:1; }
-    #invoice-print .ie-meta-grid { display:grid; grid-template-columns:repeat(3,1fr); margin-bottom:44px; border-top:1px solid var(--hair); border-bottom:1px solid var(--hair); }
-    #invoice-print .ie-meta-cell { padding:14px 18px 14px 0; border-right:1px solid var(--hair); }
+    #invoice-print .ie-meta-grid { display:grid; grid-template-columns:repeat(3,1fr); margin-bottom:26px; border-top:1px solid var(--hair); border-bottom:1px solid var(--hair); }
+    #invoice-print .ie-meta-cell { padding:11px 18px 11px 0; border-right:1px solid var(--hair); }
     #invoice-print .ie-meta-cell:last-child { border-right:none; padding-right:0; }
     #invoice-print .ie-meta-cell:not(:first-child) { padding-left:18px; }
     #invoice-print .ie-m-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:5px; }
@@ -501,35 +501,35 @@
     #invoice-print .ie-pill { display:inline-block; padding:2px 10px; border-radius:2px; font-size:8px; font-weight:700; letter-spacing:1px; text-transform:uppercase; background:var(--ink); color:#fff; }
     #invoice-print .ie-pill.ie-paid { background:#0f7a4d; }
     #invoice-print .ie-pill.ie-draft { background:var(--faint); }
-    #invoice-print .ie-parties { display:grid; grid-template-columns:1fr 1fr; gap:64px; margin-bottom:48px; }
+    #invoice-print .ie-parties { display:grid; grid-template-columns:1fr 1fr; gap:56px; margin-bottom:30px; }
     #invoice-print .ie-p-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.6px; text-transform:uppercase; color:var(--faint); padding-bottom:8px; margin-bottom:14px; border-bottom:1px solid var(--hair); }
-    #invoice-print .ie-p-name { font-size:15px; font-weight:600; color:var(--ink); margin-bottom:10px; letter-spacing:-0.2px; line-height:1.25; }
+    #invoice-print .ie-p-name { font-size:15px; font-weight:600; color:var(--ink); margin-bottom:8px; letter-spacing:-0.2px; line-height:1.25; }
     #invoice-print .ie-p-line { font-size:9.5px; color:var(--soft); line-height:1.85; }
-    #invoice-print .ie-tbl-wrap { margin-bottom:32px; }
+    #invoice-print .ie-tbl-wrap { margin-bottom:22px; }
     #invoice-print .ie table { width:100%; border-collapse:collapse; }
-    #invoice-print .ie thead th { padding:10px 0; font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); text-align:left; border-bottom:1.5px solid var(--ink); border-top:1px solid var(--hair); }
+    #invoice-print .ie thead th { padding:9px 0; font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); text-align:left; border-bottom:1.5px solid var(--ink); border-top:1px solid var(--hair); }
     #invoice-print .ie thead th.r { text-align:right; }
     #invoice-print .ie thead th:not(:first-child) { padding-left:16px; }
     #invoice-print .ie tbody tr { page-break-inside:avoid; }
-    #invoice-print .ie tbody td { padding:16px 0; vertical-align:top; border-bottom:1px solid var(--hair); font-size:10px; }
+    #invoice-print .ie tbody td { padding:11px 0; vertical-align:top; border-bottom:1px solid var(--hair); font-size:10px; }
     #invoice-print .ie tbody td:not(:first-child) { padding-left:16px; }
     #invoice-print .ie td.r { text-align:right; font-variant-numeric:tabular-nums; }
     #invoice-print .ie-d-title { font-weight:600; color:var(--ink); font-size:10.5px; line-height:1.45; }
     #invoice-print .ie-amt { font-weight:600; color:var(--ink); }
-    #invoice-print .ie-sum-area { display:flex; justify-content:flex-end; margin-bottom:40px; }
+    #invoice-print .ie-sum-area { display:flex; justify-content:flex-end; margin-bottom:26px; }
     #invoice-print .ie-sum { width:340px; }
     #invoice-print .ie-sr { display:flex; justify-content:space-between; padding:8px 0; font-size:10px; border-bottom:1px solid var(--hair); }
     #invoice-print .ie-sr .l { color:var(--soft); }
     #invoice-print .ie-sr .v { font-variant-numeric:tabular-nums; color:var(--ink); font-weight:500; }
-    #invoice-print .ie-grand { display:flex; justify-content:space-between; align-items:baseline; padding:18px 0 10px; border-top:2px solid var(--ink); margin-top:6px; }
+    #invoice-print .ie-grand { display:flex; justify-content:space-between; align-items:baseline; padding:14px 0 8px; border-top:2px solid var(--ink); margin-top:6px; }
     #invoice-print .ie-gl { font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:2.4px; color:var(--ink); }
     #invoice-print .ie-gv { font-size:26px; font-weight:600; color:var(--ink); letter-spacing:-0.6px; font-variant-numeric:tabular-nums; line-height:1; }
-    #invoice-print .ie-notes-area { margin-bottom:28px; }
+    #invoice-print .ie-notes-area { margin-bottom:20px; }
     #invoice-print .ie-n-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:10px; }
     #invoice-print .ie-note-text { font-size:10px; color:var(--soft); line-height:1.7; max-width:480px; white-space:pre-line; }
     #invoice-print .ie-notice { font-size:8.5px; color:var(--faint); margin-bottom:22px; line-height:1.65; max-width:520px; white-space:pre-line; }
-    #invoice-print .ie-pay-area { margin-top:44px; }
-    #invoice-print .ie-pay-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:36px; padding-top:22px; border-top:1px solid var(--hair); }
+    #invoice-print .ie-pay-area { margin-top:26px; }
+    #invoice-print .ie-pay-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:32px; padding-top:18px; border-top:1px solid var(--hair); }
     #invoice-print .ie-pc-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:8px; }
     #invoice-print .ie-pc-val { font-size:9.5px; color:var(--ink); line-height:1.75; font-variant-numeric:tabular-nums; white-space:pre-line; }
     #invoice-print .ie-foot { position:fixed; bottom:0; left:0; right:0; text-align:center; font-size:7.5px; color:var(--faint); padding:14px 64px; line-height:1.8; border-top:1px solid var(--hair); background:#fff; letter-spacing:0.2px; }
