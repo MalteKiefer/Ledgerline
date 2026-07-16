@@ -243,4 +243,11 @@ return [
     'invoice_design_hint' => 'Accent and heading colours applied to the rendered invoice.',
     'invoice_accent_color' => 'Accent colour',
     'invoice_heading_color' => 'Heading colour',
+    'invoice_template' => 'Template',
+    'invoice_template_modern' => 'Modern',
+    'invoice_template_modern_hint' => 'Bold accent table header, structured, three-column footer.',
+    'invoice_template_elegant' => 'Elegant',
+    'invoice_template_elegant_hint' => 'Serif, centred title, refined hairlines.',
+    'invoice_template_schlicht' => 'Plain',
+    'invoice_template_schlicht_hint' => 'Minimal, monochrome, compact.',
 ];

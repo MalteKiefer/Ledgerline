@@ -5525,6 +5525,8 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
     },
     // Currencies offered per invoice.
     currencyOptions: ['EUR', 'USD', 'CHF'],
+    // Chosen print template (modern | elegant | schlicht).
+    get tpl() { return this.company.template || 'modern'; },
     vatRatesOf(inv) { return Object.keys(this.computeTotals(inv).vatByRate).map(Number).sort((a, b) => a - b); },
     // Locale-formatted quantity (German uses a decimal comma).
     fmtQty(n, lang) {
