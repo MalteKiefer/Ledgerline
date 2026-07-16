@@ -78,6 +78,8 @@ return [
 
     // Druck / PDF
     'print_title' => 'Rechnung',
+    'invoice_from' => 'Von',
+    'status_label' => 'Status',
     'bill_to' => 'Rechnung an',
     'invoice_number' => 'Rechnungs-Nr.',
     'invoice_date' => 'Datum',

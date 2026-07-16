@@ -22,7 +22,7 @@
             'payment_methods' => $s->invoice_payment_methods,
             'accent' => $s->invoice_accent_color ?: '#111827',
             'heading' => $s->invoice_heading_color ?: '#6b7280',
-            'template' => $s->invoice_template ?: 'modern',
+            'template' => $s->invoice_template ?: 'editorial',
             'currency' => 'EUR',
         ]),
         labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
@@ -398,11 +398,143 @@
                 <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; margin-top:20px; padding-top:10px; border-top:1px solid #ededed; text-align:center; font-size:8.5px; color:#8a8a8a; letter-spacing:.02em;" x-text="[company.payment_terms_text, company.payment_methods, company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div>
               </div>
             </template>
+
+            {{-- ---------- EDITORIAL (single-ink, accent rule) ---------- --}}
+            <template x-if="_printing && tpl === 'editorial'">
+              <div class="ie" :style="'--ac:' + company.accent">
+                <div class="ie-page">
+                  <div class="ie-header">
+                    <div class="ie-brand">
+                      <template x-if="company.logo"><div class="ie-logo"><img :src="company.logo" alt=""></div></template>
+                      <div class="ie-brand-text"><div class="ie-co-name" x-text="company.name"></div></div>
+                    </div>
+                    <div class="ie-doc-meta">
+                      <div class="ie-doc-kind" x-text="pl('print_title')"></div>
+                      <div class="ie-doc-no num" x-text="_printing.number || '—'"></div>
+                    </div>
+                  </div>
+                  <div class="ie-meta-grid">
+                    <div class="ie-meta-cell"><div class="ie-m-lbl" x-text="pl('invoice_date')"></div><div class="ie-m-val num" x-text="_printing.issueDate"></div></div>
+                    <div class="ie-meta-cell"><div class="ie-m-lbl" x-text="pl('due')"></div><div class="ie-m-val num" x-text="_printing.dueDate"></div></div>
+                    <div class="ie-meta-cell"><div class="ie-m-lbl" x-text="pl('status_label')"></div><div class="ie-m-val"><span class="ie-pill" :class="'ie-' + _printing.status" x-text="statusLabel(_printing.status)"></span></div></div>
+                  </div>
+                  <div class="ie-parties">
+                    <div class="ie-party">
+                      <div class="ie-p-lbl" x-text="pl('invoice_from')"></div>
+                      <div class="ie-p-name" x-text="company.name"></div>
+                      <template x-for="(ln, i) in [...(company.address || '').split('\n'), [company.email, company.phone].filter(Boolean).join(' · '), company.vat_id ? pl('vat_id_label') + ' ' + company.vat_id : ''].filter(Boolean)" :key="i"><div class="ie-p-line" x-text="ln"></div></template>
+                    </div>
+                    <div class="ie-party">
+                      <div class="ie-p-lbl" x-text="pl('bill_to')"></div>
+                      <div class="ie-p-name" x-text="_printing.customer?.name"></div>
+                      <template x-for="(ln, i) in [_printing.customer?.attn, ...((_printing.customer?.address || '').split('\n')), _printing.customer?.email, _printing.customer?.vatId ? pl('vat_id_label') + ' ' + _printing.customer.vatId : ''].filter(Boolean)" :key="i"><div class="ie-p-line" x-text="ln"></div></template>
+                    </div>
+                  </div>
+                  <div class="ie-tbl-wrap">
+                    <table>
+                      <thead><tr>
+                        <th x-text="pl('line_desc')"></th>
+                        <th class="r" x-text="pl('line_qty')"></th>
+                        <th class="r" x-text="pl('line_price')"></th>
+                        <th class="r" x-text="pl('amount')"></th>
+                      </tr></thead>
+                      <tbody>
+                        <template x-for="(l, i) in _printing.lines" :key="i">
+                          <tr>
+                            <td><div class="ie-d-title" x-text="l.desc"></div></td>
+                            <td class="r num" x-text="fmtQty(l.qty, _printing.lang) + (l.unit ? ' ' + l.unit : '')"></td>
+                            <td class="r num" x-text="fmtMoney(l.unitPrice, _printing.currency, _printing.lang)"></td>
+                            <td class="r num ie-amt" x-text="fmtMoney(lineNet(l), _printing.currency, _printing.lang)"></td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="ie-sum-area"><div class="ie-sum">
+                    <div class="ie-sr"><span class="l" x-text="pl('subtotal')"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></span></div>
+                    <template x-for="rate in vatRatesOf(_printing)" :key="rate">
+                      <div class="ie-sr"><span class="l" x-text="pl('vat_at').replace(':rate', rate)"></span><span class="v num" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></span></div>
+                    </template>
+                    <div class="ie-grand"><span class="ie-gl" x-text="pl('gross')"></span><span class="ie-gv num" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></span></div>
+                  </div></div>
+                  <div class="ie-notice" x-show="_printing.footer || company.footer_text" x-text="_printing.footer || company.footer_text"></div>
+                  <div class="ie-notes-area" x-show="_printing.note">
+                    <div class="ie-n-lbl" x-text="pl('notes_heading')"></div>
+                    <div class="ie-note-text" x-text="_printing.note"></div>
+                  </div>
+                  <div class="ie-pay-area" x-show="company.payment_terms_text || company.payment_methods || company.bank_name || company.iban">
+                    <div class="ie-pay-grid">
+                      <div x-show="company.payment_terms_text"><div class="ie-pc-lbl" x-text="pl('payment_terms_heading')"></div><div class="ie-pc-val" x-text="company.payment_terms_text"></div></div>
+                      <div x-show="company.payment_methods"><div class="ie-pc-lbl" x-text="pl('payment_methods_heading')"></div><div class="ie-pc-val" x-text="company.payment_methods"></div></div>
+                      <div x-show="company.bank_name || company.iban"><div class="ie-pc-lbl" x-text="pl('bank_details')"></div><div class="ie-pc-val"><span x-text="company.bank_name"></span><template x-if="company.iban"><span><br x-show="company.bank_name">IBAN: <span x-text="company.iban"></span></span></template><template x-if="company.bic"><span><br>BIC: <span x-text="company.bic"></span></span></template></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="ie-foot"><strong x-text="company.name"></strong><span x-text="[company.address ? ' · ' + company.address.replace(/\n/g, ', ') : '', company.email ? ' · ' + company.email : '', company.phone ? ' · ' + company.phone : ''].join('')"></span></div>
+              </div>
+            </template>
           </div>
         </template>
       </div>
     </template>
   </div>
+
+  {{-- Editorial template styles (scoped; only render in print). --}}
+  <style>
+    #invoice-print .ie { font-family:'Inter','SF Pro Text',system-ui,-apple-system,sans-serif; color:#313a4a; background:#fff; font-size:10px; line-height:1.55; --ink:#0b1220; --body:#313a4a; --soft:#5d6878; --faint:#97a1b1; --hair:#e6eaef; --wash:#f6f8fb; }
+    #invoice-print .ie .num { font-variant-numeric:tabular-nums; }
+    #invoice-print .ie-page { padding:60px 64px 120px; }
+    #invoice-print .ie-header { display:flex; justify-content:space-between; align-items:flex-end; padding-bottom:24px; margin-bottom:40px; border-bottom:1px solid var(--ink); position:relative; }
+    #invoice-print .ie-header::after { content:""; position:absolute; left:0; bottom:-1px; width:96px; height:2px; background:var(--ac); }
+    #invoice-print .ie-brand { display:flex; align-items:center; gap:16px; }
+    #invoice-print .ie-logo img { height:52px; display:block; }
+    #invoice-print .ie-co-name { font-size:14px; font-weight:600; color:var(--ink); letter-spacing:-0.2px; }
+    #invoice-print .ie-doc-meta { text-align:right; }
+    #invoice-print .ie-doc-kind { font-size:9px; font-weight:600; letter-spacing:3.5px; text-transform:uppercase; color:var(--faint); }
+    #invoice-print .ie-doc-no { font-size:28px; font-weight:600; color:var(--ink); letter-spacing:-0.8px; margin-top:6px; line-height:1; }
+    #invoice-print .ie-meta-grid { display:grid; grid-template-columns:repeat(3,1fr); margin-bottom:44px; border-top:1px solid var(--hair); border-bottom:1px solid var(--hair); }
+    #invoice-print .ie-meta-cell { padding:14px 18px 14px 0; border-right:1px solid var(--hair); }
+    #invoice-print .ie-meta-cell:last-child { border-right:none; padding-right:0; }
+    #invoice-print .ie-meta-cell:not(:first-child) { padding-left:18px; }
+    #invoice-print .ie-m-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:5px; }
+    #invoice-print .ie-m-val { font-size:11px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+    #invoice-print .ie-pill { display:inline-block; padding:2px 10px; border-radius:2px; font-size:8px; font-weight:700; letter-spacing:1px; text-transform:uppercase; background:var(--ink); color:#fff; }
+    #invoice-print .ie-pill.ie-paid { background:#0f7a4d; }
+    #invoice-print .ie-pill.ie-draft { background:var(--faint); }
+    #invoice-print .ie-parties { display:grid; grid-template-columns:1fr 1fr; gap:64px; margin-bottom:48px; }
+    #invoice-print .ie-p-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.6px; text-transform:uppercase; color:var(--faint); padding-bottom:8px; margin-bottom:14px; border-bottom:1px solid var(--hair); }
+    #invoice-print .ie-p-name { font-size:15px; font-weight:600; color:var(--ink); margin-bottom:10px; letter-spacing:-0.2px; line-height:1.25; }
+    #invoice-print .ie-p-line { font-size:9.5px; color:var(--soft); line-height:1.85; }
+    #invoice-print .ie-tbl-wrap { margin-bottom:32px; }
+    #invoice-print .ie table { width:100%; border-collapse:collapse; }
+    #invoice-print .ie thead th { padding:10px 0; font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); text-align:left; border-bottom:1.5px solid var(--ink); border-top:1px solid var(--hair); }
+    #invoice-print .ie thead th.r { text-align:right; }
+    #invoice-print .ie thead th:not(:first-child) { padding-left:16px; }
+    #invoice-print .ie tbody tr { page-break-inside:avoid; }
+    #invoice-print .ie tbody td { padding:16px 0; vertical-align:top; border-bottom:1px solid var(--hair); font-size:10px; }
+    #invoice-print .ie tbody td:not(:first-child) { padding-left:16px; }
+    #invoice-print .ie td.r { text-align:right; font-variant-numeric:tabular-nums; }
+    #invoice-print .ie-d-title { font-weight:600; color:var(--ink); font-size:10.5px; line-height:1.45; }
+    #invoice-print .ie-amt { font-weight:600; color:var(--ink); }
+    #invoice-print .ie-sum-area { display:flex; justify-content:flex-end; margin-bottom:40px; }
+    #invoice-print .ie-sum { width:340px; }
+    #invoice-print .ie-sr { display:flex; justify-content:space-between; padding:8px 0; font-size:10px; border-bottom:1px solid var(--hair); }
+    #invoice-print .ie-sr .l { color:var(--soft); }
+    #invoice-print .ie-sr .v { font-variant-numeric:tabular-nums; color:var(--ink); font-weight:500; }
+    #invoice-print .ie-grand { display:flex; justify-content:space-between; align-items:baseline; padding:18px 0 10px; border-top:2px solid var(--ink); margin-top:6px; }
+    #invoice-print .ie-gl { font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:2.4px; color:var(--ink); }
+    #invoice-print .ie-gv { font-size:26px; font-weight:600; color:var(--ink); letter-spacing:-0.6px; font-variant-numeric:tabular-nums; line-height:1; }
+    #invoice-print .ie-notes-area { margin-bottom:28px; }
+    #invoice-print .ie-n-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:10px; }
+    #invoice-print .ie-note-text { font-size:10px; color:var(--soft); line-height:1.7; max-width:480px; white-space:pre-line; }
+    #invoice-print .ie-notice { font-size:8.5px; color:var(--faint); margin-bottom:22px; line-height:1.65; max-width:520px; white-space:pre-line; }
+    #invoice-print .ie-pay-area { margin-top:44px; }
+    #invoice-print .ie-pay-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:36px; padding-top:22px; border-top:1px solid var(--hair); }
+    #invoice-print .ie-pc-lbl { font-size:7.5px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--faint); margin-bottom:8px; }
+    #invoice-print .ie-pc-val { font-size:9.5px; color:var(--ink); line-height:1.75; font-variant-numeric:tabular-nums; white-space:pre-line; }
+    #invoice-print .ie-foot { position:fixed; bottom:0; left:0; right:0; text-align:center; font-size:7.5px; color:var(--faint); padding:14px 64px; line-height:1.8; border-top:1px solid var(--hair); background:#fff; letter-spacing:0.2px; }
+    #invoice-print .ie-foot strong { color:var(--ink); font-weight:600; }
+  </style>
 
   {{-- Print isolation: the sheet is teleported to <body>, so we hide every other
        body child and print only it — no phantom trailing blank page. --}}

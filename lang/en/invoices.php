@@ -78,6 +78,8 @@ return [
 
     // Print / PDF sheet
     'print_title' => 'Invoice',
+    'invoice_from' => 'From',
+    'status_label' => 'Status',
     'bill_to' => 'Bill to',
     'invoice_number' => 'Invoice no.',
     'invoice_date' => 'Date',
