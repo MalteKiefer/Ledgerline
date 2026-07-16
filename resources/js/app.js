@@ -190,6 +190,30 @@ async function sha256Hex(str) {
     return [...new Uint8Array(dig)].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
+// Split a contact record into { first, last } — falling back to a "First Last"
+// FN split. Shared by the contacts module and the gallery People panel so the
+// two render linked names identically.
+function contactNameParts(c) {
+    if (! c) return { first: '', last: '' };
+    let first = (c.first || '').trim(), last = (c.last || '').trim();
+    if (! first && ! last) {
+        const p = (c.fn || '').trim().split(/\s+/).filter(Boolean);
+        if (p.length > 1) { last = p.pop(); first = p.join(' '); } else if (p.length === 1) { first = p[0]; }
+    }
+    return { first, last };
+}
+// Canonical contact display label — always "Last, First".
+function contactDisplayName(c) {
+    const { first, last } = contactNameParts(c);
+    if (last || first) return [last, first].filter(Boolean).join(', ');
+    return (c?.fn || c?.org || (c?.emails ?? [])[0]?.value || '').trim();
+}
+// The contacts module persists its sort mode in localStorage; the gallery reads
+// the same pref so People ordering follows the contacts setting.
+function contactsSortPref() {
+    try { return (JSON.parse(localStorage.getItem('ll-contacts-prefs') || '{}').sortBy) || 'name'; } catch (e) { return 'name'; }
+}
+
 window.LLGalleryStore = {
     data: null,
     version: 0,
@@ -1062,6 +1086,7 @@ return {
             if (v !== 'library') this.clearSearch();
             if (v === 'map') this.renderMap();
             else this._destroyMap();
+            if (v === 'people' || v === 'person') this._loadPeopleContacts();
         });
     },
 
@@ -2434,18 +2459,55 @@ return {
                 .filter((pp) => ! pp.hidden)
                 .map((pp) => ({ pp, n: this.personPhotos(pp).length }))
                 .filter((r) => r.n > 0);
-            // Named people first (alphabetical), then the unnamed rest by size.
+            // Named people first (ordered by the contacts sort pref), then the
+            // unnamed rest by size.
             rows.sort((a, b) => {
                 const an = (a.pp.name || '').trim(), bn = (b.pp.name || '').trim();
                 if (an && ! bn) return -1;
                 if (! an && bn) return 1;
-                if (an && bn) return an.localeCompare(bn);
+                if (an && bn) return this._personSortKey(a.pp).localeCompare(this._personSortKey(b.pp));
                 return b.n - a.n;
             });
             return rows.map((r) => r.pp);
         });
     },
     get currentPerson() { return (this.index.people || []).find((pp) => pp.id === this.activePerson) || null; },
+    // Contacts (from /store) keyed by id, so linked People render exactly like the
+    // contacts module — same "Last, First" label and same sort pref.
+    _peopleContacts: {},
+    async _loadPeopleContacts() {
+        if (! (this.index.people || []).some((pp) => pp.contactId)) return;
+        try {
+            if (await bootStore(this.$store)) {
+                const map = {};
+                for (const c of (window.LLStore.data?.contacts || [])) if (! c.trashed) map[c.id] = c;
+                this._peopleContacts = map;
+                this._mut++; // invalidate the people memo so the new labels/order apply
+            }
+        } catch (e) { /* fall back to the stored snapshot parts */ }
+    },
+    // Display label for a person: mirror the linked contact's "Last, First" label
+    // (live record if loaded, else the snapshot parts captured at link time).
+    personLabel(pp) {
+        if (pp?.contactId) {
+            const c = this._peopleContacts[pp.contactId] || { first: pp.contactFirst, last: pp.contactLast, fn: pp.contactName };
+            const label = contactDisplayName(c);
+            if (label) return label;
+        }
+        return (pp?.name || '').trim();
+    },
+    // Sort key following the contacts module's persisted sort mode.
+    _personSortKey(pp) {
+        const mode = contactsSortPref();
+        if (pp?.contactId) {
+            const c = this._peopleContacts[pp.contactId] || { first: pp.contactFirst, last: pp.contactLast, fn: pp.contactName };
+            const { first, last } = contactNameParts(c);
+            if (mode === 'first') return (first || last || '').toLowerCase();
+            if (mode === 'last') return (last || first || '').toLowerCase();
+            return (contactDisplayName(c) || '').toLowerCase();
+        }
+        return (pp?.name || '').toLowerCase();
+    },
     openPerson(pp) { this.activePerson = pp.id; this.view = 'person'; },
     openPersonById(id) {
         const pp = (this.index.people || []).find((x) => x.id === id);
@@ -2788,6 +2850,7 @@ return {
         if (other.pinned) target.pinned = true;
         if (other.contactId && ! target.contactId) {
             target.contactId = other.contactId; target.contactName = other.contactName;
+            target.contactFirst = other.contactFirst; target.contactLast = other.contactLast;
             target.contactAvatarRef = other.contactAvatarRef; target.contactAvatarKey = other.contactAvatarKey;
         }
         this.index.people = (this.index.people || []).filter((pp) => pp.id !== other.id);
@@ -2825,7 +2888,9 @@ return {
         if (! count) { window.llToast?.(labels.mergeDupNone || 'No same-named clusters to merge.'); return; }
         if (! await this.$store.confirm.ask((labels.mergeDupConfirm || 'Merge :n duplicate clusters?').replace(':n', count))) return;
         for (const g of groups) {
-            g.sort((a, b) => (b.faces?.length || 0) - (a.faces?.length || 0)); // largest = best centroid
+            // Prefer a contact-linked cluster as the survivor so its curated cover
+            // and avatar are kept; fall back to the largest (best centroid).
+            g.sort((a, b) => ((a.contactId ? 0 : 1) - (b.contactId ? 0 : 1)) || ((b.faces?.length || 0) - (a.faces?.length || 0)));
             const target = g[0];
             for (let i = 1; i < g.length; i++) this._mergePair(target, g[i]);
         }
@@ -2953,6 +3018,9 @@ return {
         if (cname) p.name = cname; // the person takes over the contact's name
         p.contactId = contact.id;
         p.contactName = cname;
+        const parts = contactNameParts(contact);
+        p.contactFirst = parts.first; p.contactLast = parts.last; // snapshot for "Last, First" display
+        this._peopleContacts[contact.id] = contact; // resolve the label without a reload
         p.contactAvatarRef = contact.avatarRef || null;
         p.contactAvatarKey = contact.avatarKey || null;
         contact.personId = p.id;
@@ -3016,7 +3084,7 @@ return {
         const p = this.currentPerson;
         if (! p?.contactId) return;
         const cid = p.contactId;
-        p.contactId = null; p.contactName = null; p.contactAvatarRef = null; p.contactAvatarKey = null;
+        p.contactId = null; p.contactName = null; p.contactFirst = null; p.contactLast = null; p.contactAvatarRef = null; p.contactAvatarKey = null;
         this._save();
         try {
             if (await bootStore(this.$store)) {
@@ -5777,20 +5845,11 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
 
     // First/last, from the structured fields or (for imported fn-only cards)
     // derived from the formatted name so the order/sort toggles still work.
-    _nameParts(c) {
-        let first = (c.first || '').trim(), last = (c.last || '').trim();
-        if (! first && ! last) {
-            const p = (c.fn || '').trim().split(/\s+/).filter(Boolean);
-            if (p.length > 1) { last = p.pop(); first = p.join(' '); } else if (p.length === 1) { first = p[0]; }
-        }
-        return { first, last };
-    },
+    _nameParts(c) { return contactNameParts(c); },
     // Display label — always "Last, First".
     displayName(c) {
         if (! c) return '';
-        const { first, last } = this._nameParts(c);
-        if (last || first) return [last, first].filter(Boolean).join(', ');
-        return (c.fn || c.org || (c.emails ?? [])[0]?.value || '').trim() || (labels.unnamed || '—');
+        return contactDisplayName(c) || (labels.unnamed || '—');
     },
     initials(c) {
         const { first, last } = this._nameParts(c);
@@ -6233,6 +6292,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         // what the People picker shows (displayName is "Last, First").
         const np = this._nameParts(c);
         pp.contactName = (np.first || np.last) ? [np.first, np.last].filter(Boolean).join(' ') : (c.fn || c.org || '').trim();
+        pp.contactFirst = np.first; pp.contactLast = np.last; // snapshot for "Last, First" gallery display
         pp.contactAvatarRef = c.avatarRef || null;
         pp.contactAvatarKey = c.avatarKey || null;
         window.LLGalleryStore.touch();
@@ -6248,7 +6308,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         try {
             if (await bootGalleryStore(this.$store)) {
                 const pp = (window.LLGalleryStore.data?.people || []).find((x) => x.id === pid);
-                if (pp && pp.contactId === c.id) { pp.contactId = null; pp.contactName = null; pp.contactAvatarRef = null; pp.contactAvatarKey = null; window.LLGalleryStore.touch(); }
+                if (pp && pp.contactId === c.id) { pp.contactId = null; pp.contactName = null; pp.contactFirst = null; pp.contactLast = null; pp.contactAvatarRef = null; pp.contactAvatarKey = null; window.LLGalleryStore.touch(); }
             }
         } catch (e) { /* best effort */ }
     },
