@@ -243,4 +243,11 @@ return [
     'invoice_design_hint' => 'Akzent- und Überschriftsfarbe für die gerenderte Rechnung.',
     'invoice_accent_color' => 'Akzentfarbe',
     'invoice_heading_color' => 'Überschriftsfarbe',
+    'invoice_template' => 'Vorlage',
+    'invoice_template_modern' => 'Modern',
+    'invoice_template_modern_hint' => 'Kräftiger Akzent-Tabellenkopf, strukturiert, 3-Spalten-Footer.',
+    'invoice_template_elegant' => 'Elegant',
+    'invoice_template_elegant_hint' => 'Serif, zentrierter Titel, feine Linien.',
+    'invoice_template_schlicht' => 'Schlicht',
+    'invoice_template_schlicht_hint' => 'Minimal, monochrom, kompakt.',
 ];
