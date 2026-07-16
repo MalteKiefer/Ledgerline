@@ -286,7 +286,7 @@
                     <div style="color:#6b7280; margin-top:4px;" x-show="company.vat_id" x-text="pl('vat_id_label') + ': ' + company.vat_id"></div>
                   </div>
                   <div style="text-align:right; min-width:200px;">
-                    <div style="font-size:20px; font-weight:800; letter-spacing:.03em;" :style="'color:' + company.accent" x-text="pl('print_title')"></div>
+                    <div style="font-size:24px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;" :style="'color:' + company.accent" x-text="pl('print_title')"></div>
                     <table style="margin-top:8px; margin-left:auto; border-collapse:collapse; font-size:10px;">
                       <tr><td style="padding:1.5px 0; text-align:right; white-space:nowrap;" :style="'color:' + company.heading" x-text="pl('invoice_number')"></td><td style="padding:1.5px 0 1.5px 16px; text-align:right; font-weight:700; white-space:nowrap;" class="tabular-nums" x-text="_printing.number || '—'"></td></tr>
                       <tr><td style="padding:1.5px 0; text-align:right; white-space:nowrap;" :style="'color:' + company.heading" x-text="pl('invoice_date')"></td><td style="padding:1.5px 0 1.5px 16px; text-align:right; white-space:nowrap;" class="tabular-nums" x-text="_printing.issueDate"></td></tr>
@@ -321,7 +321,7 @@
                     <template x-for="(l, i) in _printing.lines" :key="i">
                       <tr style="border-bottom:1px solid #eef0f2;" :style="i % 2 ? 'background:#f9fafb;' : ''">
                         <td style="padding:6px 9px; vertical-align:top;" x-text="l.desc"></td>
-                        <td style="padding:6px 9px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="l.qty + (l.unit ? ' ' + l.unit : '')"></td>
+                        <td style="padding:6px 9px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtQty(l.qty, _printing.lang) + (l.unit ? ' ' + l.unit : '')"></td>
                         <td style="padding:6px 9px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtMoney(l.unitPrice, _printing.currency, _printing.lang)"></td>
                         <td style="padding:6px 9px; text-align:right; white-space:nowrap; vertical-align:top;" class="tabular-nums" x-text="fmtMoney(lineNet(l), _printing.currency, _printing.lang)"></td>
                       </tr>
