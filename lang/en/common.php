@@ -8,6 +8,7 @@ return [
     'sections' => 'Sections',
     'back' => 'Back',
     'save' => 'Save',
+    'edit' => 'Edit',
     'close' => 'Close',
     'actions' => 'Actions',
     'confirm' => 'Confirm',

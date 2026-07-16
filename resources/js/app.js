@@ -100,7 +100,7 @@ window.LLStore = {
     _onError: null,
 
     _blank() {
-        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [] };
+        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [], invoices: [], invoiceSeq: 0 };
     },
 
     // A random client-side id for a new item (server never assigns ids now).
@@ -5370,6 +5370,158 @@ function zkModule(cfg) {
         },
     };
 }
+
+Alpine.data('invoices', (config = {}, labels = {}) => ({
+    ...zkModule({ map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
+
+    company: config.company || {},
+    invoices: [],
+    view: 'list',        // 'list' | 'edit'
+    current: null,       // the invoice being edited
+    filterStatus: '',    // '' | draft | sent | paid
+    _printing: null,     // invoice rendered into the hidden print sheet
+
+    async init() {
+        await this._initZk();
+    },
+
+    // ---- Derived ----
+    get activeInvoices() { return (this.invoices || []).filter((i) => ! i.trashed); },
+    get filtered() {
+        const q = this.query.trim().toLowerCase();
+        let list = this.activeInvoices;
+        if (this.filterStatus) list = list.filter((i) => i.status === this.filterStatus);
+        if (q) list = list.filter((i) => (i.number || '').toLowerCase().includes(q) || (i.customer?.name || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || '') || (b.number || '').localeCompare(a.number || ''));
+    },
+    get totals() { return this.computeTotals(this.current); },
+
+    _today() { return new Date().toISOString().slice(0, 10); },
+    _addDays(iso, days) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + (days || 0)); return d.toISOString().slice(0, 10); },
+    _defaultVat() { const v = parseFloat(this.company.default_vat_rate); return Number.isFinite(v) ? v : 19; },
+
+    // ---- CRUD ----
+    newInvoice() {
+        const issue = this._today();
+        const inv = {
+            id: window.LLStore.newId(),
+            number: null,
+            status: 'draft',
+            issueDate: issue,
+            dueDate: this._addDays(issue, parseInt(this.company.payment_terms_days, 10) || 14),
+            currency: this.company.currency || 'EUR',
+            customer: { name: '', address: '', email: '', vatId: '', contactId: null },
+            lines: [{ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }],
+            note: '',
+            footer: this.company.footer_text || '',
+            trashed: false,
+            updated: new Date().toISOString(),
+        };
+        this.invoices.unshift(inv);
+        this._save();
+        this.open(inv);
+    },
+    open(inv) { this.current = inv; this.view = 'edit'; },
+    backToList() { this.view = 'list'; this.current = null; },
+    saveSoon() { if (this.current) this.current.updated = new Date().toISOString(); this._save(); },
+
+    addLine() { this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }); this.saveSoon(); },
+    removeLine(i) { this.current.lines.splice(i, 1); if (! this.current.lines.length) this.addLine(); else this.saveSoon(); },
+
+    trash(inv) { inv.trashed = new Date().toISOString(); this._save(); if (this.current === inv) this.backToList(); },
+    restore(inv) { inv.trashed = false; this._save(); },
+    async remove(inv) {
+        if (! await this.$store.confirm.ask(labels.deleteConfirm || 'Delete this invoice permanently?')) return;
+        const i = this.invoices.indexOf(inv);
+        if (i >= 0) this.invoices.splice(i, 1);
+        this._save();
+        if (this.current === inv) this.backToList();
+    },
+
+    // ---- Totals (net, VAT grouped by rate, gross) ----
+    lineNet(l) { return (parseFloat(l.qty) || 0) * (parseFloat(l.unitPrice) || 0); },
+    computeTotals(inv) {
+        const t = { net: 0, vatByRate: {}, vat: 0, gross: 0 };
+        if (! inv) return t;
+        for (const l of inv.lines || []) {
+            const net = this.lineNet(l);
+            const rate = parseFloat(l.vatRate) || 0;
+            t.net += net;
+            const v = net * rate / 100;
+            t.vatByRate[rate] = (t.vatByRate[rate] || 0) + v;
+            t.vat += v;
+        }
+        t.gross = t.net + t.vat;
+        return t;
+    },
+    fmtMoney(n, currency) {
+        const cur = currency || this.current?.currency || this.company.currency || 'EUR';
+        try { return new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: cur }).format(n || 0); }
+        catch (e) { return (n || 0).toFixed(2) + ' ' + cur; }
+    },
+    vatRatesOf(inv) { return Object.keys(this.computeTotals(inv).vatByRate).map(Number).sort((a, b) => a - b); },
+
+    // ---- Customer picker (reads zero-knowledge contacts) ----
+    customerPicker: false,
+    custQuery: '',
+    _custContacts: [],
+    async openCustomerPicker() {
+        this.customerPicker = true;
+        this.custQuery = '';
+        try { if (await bootStore(this.$store)) this._custContacts = (window.LLStore.data.contacts || []).filter((c) => ! c.trashed); }
+        catch (e) { /* leave empty */ }
+    },
+    closeCustomerPicker() { this.customerPicker = false; },
+    _custName(c) { return contactDisplayName(c) || ''; },
+    custSuggestions() {
+        const q = this.custQuery.trim().toLowerCase();
+        let list = this._custContacts;
+        if (q) list = list.filter((c) => this._custName(c).toLowerCase().includes(q) || (c.org || '').toLowerCase().includes(q));
+        return [...list].sort((a, b) => this._custName(a).localeCompare(this._custName(b)));
+    },
+    _custAddress(c) {
+        const a = (c.addresses || [])[0];
+        if (! a) return '';
+        return [a.street, [a.zip, a.city].filter(Boolean).join(' '), a.region, a.country].filter(Boolean).join('\n');
+    },
+    pickCustomer(c) {
+        this.current.customer = {
+            name: this._custName(c) || (c.org || ''),
+            address: this._custAddress(c),
+            email: (c.emails || [])[0]?.value || '',
+            vatId: c.vatId || '',
+            contactId: c.id,
+        };
+        this.customerPicker = false;
+        this.saveSoon();
+    },
+    clearCustomer() { this.current.customer = { name: '', address: '', email: '', vatId: '', contactId: null }; this.saveSoon(); },
+
+    // ---- Finalize / status ----
+    _nextNumber() {
+        const seq = (window.LLStore.data.invoiceSeq || 0) + 1;
+        window.LLStore.data.invoiceSeq = seq;
+        const pad = parseInt(this.company.number_padding, 10) || 4;
+        return (this.company.number_prefix || '') + String(seq).padStart(pad, '0');
+    },
+    finalize(inv) {
+        const i = inv || this.current;
+        if (! i) return;
+        if (! i.number) i.number = this._nextNumber();
+        if (i.status === 'draft') i.status = 'sent';
+        i.totals = this.computeTotals(i); // freeze
+        this.saveSoon();
+    },
+    markPaid(inv) { inv.status = 'paid'; this.saveSoon(); },
+    markSent(inv) { if (! inv.number) inv.number = this._nextNumber(); inv.status = 'sent'; this.saveSoon(); },
+    statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
+
+    // ---- Print / PDF (client-side, zero-knowledge) ----
+    printInvoice(inv) {
+        this._printing = inv || this.current;
+        this.$nextTick(() => { window.print(); });
+    },
+}));
 
 Alpine.data('todos', (labels = {}) => ({
     ...zkModule({ map: { todos: 'tasks', todoLists: 'lists' } }),
