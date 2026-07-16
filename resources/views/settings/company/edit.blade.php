@@ -89,12 +89,13 @@
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.invoice_design_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.invoice_design_hint') }}</p>
             @php $tpl = old('invoice_template', $s->invoice_template ?: 'modern'); @endphp
-            <div class="mt-4">
+            <div class="mt-4" x-data="{ tpl: @js($tpl) }">
                 <span class="block text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_template') }}</span>
                 <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     @foreach (['modern', 'elegant', 'schlicht'] as $opt)
-                        <label class="relative flex cursor-pointer flex-col rounded-lg border p-3 text-sm {{ $tpl === $opt ? 'border-gray-900 dark:border-gray-100 ring-1 ring-gray-900 dark:ring-gray-100' : 'border-gray-200 dark:border-gray-700' }}">
-                            <input type="radio" name="invoice_template" value="{{ $opt }}" @checked($tpl === $opt) class="sr-only" onchange="this.closest('.grid').querySelectorAll('label').forEach(l=>l.classList.remove('border-gray-900','dark:border-gray-100','ring-1','ring-gray-900','dark:ring-gray-100'));this.closest('label').classList.add('border-gray-900','dark:border-gray-100','ring-1','ring-gray-900','dark:ring-gray-100')">
+                        <label class="relative flex cursor-pointer flex-col rounded-lg border p-3 text-sm"
+                               :class="tpl === @js($opt) ? 'border-gray-900 dark:border-gray-100 ring-1 ring-gray-900 dark:ring-gray-100' : 'border-gray-200 dark:border-gray-700'">
+                            <input type="radio" name="invoice_template" value="{{ $opt }}" x-model="tpl" class="sr-only">
                             <span class="font-medium text-gray-900 dark:text-gray-100">{{ __('settings.invoice_template_' . $opt) }}</span>
                             <span class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.invoice_template_' . $opt . '_hint') }}</span>
                         </label>
