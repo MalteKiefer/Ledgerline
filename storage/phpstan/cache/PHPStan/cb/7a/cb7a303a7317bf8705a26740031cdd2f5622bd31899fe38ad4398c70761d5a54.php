@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Files/ReverseGeocoder.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Services\Files\ReverseGeocoder
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-3dc82e1ae1c9b1b815fc2bfa0aa2ceacd1af258d50d4c2912e4d9d742e605a8d',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-d199b8a167e238ef10ca99f505f2220de77d798b5dba3eae42b9dc11937372cb',
    'data' => 
   array (
     'locatedSource' => 
@@ -23,18 +23,21 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     'isBackedEnum' => false,
     'modifiers' => 0,
     'docComment' => '/**
- * Reverse-geocodes coordinates to a human-readable address via OpenStreetMap\'s
- * Nominatim service. Runs only inside the transient zero-knowledge
- * /gallery/process window: the resolved place is handed straight back to the
+ * Reverse-geocodes coordinates to a human-readable address. A self-hosted Photon
+ * (config gallery.photon_url) is tried first so covered points never leave the
+ * zero-knowledge boundary; anything it does not cover falls back to a Nominatim-
+ * compatible endpoint (gallery.geocoder_url, public OSM by default). Triggered by
+ * the viewer\'s place-picker, and by upload only when gallery.geocode_on_upload is
+ * enabled (off by default). The resolved place is handed straight back to the
  * browser (which seals it into an opaque blob) and is NEVER cached server-side —
- * caching the resolved address at rest would be a plaintext-location leak. Only
- * a Nominatim rate-limit timestamp (no location content) is kept in the cache.
+ * caching the resolved address at rest would be a plaintext-location leak. Only a
+ * rate-limit timestamp (no location content) is kept in the cache.
  */',
     'attributes' => 
     array (
     ),
-    'startLine' => 19,
-    'endLine' => 90,
+    'startLine' => 23,
+    'endLine' => 180,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => NULL,
@@ -69,8 +72,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'attributes' => 
         array (
         ),
-        'startLine' => 21,
-        'endLine' => 21,
+        'startLine' => 25,
+        'endLine' => 25,
         'startColumn' => 33,
         'endColumn' => 75,
         'isPromoted' => true,
@@ -107,8 +110,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 21,
-            'endLine' => 21,
+            'startLine' => 25,
+            'endLine' => 25,
             'startColumn' => 33,
             'endColumn' => 75,
             'parameterIndex' => 0,
@@ -121,8 +124,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => NULL,
-        'startLine' => 21,
-        'endLine' => 21,
+        'startLine' => 25,
+        'endLine' => 25,
         'startColumn' => 5,
         'endColumn' => 79,
         'couldThrow' => false,
@@ -160,8 +163,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 23,
-            'endLine' => 23,
+            'startLine' => 27,
+            'endLine' => 27,
             'startColumn' => 28,
             'endColumn' => 37,
             'parameterIndex' => 0,
@@ -186,8 +189,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 23,
-            'endLine' => 23,
+            'startLine' => 27,
+            'endLine' => 27,
             'startColumn' => 40,
             'endColumn' => 49,
             'parameterIndex' => 1,
@@ -227,8 +230,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => NULL,
-        'startLine' => 23,
-        'endLine' => 26,
+        'startLine' => 27,
+        'endLine' => 30,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -266,8 +269,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 35,
-            'endLine' => 35,
+            'startLine' => 39,
+            'endLine' => 39,
             'startColumn' => 36,
             'endColumn' => 45,
             'parameterIndex' => 0,
@@ -292,8 +295,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 35,
-            'endLine' => 35,
+            'startLine' => 39,
+            'endLine' => 39,
             'startColumn' => 48,
             'endColumn' => 57,
             'parameterIndex' => 1,
@@ -320,8 +323,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  *
  * @return array{display: ?string, address: array<string, string>}
  */',
-        'startLine' => 35,
-        'endLine' => 41,
+        'startLine' => 39,
+        'endLine' => 54,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -335,9 +338,9 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'currentClassName' => 'App\\Services\\Files\\ReverseGeocoder',
         'aliasName' => NULL,
       ),
-      'request' => 
+      'viaNominatim' => 
       array (
-        'name' => 'request',
+        'name' => 'viaNominatim',
         'parameters' => 
         array (
           'lat' => 
@@ -359,10 +362,10 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 46,
-            'endLine' => 46,
-            'startColumn' => 30,
-            'endColumn' => 39,
+            'startLine' => 59,
+            'endLine' => 59,
+            'startColumn' => 35,
+            'endColumn' => 44,
             'parameterIndex' => 0,
             'isOptional' => false,
           ),
@@ -385,10 +388,10 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 46,
-            'endLine' => 46,
-            'startColumn' => 42,
-            'endColumn' => 51,
+            'startLine' => 59,
+            'endLine' => 59,
+            'startColumn' => 47,
+            'endColumn' => 56,
             'parameterIndex' => 1,
             'isOptional' => false,
           ),
@@ -409,8 +412,279 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'docComment' => '/**
  * @return array{display: ?string, address: array<string, string>}
  */',
-        'startLine' => 46,
-        'endLine' => 64,
+        'startLine' => 59,
+        'endLine' => 77,
+        'startColumn' => 5,
+        'endColumn' => 5,
+        'couldThrow' => false,
+        'isClosure' => false,
+        'isGenerator' => false,
+        'isVariadic' => false,
+        'modifiers' => 4,
+        'namespace' => 'App\\Services\\Files',
+        'declaringClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'implementingClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'currentClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'aliasName' => NULL,
+      ),
+      'viaPhoton' => 
+      array (
+        'name' => 'viaPhoton',
+        'parameters' => 
+        array (
+          'base' => 
+          array (
+            'name' => 'base',
+            'default' => NULL,
+            'type' => 
+            array (
+              'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+              'data' => 
+              array (
+                'name' => 'string',
+                'isIdentifier' => true,
+              ),
+            ),
+            'isVariadic' => false,
+            'byRef' => false,
+            'isPromoted' => false,
+            'attributes' => 
+            array (
+            ),
+            'startLine' => 86,
+            'endLine' => 86,
+            'startColumn' => 32,
+            'endColumn' => 43,
+            'parameterIndex' => 0,
+            'isOptional' => false,
+          ),
+          'lat' => 
+          array (
+            'name' => 'lat',
+            'default' => NULL,
+            'type' => 
+            array (
+              'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+              'data' => 
+              array (
+                'name' => 'float',
+                'isIdentifier' => true,
+              ),
+            ),
+            'isVariadic' => false,
+            'byRef' => false,
+            'isPromoted' => false,
+            'attributes' => 
+            array (
+            ),
+            'startLine' => 86,
+            'endLine' => 86,
+            'startColumn' => 46,
+            'endColumn' => 55,
+            'parameterIndex' => 1,
+            'isOptional' => false,
+          ),
+          'lon' => 
+          array (
+            'name' => 'lon',
+            'default' => NULL,
+            'type' => 
+            array (
+              'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+              'data' => 
+              array (
+                'name' => 'float',
+                'isIdentifier' => true,
+              ),
+            ),
+            'isVariadic' => false,
+            'byRef' => false,
+            'isPromoted' => false,
+            'attributes' => 
+            array (
+            ),
+            'startLine' => 86,
+            'endLine' => 86,
+            'startColumn' => 58,
+            'endColumn' => 67,
+            'parameterIndex' => 2,
+            'isOptional' => false,
+          ),
+        ),
+        'returnsReference' => false,
+        'returnType' => 
+        array (
+          'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+          'data' => 
+          array (
+            'name' => 'array',
+            'isIdentifier' => true,
+          ),
+        ),
+        'attributes' => 
+        array (
+        ),
+        'docComment' => '/**
+ * Query a self-hosted Photon (/reverse → GeoJSON). Returns display=null when
+ * the point is uncovered (empty features) or on any error, so the caller
+ * falls back to Nominatim. No throttle: a self-hosted instance has no policy.
+ *
+ * @return array{display: ?string, address: array<string, string>}
+ */',
+        'startLine' => 86,
+        'endLine' => 108,
+        'startColumn' => 5,
+        'endColumn' => 5,
+        'couldThrow' => false,
+        'isClosure' => false,
+        'isGenerator' => false,
+        'isVariadic' => false,
+        'modifiers' => 4,
+        'namespace' => 'App\\Services\\Files',
+        'declaringClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'implementingClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'currentClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'aliasName' => NULL,
+      ),
+      'photonDisplay' => 
+      array (
+        'name' => 'photonDisplay',
+        'parameters' => 
+        array (
+          'p' => 
+          array (
+            'name' => 'p',
+            'default' => NULL,
+            'type' => 
+            array (
+              'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+              'data' => 
+              array (
+                'name' => 'array',
+                'isIdentifier' => true,
+              ),
+            ),
+            'isVariadic' => false,
+            'byRef' => false,
+            'isPromoted' => false,
+            'attributes' => 
+            array (
+            ),
+            'startLine' => 116,
+            'endLine' => 116,
+            'startColumn' => 36,
+            'endColumn' => 43,
+            'parameterIndex' => 0,
+            'isOptional' => false,
+          ),
+        ),
+        'returnsReference' => false,
+        'returnType' => 
+        array (
+          'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionUnionType',
+          'data' => 
+          array (
+            'types' => 
+            array (
+              0 => 
+              array (
+                'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+                'data' => 
+                array (
+                  'name' => 'string',
+                  'isIdentifier' => true,
+                ),
+              ),
+              1 => 
+              array (
+                'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+                'data' => 
+                array (
+                  'name' => 'null',
+                  'isIdentifier' => true,
+                ),
+              ),
+            ),
+          ),
+        ),
+        'attributes' => 
+        array (
+        ),
+        'docComment' => '/**
+ * Build a single display line from Photon\'s structured GeoJSON properties
+ * (it has no display_name field), or null if there is nothing usable.
+ *
+ * @param  array<string, mixed>  $p
+ */',
+        'startLine' => 116,
+        'endLine' => 132,
+        'startColumn' => 5,
+        'endColumn' => 5,
+        'couldThrow' => false,
+        'isClosure' => false,
+        'isGenerator' => false,
+        'isVariadic' => false,
+        'modifiers' => 4,
+        'namespace' => 'App\\Services\\Files',
+        'declaringClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'implementingClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'currentClassName' => 'App\\Services\\Files\\ReverseGeocoder',
+        'aliasName' => NULL,
+      ),
+      'photonAddress' => 
+      array (
+        'name' => 'photonAddress',
+        'parameters' => 
+        array (
+          'p' => 
+          array (
+            'name' => 'p',
+            'default' => NULL,
+            'type' => 
+            array (
+              'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+              'data' => 
+              array (
+                'name' => 'array',
+                'isIdentifier' => true,
+              ),
+            ),
+            'isVariadic' => false,
+            'byRef' => false,
+            'isPromoted' => false,
+            'attributes' => 
+            array (
+            ),
+            'startLine' => 141,
+            'endLine' => 141,
+            'startColumn' => 36,
+            'endColumn' => 43,
+            'parameterIndex' => 0,
+            'isOptional' => false,
+          ),
+        ),
+        'returnsReference' => false,
+        'returnType' => 
+        array (
+          'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+          'data' => 
+          array (
+            'name' => 'array',
+            'isIdentifier' => true,
+          ),
+        ),
+        'attributes' => 
+        array (
+        ),
+        'docComment' => '/**
+ * Map Photon properties to the same Nominatim-style address keys the client
+ * already understands.
+ *
+ * @param  array<string, mixed>  $p
+ * @return array<string, string>
+ */',
+        'startLine' => 141,
+        'endLine' => 154,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -448,8 +722,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 72,
-            'endLine' => 72,
+            'startLine' => 162,
+            'endLine' => 162,
             'startColumn' => 33,
             'endColumn' => 42,
             'parameterIndex' => 0,
@@ -474,8 +748,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 72,
-            'endLine' => 72,
+            'startLine' => 162,
+            'endLine' => 162,
             'startColumn' => 45,
             'endColumn' => 54,
             'parameterIndex' => 1,
@@ -501,8 +775,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  *
  * @return array{0: float, 1: float}
  */',
-        'startLine' => 72,
-        'endLine' => 89,
+        'startLine' => 162,
+        'endLine' => 179,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

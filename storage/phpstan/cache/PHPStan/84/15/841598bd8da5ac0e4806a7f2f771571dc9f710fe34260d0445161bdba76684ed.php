@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Gallery/GalleryProcessor.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Services\Gallery\GalleryProcessor
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-aae624b5d3c3bc9626b3ce344e5f6d9342e4dfed869fb10c697b48a86c9c7ceb',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-e42391e02c16725925eeadd29b2d1b3038228ce10888b73133471e3a2c328709',
    'data' => 
   array (
     'locatedSource' => 
@@ -35,7 +35,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     array (
     ),
     'startLine' => 21,
-    'endLine' => 202,
+    'endLine' => 208,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => NULL,
@@ -713,7 +713,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * }
  */',
         'startLine' => 47,
-        'endLine' => 157,
+        'endLine' => 163,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -751,8 +751,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 167,
-            'endLine' => 167,
+            'startLine' => 173,
+            'endLine' => 173,
             'startColumn' => 29,
             'endColumn' => 40,
             'parameterIndex' => 0,
@@ -780,8 +780,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  *
  * @return array{embedding: ?list<float>, faces: list<array{score: float, box: array{0:float,1:float,2:float,3:float}, embedding: list<float>, crop: ?string}>}
  */',
-        'startLine' => 167,
-        'endLine' => 172,
+        'startLine' => 173,
+        'endLine' => 178,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -819,8 +819,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 181,
-            'endLine' => 181,
+            'startLine' => 187,
+            'endLine' => 187,
             'startColumn' => 36,
             'endColumn' => 54,
             'parameterIndex' => 0,
@@ -847,8 +847,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  *
  * @return array{0: ?list<float>, 1: list<array{score: float, box: array{0:float,1:float,2:float,3:float}, embedding: list<float>, crop: ?string}>}
  */',
-        'startLine' => 181,
-        'endLine' => 201,
+        'startLine' => 187,
+        'endLine' => 207,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Models/BackupJob.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Models\BackupJob
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-b6bdfceb9eceae26b03d26e31ff6ebd47db62fad36af9f2c624cf7f47c62eb6d',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-e9c3962320c24986bcc32394b8c4eaaaa449b031d91ed0497c6750f10737386b',
    'data' => 
   array (
     'locatedSource' => 
@@ -51,7 +51,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
       ),
     ),
     'startLine' => 18,
-    'endLine' => 100,
+    'endLine' => 113,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => 'Illuminate\\Database\\Eloquent\\Model',
@@ -191,6 +191,65 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'currentClassName' => 'App\\Models\\BackupJob',
         'aliasName' => NULL,
       ),
+      'effectivePassphrase' => 
+      array (
+        'name' => 'effectivePassphrase',
+        'parameters' => 
+        array (
+        ),
+        'returnsReference' => false,
+        'returnType' => 
+        array (
+          'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionUnionType',
+          'data' => 
+          array (
+            'types' => 
+            array (
+              0 => 
+              array (
+                'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+                'data' => 
+                array (
+                  'name' => 'string',
+                  'isIdentifier' => true,
+                ),
+              ),
+              1 => 
+              array (
+                'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+                'data' => 
+                array (
+                  'name' => 'null',
+                  'isIdentifier' => true,
+                ),
+              ),
+            ),
+          ),
+        ),
+        'attributes' => 
+        array (
+        ),
+        'docComment' => '/**
+ * The passphrase actually used to encrypt this job\'s archives: the
+ * environment-provided one (config/backup.php → BACKUP_PASSPHRASE) wins so the
+ * key can live outside the database that gets dumped into the backups; the
+ * per-job DB column is the legacy fallback.
+ */',
+        'startLine' => 52,
+        'endLine' => 57,
+        'startColumn' => 5,
+        'endColumn' => 5,
+        'couldThrow' => false,
+        'isClosure' => false,
+        'isGenerator' => false,
+        'isVariadic' => false,
+        'modifiers' => 1,
+        'namespace' => 'App\\Models',
+        'declaringClassName' => 'App\\Models\\BackupJob',
+        'implementingClassName' => 'App\\Models\\BackupJob',
+        'currentClassName' => 'App\\Models\\BackupJob',
+        'aliasName' => NULL,
+      ),
       'destination' => 
       array (
         'name' => 'destination',
@@ -211,8 +270,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => '/** @return BelongsTo<BackupDestination, $this> */',
-        'startLine' => 47,
-        'endLine' => 50,
+        'startLine' => 60,
+        'endLine' => 63,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -246,8 +305,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => '/** @return HasMany<BackupRun, $this> */',
-        'startLine' => 53,
-        'endLine' => 56,
+        'startLine' => 66,
+        'endLine' => 69,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -289,8 +348,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  *     lastDuration:?int, avgDuration:?int, lastBytes:?int, totalBytes:int,
  *     nextRun:?\\Illuminate\\Support\\Carbon}
  */',
-        'startLine' => 67,
-        'endLine' => 99,
+        'startLine' => 80,
+        'endLine' => 112,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

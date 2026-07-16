@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Backup/BackupManager.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Services\Backup\BackupManager
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-f11f92eafe4e5849983ebec02b30dfb4278d22bffee1c4087b9dabb8d7a2b5ab',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-66be815b555fe016ef50606e0be55e5107c99ada842993b2c0c4bcd1cd0d0145',
    'data' => 
   array (
     'locatedSource' => 
@@ -32,7 +32,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     array (
     ),
     'startLine' => 28,
-    'endLine' => 285,
+    'endLine' => 286,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => NULL,
@@ -439,7 +439,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         ),
         'docComment' => NULL,
         'startLine' => 47,
-        'endLine' => 223,
+        'endLine' => 224,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => true,
@@ -477,8 +477,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 226,
-            'endLine' => 226,
+            'startLine' => 227,
+            'endLine' => 227,
             'startColumn' => 31,
             'endColumn' => 43,
             'parameterIndex' => 0,
@@ -499,8 +499,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => '/** Full exception chain as a readable one-liner (root cause included). */',
-        'startLine' => 226,
-        'endLine' => 234,
+        'startLine' => 227,
+        'endLine' => 235,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -538,8 +538,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 241,
-            'endLine' => 241,
+            'startLine' => 242,
+            'endLine' => 242,
             'startColumn' => 29,
             'endColumn' => 43,
             'parameterIndex' => 0,
@@ -564,8 +564,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * mysqldump command line or a connection URI), since this detail is stored
  * on the run and shown in the UI.
  */',
-        'startLine' => 241,
-        'endLine' => 251,
+        'startLine' => 242,
+        'endLine' => 252,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -603,8 +603,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 253,
-            'endLine' => 253,
+            'startLine' => 254,
+            'endLine' => 254,
             'startColumn' => 29,
             'endColumn' => 42,
             'parameterIndex' => 0,
@@ -625,8 +625,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => NULL,
-        'startLine' => 253,
-        'endLine' => 261,
+        'startLine' => 254,
+        'endLine' => 262,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => true,
@@ -664,8 +664,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 264,
-            'endLine' => 264,
+            'startLine' => 265,
+            'endLine' => 265,
             'startColumn' => 28,
             'endColumn' => 41,
             'parameterIndex' => 0,
@@ -690,8 +690,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 264,
-            'endLine' => 264,
+            'startLine' => 265,
+            'endLine' => 265,
             'startColumn' => 44,
             'endColumn' => 57,
             'parameterIndex' => 1,
@@ -716,8 +716,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 264,
-            'endLine' => 264,
+            'startLine' => 265,
+            'endLine' => 265,
             'startColumn' => 60,
             'endColumn' => 73,
             'parameterIndex' => 2,
@@ -738,8 +738,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => '/** Keep only the newest $retention objects under the job\'s prefix; returns how many were deleted. */',
-        'startLine' => 264,
-        'endLine' => 284,
+        'startLine' => 265,
+        'endLine' => 285,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

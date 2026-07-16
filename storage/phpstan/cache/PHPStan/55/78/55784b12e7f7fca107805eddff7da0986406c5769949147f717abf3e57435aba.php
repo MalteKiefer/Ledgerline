@@ -153,7 +153,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     ),
     1 => 
     array (
-      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php' => 'af286809ce77850f1b23a0373a9c8138c66c0e732b25b5d79732fc0d60924eff',
+      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php' => '64b924a544564bc9c398d7fc362efa15d70c7de82b5c7a5887b0f9835f015e69',
     ),
   ),
 ));

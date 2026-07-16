@@ -240,7 +240,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     ),
     1 => 
     array (
-      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Gallery/GalleryProcessor.php' => 'aae624b5d3c3bc9626b3ce344e5f6d9342e4dfed869fb10c697b48a86c9c7ceb',
+      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Gallery/GalleryProcessor.php' => 'e42391e02c16725925eeadd29b2d1b3038228ce10888b73133471e3a2c328709',
     ),
   ),
 ));

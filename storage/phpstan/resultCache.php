@@ -20,7 +20,7 @@ return [
   ),
   'composerLocks' => 
   array (
-    '/Users/malte.kiefer/Entwicklung/ledgerline/composer.lock' => '80bebe641c7a42355ea0fd072d9979960cccecbbb7e4eeaa559801c3c9de5f9a',
+    '/Users/malte.kiefer/Entwicklung/ledgerline/composer.lock' => '878b9f06e48aae1197e87a18d957dd51443a2964fa49c2d57849397b7fc5b9ea',
   ),
   'composerInstalled' => 
   array (
@@ -622,9 +622,9 @@ return [
         ),
         'intervention/image' => 
         array (
-          'pretty_version' => '4.1.5',
-          'version' => '4.1.5.0',
-          'reference' => 'e5256d3e5884d97fd9c6eada513a8f7a1d1027fa',
+          'pretty_version' => '4.2.0',
+          'version' => '4.2.0.0',
+          'reference' => '830907fc5397dfc2a51a4e90322d586989fc8364',
           'type' => 'library',
           'install_path' => '/Users/malte.kiefer/Entwicklung/ledgerline/vendor/composer/../intervention/image',
           'aliases' => 
@@ -899,18 +899,6 @@ return [
           'reference' => '85d5c77c5d6d3af6c54db4a78246364908f3c928',
           'type' => 'library',
           'install_path' => '/Users/malte.kiefer/Entwicklung/ledgerline/vendor/composer/../league/uri-interfaces',
-          'aliases' => 
-          array (
-          ),
-          'dev_requirement' => false,
-        ),
-        'lsolesen/pel' => 
-        array (
-          'pretty_version' => '0.9.12',
-          'version' => '0.9.12.0',
-          'reference' => 'b95fe29cdacf9d36330da277f10910a13648c84c',
-          'type' => 'library',
-          'install_path' => '/Users/malte.kiefer/Entwicklung/ledgerline/vendor/composer/../lsolesen/pel',
           'aliases' => 
           array (
           ),
@@ -2238,60 +2226,6 @@ return [
 	'projectExtensionFiles' => array (
 ),
 	'errorsCallback' => static function (): array { return array (
-  '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php' => 
-  array (
-    0 => 
-    \PHPStan\Analyser\Error::__set_state(array(
-       'message' => 'Access to an undefined property App\\Models\\AppSettings::$notify_ntfy.',
-       'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php',
-       'line' => 74,
-       'canBeIgnored' => true,
-       'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php',
-       'traitFilePath' => NULL,
-       'tip' => 'Learn more: <fg=cyan>https://phpstan.org/blog/solving-phpstan-access-to-undefined-property</>',
-       'nodeLine' => 74,
-       'nodeType' => 'PhpParser\\Node\\Expr\\PropertyFetch',
-       'identifier' => 'property.notFound',
-       'metadata' => 
-      array (
-      ),
-       'fixedErrorDiff' => NULL,
-    )),
-    1 => 
-    \PHPStan\Analyser\Error::__set_state(array(
-       'message' => 'Access to an undefined property App\\Models\\AppSettings::$notify_webhook.',
-       'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php',
-       'line' => 75,
-       'canBeIgnored' => true,
-       'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php',
-       'traitFilePath' => NULL,
-       'tip' => 'Learn more: <fg=cyan>https://phpstan.org/blog/solving-phpstan-access-to-undefined-property</>',
-       'nodeLine' => 75,
-       'nodeType' => 'PhpParser\\Node\\Expr\\PropertyFetch',
-       'identifier' => 'property.notFound',
-       'metadata' => 
-      array (
-      ),
-       'fixedErrorDiff' => NULL,
-    )),
-    2 => 
-    \PHPStan\Analyser\Error::__set_state(array(
-       'message' => 'Access to an undefined property App\\Models\\AppSettings::$notify_mail.',
-       'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php',
-       'line' => 76,
-       'canBeIgnored' => true,
-       'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php',
-       'traitFilePath' => NULL,
-       'tip' => 'Learn more: <fg=cyan>https://phpstan.org/blog/solving-phpstan-access-to-undefined-property</>',
-       'nodeLine' => 76,
-       'nodeType' => 'PhpParser\\Node\\Expr\\PropertyFetch',
-       'identifier' => 'property.notFound',
-       'metadata' => 
-      array (
-      ),
-       'fixedErrorDiff' => NULL,
-    )),
-  ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Api/AuthController.php' => 
   array (
     0 => 
@@ -2335,12 +2269,12 @@ return [
     \PHPStan\Analyser\Error::__set_state(array(
        'message' => 'Call to an undefined method Laravel\\Socialite\\Contracts\\Provider::scopes().',
        'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
-       'line' => 36,
+       'line' => 40,
        'canBeIgnored' => true,
        'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
        'traitFilePath' => NULL,
        'tip' => NULL,
-       'nodeLine' => 35,
+       'nodeLine' => 39,
        'nodeType' => 'PhpParser\\Node\\Expr\\MethodCall',
        'identifier' => 'method.notFound',
        'metadata' => 
@@ -2352,12 +2286,12 @@ return [
     \PHPStan\Analyser\Error::__set_state(array(
        'message' => 'Call to an undefined method Laravel\\Socialite\\Contracts\\User::getRaw().',
        'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
-       'line' => 55,
+       'line' => 59,
        'canBeIgnored' => true,
        'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
        'traitFilePath' => NULL,
        'tip' => NULL,
-       'nodeLine' => 55,
+       'nodeLine' => 59,
        'nodeType' => 'PhpParser\\Node\\Expr\\MethodCall',
        'identifier' => 'method.notFound',
        'metadata' => 
@@ -2369,31 +2303,14 @@ return [
     \PHPStan\Analyser\Error::__set_state(array(
        'message' => 'Call to an undefined method Laravel\\Socialite\\Contracts\\User::getRaw().',
        'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
-       'line' => 94,
+       'line' => 98,
        'canBeIgnored' => true,
        'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
        'traitFilePath' => NULL,
        'tip' => NULL,
-       'nodeLine' => 94,
+       'nodeLine' => 98,
        'nodeType' => 'PhpParser\\Node\\Expr\\MethodCall',
        'identifier' => 'method.notFound',
-       'metadata' => 
-      array (
-      ),
-       'fixedErrorDiff' => NULL,
-    )),
-    3 => 
-    \PHPStan\Analyser\Error::__set_state(array(
-       'message' => 'Dead catch - Illuminate\\Database\\QueryException is never thrown in the try block.',
-       'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
-       'line' => 103,
-       'canBeIgnored' => true,
-       'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php',
-       'traitFilePath' => NULL,
-       'tip' => NULL,
-       'nodeLine' => 103,
-       'nodeType' => 'PHPStan\\Node\\CatchWithUnthrownExceptionNode',
-       'identifier' => 'catch.neverThrown',
        'metadata' => 
       array (
       ),
@@ -2767,12 +2684,12 @@ return [
     \PHPStan\Analyser\Error::__set_state(array(
        'message' => 'Method App\\Models\\BackupJob::statistics() should return array{runs: int, ok: int, failed: int, successRate: int|null, lastStatus: string|null, lastRun: Illuminate\\Support\\Carbon|null, lastDuration: int|null, avgDuration: int|null, ...} but returns array{runs: int<0, max>, ok: int<0, max>, failed: int<0, max>, successRate: int|null, lastStatus: string|null, lastRun: string|null, lastDuration: int|null, avgDuration: int|null, ...}.',
        'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Models/BackupJob.php',
-       'line' => 86,
+       'line' => 99,
        'canBeIgnored' => true,
        'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Models/BackupJob.php',
        'traitFilePath' => NULL,
        'tip' => 'Offset \'lastRun\' (Illuminate\\Support\\Carbon|null) does not accept type string.',
-       'nodeLine' => 86,
+       'nodeLine' => 99,
        'nodeType' => 'PhpParser\\Node\\Stmt\\Return_',
        'identifier' => 'return.type',
        'metadata' => 
@@ -3282,6 +3199,43 @@ return [
        'fixedErrorDiff' => NULL,
     )),
   ),
+  '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php' => 
+  array (
+    0 => 
+    \PHPStan\Analyser\Error::__set_state(array(
+       'message' => 'Called \'env\' outside of the config directory which returns null when the config is cached, use \'config\'.',
+       'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php',
+       'line' => 20,
+       'canBeIgnored' => true,
+       'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php',
+       'traitFilePath' => NULL,
+       'tip' => NULL,
+       'nodeLine' => 20,
+       'nodeType' => 'PhpParser\\Node\\Expr\\FuncCall',
+       'identifier' => 'larastan.noEnvCallsOutsideOfConfig',
+       'metadata' => 
+      array (
+      ),
+       'fixedErrorDiff' => NULL,
+    )),
+    1 => 
+    \PHPStan\Analyser\Error::__set_state(array(
+       'message' => 'Called \'env\' outside of the config directory which returns null when the config is cached, use \'config\'.',
+       'file' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php',
+       'line' => 30,
+       'canBeIgnored' => true,
+       'filePath' => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php',
+       'traitFilePath' => NULL,
+       'tip' => NULL,
+       'nodeLine' => 30,
+       'nodeType' => 'PhpParser\\Node\\Expr\\FuncCall',
+       'identifier' => 'larastan.noEnvCallsOutsideOfConfig',
+       'metadata' => 
+      array (
+      ),
+       'fixedErrorDiff' => NULL,
+    )),
+  ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/UserData/FilesData.php' => 
   array (
     0 => 
@@ -3628,6 +3582,17 @@ return [
         3 => 
         array (
         ),
+      ),
+    ),
+  ),
+  '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php' => 
+  array (
+    'PHPStan\\Rules\\DeadCode\\PossiblyPureFuncCallCollector' => 
+    array (
+      0 => 
+      array (
+        0 => 'config',
+        1 => 120,
       ),
     ),
   ),
@@ -4387,7 +4352,7 @@ return [
       13 => 
       array (
         0 => 'settings.backup_passphrase_required',
-        1 => 413,
+        1 => 416,
       ),
     ),
     'Larastan\\Larastan\\Collectors\\UsedViewFunctionCollector' => 
@@ -5514,6 +5479,16 @@ return [
         array (
         ),
       ),
+      1 => 
+      array (
+        0 => 'App\\Models\\BackupJob',
+        1 => 'effectivePassphrase',
+        2 => 'App\\Models\\BackupJob',
+        3 => 
+        array (
+          0 => 'f' . "\0" . 'config',
+        ),
+      ),
     ),
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Models/BackupRun.php' => 
@@ -6265,7 +6240,7 @@ return [
       0 => 
       array (
         0 => 'usort',
-        1 => 277,
+        1 => 278,
       ),
     ),
     'PHPStan\\Rules\\DeadCode\\PossiblyPureStaticCallCollector' => 
@@ -6274,7 +6249,7 @@ return [
       array (
         0 => 'Illuminate\\Support\\Facades\\File',
         1 => 'deleteDirectory',
-        2 => 219,
+        2 => 220,
       ),
     ),
   ),
@@ -7457,6 +7432,24 @@ return [
       ),
     ),
   ),
+  '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php' => 
+  array (
+    'PHPStan\\Rules\\DeadCode\\MethodWithoutImpurePointsCollector' => 
+    array (
+      0 => 
+      array (
+        0 => 'App\\Support\\Secret',
+        1 => 'get',
+        2 => 'App\\Support\\Secret',
+        3 => 
+        array (
+          0 => 'f' . "\0" . 'env',
+          1 => 'f' . "\0" . 'file_get_contents',
+          2 => 'f' . "\0" . 'preg_replace',
+        ),
+      ),
+    ),
+  ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/ThemeBootstrap.php' => 
   array (
     'PHPStan\\Rules\\DeadCode\\MethodWithoutImpurePointsCollector' => 
@@ -7571,7 +7564,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/AlertErrors.php' => 
   array (
-    'fileHash' => 'af286809ce77850f1b23a0373a9c8138c66c0e732b25b5d79732fc0d60924eff',
+    'fileHash' => '64b924a544564bc9c398d7fc362efa15d70c7de82b5c7a5887b0f9835f015e69',
     'dependentFiles' => 
     array (
     ),
@@ -7592,7 +7585,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/PruneDeviceTokens.php' => 
   array (
-    'fileHash' => 'a8ff4e882aee5f274288b21ce284d702372e7be2c82bdc913c28f11ade0bf5d1',
+    'fileHash' => 'bba14eda138171ad46f593f0c8c194cb7ffbe21604e83f67757a05629de0388e',
     'dependentFiles' => 
     array (
     ),
@@ -7693,7 +7686,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php' => 
   array (
-    'fileHash' => '916c7155dcb10509f282659945b959a7647548a55d382c971b0dc2341f6c6519',
+    'fileHash' => '5ee7f3ed6ddf4a3c530a547c3c7f184ad681ff39c6d38718ad1a948e8b0d4d11',
     'dependentFiles' => 
     array (
     ),
@@ -7707,7 +7700,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/BlobStoreController.php' => 
   array (
-    'fileHash' => '26c471eb043fb5e951e6148d3c51d0a486d86e5d0ac86520e124868fd3c8b1bb',
+    'fileHash' => '967e24828d430926f7f977b77cdb3fd606d2e29bcf1ecbe25e8c72447172706a',
     'dependentFiles' => 
     array (
       0 => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/ContactBlobController.php',
@@ -7909,7 +7902,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Settings/BackupController.php' => 
   array (
-    'fileHash' => 'e388f7c681ed0a68b6bb9743106dfd8ef2a55c88e0b207e2ae4b4ec200c40632',
+    'fileHash' => 'fdabdecb80faec10be716d3857f1eecd8ba5e09ffa7ab121e880908239c84129',
     'dependentFiles' => 
     array (
     ),
@@ -7986,14 +7979,14 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/VaultController.php' => 
   array (
-    'fileHash' => 'e888b0d39d3b2d254da9e38e118fcc9551db6697551fc985bfd0c4b66b847122',
+    'fileHash' => 'b2d0ab0af0e4323fcdf1527516a7112577ed9c2179105c6b8c3ca418bd99ab81',
     'dependentFiles' => 
     array (
     ),
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Middleware/SecurityHeaders.php' => 
   array (
-    'fileHash' => '9660549ccc22e2a0bc45ff78b2722ef934aafbf7684e709b8c9f042a125fb64f',
+    'fileHash' => 'cc790846afb6f65f248d935861812acd27615069f42214e5ee55c57567ddc91f',
     'dependentFiles' => 
     array (
     ),
@@ -8076,7 +8069,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Models/BackupJob.php' => 
   array (
-    'fileHash' => 'b6bdfceb9eceae26b03d26e31ff6ebd47db62fad36af9f2c624cf7f47c62eb6d',
+    'fileHash' => 'e9c3962320c24986bcc32394b8c4eaaaa449b031d91ed0497c6750f10737386b',
     'dependentFiles' => 
     array (
       0 => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/RunDueBackups.php',
@@ -8419,7 +8412,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Backup/BackupManager.php' => 
   array (
-    'fileHash' => 'f11f92eafe4e5849983ebec02b30dfb4278d22bffee1c4087b9dabb8d7a2b5ab',
+    'fileHash' => '66be815b555fe016ef50606e0be55e5107c99ada842993b2c0c4bcd1cd0d0145',
     'dependentFiles' => 
     array (
       0 => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Jobs/RunBackupJob.php',
@@ -8698,7 +8691,7 @@ return [
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/OutboundUrl.php' => 
   array (
-    'fileHash' => '7386c6fd6e4c761eb26d1901c1e4d79fa79b2c92141580dc7530fb39d3772fd4',
+    'fileHash' => 'dd2ce293d0d2dee262fcb3e828cafcc148ef6d0b60669ab149d48eb014616a09',
     'dependentFiles' => 
     array (
       0 => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Settings/BackupController.php',
@@ -8710,6 +8703,13 @@ return [
       6 => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Notifications/ChannelNotifier.php',
       7 => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Paperless/PaperlessClient.php',
       8 => '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Support/NominatimClient.php',
+    ),
+  ),
+  '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php' => 
+  array (
+    'fileHash' => 'cb9d84f1d1076826de06c83599b4e82e0ec19fb4618ba0615bec7c94489c24fd',
+    'dependentFiles' => 
+    array (
     ),
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/ThemeBootstrap.php' => 
@@ -9168,8 +9168,8 @@ return [
   array (
     0 => 'symfony/console',
     1 => 'laravel/framework',
-    2 => 'laravel/sanctum',
-    3 => 'nesbot/carbon',
+    2 => 'nesbot/carbon',
+    3 => 'laravel/sanctum',
   ),
   '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/SweepOrphanFileBlobs.php' => 
   array (
@@ -9448,6 +9448,10 @@ return [
   array (
     0 => 'laravel/framework',
     1 => 'laravel/sanctum',
+  ),
+  '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php' => 
+  array (
+    0 => 'laravel/framework',
   ),
 ),
 	'exportedNodesCallback' => static function (): array { return array (
@@ -12148,7 +12152,6 @@ return [
           'controller' => 'App\\Http\\Controllers\\Controller',
           'user' => 'App\\Models\\User',
           'avatarfetcher' => 'App\\Services\\AvatarFetcher',
-          'queryexception' => 'Illuminate\\Database\\QueryException',
           'redirectresponse' => 'Illuminate\\Http\\RedirectResponse',
           'request' => 'Illuminate\\Http\\Request',
           'auth' => 'Illuminate\\Support\\Facades\\Auth',
@@ -12191,7 +12194,6 @@ return [
               'controller' => 'App\\Http\\Controllers\\Controller',
               'user' => 'App\\Models\\User',
               'avatarfetcher' => 'App\\Services\\AvatarFetcher',
-              'queryexception' => 'Illuminate\\Database\\QueryException',
               'redirectresponse' => 'Illuminate\\Http\\RedirectResponse',
               'request' => 'Illuminate\\Http\\Request',
               'auth' => 'Illuminate\\Support\\Facades\\Auth',
@@ -12212,6 +12214,19 @@ return [
            'returnType' => 'Illuminate\\Http\\RedirectResponse',
            'parameters' => 
           array (
+            0 => 
+            \PHPStan\Dependency\ExportedNode\ExportedParameterNode::__set_state(array(
+               'name' => 'request',
+               'type' => 'Illuminate\\Http\\Request',
+               'byRef' => false,
+               'variadic' => false,
+               'hasDefault' => false,
+               'attributes' => 
+              array (
+              ),
+               'phpDoc' => NULL,
+               'flags' => 0,
+            )),
           ),
            'attributes' => 
           array (
@@ -12231,7 +12246,6 @@ return [
               'controller' => 'App\\Http\\Controllers\\Controller',
               'user' => 'App\\Models\\User',
               'avatarfetcher' => 'App\\Services\\AvatarFetcher',
-              'queryexception' => 'Illuminate\\Database\\QueryException',
               'redirectresponse' => 'Illuminate\\Http\\RedirectResponse',
               'request' => 'Illuminate\\Http\\Request',
               'auth' => 'Illuminate\\Support\\Facades\\Auth',
@@ -12297,7 +12311,6 @@ return [
               'controller' => 'App\\Http\\Controllers\\Controller',
               'user' => 'App\\Models\\User',
               'avatarfetcher' => 'App\\Services\\AvatarFetcher',
-              'queryexception' => 'Illuminate\\Database\\QueryException',
               'redirectresponse' => 'Illuminate\\Http\\RedirectResponse',
               'request' => 'Illuminate\\Http\\Request',
               'auth' => 'Illuminate\\Support\\Facades\\Auth',
@@ -19814,6 +19827,45 @@ return [
         )),
         4 => 
         \PHPStan\Dependency\ExportedNode\ExportedMethodNode::__set_state(array(
+           'name' => 'effectivePassphrase',
+           'phpDoc' => 
+          \PHPStan\Dependency\ExportedNode\ExportedPhpDocNode::__set_state(array(
+             'phpDocString' => '/**
+     * The passphrase actually used to encrypt this job\'s archives: the
+     * environment-provided one (config/backup.php → BACKUP_PASSPHRASE) wins so the
+     * key can live outside the database that gets dumped into the backups; the
+     * per-job DB column is the legacy fallback.
+     */',
+             'namespace' => 'App\\Models',
+             'uses' => 
+            array (
+              'carbon' => 'Carbon\\Carbon',
+              'cronexpression' => 'Cron\\CronExpression',
+              'fillable' => 'Illuminate\\Database\\Eloquent\\Attributes\\Fillable',
+              'model' => 'Illuminate\\Database\\Eloquent\\Model',
+              'belongsto' => 'Illuminate\\Database\\Eloquent\\Relations\\BelongsTo',
+              'hasmany' => 'Illuminate\\Database\\Eloquent\\Relations\\HasMany',
+            ),
+             'constUses' => 
+            array (
+            ),
+          )),
+           'byRef' => false,
+           'public' => true,
+           'private' => false,
+           'abstract' => false,
+           'final' => false,
+           'static' => false,
+           'returnType' => '?string',
+           'parameters' => 
+          array (
+          ),
+           'attributes' => 
+          array (
+          ),
+        )),
+        5 => 
+        \PHPStan\Dependency\ExportedNode\ExportedMethodNode::__set_state(array(
            'name' => 'destination',
            'phpDoc' => 
           \PHPStan\Dependency\ExportedNode\ExportedPhpDocNode::__set_state(array(
@@ -19846,7 +19898,7 @@ return [
           array (
           ),
         )),
-        5 => 
+        6 => 
         \PHPStan\Dependency\ExportedNode\ExportedMethodNode::__set_state(array(
            'name' => 'runs',
            'phpDoc' => 
@@ -19880,7 +19932,7 @@ return [
           array (
           ),
         )),
-        6 => 
+        7 => 
         \PHPStan\Dependency\ExportedNode\ExportedMethodNode::__set_state(array(
            'name' => 'statistics',
            'phpDoc' => 
@@ -29191,6 +29243,94 @@ return [
                'byRef' => false,
                'variadic' => false,
                'hasDefault' => false,
+               'attributes' => 
+              array (
+              ),
+               'phpDoc' => NULL,
+               'flags' => 0,
+            )),
+          ),
+           'attributes' => 
+          array (
+          ),
+        )),
+      ),
+       'attributes' => 
+      array (
+      ),
+    )),
+  ),
+  '/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/Secret.php' => 
+  array (
+    0 => 
+    \PHPStan\Dependency\ExportedNode\ExportedClassNode::__set_state(array(
+       'name' => 'App\\Support\\Secret',
+       'phpDoc' => 
+      \PHPStan\Dependency\ExportedNode\ExportedPhpDocNode::__set_state(array(
+         'phpDocString' => '/**
+ * Read a secret from a mounted file when a `<KEY>_FILE` variable points at one
+ * (the Docker-secret convention), else fall back to the plain `<KEY>` env var.
+ *
+ * Using this in config keeps a secret out of the container\'s environment
+ * entirely — it is never in `docker inspect` or `/proc/<pid>/environ`, only on
+ * the read-only secret mount that Laravel reads at config time. Backward
+ * compatible: with no `<KEY>_FILE` set it behaves exactly like env().
+ */',
+         'namespace' => 'App\\Support',
+         'uses' => 
+        array (
+        ),
+         'constUses' => 
+        array (
+        ),
+      )),
+       'abstract' => false,
+       'final' => true,
+       'extends' => NULL,
+       'implements' => 
+      array (
+      ),
+       'usedTraits' => 
+      array (
+      ),
+       'traitUseAdaptations' => 
+      array (
+      ),
+       'statements' => 
+      array (
+        0 => 
+        \PHPStan\Dependency\ExportedNode\ExportedMethodNode::__set_state(array(
+           'name' => 'get',
+           'phpDoc' => NULL,
+           'byRef' => false,
+           'public' => true,
+           'private' => false,
+           'abstract' => false,
+           'final' => false,
+           'static' => true,
+           'returnType' => 'mixed',
+           'parameters' => 
+          array (
+            0 => 
+            \PHPStan\Dependency\ExportedNode\ExportedParameterNode::__set_state(array(
+               'name' => 'key',
+               'type' => 'string',
+               'byRef' => false,
+               'variadic' => false,
+               'hasDefault' => false,
+               'attributes' => 
+              array (
+              ),
+               'phpDoc' => NULL,
+               'flags' => 0,
+            )),
+            1 => 
+            \PHPStan\Dependency\ExportedNode\ExportedParameterNode::__set_state(array(
+               'name' => 'default',
+               'type' => '?mixed',
+               'byRef' => false,
+               'variadic' => false,
+               'hasDefault' => true,
                'attributes' => 
               array (
               ),

@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/Auth/PocketIdController.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Http\Controllers\Auth\PocketIdController
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-916c7155dcb10509f282659945b959a7647548a55d382c971b0dc2341f6c6519',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-5ee7f3ed6ddf4a3c530a547c3c7f184ad681ff39c6d38718ad1a948e8b0d4d11',
    'data' => 
   array (
     'locatedSource' => 
@@ -32,8 +32,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     'attributes' => 
     array (
     ),
-    'startLine' => 25,
-    'endLine' => 205,
+    'startLine' => 24,
+    'endLine' => 216,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => 'App\\Http\\Controllers\\Controller',
@@ -56,6 +56,32 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'name' => 'redirect',
         'parameters' => 
         array (
+          'request' => 
+          array (
+            'name' => 'request',
+            'default' => NULL,
+            'type' => 
+            array (
+              'class' => 'PHPStan\\BetterReflection\\Reflection\\ReflectionNamedType',
+              'data' => 
+              array (
+                'name' => 'Illuminate\\Http\\Request',
+                'isIdentifier' => false,
+              ),
+            ),
+            'isVariadic' => false,
+            'byRef' => false,
+            'isPromoted' => false,
+            'attributes' => 
+            array (
+            ),
+            'startLine' => 32,
+            'endLine' => 32,
+            'startColumn' => 30,
+            'endColumn' => 45,
+            'parameterIndex' => 0,
+            'isOptional' => false,
+          ),
         ),
         'returnsReference' => false,
         'returnType' => 
@@ -76,8 +102,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * The flow is stateful (an anti-CSRF "state" value is stored in the
  * session) and PKCE-protected, as configured in config/services.php.
  */',
-        'startLine' => 33,
-        'endLine' => 38,
+        'startLine' => 32,
+        'endLine' => 42,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -115,8 +141,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 43,
-            'endLine' => 43,
+            'startLine' => 47,
+            'endLine' => 47,
             'startColumn' => 30,
             'endColumn' => 45,
             'parameterIndex' => 0,
@@ -141,8 +167,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 43,
-            'endLine' => 43,
+            'startLine' => 47,
+            'endLine' => 47,
             'startColumn' => 48,
             'endColumn' => 69,
             'parameterIndex' => 1,
@@ -165,8 +191,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'docComment' => '/**
  * Handle the callback from Pocket-ID and sign the user in.
  */',
-        'startLine' => 43,
-        'endLine' => 123,
+        'startLine' => 47,
+        'endLine' => 134,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -204,8 +230,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 132,
-            'endLine' => 132,
+            'startLine' => 143,
+            'endLine' => 143,
             'startColumn' => 35,
             'endColumn' => 45,
             'parameterIndex' => 0,
@@ -249,8 +275,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 132,
-            'endLine' => 132,
+            'startLine' => 143,
+            'endLine' => 143,
             'startColumn' => 48,
             'endColumn' => 61,
             'parameterIndex' => 1,
@@ -277,8 +303,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * e-mails) wins when configured; otherwise the first identity to sign in
  * claims the sole account and every later subject is rejected.
  */',
-        'startLine' => 132,
-        'endLine' => 157,
+        'startLine' => 143,
+        'endLine' => 168,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -316,8 +342,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 166,
-            'endLine' => 166,
+            'startLine' => 177,
+            'endLine' => 177,
             'startColumn' => 41,
             'endColumn' => 51,
             'parameterIndex' => 0,
@@ -344,8 +370,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * call is a no-op. The row deliberately survives user deletion so ownership
  * cannot be silently reassigned after the owner erases their account.
  */',
-        'startLine' => 166,
-        'endLine' => 177,
+        'startLine' => 177,
+        'endLine' => 188,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -383,8 +409,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 182,
-            'endLine' => 182,
+            'startLine' => 193,
+            'endLine' => 193,
             'startColumn' => 28,
             'endColumn' => 43,
             'parameterIndex' => 0,
@@ -407,8 +433,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'docComment' => '/**
  * Log the user out and invalidate the local session.
  */',
-        'startLine' => 182,
-        'endLine' => 204,
+        'startLine' => 193,
+        'endLine' => 215,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

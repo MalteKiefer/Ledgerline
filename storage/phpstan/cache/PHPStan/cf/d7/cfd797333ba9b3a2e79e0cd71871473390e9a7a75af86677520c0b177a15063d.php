@@ -12,6 +12,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
          'namespace' => 'App\\Http\\Controllers',
          'uses' => 
         array (
+          'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
           'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
           'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -39,6 +40,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
          'namespace' => 'App\\Http\\Controllers',
          'uses' => 
         array (
+          'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
           'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
           'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -55,6 +57,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
            'namespace' => 'App\\Http\\Controllers',
            'uses' => 
           array (
+            'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
             'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
             'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -92,6 +95,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
          'namespace' => 'App\\Http\\Controllers',
          'uses' => 
         array (
+          'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
           'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
           'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -108,6 +112,62 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
            'namespace' => 'App\\Http\\Controllers',
            'uses' => 
           array (
+            'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
+            'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
+            'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
+            'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'jsonresponse' => 'Illuminate\\Http\\JsonResponse',
+            'request' => 'Illuminate\\Http\\Request',
+          ),
+           'className' => 'App\\Http\\Controllers\\GalleryProcessController',
+           'functionName' => NULL,
+           'templatePhpDocNodes' => 
+          array (
+          ),
+           'parent' => NULL,
+           'typeAliasesMap' => 
+          array (
+          ),
+           'bypassTypeAliases' => false,
+           'constUses' => 
+          array (
+          ),
+           'typeAliasClassName' => NULL,
+           'traitData' => NULL,
+        )),
+         'typeAliasesMap' => 
+        array (
+        ),
+         'bypassTypeAliases' => false,
+         'constUses' => 
+        array (
+        ),
+         'typeAliasClassName' => NULL,
+         'traitData' => NULL,
+      )),
+      'b70aa751a195f724fed15670aa1fb0a7' => 
+      \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+         'namespace' => 'App\\Http\\Controllers',
+         'uses' => 
+        array (
+          'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
+          'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
+          'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
+          'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'jsonresponse' => 'Illuminate\\Http\\JsonResponse',
+          'request' => 'Illuminate\\Http\\Request',
+        ),
+         'className' => 'App\\Http\\Controllers\\GalleryProcessController',
+         'functionName' => 'guardPixelBudget',
+         'templatePhpDocNodes' => 
+        array (
+        ),
+         'parent' => 
+        \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+           'namespace' => 'App\\Http\\Controllers',
+           'uses' => 
+          array (
+            'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
             'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
             'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -145,6 +205,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
          'namespace' => 'App\\Http\\Controllers',
          'uses' => 
         array (
+          'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
           'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
           'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -161,6 +222,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
            'namespace' => 'App\\Http\\Controllers',
            'uses' => 
           array (
+            'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
             'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
             'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -198,6 +260,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
          'namespace' => 'App\\Http\\Controllers',
          'uses' => 
         array (
+          'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
           'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
           'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -214,6 +277,62 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
            'namespace' => 'App\\Http\\Controllers',
            'uses' => 
           array (
+            'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
+            'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
+            'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
+            'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'jsonresponse' => 'Illuminate\\Http\\JsonResponse',
+            'request' => 'Illuminate\\Http\\Request',
+          ),
+           'className' => 'App\\Http\\Controllers\\GalleryProcessController',
+           'functionName' => NULL,
+           'templatePhpDocNodes' => 
+          array (
+          ),
+           'parent' => NULL,
+           'typeAliasesMap' => 
+          array (
+          ),
+           'bypassTypeAliases' => false,
+           'constUses' => 
+          array (
+          ),
+           'typeAliasClassName' => NULL,
+           'traitData' => NULL,
+        )),
+         'typeAliasesMap' => 
+        array (
+        ),
+         'bypassTypeAliases' => false,
+         'constUses' => 
+        array (
+        ),
+         'typeAliasClassName' => NULL,
+         'traitData' => NULL,
+      )),
+      'd5794b6a9f4698eda558ddd746966419' => 
+      \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+         'namespace' => 'App\\Http\\Controllers',
+         'uses' => 
+        array (
+          'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
+          'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
+          'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
+          'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'jsonresponse' => 'Illuminate\\Http\\JsonResponse',
+          'request' => 'Illuminate\\Http\\Request',
+        ),
+         'className' => 'App\\Http\\Controllers\\GalleryProcessController',
+         'functionName' => 'reverse',
+         'templatePhpDocNodes' => 
+        array (
+        ),
+         'parent' => 
+        \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+           'namespace' => 'App\\Http\\Controllers',
+           'uses' => 
+          array (
+            'reversegeocoder' => 'App\\Services\\Files\\ReverseGeocoder',
             'galleryprocessor' => 'App\\Services\\Gallery\\GalleryProcessor',
             'machinelearning' => 'App\\Services\\Gallery\\MachineLearning',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
@@ -249,7 +368,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     ),
     1 => 
     array (
-      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/GalleryProcessController.php' => '9c12c53cfcbcf477bcab3bb6d5268628929979700fbad782227cf5e10c164da4',
+      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/GalleryProcessController.php' => '585b6d45d76dbf45054a84da1ea0936390b974ec43daf3103c0dc1aeadbacefb',
     ),
   ),
 ));
