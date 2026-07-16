@@ -398,18 +398,6 @@
                 <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; margin-top:20px; padding-top:10px; border-top:1px solid #ededed; text-align:center; font-size:8.5px; color:#8a8a8a; letter-spacing:.02em;" x-text="[company.payment_terms_text, company.payment_methods, company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')"></div>
               </div>
             </template>
-                  </tbody>
-                </table>
-                <div style="display:flex; justify-content:flex-end; margin-top:12px;">
-                  <table style="min-width:220px; border-collapse:collapse;">
-                    <tr><td style="padding:2px 6px; color:#666;" x-text="pl('subtotal')"></td><td style="padding:2px 0 2px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></td></tr>
-                    <template x-for="rate in vatRatesOf(_printing)" :key="rate"><tr><td style="padding:2px 6px; color:#666;" x-text="pl('vat_at').replace(':rate', rate)"></td><td style="padding:2px 0 2px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></td></tr></template>
-                    <tr style="border-top:1px solid #222; font-weight:600;"><td style="padding:4px 6px;" x-text="pl('gross')"></td><td style="padding:4px 0 4px 6px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></td></tr>
-                  </table>
-                </div>
-                <div style="margin-top:22px; color:#666; font-size:9px; white-space:pre-line;" x-text="[_printing.note, _printing.footer || company.footer_text, [company.payment_terms_text, company.payment_methods, company.bank_name, company.iban ? 'IBAN ' + company.iban : '', company.bic ? 'BIC ' + company.bic : ''].filter(Boolean).join(' · ')].filter(Boolean).join('\n')"></div>
-              </div>
-            </template>
           </div>
         </template>
       </div>
