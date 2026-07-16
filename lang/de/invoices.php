@@ -44,6 +44,10 @@ return [
     'line_vat' => 'USt %',
     'add_line' => 'Position hinzufügen',
     'remove' => 'Entfernen',
+    'csv_import' => 'CSV importieren',
+    'csv_hint' => 'Clockify Detailbericht — füllt Startdatum, Beschreibung und Stunden.',
+    'csv_imported' => ':n Positionen importiert.',
+    'csv_bad_format' => 'CSV konnte nicht gelesen werden (Spalten Description und Duration (decimal) nötig).',
 
     'net' => 'Netto',
     'vat' => 'USt',

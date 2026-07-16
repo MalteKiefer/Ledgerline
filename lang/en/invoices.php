@@ -44,6 +44,10 @@ return [
     'line_vat' => 'VAT %',
     'add_line' => 'Add line',
     'remove' => 'Remove',
+    'csv_import' => 'Import CSV',
+    'csv_hint' => 'Clockify detailed report — fills Start Date, Description and hours.',
+    'csv_imported' => ':n lines imported.',
+    'csv_bad_format' => 'Could not read the CSV (need Description and Duration (decimal) columns).',
 
     'net' => 'Net',
     'vat' => 'VAT',

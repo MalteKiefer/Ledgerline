@@ -5438,6 +5438,53 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
     addLine() { this.current.lines.push({ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }); this.saveSoon(); },
     removeLine(i) { this.current.lines.splice(i, 1); if (! this.current.lines.length) this.addLine(); else this.saveSoon(); },
 
+    // ---- Clockify CSV import → prefill line items ----
+    // RFC 4180 parse (quoted fields, "" escapes, CRLF); returns rows of fields.
+    _parseCsv(text) {
+        const rows = []; let row = [], field = '', inQ = false;
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (inQ) {
+                if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+                else field += ch;
+            } else if (ch === '"') { inQ = true; }
+            else if (ch === ',') { row.push(field); field = ''; }
+            else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+            else field += ch;
+        }
+        if (field.length || row.length) { row.push(field); rows.push(row); }
+        return rows.filter((r) => r.some((c) => (c || '').trim() !== ''));
+    },
+    async importClockify(fileList) {
+        const file = fileList && fileList[0];
+        if (! file || ! this.current) return;
+        try {
+            const rows = this._parseCsv(await file.text());
+            if (rows.length < 2) return;
+            const head = rows[0].map((h) => h.trim().toLowerCase());
+            const iDesc = head.indexOf('description');
+            const iDur = head.indexOf('duration (decimal)');
+            const iDate = head.indexOf('start date');
+            if (iDesc < 0 || iDur < 0) { window.llToast?.(labels.csvBadFormat || 'CSV columns not found.'); return; }
+            const unit = this.current.lang === 'en' ? 'h' : 'Std';
+            const lines = [];
+            for (let r = 1; r < rows.length; r++) {
+                const desc = (rows[r][iDesc] || '').trim();
+                const qty = parseFloat((rows[r][iDur] || '').replace(',', '.')) || 0;
+                const date = iDate >= 0 ? (rows[r][iDate] || '').trim() : '';
+                if (! desc && ! qty) continue;
+                lines.push({ desc: date ? (date + '; ' + desc) : desc, qty, unit, unitPrice: 0, vatRate: this._defaultVat() });
+            }
+            if (! lines.length) { window.llToast?.(labels.csvBadFormat || 'No rows found.'); return; }
+            const cur = this.current.lines;
+            const onlyEmpty = cur.length === 1 && ! (cur[0].desc || '').trim() && ! cur[0].unitPrice;
+            this.current.lines = onlyEmpty ? lines : [...cur, ...lines];
+            this.saveSoon();
+            window.llToast?.((labels.csvImported || ':n lines imported.').replace(':n', lines.length));
+        } catch (e) { window.llToast?.(labels.csvBadFormat || 'Could not read CSV.'); }
+    },
+
     trash(inv) { inv.trashed = new Date().toISOString(); this._save(); if (this.current === inv) this.backToList(); },
     restore(inv) { inv.trashed = false; this._save(); },
     async remove(inv) {
@@ -5506,7 +5553,8 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
     pickCustomer(c) {
         // Bill a company to its org name with the person as the contact (Attn);
         // a private contact bills to the person directly.
-        const person = this._custName(c);
+        const parts = contactNameParts(c);
+        const person = [parts.first, parts.last].filter(Boolean).join(' ') || this._custName(c);
         const org = (c.org || '').trim();
         this.current.customer = {
             name: org || person,
