@@ -88,11 +88,14 @@
         <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.invoice_design_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.invoice_design_hint') }}</p>
-            @php $tpl = old('invoice_template', in_array($s->invoice_template, ['elegant', 'schlicht'], true) ? 'elegant' : 'modern'); @endphp
+            @php
+                $stored = $s->invoice_template === 'schlicht' ? 'elegant' : $s->invoice_template;
+                $tpl = old('invoice_template', $stored ?: 'editorial');
+            @endphp
             <div class="mt-4" x-data="{ tpl: @js($tpl) }">
                 <span class="block text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_template') }}</span>
-                <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    @foreach (['modern', 'elegant'] as $opt)
+                <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    @foreach (['editorial', 'modern', 'elegant'] as $opt)
                         <label class="relative flex cursor-pointer flex-col rounded-lg border p-3 text-sm"
                                :class="tpl === @js($opt) ? 'border-gray-900 dark:border-gray-100 ring-1 ring-gray-900 dark:ring-gray-100' : 'border-gray-200 dark:border-gray-700'">
                             <input type="radio" name="invoice_template" value="{{ $opt }}" x-model="tpl" class="sr-only">

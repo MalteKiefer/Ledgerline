@@ -244,6 +244,8 @@ return [
     'invoice_accent_color' => 'Akzentfarbe',
     'invoice_heading_color' => 'Überschriftsfarbe',
     'invoice_template' => 'Vorlage',
+    'invoice_template_editorial' => 'Editorial',
+    'invoice_template_editorial_hint' => 'Edles Ein-Farb-Layout mit Akzentlinie, viel Weißraum.',
     'invoice_template_modern' => 'Modern',
     'invoice_template_modern_hint' => 'Akzent-Banner, abgerundete Karten und Akzent-Summe.',
     'invoice_template_elegant' => 'Elegant',

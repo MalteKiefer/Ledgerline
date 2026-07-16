@@ -244,6 +244,8 @@ return [
     'invoice_accent_color' => 'Accent colour',
     'invoice_heading_color' => 'Heading colour',
     'invoice_template' => 'Template',
+    'invoice_template_editorial' => 'Editorial',
+    'invoice_template_editorial_hint' => 'Refined single-ink layout with an accent rule, generous whitespace.',
     'invoice_template_modern' => 'Modern',
     'invoice_template_modern_hint' => 'Accent header band, rounded cards and an accent total.',
     'invoice_template_elegant' => 'Elegant',
