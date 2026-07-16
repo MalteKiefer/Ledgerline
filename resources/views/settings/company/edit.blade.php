@@ -72,8 +72,36 @@
                     <input type="number" name="invoice_payment_terms_days" value="{{ old('invoice_payment_terms_days', $s->invoice_payment_terms_days ?: 14) }}" min="0" max="365" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     @error('invoice_payment_terms_days')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_payment_terms_text') }}
+                    <textarea name="invoice_payment_terms_text" rows="2" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">{{ old('invoice_payment_terms_text', $s->invoice_payment_terms_text) }}</textarea>
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_payment_methods') }}
+                    <textarea name="invoice_payment_methods" rows="2" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">{{ old('invoice_payment_methods', $s->invoice_payment_methods) }}</textarea>
+                </label>
                 <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_footer_text') }}
                     <textarea name="invoice_footer_text" rows="2" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">{{ old('invoice_footer_text', $s->invoice_footer_text) }}</textarea>
+                </label>
+            </div>
+        </div>
+
+        {{-- Design --}}
+        <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.invoice_design_heading') }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.invoice_design_hint') }}</p>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_accent_color') }}
+                    <span class="mt-1 flex items-center gap-2">
+                        <input type="color" name="invoice_accent_color" value="{{ old('invoice_accent_color', $s->invoice_accent_color ?: '#111827') }}" class="h-9 w-14 rounded border border-gray-300 dark:border-gray-700 bg-white p-0.5">
+                        <input type="text" value="{{ old('invoice_accent_color', $s->invoice_accent_color ?: '#111827') }}" oninput="this.previousElementSibling.value=this.value" class="block w-28 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </span>
+                    @error('invoice_accent_color')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_heading_color') }}
+                    <span class="mt-1 flex items-center gap-2">
+                        <input type="color" name="invoice_heading_color" value="{{ old('invoice_heading_color', $s->invoice_heading_color ?: '#6b7280') }}" class="h-9 w-14 rounded border border-gray-300 dark:border-gray-700 bg-white p-0.5">
+                        <input type="text" value="{{ old('invoice_heading_color', $s->invoice_heading_color ?: '#6b7280') }}" oninput="this.previousElementSibling.value=this.value" class="block w-28 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    </span>
+                    @error('invoice_heading_color')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
             </div>
         </div>

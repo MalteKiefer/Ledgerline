@@ -199,6 +199,7 @@
                     <input type="text" x-model="current.department" @input.debounce.600ms="save()" placeholder="{{ __('contacts.department') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="text" x-model="current.title" @input.debounce.600ms="save()" placeholder="{{ __('contacts.job_title') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                     <input type="text" x-model="current.role" @input.debounce.600ms="save()" placeholder="{{ __('contacts.role') }}" class="rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="current.vatId" @input.debounce.600ms="save()" placeholder="{{ __('contacts.vat_id') }}" class="col-span-2 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                 </div>
 
                 {{-- Emails --}}

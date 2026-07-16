@@ -68,11 +68,24 @@ return [
     'picker_search' => 'Search contacts',
     'picker_empty' => 'No contacts found.',
 
+    'language' => 'Language',
+    'currency' => 'Currency',
+    'attn' => 'Attn (contact person)',
+
     // Print / PDF sheet
+    'print_title' => 'Invoice',
     'bill_to' => 'Bill to',
     'invoice_number' => 'Invoice no.',
     'invoice_date' => 'Date',
     'due' => 'Due',
+    'amount' => 'Amount',
     'subtotal' => 'Subtotal',
+    'tax_heading' => 'Tax',
+    'taxable' => 'Taxable',
+    'tax_amount' => 'Tax amount',
+    'notes_heading' => 'Notes',
+    'payment_terms_heading' => 'Payment terms',
+    'payment_methods_heading' => 'Payment methods',
     'bank_details' => 'Bank details',
+    'vat_id_label' => 'VAT ID',
 ];

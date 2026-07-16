@@ -237,4 +237,10 @@ return [
     'invoice_footer_text' => 'Rechnungs-Fußzeile',
     'company_logo_heading' => 'Logo',
     'company_logo_remove' => 'Aktuelles Logo entfernen',
+    'invoice_payment_terms_text' => 'Zahlungsbedingungen-Text',
+    'invoice_payment_methods' => 'Zahlungsmethoden',
+    'invoice_design_heading' => 'Rechnungs-Design',
+    'invoice_design_hint' => 'Akzent- und Überschriftsfarbe für die gerenderte Rechnung.',
+    'invoice_accent_color' => 'Akzentfarbe',
+    'invoice_heading_color' => 'Überschriftsfarbe',
 ];

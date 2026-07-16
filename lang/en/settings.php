@@ -237,4 +237,10 @@ return [
     'invoice_footer_text' => 'Invoice footer',
     'company_logo_heading' => 'Logo',
     'company_logo_remove' => 'Remove current logo',
+    'invoice_payment_terms_text' => 'Payment terms text',
+    'invoice_payment_methods' => 'Payment methods',
+    'invoice_design_heading' => 'Invoice design',
+    'invoice_design_hint' => 'Accent and heading colours applied to the rendered invoice.',
+    'invoice_accent_color' => 'Accent colour',
+    'invoice_heading_color' => 'Heading colour',
 ];

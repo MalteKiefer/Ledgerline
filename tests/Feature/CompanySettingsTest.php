@@ -29,6 +29,8 @@ class CompanySettingsTest extends TestCase
             'invoice_next_number' => 42,
             'invoice_default_vat_rate' => 19,
             'invoice_payment_terms_days' => 14,
+            'invoice_accent_color' => '#2563eb',
+            'invoice_payment_methods' => 'Bank transfer',
         ])->assertRedirect(route('settings.company.edit'));
 
         $s = AppSettings::current();
@@ -36,7 +38,16 @@ class CompanySettingsTest extends TestCase
         $this->assertSame('YYYY-NNNN', $s->invoice_number_format);
         $this->assertSame(42, $s->invoice_next_number);
         $this->assertSame(14, $s->invoice_payment_terms_days);
+        $this->assertSame('#2563eb', $s->invoice_accent_color);
+        $this->assertSame('Bank transfer', $s->invoice_payment_methods);
         $this->assertSame('19.00', (string) $s->invoice_default_vat_rate);
+    }
+
+    public function test_it_rejects_a_bad_accent_colour(): void
+    {
+        $this->signIn();
+        $this->put(route('settings.company.update'), ['invoice_accent_color' => 'blue'])
+            ->assertSessionHasErrors('invoice_accent_color');
     }
 
     public function test_it_validates_the_ranges(): void

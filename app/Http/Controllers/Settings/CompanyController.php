@@ -48,6 +48,10 @@ class CompanyController extends Controller
             'invoice_default_vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'invoice_payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'invoice_footer_text' => ['nullable', 'string', 'max:2000'],
+            'invoice_accent_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'invoice_heading_color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'invoice_payment_methods' => ['nullable', 'string', 'max:500'],
+            'invoice_payment_terms_text' => ['nullable', 'string', 'max:1000'],
             // Raster only — SVG served inline on the app origin is a stored-XSS
             // vector (embedded <script>). Logos rarely need vector.
             'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
