@@ -13,6 +13,7 @@
         ];
         // Administration — workspace-wide, admin group only.
         $admin = [
+            ['url' => route('settings.company.edit'), 'title' => __('settings.company_section'), 'desc' => __('settings.company_desc')],
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc')],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc')],
             ['url' => route('settings.security.edit'), 'title' => __('settings.security_section'), 'desc' => __('settings.security_desc')],

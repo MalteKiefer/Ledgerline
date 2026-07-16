@@ -1,0 +1,98 @@
+<x-layouts.app :title="__('settings.company_section')">
+    <x-page-heading :title="__('settings.company_section')" :subtitle="__('settings.company_desc')" />
+
+    <form method="POST" action="{{ route('settings.company.update') }}" enctype="multipart/form-data" class="mt-6 space-y-6">
+        @csrf
+        @method('PUT')
+
+        {{-- Identity --}}
+        <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_identity_heading') }}</h2>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.company_name') }}
+                    <input type="text" name="company_name" value="{{ old('company_name', $s->company_name) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    @error('company_name')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.company_address') }}
+                    <textarea name="company_address" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">{{ old('company_address', $s->company_address) }}</textarea>
+                    @error('company_address')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_email') }}
+                    <input type="email" name="company_email" value="{{ old('company_email', $s->company_email) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    @error('company_email')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_phone') }}
+                    <input type="text" name="company_phone" value="{{ old('company_phone', $s->company_phone) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_tax_id') }}
+                    <input type="text" name="company_tax_id" value="{{ old('company_tax_id', $s->company_tax_id) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_vat_id') }}
+                    <input type="text" name="company_vat_id" value="{{ old('company_vat_id', $s->company_vat_id) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </label>
+            </div>
+        </div>
+
+        {{-- Bank --}}
+        <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_bank_heading') }}</h2>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_bank_name') }}
+                    <input type="text" name="company_bank_name" value="{{ old('company_bank_name', $s->company_bank_name) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_iban') }}
+                    <input type="text" name="company_iban" value="{{ old('company_iban', $s->company_iban) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.company_bic') }}
+                    <input type="text" name="company_bic" value="{{ old('company_bic', $s->company_bic) }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </label>
+            </div>
+        </div>
+
+        {{-- Invoice defaults --}}
+        <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_invoice_heading') }}</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_invoice_hint') }}</p>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_prefix') }}
+                    <input type="text" name="invoice_number_prefix" value="{{ old('invoice_number_prefix', $s->invoice_number_prefix) }}" placeholder="{{ date('Y') }}-" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_padding') }}
+                    <input type="number" name="invoice_number_padding" value="{{ old('invoice_number_padding', $s->invoice_number_padding ?: 4) }}" min="1" max="10" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    @error('invoice_number_padding')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_default_vat_rate') }}
+                    <input type="number" step="0.01" name="invoice_default_vat_rate" value="{{ old('invoice_default_vat_rate', $s->invoice_default_vat_rate ?: '19.00') }}" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    @error('invoice_default_vat_rate')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_payment_terms_days') }}
+                    <input type="number" name="invoice_payment_terms_days" value="{{ old('invoice_payment_terms_days', $s->invoice_payment_terms_days ?: 14) }}" min="0" max="365" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    @error('invoice_payment_terms_days')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                </label>
+                <label class="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">{{ __('settings.invoice_footer_text') }}
+                    <textarea name="invoice_footer_text" rows="2" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">{{ old('invoice_footer_text', $s->invoice_footer_text) }}</textarea>
+                </label>
+            </div>
+        </div>
+
+        {{-- Logo --}}
+        <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_logo_heading') }}</h2>
+            <div class="mt-4 flex items-center gap-4">
+                @if ($s->company_logo_path)
+                    <img src="{{ route('settings.company.logo') }}" alt="logo" class="h-16 w-auto rounded border border-gray-200 dark:border-gray-700 bg-white p-1">
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" name="remove_logo" value="1" class="rounded border-gray-300 dark:border-gray-700 text-gray-900 focus:ring-gray-500">
+                        {{ __('settings.company_logo_remove') }}
+                    </label>
+                @endif
+            </div>
+            <input type="file" name="logo" accept="image/*" class="mt-3 block w-full text-sm text-gray-600 dark:text-gray-400 file:mr-3 file:rounded-md file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-gray-700">
+            @error('logo')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+        </div>
+
+        <div class="flex justify-end">
+            <x-button variant="primary" type="submit">{{ __('common.save') }}</x-button>
+        </div>
+    </form>
+</x-layouts.app>

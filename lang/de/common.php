@@ -8,6 +8,7 @@ return [
     'sections' => 'Bereiche',
     'back' => 'Zurück',
     'save' => 'Speichern',
+    'edit' => 'Bearbeiten',
     'close' => 'Schließen',
     'actions' => 'Aktionen',
     'confirm' => 'Bestätigen',

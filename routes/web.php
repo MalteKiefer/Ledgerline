@@ -20,6 +20,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
+use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
@@ -102,6 +103,10 @@ Route::middleware('auth')->group(function (): void {
         // Vault lock policy (trusted-device days + public-computer idle timeout).
         Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
         Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
+
+        // Company profile printed on invoices (name, address, tax ids, bank, logo).
+        Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
+        Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
 
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
@@ -197,6 +202,10 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/todos', 'todos.index')->name('todos.index');
     // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
+    // Invoices: zero-knowledge, records in the opaque /store manifest. The company
+    // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
+    Route::view('/invoices', 'invoices.index')->name('invoices.index');
+    Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
     // Contacts: zero-knowledge, records in the opaque /store manifest; only the
     // optional avatar images are opaque content blobs (contacts/{blob}).
     Route::view('/contacts', 'contacts.index')->name('contacts.index');

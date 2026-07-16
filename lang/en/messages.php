@@ -7,6 +7,7 @@ return [
         'notes' => 'Notes',
         'bookmarks' => 'Bookmarks',
         'contacts' => 'Contacts',
+        'invoices' => 'Invoices',
         'files' => 'Files',
         'gallery' => 'Gallery',
         'todos' => 'To-dos',
