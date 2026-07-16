@@ -436,7 +436,7 @@
                   <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
                   <div x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])" class="flex h-full w-full items-center justify-center"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></div>
                 </div>
-                <p class="mt-2 max-w-full truncate text-sm font-medium text-gray-800 dark:text-gray-200" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></p>
+                <p class="mt-2 max-w-full truncate text-sm font-medium text-gray-800 dark:text-gray-200" x-text="personLabel(pp) || (@js(__('gallery.person_unnamed')))"></p>
                 <p class="text-xs tabular-nums text-gray-400" x-text="@js(__('gallery.photos_count', ['count' => '{n}'])).replace('{n}', personCount(pp))"></p>
               </button>
             </template>
@@ -449,7 +449,7 @@
             <div>
               <div class="mb-4 flex items-center gap-3">
                 <button type="button" @click="view = 'people'" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('gallery.back') }}</button>
-                <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="currentPerson?.name || (@js(__('gallery.person_unnamed')))"></h2>
+                <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="personLabel(currentPerson) || (@js(__('gallery.person_unnamed')))"></h2>
                 <span class="text-xs tabular-nums text-gray-400" x-text="personCount(currentPerson)"></span>
                 <div class="ml-auto flex items-center gap-1.5">
                   <button type="button" @click="renamePerson(currentPerson)" title="{{ __('gallery.rename') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
@@ -464,7 +464,7 @@
                     <img x-show="currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef]" :src="currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef]" class="h-full w-full object-cover">
                     <x-icon x-show="! (currentPerson?.contactAvatarRef && _contactAvatars[currentPerson.contactAvatarRef])" name="user" class="h-3.5 w-3.5 text-gray-400" />
                 </span>
-                <a :href="'/contacts?c=' + currentPerson.contactId" class="font-medium text-gray-800 dark:text-gray-200 hover:underline" x-text="_normName(currentPerson.contactName) || '{{ __('gallery.linked_contact') }}'"></a>
+                <a :href="'/contacts?c=' + currentPerson.contactId" class="font-medium text-gray-800 dark:text-gray-200 hover:underline" x-text="personLabel(currentPerson) || '{{ __('gallery.linked_contact') }}'"></a>
                 <button type="button" @click="unlinkContact()" title="{{ __('gallery.unlink') }}" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
               </div>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
@@ -798,7 +798,7 @@
                 <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover">
                 <span x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])"><x-icon name="user" class="h-7 w-7 text-gray-300 dark:text-gray-600" /></span>
               </span>
-              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></span>
+              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="personLabel(pp) || (@js(__('gallery.person_unnamed')))"></span>
             </button>
           </template>
         </div>
@@ -823,7 +823,7 @@
                 <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover">
                 <span x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])" class="flex h-full w-full items-center justify-center"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></span>
               </span>
-              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></span>
+              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="personLabel(pp) || (@js(__('gallery.person_unnamed')))"></span>
               <span class="text-[11px] tabular-nums text-gray-400" x-text="personCount(pp)"></span>
             </button>
           </template>
@@ -849,7 +849,7 @@
                 <img x-show="personCover(pp) && faceThumbs[personCover(pp).cropRef]" :src="personCover(pp) && faceThumbs[personCover(pp).cropRef]" class="h-full w-full object-cover">
                 <span x-show="! (personCover(pp) && faceThumbs[personCover(pp).cropRef])" class="flex h-full w-full items-center justify-center"><x-icon name="user" class="h-8 w-8 text-gray-300 dark:text-gray-600" /></span>
               </span>
-              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="pp.name || (@js(__('gallery.person_unnamed')))"></span>
+              <span class="mt-1 max-w-full truncate text-xs text-gray-700 dark:text-gray-300" x-text="personLabel(pp) || (@js(__('gallery.person_unnamed')))"></span>
               <span class="text-[11px] tabular-nums text-gray-400" x-text="personCount(pp)"></span>
             </button>
           </template>
