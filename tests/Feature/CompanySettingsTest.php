@@ -25,16 +25,16 @@ class CompanySettingsTest extends TestCase
             'company_address' => "Main St 1\n12345 City",
             'company_email' => 'billing@acme.test',
             'company_vat_id' => 'DE123456789',
-            'invoice_number_prefix' => '2026-',
-            'invoice_number_padding' => 4,
+            'invoice_number_format' => 'YYYY-NNNN',
+            'invoice_next_number' => 42,
             'invoice_default_vat_rate' => 19,
             'invoice_payment_terms_days' => 14,
         ])->assertRedirect(route('settings.company.edit'));
 
         $s = AppSettings::current();
         $this->assertSame('Acme GmbH', $s->company_name);
-        $this->assertSame('2026-', $s->invoice_number_prefix);
-        $this->assertSame(4, $s->invoice_number_padding);
+        $this->assertSame('YYYY-NNNN', $s->invoice_number_format);
+        $this->assertSame(42, $s->invoice_next_number);
         $this->assertSame(14, $s->invoice_payment_terms_days);
         $this->assertSame('19.00', (string) $s->invoice_default_vat_rate);
     }
@@ -45,12 +45,12 @@ class CompanySettingsTest extends TestCase
 
         $this->put(route('settings.company.update'), [
             'company_email' => 'not-an-email',
-            'invoice_number_padding' => 0,
+            'invoice_next_number' => 0,
             'invoice_default_vat_rate' => 500,
             'invoice_payment_terms_days' => 9999,
         ])->assertSessionHasErrors([
             'company_email',
-            'invoice_number_padding',
+            'invoice_next_number',
             'invoice_default_vat_rate',
             'invoice_payment_terms_days',
         ]);

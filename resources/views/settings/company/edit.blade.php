@@ -54,12 +54,15 @@
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.company_invoice_heading') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.company_invoice_hint') }}</p>
             <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_prefix') }}
-                    <input type="text" name="invoice_number_prefix" value="{{ old('invoice_number_prefix', $s->invoice_number_prefix) }}" placeholder="{{ date('Y') }}-" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_format') }}
+                    <input type="text" name="invoice_number_format" value="{{ old('invoice_number_format', $s->invoice_number_format ?: 'YYYY-NNNN') }}" placeholder="YYYY-NNNN" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_number_format_hint') }}</span>
+                    @error('invoice_number_format')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
-                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_number_padding') }}
-                    <input type="number" name="invoice_number_padding" value="{{ old('invoice_number_padding', $s->invoice_number_padding ?: 4) }}" min="1" max="10" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                    @error('invoice_number_padding')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
+                <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_next_number') }}
+                    <input type="number" name="invoice_next_number" value="{{ old('invoice_next_number', $s->invoice_next_number) }}" min="1" placeholder="1" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                    <span class="mt-1 block text-xs text-gray-400 dark:text-gray-500">{{ __('settings.invoice_next_number_hint') }}</span>
+                    @error('invoice_next_number')<span class="mt-1 block text-xs text-red-600">{{ $message }}</span>@enderror
                 </label>
                 <label class="text-sm text-gray-700 dark:text-gray-300">{{ __('settings.invoice_default_vat_rate') }}
                     <input type="number" step="0.01" name="invoice_default_vat_rate" value="{{ old('invoice_default_vat_rate', $s->invoice_default_vat_rate ?: '19.00') }}" min="0" max="100" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">

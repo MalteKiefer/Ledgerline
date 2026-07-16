@@ -5498,22 +5498,37 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
     clearCustomer() { this.current.customer = { name: '', address: '', email: '', vatId: '', contactId: null }; this.saveSoon(); },
 
     // ---- Finalize / status ----
-    _nextNumber() {
-        const seq = (window.LLStore.data.invoiceSeq || 0) + 1;
+    // Render a number template. YYYY/YY/MM/DD from the issue date, and a run of
+    // N's becomes the zero-padded sequence (NNNN → 0042). Longer tokens first.
+    _formatNumber(fmt, seq, issueDate) {
+        const d = issueDate ? new Date(issueDate + 'T00:00:00') : new Date();
+        const y = d.getFullYear();
+        return (fmt || 'YYYY-NNNN')
+            .replace(/YYYY/g, String(y))
+            .replace(/YY/g, String(y).slice(-2))
+            .replace(/MM/g, String(d.getMonth() + 1).padStart(2, '0'))
+            .replace(/DD/g, String(d.getDate()).padStart(2, '0'))
+            .replace(/N+/g, (m) => String(seq).padStart(m.length, '0'));
+    },
+    _nextNumber(issueDate) {
+        // The manifest counter is authoritative, but the company "next number"
+        // raises the floor — so an owner who already issued invoices elsewhere
+        // this year can resume at, say, 42.
+        const floor = parseInt(this.company.next_number, 10) || 1;
+        const seq = Math.max((window.LLStore.data.invoiceSeq || 0) + 1, floor);
         window.LLStore.data.invoiceSeq = seq;
-        const pad = parseInt(this.company.number_padding, 10) || 4;
-        return (this.company.number_prefix || '') + String(seq).padStart(pad, '0');
+        return this._formatNumber(this.company.number_format, seq, issueDate);
     },
     finalize(inv) {
         const i = inv || this.current;
         if (! i) return;
-        if (! i.number) i.number = this._nextNumber();
+        if (! i.number) i.number = this._nextNumber(i.issueDate);
         if (i.status === 'draft') i.status = 'sent';
         i.totals = this.computeTotals(i); // freeze
         this.saveSoon();
     },
     markPaid(inv) { inv.status = 'paid'; this.saveSoon(); },
-    markSent(inv) { if (! inv.number) inv.number = this._nextNumber(); inv.status = 'sent'; this.saveSoon(); },
+    markSent(inv) { if (! inv.number) inv.number = this._nextNumber(inv.issueDate); inv.status = 'sent'; this.saveSoon(); },
     statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 
     // ---- Print / PDF (client-side, zero-knowledge) ----
