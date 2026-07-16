@@ -125,7 +125,8 @@
         </div>
 
         {{-- ===================== EDITOR ===================== --}}
-        <div x-show="view === 'edit' && current" x-cloak @input="saveSoon()">
+        <template x-if="view === 'edit' && current">
+        <div x-cloak @input="saveSoon()">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
               <button type="button" @click="backToList()" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-left" class="h-4 w-4" /></button>
@@ -248,6 +249,7 @@
             <button type="button" @click="remove(current)" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950"><x-icon name="trash" class="h-4 w-4" />{{ __('invoices.delete') }}</button>
           </div>
         </div>
+        </template>
 
         {{-- ===================== CUSTOMER PICKER ===================== --}}
         <div x-show="customerPicker" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeCustomerPicker()">
