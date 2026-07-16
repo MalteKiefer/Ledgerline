@@ -8,10 +8,10 @@ use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Models\AuditLog;
+use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -23,7 +23,8 @@ class CompanyController extends Controller
 {
     use RedirectsToSettings;
 
-    /** Logo lives on the private files disk; served only to authenticated users. */
+    /** Logo lives on the shared blob disk (S3), unencrypted like other assets;
+     *  served only to authenticated users. */
     private const LOGO_DIR = 'company';
 
     public function edit(): View
@@ -60,15 +61,17 @@ class CompanyController extends Controller
 
         $settings = AppSettings::current();
 
+        $disk = BlobStore::disk();
+
         if ($request->boolean('remove_logo') || $request->hasFile('logo')) {
             if ($settings->company_logo_path) {
-                Storage::delete($settings->company_logo_path);
+                $disk->delete($settings->company_logo_path);
             }
             $data['company_logo_path'] = null;
         }
 
         if ($request->hasFile('logo')) {
-            $data['company_logo_path'] = $request->file('logo')->store(self::LOGO_DIR);
+            $data['company_logo_path'] = $request->file('logo')->store(self::LOGO_DIR, ['disk' => config('files.disk')]);
         }
 
         unset($data['logo'], $data['remove_logo']);
@@ -83,14 +86,15 @@ class CompanyController extends Controller
     /** Stream the stored company logo (used by the invoice view + print/PDF). */
     public function logo(): StreamedResponse
     {
+        $disk = BlobStore::disk();
         $path = AppSettings::current()->company_logo_path;
-        abort_if(! $path || ! Storage::exists($path), 404);
+        abort_if(! $path || ! $disk->exists($path), 404);
 
         // Defense-in-depth: even though only raster images are accepted, pin the
         // sniffed type off and sandbox the response so a direct open can never
         // execute script, regardless of stored bytes.
-        return Storage::download($path, 'logo', [
-            'Content-Type' => Storage::mimeType($path) ?: 'application/octet-stream',
+        return $disk->download($path, 'logo', [
+            'Content-Type' => $disk->mimeType($path) ?: 'application/octet-stream',
             'Content-Disposition' => 'inline',
             'Cache-Control' => 'private, max-age=300',
             'X-Content-Type-Options' => 'nosniff',

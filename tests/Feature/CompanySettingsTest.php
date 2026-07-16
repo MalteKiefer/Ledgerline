@@ -69,7 +69,8 @@ class CompanySettingsTest extends TestCase
 
     public function test_logo_upload_stores_and_streams_then_removes(): void
     {
-        Storage::fake();
+        $disk = config('files.disk');
+        Storage::fake($disk);
         $this->signIn();
 
         $this->put(route('settings.company.update'), [
@@ -78,13 +79,13 @@ class CompanySettingsTest extends TestCase
 
         $path = AppSettings::current()->company_logo_path;
         $this->assertNotNull($path);
-        Storage::assertExists($path);
+        Storage::disk($disk)->assertExists($path);
 
         $this->get(route('settings.company.logo'))->assertOk();
 
         $this->put(route('settings.company.update'), ['remove_logo' => 1])->assertRedirect();
         $this->assertNull(AppSettings::current()->company_logo_path);
-        Storage::assertMissing($path);
+        Storage::disk($disk)->assertMissing($path);
     }
 
     public function test_svg_logo_is_rejected(): void
