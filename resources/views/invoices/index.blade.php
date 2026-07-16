@@ -18,8 +18,13 @@
             'default_vat_rate' => $s->invoice_default_vat_rate,
             'payment_terms_days' => $s->invoice_payment_terms_days,
             'footer_text' => $s->invoice_footer_text,
+            'payment_terms_text' => $s->invoice_payment_terms_text,
+            'payment_methods' => $s->invoice_payment_methods,
+            'accent' => $s->invoice_accent_color ?: '#111827',
+            'heading' => $s->invoice_heading_color ?: '#6b7280',
             'currency' => 'EUR',
         ]),
+        labelsByLang: @js(['de' => __('invoices', [], 'de'), 'en' => __('invoices', [], 'en')]),
      }, {
         deleteConfirm: @js(__('invoices.delete_confirm')),
         statusDraft: @js(__('invoices.status_draft')),
@@ -141,6 +146,7 @@
               </div>
               <div class="mt-3 space-y-2">
                 <input type="text" x-model="current.customer.name" placeholder="{{ __('invoices.customer_name') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                <input type="text" x-model="current.customer.attn" placeholder="{{ __('invoices.attn') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                 <textarea x-model="current.customer.address" rows="3" placeholder="{{ __('invoices.customer_address') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500"></textarea>
                 <input type="email" x-model="current.customer.email" placeholder="{{ __('invoices.customer_email') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                 <input type="text" x-model="current.customer.vatId" placeholder="{{ __('invoices.customer_vat') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
@@ -157,6 +163,19 @@
                 <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.due_date') }}
                   <input type="date" x-model="current.dueDate" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
                 </label>
+                <div class="grid grid-cols-2 gap-3">
+                  <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.language') }}
+                    <select x-model="current.lang" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                      <option value="de">Deutsch</option>
+                      <option value="en">English</option>
+                    </select>
+                  </label>
+                  <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('invoices.currency') }}
+                    <select x-model="current.currency" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                      <template x-for="c in currencyOptions" :key="c"><option :value="c" x-text="c"></option></template>
+                    </select>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -245,76 +264,114 @@
 
         {{-- ===================== PRINT / PDF SHEET ===================== --}}
         <template x-if="_printing">
-          <div id="invoice-print" class="bg-white text-gray-900" style="padding:32px; font-size:13px; line-height:1.5;">
+          <div id="invoice-print" class="bg-white text-gray-900" style="padding:40px; font-size:12.5px; line-height:1.5; color:#1f2937;">
+            {{-- Header: sender + title/meta --}}
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:24px;">
               <div>
-                <template x-if="company.logo"><img :src="company.logo" alt="" style="max-height:64px; margin-bottom:12px;"></template>
-                <div style="font-weight:600;" x-text="company.name"></div>
-                <div style="white-space:pre-line; color:#444;" x-text="company.address"></div>
+                <template x-if="company.logo"><img :src="company.logo" alt="" style="max-height:60px; margin-bottom:14px;"></template>
+                <div style="font-weight:700; font-size:15px;" x-text="company.name"></div>
+                <div style="white-space:pre-line; color:#4b5563;" x-text="company.address"></div>
+                <div style="color:#4b5563;" x-text="[company.email, company.phone].filter(Boolean).join(' · ')"></div>
+                <div style="color:#4b5563; margin-top:6px;" x-show="company.vat_id" x-text="pl('vat_id_label') + ': ' + company.vat_id"></div>
               </div>
-              <div style="text-align:right;">
-                <div style="font-size:20px; font-weight:700;">{{ __('invoices.title') }}</div>
-                <div class="tabular-nums" x-text="'{{ __('invoices.invoice_number') }} ' + (_printing.number || '—')"></div>
-                <div class="tabular-nums" x-text="'{{ __('invoices.invoice_date') }} ' + _printing.issueDate"></div>
-                <div class="tabular-nums" x-text="'{{ __('invoices.due') }} ' + _printing.dueDate"></div>
+              <div style="text-align:right; min-width:220px;">
+                <div style="font-size:26px; font-weight:800; letter-spacing:.02em;" :style="'color:' + company.accent" x-text="pl('print_title')"></div>
+                <table style="margin-top:10px; margin-left:auto; border-collapse:collapse;">
+                  <tr><td style="padding:1px 10px 1px 0; text-align:right;" :style="'color:' + company.heading" x-text="pl('invoice_number')"></td><td style="text-align:right; font-weight:600;" class="tabular-nums" x-text="_printing.number || '—'"></td></tr>
+                  <tr><td style="padding:1px 10px 1px 0; text-align:right;" :style="'color:' + company.heading" x-text="pl('invoice_date')"></td><td style="text-align:right;" class="tabular-nums" x-text="_printing.issueDate"></td></tr>
+                  <tr><td style="padding:1px 10px 1px 0; text-align:right;" :style="'color:' + company.heading" x-text="pl('due')"></td><td style="text-align:right;" class="tabular-nums" x-text="_printing.dueDate"></td></tr>
+                </table>
               </div>
             </div>
 
-            <div style="margin-top:24px;">
-              <div style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#666;">{{ __('invoices.bill_to') }}</div>
-              <div style="font-weight:600;" x-text="_printing.customer?.name"></div>
-              <div style="white-space:pre-line; color:#444;" x-text="_printing.customer?.address"></div>
-              <div style="color:#444;" x-show="_printing.customer?.vatId" x-text="'{{ __('invoices.customer_vat') }}: ' + _printing.customer?.vatId"></div>
+            <div style="height:2px; margin:20px 0;" :style="'background:' + company.accent"></div>
+
+            {{-- Bill to --}}
+            <div>
+              <div style="font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:600;" :style="'color:' + company.heading" x-text="pl('bill_to')"></div>
+              <div style="font-weight:700; margin-top:4px;" x-text="_printing.customer?.name"></div>
+              <div style="color:#4b5563;" x-show="_printing.customer?.attn" x-text="_printing.customer?.attn"></div>
+              <div style="white-space:pre-line; color:#4b5563;" x-text="_printing.customer?.address"></div>
+              <div style="color:#4b5563;" x-show="_printing.customer?.email" x-text="_printing.customer?.email"></div>
+              <div style="color:#4b5563;" x-show="_printing.customer?.vatId" x-text="pl('vat_id_label') + ': ' + _printing.customer?.vatId"></div>
             </div>
 
-            <table style="width:100%; margin-top:24px; border-collapse:collapse;">
+            {{-- Line items --}}
+            <table style="width:100%; margin-top:26px; border-collapse:collapse;">
               <thead>
-                <tr style="border-bottom:1px solid #ccc; text-align:left; font-size:11px; text-transform:uppercase; color:#666;">
-                  <th style="padding:6px 4px;">{{ __('invoices.line_desc') }}</th>
-                  <th style="padding:6px 4px; text-align:right;">{{ __('invoices.line_qty') }}</th>
-                  <th style="padding:6px 4px;">{{ __('invoices.line_unit') }}</th>
-                  <th style="padding:6px 4px; text-align:right;">{{ __('invoices.line_price') }}</th>
-                  <th style="padding:6px 4px; text-align:right;">{{ __('invoices.line_vat') }}</th>
-                  <th style="padding:6px 4px; text-align:right;">{{ __('invoices.net') }}</th>
+                <tr style="text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#fff;" :style="'background:' + company.accent">
+                  <th style="padding:8px 10px;" x-text="pl('line_desc')"></th>
+                  <th style="padding:8px 10px; text-align:right; white-space:nowrap;" x-text="pl('line_qty')"></th>
+                  <th style="padding:8px 10px; text-align:right; white-space:nowrap;" x-text="pl('line_price')"></th>
+                  <th style="padding:8px 10px; text-align:right; white-space:nowrap;" x-text="pl('amount')"></th>
                 </tr>
               </thead>
               <tbody>
                 <template x-for="(l, i) in _printing.lines" :key="i">
-                  <tr style="border-bottom:1px solid #eee;">
-                    <td style="padding:6px 4px;" x-text="l.desc"></td>
-                    <td style="padding:6px 4px; text-align:right;" class="tabular-nums" x-text="l.qty"></td>
-                    <td style="padding:6px 4px;" x-text="l.unit"></td>
-                    <td style="padding:6px 4px; text-align:right;" class="tabular-nums" x-text="fmtMoney(l.unitPrice, _printing.currency)"></td>
-                    <td style="padding:6px 4px; text-align:right;" class="tabular-nums" x-text="(parseFloat(l.vatRate)||0) + '%'"></td>
-                    <td style="padding:6px 4px; text-align:right;" class="tabular-nums" x-text="fmtMoney(lineNet(l), _printing.currency)"></td>
+                  <tr style="border-bottom:1px solid #e5e7eb;">
+                    <td style="padding:7px 10px;"><span x-text="l.desc"></span></td>
+                    <td style="padding:7px 10px; text-align:right; white-space:nowrap;" class="tabular-nums" x-text="l.qty + (l.unit ? ' ' + l.unit : '')"></td>
+                    <td style="padding:7px 10px; text-align:right; white-space:nowrap;" class="tabular-nums" x-text="fmtMoney(l.unitPrice, _printing.currency, _printing.lang)"></td>
+                    <td style="padding:7px 10px; text-align:right; white-space:nowrap;" class="tabular-nums" x-text="fmtMoney(lineNet(l), _printing.currency, _printing.lang)"></td>
                   </tr>
                 </template>
               </tbody>
             </table>
 
-            <div style="display:flex; justify-content:flex-end; margin-top:16px;">
-              <table style="min-width:240px;">
-                <tr><td style="padding:2px 8px; color:#666;">{{ __('invoices.subtotal') }}</td><td style="padding:2px 8px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency)"></td></tr>
+            {{-- Totals --}}
+            <div style="display:flex; justify-content:flex-end; margin-top:18px;">
+              <table style="min-width:260px;">
+                <tr><td style="padding:3px 10px; color:#4b5563;" x-text="pl('subtotal')"></td><td style="padding:3px 10px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).net, _printing.currency, _printing.lang)"></td></tr>
                 <template x-for="rate in vatRatesOf(_printing)" :key="rate">
-                  <tr><td style="padding:2px 8px; color:#666;" x-text="@js(__('invoices.vat_at')).replace(':rate', rate)"></td><td style="padding:2px 8px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency)"></td></tr>
+                  <tr><td style="padding:3px 10px; color:#4b5563;" x-text="pl('vat_at').replace(':rate', rate)"></td><td style="padding:3px 10px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></td></tr>
                 </template>
-                <tr style="border-top:1px solid #ccc; font-weight:700;"><td style="padding:4px 8px;">{{ __('invoices.gross') }}</td><td style="padding:4px 8px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency)"></td></tr>
+                <tr style="font-weight:800; font-size:14px;" :style="'color:' + company.accent + '; border-top:2px solid ' + company.accent"><td style="padding:6px 10px;" x-text="pl('gross')"></td><td style="padding:6px 10px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).gross, _printing.currency, _printing.lang)"></td></tr>
               </table>
             </div>
 
-            <div style="margin-top:24px; white-space:pre-line; color:#444;" x-show="_printing.note" x-text="_printing.note"></div>
+            {{-- Tax breakdown --}}
+            <div style="display:flex; justify-content:flex-end; margin-top:8px;" x-show="vatRatesOf(_printing).length">
+              <table style="min-width:260px; font-size:10.5px; color:#6b7280;">
+                <tr style="text-transform:uppercase; letter-spacing:.05em;">
+                  <td style="padding:2px 10px;" x-text="pl('tax_heading')"></td>
+                  <td style="padding:2px 10px; text-align:right;" x-text="pl('taxable')"></td>
+                  <td style="padding:2px 10px; text-align:right;" x-text="pl('tax_amount')"></td>
+                </tr>
+                <template x-for="rate in vatRatesOf(_printing)" :key="rate">
+                  <tr>
+                    <td style="padding:2px 10px;" class="tabular-nums" x-text="rate + '%'"></td>
+                    <td style="padding:2px 10px; text-align:right;" class="tabular-nums" x-text="fmtMoney((computeTotals(_printing).vatByRate[rate]||0) / (rate/100), _printing.currency, _printing.lang)"></td>
+                    <td style="padding:2px 10px; text-align:right;" class="tabular-nums" x-text="fmtMoney(computeTotals(_printing).vatByRate[rate], _printing.currency, _printing.lang)"></td>
+                  </tr>
+                </template>
+              </table>
+            </div>
 
-            <div style="margin-top:32px; padding-top:12px; border-top:1px solid #eee; font-size:11px; color:#666; display:flex; justify-content:space-between; gap:16px;">
-              <div style="white-space:pre-line;" x-text="_printing.footer || company.footer_text"></div>
-              <div style="text-align:right;">
-                <div x-show="company.bank_name || company.iban">{{ __('invoices.bank_details') }}</div>
-                <div x-text="company.bank_name"></div>
-                <div x-text="company.iban"></div>
-                <div x-text="company.bic"></div>
-                <div x-show="company.vat_id" x-text="'{{ __('settings.company_vat_id') }}: ' + company.vat_id"></div>
-                <div x-show="company.tax_id" x-text="'{{ __('settings.company_tax_id') }}: ' + company.tax_id"></div>
+            {{-- Notes --}}
+            <div style="margin-top:26px;" x-show="_printing.note">
+              <div style="font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:600;" :style="'color:' + company.heading" x-text="pl('notes_heading')"></div>
+              <div style="white-space:pre-line; color:#4b5563; margin-top:3px;" x-text="_printing.note"></div>
+            </div>
+
+            {{-- Footer: 3 columns --}}
+            <div style="margin-top:36px; padding-top:14px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; font-size:10.5px; color:#4b5563;" :style="'border-top:1px solid ' + company.accent">
+              <div x-show="company.payment_terms_text || _printing.footer">
+                <div style="text-transform:uppercase; letter-spacing:.06em; font-weight:600;" :style="'color:' + company.heading" x-text="pl('payment_terms_heading')"></div>
+                <div style="white-space:pre-line; margin-top:3px;" x-text="company.payment_terms_text || _printing.footer"></div>
+              </div>
+              <div x-show="company.payment_methods">
+                <div style="text-transform:uppercase; letter-spacing:.06em; font-weight:600;" :style="'color:' + company.heading" x-text="pl('payment_methods_heading')"></div>
+                <div style="white-space:pre-line; margin-top:3px;" x-text="company.payment_methods"></div>
+              </div>
+              <div x-show="company.bank_name || company.iban">
+                <div style="text-transform:uppercase; letter-spacing:.06em; font-weight:600;" :style="'color:' + company.heading" x-text="pl('bank_details')"></div>
+                <div style="margin-top:3px;" x-text="company.bank_name"></div>
+                <div x-text="company.iban ? 'IBAN: ' + company.iban : ''"></div>
+                <div x-text="company.bic ? 'BIC: ' + company.bic : ''"></div>
               </div>
             </div>
+
+            <div style="margin-top:16px; text-align:center; font-size:9.5px; color:#9ca3af;" x-text="[company.name, company.address ? company.address.replace(/\n/g, ', ') : '', company.email, company.phone].filter(Boolean).join(' · ')"></div>
           </div>
         </template>
       </div>

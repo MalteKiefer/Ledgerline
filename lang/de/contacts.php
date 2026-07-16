@@ -49,6 +49,7 @@ return [
     'department' => 'Abteilung',
     'job_title' => 'Position',
     'role' => 'Funktion',
+    'vat_id' => 'USt-IdNr.',
     'impp' => 'Messaging',
     'anniversary' => 'Jahrestag',
     'favorite' => 'Favorit',

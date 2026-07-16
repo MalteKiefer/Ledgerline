@@ -75,6 +75,10 @@ use Illuminate\Database\Eloquent\Model;
     'invoice_default_vat_rate',
     'invoice_payment_terms_days',
     'invoice_footer_text',
+    'invoice_accent_color',
+    'invoice_heading_color',
+    'invoice_payment_methods',
+    'invoice_payment_terms_text',
 ])]
 class AppSettings extends Model
 {

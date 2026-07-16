@@ -68,11 +68,24 @@ return [
     'picker_search' => 'Kontakte suchen',
     'picker_empty' => 'Keine Kontakte gefunden.',
 
+    'language' => 'Sprache',
+    'currency' => 'Währung',
+    'attn' => 'Ansprechpartner',
+
     // Druck / PDF
+    'print_title' => 'Rechnung',
     'bill_to' => 'Rechnung an',
     'invoice_number' => 'Rechnungs-Nr.',
     'invoice_date' => 'Datum',
     'due' => 'Fällig',
+    'amount' => 'Betrag',
     'subtotal' => 'Zwischensumme',
+    'tax_heading' => 'Steuer',
+    'taxable' => 'Steuerpflichtig',
+    'tax_amount' => 'Steuerbetrag',
+    'notes_heading' => 'Notizen',
+    'payment_terms_heading' => 'Zahlungsbedingungen',
+    'payment_methods_heading' => 'Zahlungsmethoden',
     'bank_details' => 'Bankverbindung',
+    'vat_id_label' => 'USt-IdNr.',
 ];

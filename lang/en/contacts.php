@@ -49,6 +49,7 @@ return [
     'department' => 'Department',
     'job_title' => 'Title',
     'role' => 'Role',
+    'vat_id' => 'VAT ID',
     'impp' => 'Messaging',
     'anniversary' => 'Anniversary',
     'favorite' => 'Favorite',

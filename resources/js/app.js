@@ -5375,6 +5375,7 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
     ...zkModule({ map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
 
     company: config.company || {},
+    _labelsByLang: config.labelsByLang || {},
     invoices: [],
     view: 'list',        // 'list' | 'edit'
     current: null,       // the invoice being edited
@@ -5410,7 +5411,8 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
             issueDate: issue,
             dueDate: this._addDays(issue, parseInt(this.company.payment_terms_days, 10) || 14),
             currency: this.company.currency || 'EUR',
-            customer: { name: '', address: '', email: '', vatId: '', contactId: null },
+            lang: (document.documentElement.lang || 'de').slice(0, 2) === 'en' ? 'en' : 'de',
+            customer: { name: '', attn: '', address: '', email: '', vatId: '', contactId: null },
             lines: [{ desc: '', qty: 1, unit: '', unitPrice: 0, vatRate: this._defaultVat() }],
             note: '',
             footer: this.company.footer_text || '',
@@ -5421,7 +5423,15 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
         this._save();
         this.open(inv);
     },
-    open(inv) { this.current = inv; this.view = 'edit'; },
+    open(inv) {
+        // Backfill fields added after this invoice was created.
+        inv.lang ??= 'de';
+        inv.currency ??= (this.company.currency || 'EUR');
+        inv.customer ??= { name: '', attn: '', address: '', email: '', vatId: '', contactId: null };
+        inv.customer.attn ??= '';
+        this.current = inv;
+        this.view = 'edit';
+    },
     backToList() { this.view = 'list'; this.current = null; },
     saveSoon() { if (this.current) this.current.updated = new Date().toISOString(); this._save(); },
 
@@ -5454,11 +5464,20 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
         t.gross = t.net + t.vat;
         return t;
     },
-    fmtMoney(n, currency) {
+    fmtMoney(n, currency, lang) {
         const cur = currency || this.current?.currency || this.company.currency || 'EUR';
-        try { return new Intl.NumberFormat(document.documentElement.lang || 'de', { style: 'currency', currency: cur }).format(n || 0); }
+        const loc = (lang || this.current?.lang || 'de') === 'en' ? 'en' : 'de';
+        try { return new Intl.NumberFormat(loc, { style: 'currency', currency: cur }).format(n || 0); }
         catch (e) { return (n || 0).toFixed(2) + ' ' + cur; }
     },
+    // Print-sheet label in the invoice's own language (falls back to German).
+    pl(key) {
+        const lang = this._printing?.lang || 'de';
+        const set = this._labelsByLang[lang] || this._labelsByLang.de || {};
+        return set[key] || key;
+    },
+    // Currencies offered per invoice.
+    currencyOptions: ['EUR', 'USD', 'CHF'],
     vatRatesOf(inv) { return Object.keys(this.computeTotals(inv).vatByRate).map(Number).sort((a, b) => a - b); },
 
     // ---- Customer picker (reads zero-knowledge contacts) ----
@@ -5485,8 +5504,13 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
         return [a.street, [a.zip, a.city].filter(Boolean).join(' '), a.region, a.country].filter(Boolean).join('\n');
     },
     pickCustomer(c) {
+        // Bill a company to its org name with the person as the contact (Attn);
+        // a private contact bills to the person directly.
+        const person = this._custName(c);
+        const org = (c.org || '').trim();
         this.current.customer = {
-            name: this._custName(c) || (c.org || ''),
+            name: org || person,
+            attn: org ? person : '',
             address: this._custAddress(c),
             email: (c.emails || [])[0]?.value || '',
             vatId: c.vatId || '',
@@ -5495,7 +5519,7 @@ Alpine.data('invoices', (config = {}, labels = {}) => ({
         this.customerPicker = false;
         this.saveSoon();
     },
-    clearCustomer() { this.current.customer = { name: '', address: '', email: '', vatId: '', contactId: null }; this.saveSoon(); },
+    clearCustomer() { this.current.customer = { name: '', attn: '', address: '', email: '', vatId: '', contactId: null }; this.saveSoon(); },
 
     // ---- Finalize / status ----
     // Render a number template. YYYY/YY/MM/DD from the issue date, and a run of
@@ -5805,6 +5829,8 @@ const VCard = {
         if (c.org || c.department) add('ORG:' + this.esc(c.org) + (c.department ? ';' + this.esc(c.department) : ''));
         if (c.title) add('TITLE:' + this.esc(c.title));
         if (c.role) add('ROLE:' + this.esc(c.role));
+        // No standard vCard property for a VAT id; use an RFC 6350 x-name.
+        if (c.vatId) add('X-VAT-ID:' + this.esc(c.vatId));
         for (const e of (c.emails ?? [])) if (e.value) add('EMAIL;TYPE=' + (e.type || 'home') + ':' + this.esc(e.value));
         for (const p of (c.phones ?? [])) if (p.value) add('TEL;TYPE=' + (p.type || 'cell') + ':' + this.esc(p.value));
         for (const m of (c.impp ?? [])) if (m.value) add('IMPP;TYPE=' + (m.type || 'home') + ':' + this.esc(m.value));
@@ -5878,6 +5904,7 @@ const VCard = {
                 case 'ANNIVERSARY': c.anniversary = this._fromDate(value); break;
                 case 'NOTE': c.note = this.unesc(value); break;
                 case 'CATEGORIES': c.categories = value.split(',').map((x) => this.unesc(x.trim())).filter(Boolean); break;
+                case 'X-VAT-ID': case 'X-VAT': case 'X-VATIN': c.vatId = this.unesc(value); break;
                 // Accept an inline data: URI (vCard 4.0) OR base64-encoded photo
                 // (vCard 3.0 / CardDAV: PHOTO;ENCODING=b;TYPE=JPEG:...). Either way
                 // the image is re-encoded via canvas downstream, neutralising it.
@@ -5923,7 +5950,7 @@ const VCard = {
         }
         return null;
     },
-    _blank() { return { fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '', org: '', department: '', title: '', role: '', emails: [], phones: [], impp: [], addresses: [], urls: [], bday: '', anniversary: '', note: '', categories: [], _x: [] }; },
+    _blank() { return { fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '', org: '', department: '', title: '', role: '', vatId: '', emails: [], phones: [], impp: [], addresses: [], urls: [], bday: '', anniversary: '', note: '', categories: [], _x: [] }; },
 };
 
 /**
@@ -6103,7 +6130,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
         const c = {
             id: window.LLStore.newId(), uid: this._newUid(),
             fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '',
-            org: '', department: '', title: '', role: '',
+            org: '', department: '', title: '', role: '', vatId: '',
             emails: [], phones: [], impp: [], addresses: [], urls: [],
             bday: '', anniversary: '', note: '', categories: [], favorite: false,
             avatarRef: null, avatarKey: null, personId: null, _x: [],
@@ -6116,7 +6143,7 @@ Alpine.data('contacts', (config = {}, labels = {}) => ({
     },
     open(c) {
         // Backfill fields added in later versions so legacy contacts render/edit.
-        c.emails ??= []; c.phones ??= []; c.impp ??= []; c.addresses ??= []; c.urls ??= []; c.categories ??= []; c._x ??= [];
+        c.emails ??= []; c.phones ??= []; c.impp ??= []; c.addresses ??= []; c.urls ??= []; c.categories ??= []; c._x ??= []; c.vatId ??= '';
         // Normalise any raw multi-token vCard types (e.g. "cell,voice,pref") so
         // the labels/selects match a single known value.
         for (const e of c.emails) e.type = VCard.normType(e.type, 'home');
