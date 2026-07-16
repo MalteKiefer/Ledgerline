@@ -30,6 +30,8 @@
         statusDraft: @js(__('invoices.status_draft')),
         statusSent: @js(__('invoices.status_sent')),
         statusPaid: @js(__('invoices.status_paid')),
+        csvImported: @js(__('invoices.csv_imported')),
+        csvBadFormat: @js(__('invoices.csv_bad_format')),
      })">
 
     {{-- Zero-knowledge gate: invoices decrypt with the vault key. --}}
@@ -194,9 +196,13 @@
 
           {{-- Line items --}}
           <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-3">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('invoices.lines') }}</h2>
-              <button type="button" @click="addLine()" class="inline-flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 underline"><x-icon name="plus" class="h-3.5 w-3.5" />{{ __('invoices.add_line') }}</button>
+              <div class="flex items-center gap-4">
+                <button type="button" @click="$refs.csv.click()" :title="'{{ __('invoices.csv_hint') }}'" class="inline-flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 underline"><x-icon name="arrow-up-tray" class="h-3.5 w-3.5" />{{ __('invoices.csv_import') }}</button>
+                <input x-ref="csv" type="file" accept=".csv,text/csv" class="hidden" @change="importClockify($event.target.files); $event.target.value = ''">
+                <button type="button" @click="addLine()" class="inline-flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 underline"><x-icon name="plus" class="h-3.5 w-3.5" />{{ __('invoices.add_line') }}</button>
+              </div>
             </div>
             <div class="mt-3 overflow-x-auto">
               <table class="min-w-full text-sm">
@@ -277,9 +283,9 @@
               <div style="text-align:right; min-width:220px;">
                 <div style="font-size:26px; font-weight:800; letter-spacing:.02em;" :style="'color:' + company.accent" x-text="pl('print_title')"></div>
                 <table style="margin-top:10px; margin-left:auto; border-collapse:collapse;">
-                  <tr><td style="padding:1px 10px 1px 0; text-align:right;" :style="'color:' + company.heading" x-text="pl('invoice_number')"></td><td style="text-align:right; font-weight:600;" class="tabular-nums" x-text="_printing.number || '—'"></td></tr>
-                  <tr><td style="padding:1px 10px 1px 0; text-align:right;" :style="'color:' + company.heading" x-text="pl('invoice_date')"></td><td style="text-align:right;" class="tabular-nums" x-text="_printing.issueDate"></td></tr>
-                  <tr><td style="padding:1px 10px 1px 0; text-align:right;" :style="'color:' + company.heading" x-text="pl('due')"></td><td style="text-align:right;" class="tabular-nums" x-text="_printing.dueDate"></td></tr>
+                  <tr><td style="padding:2px 0; text-align:right; white-space:nowrap;" :style="'color:' + company.heading" x-text="pl('invoice_number')"></td><td style="padding:2px 0 2px 18px; text-align:right; font-weight:600; white-space:nowrap;" class="tabular-nums" x-text="_printing.number || '—'"></td></tr>
+                  <tr><td style="padding:2px 0; text-align:right; white-space:nowrap;" :style="'color:' + company.heading" x-text="pl('invoice_date')"></td><td style="padding:2px 0 2px 18px; text-align:right; white-space:nowrap;" class="tabular-nums" x-text="_printing.issueDate"></td></tr>
+                  <tr><td style="padding:2px 0; text-align:right; white-space:nowrap;" :style="'color:' + company.heading" x-text="pl('due')"></td><td style="padding:2px 0 2px 18px; text-align:right; white-space:nowrap;" class="tabular-nums" x-text="_printing.dueDate"></td></tr>
                 </table>
               </div>
             </div>
@@ -385,6 +391,9 @@
       body * { visibility: hidden !important; }
       #invoice-print, #invoice-print * { visibility: visible !important; }
       #invoice-print { display: block !important; position: absolute; left: 0; top: 0; width: 100%; }
+      /* Keep accent backgrounds/colours in print — browsers drop them otherwise. */
+      #invoice-print, #invoice-print * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      @page { margin: 14mm; }
     }
   </style>
 </x-layouts.app>
