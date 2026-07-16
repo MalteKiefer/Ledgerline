@@ -70,6 +70,8 @@ use Illuminate\Database\Eloquent\Model;
     'company_logo_path',
     'invoice_number_prefix',
     'invoice_number_padding',
+    'invoice_number_format',
+    'invoice_next_number',
     'invoice_default_vat_rate',
     'invoice_payment_terms_days',
     'invoice_footer_text',
@@ -127,6 +129,7 @@ class AppSettings extends Model
             'gallery_face_min_per_person' => 'integer',
             'gallery_geocode_interval_ms' => 'integer',
             'invoice_number_padding' => 'integer',
+            'invoice_next_number' => 'integer',
             'invoice_default_vat_rate' => 'decimal:2',
             'invoice_payment_terms_days' => 'integer',
         ];
