@@ -231,7 +231,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     ),
     1 => 
     array (
-      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/VaultController.php' => 'e888b0d39d3b2d254da9e38e118fcc9551db6697551fc985bfd0c4b66b847122',
+      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/VaultController.php' => 'b2d0ab0af0e4323fcdf1527516a7112577ed9c2179105c6b8c3ca418bd99ab81',
     ),
   ),
 ));

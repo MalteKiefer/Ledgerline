@@ -2,7 +2,7 @@
 
 // osfsl-/Users/malte.kiefer/Entwicklung/ledgerline/vendor/composer/../intervention/image/src/Drivers/Gd/Driver.php-presentSymbols
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-4c2a72e5513a4973d403056521ced1791d7ea61261eb8de29868d5f845916602-8.5.7',
+   'variableKey' => 'v2-b9601145d55783b0938a6a5fe46b8022072de2c39c27d2c82e38e49ee73e4567-8.5.7',
    'data' => 
   array (
     'classes' => 

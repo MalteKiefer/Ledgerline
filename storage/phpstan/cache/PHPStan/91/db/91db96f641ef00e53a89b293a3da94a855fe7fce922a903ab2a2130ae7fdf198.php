@@ -14,6 +14,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
           'appsettings' => 'App\\Models\\AppSettings',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
           'throwable' => 'Throwable',
         ),
          'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -39,6 +40,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
           'appsettings' => 'App\\Models\\AppSettings',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
           'throwable' => 'Throwable',
         ),
          'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -53,6 +55,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
           array (
             'appsettings' => 'App\\Models\\AppSettings',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
             'throwable' => 'Throwable',
           ),
            'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -88,6 +91,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
           'appsettings' => 'App\\Models\\AppSettings',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
           'throwable' => 'Throwable',
         ),
          'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -102,6 +106,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
           array (
             'appsettings' => 'App\\Models\\AppSettings',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
             'throwable' => 'Throwable',
           ),
            'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -137,6 +142,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
           'appsettings' => 'App\\Models\\AppSettings',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
           'throwable' => 'Throwable',
         ),
          'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -151,6 +157,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
           array (
             'appsettings' => 'App\\Models\\AppSettings',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
             'throwable' => 'Throwable',
           ),
            'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -179,17 +186,18 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
          'typeAliasClassName' => NULL,
          'traitData' => NULL,
       )),
-      '38f7ac82471e123b531df12d1139219d' => 
+      'f03c45aeca2797bcaebfd4370c91a158' => 
       \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
          'namespace' => 'App\\Services\\Files',
          'uses' => 
         array (
           'appsettings' => 'App\\Models\\AppSettings',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
           'throwable' => 'Throwable',
         ),
          'className' => 'App\\Services\\Files\\ReverseGeocoder',
-         'functionName' => 'request',
+         'functionName' => 'viaNominatim',
          'templatePhpDocNodes' => 
         array (
         ),
@@ -200,6 +208,160 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
           array (
             'appsettings' => 'App\\Models\\AppSettings',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
+            'throwable' => 'Throwable',
+          ),
+           'className' => 'App\\Services\\Files\\ReverseGeocoder',
+           'functionName' => NULL,
+           'templatePhpDocNodes' => 
+          array (
+          ),
+           'parent' => NULL,
+           'typeAliasesMap' => 
+          array (
+          ),
+           'bypassTypeAliases' => false,
+           'constUses' => 
+          array (
+          ),
+           'typeAliasClassName' => NULL,
+           'traitData' => NULL,
+        )),
+         'typeAliasesMap' => 
+        array (
+        ),
+         'bypassTypeAliases' => false,
+         'constUses' => 
+        array (
+        ),
+         'typeAliasClassName' => NULL,
+         'traitData' => NULL,
+      )),
+      'aef836b63a296f6ddb36236b0fa7cb1f' => 
+      \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+         'namespace' => 'App\\Services\\Files',
+         'uses' => 
+        array (
+          'appsettings' => 'App\\Models\\AppSettings',
+          'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
+          'throwable' => 'Throwable',
+        ),
+         'className' => 'App\\Services\\Files\\ReverseGeocoder',
+         'functionName' => 'viaPhoton',
+         'templatePhpDocNodes' => 
+        array (
+        ),
+         'parent' => 
+        \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+           'namespace' => 'App\\Services\\Files',
+           'uses' => 
+          array (
+            'appsettings' => 'App\\Models\\AppSettings',
+            'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
+            'throwable' => 'Throwable',
+          ),
+           'className' => 'App\\Services\\Files\\ReverseGeocoder',
+           'functionName' => NULL,
+           'templatePhpDocNodes' => 
+          array (
+          ),
+           'parent' => NULL,
+           'typeAliasesMap' => 
+          array (
+          ),
+           'bypassTypeAliases' => false,
+           'constUses' => 
+          array (
+          ),
+           'typeAliasClassName' => NULL,
+           'traitData' => NULL,
+        )),
+         'typeAliasesMap' => 
+        array (
+        ),
+         'bypassTypeAliases' => false,
+         'constUses' => 
+        array (
+        ),
+         'typeAliasClassName' => NULL,
+         'traitData' => NULL,
+      )),
+      '8c8651424b1e2659e935f9614bcbc79c' => 
+      \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+         'namespace' => 'App\\Services\\Files',
+         'uses' => 
+        array (
+          'appsettings' => 'App\\Models\\AppSettings',
+          'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
+          'throwable' => 'Throwable',
+        ),
+         'className' => 'App\\Services\\Files\\ReverseGeocoder',
+         'functionName' => 'photonDisplay',
+         'templatePhpDocNodes' => 
+        array (
+        ),
+         'parent' => 
+        \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+           'namespace' => 'App\\Services\\Files',
+           'uses' => 
+          array (
+            'appsettings' => 'App\\Models\\AppSettings',
+            'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
+            'throwable' => 'Throwable',
+          ),
+           'className' => 'App\\Services\\Files\\ReverseGeocoder',
+           'functionName' => NULL,
+           'templatePhpDocNodes' => 
+          array (
+          ),
+           'parent' => NULL,
+           'typeAliasesMap' => 
+          array (
+          ),
+           'bypassTypeAliases' => false,
+           'constUses' => 
+          array (
+          ),
+           'typeAliasClassName' => NULL,
+           'traitData' => NULL,
+        )),
+         'typeAliasesMap' => 
+        array (
+        ),
+         'bypassTypeAliases' => false,
+         'constUses' => 
+        array (
+        ),
+         'typeAliasClassName' => NULL,
+         'traitData' => NULL,
+      )),
+      '3e55efa3c05702d2a4413ed57a1053dd' => 
+      \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+         'namespace' => 'App\\Services\\Files',
+         'uses' => 
+        array (
+          'appsettings' => 'App\\Models\\AppSettings',
+          'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
+          'throwable' => 'Throwable',
+        ),
+         'className' => 'App\\Services\\Files\\ReverseGeocoder',
+         'functionName' => 'photonAddress',
+         'templatePhpDocNodes' => 
+        array (
+        ),
+         'parent' => 
+        \PHPStan\Analyser\IntermediaryNameScope::__set_state(array(
+           'namespace' => 'App\\Services\\Files',
+           'uses' => 
+          array (
+            'appsettings' => 'App\\Models\\AppSettings',
+            'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
             'throwable' => 'Throwable',
           ),
            'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -235,6 +397,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
           'appsettings' => 'App\\Models\\AppSettings',
           'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+          'outboundurl' => 'App\\Support\\OutboundUrl',
           'throwable' => 'Throwable',
         ),
          'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -249,6 +412,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
           array (
             'appsettings' => 'App\\Models\\AppSettings',
             'nominatimclient' => 'App\\Services\\Support\\NominatimClient',
+            'outboundurl' => 'App\\Support\\OutboundUrl',
             'throwable' => 'Throwable',
           ),
            'className' => 'App\\Services\\Files\\ReverseGeocoder',
@@ -280,7 +444,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     ),
     1 => 
     array (
-      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Files/ReverseGeocoder.php' => '3dc82e1ae1c9b1b815fc2bfa0aa2ceacd1af258d50d4c2912e4d9d742e605a8d',
+      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Services/Files/ReverseGeocoder.php' => 'd199b8a167e238ef10ca99f505f2220de77d798b5dba3eae42b9dc11937372cb',
     ),
   ),
 ));

@@ -138,7 +138,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     ),
     1 => 
     array (
-      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Middleware/SecurityHeaders.php' => '9660549ccc22e2a0bc45ff78b2722ef934aafbf7684e709b8c9f042a125fb64f',
+      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Middleware/SecurityHeaders.php' => 'cc790846afb6f65f248d935861812acd27615069f42214e5ee55c57567ddc91f',
     ),
   ),
 ));

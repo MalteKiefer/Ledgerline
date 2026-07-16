@@ -81,7 +81,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     ),
     1 => 
     array (
-      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/PruneDeviceTokens.php' => 'a8ff4e882aee5f274288b21ce284d702372e7be2c82bdc913c28f11ade0bf5d1',
+      '/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/PruneDeviceTokens.php' => 'bba14eda138171ad46f593f0c8c194cb7ffbe21604e83f67757a05629de0388e',
     ),
   ),
 ));

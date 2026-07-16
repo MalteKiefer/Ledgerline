@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Middleware/SecurityHeaders.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Http\Middleware\SecurityHeaders
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-9660549ccc22e2a0bc45ff78b2722ef934aafbf7684e709b8c9f042a125fb64f',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-cc790846afb6f65f248d935861812acd27615069f42214e5ee55c57567ddc91f',
    'data' => 
   array (
     'locatedSource' => 
@@ -42,7 +42,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     array (
     ),
     'startLine' => 28,
-    'endLine' => 96,
+    'endLine' => 98,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => NULL,
@@ -133,7 +133,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         ),
         'docComment' => NULL,
         'startLine' => 30,
-        'endLine' => 57,
+        'endLine' => 59,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -171,8 +171,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  *
  * @return list<string>
  */',
-        'startLine' => 64,
-        'endLine' => 95,
+        'startLine' => 66,
+        'endLine' => 97,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

@@ -565,7 +565,7 @@
     <div x-show="state === 'ready' && (uploading || progress.active || uploads.length || failedCount || _mlRunning || peopleScanning)" x-cloak x-transition
         class="fixed bottom-4 right-4 z-[860] w-72 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-xl">
       <div class="flex items-center justify-between">
-        <span class="text-xs font-semibold text-gray-700 dark:text-gray-200" x-text="progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload'))"></span>
+        <span class="text-xs font-semibold text-gray-700 dark:text-gray-200" x-text="reindexProgress ? @js(__('gallery.reindex_all')) : (progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload')))"></span>
         <button type="button" @click="dismissUploads()" x-show="! uploading && ! progress.active" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
       </div>
       {{-- Always-visible overall upload counter, so progress is readable without scrolling the list --}}
@@ -581,8 +581,16 @@
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${progress.total ? (progress.done / progress.total * 100) : 0}%`"></div></div>
         </div>
       </template>
+      {{-- Search re-index (CLIP re-embed). Reuses the _mlRunning lock, so guard the
+           face-analysis rows below with ! reindexProgress to avoid a stale 0/0 label. --}}
+      <template x-if="reindexProgress">
+        <div class="mt-2">
+          <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.reindex_all') }}</span><span class="tabular-nums" x-text="reindexProgress.done + ' / ' + reindexProgress.total"></span></div>
+          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${reindexProgress.total ? (reindexProgress.done / reindexProgress.total * 100) : 8}%`"></div></div>
+        </div>
+      </template>
       {{-- Face analysis (ML) — visible so the background face pass isn't a mystery --}}
-      <template x-if="_mlRunning">
+      <template x-if="_mlRunning && ! reindexProgress">
         <div class="mt-2">
           <div class="flex justify-between text-[11px] text-gray-500 dark:text-gray-400"><span>{{ __('gallery.jobs_analyze') }}</span><span class="tabular-nums" x-text="mlProgress.done + ' / ' + mlProgress.total"></span></div>
           <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${mlProgress.total ? (mlProgress.done / mlProgress.total * 100) : 8}%`"></div></div>

@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Support/OutboundUrl.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Support\OutboundUrl
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-7386c6fd6e4c761eb26d1901c1e4d79fa79b2c92141580dc7530fb39d3772fd4',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-dd2ce293d0d2dee262fcb3e828cafcc148ef6d0b60669ab149d48eb014616a09',
    'data' => 
   array (
     'locatedSource' => 
@@ -38,7 +38,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     array (
     ),
     'startLine' => 23,
-    'endLine' => 209,
+    'endLine' => 215,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => NULL,
@@ -210,7 +210,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * resolved to a verified-safe address.
  */',
         'startLine' => 62,
-        'endLine' => 93,
+        'endLine' => 99,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => true,
@@ -248,8 +248,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 102,
-            'endLine' => 102,
+            'startLine' => 108,
+            'endLine' => 108,
             'startColumn' => 40,
             'endColumn' => 51,
             'parameterIndex' => 0,
@@ -276,8 +276,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * hardened mode). Unresolvable hosts are allowed in the default posture so
  * a LAN/Docker mail server that doesn\'t resolve at save time still works.
  */',
-        'startLine' => 102,
-        'endLine' => 119,
+        'startLine' => 108,
+        'endLine' => 125,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -315,8 +315,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 124,
-            'endLine' => 124,
+            'startLine' => 130,
+            'endLine' => 130,
             'startColumn' => 37,
             'endColumn' => 48,
             'parameterIndex' => 0,
@@ -339,8 +339,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         'docComment' => '/**
  * @return list<string>
  */',
-        'startLine' => 124,
-        'endLine' => 145,
+        'startLine' => 130,
+        'endLine' => 151,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -378,8 +378,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 147,
-            'endLine' => 147,
+            'startLine' => 153,
+            'endLine' => 153,
             'startColumn' => 39,
             'endColumn' => 48,
             'parameterIndex' => 0,
@@ -400,8 +400,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => NULL,
-        'startLine' => 147,
-        'endLine' => 169,
+        'startLine' => 153,
+        'endLine' => 175,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -439,8 +439,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 176,
-            'endLine' => 176,
+            'startLine' => 182,
+            'endLine' => 182,
             'startColumn' => 42,
             'endColumn' => 51,
             'parameterIndex' => 0,
@@ -484,8 +484,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * embedded dotted IPv4; otherwise null. Operates on the canonical packed
  * form so every textual representation is covered.
  */',
-        'startLine' => 176,
-        'endLine' => 192,
+        'startLine' => 182,
+        'endLine' => 198,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
@@ -523,8 +523,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
             'attributes' => 
             array (
             ),
-            'startLine' => 194,
-            'endLine' => 194,
+            'startLine' => 200,
+            'endLine' => 200,
             'startColumn' => 41,
             'endColumn' => 50,
             'parameterIndex' => 0,
@@ -545,8 +545,8 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         array (
         ),
         'docComment' => NULL,
-        'startLine' => 194,
-        'endLine' => 208,
+        'startLine' => 200,
+        'endLine' => 214,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Console/Commands/PruneDeviceTokens.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Console\Commands\PruneDeviceTokens
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-a8ff4e882aee5f274288b21ce284d702372e7be2c82bdc913c28f11ade0bf5d1',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-bba14eda138171ad46f593f0c8c194cb7ffbe21604e83f67757a05629de0388e',
    'data' => 
   array (
     'locatedSource' => 
@@ -33,7 +33,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     array (
     ),
     'startLine' => 17,
-    'endLine' => 45,
+    'endLine' => 50,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => 'Illuminate\\Console\\Command',
@@ -142,7 +142,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
         ),
         'docComment' => NULL,
         'startLine' => 23,
-        'endLine' => 44,
+        'endLine' => 49,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,

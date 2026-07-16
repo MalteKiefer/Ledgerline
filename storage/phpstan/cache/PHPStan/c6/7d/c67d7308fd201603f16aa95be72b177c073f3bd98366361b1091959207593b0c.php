@@ -2,7 +2,7 @@
 
 // odsl-/Users/malte.kiefer/Entwicklung/ledgerline/app/Http/Controllers/VaultController.php-PHPStan\BetterReflection\Reflection\ReflectionClass-App\Http\Controllers\VaultController
 return \PHPStan\Cache\CacheItem::__set_state(array(
-   'variableKey' => 'v2-6.70.0.3-8.5.7-e888b0d39d3b2d254da9e38e118fcc9551db6697551fc985bfd0c4b66b847122',
+   'variableKey' => 'v2-6.70.0.3-8.5.7-b2d0ab0af0e4323fcdf1527516a7112577ed9c2179105c6b8c3ca418bd99ab81',
    'data' => 
   array (
     'locatedSource' => 
@@ -32,7 +32,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
     array (
     ),
     'startLine' => 17,
-    'endLine' => 97,
+    'endLine' => 101,
     'startColumn' => 1,
     'endColumn' => 1,
     'parentClassName' => 'App\\Http\\Controllers\\Controller',
@@ -293,7 +293,7 @@ return \PHPStan\Cache\CacheItem::__set_state(array(
  * @return array<string, mixed>
  */',
         'startLine' => 85,
-        'endLine' => 96,
+        'endLine' => 100,
         'startColumn' => 5,
         'endColumn' => 5,
         'couldThrow' => false,
