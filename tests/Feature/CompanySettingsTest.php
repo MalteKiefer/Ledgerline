@@ -76,6 +76,18 @@ class CompanySettingsTest extends TestCase
         Storage::assertMissing($path);
     }
 
+    public function test_svg_logo_is_rejected(): void
+    {
+        Storage::fake();
+        $this->signIn();
+
+        $this->put(route('settings.company.update'), [
+            'logo' => UploadedFile::fake()->create('logo.svg', 4, 'image/svg+xml'),
+        ])->assertSessionHasErrors('logo');
+
+        $this->assertNull(AppSettings::current()->company_logo_path);
+    }
+
     public function test_invoices_page_renders_for_authenticated_user(): void
     {
         $this->signIn();

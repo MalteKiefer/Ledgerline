@@ -48,7 +48,9 @@ class CompanyController extends Controller
             'invoice_default_vat_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'invoice_payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'invoice_footer_text' => ['nullable', 'string', 'max:2000'],
-            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp,svg', 'max:2048'],
+            // Raster only — SVG served inline on the app origin is a stored-XSS
+            // vector (embedded <script>). Logos rarely need vector.
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,gif,webp', 'max:2048'],
             'remove_logo' => ['nullable', 'boolean'],
         ]);
 
@@ -80,10 +82,15 @@ class CompanyController extends Controller
         $path = AppSettings::current()->company_logo_path;
         abort_if(! $path || ! Storage::exists($path), 404);
 
+        // Defense-in-depth: even though only raster images are accepted, pin the
+        // sniffed type off and sandbox the response so a direct open can never
+        // execute script, regardless of stored bytes.
         return Storage::download($path, 'logo', [
             'Content-Type' => Storage::mimeType($path) ?: 'application/octet-stream',
             'Content-Disposition' => 'inline',
             'Cache-Control' => 'private, max-age=300',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
         ]);
     }
 }
