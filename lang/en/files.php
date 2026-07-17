@@ -123,6 +123,7 @@ return [
     'share_copied' => 'Link copied',
     'share_page_title' => 'Shared files',
     'share_download' => 'Download',
+    'share_items' => 'items',
     'share_err_no_key' => 'This link is missing its key and cannot be opened.',
     'share_err_bad_key' => 'This link’s key is invalid — the files cannot be decrypted.',
     'share_err_wrong_password' => 'Wrong password.',
