@@ -101,7 +101,7 @@ window.LLStore = {
     _onError: null,
 
     _blank() {
-        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [], invoices: [], invoiceSeq: 0, secrets: [] };
+        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [], invoices: [], invoiceSeq: 0, secrets: [], secretFolders: [] };
     },
 
     // A random client-side id for a new item (server never assigns ids now).
@@ -7376,13 +7376,17 @@ Alpine.data('bookmarks', (labels = {}) => ({
  * client-side TOTP, password generator, Wi-Fi QR, and copy-with-auto-clear.
  */
 Alpine.data('passwords', (config = {}, labels = {}) => ({
-    ...zkModule({ map: { secrets: 'items' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; } }),
+    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; } }),
 
     items: [],
+    folders: [],
     view: 'list', // list | trash
     current: null, // item being viewed (live ref into items)
     draft: null, // editable copy while creating/editing (null = not editing)
     filterType: '',
+    filterFolder: '', // '' = all, '_none' = no folder, else folder id
+    filterTag: '',
+    config,
     reveal: {},
     totpNow: {},
     _totpTimer: null,
@@ -7392,15 +7396,15 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
 
     // Field metadata per type: [key, inputType]. Labels come from labels.fields.
     types: {
-        login: { icon: 'user', fields: [['username', 'text'], ['password', 'password'], ['url', 'text'], ['totp', 'password'], ['note', 'textarea']] },
+        login: { icon: 'user', fields: [['username', 'text'], ['password', 'password'], ['urls', 'urls'], ['totp', 'password'], ['note', 'textarea']] },
         password: { icon: 'key', fields: [['password', 'password'], ['note', 'textarea']] },
-        card: { icon: 'credit-card', fields: [['cardholder', 'text'], ['number', 'text'], ['brand', 'text'], ['expiry', 'text'], ['cvv', 'password'], ['pin', 'password'], ['note', 'textarea']] },
+        card: { icon: 'credit-card', fields: [['cardholder', 'text'], ['number', 'text'], ['expiry', 'text'], ['cvv', 'password'], ['pin', 'password'], ['note', 'textarea']] },
         wifi: { icon: 'wifi', fields: [['ssid', 'text'], ['password', 'password'], ['security', 'select'], ['hidden', 'checkbox'], ['note', 'textarea']] },
         license: { icon: 'document', fields: [['product', 'text'], ['licensekey', 'textarea'], ['owner', 'text'], ['email', 'text'], ['note', 'textarea']] },
         server: { icon: 'server', fields: [['host', 'text'], ['port', 'text'], ['username', 'text'], ['password', 'password'], ['note', 'textarea']] },
     },
     secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey'],
-    securityOptions: ['WPA', 'WEP', 'nopass'],
+    securityOptions: ['nopass', 'WEP', 'WPA', 'WPA2', 'WPA3', 'WPA2-Enterprise', 'WPA3-Enterprise'],
 
     async init() { await this._initZk(); this._totpTimer = setInterval(() => this._tickTotp(), 1000); this._tickTotp(); },
 
@@ -7414,33 +7418,75 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     get liveItems() { return this.items.filter((x) => ! x.trashed); },
     get trashCount() { return this.items.filter((x) => x.trashed).length; },
     countOf(t) { return this.liveItems.filter((x) => x.type === t).length; },
+    folderName(id) { return (this.folders.find((f) => f.id === id) || {}).name || ''; },
+    get allTags() { const s = new Set(); for (const x of this.liveItems) for (const t of (x.tags || [])) s.add(t); return [...s].sort((a, b) => a.localeCompare(b)); },
     get filtered() {
         const q = this.query.trim().toLowerCase();
         const list = this.view === 'trash' ? this.items.filter((x) => x.trashed) : this.liveItems;
         return list
             .filter((x) => ! this.filterType || x.type === this.filterType)
-            .filter((x) => ! q || (x.title || '').toLowerCase().includes(q) || Object.values(x.fields || {}).some((v) => typeof v === 'string' && v.toLowerCase().includes(q)))
+            .filter((x) => this.filterFolder === '' || (this.filterFolder === '_none' ? ! x.folder : x.folder === this.filterFolder))
+            .filter((x) => ! this.filterTag || (x.tags || []).includes(this.filterTag))
+            .filter((x) => ! q || (x.title || '').toLowerCase().includes(q)
+                || (x.tags || []).some((t) => t.toLowerCase().includes(q))
+                || Object.values(x.fields || {}).some((v) => (typeof v === 'string' && v.toLowerCase().includes(q)) || (Array.isArray(v) && v.some((u) => String(u).toLowerCase().includes(q))))
+                || (x.custom || []).some((c) => (c.value || '').toLowerCase().includes(q) || (c.label || '').toLowerCase().includes(q)))
             .sort((a, b) => ((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (a.title || '').localeCompare(b.title || ''));
+    },
+
+    /* ---- Folders ---- */
+    async addFolder() {
+        const raw = await this.$store.confirm.prompt('', { placeholder: labels.folderName || '', ok: labels.save || '' });
+        const name = (raw || '').trim(); if (! name) return;
+        this.folders.push({ id: crypto.randomUUID(), name }); this._save();
+    },
+    async renameFolder(f) {
+        const raw = await this.$store.confirm.prompt('', { value: f.name, ok: labels.save || '' });
+        const name = (raw || '').trim(); if (name) { f.name = name; this._save(); }
+    },
+    async deleteFolder(f) {
+        if (! await this.$store.confirm.ask(labels.deleteFolderConfirm || '')) return;
+        for (const x of this.items) if (x.folder === f.id) x.folder = null;
+        const i = this.folders.findIndex((y) => y.id === f.id); if (i >= 0) this.folders.splice(i, 1);
+        if (this.filterFolder === f.id) this.filterFolder = '';
+        this._save();
     },
 
     /* ---- CRUD ---- */
     _blankFields(type) {
         const f = {};
-        for (const [k, t] of this.fieldsOf(type)) f[k] = t === 'checkbox' ? false : (k === 'security' ? 'WPA' : '');
+        for (const [k, t] of this.fieldsOf(type)) f[k] = t === 'checkbox' ? false : t === 'urls' ? [''] : (k === 'security' ? 'WPA2' : '');
         return f;
     },
     newItem(type) {
         this.current = null; this.reveal = {}; this.wifiQr = '';
-        this.draft = { id: null, type, title: '', favorite: false, fields: this._blankFields(type), created: null, updated: null, versions: [] };
+        this.draft = { id: null, type, title: '', favorite: false, folder: this.filterFolder && this.filterFolder !== '_none' ? this.filterFolder : null, tags: [], custom: [], icon: '', fields: this._blankFields(type), created: null, updated: null, versions: [] };
+        this.tagsValue = '';
     },
     openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this._refreshWifiQr(x); },
-    editCurrent() { if (this.current) this.draft = JSON.parse(JSON.stringify(this.current)); },
+    editCurrent() {
+        if (! this.current) return;
+        this.draft = JSON.parse(JSON.stringify(this.current));
+        this.draft.custom = this.draft.custom || [];
+        this.draft.tags = this.draft.tags || [];
+        // Migrate an older single url field into the multi-url array.
+        if (this.draft.type === 'login' && ! Array.isArray(this.draft.fields.urls)) this.draft.fields.urls = this.draft.fields.url ? [this.draft.fields.url] : [''];
+        this.tagsValue = (this.draft.tags || []).join(', ');
+    },
     cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; },
     changeDraftType(t) { if (! this.draft || this.draft.id) return; this.draft.type = t; this.draft.fields = this._blankFields(t); },
+
+    addUrl() { if (this.draft) (this.draft.fields.urls = this.draft.fields.urls || []).push(''); },
+    removeUrl(i) { if (this.draft?.fields?.urls) this.draft.fields.urls.splice(i, 1); },
+    addCustom() { if (this.draft) (this.draft.custom = this.draft.custom || []).push({ label: '', value: '', secret: false }); },
+    removeCustom(i) { if (this.draft?.custom) this.draft.custom.splice(i, 1); },
 
     save() {
         const d = this.draft; if (! d) return;
         d.title = (d.title || '').trim() || this.typeLabel(d.type);
+        d.tags = (this.tagsValue || '').split(',').map((t) => t.trim()).filter(Boolean);
+        if (Array.isArray(d.fields.urls)) d.fields.urls = d.fields.urls.map((u) => (u || '').trim()).filter(Boolean);
+        d.custom = (d.custom || []).map((c) => ({ label: (c.label || '').trim(), value: (c.value || '').trim(), secret: ! ! c.secret })).filter((c) => c.label || c.value);
         const now = new Date().toISOString();
         if (! d.id) {
             d.id = crypto.randomUUID(); d.created = now; d.updated = now; d.versions = [];
@@ -7449,27 +7495,80 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         } else {
             const it = this.items.find((x) => x.id === d.id);
             if (! it) return;
-            // Versioning: snapshot the outgoing values whenever a field or the
-            // title actually changed, so the item carries its own edit history.
+            // Versioning: snapshot the outgoing values (fields + custom + title)
+            // whenever anything content-bearing changed.
             if (this._changed(it, d)) {
                 it.versions = it.versions ?? [];
-                it.versions.unshift({ at: it.updated || it.created || now, title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})) });
+                it.versions.unshift({ at: it.updated || it.created || now, title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})), custom: JSON.parse(JSON.stringify(it.custom || [])) });
                 if (it.versions.length > 100) it.versions.length = 100;
                 it.updated = now;
             }
-            it.title = d.title; it.favorite = d.favorite; it.fields = JSON.parse(JSON.stringify(d.fields));
+            it.title = d.title; it.favorite = d.favorite; it.folder = d.folder || null; it.tags = d.tags;
+            it.fields = JSON.parse(JSON.stringify(d.fields)); it.custom = JSON.parse(JSON.stringify(d.custom));
             this.current = it;
         }
+        const saved = this.current;
         this.draft = null; this.reveal = {};
-        this._refreshWifiQr(this.current);
+        this._refreshWifiQr(saved);
         this._save();
+        if (saved.type === 'login') this._fetchIcon(saved);
     },
     _changed(a, b) {
         if ((a.title || '') !== (b.title || '')) return true;
-        const ak = a.fields || {}, bk = b.fields || {};
-        for (const k of new Set([...Object.keys(ak), ...Object.keys(bk)])) if (String(ak[k] ?? '') !== String(bk[k] ?? '')) return true;
+        if (JSON.stringify(a.fields || {}) !== JSON.stringify(b.fields || {})) return true;
+        if (JSON.stringify(a.custom || []) !== JSON.stringify(b.custom || [])) return true;
         return false;
     },
+    // Field labels that changed between an old snapshot and the newer state
+    // (shown in the edit view's version list).
+    _changedKeys(oldSnap, newSnap) {
+        const out = [];
+        if ((oldSnap.title || '') !== (newSnap.title || '')) out.push(labels.titleLabel || 'Title');
+        const of = oldSnap.fields || {}, nf = newSnap.fields || {};
+        for (const k of new Set([...Object.keys(of), ...Object.keys(nf)])) {
+            if (JSON.stringify(of[k] ?? '') !== JSON.stringify(nf[k] ?? '')) out.push(this.fieldLabel(k));
+        }
+        if (JSON.stringify(oldSnap.custom || []) !== JSON.stringify(newSnap.custom || [])) out.push(labels.customLabel || 'Custom fields');
+        return out;
+    },
+    // For the edit view: each version paired with what changed vs the newer state.
+    versionChanges(item) {
+        const vs = item.versions || [];
+        const out = [];
+        for (let i = 0; i < vs.length; i++) {
+            const newer = i === 0 ? item : vs[i - 1];
+            out.push({ at: vs[i].at, changed: this._changedKeys(vs[i], newer) });
+        }
+        return out;
+    },
+    // Credit-card brand from the number (IIN/BIN ranges).
+    cardBrand(number) {
+        const n = String(number || '').replace(/\D/g, '');
+        if (! n) return '';
+        if (/^4/.test(n)) return 'Visa';
+        if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(n)) return 'Mastercard';
+        if (/^3[47]/.test(n)) return 'Amex';
+        if (/^(6011|65|64[4-9]|622)/.test(n)) return 'Discover';
+        if (/^3(0[0-5]|[68])/.test(n)) return 'Diners Club';
+        if (/^35/.test(n)) return 'JCB';
+        if (/^(50|5[6-9]|6[0-9])/.test(n)) return 'Maestro';
+        return '';
+    },
+    // Domain of a login's first URL (for the icon fetch + avatar).
+    primaryUrl(x) { const u = (x.fields?.urls || [])[0] || x.fields?.url || ''; return u; },
+    _domain(x) { try { const u = this.primaryUrl(x); if (! u) return ''; return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname; } catch (e) { return ''; } },
+    // Server-proxied favicon/BIMI fetch, cached as a data URI in the sealed item.
+    async _fetchIcon(x) {
+        const domain = this._domain(x); if (! domain) return;
+        try {
+            const res = await fetch(`${config.iconUrl}?domain=${encodeURIComponent(domain)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            const { icon } = await res.json();
+            if (icon && x.icon !== icon) { x.icon = icon; this._save(); }
+        } catch (e) { /* leave the letter avatar */ }
+    },
+    avatarText(x) { const s = (x.title || this._domain(x) || '?').trim(); return (s[0] || '?').toUpperCase(); },
+    avatarColor(x) { let h = 0; const s = x.title || this._domain(x) || x.id || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 45% 55%)`; },
     toggleFavorite(x) { x.favorite = ! x.favorite; this._save(); },
     trash(x) { x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); },
     restore(x) { x.trashed = null; this._save(); },
@@ -7521,7 +7620,11 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         this.wifiQr = '';
         if (! x || x.type !== 'wifi' || ! x.fields?.ssid) return;
         const esc = (s) => String(s || '').replace(/([\\;,:"])/g, '\\$1');
-        const sec = x.fields.security === 'nopass' ? 'nopass' : (x.fields.security || 'WPA');
+        // The Wi-Fi QR standard only carries nopass / WEP / WPA; WPA2/WPA3 all map
+        // to WPA, and enterprise networks can't be joined by a plain QR (no EAP),
+        // so we still encode SSID+password best-effort as WPA.
+        const s = x.fields.security || 'WPA2';
+        const sec = s === 'nopass' ? 'nopass' : s === 'WEP' ? 'WEP' : 'WPA';
         const payload = `WIFI:T:${sec};S:${esc(x.fields.ssid)};${sec === 'nopass' ? '' : 'P:' + esc(x.fields.password) + ';'}${x.fields.hidden ? 'H:true;' : ''};`;
         try { const mod = await import('qrcode'); const QR = mod.default ?? mod; this.wifiQr = await QR.toDataURL(payload, { margin: 1, width: 220 }); } catch (e) { this.wifiQr = ''; }
     },

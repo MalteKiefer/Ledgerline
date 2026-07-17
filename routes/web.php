@@ -20,6 +20,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
+use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
@@ -235,6 +236,9 @@ Route::middleware('auth')->group(function (): void {
     // Passwords: zero-knowledge password manager, records in the opaque /store
     // manifest (six item types, per-item version history, client-side TOTP/QR).
     Route::view('/passwords', 'passwords.index')->name('passwords.index');
+    // Login site-icon (BIMI/favicon) proxy: domain sent transiently, never
+    // stored; SSRF-guarded; result cached client-side in the sealed item.
+    Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:60,1')->name('passwords.icon');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The company
     // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
     Route::view('/invoices', 'invoices.index')->name('invoices.index');
