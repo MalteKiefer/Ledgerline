@@ -39,6 +39,7 @@ return [
     'yes' => 'Yes',
     'no' => 'No',
     'wifi_scan' => 'Scan to join the network',
+    'large_type' => 'Large type',
     'generate' => 'Generate password',
     'generate_apply' => 'Use password',
     'length' => 'Length',

@@ -61,13 +61,9 @@
         </x-page-heading>
 
         <div class="mt-6 flex flex-col gap-4 md:flex-row" style="min-height: calc(100vh - 16rem);">
-          {{-- Left: filter + list --}}
-          <aside class="w-full shrink-0 md:w-72">
+          {{-- Left: filters only (folders, types, tags) --}}
+          <aside class="w-full shrink-0 md:w-52">
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
-              <div class="relative mb-2">
-                <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:ring-0">
-              </div>
               <div class="mb-2 flex flex-wrap gap-1">
                 <button type="button" @click="filterType = ''; filterFolder = ''; filterTag = ''; view = 'list'" :class="filterType === '' && filterFolder === '' && filterTag === '' && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs">{{ __('passwords.all') }}</button>
                 <template x-for="t in typeList()" :key="'f' + t">
@@ -94,12 +90,33 @@
                 </template>
               </div>
               {{-- Tags --}}
-              <div x-show="allTags.length" x-cloak class="mb-2 flex flex-wrap gap-1 border-t border-gray-100 dark:border-gray-800 pt-2">
-                <template x-for="t in allTags" :key="'t' + t">
-                  <button type="button" @click="filterTag = filterTag === t ? '' : t" :class="filterTag === t ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2 py-0.5 text-[11px]" x-text="'#' + t"></button>
-                </template>
+              <div x-show="allTags.length" x-cloak class="mb-2 border-t border-gray-100 dark:border-gray-800 pt-2">
+                <span class="mb-1 block px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.tags') }}</span>
+                <div class="flex flex-wrap gap-1">
+                  <template x-for="t in allTags" :key="'t' + t">
+                    <button type="button" @click="filterTag = filterTag === t ? '' : t" :class="filterTag === t ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2 py-0.5 text-[11px]" x-text="'#' + t"></button>
+                  </template>
+                </div>
               </div>
-              <div class="max-h-[60vh] overflow-y-auto">
+              {{-- Trash --}}
+              <div class="border-t border-gray-100 dark:border-gray-800 pt-2">
+                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                  <x-icon name="trash" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
+                  <span x-show="trashCount" x-text="trashCount" class="text-gray-400"></span>
+                </button>
+                <button type="button" x-show="view === 'trash' && trashCount" @click="emptyTrash()" class="mt-1 w-full rounded-md px-2.5 py-1 text-left text-[11px] font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">{{ __('passwords.empty_trash') }}</button>
+              </div>
+            </div>
+          </aside>
+
+          {{-- Middle: the item list --}}
+          <div class="w-full shrink-0 md:w-72">
+            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
+              <div class="relative mb-2">
+                <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:ring-0">
+              </div>
+              <div class="max-h-[70vh] overflow-y-auto">
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
                   <button type="button" @click="openItem(x)" :class="current && current.id === x.id ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left">
@@ -118,15 +135,8 @@
                   </button>
                 </template>
               </div>
-              <div class="mt-2 border-t border-gray-100 dark:border-gray-800 pt-2">
-                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm" :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'">
-                  <x-icon name="trash" class="h-4 w-4 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
-                  <span x-show="trashCount" x-text="trashCount" class="text-xs text-gray-400"></span>
-                </button>
-                <button type="button" x-show="view === 'trash' && trashCount" @click="emptyTrash()" class="mt-1 w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">{{ __('passwords.empty_trash') }}</button>
-              </div>
             </div>
-          </aside>
+          </div>
 
           {{-- Right: detail or edit --}}
           <section class="min-w-0 flex-1">
@@ -134,7 +144,13 @@
             <template x-if="draft">
               <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
                 <div class="mb-4 flex items-center gap-3">
-                  <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500">@include('passwords._icon', ['expr' => 'draft.type', 'cls' => 'h-5 w-5'])</span>
+                  <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+                        :class="(draft.type === 'login' && ! draft.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
+                        :style="(draft.type === 'login' && ! draft.icon) ? ('background:' + avatarColor(draft)) : ''">
+                    <template x-if="draft.type === 'login' && draft.icon"><img :src="draft.icon" alt="" class="h-full w-full object-contain"></template>
+                    <template x-if="draft.type === 'login' && ! draft.icon"><span x-text="avatarText(draft)"></span></template>
+                    <template x-if="draft.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'draft.type', 'cls' => 'h-5 w-5'])</span></template>
+                  </span>
                   <input type="text" x-model="draft.title" placeholder="{{ __('passwords.title_placeholder') }}" class="flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-base font-medium focus:border-gray-500 focus:ring-gray-500">
                 </div>
                 <div class="space-y-3">
@@ -304,6 +320,7 @@
                           <span class="flex min-w-0 flex-1 items-center gap-2">
                             <span class="min-w-0 flex-1 break-all font-mono text-sm text-gray-900 dark:text-gray-100" x-text="reveal[k] ? current.fields[k] : '••••••••••'"></span>
                             <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
+                            <button type="button" @click="showBig(current.fields[k])" title="{{ __('passwords.large_type') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrows-pointing-out" class="h-4 w-4" /></button>
                             <button type="button" @click="copy(current.fields[k])" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clipboard" class="h-4 w-4" /></button>
                           </span>
                         </template>
@@ -324,6 +341,7 @@
                         <template x-if="customKind(c) === 'url'"><a :href="/^https?:\/\//.test(c.value) ? c.value : 'https://' + c.value" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100 underline hover:text-gray-600" x-text="c.value"></a></template>
                         <template x-if="customKind(c) !== 'url'"><span class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100" :class="(customKind(c) === 'secret' ? 'font-mono ' : '') + (customKind(c) === 'multiline' ? 'whitespace-pre-wrap' : '')" x-text="(customKind(c) === 'secret' && ! reveal['c' + i]) ? '••••••••••' : c.value"></span></template>
                         <button type="button" x-show="customKind(c) === 'secret'" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
+                        <button type="button" x-show="customKind(c) === 'secret'" @click="showBig(c.value)" title="{{ __('passwords.large_type') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrows-pointing-out" class="h-4 w-4" /></button>
                         <button type="button" @click="copy(c.value)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clipboard" class="h-4 w-4" /></button>
                       </dd>
                     </div>
@@ -411,6 +429,18 @@
             <div class="mt-4 flex justify-end">
               <button type="button" @click="importOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
             </div>
+          </div>
+        </div>
+
+        {{-- Large-type view (readable, colour-coded, mono) --}}
+        <div x-show="bigType.open" x-cloak class="fixed inset-0 z-[970] flex items-center justify-center p-6" @keydown.escape.window="closeBig()" @click="closeBig()">
+          <div class="absolute inset-0 bg-white/95 dark:bg-gray-950/95"></div>
+          <div class="relative w-full max-w-3xl text-center" @click.stop>
+            <p class="mb-6 text-xs uppercase tracking-wide text-gray-400">{{ __('passwords.large_type') }}</p>
+            <p class="break-all font-mono text-4xl leading-relaxed tracking-widest sm:text-5xl">
+              <template x-for="(ch, i) in bigChars()" :key="i"><span :class="ch.cls" x-text="ch.c === ' ' ? ' ' : ch.c"></span></template>
+            </p>
+            <button type="button" @click="closeBig()" class="mt-8 rounded-md bg-gray-900 dark:bg-gray-100 px-5 py-2 text-sm font-medium text-white dark:text-gray-900">{{ __('passwords.close') }}</button>
           </div>
         </div>
       </div>

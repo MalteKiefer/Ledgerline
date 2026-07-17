@@ -39,6 +39,7 @@ return [
     'yes' => 'Ja',
     'no' => 'Nein',
     'wifi_scan' => 'Scannen zum Verbinden',
+    'large_type' => 'Große Anzeige',
     'generate' => 'Passwort generieren',
     'generate_apply' => 'Passwort übernehmen',
     'length' => 'Länge',

@@ -7752,6 +7752,17 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
             setTimeout(() => { navigator.clipboard.writeText('').catch(() => {}); }, secs * 1000);
         } catch (e) { /* clipboard blocked */ }
     },
+    // Large-type view (1Password-style): show a secret big, in a readable mono
+    // font, each character colour-coded (digits blue, symbols red, letters plain).
+    bigType: { open: false, value: '' },
+    showBig(v) { if (v == null || v === '') return; this.bigType = { open: true, value: String(v) }; },
+    closeBig() { this.bigType = { open: false, value: '' }; },
+    bigChars() {
+        return String(this.bigType.value).split('').map((c) => ({
+            c,
+            cls: /[0-9]/.test(c) ? 'text-blue-600 dark:text-blue-400' : (/[^a-zA-Z0-9]/.test(c) ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'),
+        }));
+    },
 
     /* ---- Password generator ---- */
     genPassword() {
