@@ -25,7 +25,7 @@
             licensekey: @js(__('passwords.f_licensekey')), owner: @js(__('passwords.f_owner')), email: @js(__('passwords.f_email')),
             host: @js(__('passwords.f_host')), port: @js(__('passwords.f_port')),
         },
-     })">
+     })" @keydown.window="_hotkey($event)">
 
     {{-- Zero-knowledge gate: secrets decrypt with the vault key. --}}
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
