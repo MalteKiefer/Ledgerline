@@ -40,6 +40,8 @@ return [
     'no' => 'Nein',
     'wifi_scan' => 'Scannen zum Verbinden',
     'large_type' => 'Große Anzeige',
+    'reveal' => 'Anzeigen',
+    'hide' => 'Verbergen',
     // Passwort-Gesundheit + Breach-Check
     'health' => 'Gesundheit',
     'health_issues' => 'Probleme',
