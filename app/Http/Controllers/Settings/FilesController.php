@@ -39,7 +39,7 @@ class FilesController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'file_max_versions' => ['required', 'integer', 'min:1', 'max:10'],
+            'file_max_versions' => ['required', 'integer', 'min:1', 'max:200'],
         ]);
         UserSetting::for($request->user()->id)->update(['file_max_versions' => $data['file_max_versions']]);
 

@@ -38,6 +38,15 @@
         extractOne: @js(__('files.extract_one')),
         extractEmptyOne: @js(__('files.extract_empty_one')),
         extractFailedOne: @js(__('files.extract_failed_one')),
+        activity: {
+            created: @js(__('files.act_created')),
+            renamed: @js(__('files.act_renamed')),
+            moved: @js(__('files.act_moved')),
+            version: @js(__('files.act_version')),
+            restored: @js(__('files.act_restored')),
+            trashed: @js(__('files.act_trashed')),
+            untrashed: @js(__('files.act_untrashed')),
+        },
      })">
 
     {{-- Whole-window drop zone (folders with subfolders supported) --}}
@@ -564,6 +573,18 @@
                     <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">{{ __('files.note') }}</label>
                     <textarea x-model="infoNote" @blur="saveNote()" rows="3" placeholder="{{ __('files.note_placeholder') }}"
                         class="mt-1 w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500"></textarea>
+                </div>
+                {{-- Activity / file history (client-side, from the sealed manifest) --}}
+                <div x-show="infoRow?.kind === 'file' && (infoRow?.activity ?? []).length" x-cloak class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
+                    <label class="block text-sm font-medium text-gray-600 dark:text-gray-400">{{ __('files.activity_heading') }}</label>
+                    <ul class="mt-2 max-h-40 space-y-1.5 overflow-y-auto pr-1">
+                        <template x-for="(a, i) in (infoRow?.activity ?? [])" :key="i">
+                            <li class="flex items-center justify-between gap-3 text-xs">
+                                <span class="min-w-0 truncate text-gray-700 dark:text-gray-300" x-text="activityLabel(a.a) + (a.d ? ' · ' + a.d : '')"></span>
+                                <span class="shrink-0 tabular-nums text-gray-400" x-text="fmtDate(a.at)"></span>
+                            </li>
+                        </template>
+                    </ul>
                 </div>
                 <div class="mt-5 flex justify-end">
                     <button type="button" @click="infoOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
