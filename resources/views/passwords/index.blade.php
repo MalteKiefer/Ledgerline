@@ -66,7 +66,7 @@
                 <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:ring-0">
               </div>
               <div class="mb-2 flex flex-wrap gap-1">
-                <button type="button" @click="filterType = ''; view = 'list'" :class="filterType === '' && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs">{{ __('passwords.all') }}</button>
+                <button type="button" @click="filterType = ''; filterFolder = ''; filterTag = ''; view = 'list'" :class="filterType === '' && filterFolder === '' && filterTag === '' && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs">{{ __('passwords.all') }}</button>
                 <template x-for="t in typeList()" :key="'f' + t">
                   <button type="button" x-show="countOf(t)" @click="filterType = t; view = 'list'" :class="filterType === t && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs" x-text="typeLabel(t) + ' ' + countOf(t)"></button>
                 </template>
