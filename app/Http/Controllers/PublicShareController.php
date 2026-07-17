@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\FileBlob;
 use App\Models\GalleryBlob;
 use App\Models\PublicShare;
 use App\Support\BlobStore;
@@ -23,12 +24,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PublicShareController extends Controller
 {
-    /** The share landing page (shell only; the browser fetches the rest). */
+    /** The share landing page (shell only; the browser fetches the rest). The
+     *  gallery and file/folder shares use different viewer shells. */
     public function show(string $token): View
     {
         $share = $this->resolve($token);
+        $view = $share !== null && $share->kind !== 'gallery_album' ? 'public.file-share' : 'public.share';
 
-        return view('public.share', [
+        return view($view, [
             'token' => $share?->token ?? $token,
             'found' => $share !== null,
             'expired' => $share !== null && $share->isExpired(),
@@ -102,10 +105,11 @@ class PublicShareController extends Controller
         // The link may only stream blobs the owner explicitly put in it, and only
         // blobs that owner actually owns (defence in depth against a stale ref).
         abort_unless(in_array($ref, $share->blob_refs ?? [], true), 404);
-        abort_unless(GalleryBlob::where('blob', $ref)->where('user_id', $share->user_id)->exists(), 404);
+        [$prefix, $ledger] = $this->blobSource($share);
+        abort_unless($ledger::where('blob', $ref)->where('user_id', $share->user_id)->exists(), 404);
 
         $disk = BlobStore::disk();
-        $path = 'gallery/'.$ref;
+        $path = $prefix.'/'.$ref;
         abort_unless($disk->exists($path), 404);
 
         // Ciphertext; the browser decrypts in memory. Force a script-less sandbox
@@ -125,7 +129,15 @@ class PublicShareController extends Controller
             return null;
         }
 
-        return PublicShare::where('token', $token)->where('kind', 'gallery_album')->first();
+        return PublicShare::where('token', $token)->first();
+    }
+
+    /** Where a share's opaque blobs live: [disk prefix, ownership-ledger model]. */
+    private function blobSource(PublicShare $share): array
+    {
+        return $share->kind === 'gallery_album'
+            ? ['gallery', GalleryBlob::class]
+            : ['files', FileBlob::class];
     }
 
     private function unlocked(Request $request, PublicShare $share): bool

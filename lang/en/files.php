@@ -112,4 +112,18 @@ return [
     'act_restored' => 'Version restored',
     'act_trashed' => 'Moved to trash',
     'act_untrashed' => 'Restored from trash',
+
+    // Public file/folder share links (P-Files-1)
+    'share' => 'Share',
+    'share_title' => 'Share',
+    'share_intro_file' => 'Create a public link to this file. It is decrypted only in the visitor’s browser — the server never sees the key or the file.',
+    'share_intro_folder' => 'Create a public link to this folder and its files. They are decrypted only in the visitor’s browser — the server never sees the key or the files.',
+    'share_error' => 'Could not create the share link.',
+    'share_empty' => 'Nothing to share here.',
+    'share_copied' => 'Link copied',
+    'share_page_title' => 'Shared files',
+    'share_download' => 'Download',
+    'share_err_no_key' => 'This link is missing its key and cannot be opened.',
+    'share_err_bad_key' => 'This link’s key is invalid — the files cannot be decrypted.',
+    'share_err_wrong_password' => 'Wrong password.',
 ];

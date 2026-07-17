@@ -9,16 +9,21 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Owner-side management of public gallery-album share links. All the CRUD +
- * ownership scoping lives in ManagesPublicShares; this only pins the kind.
+ * Owner-side management of public file/folder share links. Reuses the shared
+ * share CRUD; the kind ('file' or 'folder') comes from the request so a single
+ * file or a whole folder subtree can be shared. Blobs live under the files disk
+ * prefix — the public routes resolve that from the share's kind.
  */
-class GalleryShareController extends Controller
+class FileShareController extends Controller
 {
     use ManagesPublicShares;
 
     public function store(Request $request): JsonResponse
     {
-        return $this->createShare($request, 'gallery_album');
+        $kind = (string) $request->input('kind');
+        abort_unless(in_array($kind, ['file', 'folder'], true), 422);
+
+        return $this->createShare($request, $kind);
     }
 
     public function update(Request $request, string $token): JsonResponse

@@ -17,6 +17,8 @@
         chunkCompleteUrl: '{{ url('/files/upload/complete') }}',
         chunkAbortUrl: '{{ url('/files/upload/abort') }}',
         maxVersions: {{ $maxVersions }},
+        fileSharesUrl: '{{ url('/files/shares') }}',
+        shareBase: '{{ url('/s') }}',
         token: '{{ csrf_token() }}',
      }, {
         uploadUnreadable: @js(__('files.upload_unreadable')),
@@ -38,6 +40,9 @@
         extractOne: @js(__('files.extract_one')),
         extractEmptyOne: @js(__('files.extract_empty_one')),
         extractFailedOne: @js(__('files.extract_failed_one')),
+        shareError: @js(__('files.share_error')),
+        shareEmpty: @js(__('files.share_empty')),
+        shareCopied: @js(__('files.share_copied')),
         activity: {
             created: @js(__('files.act_created')),
             renamed: @js(__('files.act_renamed')),
@@ -318,6 +323,7 @@
                                     <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
                                     <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
+                                    <button type="button" x-show="view === 'files'" @click="openShare(row)" title="{{ __('files.share') }}" aria-label="{{ __('files.share') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800" :class="row.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"><x-icon name="share" class="h-4 w-4" /></button>
                                     <div class="relative inline-block text-left">
                                         <button type="button" @click="toggleMenu($event)" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
                                         {{-- Teleported to the body so the table's overflow-x-auto wrapper cannot
@@ -588,6 +594,51 @@
                 </div>
                 <div class="mt-5 flex justify-end">
                     <button type="button" @click="infoOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- Public share link for a file or folder (zero-knowledge; key in the fragment) --}}
+    <template x-teleport="body">
+        <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeShare()">
+            <div class="absolute inset-0 bg-gray-900/50" @click="closeShare()"></div>
+            <div class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <div class="flex items-start justify-between gap-2">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.share_title') }} <span class="font-normal text-gray-500 dark:text-gray-400" x-text="share.name"></span></h3>
+                    <button type="button" @click="closeShare()" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="share.kind === 'folder' ? '{{ __('files.share_intro_folder') }}' : '{{ __('files.share_intro_file') }}'"></p>
+
+                <div x-show="share.link" x-cloak class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+                    <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.share_link_label') }}</label>
+                    <div class="mt-1 flex items-center gap-2">
+                        <input type="text" readonly :value="share.link" @focus="$event.target.select()" class="w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300">
+                        <button type="button" @click="copyShareLink()" title="{{ __('gallery.share_copy') }}" class="shrink-0 rounded-md bg-gray-100 dark:bg-gray-800 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="clipboard" class="h-4 w-4" /></button>
+                    </div>
+                    <p class="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ __('gallery.share_active_hint') }}</p>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                    <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_password') }}
+                        <input type="password" x-model="share.password" autocomplete="new-password" :placeholder="share.hasPassword ? '{{ __('gallery.share_password_set') }}' : '{{ __('gallery.share_password_hint') }}'"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+                    </label>
+                    <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_expiry') }}
+                        <input type="datetime-local" x-model="share.expiresAt"
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+                    </label>
+                </div>
+
+                <p x-show="share.error" x-cloak class="mt-3 text-sm text-red-600 dark:text-red-400" x-text="share.error"></p>
+
+                <div class="mt-5 flex items-center justify-between gap-2">
+                    <button type="button" x-show="_shareSrc()?.share" x-cloak @click="revokeShare()" :disabled="share.busy" class="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50">{{ __('gallery.share_revoke') }}</button>
+                    <div class="ml-auto flex gap-2">
+                        <button type="button" @click="closeShare()" class="rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('gallery.share_close') }}</button>
+                        <button type="button" x-show="! _shareSrc()?.share" @click="createShare()" :disabled="share.busy" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50"><x-icon name="link" class="h-4 w-4" />{{ __('gallery.share_create_link') }}</button>
+                        <button type="button" x-show="_shareSrc()?.share" x-cloak @click="updateShare()" :disabled="share.busy" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">{{ __('gallery.share_update') }}</button>
+                    </div>
                 </div>
             </div>
         </div>

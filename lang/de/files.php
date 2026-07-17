@@ -112,4 +112,18 @@ return [
     'act_restored' => 'Version wiederhergestellt',
     'act_trashed' => 'In den Papierkorb',
     'act_untrashed' => 'Aus Papierkorb wiederhergestellt',
+
+    // Öffentliche Datei-/Ordner-Freigabe-Links (P-Files-1)
+    'share' => 'Teilen',
+    'share_title' => 'Teilen',
+    'share_intro_file' => 'Öffentlichen Link zu dieser Datei erstellen. Sie wird nur im Browser des Besuchers entschlüsselt — der Server sieht weder Schlüssel noch Datei.',
+    'share_intro_folder' => 'Öffentlichen Link zu diesem Ordner und seinen Dateien erstellen. Sie werden nur im Browser des Besuchers entschlüsselt — der Server sieht weder Schlüssel noch Dateien.',
+    'share_error' => 'Freigabe-Link konnte nicht erstellt werden.',
+    'share_empty' => 'Hier gibt es nichts zu teilen.',
+    'share_copied' => 'Link kopiert',
+    'share_page_title' => 'Geteilte Dateien',
+    'share_download' => 'Herunterladen',
+    'share_err_no_key' => 'Diesem Link fehlt der Schlüssel; er kann nicht geöffnet werden.',
+    'share_err_bad_key' => 'Der Schlüssel dieses Links ist ungültig — die Dateien können nicht entschlüsselt werden.',
+    'share_err_wrong_password' => 'Falsches Passwort.',
 ];
