@@ -104,7 +104,7 @@
             <button type="button" @click="$store.nav.toggleSidebar()"
                 class="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 shadow-sm">
                 <x-icon name="bars-3" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
-                <span x-text="({files:@js(__('files.all_files')),favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></span>
+                <span x-text="({files:@js(__('files.all_files')),favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),shared:@js(__('files.shared')),trash:@js(__('files.trash'))})[view]"></span>
             </button>
         </div>
         <aside class="hidden w-full shrink-0 space-y-4 self-start rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm md:block md:w-56">
@@ -128,7 +128,7 @@
                         </span>
                     </template>
                 </nav>
-                <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100" x-text="view === 'files' ? (currentFolderName ?? @js(__('messages.nav.files'))) : ({favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),trash:@js(__('files.trash'))})[view]"></h1>
+                <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-gray-100" x-text="view === 'files' ? (currentFolderName ?? @js(__('messages.nav.files'))) : ({favorites:@js(__('files.favorites')),recent:@js(__('files.recent')),shared:@js(__('files.shared')),trash:@js(__('files.trash'))})[view]"></h1>
             </div>
             {{-- Browser actions (hidden in the trash view); empty-trash shown there --}}
             <div class="flex flex-wrap items-center gap-2">
@@ -208,7 +208,7 @@
                             @dragover.prevent="row.kind === 'folder' && dragItem && $event.currentTarget.classList.add('ring-2','ring-gray-400')"
                             @dragleave="$event.currentTarget.classList.remove('ring-2','ring-gray-400')"
                             @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-gray-400'); if (row.kind === 'folder' && dragItem) { dropInto(row.id); dragItem = null; }">
-                            <button type="button" @click="row.kind === 'folder' ? (cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
+                            <button type="button" @click="row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
                                 {{-- No server thumbnails under zero-knowledge (the bytes are
                                      ciphertext the server can't decode) — show a type icon. --}}
                                 <span class="text-gray-400 dark:text-gray-500">
@@ -223,6 +223,7 @@
                                     <span x-show="! row.favorite"><x-icon name="star" class="h-3.5 w-3.5" /></span>
                                 </button>
                                 <span class="min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-300" :title="row.name" x-text="row.name"></span>
+                                <span x-show="row.share" x-cloak title="{{ __('files.shared_badge') }}" class="shrink-0 text-gray-400 dark:text-gray-500"><x-icon name="share" class="h-3.5 w-3.5" /></span>
                                 <div class="relative shrink-0" x-data="{ menu: false, menuStyle: '', toggleMenu(e) { this.menu = ! this.menu; if (! this.menu) return; const r = e.currentTarget.getBoundingClientRect(); const left = Math.max(8, r.right - 176); this.menuStyle = `top: ${r.bottom + 4}px; left: ${left}px;`; this.$nextTick(() => { const h = this.$refs.menu?.offsetHeight ?? 0; if (r.bottom + 4 + h > window.innerHeight - 8 && r.top - h - 4 > 8) this.menuStyle = `top: ${r.top - h - 4}px; left: ${left}px;`; }); } }">
                                     <button type="button" @click="toggleMenu($event)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" :aria-label="@js(__('files.actions'))"><x-icon name="ellipsis" class="h-4 w-4" /></button>
                                     <template x-teleport="body">
@@ -283,13 +284,14 @@
                             @dragstart.stop="onDragStart($event, row)" @dragend="onDragEnd()"
                             @dragover="if (row.kind === 'folder' && dragItem && !(dragItem.kind === 'folder' && dragItem.id === row.id)) $event.preventDefault()"
                             @drop.prevent="row.kind === 'folder' && dropInto(row.id)"
-                            @click="if (renaming !== row.id) { row.kind === 'folder' ? cwd = row.id : openFile(row) }">
+                            @click="if (renaming !== row.id) { row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row) }">
                             <td class="px-4 py-3" @click.stop><input type="checkbox" :value="rowKey(row)" x-model="selected" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500"></td>
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                                 <span class="flex min-w-0 items-center gap-2" x-show="renaming !== row.id">
                                     <svg x-show="row.kind === 'folder'" class="h-5 w-5 shrink-0 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
                                     <svg x-show="row.kind === 'file'" class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="fileIconPath(row)" /></svg>
                                     <span class="truncate" x-text="row.name"></span>
+                                    <span x-show="row.share" x-cloak title="{{ __('files.shared_badge') }}" class="inline-flex shrink-0 items-center text-gray-400 dark:text-gray-500"><x-icon name="share" class="h-3.5 w-3.5" /></span>
                                 </span>
                                 <form x-show="renaming === row.id" x-cloak class="flex gap-2" @click.stop @submit.prevent="applyRename(row)">
                                     <input type="text" x-model="renameValue" x-ref="rename"
@@ -323,7 +325,7 @@
                                     <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
                                     <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
-                                    <button type="button" x-show="view === 'files'" @click="openShare(row)" title="{{ __('files.share') }}" aria-label="{{ __('files.share') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800" :class="row.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"><x-icon name="share" class="h-4 w-4" /></button>
+                                    <button type="button" x-show="view === 'files' || view === 'shared'" @click="openShare(row)" :title="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" :aria-label="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800" :class="row.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"><x-icon name="share" class="h-4 w-4" /></button>
                                     <div class="relative inline-block text-left">
                                         <button type="button" @click="toggleMenu($event)" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
                                         {{-- Teleported to the body so the table's overflow-x-auto wrapper cannot

@@ -20,6 +20,13 @@
         <x-icon name="clock" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
         <span>{{ __('files.recent') }}</span>
     </button>
+    <button type="button" @click="view = 'shared'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
+        :class="view === 'shared' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"
+        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium">
+        <x-icon name="share" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+        <span class="flex-1 text-left">{{ __('files.shared') }}</span>
+        <span x-show="sharedCount > 0" x-cloak x-text="sharedCount" class="rounded-full bg-gray-200 dark:bg-gray-700 px-1.5 text-xs text-gray-600 dark:text-gray-300"></span>
+    </button>
     <button type="button" @click="view = 'trash'; selected = []; cwd = null; $store.nav.closeAll && $store.nav.closeAll()"
         @dragover.prevent="if (dragItem) $event.currentTarget.classList.add('ring-2','ring-red-400')"
         @dragleave="$event.currentTarget.classList.remove('ring-2','ring-red-400')"
