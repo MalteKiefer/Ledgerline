@@ -7,7 +7,7 @@ nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**
 Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Kontakte, Rechnungen,
 Backup, Paperless**. Version **v1.484.0** (live https://home.kiefer-networks.de, `/up`=200).
 
-> Sharing lebt wieder (ZK): **öffentliche Album-Links** `/s/{token}` — Share-Key im URL-Fragment (nie an Server), optionales Passwort = rate-limitiertes Gate, optionaler Original-Download, Expiry. `PublicShare`-Modell, `GalleryShareController` (owner) + `PublicShareController` (public), `ShareCrypto` in vault.js. Die alte „script-less CSP für Public-Share-Seiten"-Regel gilt hier NICHT: die ZK-Ansichtsseite braucht das gebündelte JS (globale CSP `script-src 'self'` reicht, kein Inline).
+> Sharing lebt wieder (ZK): **öffentliche Links** `/s/{token}` für **Galerie-Album, Datei UND Ordner** — Share-Key im URL-Fragment (nie an Server), optionales Passwort = rate-limitiertes Gate, optionaler Download, Expiry. `PublicShare`-Modell (`kind` = gallery_album|file|folder), owner-CRUD via Trait `Concerns\ManagesPublicShares` (genutzt von `GalleryShareController` + `FileShareController`), `PublicShareController` (public; Blob-Route wählt Disk-Prefix+Ledger per kind: gallery/GalleryBlob vs files/FileBlob), `ShareCrypto` in vault.js, Viewer-Komponenten `publicShare`/`fileShare`. Die alte „script-less CSP für Public-Share-Seiten"-Regel gilt hier NICHT: die ZK-Ansichtsseiten brauchen das gebündelte JS (globale CSP `script-src 'self'` reicht, kein Inline).
 
 > **Achtung — großer Pivot seit dem alten Stand (v1.298).** Die App wurde
 > zwischen 2026-07-06 und 2026-07-17 komplett von *plaintext* auf

@@ -10,6 +10,7 @@ use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
@@ -180,6 +181,14 @@ Route::middleware('auth')->group(function (): void {
     // Generous limit: emptying a large trash frees hundreds of blobs at once, and
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');
+
+    // Public share links for a file or a whole folder subtree. Like the gallery
+    // shares, the client seals the manifest (file list + per-blob keys re-wrapped
+    // under the link's fragment key) before it arrives — ciphertext + access
+    // controls only. Served publicly via the shared /s/{token} routes.
+    Route::post('/files/shares', [FileShareController::class, 'store'])->middleware('throttle:60,1')->name('files.shares.store');
+    Route::put('/files/shares/{token}', [FileShareController::class, 'update'])->middleware('throttle:60,1')->name('files.shares.update');
+    Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('files.shares.destroy');
 
     // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
     // Opaque zero-knowledge store: the whole workspace as one sealed manifest.

@@ -1139,6 +1139,88 @@ Alpine.data('publicShare', (config = {}, labels = {}) => ({
     fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return ''; } },
 }));
 
+/**
+ * Public file/folder share viewer (/s/{token}). Like publicShare but lists files
+ * (a single file or a folder subtree) with preview + download; the share key from
+ * the fragment unwraps each blob's per-file key. No key/plaintext hits the server.
+ */
+Alpine.data('fileShare', (config = {}, labels = {}) => ({
+    state: 'boot', // boot | password | ready | error | expired | notfound
+    error: '',
+    sk: null,
+    manifest: null, // { kind, name, files: [] }
+    password: '',
+    unlocking: false,
+    thumbs: {},
+    viewer: { open: false, kind: 'none', src: '', file: null },
+
+    async init() {
+        const m = (location.hash || '').match(/s:([A-Za-z0-9_\-+/=]+)/);
+        this.sk = m ? decodeURIComponent(m[1]) : null;
+        try {
+            const res = await fetch(config.metaUrl, { headers: { Accept: 'application/json' } });
+            if (res.status === 404) { this.state = 'notfound'; return; }
+            if (res.status === 410) { this.state = 'expired'; return; }
+            const meta = await res.json();
+            if (! meta.found) { this.state = 'notfound'; return; }
+            if (meta.expired) { this.state = 'expired'; return; }
+            if (! this.sk) { this.state = 'error'; this.error = labels.noKey || ''; return; }
+            if (meta.needsPassword && ! meta.unlocked) { this.state = 'password'; return; }
+            await this.loadManifest();
+        } catch (e) { this.state = 'error'; }
+    },
+    async unlock() {
+        if (this.unlocking) return;
+        this.unlocking = true; this.error = '';
+        try {
+            const res = await fetch(config.unlockUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ password: this.password }) });
+            if (! res.ok) { this.error = labels.wrongPassword || ''; return; }
+            this.password = '';
+            await this.loadManifest();
+        } catch (e) { this.error = labels.wrongPassword || ''; } finally { this.unlocking = false; }
+    },
+    async loadManifest() {
+        this.state = 'boot';
+        try {
+            const res = await fetch(config.manifestUrl, { headers: { Accept: 'application/json' } });
+            if (! res.ok) throw new Error('manifest');
+            const { sealed } = await res.json();
+            const bytes = await window.ShareCrypto.unwrap(sealed, this.sk);
+            this.manifest = JSON.parse(new TextDecoder().decode(bytes));
+            this.state = 'ready';
+        } catch (e) { this.state = 'error'; this.error = labels.badKey || ''; }
+    },
+    get files() { return this.manifest?.files || []; },
+    get isFolder() { return this.manifest?.kind === 'folder'; },
+    isImage(f) { return /^image\//.test(f.mime || '') && ! /svg/.test(f.mime || ''); },
+    isPdf(f) { return (f.mime || '') === 'application/pdf'; },
+    async _blob(f) {
+        const buf = await (await fetch(`${config.blobBase}/${f.ref}`)).arrayBuffer();
+        const fk = await window.ShareCrypto.unwrap(f.key, this.sk);
+        return window.ShareCrypto.decrypt(buf, fk);
+    },
+    async thumbFor(f) {
+        if (! this.isImage(f) || this.thumbs[f.ref]) return this.thumbs[f.ref];
+        try { const b = await this._blob(f); const url = URL.createObjectURL(new Blob([b], { type: f.mime })); this.thumbs[f.ref] = url; return url; } catch (e) { return ''; }
+    },
+    async open(f) {
+        if (this.isImage(f) || this.isPdf(f)) {
+            this.viewer = { open: true, kind: this.isPdf(f) ? 'pdf' : 'image', src: '', file: f };
+            try { const b = await this._blob(f); this.viewer.src = URL.createObjectURL(new Blob([b], { type: f.mime })); } catch (e) { this.closeViewer(); }
+        } else { this.download(f); }
+    },
+    closeViewer() { if (this.viewer.src) URL.revokeObjectURL(this.viewer.src); this.viewer = { open: false, kind: 'none', src: '', file: null }; },
+    async download(f) {
+        try {
+            const b = await this._blob(f);
+            const url = URL.createObjectURL(new Blob([b], { type: f.mime || 'application/octet-stream' }));
+            const a = document.createElement('a'); a.href = url; a.download = f.name || 'file'; a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+        } catch (e) { /* ignore */ }
+    },
+    fmtSize(n) { n = n || 0; const u = ['B', 'KB', 'MB', 'GB']; let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return (i ? n.toFixed(1) : n) + ' ' + u[i]; },
+}));
+
 Alpine.data('vaultGallery', (config = {}, labels = {}) => {
 // Non-reactive caches. Decrypted CLIP/face embeddings are large float arrays;
 // keeping them OFF the Alpine component (out of the reactive proxy) is critical
@@ -4276,6 +4358,103 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     // Human-facing label + relative time for an activity entry (rendered in the
     // info panel). The label map lives in `labels` (from the blade).
     activityLabel(a) { return (labels.activity && labels.activity[a]) || a; },
+
+    /* ---- Public share links for a file or a whole folder (zero-knowledge) ----
+       Mirrors the gallery: a fresh share key (SK) is generated, each blob's
+       per-file key is unwrapped with the vault key and re-wrapped under SK, and
+       only the sealed manifest + ciphertext reach the server. SK lives in the
+       link fragment and in our own sealed manifest (entry.share.sk) so the owner
+       can re-copy the link; it never reaches the server. --- */
+    share: { open: false, kind: '', ref: null, name: '', busy: false, password: '', expiresAt: '', link: '', error: '', hasPassword: false },
+    openShare(row) {
+        const src = row.kind === 'folder' ? this.manifest.folders.find((f) => f.id === row.id) : this.manifest.files.find((f) => f.id === row.id);
+        const s = src?.share;
+        this.share = {
+            open: true, kind: row.kind, ref: row.id, name: row.name, busy: false, error: '',
+            password: '', expiresAt: s?.expiresAt || '', hasPassword: ! ! s?.hasPassword,
+            link: s?.token ? this._shareLink(s.token, s.sk) : '',
+        };
+    },
+    closeShare() { this.share.open = false; this.share.ref = null; this.share.password = ''; },
+    _shareLink(token, sk) { return `${config.shareBase}/${token}#s:${sk}`; },
+    _shareSrc() { return this.share.kind === 'folder' ? this.manifest.folders.find((f) => f.id === this.share.ref) : this.manifest.files.find((f) => f.id === this.share.ref); },
+    _relPath(f, rootId, byId) {
+        const parts = []; let cur = f.folder;
+        while (cur != null && cur !== rootId && byId.has(cur)) { parts.unshift(byId.get(cur).name); cur = byId.get(cur).parent; }
+        return parts.join('/');
+    },
+    // Seal a share manifest: the file (or every non-trashed file under the folder),
+    // each with its per-file key re-wrapped under the share key.
+    async _buildShareManifest(sk) {
+        const refs = [], entries = [];
+        const wrap = async (f, path) => {
+            if (! f.blob || ! f.encFileKey) return;
+            const fk = window.Vault.unwrapContentKey(f.encFileKey);
+            entries.push({ name: f.name, mime: f.mime || 'application/octet-stream', size: f.size || 0, path: path || '', ref: f.blob, key: await window.ShareCrypto.wrap(fk, sk) });
+            refs.push(f.blob);
+        };
+        if (this.share.kind === 'file') {
+            const f = this.manifest.files.find((x) => x.id === this.share.ref);
+            if (f) await wrap(f, '');
+        } else {
+            const rootId = this.share.ref;
+            const set = this.subtree(rootId);
+            const byId = new Map(this.manifest.folders.map((x) => [x.id, x]));
+            for (const f of this.manifest.files) if (! f.trashed && set.has(f.folder)) await wrap(f, this._relPath(f, rootId, byId));
+        }
+        const manifest = { kind: this.share.kind, name: this.share.name, files: entries };
+        const sealed = await window.ShareCrypto.wrap(new TextEncoder().encode(JSON.stringify(manifest)), sk);
+        return { sealed, refs: [...new Set(refs)] };
+    },
+    _shareBody(sealed, refs) {
+        const body = { kind: this.share.kind, sealed_manifest: sealed, blob_refs: refs, allow_download: true };
+        if (this.share.expiresAt) body.expires_at = new Date(this.share.expiresAt).toISOString();
+        if (this.share.password.trim()) body.password = this.share.password.trim();
+        return body;
+    },
+    async createShare() {
+        if (this.share.busy) return;
+        this.share.busy = true; this.share.error = '';
+        try {
+            const sk = await window.ShareCrypto.newKey();
+            const { sealed, refs } = await this._buildShareManifest(sk);
+            if (! refs.length) { this.share.error = labels.shareEmpty || 'empty'; this.share.busy = false; return; }
+            const res = await fetch(config.fileSharesUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(this._shareBody(sealed, refs)) });
+            if (! res.ok) throw new Error('share');
+            const { token } = await res.json();
+            const src = this._shareSrc();
+            if (src) src.share = { token, sk, kind: this.share.kind, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString() };
+            this.share.hasPassword = ! ! this.share.password.trim();
+            this.share.password = '';
+            this.share.link = this._shareLink(token, sk);
+            this.persist();
+        } catch (e) { this.share.error = labels.shareError || 'error'; } finally { this.share.busy = false; }
+    },
+    async updateShare() {
+        const src = this._shareSrc();
+        if (! src?.share || this.share.busy) return;
+        this.share.busy = true; this.share.error = '';
+        try {
+            const { sealed, refs } = await this._buildShareManifest(src.share.sk);
+            const body = this._shareBody(sealed, refs);
+            if (! this.share.password.trim() && ! src.share.hasPassword) body.clear_password = true;
+            const res = await fetch(`${config.fileSharesUrl}/${src.share.token}`, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(body) });
+            if (! res.ok) throw new Error('share');
+            src.share.expiresAt = this.share.expiresAt || null;
+            if (this.share.password.trim()) { src.share.hasPassword = true; this.share.hasPassword = true; } else if (body.clear_password) { src.share.hasPassword = false; this.share.hasPassword = false; }
+            this.share.password = '';
+            this.persist();
+        } catch (e) { this.share.error = labels.shareError || 'error'; } finally { this.share.busy = false; }
+    },
+    async revokeShare() {
+        const src = this._shareSrc();
+        if (! src?.share) return;
+        this.share.busy = true;
+        try { await fetch(`${config.fileSharesUrl}/${src.share.token}`, { method: 'DELETE', headers: jsonHeaders() }); } catch (e) { /* best effort */ }
+        delete src.share; this.share.link = ''; this.share.busy = false;
+        this.persist();
+    },
+    async copyShareLink() { if (! this.share.link) return; try { await navigator.clipboard.writeText(this.share.link); window.llToast(labels.shareCopied || ''); } catch (e) { /* clipboard blocked */ } },
 
     // Persist the whole workspace: schedule a debounced, sealed save of the shared
     // opaque store (the file arrays are live references into it). LLStore coalesces
