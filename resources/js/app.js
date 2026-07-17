@@ -3309,17 +3309,33 @@ async function apiRequest(method, url, body) {
 // (hundreds of thumbnails + face crops) can momentarily trip the per-route
 // throttle; retrying with the server's Retry-After (else exponential backoff)
 // means tiles recover instead of showing blanks.
+// Global cap on concurrent blob fetches. Every content-blob load (thumbnails,
+// face crops, person/contact covers, originals, files) funnels through here, so
+// this bounds total in-flight requests app-wide. Without it, the People view
+// firing a fetch per face crop opened hundreds of parallel connections and the
+// browser aborted them (ERR_INSUFFICIENT_RESOURCES).
+let _blobActive = 0;
+const _blobWaiters = [];
+const BLOB_CONCURRENCY = 6;
 async function fetchBlobBuffer(url) {
-    for (let tries = 0; ; tries++) {
-        const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-        if (res.ok) return res.arrayBuffer();
-        if (res.status === 429 && tries < 6) {
-            const ra = parseInt(res.headers.get('Retry-After') || '', 10);
-            const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(8000, 400 * 2 ** tries) + Math.random() * 300;
-            await new Promise((r) => setTimeout(r, wait));
-            continue;
+    if (_blobActive >= BLOB_CONCURRENCY) await new Promise((r) => _blobWaiters.push(r));
+    _blobActive++;
+    try {
+        for (let tries = 0; ; tries++) {
+            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (res.ok) return await res.arrayBuffer();
+            if (res.status === 429 && tries < 6) {
+                const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+                const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(8000, 400 * 2 ** tries) + Math.random() * 300;
+                await new Promise((r) => setTimeout(r, wait));
+                continue;
+            }
+            throw new Error('fetch failed');
         }
-        throw new Error('fetch failed');
+    } finally {
+        _blobActive--;
+        const next = _blobWaiters.shift();
+        if (next) next();
     }
 }
 
