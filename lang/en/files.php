@@ -102,4 +102,14 @@ return [
     'version_download' => 'Download',
     'version_restore' => 'Restore',
     'version_restore_confirm' => 'Restore this version? The current content is kept as a new version.',
+
+    // Activity log / file history (client-side, in the sealed manifest)
+    'activity_heading' => 'Activity',
+    'act_created' => 'Added',
+    'act_renamed' => 'Renamed',
+    'act_moved' => 'Moved',
+    'act_version' => 'Edited (new version)',
+    'act_restored' => 'Version restored',
+    'act_trashed' => 'Moved to trash',
+    'act_untrashed' => 'Restored from trash',
 ];

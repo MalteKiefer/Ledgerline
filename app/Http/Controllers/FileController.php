@@ -43,7 +43,7 @@ class FileController extends BlobStoreController
         $uid = (int) $request->user()->id;
 
         return view('files.index', [
-            'maxVersions' => min(10, max(1, (int) UserSetting::for($uid)->file_max_versions)),
+            'maxVersions' => min(200, max(1, (int) UserSetting::for($uid)->file_max_versions)),
             'usage' => ['used' => $this->usedBytes($uid), 'quota' => $this->quotaBytes()],
         ]);
     }

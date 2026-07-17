@@ -5,7 +5,7 @@ alles wird im Browser ver-/entschlüsselt. Selbst der Server-Betreiber kann Date
 nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**.
 
 Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Kontakte, Rechnungen,
-Backup, Paperless**. Version **v1.483.0** (live https://home.kiefer-networks.de, `/up`=200).
+Backup, Paperless**. Version **v1.484.0** (live https://home.kiefer-networks.de, `/up`=200).
 
 > Sharing lebt wieder (ZK): **öffentliche Album-Links** `/s/{token}` — Share-Key im URL-Fragment (nie an Server), optionales Passwort = rate-limitiertes Gate, optionaler Original-Download, Expiry. `PublicShare`-Modell, `GalleryShareController` (owner) + `PublicShareController` (public), `ShareCrypto` in vault.js. Die alte „script-less CSP für Public-Share-Seiten"-Regel gilt hier NICHT: die ZK-Ansichtsseite braucht das gebündelte JS (globale CSP `script-src 'self'` reicht, kein Inline).
 

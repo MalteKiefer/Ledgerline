@@ -4250,9 +4250,32 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         row.encFileKey = v.encFileKey;
         this._spliceWhere(row.versions, (x) => x.id === v.id);
         this._trimVersions(row);
+        this._logActivity(row, 'restored');
         this.persist();
         this.versions.open = false;
     },
+
+    /* ---- Per-file activity log (client-side, inside the sealed manifest). Records
+       mutations (create/rename/move/version/restore/trash) so a file carries its
+       own history; bounded so it can't grow the manifest without limit. --- */
+    _logActivity(f, action, detail = null) {
+        if (! f) return;
+        f.activity = f.activity ?? [];
+        const e = { a: action, at: new Date().toISOString() };
+        if (detail) e.d = detail;
+        f.activity.unshift(e);
+        if (f.activity.length > 50) f.activity.length = 50;
+    },
+    // Mark a file as opened/accessed — drives the Recent / Quick-Access view.
+    _touchOpened(id) {
+        const f = this.manifest.files.find((x) => x.id === id);
+        if (! f) return;
+        f.openedAt = new Date().toISOString();
+        this.persist();
+    },
+    // Human-facing label + relative time for an activity entry (rendered in the
+    // info panel). The label map lives in `labels` (from the blade).
+    activityLabel(a) { return (labels.activity && labels.activity[a]) || a; },
 
     // Persist the whole workspace: schedule a debounced, sealed save of the shared
     // opaque store (the file arrays are live references into it). LLStore coalesces
@@ -4318,9 +4341,11 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             return search(this.manifest.files.filter((f) => f.favorite && ! f.trashed)).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
         }
         if (this.view === 'recent') {
+            // Quick-Access: most-recently opened first, falling back to upload time
+            // for files never opened. Only files touched at some point surface high.
             return search(this.manifest.files.filter((f) => ! f.trashed))
                 .map((f) => ({ ...f, kind: 'file' }))
-                .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0)).slice(0, 100);
+                .sort((a, b) => new Date(b.openedAt || b.created || 0) - new Date(a.openedAt || a.created || 0)).slice(0, 100);
         }
 
         // A text search or an active tag filter switches from folder browsing to
@@ -4511,6 +4536,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const list = row.kind === 'folder' ? this.manifest.folders : this.manifest.files;
         const item = list.find((x) => x.id === row.id);
         if (item) {
+            if (row.kind !== 'folder') this._logActivity(item, 'renamed', name);
             item.name = name;
             await this.persist().catch(() => this.load());
         }
@@ -4589,7 +4615,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                 if (f) f.parent = target;
             } else {
                 const f = this.manifest.files.find((x) => x.id === ref.id);
-                if (f) f.folder = target;
+                if (f) { f.folder = target; this._logActivity(f, 'moved'); }
             }
         }
         this.selected = [];
@@ -4683,7 +4709,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         } else {
             const stamp = new Date().toISOString();
             for (const f of targets) {
-                if (! f.trashed) f.trashed = stamp;
+                if (! f.trashed) { f.trashed = stamp; this._logActivity(f, 'trashed'); }
                 // The folder is gone from the tree, so detach to root — a restore
                 // then lands the file at the top level instead of nowhere.
                 if (killFolders.has(f.folder)) f.folder = null;
@@ -4705,7 +4731,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
         } else {
             const f = this.manifest.files.find((x) => x.id === ref.id);
-            if (f && ! f.trashed) f.trashed = new Date().toISOString();
+            if (f && ! f.trashed) { f.trashed = new Date().toISOString(); this._logActivity(f, 'trashed'); }
         }
         this.selected = [];
         this.persist();
@@ -4716,6 +4742,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
         const f = this.manifest.files.find((x) => x.id === row.id);
         if (! f) return;
         f.trashed = null;
+        this._logActivity(f, 'untrashed');
         this.persist();
     },
 
@@ -4867,6 +4894,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                         versions: [],
                     };
                     this.manifest.files.push(row);
+                    this._logActivity(row, 'created');
                     // Auto-index text/PDF in the background. Images need OCR (slow)
                     // and most uploads aren't documents, so those index only via
                     // the explicit "Index contents" backfill.
@@ -5290,6 +5318,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     async download(row) {
+        this._touchOpened(row.id);
         // Large files: stream-decrypt straight to disk (constant memory) when the
         // browser can write incrementally; otherwise fall back to whole-in-memory.
         if (window.showSaveFilePicker && (row.size || 0) > 64 * 1024 * 1024) {
@@ -5426,6 +5455,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     /* ---- Preview & editor (all in the browser, nothing readable leaves it) ---- */
 
     async openFile(row) {
+        this._touchOpened(row.id);
         this.dl = { active: true, done: 0, total: 1 };
         try {
             const plain = await this.fetchPlain(row);
@@ -5564,6 +5594,7 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
                     entry.versions = entry.versions ?? [];
                     entry.versions.unshift({ id: crypto.randomUUID(), blob: oldBlob, encFileKey: entry.encFileKey, size: entry.size, mime: entry.mime, name: entry.name, created: new Date().toISOString() });
                     this._trimVersions(entry);
+                    this._logActivity(entry, 'version');
                 }
                 entry.blob = id;
                 entry.size = bytes.length;

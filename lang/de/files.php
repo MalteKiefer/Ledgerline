@@ -102,4 +102,14 @@ return [
     'version_download' => 'Herunterladen',
     'version_restore' => 'Wiederherstellen',
     'version_restore_confirm' => 'Diese Version wiederherstellen? Der aktuelle Inhalt wird als neue Version behalten.',
+
+    // Aktivitätslog / Datei-Historie (client-seitig, im sealed Manifest)
+    'activity_heading' => 'Aktivität',
+    'act_created' => 'Hinzugefügt',
+    'act_renamed' => 'Umbenannt',
+    'act_moved' => 'Verschoben',
+    'act_version' => 'Bearbeitet (neue Version)',
+    'act_restored' => 'Version wiederhergestellt',
+    'act_trashed' => 'In den Papierkorb',
+    'act_untrashed' => 'Aus Papierkorb wiederhergestellt',
 ];
