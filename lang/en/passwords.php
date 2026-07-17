@@ -51,6 +51,7 @@ return [
     'issue_weak' => 'Weak',
     'breach_warn' => 'This password appeared in :count known breaches. Change it.',
     'reused_warn' => 'This password is reused on another entry.',
+    'reused_where' => 'Also used in:',
     'weak_warn' => 'This password is weak.',
     'generate' => 'Generate password',
     'generate_apply' => 'Use password',

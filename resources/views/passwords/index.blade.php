@@ -299,7 +299,15 @@
                   <x-icon name="exclamation-triangle" class="mt-0.5 h-4 w-4 shrink-0" />
                   <div class="min-w-0 flex-1 space-y-0.5">
                     <p x-show="issuesFor(current) && issuesFor(current).breach > 0" x-text="@js(__('passwords.breach_warn', ['count' => '{n}'])).replace('{n}', String((issuesFor(current) && issuesFor(current).breach) || 0))"></p>
-                    <p x-show="issuesFor(current) && issuesFor(current).reused">{{ __('passwords.reused_warn') }}</p>
+                    <div x-show="issuesFor(current) && issuesFor(current).reused">
+                      <p>{{ __('passwords.reused_warn') }}</p>
+                      <div class="mt-1.5 flex flex-wrap gap-1">
+                        <span class="text-xs text-amber-700/80 dark:text-amber-300/80">{{ __('passwords.reused_where') }}</span>
+                        <template x-for="y in reusedWith(current)" :key="y.id">
+                          <button type="button" @click="openItem(y)" class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-xs font-medium hover:underline" x-text="y.title"></button>
+                        </template>
+                      </div>
+                    </div>
                     <p x-show="issuesFor(current) && issuesFor(current).weak">{{ __('passwords.weak_warn') }}</p>
                     <button type="button" x-show="issuesFor(current) && issuesFor(current).breach === null" @click="checkBreaches()" :disabled="breachChecking" class="text-xs font-medium underline disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
                   </div>

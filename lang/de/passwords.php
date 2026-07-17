@@ -51,6 +51,7 @@ return [
     'issue_weak' => 'Schwach',
     'breach_warn' => 'Dieses Passwort tauchte in :count bekannten Leaks auf. Ändere es.',
     'reused_warn' => 'Dieses Passwort wird bei einem anderen Eintrag wiederverwendet.',
+    'reused_where' => 'Auch verwendet in:',
     'weak_warn' => 'Dieses Passwort ist schwach.',
     'generate' => 'Passwort generieren',
     'generate_apply' => 'Passwort übernehmen',
