@@ -146,4 +146,22 @@ return [
     'processing' => 'Wird verarbeitet…',
     'title' => 'Galerie',
     'upload' => 'Fotos hochladen',
+
+    // Favoriten, Archiv, Erinnerungen, Beschreibungen (P0)
+    'favorites' => 'Favoriten',
+    'favorites_empty' => 'Noch keine Favoriten. Tippe auf den Stern eines Fotos.',
+    'favorite' => 'Favorit',
+    'unfavorite' => 'Favorit entfernen',
+    'archive' => 'Archiv',
+    'archive_hint' => 'Archivierte Fotos sind aus der Bibliothek ausgeblendet, bleiben aber in Alben und Suche.',
+    'archive_empty' => 'Nichts archiviert.',
+    'archive_action' => 'Archivieren',
+    'unarchive_action' => 'Zurück in die Bibliothek',
+    'memories' => 'Erinnerungen',
+    'memories_hint' => 'Fotos, die an diesem Tag in früheren Jahren aufgenommen wurden.',
+    'memories_empty' => 'Keine Erinnerungen für heute.',
+    'memories_year_ago' => 'Vor einem Jahr',
+    'memories_years_ago' => 'Jahre her',
+    'caption' => 'Beschreibung',
+    'caption_placeholder' => 'Beschreibung hinzufügen…',
 ];
