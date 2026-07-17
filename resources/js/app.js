@@ -7406,7 +7406,25 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey'],
     securityOptions: ['nopass', 'WEP', 'WPA', 'WPA2', 'WPA3', 'WPA2-Enterprise', 'WPA3-Enterprise'],
 
-    async init() { await this._initZk(); this._totpTimer = setInterval(() => this._tickTotp(), 1000); this._tickTotp(); },
+    async init() {
+        await this._initZk();
+        this._totpTimer = setInterval(() => this._tickTotp(), 1000);
+        this._tickTotp();
+        this._autoSelect();
+        // Keep the first matching entry selected as the state/filters change.
+        this.$watch('state', (s) => { if (s === 'ready') this._autoSelect(); });
+        for (const p of ['query', 'filterType', 'filterFolder', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
+    },
+    // Auto-select the first item in the current list (unless something is being
+    // edited or the current selection is still visible).
+    _autoSelect() {
+        if (this.draft) return;
+        const f = this.filtered;
+        if (this.current && f.some((x) => x.id === this.current.id)) return;
+        this.current = f[0] || null;
+        this.reveal = {};
+        if (this.current) this._refreshWifiQr(this.current);
+    },
 
     typeList() { return Object.keys(this.types); },
     typeLabel(t) { return (labels.types && labels.types[t]) || t; },
@@ -7473,7 +7491,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         if (this.draft.type === 'login' && ! Array.isArray(this.draft.fields.urls)) this.draft.fields.urls = this.draft.fields.url ? [this.draft.fields.url] : [''];
         this.tagsValue = (this.draft.tags || []).join(', ');
     },
-    cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; },
+    cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; this._autoSelect(); },
     changeDraftType(t) { if (! this.draft || this.draft.id) return; this.draft.type = t; this.draft.fields = this._blankFields(t); },
 
     addUrl() { if (this.draft) (this.draft.fields.urls = this.draft.fields.urls || []).push(''); },
@@ -7574,9 +7592,9 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     avatarText(x) { const s = (x.title || this._domain(x) || '?').trim(); return (s[0] || '?').toUpperCase(); },
     avatarColor(x) { let h = 0; const s = x.title || this._domain(x) || x.id || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 45% 55%)`; },
     toggleFavorite(x) { x.favorite = ! x.favorite; this._save(); },
-    trash(x) { x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); },
+    trash(x) { x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); this._autoSelect(); },
     restore(x) { x.trashed = null; this._save(); },
-    purge(x) { const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); },
+    purge(x) { const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); this._autoSelect(); },
     emptyTrash() { return this._emptyTrashArr(this.items, labels.emptyTrashConfirm); },
 
     /* ---- Import (Bitwarden / 1Password / LastPass / KeePass / CSV) ----
