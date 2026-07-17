@@ -7439,6 +7439,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     folderName(id) { return (this.folders.find((f) => f.id === id) || {}).name || ''; },
     get allTags() { const s = new Set(); for (const x of this.liveItems) for (const t of (x.tags || [])) s.add(t); return [...s].sort((a, b) => a.localeCompare(b)); },
     get filtered() {
+        if (this.view === 'health') return this.healthProblems.map((o) => o.x);
         const q = this.query.trim().toLowerCase();
         const list = this.view === 'trash' ? this.items.filter((x) => x.trashed) : this.liveItems;
         return list
@@ -7591,6 +7592,52 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     },
     avatarText(x) { const s = (x.title || this._domain(x) || '?').trim(); return (s[0] || '?').toUpperCase(); },
     avatarColor(x) { let h = 0; const s = x.title || this._domain(x) || x.id || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 45% 55%)`; },
+
+    /* ---- Password health: weak / reused / breached (HIBP) ---- */
+    breachMap: {}, // password -> pwned count (session only, never persisted)
+    breachChecking: false,
+    _pwTypes: ['login', 'password', 'server', 'wifi'],
+    _pw(x) { return (x.fields && x.fields.password) || ''; },
+    get healthItems() { return this.liveItems.filter((x) => this._pwTypes.includes(x.type) && this._pw(x)); },
+    get _reusedSet() {
+        const count = {};
+        for (const x of this.healthItems) count[this._pw(x)] = (count[this._pw(x)] || 0) + 1;
+        const set = new Set();
+        for (const x of this.healthItems) if (count[this._pw(x)] > 1) set.add(x.id);
+        return set;
+    },
+    _pwScore(pw) { let s = 0; if (pw.length >= 8) s++; if (pw.length >= 12) s++; if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++; if (/\d/.test(pw)) s++; if (/[^a-zA-Z0-9]/.test(pw)) s++; return Math.min(4, s); },
+    issuesFor(x) {
+        const pw = this._pw(x); if (! pw) return null;
+        const b = this.breachMap[pw];
+        return { weak: this._pwScore(pw) < 3, reused: this._reusedSet.has(x.id), breach: (b == null ? null : b) };
+    },
+    hasIssue(x) { const i = this.issuesFor(x); return ! ! i && (i.weak || i.reused || i.breach > 0); },
+    get healthProblems() {
+        const rank = (i) => (i.breach > 0 ? 4 : 0) + (i.reused ? 2 : 0) + (i.weak ? 1 : 0);
+        return this.healthItems.map((x) => ({ x, iss: this.issuesFor(x) })).filter((o) => o.iss && rank(o.iss) > 0)
+            .sort((a, b) => rank(b.iss) - rank(a.iss));
+    },
+    get healthCount() { return this.healthProblems.length; },
+    async _sha1hex(str) { const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str)); return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase(); },
+    async checkBreaches() {
+        if (this.breachChecking) return;
+        this.breachChecking = true;
+        try {
+            const pws = [...new Set(this.healthItems.map((x) => this._pw(x)))];
+            for (const pw of pws) {
+                try {
+                    const hex = await this._sha1hex(pw); const prefix = hex.slice(0, 5); const suffix = hex.slice(5);
+                    const res = await fetch(`${config.breachUrl}?prefix=${prefix}`, { headers: { Accept: 'text/plain', 'X-Requested-With': 'XMLHttpRequest' } });
+                    if (! res.ok) { this.breachMap[pw] = 0; continue; }
+                    const text = await res.text();
+                    let count = 0;
+                    for (const line of text.split('\n')) { const idx = line.indexOf(':'); if (idx < 0) continue; if (line.slice(0, idx).trim().toUpperCase() === suffix) { count = parseInt(line.slice(idx + 1), 10) || 1; break; } }
+                    this.breachMap[pw] = count;
+                } catch (e) { /* skip */ }
+            }
+        } finally { this.breachChecking = false; }
+    },
     toggleFavorite(x) { x.favorite = ! x.favorite; this._save(); },
     trash(x) { x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); this._autoSelect(); },
     restore(x) { x.trashed = null; this._save(); },
