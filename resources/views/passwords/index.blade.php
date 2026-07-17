@@ -48,7 +48,7 @@
             <div class="flex items-center gap-2">
             <button type="button" @click="refreshAllIcons()" :disabled="iconRefreshing" title="{{ __('passwords.refresh_icons') }}" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800">
               <span :class="iconRefreshing ? 'animate-spin' : ''"><x-icon name="arrow-path" class="h-4 w-4" /></span>
-              <span class="hidden sm:inline">{{ __('passwords.refresh_icons') }}</span>
+              <span class="hidden sm:inline" x-text="iconRefreshing ? (iconProgress.done + ' / ' + iconProgress.total) : '{{ __('passwords.refresh_icons') }}'"></span>
             </button>
             <button type="button" @click="openImport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('passwords.import') }}</button>
             <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">

@@ -239,7 +239,7 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/passwords', 'passwords.index')->name('passwords.index');
     // Login site-icon (BIMI/favicon) proxy: domain sent transiently, never
     // stored; SSRF-guarded; result cached client-side in the sealed item.
-    Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:60,1')->name('passwords.icon');
+    Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('passwords.icon');
     // Have I Been Pwned k-anonymity range proxy (only a 5-char SHA-1 prefix is
     // ever sent; SSRF-guarded; nothing stored).
     Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('passwords.breach');
