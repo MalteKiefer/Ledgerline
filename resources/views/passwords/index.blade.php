@@ -2,6 +2,7 @@
   <div x-data="passwords({
         clipboardClearSeconds: 20,
         iconUrl: '{{ url('/passwords/icon') }}',
+        breachUrl: '{{ url('/passwords/breach') }}',
      }, {
         copied: @js(__('passwords.copied')),
         emptyTrashConfirm: @js(__('passwords.empty_trash_confirm')),
@@ -98,8 +99,12 @@
                   </template>
                 </div>
               </div>
-              {{-- Trash --}}
+              {{-- Health + Trash --}}
               <div class="border-t border-gray-100 dark:border-gray-800 pt-2">
+                <button type="button" @click="view = view === 'health' ? 'list' : 'health'; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'health' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                  <x-icon name="shield-check" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.health') }}</span>
+                  <span x-show="healthCount" x-text="healthCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"></span>
+                </button>
                 <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'">
                   <x-icon name="trash" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
                   <span x-show="trashCount" x-text="trashCount" class="text-gray-400"></span>
@@ -116,6 +121,10 @@
                 <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:ring-0">
               </div>
+              <div x-show="view === 'health'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
+                <span class="text-xs text-gray-500 dark:text-gray-400" x-text="healthCount ? (healthCount + ' {{ __('passwords.health_issues') }}') : '{{ __('passwords.health_ok') }}'"></span>
+                <button type="button" @click="checkBreaches()" :disabled="breachChecking" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-2.5 py-1 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
+              </div>
               <div class="max-h-[70vh] overflow-y-auto">
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
@@ -130,6 +139,11 @@
                     <span class="min-w-0 flex-1">
                       <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="x.title"></span>
                       <span class="block truncate text-xs text-gray-400" x-text="x.type === 'card' ? (cardBrand(x.fields.number) || typeLabel('card')) : (x.fields.username || (x.fields.urls && x.fields.urls[0]) || x.fields.ssid || x.fields.host || x.fields.product || typeLabel(x.type))"></span>
+                      <span x-show="view === 'health'" x-cloak class="mt-1 flex flex-wrap gap-1">
+                        <template x-if="issuesFor(x) && issuesFor(x).breach > 0"><span class="rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300">{{ __('passwords.issue_breached') }}</span></template>
+                        <template x-if="issuesFor(x) && issuesFor(x).reused"><span class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">{{ __('passwords.issue_reused') }}</span></template>
+                        <template x-if="issuesFor(x) && issuesFor(x).weak"><span class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ __('passwords.issue_weak') }}</span></template>
+                      </span>
                     </span>
                     <span x-show="x.favorite" class="shrink-0 text-amber-500"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
                   </button>
@@ -277,6 +291,17 @@
                     <button type="button" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
                     <button type="button" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
                     <button type="button" x-show="view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                  </div>
+                </div>
+
+                {{-- Password-health warning --}}
+                <div x-show="hasIssue(current)" x-cloak class="mb-3 flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+                  <x-icon name="exclamation-triangle" class="mt-0.5 h-4 w-4 shrink-0" />
+                  <div class="min-w-0 flex-1 space-y-0.5">
+                    <p x-show="issuesFor(current) && issuesFor(current).breach > 0" x-text="@js(__('passwords.breach_warn', ['count' => '{n}'])).replace('{n}', (issuesFor(current) ? issuesFor(current).breach : 0).toLocaleString())"></p>
+                    <p x-show="issuesFor(current) && issuesFor(current).reused">{{ __('passwords.reused_warn') }}</p>
+                    <p x-show="issuesFor(current) && issuesFor(current).weak">{{ __('passwords.weak_warn') }}</p>
+                    <button type="button" x-show="issuesFor(current) && issuesFor(current).breach === null" @click="checkBreaches()" :disabled="breachChecking" class="text-xs font-medium underline disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
                   </div>
                 </div>
 

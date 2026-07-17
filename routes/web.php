@@ -20,6 +20,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
+use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicShareController;
@@ -239,6 +240,9 @@ Route::middleware('auth')->group(function (): void {
     // Login site-icon (BIMI/favicon) proxy: domain sent transiently, never
     // stored; SSRF-guarded; result cached client-side in the sealed item.
     Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:60,1')->name('passwords.icon');
+    // Have I Been Pwned k-anonymity range proxy (only a 5-char SHA-1 prefix is
+    // ever sent; SSRF-guarded; nothing stored).
+    Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('passwords.breach');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The company
     // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
     Route::view('/invoices', 'invoices.index')->name('invoices.index');
