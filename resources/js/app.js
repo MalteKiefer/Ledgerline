@@ -7579,6 +7579,156 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     purge(x) { const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); },
     emptyTrash() { return this._emptyTrashArr(this.items, labels.emptyTrashConfirm); },
 
+    /* ---- Import (Bitwarden / 1Password / LastPass / KeePass / CSV) ----
+       Everything parses in the browser and lands straight in the sealed
+       manifest; nothing is uploaded. --- */
+    importOpen: false,
+    importFormat: 'auto',
+    importResult: null,
+    importing: false,
+    openImport() { this.importOpen = true; this.importFormat = 'auto'; this.importResult = null; },
+    async importFile(ev) {
+        const file = ev.target.files[0]; if (! file) return;
+        ev.target.value = '';
+        this.importing = true; this.importResult = null;
+        try {
+            const text = await file.text();
+            const recs = this._parseImport(text, this.importFormat);
+            if (! recs.length) { this.importResult = { ok: false, count: 0 }; return; }
+            for (const r of recs) { this._normalizeRecord(r); this.items.unshift(r); }
+            this._save();
+            this.importResult = { ok: true, count: recs.length };
+            this._importIcons(recs.filter((r) => r.type === 'login'));
+        } catch (e) { this.importResult = { ok: false, count: 0 }; } finally { this.importing = false; }
+    },
+    async _importIcons(list) { for (const r of list) { try { await this._fetchIcon(r); } catch (e) { /* best effort */ } } },
+    _newRecord(type, title) {
+        return { id: crypto.randomUUID(), type, title: (title || '').trim(), favorite: false, folder: null, tags: [], custom: [], icon: '', fields: this._blankFields(type), created: new Date().toISOString(), updated: new Date().toISOString(), versions: [] };
+    },
+    _normalizeRecord(r) {
+        r.fields = { ...this._blankFields(r.type), ...(r.fields || {}) };
+        if (r.type === 'login' && ! Array.isArray(r.fields.urls)) r.fields.urls = r.fields.urls ? [r.fields.urls] : [''];
+        if (r.type === 'login' && ! r.fields.urls.length) r.fields.urls = [''];
+        r.tags = r.tags || [];
+        r.custom = (r.custom || []).map((c) => ({ label: c.label || '', value: c.value || '', kind: c.kind || 'text' })).filter((c) => c.label || c.value);
+        if (! r.title) r.title = this.typeLabel(r.type);
+    },
+    _folderId(name) {
+        name = (name || '').trim(); if (! name) return null;
+        let f = this.folders.find((x) => x.name === name);
+        if (! f) { f = { id: crypto.randomUUID(), name }; this.folders.push(f); }
+        return f.id;
+    },
+    _totpSecret(v) {
+        v = String(v || '').trim(); if (! v) return '';
+        if (/^otpauth:\/\//i.test(v)) { try { return new URL(v).searchParams.get('secret') || ''; } catch (e) { const m = v.match(/[?&]secret=([^&]+)/i); return m ? decodeURIComponent(m[1]) : ''; } }
+        return v;
+    },
+    _parseImport(text, fmt) {
+        const trimmed = text.trim();
+        const isJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+        if (fmt === 'bitwarden_json' || (fmt === 'auto' && isJson)) return this._importBitwardenJson(text);
+        return this._importCsv(text, fmt);
+    },
+    _importBitwardenJson(text) {
+        const data = JSON.parse(text);
+        const folderById = {};
+        for (const f of (data.folders || [])) folderById[f.id] = f.name;
+        const out = [];
+        for (const it of (data.items || [])) {
+            let rec;
+            if (it.type === 3 && it.card) {
+                rec = this._newRecord('card', it.name);
+                const c = it.card;
+                rec.fields.cardholder = c.cardholderName || '';
+                rec.fields.number = c.number || '';
+                rec.fields.expiry = (c.expMonth ? String(c.expMonth).padStart(2, '0') : '') + (c.expYear ? '/' + String(c.expYear).slice(-2) : '');
+                rec.fields.cvv = c.code || '';
+                rec.fields.note = it.notes || '';
+            } else if (it.type === 1 && it.login) {
+                rec = this._newRecord('login', it.name);
+                rec.fields.username = it.login.username || '';
+                rec.fields.password = it.login.password || '';
+                rec.fields.urls = (it.login.uris || []).map((u) => u.uri).filter(Boolean);
+                rec.fields.totp = this._totpSecret(it.login.totp || '');
+                rec.fields.note = it.notes || '';
+            } else {
+                rec = this._newRecord('password', it.name);
+                rec.fields.note = it.notes || '';
+            }
+            for (const f of (it.fields || [])) if (f.name || f.value) rec.custom.push({ label: f.name || '', value: String(f.value ?? ''), kind: f.type === 1 ? 'secret' : 'text' });
+            if (it.favorite) rec.favorite = true;
+            if (it.folderId && folderById[it.folderId]) rec.folder = this._folderId(folderById[it.folderId]);
+            out.push(rec);
+        }
+        return out;
+    },
+    _parseCsv(text) {
+        const rows = []; let row = [], cur = '', q = false;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true;
+            else if (ch === ',') { row.push(cur); cur = ''; } else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; } else if (ch !== '\r') cur += ch;
+        }
+        if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+        return rows;
+    },
+    _detectCsv(h) {
+        const has = (k) => h.includes(k);
+        if (has('login_password') || has('login_uri')) return 'bitwarden_csv';
+        if (has('grouping') && has('url') && has('username')) return 'lastpass';
+        if (has('otpauth')) return 'onepassword';
+        if ((has('title') || has('account')) && has('password') && has('group')) return 'keepass';
+        if (has('title') && has('password') && has('url')) return 'onepassword';
+        return 'generic';
+    },
+    _importCsv(text, fmt) {
+        const rows = this._parseCsv(text).filter((r) => r.length && r.some((c) => c !== ''));
+        if (rows.length < 2) return [];
+        const header = rows[0].map((h) => h.trim().toLowerCase());
+        const objs = rows.slice(1).map((r) => { const o = {}; header.forEach((h, i) => { o[h] = r[i] ?? ''; }); return o; });
+        const kind = fmt === 'auto' ? this._detectCsv(header) : fmt;
+        const out = [];
+        for (const o of objs) {
+            let rec;
+            if (kind === 'bitwarden_csv') {
+                if ((o.type || '').toLowerCase() === 'card') { rec = this._newRecord('card', o.name); rec.fields.note = o.notes || ''; } else {
+                    rec = this._newRecord('login', o.name);
+                    rec.fields.username = o.login_username || ''; rec.fields.password = o.login_password || '';
+                    rec.fields.urls = (o.login_uri || '').split(',').map((s) => s.trim()).filter(Boolean);
+                    rec.fields.totp = this._totpSecret(o.login_totp || ''); rec.fields.note = o.notes || '';
+                }
+                if (o.favorite === '1' || (o.favorite || '').toLowerCase() === 'true') rec.favorite = true;
+                if (o.folder) rec.folder = this._folderId(o.folder);
+            } else if (kind === 'lastpass') {
+                rec = this._newRecord('login', o.name);
+                rec.fields.username = o.username || ''; rec.fields.password = o.password || '';
+                rec.fields.urls = [o.url].filter((u) => u && u !== 'http://sn');
+                rec.fields.totp = this._totpSecret(o.totp || ''); rec.fields.note = o.extra || '';
+                if (o.grouping) rec.folder = this._folderId(o.grouping);
+                if (o.fav === '1') rec.favorite = true;
+            } else if (kind === 'keepass') {
+                rec = this._newRecord('login', o.title || o.account);
+                rec.fields.username = o.username || ''; rec.fields.password = o.password || '';
+                rec.fields.urls = [o.url].filter(Boolean); rec.fields.note = o.notes || '';
+                if (o.group) rec.folder = this._folderId(o.group);
+            } else if (kind === 'onepassword') {
+                rec = this._newRecord('login', o.title || o.name);
+                rec.fields.username = o.username || ''; rec.fields.password = o.password || '';
+                rec.fields.urls = [o.url || o.website].filter(Boolean);
+                rec.fields.totp = this._totpSecret(o.otpauth || o.otp || ''); rec.fields.note = o.notes || o.note || '';
+                if (o.tags) rec.tags = String(o.tags).split(',').map((t) => t.trim()).filter(Boolean);
+            } else {
+                rec = this._newRecord('login', o.name || o.title || o.url);
+                rec.fields.username = o.username || o.login || ''; rec.fields.password = o.password || '';
+                rec.fields.urls = [o.url || o.website || o.uri].filter(Boolean);
+                rec.fields.note = o.note || o.notes || '';
+            }
+            if (rec) out.push(rec);
+        }
+        return out;
+    },
+
     /* ---- Version history ---- */
     openHistory(x) { this.history = { open: true, item: x }; },
     closeHistory() { this.history.open = false; this.history.item = null; },
