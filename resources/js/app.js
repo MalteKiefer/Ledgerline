@@ -7798,6 +7798,26 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
             setTimeout(() => { navigator.clipboard.writeText('').catch(() => {}); }, secs * 1000);
         } catch (e) { /* clipboard blocked */ }
     },
+    // Detail-view hotkeys: Ctrl/Cmd+B copies the username, Ctrl/Cmd+C the
+    // password. Ctrl+C only fires when no text is selected (so a normal copy of
+    // selected text still works) and never while editing or typing in a field.
+    _hotkey(e) {
+        if (! this.current || this.draft) return;
+        if (! (e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+        const k = e.key.toLowerCase();
+        if (k === 'b') {
+            if (typing) return;
+            const u = this.current.fields && this.current.fields.username;
+            if (u) { e.preventDefault(); this.copy(u); }
+        } else if (k === 'c') {
+            if (window.getSelection && String(window.getSelection())) return; // let a real copy through
+            if (typing) return;
+            const pw = this.current.fields && this.current.fields.password;
+            if (pw) { e.preventDefault(); this.copy(pw); }
+        }
+    },
     // Large-type view (1Password-style): show a secret big, in a readable mono
     // font, each character colour-coded (digits blue, symbols red, letters plain).
     bigType: { open: false, value: '' },
