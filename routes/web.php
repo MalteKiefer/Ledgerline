@@ -232,6 +232,9 @@ Route::middleware('auth')->group(function (): void {
     Route::view('/todos', 'todos.index')->name('todos.index');
     // Bookmarks: zero-knowledge, driven client-side from the opaque manifest.
     Route::view('/bookmarks', 'bookmarks.index')->name('bookmarks.index');
+    // Passwords: zero-knowledge password manager, records in the opaque /store
+    // manifest (six item types, per-item version history, client-side TOTP/QR).
+    Route::view('/passwords', 'passwords.index')->name('passwords.index');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The company
     // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
     Route::view('/invoices', 'invoices.index')->name('invoices.index');

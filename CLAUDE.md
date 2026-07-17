@@ -4,8 +4,8 @@ Self-hosted **zero-knowledge personal cloud** (Laravel). Server hält NUR Cipher
 alles wird im Browser ver-/entschlüsselt. Selbst der Server-Betreiber kann Daten
 nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**.
 
-Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Kontakte, Rechnungen,
-Backup, Paperless**. Version **v1.484.0** (live https://home.kiefer-networks.de, `/up`=200).
+Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter, Kontakte,
+Rechnungen, Backup, Paperless**. Version **v1.484.0** (live https://home.kiefer-networks.de, `/up`=200).
 
 > Sharing lebt wieder (ZK): **öffentliche Links** `/s/{token}` für **Galerie-Album, Datei UND Ordner** — Share-Key im URL-Fragment (nie an Server), optionales Passwort = rate-limitiertes Gate, optionaler Download, Expiry. `PublicShare`-Modell (`kind` = gallery_album|file|folder), owner-CRUD via Trait `Concerns\ManagesPublicShares` (genutzt von `GalleryShareController` + `FileShareController`), `PublicShareController` (public; Blob-Route wählt Disk-Prefix+Ledger per kind: gallery/GalleryBlob vs files/FileBlob), `ShareCrypto` in vault.js, Viewer-Komponenten `publicShare`/`fileShare`. Die alte „script-less CSP für Public-Share-Seiten"-Regel gilt hier NICHT: die ZK-Ansichtsseiten brauchen das gebündelte JS (globale CSP `script-src 'self'` reicht, kein Inline).
 
@@ -89,7 +89,8 @@ kontext + stehende Anweisungen. Detail-Historie in
 ## MODUL-INVENTAR (Features, zero-knowledge)
 - **Galerie** (`vaultGallery`): Fotos/Videos client-verschlüsselt; sharded sealed Manifest; HEIC/HEIF/AVIF + Apple Live/Motion Photos (Paarung HEIC+MOV beim Upload, Motion-Clip on hover). Thumbnails im Worker-Pool entschlüsselt, immutable Blob-Cache, gefensterte Grid (skaliert >1000e), memoisierte Derived-Data. Duplikate (pHash + CLIP) im Web-Worker. **People:** In-Browser Face-Clustering + manuelles Tagging trainiert Recognition, whole-library re-analyze, Merge, Link↔Kontakte. **Smart Search:** multilingual CLIP (M-CLIP `XLM-Roberta-Large-Vit-B-32`) via ML-Sidecar, client-OCR (tesseract.js). **Editing:** non-destruktiv im Viewer, Rotate-Fit 90/270. **Map:** Leaflet + self-hosted Photon/Nominatim reverse-geocode (opt-in). `GalleryController`/`GalleryBlobController`/`GalleryStoreController`/`GalleryProcessController` (analyze/embed-text/reverse). config `config/gallery.php` (ffmpeg/exiftool/ml).
 - **Dateien** (`vaultFiles`): nestbarer Ordner-Browser, Versionierung + Restore, per-user Quota, Files-over-WebDAV, Backup-Integration. Blobs client-Ciphertext (keine Server-Thumbnails).
-- **Notizen/Todos/Lesezeichen:** sealed records, client-gerendertes Markdown (marked + DOMPurify) für Notizen. Gemeinsamer ZK-Lifecycle-Mixin.
+- **Notizen/Todos/Lesezeichen:** sealed records, client-gerendertes Markdown (marked + DOMPurify) für Notizen. Gemeinsamer ZK-Lifecycle-Mixin (`zkModule()`).
+- **Passwörter** (`passwords`): ZK Password-Manager, Records in `LLStore.data.secrets` (opaque store, kein Server/Migration). 6 Typen (login/password/card/wifi/license/server), **per-item Versions-Historie** bei jeder Feldänderung, client-TOTP (WebCrypto HMAC-SHA1), Passwort-Generator, **WiFi-QR** (`qrcode`-Lazy-Import) aus den Feldern, Copy-mit-Auto-Clear, Reveal/Hide. Unlock = Vault-Passphrase (kein zweites Master-PW). Dynamische Typ-Icons via `passwords/_icon.blade.php` (x-icon ist server-gerendert, `::name` reaktiv geht NICHT).
 - **Kontakte** (`contacts`): ZK vCard 4.0 (KEIN CardDAV), client-seitiger Import/Export, verschlüsselte Avatare (`ContactBlob`), Adress-Mini-Maps, bidirektionaler Link zu Galerie-People. `contacts:sweep-orphans`.
 - **Rechnungen** (`invoices`): ZK Invoices-Modul + Company-Settings, Nummern-Sequenzen/-Format, Design/Template-Settings (editorial default, 1-Seite), Import.
 - **Backup** (`backupRuns`): ZK-aware inkrementell. Files/Galerie blob-by-blob gespiegelt (High-Water-Mark über Blob-Ledger; full list-and-prune reconcile alle `BACKUP_RECONCILE_HOURS`). DB-Dump immer verschlüsselt. Ziele S3/B2/SFTP/WebDAV. `backups:run-due`, `backups:decrypt` (CLI), Dry-run-Verifier.
