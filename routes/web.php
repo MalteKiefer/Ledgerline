@@ -13,12 +13,14 @@ use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
+use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
@@ -40,6 +42,19 @@ Route::get('/', static fn () => redirect()->route('dashboard'));
 // Prometheus metrics for external scraping — no session; guarded by its own
 // token (OPS_METRICS_TOKEN) and disabled when unset. Rate-limited.
 Route::get('/metrics', [MetricsController::class, 'index'])->middleware('throttle:60,1')->name('metrics');
+
+// Public, unauthenticated gallery-album share links. Zero-knowledge: the server
+// only serves the sealed manifest + opaque ciphertext blobs on the owner's
+// allow-list; the decryption key rides in the URL fragment and never arrives
+// here. The optional password gate is hard-throttled; blob/manifest reads are
+// generous (a shared album loads many thumbnails).
+Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
+    Route::get('/', [PublicShareController::class, 'show'])->middleware('throttle:120,1')->name('show');
+    Route::get('/meta', [PublicShareController::class, 'meta'])->middleware('throttle:120,1')->name('meta');
+    Route::post('/unlock', [PublicShareController::class, 'unlock'])->middleware('throttle:10,1')->name('unlock');
+    Route::get('/manifest', [PublicShareController::class, 'manifest'])->middleware('throttle:120,1')->name('manifest');
+    Route::get('/blob/{ref}', [PublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
+});
 
 // Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
 // endpoints are throttled to blunt handshake replay/hammering.
@@ -174,6 +189,12 @@ Route::middleware('auth')->group(function (): void {
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
     Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('gallery.store.show');
     Route::put('/gallery/store', [GalleryStoreController::class, 'save'])->middleware('throttle:600,1')->name('gallery.store.save');
+    // Public share links for an album: the client seals the share manifest (photo
+    // list + per-blob keys re-wrapped under the link's fragment key) before it
+    // arrives, so these only ever carry ciphertext + coarse access controls.
+    Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('gallery.shares.store');
+    Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('gallery.shares.update');
+    Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('gallery.shares.destroy');
     // Zero-knowledge transform: the browser POSTs one photo's PLAINTEXT, we return
     // its derived data (renditions/exif/embedding/faces/place) and discard the
     // bytes — nothing is persisted server-side. embed-text embeds a search query.

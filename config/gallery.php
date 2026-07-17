@@ -183,4 +183,10 @@ return [
     // referenced by the sealed index) is eligible for reconcile/sweep reclaim.
     // (Already declared above as blob_orphan_grace_hours; reused here.)
 
+    // Public album share links. Bound the sealed share manifest and the number
+    // of blob ids one link may reference (thumb + medium + optional original ≈
+    // up to 3 refs per photo), so a single link can't be inflated without limit.
+    'share_max_manifest_bytes' => (int) env('GALLERY_SHARE_MAX_MANIFEST_BYTES', 16777216),
+    'share_max_blobs' => (int) env('GALLERY_SHARE_MAX_BLOBS', 16000),
+
 ];

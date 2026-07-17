@@ -10,6 +10,8 @@
         embedTextUrl: '{{ url('/gallery/embed-text') }}',
         clipModel: @js(config('gallery.ml_clip_model')),
         geocodeUrl: '{{ url('/gallery/geocode') }}',
+        sharesUrl: '{{ url('/gallery/shares') }}',
+        shareBase: '{{ url('/s') }}',
         token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('gallery.load_failed')),
@@ -40,6 +42,8 @@
         uploadAdded: @js(__('gallery.upload_added')),
         uploadMerged: @js(__('gallery.upload_merged')),
         uploadSkipped: @js(__('gallery.upload_skipped')),
+        shareError: @js(__('gallery.share_error')),
+        shareCopied: @js(__('gallery.share_copied')),
      })">
 
     <div x-show="dragging && state === 'ready'" x-cloak @drop.prevent="drop($event)" @dragover.prevent
@@ -451,6 +455,7 @@
                 <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-gray-100" x-text="currentAlbum?.name"></h2>
                 <span class="text-xs tabular-nums text-gray-400" x-text="albumCount(currentAlbum)"></span>
                 <div class="ml-auto flex items-center gap-1.5">
+                  <button type="button" @click="openShare(currentAlbum)" title="{{ __('gallery.share') }}" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800" :class="currentAlbum?.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500'"><x-icon name="share" class="h-4 w-4" /></button>
                   <button type="button" @click="renameAlbum(currentAlbum)" title="{{ __('gallery.rename') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
                   <button type="button" @click="deleteAlbum(currentAlbum)" title="{{ __('gallery.delete_album') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
                 </div>
@@ -835,6 +840,55 @@
         <div x-ref="minimap" x-show="(viewer.meta?.exif?.lat != null) || (viewer.photo?.lat != null)"
             class="mt-5 h-40 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800"></div>
       </aside>
+    </div>
+
+    {{-- Public album share link (zero-knowledge; the key lives in the URL fragment) --}}
+    <div x-show="share.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeShare()">
+      <div class="absolute inset-0 bg-black/60" @click="closeShare()"></div>
+      <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+        <div class="flex items-start justify-between gap-2">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.share_album') }}</h3>
+          <button type="button" @click="closeShare()" class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+        </div>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_intro') }}</p>
+
+        {{-- Active link --}}
+        <div x-show="share.link" x-cloak class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+          <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.share_link_label') }}</label>
+          <div class="mt-1 flex items-center gap-2">
+            <input type="text" readonly :value="share.link" @focus="$event.target.select()" class="w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-xs text-gray-700 dark:text-gray-300">
+            <button type="button" @click="copyShareLink()" title="{{ __('gallery.share_copy') }}" class="shrink-0 rounded-md bg-gray-100 dark:bg-gray-800 p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="clipboard" class="h-4 w-4" /></button>
+          </div>
+          <p class="mt-2 text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ __('gallery.share_active_hint') }}</p>
+        </div>
+
+        {{-- Options --}}
+        <div class="mt-4 space-y-3">
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" x-model="share.allowDownload" class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">
+            {{ __('gallery.share_allow_download') }}
+          </label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_password') }}
+            <input type="password" x-model="share.password" autocomplete="new-password" :placeholder="share.album?.share?.hasPassword ? '{{ __('gallery.share_password_set') }}' : '{{ __('gallery.share_password_hint') }}'"
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+          </label>
+          <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_expiry') }}
+            <input type="datetime-local" x-model="share.expiresAt"
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+          </label>
+        </div>
+
+        <p x-show="share.error" x-cloak class="mt-3 text-sm text-red-600 dark:text-red-400" x-text="share.error"></p>
+
+        <div class="mt-5 flex items-center justify-between gap-2">
+          <button type="button" x-show="share.album?.share" x-cloak @click="revokeShare()" :disabled="share.busy" class="rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50">{{ __('gallery.share_revoke') }}</button>
+          <div class="ml-auto flex gap-2">
+            <button type="button" @click="closeShare()" class="rounded-lg px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('gallery.share_close') }}</button>
+            <button type="button" x-show="! share.album?.share" @click="createShare()" :disabled="share.busy" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50"><x-icon name="link" class="h-4 w-4" />{{ __('gallery.share_create_link') }}</button>
+            <button type="button" x-show="share.album?.share" x-cloak @click="updateShare()" :disabled="share.busy" class="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">{{ __('gallery.share_update') }}</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     {{-- Location picker (Leaflet): click the map to set the photo's place --}}
