@@ -7572,14 +7572,17 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     _domain(x) { try { const u = this.primaryUrl(x); if (! u) return ''; return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname; } catch (e) { return ''; } },
     // Server-proxied favicon/BIMI fetch, cached as a data URI in the sealed item.
     async _fetchIcon(x) {
-        const domain = this._domain(x); if (! domain) return;
+        const domain = this._domain(x); if (! domain) return 'skip';
         try {
             const res = await fetch(`${config.iconUrl}?domain=${encodeURIComponent(domain)}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) return;
+            if (res.status === 429) return '429';
+            if (! res.ok) return 'skip';
             const { icon } = await res.json();
             if (icon && x.icon !== icon) { x.icon = icon; this._save(); }
-        } catch (e) { /* leave the letter avatar */ }
+            return 'ok';
+        } catch (e) { return 'skip'; }
     },
+    _sleep(ms) { return new Promise((r) => setTimeout(r, ms)); },
     avatarText(x) { const s = (x.title || this._domain(x) || '?').trim(); return (s[0] || '?').toUpperCase(); },
     avatarColor(x) { let h = 0; const s = x.title || this._domain(x) || x.id || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 45% 55%)`; },
 
@@ -7672,12 +7675,23 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     // Re-fetch the site icon for every login (server-proxied; sequential to
     // respect the endpoint throttle). Updates only entries whose icon changed.
     iconRefreshing: false,
+    iconProgress: { done: 0, total: 0 },
     async refreshAllIcons() {
         if (this.iconRefreshing) return;
         this.iconRefreshing = true;
+        const list = this.liveItems.filter((x) => x.type === 'login' && this._domain(x));
+        this.iconProgress = { done: 0, total: list.length };
         try {
-            for (const x of this.liveItems.filter((x) => x.type === 'login' && this._domain(x))) {
-                try { await this._fetchIcon(x); } catch (e) { /* skip */ }
+            for (const x of list) {
+                // Retry a rate-limited fetch with backoff; pace the rest so we stay
+                // under the endpoint throttle.
+                for (let tries = 0; ; tries++) {
+                    const r = await this._fetchIcon(x).catch(() => 'skip');
+                    if (r === '429' && tries < 5) { await this._sleep(1500 * (tries + 1)); continue; }
+                    break;
+                }
+                this.iconProgress.done++;
+                await this._sleep(120);
             }
             window.llToast(labels.iconsDone || '');
         } finally { this.iconRefreshing = false; }
