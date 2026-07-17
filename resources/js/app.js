@@ -1,6 +1,7 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { Vault, ShareCrypto } from './vault';
+import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from './passwords-util';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -7565,18 +7566,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         return out;
     },
     // Credit-card brand from the number (IIN/BIN ranges).
-    cardBrand(number) {
-        const n = String(number || '').replace(/\D/g, '');
-        if (! n) return '';
-        if (/^4/.test(n)) return 'Visa';
-        if (/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/.test(n)) return 'Mastercard';
-        if (/^3[47]/.test(n)) return 'Amex';
-        if (/^(6011|65|64[4-9]|622)/.test(n)) return 'Discover';
-        if (/^3(0[0-5]|[68])/.test(n)) return 'Diners Club';
-        if (/^35/.test(n)) return 'JCB';
-        if (/^(50|5[6-9]|6[0-9])/.test(n)) return 'Maestro';
-        return '';
-    },
+    cardBrand(number) { return pwCardBrand(number); },
     // Domain of a login's first URL (for the icon fetch + avatar).
     primaryUrl(x) { const u = (x.fields?.urls || [])[0] || x.fields?.url || ''; return u; },
     _domain(x) { try { const u = this.primaryUrl(x); if (! u) return ''; return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname; } catch (e) { return ''; } },
@@ -7606,7 +7596,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         for (const x of this.healthItems) if (count[this._pw(x)] > 1) set.add(x.id);
         return set;
     },
-    _pwScore(pw) { let s = 0; if (pw.length >= 8) s++; if (pw.length >= 12) s++; if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++; if (/\d/.test(pw)) s++; if (/[^a-zA-Z0-9]/.test(pw)) s++; return Math.min(4, s); },
+    _pwScore(pw) { return pwStrength(pw); },
     issuesFor(x) {
         const pw = this._pw(x); if (! pw) return null;
         const b = this.breachMap[pw];
@@ -7684,11 +7674,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         if (! f) { f = { id: crypto.randomUUID(), name }; this.folders.push(f); }
         return f.id;
     },
-    _totpSecret(v) {
-        v = String(v || '').trim(); if (! v) return '';
-        if (/^otpauth:\/\//i.test(v)) { try { return new URL(v).searchParams.get('secret') || ''; } catch (e) { const m = v.match(/[?&]secret=([^&]+)/i); return m ? decodeURIComponent(m[1]) : ''; } }
-        return v;
-    },
+    _totpSecret(v) { return pwTotpSecret(v); },
     _parseImport(text, fmt) {
         const trimmed = text.trim();
         const isJson = trimmed.startsWith('{') || trimmed.startsWith('[');
@@ -7728,25 +7714,8 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         }
         return out;
     },
-    _parseCsv(text) {
-        const rows = []; let row = [], cur = '', q = false;
-        for (let i = 0; i < text.length; i++) {
-            const ch = text[i];
-            if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true;
-            else if (ch === ',') { row.push(cur); cur = ''; } else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; } else if (ch !== '\r') cur += ch;
-        }
-        if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
-        return rows;
-    },
-    _detectCsv(h) {
-        const has = (k) => h.includes(k);
-        if (has('login_password') || has('login_uri')) return 'bitwarden_csv';
-        if (has('grouping') && has('url') && has('username')) return 'lastpass';
-        if (has('otpauth')) return 'onepassword';
-        if ((has('title') || has('account')) && has('password') && has('group')) return 'keepass';
-        if (has('title') && has('password') && has('url')) return 'onepassword';
-        return 'generic';
-    },
+    _parseCsv(text) { return pwParseCsv(text); },
+    _detectCsv(h) { return pwDetectCsv(h); },
     _importCsv(text, fmt) {
         const rows = this._parseCsv(text).filter((r) => r.length && r.some((c) => c !== ''));
         if (rows.length < 2) return [];
@@ -7869,24 +7838,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
             try { this.totpNow[x.id] = { code: await this._totp(secret, now, period), remain }; } catch (e) { /* bad secret */ }
         }
     },
-    async _totp(secret, now, period) {
-        const key = this._base32(secret); if (! key.length) return '';
-        const counter = Math.floor(now / period);
-        const buf = new ArrayBuffer(8); const dv = new DataView(buf);
-        dv.setUint32(0, Math.floor(counter / 2 ** 32)); dv.setUint32(4, counter >>> 0);
-        const ck = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
-        const h = new Uint8Array(await crypto.subtle.sign('HMAC', ck, buf));
-        const o = h[h.length - 1] & 0xf;
-        const bin = ((h[o] & 0x7f) << 24) | ((h[o + 1] & 0xff) << 16) | ((h[o + 2] & 0xff) << 8) | (h[o + 3] & 0xff);
-        return String(bin % 1000000).padStart(6, '0');
-    },
-    _base32(s) {
-        const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-        s = String(s || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
-        let bits = 0, val = 0; const out = [];
-        for (const c of s) { const i = A.indexOf(c); if (i < 0) continue; val = (val << 5) | i; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 0xff); bits -= 8; } }
-        return new Uint8Array(out);
-    },
+    _totp(secret, now, period) { return pwTotp(secret, now, period); },
     hasTotp(x) { return x.type === 'login' && ! ! x.fields?.totp; },
     totpCode(x) { const c = this.totpNow[x.id]?.code || ''; return c ? c.slice(0, 3) + ' ' + c.slice(3) : '··· ···'; },
     totpRemain(x) { return this.totpNow[x.id]?.remain ?? 0; },

@@ -115,7 +115,7 @@ ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus 
 ## RELEASE-RITUAL (Git Flow)
 1. Auf `develop`. Version-Bump `config/app.php` (`env('APP_VERSION','X.Y.Z')`).
 2. `vendor/bin/pint --dirty` → passed. `npm run build`. EN/DE-Parität. AI-Scan (grep geänderte Dateien). ZK-Scan (keine neuen Klartext-Spalten/Server-Render-Pfade).
-3. Tests: `php artisan test --teamcity` (Hook erzwingt `--teamcity`). **BUG: `PhotoEditTest` segfaultet** (imagick/GD) in vollen Läufen und maskiert danach laufende Tests → in Häppchen mit `--filter='…'` laufen. „0 failures" aus vollem Lauf ist UNZUVERLÄSSIG.
+3. Tests: `php artisan test --teamcity` (Hook erzwingt `--teamcity`). **JS-Unit-Tests: `npm run test:js`** (Vitest — deckt `passwords-util.js` Parser/TOTP/cardBrand + `ShareCrypto` wrap/unwrap ab; Client-Crypto-Regressions-Netz, das PHPUnit nicht sieht). **BUG: `PhotoEditTest` segfaultet** (imagick/GD) in vollen Läufen und maskiert danach laufende Tests → in Häppchen mit `--filter='…'` laufen. „0 failures" aus vollem Lauf ist UNZUVERLÄSSIG.
 4. `php artisan view:cache`. Commit. `git checkout main && git merge --no-ff develop && git tag vX.Y.Z && git push origin main develop --tags`. `gh release create`. Zurück `develop`. Deploy (s. o.).
 - Hotfixes = Patch-Bump. Docker-Dateien nur auf `main`/`develop` — Tag auschecken zum Deployen.
 
