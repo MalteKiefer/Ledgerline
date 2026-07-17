@@ -44,12 +44,14 @@ async function ensureSecrets() {
 function hostOf(url) {
     try { return new URL(/^https?:\/\//.test(url) ? url : 'https://' + url).hostname.replace(/^www\./, ''); } catch (e) { return ''; }
 }
-// A page host matches a stored host if either is a suffix of the other on a
-// dot boundary (so accounts.example.com matches example.com and vice versa).
+// A stored host matches the page only if it IS the page host or a parent of it
+// on a dot boundary (a credential for example.com fills on accounts.example.com,
+// never the reverse — that would let a child-domain credential surface on the
+// parent origin). No shared-suffix fuzzing beyond this.
 function hostsMatch(page, stored) {
     if (! page || ! stored) return false;
     page = page.replace(/^www\./, ''); stored = stored.replace(/^www\./, '');
-    return page === stored || page.endsWith('.' + stored) || stored.endsWith('.' + page);
+    return page === stored || page.endsWith('.' + stored);
 }
 
 function loginView(s) {
@@ -59,7 +61,36 @@ function loginView(s) {
         username: s.fields?.username || '',
         password: s.fields?.password || '',
         urls: (s.fields?.urls || []).filter(Boolean),
+        hasTotp: ! ! (s.fields?.totp),
     };
+}
+
+// TOTP (RFC 6238, SHA-1, 6 digits) via WebCrypto — the secret never leaves the
+// worker; only the current code is handed out.
+function base32Decode(str) {
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    str = String(str || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+    let bits = 0, val = 0; const out = [];
+    for (const c of str) { const i = A.indexOf(c); if (i < 0) continue; val = (val << 5) | i; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 0xff); bits -= 8; } }
+    return new Uint8Array(out);
+}
+function totpSecret(v) {
+    v = String(v || '').trim();
+    if (/^otpauth:\/\//i.test(v)) { try { return new URL(v).searchParams.get('secret') || ''; } catch (e) { const m = v.match(/[?&]secret=([^&]+)/i); return m ? decodeURIComponent(m[1]) : ''; } }
+    return v;
+}
+async function totpCode(secretRaw, period = 30) {
+    const key = base32Decode(totpSecret(secretRaw));
+    if (! key.length) return null;
+    const now = Math.floor(Date.now() / 1000);
+    const counter = Math.floor(now / period);
+    const buf = new ArrayBuffer(8); const dv = new DataView(buf);
+    dv.setUint32(0, Math.floor(counter / 2 ** 32)); dv.setUint32(4, counter >>> 0);
+    const ck = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const h = new Uint8Array(await crypto.subtle.sign('HMAC', ck, buf));
+    const o = h[h.length - 1] & 0xf;
+    const bin = ((h[o] & 0x7f) << 24) | ((h[o + 1] & 0xff) << 16) | ((h[o + 2] & 0xff) << 8) | (h[o + 3] & 0xff);
+    return { code: String(bin % 1000000).padStart(6, '0'), remain: period - (now % period) };
 }
 
 async function matchFor(hostname) {
@@ -124,6 +155,13 @@ const handlers = {
     },
     async match({ hostname }) { return { logins: await matchFor(hostname) }; },
     async search({ query }) { return { logins: await search(query) }; },
+    // Current TOTP code for a login id (secret stays in the worker).
+    async totp({ id }) {
+        const secrets = await ensureSecrets();
+        const s = secrets.find((x) => x.id === id);
+        if (! s || ! s.fields?.totp) return { code: null };
+        return (await totpCode(s.fields.totp)) || { code: null };
+    },
 };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

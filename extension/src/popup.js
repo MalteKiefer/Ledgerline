@@ -97,7 +97,7 @@ async function renderList() {
 async function fill(login, tab) {
     if (! tab) return;
     try {
-        await chrome.tabs.sendMessage(tab.id, { type: 'fill', login: { username: login.username, password: login.password } });
+        await chrome.tabs.sendMessage(tab.id, { type: 'fill', login: { id: login.id, username: login.username, password: login.password, hasTotp: login.hasTotp } });
     } catch (e) { /* content script not present on this page */ }
     window.close();
 }

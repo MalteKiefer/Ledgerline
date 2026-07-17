@@ -33,16 +33,48 @@ function setValue(input, value) {
     input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function doFill(login) {
+// A one-time-code / 2FA field, by autocomplete, name/label heuristics, or a
+// short numeric input. The password field is never treated as an OTP field.
+function otpField() {
+    return [...document.querySelectorAll('input')].filter(isVisible).find((i) => {
+        const t = (i.type || 'text').toLowerCase();
+        if (! ['text', 'tel', 'number', ''].includes(t)) return false;
+        const hay = (i.name + ' ' + i.id + ' ' + (i.autocomplete || '') + ' ' + (i.placeholder || '') + ' ' + (i.getAttribute('aria-label') || '')).toLowerCase();
+        if ((i.autocomplete || '').toLowerCase() === 'one-time-code') return true;
+        if (/otp|totp|2fa|mfa|one.?time|auth.?code|verification|security.?code|\btoken\b/.test(hay)) return true;
+        return i.maxLength >= 4 && i.maxLength <= 8 && (i.inputMode === 'numeric' || t === 'tel' || t === 'number');
+    }) || null;
+}
+
+async function notify(text) {
+    const n = document.createElement('div');
+    n.textContent = text;
+    n.style.cssText = 'position:fixed;z-index:2147483647;bottom:16px;right:16px;background:#111827;color:#fff;padding:8px 12px;border-radius:8px;font:13px system-ui,sans-serif;box-shadow:0 6px 20px #0004;';
+    document.body.append(n);
+    setTimeout(() => n.remove(), 2500);
+}
+
+async function fillCode(login) {
+    if (! login.hasTotp || ! login.id) return;
+    const r = await send({ type: 'totp', id: login.id });
+    if (! r?.ok || ! r.code) return;
+    const otp = otpField();
+    if (otp) { setValue(otp, r.code); otp.focus(); } else {
+        try { await navigator.clipboard.writeText(r.code); notify('2FA code copied'); } catch (e) { /* clipboard blocked */ }
+    }
+}
+
+async function doFill(login) {
     const pw = passwordField();
     if (pw) { setValue(usernameFor(pw), login.username); setValue(pw, login.password); pw.focus(); }
+    if (login.hasTotp) await fillCode(login);
 }
 
 // --- Inline picker UI (Shadow DOM so the page's CSS can't touch it) ---
 let host = null;
 function closePicker() { if (host) { host.remove(); host = null; } }
 
-function openPicker(anchor, logins) {
+function openPicker(anchor, logins, onPick = doFill) {
     closePicker();
     host = document.createElement('div');
     host.style.cssText = 'position:absolute;z-index:2147483647;';
@@ -65,7 +97,7 @@ function openPicker(anchor, logins) {
         const u = document.createElement('div'); u.style.cssText = 'font-size:11px;color:#9ca3af;'; u.textContent = lg.username;
         txt.append(t, u);
         item.append(av, txt);
-        item.onclick = () => { doFill(lg); closePicker(); };
+        item.onclick = () => { onPick(lg); closePicker(); };
         box.append(item);
     }
     shadow.append(box);
@@ -73,26 +105,28 @@ function openPicker(anchor, logins) {
 }
 
 // Small badge inside the username field that opens the picker.
-function attachBadge(field, logins) {
+function attachBadge(field, logins, onPick = doFill) {
     if (! field || field.dataset.llBadge) return;
     field.dataset.llBadge = '1';
     const show = async () => {
         const fresh = await send({ type: 'match', hostname: location.hostname });
-        const list = fresh?.ok ? fresh.logins : logins;
-        if (list && list.length) openPicker(field, list);
+        let list = fresh?.ok ? fresh.logins : logins;
+        if (onPick === fillCode) list = list.filter((l) => l.hasTotp); // OTP field: only logins with a code
+        if (list && list.length) openPicker(field, list, onPick);
     };
     field.addEventListener('focus', show);
-    // Also react to a click when already focused.
     field.addEventListener('click', (e) => { e.stopPropagation(); show(); });
 }
 
 async function init() {
     const pw = passwordField();
-    if (! pw) return;
+    const otp = otpField();
+    if (! pw && ! otp) return;
     const res = await send({ type: 'match', hostname: location.hostname });
     if (! res?.ok || ! res.logins?.length) return;
-    attachBadge(usernameFor(pw) || pw, res.logins);
-    attachBadge(pw, res.logins);
+    if (pw) { attachBadge(usernameFor(pw) || pw, res.logins); attachBadge(pw, res.logins); }
+    // A standalone 2FA screen (no password field): offer the code on the OTP field.
+    if (otp && res.logins.some((l) => l.hasTotp)) attachBadge(otp, res.logins, fillCode);
 }
 
 document.addEventListener('click', (e) => { if (host && ! host.contains(e.target)) closePicker(); });
