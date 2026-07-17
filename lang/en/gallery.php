@@ -146,4 +146,22 @@ return [
     'processing' => 'Processing…',
     'title' => 'Gallery',
     'upload' => 'Upload photos',
+
+    // Favorites, archive, memories, captions (P0)
+    'favorites' => 'Favorites',
+    'favorites_empty' => 'No favorites yet. Tap the star on a photo to add one.',
+    'favorite' => 'Favorite',
+    'unfavorite' => 'Remove favorite',
+    'archive' => 'Archive',
+    'archive_hint' => 'Archived photos are hidden from the library but kept in albums and search.',
+    'archive_empty' => 'Nothing archived.',
+    'archive_action' => 'Archive',
+    'unarchive_action' => 'Move back to library',
+    'memories' => 'Memories',
+    'memories_hint' => 'Photos taken on this day in past years.',
+    'memories_empty' => 'No memories for today.',
+    'memories_year_ago' => 'A year ago',
+    'memories_years_ago' => 'years ago',
+    'caption' => 'Description',
+    'caption_placeholder' => 'Add a description…',
 ];

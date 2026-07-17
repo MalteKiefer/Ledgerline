@@ -5,7 +5,7 @@ alles wird im Browser ver-/entschlüsselt. Selbst der Server-Betreiber kann Date
 nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**.
 
 Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Kontakte, Rechnungen,
-Backup, Paperless**. Version **v1.480.2** (live https://home.kiefer-networks.de, `/up`=200).
+Backup, Paperless**. Version **v1.481.0** (live https://home.kiefer-networks.de, `/up`=200).
 
 > **Achtung — großer Pivot seit dem alten Stand (v1.298).** Die App wurde
 > zwischen 2026-07-06 und 2026-07-17 komplett von *plaintext* auf

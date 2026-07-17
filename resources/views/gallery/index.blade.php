@@ -85,6 +85,16 @@
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="photo" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.library') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="photoCount()"></span>
           </button>
+          <button type="button" @click="view = 'memories'" x-show="memoryCount()" x-cloak
+              :class="view === 'memories' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <x-icon name="sparkles" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.memories') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="memoryCount()"></span>
+          </button>
+          <button type="button" @click="view = 'favorites'"
+              :class="view === 'favorites' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <x-icon name="star" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.favorites') }}</span><span x-show="favoriteCount()" class="text-xs tabular-nums text-gray-400" x-text="favoriteCount()"></span>
+          </button>
           <button type="button" @click="view = 'map'"
               :class="view === 'map' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
@@ -110,6 +120,11 @@
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <span :class="_pipelineRunning ? 'animate-spin' : ''"><x-icon name="arrow-path" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.jobs') }}</span><span x-show="failedCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-xs font-medium tabular-nums text-amber-700 dark:text-amber-300" x-text="failedCount"></span>
           </button>
+          <button type="button" @click="view = 'archive'"
+              :class="view === 'archive' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
+            <x-icon name="archive-box" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.archive') }}</span><span x-show="archiveCount()" class="text-xs tabular-nums text-gray-400" x-text="archiveCount()"></span>
+          </button>
           <button type="button" @click="view = 'trash'"
               :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
@@ -125,11 +140,19 @@
           <span class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-800 dark:text-gray-200" x-text="@js(__('gallery.selected', ['count' => '{n}'])).replace('{n}', selectedCount)"></span>
           <button type="button" @click="selectAllVisible()" title="{{ __('gallery.select_all') }}" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="check-circle" class="h-5 w-5" /></button>
           <div class="flex shrink-0 items-center gap-2">
-            <template x-if="view === 'library'">
+            <template x-if="view === 'library' || view === 'favorites'">
               <span class="flex items-center gap-2">
+                <button type="button" @click="bulkFavorite()" title="{{ __('gallery.favorite') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="star" class="h-5 w-5" /></button>
                 <button type="button" @click="albumPicker = true" title="{{ __('gallery.add_to_album') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="folder" class="h-5 w-5" /></button>
                 <button type="button" @click="openBulkDate()" title="{{ __('gallery.bulk_date') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="calendar" class="h-5 w-5" /></button>
                 <button type="button" @click="openBulkLocPicker()" title="{{ __('gallery.edit_location') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="map-pin" class="h-5 w-5" /></button>
+                <button type="button" @click="bulkArchive()" title="{{ __('gallery.archive_action') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="archive-box" class="h-5 w-5" /></button>
+                <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white"><x-icon name="trash" class="h-5 w-5" /></button>
+              </span>
+            </template>
+            <template x-if="view === 'archive'">
+              <span class="flex items-center gap-2">
+                <button type="button" @click="bulkUnarchive()" title="{{ __('gallery.unarchive_action') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="arrow-uturn-left" class="h-5 w-5" /></button>
                 <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white"><x-icon name="trash" class="h-5 w-5" /></button>
               </span>
             </template>
@@ -145,10 +168,13 @@
         {{-- Mobile view switch --}}
         <div class="mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden">
           <button type="button" @click="view = 'library'; clearSelection()" :class="view === 'library' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.library') }}</button>
+          <button type="button" x-show="memoryCount()" x-cloak @click="view = 'memories'; clearSelection()" :class="view === 'memories' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.memories') }}</button>
+          <button type="button" @click="view = 'favorites'; clearSelection()" :class="view === 'favorites' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.favorites') }}</button>
           <button type="button" @click="view = 'albums'; clearSelection()" :class="view === 'albums' || view === 'album' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.albums') }}</button>
           <button type="button" @click="view = 'people'; clearSelection()" :class="view === 'people' || view === 'person' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.people') }}</button>
           <button type="button" @click="view = 'duplicates'; clearSelection()" :class="view === 'duplicates' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.duplicates') }}</button>
           <button type="button" @click="view = 'map'; clearSelection()" :class="view === 'map' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.map') }}</button>
+          <button type="button" @click="view = 'archive'; clearSelection()" :class="view === 'archive' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.archive') }}</button>
           <button type="button" @click="view = 'trash'; clearSelection()" :class="view === 'trash' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
         </div>
 
@@ -199,6 +225,12 @@
                     <label class="absolute left-2 top-2 z-10 cursor-pointer" :class="selectedCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop.prevent="clickSelect(p.id, $event)">
                       <input type="checkbox" :checked="isSelected(p.id)" class="pointer-events-none h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
                     </label>
+                    <button type="button" @click.stop="toggleFavorite(p)" :title="p.favorite ? '{{ __('gallery.unfavorite') }}' : '{{ __('gallery.favorite') }}'"
+                        class="absolute right-11 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition hover:bg-black/60"
+                        :class="p.favorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'">
+                      <x-icon x-show="p.favorite" name="star-solid" class="h-4 w-4 text-amber-400" />
+                      <x-icon x-show="! p.favorite" name="star" class="h-4 w-4" />
+                    </button>
                     <button type="button" @click.stop="trash(p)" title="{{ __('gallery.delete') }}"
                         class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition hover:bg-red-500 group-hover:opacity-100"><x-icon name="trash" class="h-4 w-4" /></button>
                   </div>
@@ -293,6 +325,79 @@
                   <button type="button" @click="restore(p)" title="{{ __('gallery.restore') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-800 hover:bg-white"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
                   <button type="button" @click="purge(p)" title="{{ __('gallery.purge') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"><x-icon name="trash" class="h-4 w-4" /></button>
                 </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        {{-- MEMORIES (on this day, grouped by year) --}}
+        <div x-show="view === 'memories'">
+          <div class="mb-4">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.memories') }}</h2>
+            <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('gallery.memories_hint') }}</p>
+          </div>
+          <template x-if="! memoryCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.memories_empty') }}</p></template>
+          <template x-for="grp in memories" :key="grp.year">
+            <section class="mb-6">
+              <h3 class="mb-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300" x-text="grp.yearsAgo === 1 ? '{{ __('gallery.memories_year_ago') }}' : grp.yearsAgo + ' {{ __('gallery.memories_years_ago') }}'"></h3>
+              <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
+                <template x-for="p in grp.photos" :key="p.id">
+                  <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800" x-intersect.once="thumbFor(p)">
+                    <button type="button" @click="openViewer(p)" class="block h-full w-full">
+                      <img x-show="thumbs[p.id]" :src="thumbs[p.id]" :style="photoTransform(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                      <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
+                      <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
+                    </button>
+                    <span x-show="p.favorite" class="pointer-events-none absolute right-2 top-2 text-white drop-shadow"><x-icon name="star-solid" class="h-4 w-4" /></span>
+                  </div>
+                </template>
+              </div>
+            </section>
+          </template>
+        </div>
+
+        {{-- FAVORITES --}}
+        <div x-show="view === 'favorites'">
+          <h2 class="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.favorites') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="favoriteCount()"></span></h2>
+          <template x-if="! favoriteCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.favorites_empty') }}</p></template>
+          <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
+            <template x-for="p in favoritePhotos" :key="p.id">
+              <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
+                   :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)">
+                <button type="button" @click="openViewer(p)" class="block h-full w-full">
+                  <img x-show="thumbs[p.id]" :src="thumbs[p.id]" :style="photoTransform(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                  <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
+                  <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
+                </button>
+                <label class="absolute left-2 top-2 z-10 cursor-pointer" :class="selectedCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop.prevent="clickSelect(p.id, $event)">
+                  <input type="checkbox" :checked="isSelected(p.id)" class="pointer-events-none h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
+                </label>
+                <button type="button" @click.stop="toggleFavorite(p)" title="{{ __('gallery.unfavorite') }}"
+                    class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition hover:bg-black/60"><x-icon name="star-solid" class="h-4 w-4" /></button>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        {{-- ARCHIVE --}}
+        <div x-show="view === 'archive'">
+          <h2 class="mb-4 text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.archive') }} <span class="ml-1 text-sm font-normal tabular-nums text-gray-400" x-text="archiveCount()"></span></h2>
+          <p class="mb-4 -mt-2 text-xs text-gray-400 dark:text-gray-500">{{ __('gallery.archive_hint') }}</p>
+          <template x-if="! archiveCount()"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.archive_empty') }}</p></template>
+          <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
+            <template x-for="p in archivedPhotos" :key="p.id">
+              <div class="group relative aspect-square overflow-hidden rounded-xl bg-gray-100 dark:bg-gray-800"
+                   :class="isSelected(p.id) ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-gray-100 ring-offset-white dark:ring-offset-gray-950' : ''" x-intersect.once="thumbFor(p)">
+                <button type="button" @click="openViewer(p)" class="block h-full w-full">
+                  <img x-show="thumbs[p.id]" :src="thumbs[p.id]" :style="photoTransform(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
+                  <div x-show="!thumbs[p.id]" class="h-full w-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900"></div>
+                  <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
+                </button>
+                <label class="absolute left-2 top-2 z-10 cursor-pointer" :class="selectedCount ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'" @click.stop.prevent="clickSelect(p.id, $event)">
+                  <input type="checkbox" :checked="isSelected(p.id)" class="pointer-events-none h-4 w-4 rounded border-white/80 bg-black/30 text-gray-900 focus:ring-0 focus:ring-offset-0">
+                </label>
+                <button type="button" @click.stop="unarchive(p)" title="{{ __('gallery.unarchive_action') }}"
+                    class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white opacity-0 backdrop-blur-sm transition hover:bg-black/60 group-hover:opacity-100"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
               </div>
             </template>
           </div>
@@ -657,7 +762,25 @@
       </div>
       {{-- Info panel --}}
       <aside x-show="viewer.photo" class="hidden w-80 shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-6 text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100 md:block">
-        <h3 class="truncate text-base font-semibold" x-text="viewer.photo?.name"></h3>
+        <div class="flex items-start justify-between gap-2">
+          <h3 class="min-w-0 flex-1 truncate text-base font-semibold" x-text="viewer.photo?.name"></h3>
+          <div class="flex shrink-0 items-center gap-1" x-show="view !== 'trash'">
+            <button type="button" @click="toggleFavorite(viewer.photo)" :title="viewer.photo?.favorite ? '{{ __('gallery.unfavorite') }}' : '{{ __('gallery.favorite') }}'"
+                class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200" :class="viewer.photo?.favorite ? 'text-amber-500 dark:text-amber-400' : ''">
+              <x-icon x-show="viewer.photo?.favorite" name="star-solid" class="h-4 w-4" />
+              <x-icon x-show="! viewer.photo?.favorite" name="star" class="h-4 w-4" />
+            </button>
+            <button type="button" @click="viewer.photo?.archived ? unarchive(viewer.photo) : archivePhoto(viewer.photo)" :title="viewer.photo?.archived ? '{{ __('gallery.unarchive_action') }}' : '{{ __('gallery.archive_action') }}'"
+                class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200" :class="viewer.photo?.archived ? 'text-gray-900 dark:text-gray-100' : ''">
+              <x-icon name="archive-box" class="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div x-show="view !== 'trash'" class="mt-4">
+          <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.caption') }}</label>
+          <textarea rows="2" @change="setCaption(viewer.photo, $event.target.value)" :value="viewer.photo?.caption || ''" placeholder="{{ __('gallery.caption_placeholder') }}"
+              class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500"></textarea>
+        </div>
         <dl class="mt-5 space-y-4 text-sm">
           <div x-show="viewer.meta?.exif?.taken_at || viewer.photo?.taken_at">
             <dt class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.info_date') }}</dt>

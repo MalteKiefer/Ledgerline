@@ -1177,22 +1177,54 @@ return {
             .filter((p) => ! p.trashed)
             .sort((a, b) => new Date(b.taken_at || b.created || 0) - new Date(a.taken_at || a.created || 0)));
     },
+    // The main timeline hides archived photos (they stay in search/map/albums,
+    // like the trash-vs-timeline split — archived ≠ deleted, just out of the way).
+    get timelinePhotos() { return this._cache('timeline', () => this.libraryPhotos.filter((p) => ! p.archived)); },
+    get favoritePhotos() { return this._cache('fav', () => this.libraryPhotos.filter((p) => p.favorite)); },
+    favoriteCount() { return this.favoritePhotos.length; },
+    get archivedPhotos() {
+        return this._cache('arch', () => this.libraryPhotos.filter((p) => p.archived)
+            .sort((a, b) => new Date(b.archived || 0) - new Date(a.archived || 0)));
+    },
+    archiveCount() { return this.archivedPhotos.length; },
+    // "On this day": timeline photos whose capture month+day match today, grouped
+    // by year (past years only). Purely client-side over the decrypted index.
+    get memories() {
+        return this._cache('memories', () => {
+            const now = new Date();
+            const md = (d) => d.getMonth() + '-' + d.getDate();
+            const today = md(now), thisYear = now.getFullYear();
+            const byYear = new Map();
+            for (const p of this.timelinePhotos) {
+                const t = p.taken_at || p.created;
+                if (! t) continue;
+                const d = new Date(t);
+                if (isNaN(d.getTime()) || md(d) !== today || d.getFullYear() >= thisYear) continue;
+                const y = d.getFullYear();
+                if (! byYear.has(y)) byYear.set(y, []);
+                byYear.get(y).push(p);
+            }
+            return [...byYear.entries()].sort((a, b) => b[0] - a[0])
+                .map(([year, photos]) => ({ year, yearsAgo: thisYear - year, photos }));
+        });
+    },
+    memoryCount() { return this._cache('memN', () => this.memories.reduce((n, g) => n + g.photos.length, 0)); },
     get pendingCount() { return this._cache('pending', () => this.index.photos.filter((p) => ! p.trashed && ! p.thumbRef && ! p.failed).length); },
-    photoCount() { return this.libraryPhotos.length; },
+    photoCount() { return this.timelinePhotos.length; },
     trashCount() { return this._cache('trashN', () => this.index.photos.filter((p) => p.trashed).length); },
     get trashedPhotos() {
         return this._cache('trashed', () => this.index.photos.filter((p) => p.trashed)
             .sort((a, b) => new Date(b.trashed || 0) - new Date(a.trashed || 0)));
     },
     // True while there are still older photos not yet put in the DOM.
-    get hasMore() { return this.searchResults === null && this.renderLimit < this.libraryPhotos.length; },
+    get hasMore() { return this.searchResults === null && this.renderLimit < this.timelinePhotos.length; },
     // Scroll sentinel handler: reveal the next page of tiles.
     loadMore() { if (this.hasMore) this.renderLimit += this._renderStep; },
     // Library photos grouped by capture day (newest first) for the timeline —
     // only the current render window, so the DOM never holds the whole library.
     get groupedPhotos() {
         const groups = new Map();
-        for (const p of this.libraryPhotos.slice(0, this.renderLimit)) {
+        for (const p of this.timelinePhotos.slice(0, this.renderLimit)) {
             const d = new Date(p.taken_at || p.created || 0);
             const day = isNaN(d.getTime()) ? 'unknown' : d.toISOString().slice(0, 10);
             if (! groups.has(day)) groups.set(day, []);
@@ -2086,7 +2118,8 @@ return {
     clearSelection() { this.selected = []; this._lastSel = null; },
     get selectedCount() { return this.selected.length; },
     selectAllVisible() {
-        const ids = (this.view === 'trash' ? this.trashedPhotos : this.libraryPhotos).map((p) => p.id);
+        const map = { trash: this.trashedPhotos, favorites: this.favoritePhotos, archive: this.archivedPhotos };
+        const ids = (map[this.view] || this.timelinePhotos).map((p) => p.id);
         this.selected = this.selected.length === ids.length ? [] : ids;
     },
     _eachSelected(fn) { for (const id of [...this.selected]) { const p = this.index.photos.find((x) => x.id === id); if (p) fn(p); } },
@@ -2109,6 +2142,14 @@ return {
     },
     bulkTrash() { const t = new Date().toISOString(); this._eachSelected((p) => { if (! p.trashed) p.trashed = t; }); this.selected = []; this._save(); },
     bulkRestore() { this._eachSelected((p) => { p.trashed = null; }); this.selected = []; this._save(); },
+    // Toggle: if every selected photo is already a favorite, clear them all;
+    // otherwise favorite the whole selection.
+    bulkFavorite() {
+        const allFav = this.selected.length > 0 && this.selected.every((id) => { const p = this.index.photos.find((x) => x.id === id); return p && p.favorite; });
+        this._eachSelected((p) => { p.favorite = ! allFav; }); this.selected = []; this._save();
+    },
+    bulkArchive() { const t = new Date().toISOString(); this._eachSelected((p) => { if (! p.archived) p.archived = t; }); this.selected = []; this._save(); },
+    bulkUnarchive() { this._eachSelected((p) => { p.archived = null; }); this.selected = []; this._save(); },
     async bulkPurge() {
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || labels.purgeConfirm || '')) return;
         this._eachSelected((p) => this._purgeOne(p)); this.selected = []; await this._persist();
@@ -2132,7 +2173,7 @@ return {
         this.searching = true;
         const lc = q.toLowerCase();
         // Instant metadata matches from the (already decrypted) index.
-        const metaIds = this.libraryPhotos.filter((p) => (p.name || '').toLowerCase().includes(lc) || (p.camera || '').toLowerCase().includes(lc)).map((p) => p.id);
+        const metaIds = this.libraryPhotos.filter((p) => (p.name || '').toLowerCase().includes(lc) || (p.camera || '').toLowerCase().includes(lc) || (p.caption || '').toLowerCase().includes(lc)).map((p) => p.id);
         // CLIP content matches: embed the text, cosine vs cached image vectors.
         let contentIds = [];
         try {
@@ -3109,6 +3150,11 @@ return {
     /* ---- Trash (soft-delete → recoverable) ---- */
     trash(p) { p.trashed = new Date().toISOString(); this._save(); },
     restore(p) { p.trashed = null; this._save(); },
+    toggleFavorite(p) { if (! p) return; p.favorite = ! p.favorite; this._save(); },
+    archivePhoto(p) { if (! p) return; p.archived = new Date().toISOString(); this._save(); },
+    unarchive(p) { if (! p) return; p.archived = null; this._save(); },
+    // Free-text caption/description, editable in the viewer and folded into search.
+    setCaption(p, text) { if (! p) return; const v = (text || '').trim(); if ((p.caption || '') === v) return; p.caption = v; this._save(); },
     async purge(p) {
         if (! await this.$store.confirm.ask(labels.purgeConfirm || labels.deleteConfirm || '')) return;
         this._purgeOne(p);
