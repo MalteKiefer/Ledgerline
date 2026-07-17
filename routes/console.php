@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\PublicShare;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -40,3 +41,10 @@ Schedule::command('audit:prune')->dailyAt('00:20')->withoutOverlapping();
 
 // Verify the latest successful backup restores, and alert on staleness/failure.
 Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
+
+// Drop expired public share links (the sealed manifest + blob allow-list) so an
+// expired link stops resolving and stops pinning its rows. The blobs themselves
+// stay owned by the user; only the share record is removed.
+Schedule::call(function (): void {
+    PublicShare::whereNotNull('expires_at')->where('expires_at', '<', now())->delete();
+})->hourly()->name('prune-expired-shares')->withoutOverlapping();

@@ -149,6 +149,57 @@ function open(cipherB64, nonceB64, key) {
     return out;
 }
 
+/**
+ * Crypto for public share links, independent of the vault key. A share carries
+ * its own random share key (SK) that lives only in the link fragment. At share
+ * time the owner unwraps each blob's per-file key with the vault key and re-wraps
+ * it under SK; a public visitor (who has SK from the fragment but no vault key)
+ * unwraps it back and decrypts the blob. The server never sees SK.
+ */
+export const ShareCrypto = {
+    async ready() { await ready(); },
+
+    /** Fresh 32-byte share key, base64 — goes in the link fragment only. */
+    async newKey() { await ready(); return b64(sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES)); },
+
+    /** Seal a raw per-file key under the share key → JSON {c,n} for the manifest. */
+    async wrap(rawFk, skB64) {
+        await ready();
+        const s = seal(rawFk, unb64(skB64));
+        return JSON.stringify({ c: s.cipher, n: s.nonce });
+    },
+
+    /** Recover a raw per-file key from a manifest entry using the share key. */
+    async unwrap(sealedJson, skB64) {
+        await ready();
+        const w = JSON.parse(sealedJson);
+        return open(w.c, w.n, unb64(skB64));
+    },
+
+    /** Decrypt a blob's framed secretstream ciphertext with a raw per-file key. */
+    async decrypt(buffer, rawFk) {
+        await ready();
+        const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        const H = sodium.crypto_secretstream_xchacha20poly1305_HEADERBYTES;
+        const state = sodium.crypto_secretstream_xchacha20poly1305_init_pull(bytes.subarray(0, H), rawFk);
+        const chunks = [];
+        let off = H;
+        for (;;) {
+            const len = (bytes[off] | (bytes[off + 1] << 8) | (bytes[off + 2] << 16) | (bytes[off + 3] << 24)) >>> 0;
+            off += 4;
+            const res = sodium.crypto_secretstream_xchacha20poly1305_pull(state, bytes.subarray(off, off + len));
+            if (res === false) throw new Error('decrypt failed');
+            off += len;
+            chunks.push(res.message);
+            if (res.tag === sodium.crypto_secretstream_xchacha20poly1305_TAG_FINAL) break;
+        }
+        let total = 0; for (const c of chunks) total += c.length;
+        const out = new Uint8Array(total);
+        let p = 0; for (const c of chunks) { out.set(c, p); p += c.length; }
+        return out;
+    },
+};
+
 export const Vault = {
     vk: null,
     mode: 'trusted', // 'trusted' (persist N days) | 'public' (session + idle lock)

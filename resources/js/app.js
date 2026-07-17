@@ -1,6 +1,6 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
-import { Vault } from './vault';
+import { Vault, ShareCrypto } from './vault';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -53,6 +53,7 @@ async function loadMarkdown() {
 // Exposed globally so the vault UI + files component can lock/unlock/encrypt.
 // The reactive Alpine.store('vault') boots it (restores the cached key) on init.
 window.Vault = Vault;
+window.ShareCrypto = ShareCrypto;
 
 // Padmé length-hiding for stored ciphertext blobs. Rounds a blob up to a Padmé
 // bucket (leaks O(log log n) bits, ≤~12% overhead) so the stored/on-ledger size
@@ -1041,6 +1042,103 @@ Alpine.data('notificationBell', (labels = {}) => ({
  * transient /gallery/process endpoint (plaintext in, derived out, discarded),
  * re-seals the derived data, and renders the grid from decrypted thumbnails.
  */
+/**
+ * Public album share viewer (/s/{token}). Runs WITHOUT a vault: the share key
+ * comes from the URL fragment and unwraps each blob's per-file key from the
+ * sealed manifest. No key or plaintext ever goes to the server.
+ */
+Alpine.data('publicShare', (config = {}, labels = {}) => ({
+    state: 'boot', // boot | password | ready | error | expired | notfound
+    error: '',
+    sk: null,
+    manifest: null, // { name, allowDownload, photos: [] }
+    password: '',
+    unlocking: false,
+    thumbs: {},
+    viewer: { open: false, src: '', kind: 'none', photo: null },
+
+    async init() {
+        // Share key from the fragment (#s:<b64>) — never sent to the server.
+        const m = (location.hash || '').match(/s:([A-Za-z0-9_\-+/=]+)/);
+        this.sk = m ? decodeURIComponent(m[1]) : null;
+        try {
+            const res = await fetch(config.metaUrl, { headers: { Accept: 'application/json' } });
+            if (res.status === 404) { this.state = 'notfound'; return; }
+            if (res.status === 410) { this.state = 'expired'; return; }
+            const meta = await res.json();
+            if (! meta.found) { this.state = 'notfound'; return; }
+            if (meta.expired) { this.state = 'expired'; return; }
+            if (! this.sk) { this.state = 'error'; this.error = labels.noKey || ''; return; }
+            if (meta.needsPassword && ! meta.unlocked) { this.state = 'password'; return; }
+            await this.loadManifest();
+        } catch (e) { this.state = 'error'; }
+    },
+
+    async unlock() {
+        if (this.unlocking) return;
+        this.unlocking = true; this.error = '';
+        try {
+            const res = await fetch(config.unlockUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ password: this.password }) });
+            if (! res.ok) { this.error = labels.wrongPassword || ''; return; }
+            this.password = '';
+            await this.loadManifest();
+        } catch (e) { this.error = labels.wrongPassword || ''; } finally { this.unlocking = false; }
+    },
+
+    async loadManifest() {
+        this.state = 'boot';
+        try {
+            const res = await fetch(config.manifestUrl, { headers: { Accept: 'application/json' } });
+            if (! res.ok) throw new Error('manifest');
+            const { sealed } = await res.json();
+            const bytes = await window.ShareCrypto.unwrap(sealed, this.sk);
+            this.manifest = JSON.parse(new TextDecoder().decode(bytes));
+            this.state = 'ready';
+        } catch (e) { this.state = 'error'; this.error = labels.badKey || ''; }
+    },
+
+    get photos() { return this.manifest?.photos || []; },
+
+    async _blob(ref, keyJson) {
+        const buf = await (await fetch(`${config.blobBase}/${ref}`)).arrayBuffer();
+        const fk = await window.ShareCrypto.unwrap(keyJson, this.sk);
+        return window.ShareCrypto.decrypt(buf, fk);
+    },
+
+    async thumbFor(p) {
+        if (! p.tR || this.thumbs[p.id]) return this.thumbs[p.id];
+        try {
+            const bytes = await this._blob(p.tR, p.tK);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            this.thumbs[p.id] = url;
+            return url;
+        } catch (e) { return ''; }
+    },
+
+    async openViewer(p) {
+        let ref = p.mR || p.tR, key = p.mK || p.tK, kind = 'image', mime = 'image/jpeg';
+        if (p.t === 'video' && this.manifest?.allowDownload && p.oR) { ref = p.oR; key = p.oK; kind = 'video'; mime = 'video/mp4'; }
+        this.viewer = { open: true, src: '', kind, photo: p };
+        try {
+            const bytes = await this._blob(ref, key);
+            this.viewer.src = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        } catch (e) { this.closeViewer(); }
+    },
+    closeViewer() { if (this.viewer.src) URL.revokeObjectURL(this.viewer.src); this.viewer = { open: false, src: '', kind: 'none', photo: null }; },
+
+    canDownload(p) { return ! ! (this.manifest?.allowDownload && p && p.oR); },
+    async download(p) {
+        if (! this.canDownload(p)) return;
+        try {
+            const bytes = await this._blob(p.oR, p.oK);
+            const url = URL.createObjectURL(new Blob([bytes]));
+            const a = document.createElement('a'); a.href = url; a.download = p.id || 'photo'; a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+        } catch (e) { /* ignore */ }
+    },
+    fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return ''; } },
+}));
+
 Alpine.data('vaultGallery', (config = {}, labels = {}) => {
 // Non-reactive caches. Decrypted CLIP/face embeddings are large float arrays;
 // keeping them OFF the Alpine component (out of the reactive proxy) is critical
@@ -2358,6 +2456,7 @@ return {
     },
     async deleteAlbum(al) {
         if (! await this.$store.confirm.ask(labels.deleteAlbumConfirm || '')) return;
+        if (al.share) { try { await this._revokeShareRequest(al.share.token); } catch (e) { /* best effort */ } }
         const i = (this.index.albums || []).findIndex((a) => a.id === al.id);
         if (i >= 0) this.index.albums.splice(i, 1);
         if (this.activeAlbum === al.id) { this.activeAlbum = null; this.view = 'albums'; }
@@ -2375,6 +2474,108 @@ return {
         al.photoIds = (al.photoIds || []).filter((id) => id !== p.id);
         if (al.cover === p.id) al.cover = al.photoIds[0] || null;
         this._save();
+    },
+
+    /* ---- Public album share links (zero-knowledge) ----
+       The client seals a share manifest (photo list + each blob's per-file key
+       re-wrapped under a fresh share key) and posts only ciphertext. The share
+       key lives in the returned link's #fragment and in our own sealed index
+       (al.share.sk) so the owner can re-copy it; it never reaches the server. --- */
+    share: { open: false, album: null, busy: false, password: '', expiresAt: '', allowDownload: false, link: '', error: '' },
+    openShare(al) {
+        const s = al.share || {};
+        this.share = {
+            open: true, album: al, busy: false, error: '',
+            password: '', expiresAt: s.expiresAt || '', allowDownload: ! ! s.allowDownload,
+            link: s.token ? this._shareLink(s.token, s.sk) : '',
+        };
+    },
+    closeShare() { this.share.open = false; this.share.album = null; this.share.password = ''; },
+    _shareLink(token, sk) { return `${config.shareBase}/${token}#s:${sk}`; },
+
+    // Build the sealed share manifest for an album under a given share key.
+    async _buildShareManifest(al, sk, allowDownload) {
+        const refs = [];
+        const photos = this.albumPhotos(al);
+        const entries = [];
+        for (const p of photos) {
+            const e = { id: p.id, t: p.media_type || 'image', at: p.taken_at || p.created || null, w: p.width || null, h: p.height || null, cap: p.caption || '' };
+            const add = async (refK, keyK, outR, outK) => {
+                if (! p[refK]) return;
+                const fk = window.Vault.unwrapContentKey(p[keyK]);
+                e[outR] = p[refK]; e[outK] = await window.ShareCrypto.wrap(fk, sk); refs.push(p[refK]);
+            };
+            await add('thumbRef', 'thumbKey', 'tR', 'tK');
+            await add('mediumRef', 'mediumKey', 'mR', 'mK');
+            await add('motionRef', 'motionKey', 'moR', 'moK');
+            if (allowDownload) await add('originalRef', 'originalKey', 'oR', 'oK');
+            entries.push(e);
+        }
+        const manifest = { name: al.name || '', allowDownload: ! ! allowDownload, photos: entries };
+        const sealed = await window.ShareCrypto.wrap(new TextEncoder().encode(JSON.stringify(manifest)), sk);
+        return { sealed, refs: [...new Set(refs)] };
+    },
+
+    _shareBody(sealed, refs) {
+        const body = { sealed_manifest: sealed, blob_refs: refs, allow_download: this.share.allowDownload };
+        if (this.share.expiresAt) body.expires_at = new Date(this.share.expiresAt).toISOString();
+        if (this.share.password.trim()) body.password = this.share.password.trim();
+        return body;
+    },
+
+    async createShare() {
+        const al = this.share.album;
+        if (! al || this.share.busy) return;
+        this.share.busy = true; this.share.error = '';
+        try {
+            const sk = await window.ShareCrypto.newKey();
+            const { sealed, refs } = await this._buildShareManifest(al, sk, this.share.allowDownload);
+            const res = await fetch(config.sharesUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(this._shareBody(sealed, refs)) });
+            if (! res.ok) throw new Error('share failed');
+            const { token } = await res.json();
+            al.share = { token, sk, allowDownload: this.share.allowDownload, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString() };
+            this.share.password = '';
+            this.share.link = this._shareLink(token, sk);
+            this._save();
+        } catch (e) { this.share.error = labels.shareError || 'Error'; } finally { this.share.busy = false; }
+    },
+
+    // Re-push the manifest + settings for an existing link (same token/key), e.g.
+    // after adding photos or changing the password/expiry/download options.
+    async updateShare() {
+        const al = this.share.album;
+        if (! al || ! al.share || this.share.busy) return;
+        this.share.busy = true; this.share.error = '';
+        try {
+            const sk = al.share.sk;
+            const { sealed, refs } = await this._buildShareManifest(al, sk, this.share.allowDownload);
+            const body = this._shareBody(sealed, refs);
+            if (! this.share.password.trim() && ! al.share.hasPassword) body.clear_password = true;
+            const res = await fetch(`${config.sharesUrl}/${al.share.token}`, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(body) });
+            if (! res.ok) throw new Error('share update failed');
+            al.share.allowDownload = this.share.allowDownload;
+            al.share.expiresAt = this.share.expiresAt || null;
+            if (this.share.password.trim()) al.share.hasPassword = true;
+            else if (body.clear_password) al.share.hasPassword = false;
+            this.share.password = '';
+            this._save();
+        } catch (e) { this.share.error = labels.shareError || 'Error'; } finally { this.share.busy = false; }
+    },
+
+    _revokeShareRequest(token) {
+        return fetch(`${config.sharesUrl}/${token}`, { method: 'DELETE', headers: jsonHeaders() });
+    },
+    async revokeShare() {
+        const al = this.share.album;
+        if (! al || ! al.share) return;
+        this.share.busy = true;
+        try { await this._revokeShareRequest(al.share.token); } catch (e) { /* best effort */ }
+        delete al.share; this.share.link = ''; this.share.busy = false;
+        this._save();
+    },
+    async copyShareLink() {
+        if (! this.share.link) return;
+        try { await navigator.clipboard.writeText(this.share.link); window.llToast(labels.shareCopied || ''); } catch (e) { /* clipboard blocked */ }
     },
 
     /* ---- Scan scope (shared by faces + duplicates): 0 = whole library, N = the
