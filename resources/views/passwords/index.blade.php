@@ -43,6 +43,8 @@
       <div>
         <x-page-heading :title="__('passwords.title')">
           <x-slot:actions>
+            <div class="flex items-center gap-2">
+            <button type="button" @click="openImport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('passwords.import') }}</button>
             <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
               <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
@@ -53,6 +55,7 @@
                   </button>
                 </template>
               </div>
+            </div>
             </div>
           </x-slot:actions>
         </x-page-heading>
@@ -377,6 +380,36 @@
             <div class="mt-5 flex justify-end gap-2">
               <button type="button" @click="gen.open = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.cancel') }}</button>
               <button type="button" @click="applyGen()" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900">{{ __('passwords.generate_apply') }}</button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Import modal --}}
+        <div x-show="importOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="importOpen = false">
+          <div class="absolute inset-0 bg-gray-900/50" @click="importOpen = false"></div>
+          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+            <div class="flex items-center justify-between"><h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.import') }}</h3><button type="button" @click="importOpen = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button></div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.import_intro') }}</p>
+            <label class="mt-4 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.import_format') }}
+              <select x-model="importFormat" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                <option value="auto">{{ __('passwords.fmt_auto') }}</option>
+                <option value="bitwarden_json">{{ __('passwords.fmt_bitwarden_json') }}</option>
+                <option value="bitwarden_csv">{{ __('passwords.fmt_bitwarden_csv') }}</option>
+                <option value="onepassword">{{ __('passwords.fmt_onepassword') }}</option>
+                <option value="lastpass">{{ __('passwords.fmt_lastpass') }}</option>
+                <option value="keepass">{{ __('passwords.fmt_keepass') }}</option>
+                <option value="generic">{{ __('passwords.fmt_generic') }}</option>
+              </select>
+            </label>
+            <div class="mt-4">
+              <input type="file" accept=".json,.csv,text/csv,application/json" @change="importFile($event)" :disabled="importing" class="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:rounded-md file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:file:bg-gray-100 dark:file:text-gray-900">
+            </div>
+            <p x-show="importing" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('passwords.import_running') }}</p>
+            <p x-show="importResult && importResult.ok" x-cloak class="mt-3 text-sm text-green-600 dark:text-green-400" x-text="@js(__('passwords.import_done', ['count' => '{n}'])).replace('{n}', importResult ? importResult.count : 0)"></p>
+            <p x-show="importResult && ! importResult.ok" x-cloak class="mt-3 text-sm text-red-600 dark:text-red-400">{{ __('passwords.import_failed') }}</p>
+            <p class="mt-3 text-[11px] leading-relaxed text-gray-400">{{ __('passwords.import_hint') }}</p>
+            <div class="mt-4 flex justify-end">
+              <button type="button" @click="importOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
             </div>
           </div>
         </div>
