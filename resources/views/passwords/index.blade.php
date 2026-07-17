@@ -298,7 +298,7 @@
                 <div x-show="hasIssue(current)" x-cloak class="mb-3 flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm text-amber-800 dark:text-amber-300">
                   <x-icon name="exclamation-triangle" class="mt-0.5 h-4 w-4 shrink-0" />
                   <div class="min-w-0 flex-1 space-y-0.5">
-                    <p x-show="issuesFor(current) && issuesFor(current).breach > 0" x-text="@js(__('passwords.breach_warn', ['count' => '{n}'])).replace('{n}', (issuesFor(current) ? issuesFor(current).breach : 0).toLocaleString())"></p>
+                    <p x-show="issuesFor(current) && issuesFor(current).breach > 0" x-text="@js(__('passwords.breach_warn', ['count' => '{n}'])).replace('{n}', String((issuesFor(current) && issuesFor(current).breach) || 0))"></p>
                     <p x-show="issuesFor(current) && issuesFor(current).reused">{{ __('passwords.reused_warn') }}</p>
                     <p x-show="issuesFor(current) && issuesFor(current).weak">{{ __('passwords.weak_warn') }}</p>
                     <button type="button" x-show="issuesFor(current) && issuesFor(current).breach === null" @click="checkBreaches()" :disabled="breachChecking" class="text-xs font-medium underline disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>

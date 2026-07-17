@@ -7586,14 +7586,21 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     /* ---- Password health: weak / reused / breached (HIBP) ---- */
     breachMap: {}, // password -> pwned count (session only, never persisted)
     breachChecking: false,
+    _mut: 0,
+    _reusedCache: null,
+    _save() { this._mut++; window.LLStore.touch(); },
     _pwTypes: ['login', 'password', 'server', 'wifi'],
     _pw(x) { return (x.fields && x.fields.password) || ''; },
     get healthItems() { return this.liveItems.filter((x) => this._pwTypes.includes(x.type) && this._pw(x)); },
+    // Memoised — issuesFor()/the health list call this O(n) times per render.
     get _reusedSet() {
+        const sig = this._mut + '|' + this.items.length;
+        if (this._reusedCache && this._reusedCache.sig === sig) return this._reusedCache.val;
         const count = {};
         for (const x of this.healthItems) count[this._pw(x)] = (count[this._pw(x)] || 0) + 1;
         const set = new Set();
         for (const x of this.healthItems) if (count[this._pw(x)] > 1) set.add(x.id);
+        this._reusedCache = { sig, val: set };
         return set;
     },
     _pwScore(pw) { return pwStrength(pw); },
