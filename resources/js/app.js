@@ -2728,6 +2728,34 @@ return {
             }
         } catch (e) { /* fall back to the stored snapshot parts */ }
     },
+
+    /* ---- Birthdays: surface a person whose linked contact has a birthday today.
+       The contact's BDAY (ISO YYYY-MM-DD) lives in the decrypted contacts store,
+       loaded by _loadPeopleContacts; matching is by month+day, age by year. --- */
+    _bdayToday(iso) {
+        if (! iso || iso.length < 10) return false;
+        const now = new Date();
+        const [, m, d] = iso.split('-').map(Number);
+        return m === now.getMonth() + 1 && d === now.getDate();
+    },
+    _ageOn(iso, when = new Date()) {
+        if (! iso || iso.length < 10) return null;
+        const [y, m, d] = iso.split('-').map(Number);
+        if (! y || y < 1000) return null; // BDAY without a year (--MM-DD) → no age
+        let a = when.getFullYear() - y;
+        if (when.getMonth() + 1 < m || (when.getMonth() + 1 === m && when.getDate() < d)) a--;
+        return a >= 0 ? a : null;
+    },
+    personBday(pp) { const c = pp?.contactId ? this._peopleContacts[pp.contactId] : null; return c?.bday || ''; },
+    personAge(pp) { return this._ageOn(this.personBday(pp)); },
+    // Linked people whose contact birthday is today (and who actually have photos).
+    get birthdayPeople() {
+        return this._cache('bdayppl', () => (this.index.people || [])
+            .filter((pp) => ! pp.hidden && pp.contactId)
+            .map((pp) => { const bday = this.personBday(pp); return this._bdayToday(bday) ? { pp, bday, age: this._ageOn(bday), photos: this.personPhotos(pp) } : null; })
+            .filter((x) => x && x.photos.length));
+    },
+
     // Display label for a person: mirror the linked contact's "Last, First" label
     // (live record if loaded, else the snapshot parts captured at link time).
     personLabel(pp) {
