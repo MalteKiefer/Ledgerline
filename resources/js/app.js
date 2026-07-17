@@ -7610,6 +7610,11 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         return { weak: this._pwScore(pw) < 3, reused: this._reusedSet.has(x.id), breach: (b == null ? null : b) };
     },
     hasIssue(x) { const i = this.issuesFor(x); return ! ! i && (i.weak || i.reused || i.breach > 0); },
+    // Other entries that share this entry's password (for the reuse overview).
+    reusedWith(x) {
+        const pw = this._pw(x); if (! pw) return [];
+        return this.healthItems.filter((y) => y.id !== x.id && this._pw(y) === pw);
+    },
     get healthProblems() {
         const rank = (i) => (i.breach > 0 ? 4 : 0) + (i.reused ? 2 : 0) + (i.weak ? 1 : 0);
         return this.healthItems.map((x) => ({ x, iss: this.issuesFor(x) })).filter((o) => o.iss && rank(o.iss) > 0)
