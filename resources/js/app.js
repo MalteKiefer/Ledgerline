@@ -7467,7 +7467,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     editCurrent() {
         if (! this.current) return;
         this.draft = JSON.parse(JSON.stringify(this.current));
-        this.draft.custom = this.draft.custom || [];
+        this.draft.custom = (this.draft.custom || []).map((c) => ({ label: c.label || '', value: c.value || '', kind: this.customKind(c) }));
         this.draft.tags = this.draft.tags || [];
         // Migrate an older single url field into the multi-url array.
         if (this.draft.type === 'login' && ! Array.isArray(this.draft.fields.urls)) this.draft.fields.urls = this.draft.fields.url ? [this.draft.fields.url] : [''];
@@ -7478,15 +7478,19 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
 
     addUrl() { if (this.draft) (this.draft.fields.urls = this.draft.fields.urls || []).push(''); },
     removeUrl(i) { if (this.draft?.fields?.urls) this.draft.fields.urls.splice(i, 1); },
-    addCustom() { if (this.draft) (this.draft.custom = this.draft.custom || []).push({ label: '', value: '', secret: false }); },
+    addCustom() { if (this.draft) (this.draft.custom = this.draft.custom || []).push({ label: '', value: '', kind: 'text' }); },
     removeCustom(i) { if (this.draft?.custom) this.draft.custom.splice(i, 1); },
+    customKinds: ['text', 'secret', 'multiline', 'url'],
+    // Kind of a custom field, migrating the older {secret:bool} shape.
+    customKind(c) { return c.kind || (c.secret ? 'secret' : 'text'); },
+    customSecret(c) { return this.customKind(c) === 'secret'; },
 
     save() {
         const d = this.draft; if (! d) return;
         d.title = (d.title || '').trim() || this.typeLabel(d.type);
         d.tags = (this.tagsValue || '').split(',').map((t) => t.trim()).filter(Boolean);
         if (Array.isArray(d.fields.urls)) d.fields.urls = d.fields.urls.map((u) => (u || '').trim()).filter(Boolean);
-        d.custom = (d.custom || []).map((c) => ({ label: (c.label || '').trim(), value: (c.value || '').trim(), secret: ! ! c.secret })).filter((c) => c.label || c.value);
+        d.custom = (d.custom || []).map((c) => ({ label: (c.label || '').trim(), value: (c.value || '').trim(), kind: this.customKind(c) })).filter((c) => c.label || c.value);
         const now = new Date().toISOString();
         if (! d.id) {
             d.id = crypto.randomUUID(); d.created = now; d.updated = now; d.versions = [];
