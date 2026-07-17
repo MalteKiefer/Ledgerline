@@ -5,7 +5,8 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:js": "vitest run"
+        "test:js": "vitest run",
+        "build:ext": "vite build -c extension/vite.config.mjs"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.11",

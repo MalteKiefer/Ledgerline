@@ -96,6 +96,7 @@ kontext + stehende Anweisungen. Detail-Historie in
 - **Backup** (`backupRuns`): ZK-aware inkrementell. Files/Galerie blob-by-blob gespiegelt (High-Water-Mark über Blob-Ledger; full list-and-prune reconcile alle `BACKUP_RECONCILE_HOURS`). DB-Dump immer verschlüsselt. Ziele S3/B2/SFTP/WebDAV. `backups:run-due`, `backups:decrypt` (CLI), Dry-run-Verifier.
 - **Paperless-ngx** (`paperlessSettings`): server-side Token, `paperless:sync` stündlich, SSRF-guarded.
 - Globale Suche + Dashboard über alle Module (client-seitig, auto-scoped).
+- **Browser-Extension** (`extension/`, MV3, Chromium: Chrome/Brave/Vivaldi): ZK Passwort-Autofill. Nutzt die bestehende `/api/v1`-API (KEINE neuen Server-Routes): Pairing per Code wie Profil-Geräte (`/auth/pair`+`collect` → Sanctum-Bearer), Vault-Unlock via Passphrase (`/vault` KDF+wrapped VK → Argon2id → VK, nur in `chrome.storage.session`, nie Disk), sealed Manifest via `/store` → client-entschlüsselt (`crypto.js` spiegelt `vault.js`). Inline-Autofill (Content-Script, Shadow-DOM-Picker, Domain-Match). Krypto NUR im Background-SW; popup/content messagen ihn. Build: `npm run build:ext` (eigenes `extension/vite.config.mjs`, bundlet libsodium; `extension/dist` gitignored). Extension ist NICHT Teil der served App → kein Deploy, Verteilung via Chrome Web Store / unpacked. Offen: PIN-Persistenz (aktuell session-only), Icons, TOTP-Autofill.
 
 ---
 
