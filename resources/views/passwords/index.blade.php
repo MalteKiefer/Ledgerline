@@ -189,11 +189,24 @@
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.custom_fields') }}</label>
                     <div class="mt-1 space-y-2">
                       <template x-for="(c, i) in draft.custom" :key="i">
-                        <div class="flex items-center gap-1.5">
-                          <input type="text" x-model="c.label" placeholder="{{ __('passwords.custom_label') }}" class="w-1/3 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
-                          <input :type="c.secret && ! reveal['c' + i] ? 'password' : 'text'" x-model="c.value" placeholder="{{ __('passwords.custom_value') }}" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
-                          <button type="button" @click="c.secret = ! c.secret" :class="c.secret ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400'" title="{{ __('passwords.custom_secret') }}" class="shrink-0 rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="lock-closed" class="h-4 w-4" /></button>
-                          <button type="button" @click="removeCustom(i)" class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                        <div class="space-y-1.5 rounded-md border border-gray-200 dark:border-gray-800 p-2">
+                          <div class="flex items-center gap-1.5">
+                            <input type="text" x-model="c.label" placeholder="{{ __('passwords.custom_label') }}" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                            <select x-model="c.kind" class="shrink-0 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs focus:border-gray-500 focus:ring-gray-500">
+                              <option value="text">{{ __('passwords.kind_text') }}</option>
+                              <option value="secret">{{ __('passwords.kind_secret') }}</option>
+                              <option value="multiline">{{ __('passwords.kind_multiline') }}</option>
+                              <option value="url">{{ __('passwords.kind_url') }}</option>
+                            </select>
+                            <button type="button" @click="removeCustom(i)" class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                          </div>
+                          <template x-if="c.kind === 'multiline'"><textarea x-model="c.value" rows="2" placeholder="{{ __('passwords.custom_value') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500"></textarea></template>
+                          <template x-if="c.kind !== 'multiline'">
+                            <div class="flex items-center gap-1.5">
+                              <input :type="c.kind === 'secret' && ! reveal['c' + i] ? 'password' : 'text'" x-model="c.value" placeholder="{{ __('passwords.custom_value') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500" :class="c.kind === 'secret' ? 'font-mono' : ''">
+                              <button type="button" x-show="c.kind === 'secret'" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
+                            </div>
+                          </template>
                         </div>
                       </template>
                       <button type="button" @click="addCustom()" class="text-xs font-medium text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">+ {{ __('passwords.add_field') }}</button>
@@ -302,11 +315,12 @@
                   </template>
                   {{-- Custom fields --}}
                   <template x-for="(c, i) in (current.custom || [])" :key="'c' + i">
-                    <div>
+                    <div x-show="c.value">
                       <dt class="text-xs font-medium text-gray-500 dark:text-gray-400" x-text="c.label"></dt>
                       <dd class="mt-0.5 flex items-start gap-2">
-                        <span class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100" :class="c.secret ? 'font-mono' : ''" x-text="(c.secret && ! reveal['c' + i]) ? '••••••••••' : c.value"></span>
-                        <button type="button" x-show="c.secret" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
+                        <template x-if="customKind(c) === 'url'"><a :href="/^https?:\/\//.test(c.value) ? c.value : 'https://' + c.value" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100 underline hover:text-gray-600" x-text="c.value"></a></template>
+                        <template x-if="customKind(c) !== 'url'"><span class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100" :class="(customKind(c) === 'secret' ? 'font-mono ' : '') + (customKind(c) === 'multiline' ? 'whitespace-pre-wrap' : '')" x-text="(customKind(c) === 'secret' && ! reveal['c' + i]) ? '••••••••••' : c.value"></span></template>
+                        <button type="button" x-show="customKind(c) === 'secret'" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
                         <button type="button" @click="copy(c.value)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clipboard" class="h-4 w-4" /></button>
                       </dd>
                     </div>
