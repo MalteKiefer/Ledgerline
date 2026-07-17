@@ -6,6 +6,7 @@ return [
     'nav' => [
         'notes' => 'Notizen',
         'bookmarks' => 'Lesezeichen',
+        'passwords' => 'Passwörter',
         'contacts' => 'Kontakte',
         'invoices' => 'Rechnungen',
         'files' => 'Dateien',

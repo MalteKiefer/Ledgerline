@@ -29,6 +29,7 @@
         "marked": "^18.0.6",
         "marked-highlight": "^2.2.4",
         "pdfjs-dist": "^4.10.38",
+        "qrcode": "^1.5.4",
         "tesseract.js": "^7.0.0"
     }
 }

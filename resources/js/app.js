@@ -101,7 +101,7 @@ window.LLStore = {
     _onError: null,
 
     _blank() {
-        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [], invoices: [], invoiceSeq: 0 };
+        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [], invoices: [], invoiceSeq: 0, secrets: [] };
     },
 
     // A random client-side id for a new item (server never assigns ids now).
@@ -7367,6 +7367,199 @@ Alpine.data('bookmarks', (labels = {}) => ({
  * IMAP + SMTP connection test; identities and signatures are managed on their
  * own pages (linked from here). Replaces the cramped account modal.
  */
+
+/**
+ * Password manager ("passwords"). Zero-knowledge like the other opaque-store
+ * modules: every secret lives as a record in the sealed manifest (LLStore.data
+ * .secrets), unlocked with the vault key. Six item types (login, password,
+ * card, wifi, license, server); per-item version history on every field change;
+ * client-side TOTP, password generator, Wi-Fi QR, and copy-with-auto-clear.
+ */
+Alpine.data('passwords', (config = {}, labels = {}) => ({
+    ...zkModule({ map: { secrets: 'items' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; } }),
+
+    items: [],
+    view: 'list', // list | trash
+    current: null, // item being viewed (live ref into items)
+    draft: null, // editable copy while creating/editing (null = not editing)
+    filterType: '',
+    reveal: {},
+    totpNow: {},
+    _totpTimer: null,
+    history: { open: false, item: null },
+    wifiQr: '',
+    gen: { open: false, length: 20, upper: true, lower: true, digits: true, symbols: true, target: null },
+
+    // Field metadata per type: [key, inputType]. Labels come from labels.fields.
+    types: {
+        login: { icon: 'user', fields: [['username', 'text'], ['password', 'password'], ['url', 'text'], ['totp', 'password'], ['note', 'textarea']] },
+        password: { icon: 'key', fields: [['password', 'password'], ['note', 'textarea']] },
+        card: { icon: 'credit-card', fields: [['cardholder', 'text'], ['number', 'text'], ['brand', 'text'], ['expiry', 'text'], ['cvv', 'password'], ['pin', 'password'], ['note', 'textarea']] },
+        wifi: { icon: 'wifi', fields: [['ssid', 'text'], ['password', 'password'], ['security', 'select'], ['hidden', 'checkbox'], ['note', 'textarea']] },
+        license: { icon: 'document', fields: [['product', 'text'], ['licensekey', 'textarea'], ['owner', 'text'], ['email', 'text'], ['note', 'textarea']] },
+        server: { icon: 'server', fields: [['host', 'text'], ['port', 'text'], ['username', 'text'], ['password', 'password'], ['note', 'textarea']] },
+    },
+    secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey'],
+    securityOptions: ['WPA', 'WEP', 'nopass'],
+
+    async init() { await this._initZk(); this._totpTimer = setInterval(() => this._tickTotp(), 1000); this._tickTotp(); },
+
+    typeList() { return Object.keys(this.types); },
+    typeLabel(t) { return (labels.types && labels.types[t]) || t; },
+    typeIcon(t) { return this.types[t]?.icon || 'key'; },
+    fieldLabel(k) { return (labels.fields && labels.fields[k]) || k; },
+    fieldsOf(t) { return this.types[t]?.fields || []; },
+    isSecret(k) { return this.secretFields.includes(k); },
+
+    get liveItems() { return this.items.filter((x) => ! x.trashed); },
+    get trashCount() { return this.items.filter((x) => x.trashed).length; },
+    countOf(t) { return this.liveItems.filter((x) => x.type === t).length; },
+    get filtered() {
+        const q = this.query.trim().toLowerCase();
+        const list = this.view === 'trash' ? this.items.filter((x) => x.trashed) : this.liveItems;
+        return list
+            .filter((x) => ! this.filterType || x.type === this.filterType)
+            .filter((x) => ! q || (x.title || '').toLowerCase().includes(q) || Object.values(x.fields || {}).some((v) => typeof v === 'string' && v.toLowerCase().includes(q)))
+            .sort((a, b) => ((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (a.title || '').localeCompare(b.title || ''));
+    },
+
+    /* ---- CRUD ---- */
+    _blankFields(type) {
+        const f = {};
+        for (const [k, t] of this.fieldsOf(type)) f[k] = t === 'checkbox' ? false : (k === 'security' ? 'WPA' : '');
+        return f;
+    },
+    newItem(type) {
+        this.current = null; this.reveal = {}; this.wifiQr = '';
+        this.draft = { id: null, type, title: '', favorite: false, fields: this._blankFields(type), created: null, updated: null, versions: [] };
+    },
+    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this._refreshWifiQr(x); },
+    editCurrent() { if (this.current) this.draft = JSON.parse(JSON.stringify(this.current)); },
+    cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; },
+    changeDraftType(t) { if (! this.draft || this.draft.id) return; this.draft.type = t; this.draft.fields = this._blankFields(t); },
+
+    save() {
+        const d = this.draft; if (! d) return;
+        d.title = (d.title || '').trim() || this.typeLabel(d.type);
+        const now = new Date().toISOString();
+        if (! d.id) {
+            d.id = crypto.randomUUID(); d.created = now; d.updated = now; d.versions = [];
+            this.items.unshift(d);
+            this.current = this.items[0];
+        } else {
+            const it = this.items.find((x) => x.id === d.id);
+            if (! it) return;
+            // Versioning: snapshot the outgoing values whenever a field or the
+            // title actually changed, so the item carries its own edit history.
+            if (this._changed(it, d)) {
+                it.versions = it.versions ?? [];
+                it.versions.unshift({ at: it.updated || it.created || now, title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})) });
+                if (it.versions.length > 100) it.versions.length = 100;
+                it.updated = now;
+            }
+            it.title = d.title; it.favorite = d.favorite; it.fields = JSON.parse(JSON.stringify(d.fields));
+            this.current = it;
+        }
+        this.draft = null; this.reveal = {};
+        this._refreshWifiQr(this.current);
+        this._save();
+    },
+    _changed(a, b) {
+        if ((a.title || '') !== (b.title || '')) return true;
+        const ak = a.fields || {}, bk = b.fields || {};
+        for (const k of new Set([...Object.keys(ak), ...Object.keys(bk)])) if (String(ak[k] ?? '') !== String(bk[k] ?? '')) return true;
+        return false;
+    },
+    toggleFavorite(x) { x.favorite = ! x.favorite; this._save(); },
+    trash(x) { x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); },
+    restore(x) { x.trashed = null; this._save(); },
+    purge(x) { const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); },
+    emptyTrash() { return this._emptyTrashArr(this.items, labels.emptyTrashConfirm); },
+
+    /* ---- Version history ---- */
+    openHistory(x) { this.history = { open: true, item: x }; },
+    closeHistory() { this.history.open = false; this.history.item = null; },
+    restoreVersion(v) {
+        const it = this.history.item; if (! it) return;
+        it.versions = it.versions ?? [];
+        it.versions.unshift({ at: it.updated || new Date().toISOString(), title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})) });
+        if (it.versions.length > 100) it.versions.length = 100;
+        it.title = v.title; it.fields = JSON.parse(JSON.stringify(v.fields || {})); it.updated = new Date().toISOString();
+        this.closeHistory(); this._refreshWifiQr(it); this._save();
+    },
+
+    /* ---- Secrets: reveal + copy-with-auto-clear ---- */
+    toggleReveal(k) { this.reveal[k] = ! this.reveal[k]; },
+    async copy(v) {
+        if (v == null || v === '') return;
+        try {
+            await navigator.clipboard.writeText(String(v));
+            window.llToast(labels.copied || '');
+            const secs = config.clipboardClearSeconds || 20;
+            setTimeout(() => { navigator.clipboard.writeText('').catch(() => {}); }, secs * 1000);
+        } catch (e) { /* clipboard blocked */ }
+    },
+
+    /* ---- Password generator ---- */
+    genPassword() {
+        const g = this.gen; let set = '';
+        if (g.lower) set += 'abcdefghijkmnpqrstuvwxyz';
+        if (g.upper) set += 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+        if (g.digits) set += '23456789';
+        if (g.symbols) set += '!@#$%^&*()-_=+[]{}';
+        if (! set) set = 'abcdefghijkmnpqrstuvwxyz';
+        const n = Math.max(6, Math.min(128, g.length | 0));
+        const arr = new Uint32Array(n); crypto.getRandomValues(arr);
+        let out = ''; for (let i = 0; i < n; i++) out += set[arr[i] % set.length];
+        return out;
+    },
+    openGen(target) { this.gen.open = true; this.gen.target = target; },
+    applyGen() { if (this.draft && this.gen.target) this.draft.fields[this.gen.target] = this.genPassword(); this.gen.open = false; },
+
+    /* ---- Wi-Fi QR (built from the item's own fields, client-side) ---- */
+    async _refreshWifiQr(x) {
+        this.wifiQr = '';
+        if (! x || x.type !== 'wifi' || ! x.fields?.ssid) return;
+        const esc = (s) => String(s || '').replace(/([\\;,:"])/g, '\\$1');
+        const sec = x.fields.security === 'nopass' ? 'nopass' : (x.fields.security || 'WPA');
+        const payload = `WIFI:T:${sec};S:${esc(x.fields.ssid)};${sec === 'nopass' ? '' : 'P:' + esc(x.fields.password) + ';'}${x.fields.hidden ? 'H:true;' : ''};`;
+        try { const mod = await import('qrcode'); const QR = mod.default ?? mod; this.wifiQr = await QR.toDataURL(payload, { margin: 1, width: 220 }); } catch (e) { this.wifiQr = ''; }
+    },
+
+    /* ---- TOTP (RFC 6238, client-side via WebCrypto) ---- */
+    async _tickTotp() {
+        const period = 30, now = Math.floor(Date.now() / 1000), remain = period - (now % period);
+        const targets = this.current ? [this.current] : this.filtered;
+        for (const x of targets) {
+            const secret = x.fields?.totp;
+            if (x.type !== 'login' || ! secret) continue;
+            try { this.totpNow[x.id] = { code: await this._totp(secret, now, period), remain }; } catch (e) { /* bad secret */ }
+        }
+    },
+    async _totp(secret, now, period) {
+        const key = this._base32(secret); if (! key.length) return '';
+        const counter = Math.floor(now / period);
+        const buf = new ArrayBuffer(8); const dv = new DataView(buf);
+        dv.setUint32(0, Math.floor(counter / 2 ** 32)); dv.setUint32(4, counter >>> 0);
+        const ck = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+        const h = new Uint8Array(await crypto.subtle.sign('HMAC', ck, buf));
+        const o = h[h.length - 1] & 0xf;
+        const bin = ((h[o] & 0x7f) << 24) | ((h[o + 1] & 0xff) << 16) | ((h[o + 2] & 0xff) << 8) | (h[o + 3] & 0xff);
+        return String(bin % 1000000).padStart(6, '0');
+    },
+    _base32(s) {
+        const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+        s = String(s || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+        let bits = 0, val = 0; const out = [];
+        for (const c of s) { const i = A.indexOf(c); if (i < 0) continue; val = (val << 5) | i; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 0xff); bits -= 8; } }
+        return new Uint8Array(out);
+    },
+    hasTotp(x) { return x.type === 'login' && ! ! x.fields?.totp; },
+    totpCode(x) { const c = this.totpNow[x.id]?.code || ''; return c ? c.slice(0, 3) + ' ' + c.slice(3) : '··· ···'; },
+    totpRemain(x) { return this.totpNow[x.id]?.remain ?? 0; },
+
+    fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; } },
+}));
 
 Alpine.start();
 
