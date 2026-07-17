@@ -165,6 +165,12 @@ return [
     'caption' => 'Description',
     'caption_placeholder' => 'Add a description…',
 
+    // People birthdays (from the linked contact's BDAY)
+    'birthdays_today' => 'Birthdays today',
+    'birthday_today_label' => 'Birthday today',
+    'turns_age' => 'turns :age',
+    'age_years' => ':age years',
+
     // Public album share links (P1)
     'share' => 'Share',
     'share_album' => 'Share album',

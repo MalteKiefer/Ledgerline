@@ -479,6 +479,28 @@
 
         {{-- PEOPLE (list) --}}
         <div x-show="view === 'people'">
+          {{-- Birthdays today: a linked person whose contact's birthday is today.
+               Tap to open the person and see their photos. --}}
+          <div x-show="birthdayPeople.length" x-cloak class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+            <div class="mb-3 flex items-center gap-2">
+              <x-icon name="sparkles" class="h-4 w-4 text-gray-500" />
+              <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ __('gallery.birthdays_today') }}</h3>
+            </div>
+            <div class="flex flex-wrap gap-4">
+              <template x-for="b in birthdayPeople" :key="b.pp.id">
+                <button type="button" @click="openPerson(b.pp)" class="group flex w-20 flex-col items-center focus:outline-none">
+                  <div class="relative aspect-square w-16 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 transition group-hover:ring-2 group-hover:ring-gray-900 dark:group-hover:ring-gray-100"
+                       x-init="$nextTick(() => personCover(b.pp) && faceThumb(personCover(b.pp)))">
+                    <img x-show="personCover(b.pp) && faceThumbs[personCover(b.pp).cropRef]" :src="personCover(b.pp) && faceThumbs[personCover(b.pp).cropRef]" class="h-full w-full object-cover">
+                    <div x-show="! (personCover(b.pp) && faceThumbs[personCover(b.pp).cropRef])" class="flex h-full w-full items-center justify-center"><x-icon name="user" class="h-6 w-6 text-gray-300 dark:text-gray-600" /></div>
+                  </div>
+                  <p class="mt-1.5 max-w-full truncate text-xs font-medium text-gray-800 dark:text-gray-200" x-text="personLabel(b.pp)"></p>
+                  <p class="text-[11px] tabular-nums text-gray-400" x-text="b.age != null ? @js(__('gallery.turns_age', ['age' => '{n}'])).replace('{n}', b.age) : '{{ __('gallery.birthday_today_label') }}'"></p>
+                </button>
+              </template>
+            </div>
+          </div>
+
           {{-- Toolbar: only when results exist --}}
           <div x-show="people.length && ! peopleScanning && ! deepScanning" class="mb-5 flex items-center justify-between gap-3">
             <div class="min-w-0">
@@ -576,6 +598,12 @@
                 </span>
                 <a :href="'/contacts?c=' + currentPerson.contactId" class="font-medium text-gray-800 dark:text-gray-200 hover:underline" x-text="personLabel(currentPerson) || '{{ __('gallery.linked_contact') }}'"></a>
                 <button type="button" @click="unlinkContact()" title="{{ __('gallery.unlink') }}" class="text-gray-400 hover:text-red-600"><x-icon name="x-mark" class="h-3.5 w-3.5" /></button>
+              </div>
+              {{-- Birthday of the linked contact (with age when the year is known) --}}
+              <div x-show="personBday(currentPerson)" x-cloak class="mb-4 ml-1.5 inline-flex items-center gap-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-1 text-sm text-gray-700 dark:text-gray-300"
+                   :class="_bdayToday(personBday(currentPerson)) ? 'ring-1 ring-gray-900 dark:ring-gray-100' : ''">
+                <x-icon name="sparkles" class="h-3.5 w-3.5 text-gray-400" />
+                <span x-text="fmtDate(personBday(currentPerson)) + (personAge(currentPerson) != null ? ' · ' + @js(__('gallery.age_years', ['age' => '{n}'])).replace('{n}', personAge(currentPerson)) : '')"></span>
               </div>
               <div class="grid grid-cols-3 gap-1 sm:grid-cols-4 sm:gap-1.5 lg:grid-cols-6">
                 <template x-for="p in personPhotos(currentPerson)" :key="p.id">
