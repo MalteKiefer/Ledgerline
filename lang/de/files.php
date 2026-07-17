@@ -115,6 +115,9 @@ return [
 
     // Öffentliche Datei-/Ordner-Freigabe-Links (P-Files-1)
     'share' => 'Teilen',
+    'share_manage' => 'Link verwalten',
+    'shared' => 'Geteilt',
+    'shared_badge' => 'Hat einen öffentlichen Link',
     'share_title' => 'Teilen',
     'share_intro_file' => 'Öffentlichen Link zu dieser Datei erstellen. Sie wird nur im Browser des Besuchers entschlüsselt — der Server sieht weder Schlüssel noch Datei.',
     'share_intro_folder' => 'Öffentlichen Link zu diesem Ordner und seinen Dateien erstellen. Sie werden nur im Browser des Besuchers entschlüsselt — der Server sieht weder Schlüssel noch Dateien.',

@@ -4514,6 +4514,8 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     },
 
     get trashView() { return this.view === 'trash'; },
+    // Count of items with a live public share link (for the sidebar badge).
+    get sharedCount() { return this.manifest.folders.filter((d) => d.share).length + this.manifest.files.filter((f) => f.share && ! f.trashed).length; },
 
     get trashCount() {
         return this.manifest.files.filter((f) => f.trashed).length;
@@ -4552,6 +4554,12 @@ Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
             return search(this.manifest.files.filter((f) => ! f.trashed))
                 .map((f) => ({ ...f, kind: 'file' }))
                 .sort((a, b) => new Date(b.openedAt || b.created || 0) - new Date(a.openedAt || a.created || 0)).slice(0, 100);
+        }
+        if (this.view === 'shared') {
+            // Everything that currently has a public share link — folders first.
+            const folders = this.manifest.folders.filter((d) => d.share).map((d) => ({ ...d, kind: 'folder' }));
+            const files = this.manifest.files.filter((f) => f.share && ! f.trashed).map((f) => ({ ...f, kind: 'file' }));
+            return search([...folders, ...files]).sort(cmp);
         }
 
         // A text search or an active tag filter switches from folder browsing to

@@ -115,6 +115,9 @@ return [
 
     // Public file/folder share links (P-Files-1)
     'share' => 'Share',
+    'share_manage' => 'Manage link',
+    'shared' => 'Shared',
+    'shared_badge' => 'Has a public link',
     'share_title' => 'Share',
     'share_intro_file' => 'Create a public link to this file. It is decrypted only in the visitor’s browser — the server never sees the key or the file.',
     'share_intro_folder' => 'Create a public link to this folder and its files. They are decrypted only in the visitor’s browser — the server never sees the key or the files.',
