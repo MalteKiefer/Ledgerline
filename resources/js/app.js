@@ -3305,10 +3305,26 @@ async function apiRequest(method, url, body) {
 // gallery and files views — identical protocol (GET {rawBase}/{ref}, then
 // Vault.decryptFile with the blob's own key); the caller supplies its module's
 // raw-stream base.
+// Fetch a content blob's bytes, backing off + retrying on 429. A large gallery
+// (hundreds of thumbnails + face crops) can momentarily trip the per-route
+// throttle; retrying with the server's Retry-After (else exponential backoff)
+// means tiles recover instead of showing blanks.
+async function fetchBlobBuffer(url) {
+    for (let tries = 0; ; tries++) {
+        const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (res.ok) return res.arrayBuffer();
+        if (res.status === 429 && tries < 6) {
+            const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+            const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(8000, 400 * 2 ** tries) + Math.random() * 300;
+            await new Promise((r) => setTimeout(r, wait));
+            continue;
+        }
+        throw new Error('fetch failed');
+    }
+}
+
 async function fetchDecrypt(rawBase, ref, key) {
-    const res = await fetch(`${rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    if (! res.ok) throw new Error('fetch failed');
-    return window.Vault.decryptFile(await res.arrayBuffer(), key);
+    return window.Vault.decryptFile(await fetchBlobBuffer(`${rawBase}/${ref}`), key);
 }
 
 // Bounded lane pool for thumbnail loading. A fast scroll can intersect dozens of
@@ -3399,9 +3415,7 @@ const _decryptPool = (() => {
 // Fetch a blob and decrypt it in the worker pool, falling back to a main-thread
 // decrypt if the pool is unavailable or the vault can't unwrap the key.
 async function fetchDecryptWorker(rawBase, ref, key) {
-    const res = await fetch(`${rawBase}/${ref}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    if (! res.ok) throw new Error('fetch failed');
-    const buffer = await res.arrayBuffer();
+    const buffer = await fetchBlobBuffer(`${rawBase}/${ref}`);
     try {
         const fk = window.Vault.unwrapContentKey(key);
 
