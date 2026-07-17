@@ -51,11 +51,38 @@
         </form>
       </template>
 
-      {{-- File list (single file or folder subtree) --}}
+      {{-- Single file or a browsable folder tree (structure preserved) --}}
       <div x-show="state === 'ready'" x-cloak>
-        <template x-if="! files.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('files.share_empty') }}</p></template>
-        <ul class="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-          <template x-for="f in files" :key="f.ref">
+        {{-- Breadcrumb (folder shares only) --}}
+        <nav x-show="isFolder" class="mb-3 flex flex-wrap items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+          <button type="button" @click="goTo('')" class="rounded px-1.5 py-0.5 hover:bg-gray-200/60 dark:hover:bg-gray-800" :class="cwd === '' ? 'font-medium text-gray-900 dark:text-gray-100' : ''" x-text="manifest?.name || '/'"></button>
+          <template x-for="(c, i) in crumbs" :key="c.path">
+            <span class="flex items-center gap-1">
+              <span class="text-gray-300 dark:text-gray-600">/</span>
+              <button type="button" @click="goTo(c.path)" class="rounded px-1.5 py-0.5 hover:bg-gray-200/60 dark:hover:bg-gray-800" :class="i === crumbs.length - 1 ? 'font-medium text-gray-900 dark:text-gray-100' : ''" x-text="c.name"></button>
+            </span>
+          </template>
+        </nav>
+
+        <template x-if="! allFiles.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('files.share_empty') }}</p></template>
+        <template x-if="allFiles.length && ! subfolders.length && ! filesHere.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.album_empty') }}</p></template>
+
+        <ul x-show="subfolders.length || filesHere.length" class="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+          {{-- Subfolders first --}}
+          <template x-for="name in subfolders" :key="'d:' + name">
+            <li>
+              <button type="button" @click="enterFolder(name)" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800"><x-icon name="folder" class="h-5 w-5 text-gray-400" /></span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="name"></span>
+                  <span class="block text-xs text-gray-400" x-text="folderFileCount(name) + ' {{ __('files.share_items') }}'"></span>
+                </span>
+                <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+              </button>
+            </li>
+          </template>
+          {{-- Files in this folder --}}
+          <template x-for="f in filesHere" :key="f.ref">
             <li class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50">
               <button type="button" @click="open(f)" class="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800" x-init="isImage(f) && $nextTick(() => thumbFor(f))">
@@ -64,7 +91,7 @@
                 </span>
                 <span class="min-w-0">
                   <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="f.name"></span>
-                  <span class="block truncate text-xs text-gray-400" x-text="(isFolder && f.path ? f.path + ' · ' : '') + fmtSize(f.size)"></span>
+                  <span class="block truncate text-xs text-gray-400" x-text="fmtSize(f.size)"></span>
                 </span>
               </button>
               <button type="button" @click="download(f)" title="{{ __('files.share_download') }}" class="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200"><x-icon name="arrow-down-tray" class="h-5 w-5" /></button>

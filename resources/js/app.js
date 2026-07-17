@@ -1190,8 +1190,35 @@ Alpine.data('fileShare', (config = {}, labels = {}) => ({
             this.state = 'ready';
         } catch (e) { this.state = 'error'; this.error = labels.badKey || ''; }
     },
-    get files() { return this.manifest?.files || []; },
+    cwd: '', // current relative folder path within a shared folder ('' = its root)
+    get allFiles() { return this.manifest?.files || []; },
     get isFolder() { return this.manifest?.kind === 'folder'; },
+    // Files that sit directly in the current folder.
+    get filesHere() { return this.allFiles.filter((f) => (f.path || '') === this.cwd); },
+    // Immediate subfolder names under the current folder (derived from the paths).
+    get subfolders() {
+        const prefix = this.cwd === '' ? '' : this.cwd + '/';
+        const set = new Set();
+        for (const f of this.allFiles) {
+            const p = f.path || '';
+            if (this.cwd !== '' && p !== this.cwd && ! p.startsWith(prefix)) continue;
+            const rest = this.cwd === '' ? p : p.slice(prefix.length);
+            if (rest) set.add(rest.split('/')[0]);
+        }
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    get crumbs() {
+        if (! this.cwd) return [];
+        const segs = this.cwd.split('/');
+        return segs.map((name, i) => ({ name, path: segs.slice(0, i + 1).join('/') }));
+    },
+    enterFolder(name) { this.cwd = this.cwd === '' ? name : this.cwd + '/' + name; },
+    goTo(path) { this.cwd = path || ''; },
+    // How many files live anywhere under a subfolder of the current folder.
+    folderFileCount(name) {
+        const base = (this.cwd === '' ? '' : this.cwd + '/') + name;
+        return this.allFiles.filter((f) => { const p = f.path || ''; return p === base || p.startsWith(base + '/'); }).length;
+    },
     isImage(f) { return /^image\//.test(f.mime || '') && ! /svg/.test(f.mime || ''); },
     isPdf(f) { return (f.mime || '') === 'application/pdf'; },
     async _blob(f) {
