@@ -7,6 +7,8 @@ return [
     'new' => 'New',
     'all' => 'All',
     'close' => 'Close',
+    'refresh_icons' => 'Refresh icons',
+    'icons_done' => 'Icons updated.',
     'import' => 'Import',
     'import_intro' => 'Import from another manager. Everything is parsed in your browser and sealed locally — the file is never uploaded.',
     'import_format' => 'Format',

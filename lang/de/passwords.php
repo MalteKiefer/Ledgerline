@@ -7,6 +7,8 @@ return [
     'new' => 'Neu',
     'all' => 'Alle',
     'close' => 'Schließen',
+    'refresh_icons' => 'Icons aktualisieren',
+    'icons_done' => 'Icons aktualisiert.',
     'import' => 'Import',
     'import_intro' => 'Aus einem anderen Manager importieren. Alles wird im Browser verarbeitet und lokal versiegelt — die Datei wird nie hochgeladen.',
     'import_format' => 'Format',

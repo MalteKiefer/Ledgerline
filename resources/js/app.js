@@ -7669,6 +7669,19 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         } catch (e) { this.importResult = { ok: false, count: 0 }; } finally { this.importing = false; }
     },
     async _importIcons(list) { for (const r of list) { try { await this._fetchIcon(r); } catch (e) { /* best effort */ } } },
+    // Re-fetch the site icon for every login (server-proxied; sequential to
+    // respect the endpoint throttle). Updates only entries whose icon changed.
+    iconRefreshing: false,
+    async refreshAllIcons() {
+        if (this.iconRefreshing) return;
+        this.iconRefreshing = true;
+        try {
+            for (const x of this.liveItems.filter((x) => x.type === 'login' && this._domain(x))) {
+                try { await this._fetchIcon(x); } catch (e) { /* skip */ }
+            }
+            window.llToast(labels.iconsDone || '');
+        } finally { this.iconRefreshing = false; }
+    },
     _newRecord(type, title) {
         return { id: crypto.randomUUID(), type, title: (title || '').trim(), favorite: false, folder: null, tags: [], custom: [], icon: '', fields: this._blankFields(type), created: new Date().toISOString(), updated: new Date().toISOString(), versions: [] };
     },
