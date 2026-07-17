@@ -40,6 +40,8 @@ return [
     'no' => 'No',
     'wifi_scan' => 'Scan to join the network',
     'large_type' => 'Large type',
+    'reveal' => 'Show',
+    'hide' => 'Hide',
     // Password health + breach check
     'health' => 'Health',
     'health_issues' => 'issues',
