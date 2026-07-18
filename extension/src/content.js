@@ -2,18 +2,14 @@
 // logins for this site, and offers a small picker anchored to the field. Holds
 // no secrets beyond the moment of filling; all matching happens in the worker.
 
+import { genPassword } from './generator';
+
 const send = (msg) => new Promise((r) => { try { chrome.runtime.sendMessage(msg, r); } catch (e) { r(null); } });
 
-// Small local strong-password generator (kept inline so the content script has
-// no extra module chunk to load in the page context).
-function genStrong(len = 20) {
-    const set = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+[]{}';
-    const a = new Uint32Array(len);
-    crypto.getRandomValues(a);
-    let out = '';
-    for (let i = 0; i < len; i++) out += set[a[i] % set.length];
-    return out;
-}
+// Generator config for the inline panel; persists within the page so the panel
+// remembers the last config. genPassword itself is the shared one from
+// generator.js (no duplicate implementation).
+const genOpts = { mode: 'chars', length: 20, upper: true, lower: true, digits: true, symbols: true, similar: false };
 
 // Frame trust (defense-in-depth). The content script runs in the top frame only
 // (manifest all_frames:false) to avoid leaking credentials into untrusted
@@ -195,20 +191,61 @@ function isNewPw(input) {
     if (/new|confirm|repeat|wiederhol|register|signup|sign-?up|create/.test(hay)) return true;
     return passwordFields().length >= 2; // two password boxes ⇒ sign-up / change form
 }
-async function suggestPassword(field) {
-    const pw = genStrong(20);
+// Fill every visible password field (main + confirm) with the value + copy it.
+function fillGenerated(field, pw) {
     const fields = passwordFields();
-    if (fields.length) for (const f of fields) setValue(f, pw); // fill password + confirm
+    if (fields.length) for (const f of fields) setValue(f, pw);
     else if (field) setValue(field, pw);
-    field?.focus?.();
     lastGenerated = pw;
-    try { await navigator.clipboard.writeText(pw); notify('Strong password filled & copied'); } catch (e) { notify('Strong password filled'); }
+    navigator.clipboard.writeText(pw).catch(() => {});
+}
+
+// Inline generator panel (Shadow DOM): shows the suggested password and lets the
+// user tune length + character classes to match the site's rules before filling.
+let genHost = null;
+function closeGenPanel() { if (genHost) { genHost.remove(); genHost = null; } }
+function openGenPanel(field) {
+    closeGenPanel(); closePicker();
+    suppress = true; setTimeout(() => { suppress = false; }, 700);
+    genHost = document.createElement('div');
+    genHost.style.cssText = 'position:absolute;z-index:2147483647;';
+    const r = field.getBoundingClientRect();
+    genHost.style.top = (window.scrollY + r.bottom + 4) + 'px';
+    genHost.style.left = (window.scrollX + r.left) + 'px';
+    const shadow = genHost.attachShadow({ mode: 'closed' });
+    const cb = (k, label) => `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-k="${k}"${genOpts[k] ? ' checked' : ''}>${label}</label>`;
+    const box = document.createElement('div');
+    box.innerHTML = `
+      <div style="width:280px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:10px;box-shadow:0 8px 24px #0003;padding:12px;font:13px system-ui,sans-serif">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span id="pw" style="flex:1;min-width:0;word-break:break-all;font-family:ui-monospace,monospace;font-size:13px;background:#0000000a;border-radius:6px;padding:7px 8px"></span>
+          <button id="regen" title="Regenerate" style="border:0;background:transparent;cursor:pointer;font-size:15px;padding:4px">↻</button>
+        </div>
+        <label style="display:block;font-size:11px;color:#6b7280;margin-top:10px">Length: <span id="lenv"></span></label>
+        <input id="len" type="range" min="8" max="64" value="${genOpts.length}" style="width:100%">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;font-size:12px">
+          ${cb('upper', 'A–Z')}${cb('lower', 'a–z')}${cb('digits', '0–9')}${cb('symbols', '!@#')}
+        </div>
+        <button id="use" style="width:100%;margin-top:10px;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer">Fill password</button>
+      </div>`;
+    shadow.append(box);
+    document.body.append(genHost);
+    const q = (s) => shadow.querySelector(s);
+    let pw = genPassword(genOpts);
+    const paint = () => { q('#pw').textContent = pw; q('#lenv').textContent = genOpts.length; };
+    const regen = () => { pw = genPassword(genOpts); paint(); };
+    paint();
+    q('#regen').onclick = regen;
+    q('#len').oninput = (e) => { genOpts.length = +e.target.value; regen(); };
+    shadow.querySelectorAll('input[data-k]').forEach((el) => { el.onchange = (e) => { genOpts[e.target.dataset.k] = e.target.checked; regen(); }; });
+    q('#use').onclick = () => { fillGenerated(field, pw); closeGenPanel(); field?.focus?.(); notify('Password filled & copied'); };
 }
 function attachGenBadge(field) {
     if (! field || field.dataset.llBadge) return;
-    const item = { title: 'Use a suggested password', username: 'Strong · 20 characters', __gen: true };
-    attachBadge(field, [item], () => suggestPassword(field), async () => [item]);
+    const item = { title: 'Suggest a password…', username: 'Configurable · shown before filling', __gen: true };
+    attachBadge(field, [item], () => openGenPanel(field), async () => [item]);
 }
+document.addEventListener('click', (e) => { if (genHost && e.target !== genHost) closeGenPanel(); }, true);
 
 async function doFill(login) {
     lastLogin = login; lastAt = Date.now();
