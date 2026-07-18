@@ -165,34 +165,48 @@ async function renderMain() {
     function showDetail(it, tab) {
         stopTotp();
         const rows = [];
+        const secrets = {};
+        let si = 0;
         const field = (label, valHtml, actions) => `<div class="field"><div class="flabel">${esc(label)}</div><div class="frow">${valHtml}${actions || ''}</div></div>`;
         const copyBtn = (v) => `<button class="ic" data-copy="${esc(v)}" title="Copy">${icon('clipboard', 16)}</button>`;
+        const plain = (label, v) => field(label, `<span class="fval">${esc(v)}</span>`, copyBtn(v));
+        const secret = (label, v) => {
+            const id = 's' + (si++); secrets[id] = v;
+            return `<div class="field"><div class="flabel">${esc(label)}</div><div class="frow"><span class="fval mono" data-sec="${id}">••••••••••</span><button class="ic" data-reveal="${id}" title="Reveal">${icon('eye', 16)}</button>${copyBtn(v)}</div></div>`;
+        };
 
-        if (it.username) rows.push(field('Username', `<span class="fval">${esc(it.username)}</span>`, copyBtn(it.username)));
-        if (it.password) rows.push(`<div class="field"><div class="flabel">Password</div><div class="frow"><span class="fval mono" data-secret>••••••••••</span><button class="ic" data-reveal title="Reveal">${icon('eye', 16)}</button>${copyBtn(it.password)}</div></div>`);
+        if (it.type === 'card') {
+            if (it.cardholder) rows.push(plain('Cardholder', it.cardholder));
+            if (it.number) rows.push(secret('Card number', it.number));
+            if (it.expiry) rows.push(plain('Expiry', it.expiry));
+            if (it.cvv) rows.push(secret('CVV', it.cvv));
+        } else {
+            if (it.username) rows.push(plain('Username', it.username));
+            if (it.password) rows.push(secret('Password', it.password));
+        }
         if (it.hasTotp) rows.push(`<div class="field totp"><div class="flabel">One-time code</div><div class="frow"><span class="fval code" id="totpCode">······</span><span class="remain" id="totpRemain"></span><button class="ic" id="totpCopy" title="Copy">${icon('clipboard', 16)}</button></div></div>`);
         for (const u of (it.urls || [])) rows.push(field('Website', `<a class="fval" href="${esc(/^https?:\/\//.test(u) ? u : 'https://' + u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`, `<button class="ic" data-open="${esc(u)}" title="Open">${icon('open', 16)}</button>` + copyBtn(u)));
         if (it.note) rows.push(field('Note', `<span class="fval" style="white-space:pre-wrap">${esc(it.note)}</span>`, ''));
 
         const tags = (it.tags || []).length ? `<div class="dtags">${it.tags.map((t) => `<span class="tg">#${esc(t)}</span>`).join('')}</div>` : '';
-        const canFill = it.type === 'login' || ! ! it.password;
+        const canFill = it.type === 'login' || (it.type === 'card' && it.number) || ! ! it.password;
+        const fillLabel = it.type === 'card' ? 'Fill card on this page' : 'Fill on this page';
         detailEl.innerHTML = '';
         detailEl.append(el(`<div>
             <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div></div>
             ${rows.join('')}
             ${tags}
-            ${canFill ? `<button class="fillbtn" id="fillBtn">${icon('login', 16)} Fill on this page</button>` : ''}
+            ${canFill ? `<button class="fillbtn" id="fillBtn">${icon('login', 16)} ${esc(fillLabel)}</button>` : ''}
         </div>`));
 
         detailEl.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).catch(() => {}));
         detailEl.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => { const u = b.dataset.open; chrome.tabs.create({ url: /^https?:\/\//.test(u) ? u : 'https://' + u }); });
-        const reveal = detailEl.querySelector('[data-reveal]');
-        if (reveal) {
-            let shown = false;
-            reveal.onclick = () => { shown = ! shown; const s = detailEl.querySelector('[data-secret]'); s.textContent = shown ? it.password : '••••••••••'; reveal.innerHTML = icon(shown ? 'eyeslash' : 'eye', 16); };
-        }
+        detailEl.querySelectorAll('[data-reveal]').forEach((b) => {
+            const id = b.dataset.reveal; let shown = false;
+            b.onclick = () => { shown = ! shown; detailEl.querySelector(`[data-sec="${id}"]`).textContent = shown ? secrets[id] : '••••••••••'; b.innerHTML = icon(shown ? 'eyeslash' : 'eye', 16); };
+        });
         const fillBtn = detailEl.querySelector('#fillBtn');
-        if (fillBtn) fillBtn.onclick = () => fill(it, tab);
+        if (fillBtn) fillBtn.onclick = () => it.type === 'card' ? fillCardOnPage(it, tab) : fill(it, tab);
 
         if (it.hasTotp) {
             const tick = async () => {
@@ -291,6 +305,14 @@ function renderGen() {
     $('copy').onclick = copyPrev;
     $('use').onclick = () => { copyPrev(); window.close(); };
     syncMode(); regen();
+}
+
+async function fillCardOnPage(card, tab) {
+    if (! tab) return;
+    try {
+        await chrome.tabs.sendMessage(tab.id, { type: 'fillCard', card: { number: card.number, cardholder: card.cardholder, expiry: card.expiry, cvv: card.cvv } });
+    } catch (e) { /* no content script / no card form here */ }
+    window.close();
 }
 
 async function fill(login, tab) {
