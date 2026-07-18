@@ -290,6 +290,7 @@ Route::middleware('auth')->group(function (): void {
 
     // Identity keypair (write-once, idempotent re-publish of same key).
     Route::get('/vaults/keys', [UserKeyController::class, 'show'])
+        ->middleware('throttle:60,1')
         ->name('user.keys.show');
     Route::put('/vaults/keys', [UserKeyController::class, 'store'])
         ->middleware('throttle:60,1')

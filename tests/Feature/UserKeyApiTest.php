@@ -109,4 +109,91 @@ class UserKeyApiTest extends TestCase
 
         $response->assertRedirect();
     }
+
+    // -------------------------------------------------------------------------
+    // GET /vaults/keys — owner-scoping: never leaks another user's key material
+    // -------------------------------------------------------------------------
+
+    public function test_get_keys_returns_own_published_key_material(): void
+    {
+        $user = $this->signIn();
+        $user->forceFill([
+            'x25519_public_key'         => 'pubkey-user1',
+            'wrapped_x25519_secret_key' => 'wrapped-sk-user1',
+            'public_key_fingerprint'    => 'fp-user1',
+        ])->save();
+
+        $response = $this->getJson(route('user.keys.show'));
+
+        $response->assertOk()
+            ->assertJson([
+                'public_key'         => 'pubkey-user1',
+                'wrapped_secret_key' => 'wrapped-sk-user1',
+                'fingerprint'        => 'fp-user1',
+            ]);
+    }
+
+    public function test_get_keys_never_returns_another_users_key_material(): void
+    {
+        // Second user has published keys.
+        $other = User::factory()->create();
+        $other->forceFill([
+            'x25519_public_key'         => 'pubkey-other',
+            'wrapped_x25519_secret_key' => 'wrapped-sk-other',
+            'public_key_fingerprint'    => 'fp-other',
+        ])->save();
+
+        // First user has their own keys.
+        $user = $this->signIn();
+        $user->forceFill([
+            'x25519_public_key'         => 'pubkey-user1',
+            'wrapped_x25519_secret_key' => 'wrapped-sk-user1',
+            'public_key_fingerprint'    => 'fp-user1',
+        ])->save();
+
+        $response = $this->getJson(route('user.keys.show'));
+
+        $response->assertOk();
+
+        // Own keys are returned.
+        $response->assertJson([
+            'public_key'         => 'pubkey-user1',
+            'wrapped_secret_key' => 'wrapped-sk-user1',
+            'fingerprint'        => 'fp-user1',
+        ]);
+
+        // Other user's key material must not appear anywhere in the response.
+        $body = $response->getContent();
+        $this->assertStringNotContainsString('pubkey-other', $body);
+        $this->assertStringNotContainsString('wrapped-sk-other', $body);
+        $this->assertStringNotContainsString('fp-other', $body);
+    }
+
+    public function test_get_keys_returns_nulls_when_no_identity_published(): void
+    {
+        // Second user has keys — must never bleed through to a different user.
+        $other = User::factory()->create();
+        $other->forceFill([
+            'x25519_public_key'         => 'pubkey-other',
+            'wrapped_x25519_secret_key' => 'wrapped-sk-other',
+            'public_key_fingerprint'    => 'fp-other',
+        ])->save();
+
+        // Authenticated user has no published identity.
+        $this->signIn();
+
+        $response = $this->getJson(route('user.keys.show'));
+
+        $response->assertOk()
+            ->assertJson([
+                'public_key'         => null,
+                'wrapped_secret_key' => null,
+                'fingerprint'        => null,
+            ]);
+
+        // Other user's key material must not appear.
+        $body = $response->getContent();
+        $this->assertStringNotContainsString('pubkey-other', $body);
+        $this->assertStringNotContainsString('wrapped-sk-other', $body);
+    }
 }

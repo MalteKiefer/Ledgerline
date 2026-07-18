@@ -402,6 +402,7 @@ export const Vault = {
 
     lock() {
         this.vk = null;
+        this._idKeys = null;
         this.mode = 'trusted';
         this._clearPublic();
         this._clearTrusted();
@@ -565,6 +566,11 @@ export const Vault = {
             return this._idKeys;
         }
 
+        // Inconsistent server state: public key present but wrapped secret key missing.
+        if (data.public_key && ! data.wrapped_secret_key) {
+            throw new Error('identity key state inconsistent');
+        }
+
         // 3. No existing keypair — generate, wrap under VK, and publish.
         const kp = sodium.crypto_box_keypair();
         const wrapped = seal(kp.privateKey, this.vk);
@@ -586,7 +592,7 @@ export const Vault = {
             }),
         });
 
-        if (! res.ok && res.status !== 200) {
+        if (! res.ok) {
             throw new Error('identity key publish failed');
         }
 
