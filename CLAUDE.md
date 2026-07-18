@@ -28,7 +28,7 @@ Detail-Historie in `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerlin
 
 ## Stack
 - Laravel 13 / PHP 8.4 (`declare(strict_types=1)`), PostgreSQL 17 **pgvector** (prod) / sqlite (tests), Valkey 8 (predis, kein phpredis).
-- Frontend: **Alpine.js modularisiert (Vite-gebündelt)** — `resources/js/app.js` (~1588 Z., Bootstrap + Store-/Komponenten-Registrierungen) + `resources/js/shared/*` (Utilities) + `resources/js/components/*` (ein Modul pro Alpine.data-Komponente) + Blade + Tailwind 4 + Vite 8. Kein externes CDN. **Konvention „Alpine in EINER Datei" ist aufgehoben** (Refactor abgeschlossen, s. REFACTORING). `npm run lint` (eslint `no-undef`) MUSS vor jedem Commit an resources/js grün sein — fängt fehlende Imports, die der Bundler NICHT meldet.
+- Frontend: **Alpine.js modularisiert (Vite-gebündelt)** — `resources/js/app.js` (~753 Z., Bootstrap + Store-/Komponenten-Registrierungen) + `resources/js/shared/*` (Utilities) + `resources/js/components/*` (ein Modul pro Alpine.data-Komponente) + Blade + Tailwind 4 + Vite 8. Kein externes CDN. **Konvention „Alpine in EINER Datei" ist aufgehoben** (Refactor abgeschlossen, s. REFACTORING). `npm run lint` (eslint `no-undef`) MUSS vor jedem Commit an resources/js grün sein — fängt fehlende Imports, die der Bundler NICHT meldet.
 - **Client-Crypto** `resources/js/vault.js`: Passphrase --Argon2id(ops=4/mem=256MiB)--> KEK --unwrap--> Vault Key (VK). Sealing via libsodium-wrappers-sumo (XChaCha20-Poly1305 secretbox). Wrap der VK auf Trusted-Device via AES-256-GCM (WebCrypto, non-extractable, in IndexedDB). Entschlüsselung schwerer Blobs im Worker-Pool `resources/js/decrypt.worker.js`.
 - Auth: Pocket-ID OIDC (Socialite `pocketid`, **PKCE + state**), Match auf stabiler `sub`. Keine App-Passwörter. `groups`-Claim → Admin-Gate (fail-closed bei Multi-User ohne Gruppe).
 - Sanctum 4 Bearer-Tokens für Mobile/CLI/Extension-API (`/api/v1`). sabre/dav v4 NUR für Files-over-WebDAV + WebDAV-Backup-Ziel (kein CalDAV/CardDAV). Bilder: intervention/image v4 + imagick. ML: immich-machine-learning Sidecar (profile-gated, optional).
@@ -151,12 +151,12 @@ ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus 
 - Hotfixes = Patch-Bump. Docker-Dateien nur auf `main`/`develop` — Tag auschecken zum Deployen.
 
 ## REFACTORING app.js — GRÖSSTENTEILS ABGESCHLOSSEN (v1.500.3–v1.500.20)
-app.js **8085 → ~1588 Z.** (Bootstrap + Store-/Komponenten-Registrierungen). Verhaltensneutral in einzeln build+test+**lint**-verifizierten Scheiben; jede Scheibe deployed. Struktur:
+app.js **8085 → ~753 Z.** (Bootstrap + Store-/Komponenten-Registrierungen). Verhaltensneutral in einzeln build+test+**lint**-verifizierten Scheiben; jede Scheibe deployed. Struktur:
 - `resources/js/shared/` (12): `api` (csrfToken/jsonHeaders/apiRequest), `dom` (escapeHtml/saveBlobAs), `vector-math` (normVec/dotVec), `wordlists` (PW_WORDS), `contact-utils`, `ocr` (tesseract), `lazy-loaders` (leaflet/codemirror — `cmModule` als Live-Binding), `file-categories`, `blob-io` (fetch/decrypt-Worker-Pool/thumbLane/delete-queue; Worker `../decrypt.worker.js`), `markdown`, `zk-module` (bootStore/bootGalleryStore/zkModule), `padme` (padmeSize/padBlob).
 - `resources/js/components/` (8): toast-hub, crop-modal, backup-runs, device-pairing, paperless-settings, notification-bell, **contacts** (inkl. inline vCard-Codec), **passwords**, **files** (inkl. fileText/fileEmb-Suchcaches), **gallery** (Worker `../scan.worker.js`). Muster: `export default factory` → in app.js `Alpine.data(name, factory)`.
 - **eslint `no-undef`-Netz** (`eslint.config.mjs`, `npm run lint`) fing 3 echte Bugs, die der Bundler NICHT meldet: `cmModule` (Files-Editor, Live-Bug seit v1.500.9), `scan.worker.js`-Pfad, toter `_contactsReconAt`. **Regel: nach jeder Extraktion `npm run lint` grün.**
 - **Konvention „Alpine in EINER Datei" aufgehoben** (Freigabe 2026-07-18).
-- **Noch inline in app.js (optional, klein):** publicShare, fileShare, invoices, todos, notes, bookmarks + Stores (confirm/nav/vault/paperless). Nach gleichem Muster extrahierbar.
+- **Alle 14 Komponenten raus** (v1.500.24: publicShare, fileShare, invoices, todos, notes, bookmarks; FOLDER_ICONS in bookmarks.js). **app.js ~753 Z.** — nur noch Bootstrap, Stores (confirm/nav/vault/paperless) + LLStore/LLGalleryStore-Singletons + wenige Helfer inline.
 - Große Komponenten sind **nur im Browser testbar** (Krypto/Worker/Autofill) — headless nur build+test+lint; nach Deploy visuell prüfen.
 
 ## HISTORIE (Kurz)
