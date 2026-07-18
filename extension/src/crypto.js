@@ -39,11 +39,30 @@ export async function deriveVaultKey(passphrase, vault) {
     return open(vault.wrapped_vault_key, vault.wrap_nonce, kek); // throws => wrong passphrase
 }
 
-/** Open a sealed workspace manifest (the /store ciphertext) with the VK. */
+/** Open a sealed workspace manifest (the /store ciphertext) with the VK.
+ *  Shared-vault stores are sealed identically (sealVaultManifest mirrors
+ *  sealManifest), so the same opener works with a per-vault key. */
 export async function openManifest(ciphertext, vkBytes) {
     await ready();
     const { c, n } = JSON.parse(ciphertext);
     return JSON.parse(sodium.to_string(open(c, n, vkBytes)));
+}
+
+/** Recover our X25519 identity secret key: it is stored as a VK-sealed
+ *  {c,n} JSON blob (vault.js ensureIdentityKeys). Returns raw sk bytes. */
+export async function unwrapIdentitySecret(wrappedJson, vkBytes) {
+    await ready();
+    const { c, n } = JSON.parse(wrappedJson);
+    return open(c, n, vkBytes);
+}
+
+/** crypto_box_seal_open: recover a per-vault key wrapped to our X25519
+ *  public key. Throws if it wasn't sealed to us. Returns raw VK_vault bytes. */
+export async function unwrapVaultKey(wrappedB64, ownPubBytes, ownSkBytes) {
+    await ready();
+    const out = sodium.crypto_box_seal_open(unb64(wrappedB64), ownPubBytes, ownSkBytes);
+    if (out === false) throw new Error('vault key unwrap failed');
+    return out;
 }
 
 /** Padmé (Nikitin et al.) — mirrors vault.js so manifests we write match. */
