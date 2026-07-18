@@ -6,6 +6,7 @@ import { PW_WORDS } from './shared/wordlists';
 import { escapeHtml, saveBlobAs } from './shared/dom';
 import { normVec as _normVec, dotVec as _dotVec } from './shared/vector-math';
 import { EXT_CATEGORY, extOf, fileCategory, CATEGORY_ICON, formatBytes } from './shared/file-categories';
+import { csrfToken, jsonHeaders, apiRequest } from './shared/api';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -3581,22 +3582,6 @@ return {
  * below — listing, search, sort, rename, move, delete — runs on the decrypted
  * manifest in memory and is written back as a whole (optimistic-locked).
  */
-
-function csrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
-}
-
-// Shared JSON request headers + fetch wrapper for the reload-free module clients
-// (notes / todos / bookmarks / files / mail). One definition so a change to the
-// CSRF/accept handling or error behaviour applies everywhere.
-function jsonHeaders() {
-    return { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() };
-}
-async function apiRequest(method, url, body) {
-    const res = await fetch(url, { method, headers: jsonHeaders(), body: body ? JSON.stringify(body) : undefined });
-    if (! res.ok) throw new Error('request failed');
-    return res.json().catch(() => ({}));
-}
 
 // Fetch an opaque content blob and decrypt it in the browser. Shared by the
 // gallery and files views — identical protocol (GET {rawBase}/{ref}, then
