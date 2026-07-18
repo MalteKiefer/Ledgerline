@@ -19,7 +19,10 @@ use Laravel\Sanctum\HasApiTokens;
  * stable OIDC subject identifier ("oidc_sub"). All authenticated users share a
  * single workspace.
  */
-#[Fillable(['oidc_sub', 'name', 'email', 'email_verified_at', 'avatar', 'avatar_url', 'locale', 'groups'])]
+// `groups` is deliberately NOT fillable — it drives the admin gate, so it is
+// only ever set server-side via forceFill() from the OIDC claim, never
+// mass-assigned from request input.
+#[Fillable(['oidc_sub', 'name', 'email', 'email_verified_at', 'avatar', 'avatar_url', 'locale'])]
 #[Hidden(['remember_token'])]
 class User extends Authenticatable
 {

@@ -34,6 +34,9 @@ final class SecurityHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        // Isolate this browsing context group from cross-origin openers/popups
+        // (mitigates cross-window attacks; harmless for a same-origin SPA).
+        $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
         // Deny access to powerful browser features the app never uses.
         $response->headers->set(
             'Permissions-Policy',

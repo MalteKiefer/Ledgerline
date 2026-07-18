@@ -90,7 +90,6 @@ class PocketIdController extends Controller
                     'name' => $oidcUser->getName() ?? $oidcUser->getNickname() ?? 'Unknown',
                     'email' => $email,
                     'email_verified_at' => $emailVerified ? now() : null,
-                    'groups' => $groups,
                 ],
             );
 
@@ -108,7 +107,8 @@ class PocketIdController extends Controller
                 $avatars->fetch($user, $user->avatar_url);
             }
 
-            $user->forceFill(['last_login_at' => now()])->save();
+            // `groups` is not mass-assignable — set it server-side from the OIDC claim.
+            $user->forceFill(['groups' => $groups, 'last_login_at' => now()])->save();
         } catch (Throwable) {
             // A UNIQUE clash (e.g. two authorized subjects sharing one verified
             // e-mail — a QueryException, itself a Throwable) or any other
