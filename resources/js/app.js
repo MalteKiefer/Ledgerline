@@ -7396,7 +7396,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     draft: null, // editable copy while creating/editing (null = not editing)
     selectedIds: [], // multi-select for bulk actions
     tfaReady: false, // 2fa.directory dataset loaded (gates the "offers 2FA" hint)
-    _tfaSet: null,
+    _tfaMap: null, // { domain: documentationUrl }
     filterType: '',
     filterFolder: '', // '' = all, '_none' = no folder, else folder id
     filterTag: '',
@@ -7665,7 +7665,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         } finally { this.breachChecking = false; }
     },
     toggleFavorite(x) { x.favorite = ! x.favorite; this._save(); },
-    trash(x) { x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); this._autoSelect(); },
+    trash(x) { if (! confirm(labels.deleteConfirm)) return; x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); this._autoSelect(); },
     restore(x) { x.trashed = null; this._save(); },
     purge(x) { const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); this._autoSelect(); },
     emptyTrash() { return this._emptyTrashArr(this.items, labels.emptyTrashConfirm); },
@@ -7704,23 +7704,28 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
             const res = await fetch(config.tfaUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) return;
             const data = await res.json();
-            this._tfaSet = new Set((data.domains || []).map((d) => String(d).toLowerCase()));
+            this._tfaMap = data.entries || {};
             this.tfaReady = true;
         } catch (e) { /* offline or blocked — hint stays hidden */ }
     },
     _host(u) { try { return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } },
-    // A login with no stored TOTP whose domain is known to support app 2FA.
-    supports2fa(x) {
-        if (! this.tfaReady || ! this._tfaSet || ! x || x.type !== 'login' || (x.fields && x.fields.totp)) return false;
+    // Walk a login's URLs (and their parent domains) against the 2FA dataset;
+    // returns the matched domain key or ''.
+    _tfaMatch(x) {
+        if (! this.tfaReady || ! this._tfaMap || ! x || x.type !== 'login') return '';
         for (const u of (x.fields?.urls || [])) {
             let d = this._host(u);
             while (d && d.includes('.')) {
-                if (this._tfaSet.has(d)) return true;
+                if (d in this._tfaMap) return d;
                 d = d.slice(d.indexOf('.') + 1);
             }
         }
-        return false;
+        return '';
     },
+    // A login with no stored TOTP whose domain is known to support app 2FA.
+    supports2fa(x) { return ! (x && x.fields && x.fields.totp) && ! ! this._tfaMatch(x); },
+    // The dataset's setup-instructions URL for the login's site (or '').
+    tfaDoc(x) { const d = this._tfaMatch(x); return d ? (this._tfaMap[d] || '') : ''; },
 
     /* ---- Import (Bitwarden / 1Password / LastPass / KeePass / CSV) ----
        Everything parses in the browser and lands straight in the sealed
@@ -7876,6 +7881,22 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     },
 
     /* ---- Version history (inline accordion; restores into the open item) ---- */
+    // What changed between a stored snapshot and the next-newer state, as an
+    // object for a JSON code block. Secret fields show "(changed)" not values.
+    versionDiff(i) {
+        const list = (this.current && this.current.versions) || [];
+        const older = list[i]; if (! older) return {};
+        const newer = i === 0 ? this.current : list[i - 1];
+        const of = older.fields || {}; const nf = (newer && newer.fields) || {};
+        const secret = ['password', 'totp', 'cvv', 'pin', 'licensekey'];
+        const diff = {};
+        if ((older.title || '') !== ((newer && newer.title) || '')) diff.title = { from: older.title || '', to: (newer && newer.title) || '' };
+        for (const k of new Set([...Object.keys(of), ...Object.keys(nf)])) {
+            if (JSON.stringify(of[k] ?? null) === JSON.stringify(nf[k] ?? null)) continue;
+            diff[k] = secret.includes(k) ? '(changed)' : { from: of[k] ?? null, to: nf[k] ?? null };
+        }
+        return diff;
+    },
     restoreVersion(v) {
         const it = this.current; if (! it) return;
         it.versions = it.versions ?? [];

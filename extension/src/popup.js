@@ -1,3 +1,4 @@
+import jsQR from 'jsqr';
 import { generate, GEN_LANGS } from './generator.js';
 
 const app = document.getElementById('app');
@@ -21,6 +22,8 @@ const PATHS = {
     magnifier: '<path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>',
     login: '<path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>',
     plus: '<path d="M12 4.5v15m7.5-7.5h-15"/>',
+    trash: '<path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/>',
+    qr: '<path d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z"/><path d="M6.75 6.75h.008v.008H6.75V6.75ZM6.75 16.5h.008v.008H6.75V16.5ZM16.5 6.75h.008v.008H16.5V6.75ZM13.5 13.5h.008v.008H13.5V13.5ZM13.5 19.5h.008v.008H13.5V19.5ZM19.5 13.5h.008v.008H19.5V13.5ZM19.5 19.5h.008v.008H19.5V19.5ZM16.5 16.5h.008v.008H16.5V16.5Z"/>',
     star: '<path d="M11.48 3.5a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/>',
 };
 function icon(name, size = 18) {
@@ -93,17 +96,19 @@ let filterFolder = '';
 let filterTag = '';
 let selected = null;
 let showAll = false; // when the current site matches entries, list is prefiltered to them
-let tfaSet = null; // domains known to support app 2FA (2fa.directory)
+let tfaMap = null; // { domain: documentationUrl } from 2fa.directory
 
-// A login with no stored TOTP whose site is known to support app 2FA.
-function supports2fa(it) {
-    if (! tfaSet || ! it || it.type !== 'login' || it.hasTotp) return false;
+// The matched dataset domain for a login's URLs (walking parent domains), or ''.
+function tfaMatch(it) {
+    if (! tfaMap || ! it || it.type !== 'login') return '';
     for (const u of (it.urls || [])) {
         let d = hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u);
-        while (d && d.includes('.')) { if (tfaSet.has(d)) return true; d = d.slice(d.indexOf('.') + 1); }
+        while (d && d.includes('.')) { if (d in tfaMap) return d; d = d.slice(d.indexOf('.') + 1); }
     }
-    return false;
+    return '';
 }
+// A login with no stored TOTP whose site is known to support app 2FA.
+function supports2fa(it) { return ! (it && it.hasTotp) && ! ! tfaMatch(it); }
 
 async function renderMain() {
     filterFolder = ''; filterTag = ''; selected = null; showAll = false;
@@ -216,10 +221,20 @@ async function renderMain() {
         const tags = (it.tags || []).length ? `<div class="dtags">${it.tags.map((t) => `<span class="tg">#${esc(t)}</span>`).join('')}</div>` : '';
         const canFill = it.type === 'login' || (it.type === 'card' && it.number) || ! ! it.password;
         const fillLabel = it.type === 'card' ? 'Fill card on this page' : 'Fill on this page';
+        const doc = tfaMap ? (tfaMap[tfaMatch(it)] || '') : '';
+        const tfaHtml = supports2fa(it)
+            ? `<div class="tfahint">${icon('key', 16)}<div><div>This website offers two-factor authentication. Add a one-time code to this login.</div>${doc ? `<a href="${esc(doc)}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;color:inherit">How to enable it</a>` : ''}</div></div>`
+            : '';
+        const canScan = it.type === 'login' && ! it.hasTotp;
         detailEl.innerHTML = '';
         detailEl.append(el(`<div>
-            <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div></div>
-            ${supports2fa(it) ? `<div class="tfahint">${icon('key', 16)}<span>This website offers two-factor authentication — add a one-time code to this login.</span></div>` : ''}
+            <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div>
+              <div class="dactions">
+                ${canScan ? `<button class="ic" id="scan2fa" title="Scan a 2FA QR code">${icon('qr', 18)}</button>` : ''}
+                <button class="ic" id="del" title="Move to trash">${icon('trash', 18)}</button>
+              </div>
+            </div>
+            ${tfaHtml}
             ${rows.join('')}
             ${tags}
             ${canFill ? `<button class="fillbtn" id="fillBtn">${icon('login', 16)} ${esc(fillLabel)}</button>` : ''}
@@ -233,6 +248,16 @@ async function renderMain() {
         });
         const fillBtn = detailEl.querySelector('#fillBtn');
         if (fillBtn) fillBtn.onclick = () => it.type === 'card' ? fillCardOnPage(it, tab) : fill(it, tab);
+        const delBtn = detailEl.querySelector('#del');
+        if (delBtn) delBtn.onclick = async () => {
+            if (! confirm('Move this entry to the trash?')) return;
+            delBtn.disabled = true;
+            const r = await send({ type: 'trashItem', id: it.id });
+            if (r?.ok) { selected = null; await reloadLibrary(); detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>'; }
+            else { delBtn.disabled = false; alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not delete.'); }
+        };
+        const scanBtn = detailEl.querySelector('#scan2fa');
+        if (scanBtn) scanBtn.onclick = () => scan2fa(it);
 
         if (it.hasTotp) {
             const tick = async () => {
@@ -247,10 +272,34 @@ async function renderMain() {
         }
     }
 
+    async function reloadLibrary() {
+        library = (await send({ type: 'search', query: '' })).logins || [];
+        folders = (await send({ type: 'folders' })).folders || [];
+        paintNav();
+        paint(q.value);
+    }
+    // Scan a TOTP QR shown on the current tab and attach it to this login.
+    async function scan2fa(it) {
+        try {
+            const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+            const img = new Image(); img.src = dataUrl; await img.decode();
+            const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+            const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+            const d = ctx.getImageData(0, 0, c.width, c.height);
+            const code = jsQR(d.data, d.width, d.height);
+            if (! code || ! /^otpauth:\/\//i.test(code.data)) { alert('No 2FA QR code found on the current tab. Make sure the QR is visible, then try again.'); return; }
+            const r = await send({ type: 'updateItem', id: it.id, patch: { totp: code.data } });
+            if (! r?.ok) { alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save the code.'); return; }
+            await reloadLibrary();
+            const fresh = library.find((x) => x.id === it.id);
+            if (fresh) { selected = fresh; showDetail(fresh, tab); }
+        } catch (e) { alert('Could not capture the tab to scan a QR code.'); }
+    }
+
     const first = await send({ type: 'search', query: '' });
     library = first.logins || [];
     folders = (await send({ type: 'folders' })).folders || [];
-    tfaSet = new Set((await send({ type: 'tfa' })).domains || []);
+    tfaMap = (await send({ type: 'tfa' })).entries || {};
     paintNav();
     q.addEventListener('input', () => paint(q.value));
     folderEl.onchange = () => { filterFolder = folderEl.value; paint(q.value); };

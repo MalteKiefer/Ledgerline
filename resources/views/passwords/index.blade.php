@@ -12,6 +12,7 @@
         folderName: @js(__('passwords.folder_name')),
         deleteFolderConfirm: @js(__('passwords.delete_folder_confirm')),
         bulkPurgeConfirm: @js(__('passwords.bulk_purge_confirm')),
+        deleteConfirm: @js(__('passwords.delete_confirm')),
         titleLabel: @js(__('passwords.title_label')),
         customLabel: @js(__('passwords.custom_changed')),
         types: {
@@ -338,7 +339,10 @@
                   <x-icon name="shield-check" class="mt-0.5 h-4 w-4 shrink-0" />
                   <div class="min-w-0 flex-1">
                     <p>{{ __('passwords.tfa_available') }}</p>
-                    <button type="button" @click="editCurrent()" class="mt-0.5 text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
+                    <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <button type="button" @click="editCurrent()" class="text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
+                      <a x-show="tfaDoc(current)" x-cloak :href="tfaDoc(current)" target="_blank" rel="noopener noreferrer" class="text-xs font-medium underline">{{ __('passwords.tfa_how') }}</a>
+                    </div>
                   </div>
                 </div>
 
@@ -424,7 +428,9 @@
                           <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
                           <button type="button" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
                         </div>
-                        <p class="mt-0.5 truncate text-[11px] text-gray-400" x-text="Object.entries(v.fields || {}).filter(([kk, vv]) => vv && ! ['password','totp','cvv','pin','licensekey'].includes(kk)).map(([kk, vv]) => fieldLabel(kk) + ': ' + vv).join(' · ')"></p>
+                        <template x-if="Object.keys(versionDiff(i)).length">
+                          <pre class="mt-1 overflow-x-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-snug text-gray-700 dark:bg-gray-800 dark:text-gray-300" x-text="JSON.stringify(versionDiff(i), null, 2)"></pre>
+                        </template>
                       </li>
                     </template>
                   </ul>
