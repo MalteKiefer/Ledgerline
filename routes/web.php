@@ -33,9 +33,13 @@ use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessContro
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
+use App\Http\Controllers\SharedVaultController;
+use App\Http\Controllers\SharedVaultMemberController;
+use App\Http\Controllers\SharedVaultStoreController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TwoFactorDirectoryController;
+use App\Http\Controllers\UserKeyController;
 use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
@@ -267,4 +271,57 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
     Route::post('/paperless/terms', [PaperlessController::class, 'createTerm'])->name('paperless.terms.create');
     Route::post('/paperless/documents', [PaperlessController::class, 'submit'])->name('paperless.documents');
+
+    // -----------------------------------------------------------------------
+    // Shared password-Tresor API (zero-knowledge vault sharing).
+    //
+    // Identity keypair: write-once publish so the owner can later receive
+    // wrapped vault keys from vault managers. The server only stores the public
+    // half + the client-wrapped secret key (ciphertext at rest).
+    //
+    // Vault lifecycle: create → sealed store at v0 + active manager membership;
+    // resolve-recipient → manage-gated public-key lookup (rate-limited);
+    // members: pending invite → accept → active; manager can update role or
+    // remove member.
+    //
+    // The vault store uses the same optimistic-concurrency protocol as the
+    // personal store (GET/PUT returns {sealed_manifest, version}).
+    // -----------------------------------------------------------------------
+
+    // Identity keypair (write-once, idempotent re-publish of same key).
+    Route::put('/vaults/keys', [UserKeyController::class, 'store'])
+        ->middleware('throttle:60,1')
+        ->name('user.keys.store');
+
+    // Vault container management.
+    Route::get('/vaults', [SharedVaultController::class, 'index'])->name('vaults.index');
+    Route::post('/vaults', [SharedVaultController::class, 'store'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.store');
+
+    // Per-vault sealed manifest store (optimistic-lock read/write).
+    Route::get('/vaults/{vault}/store', [SharedVaultStoreController::class, 'show'])
+        ->name('vaults.storeShow');
+    Route::put('/vaults/{vault}/store', [SharedVaultStoreController::class, 'save'])
+        ->middleware('throttle:600,1')
+        ->name('vaults.storeSave');
+
+    // Manage-gated recipient key lookup (rate-limited per-user).
+    Route::post('/vaults/{vault}/resolve-recipient', [SharedVaultController::class, 'resolveRecipient'])
+        ->middleware('throttle:pubkey-lookup')
+        ->name('vaults.resolveRecipient');
+
+    // Membership management.
+    Route::post('/vaults/{vault}/members', [SharedVaultMemberController::class, 'store'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.members.store');
+    Route::post('/vaults/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.members.accept');
+    Route::patch('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.members.update');
+    Route::delete('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.members.destroy');
 });
