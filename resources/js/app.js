@@ -9,7 +9,7 @@ import { EXT_CATEGORY, extOf, fileCategory, CATEGORY_ICON, formatBytes } from '.
 import { csrfToken, jsonHeaders, apiRequest } from './shared/api';
 import { contactNameParts, contactDisplayName, contactsSortPref } from './shared/contact-utils';
 import { ocrWorker, ocrImage } from './shared/ocr';
-import { loadLeaflet, loadCodeMirror } from './shared/lazy-loaders';
+import { loadLeaflet, loadCodeMirror, cmModule } from './shared/lazy-loaders';
 import { fetchBlobBuffer, fetchDecrypt, fetchDecryptWorker, thumbLane, queueBlobDelete } from './shared/blob-io';
 import { loadMarkdown } from './shared/markdown';
 import { bootStore, zkModule } from './shared/zk-module';

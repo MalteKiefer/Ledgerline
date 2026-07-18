@@ -28,7 +28,9 @@ export async function loadLeaflet() {
     return leafletModule;
 }
 
-let cmModule = null;
+// Exported as a live binding: app.js reads cmModule after loadCodeMirror() has
+// populated it (ESM keeps the imported reference in sync).
+export let cmModule = null;
 export async function loadCodeMirror() {
     if (! cmModule) {
         const [core, state, language, data] = await Promise.all([
