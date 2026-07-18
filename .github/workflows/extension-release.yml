@@ -1,0 +1,56 @@
+name: Build browser extension
+
+# On every published release, build the browser extension pinned to the same
+# version as the app and attach it as a downloadable asset.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pin the extension version to the release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          VERSION="$VERSION" node -e "const f='extension/manifest.json',m=require('./'+f);m.version=process.env.VERSION;require('fs').writeFileSync(f,JSON.stringify(m,null,2)+'\n')"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build the extension
+        run: npm run build:ext
+
+      - name: Package the unpacked extension
+        run: |
+          STAGE="ledgerline-extension"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp extension/manifest.json extension/content-loader.js "$STAGE"/
+          cp -r extension/dist "$STAGE"/dist
+          ZIP="ledgerline-extension-v${VERSION}.zip"
+          zip -qr "$ZIP" "$STAGE"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Attach the extension to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" "$ZIP" --clobber
