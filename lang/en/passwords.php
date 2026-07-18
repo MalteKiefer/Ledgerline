@@ -166,6 +166,12 @@ return [
     'type_wifi' => 'Wi-Fi',
     'type_license' => 'Software license',
     'type_server' => 'Server',
+    'type_passkey' => 'Passkey',
+
+    // Passkey
+    'passkey_ext_only' => 'Passkeys are created and used through the Ledgerline browser extension.',
+    'passkey_created' => 'Created',
+    'passkey_algo' => 'Algorithm',
 
     // Fields
     'f_username' => 'Username',
@@ -189,4 +195,7 @@ return [
     'f_email' => 'Email',
     'f_host' => 'Host / IP',
     'f_port' => 'Port',
+    'f_rpId' => 'Website (domain)',
+    'f_userName' => 'Account',
+    'f_userDisplayName' => 'Display name',
 ];

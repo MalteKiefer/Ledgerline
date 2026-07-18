@@ -166,6 +166,12 @@ return [
     'type_wifi' => 'WLAN',
     'type_license' => 'Softwarelizenz',
     'type_server' => 'Server',
+    'type_passkey' => 'Passkey',
+
+    // Passkey
+    'passkey_ext_only' => 'Passkeys werden über die Ledgerline-Browser-Erweiterung erstellt und verwendet.',
+    'passkey_created' => 'Erstellt',
+    'passkey_algo' => 'Algorithmus',
 
     // Felder
     'f_username' => 'Benutzername',
@@ -189,4 +195,7 @@ return [
     'f_email' => 'E-Mail',
     'f_host' => 'Host / IP',
     'f_port' => 'Port',
+    'f_rpId' => 'Website (Domain)',
+    'f_userName' => 'Konto',
+    'f_userDisplayName' => 'Anzeigename',
 ];

@@ -38,6 +38,7 @@
             login: @js(__('passwords.type_login')), password: @js(__('passwords.type_password')),
             card: @js(__('passwords.type_card')), wifi: @js(__('passwords.type_wifi')),
             license: @js(__('passwords.type_license')), server: @js(__('passwords.type_server')),
+            passkey: @js(__('passwords.type_passkey')),
         },
         fields: {
             username: @js(__('passwords.f_username')), password: @js(__('passwords.f_password')), url: @js(__('passwords.f_url')), urls: @js(__('passwords.f_urls')),
@@ -47,6 +48,7 @@
             security: @js(__('passwords.f_security')), hidden: @js(__('passwords.f_hidden')), product: @js(__('passwords.f_product')),
             licensekey: @js(__('passwords.f_licensekey')), owner: @js(__('passwords.f_owner')), email: @js(__('passwords.f_email')),
             host: @js(__('passwords.f_host')), port: @js(__('passwords.f_port')),
+            rpId: @js(__('passwords.f_rpId')), userName: @js(__('passwords.f_userName')), userDisplayName: @js(__('passwords.f_userDisplayName')),
         },
      })" @keydown.window="_hotkey($event)">
 
@@ -77,7 +79,7 @@
             <div x-show="! isSharedVault(filterFolder) || canEditVault(filterFolder)" class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
               <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
-                <template x-for="t in typeList()" :key="t">
+                <template x-for="t in creatableTypes" :key="t">
                   <button type="button" @click="newItem(t); open = false" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
                     <span class="text-gray-400">@include('passwords._icon', ['expr' => 't', 'cls' => 'h-4 w-4'])</span>
                     <span x-text="typeLabel(t)"></span>
@@ -467,6 +469,24 @@
                 <div x-show="current.type === 'wifi' && wifiQr" x-cloak class="mb-3 flex flex-col items-center rounded-lg border border-gray-100 dark:border-gray-800 p-4">
                   <img :src="wifiQr" alt="" class="h-44 w-44 rounded bg-white p-1">
                   <p class="mt-2 text-xs text-gray-400">{{ __('passwords.wifi_scan') }}</p>
+                </div>
+
+                {{-- Passkey: extension-only notice + crypto metadata --}}
+                <div x-show="current.type === 'passkey'" x-cloak class="mb-3 space-y-3">
+                  <div class="flex items-start gap-2 rounded-lg bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                    <x-icon name="finger-print" class="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>{{ __('passwords.passkey_ext_only') }}</p>
+                  </div>
+                  <dl class="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
+                    <div class="px-4 py-2.5" x-show="current.fields && current.fields.createdAt">
+                      <dt class="text-xs font-semibold text-blue-600 dark:text-blue-400">{{ __('passwords.passkey_created') }}</dt>
+                      <dd class="mt-0.5 text-sm text-gray-900 dark:text-gray-100" x-text="current.fields && current.fields.createdAt ? fmtDate(current.fields.createdAt) : ''"></dd>
+                    </div>
+                    <div class="px-4 py-2.5" x-show="current.fields && current.fields.alg">
+                      <dt class="text-xs font-semibold text-blue-600 dark:text-blue-400">{{ __('passwords.passkey_algo') }}</dt>
+                      <dd class="mt-0.5 text-sm text-gray-900 dark:text-gray-100" x-text="current.fields && current.fields.alg === -7 ? 'ES-256' : (current.fields && current.fields.alg ? String(current.fields.alg) : '')"></dd>
+                    </div>
+                  </dl>
                 </div>
 
                 {{-- Fields --}}
