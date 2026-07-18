@@ -150,8 +150,11 @@ ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus 
 4. `php artisan view:cache`. Commit. `git checkout main && git merge --no-ff develop && git tag vX.Y.Z && git push origin main develop --tags`. `gh release create`. Zurück `develop`. Deploy (s. o., außer reine Extension-/CI-Änderung).
 - Hotfixes = Patch-Bump. Docker-Dateien nur auf `main`/`develop` — Tag auschecken zum Deployen.
 
-## REFACTORING (geplant, „später/separat")
-app.js (~8000 Z.) in ES-Module splitten (Vite-gebündelt): `shared/*` (api, blob-fetch/-delete, store, gallery-store, zk-module, wordlists, ocr, lazy-loaders), `components/*` (pro Modul; gallery/files/passwords in Mixins), `boot.js` (lazy/auto-discovery). Verhaltensneutral in Phasen; Konvention „Alpine in EINER Datei" ändert sich dann (Freigabe nötig).
+## REFACTORING (LÄUFT — verhaltensneutrale Phasen, je einzeln build+test-verifiziert)
+app.js (~8000 Z.) wird in ES-Module gesplittet (Vite-gebündelt): `resources/js/shared/*` (api, blob-fetch/-delete, store, gallery-store, zk-module, wordlists, file-categories, ocr, lazy-loaders), `components/*` (pro Modul; gallery/files/passwords in Mixins), `boot.js` (lazy/auto-discovery). Regel: app.js darf nach jeder Scheibe nie kaputt sein (Build + `npm run test:js` grün).
+- **Konvention „Alpine in EINER Datei" ist damit aufgehoben** → app.js wird zum Bootstrap, Logik zieht in `shared/`+`components/`. Freigabe erteilt (2026-07-18).
+- **Erledigt:** `shared/wordlists.js` (PW_WORDS ausgelagert, v1.500.3).
+- **Nächste Scheiben:** file-categories, api-helpers, html-escape, blob-fetch/-delete, lazy-loaders, zk-module, dann Stores + einfache Komponenten, zuletzt gallery/files/passwords in Mixins.
 
 ## HISTORIE (Kurz)
 - **v1.298 → ~1.480** (2026-07): Umbau plaintext → zero-knowledge (Vault-Kern, opaque store, ZK-Galerie, ML client-seitig, ZK-Kontakte/Invoices, Photon-Geocoding). **Entfernt:** Mail, Kalender/CalDAV, CardDAV.
