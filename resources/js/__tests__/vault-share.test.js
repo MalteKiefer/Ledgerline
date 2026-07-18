@@ -43,6 +43,17 @@ describe('VaultShareCrypto', () => {
             const fp2 = await VaultShareCrypto.fingerprint(id2.pub);
             expect(fp1).not.toBe(fp2);
         });
+
+        it('server-fingerprint mismatch is detectable: computed fp differs from fp of a different key', async () => {
+            // Simulates the recovery-branch guard in Vault.ensureIdentityKeys():
+            // if a server returns public_key A but fingerprint field computed from key B,
+            // recomputing fingerprint(A) will not equal fingerprint(B).
+            const real = await VaultShareCrypto.newIdentity();
+            const substitute = await VaultShareCrypto.newIdentity();
+            const realFp = await VaultShareCrypto.fingerprint(real.pub);
+            const computedFp = await VaultShareCrypto.fingerprint(substitute.pub);
+            expect(computedFp).not.toBe(realFp);
+        });
     });
 
     describe('wrong keypair cannot unwrap', () => {

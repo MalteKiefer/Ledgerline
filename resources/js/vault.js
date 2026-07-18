@@ -559,6 +559,14 @@ export const Vault = {
         const data = await existing.json();
 
         if (data.public_key && data.wrapped_secret_key) {
+            // Verify the server-returned public key matches the stored fingerprint.
+            // A malicious server substituting a different public_key would cause
+            // future crypto_box_seal_open on incoming invites to fail (DoS only,
+            // no plaintext exposure), but we detect and reject it here explicitly.
+            const computedFp = await VaultShareCrypto.fingerprint(data.public_key);
+            if (computedFp !== data.fingerprint) {
+                throw new Error('identity key fingerprint mismatch');
+            }
             // Parse the wrapped secret key JSON {c, n} stored by a previous device.
             const wrapped = JSON.parse(data.wrapped_secret_key);
             const sk = open(wrapped.c, wrapped.n, this.vk);
