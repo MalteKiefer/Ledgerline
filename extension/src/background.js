@@ -2,7 +2,7 @@
 // live (in memory / chrome.storage.session — never written to disk). The popup
 // and content scripts hold no secrets; they message this worker.
 import * as api from './api.js';
-import { deriveVaultKey, openManifest, sealManifest, b64, fromB64 } from './crypto.js';
+import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentitySecret, unwrapVaultKey } from './crypto.js';
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -37,20 +37,63 @@ async function ensureSecrets() {
     // Fetch the sealed manifest; cache the ciphertext locally so an offline
     // browser can still decrypt with the in-session vault key. Ciphertext at
     // rest is safe — the key is never stored on disk.
+    const vkBytes = await fromB64(vkB64);
     let cipher = '';
+    let personalReachable = true;
     try {
         const store = await api.getStore(serverUrl, token);
         cipher = store.ciphertext || '';
         if (cipher) await local.set({ storeCipher: cipher });
     } catch (e) {
+        personalReachable = false;
         cipher = (await local.get('storeCipher')).storeCipher || '';
-        if (! cipher) throw e;
     }
-    if (! cipher) { SECRETS = []; FOLDERS = []; return SECRETS; }
-    const manifest = await openManifest(cipher, await fromB64(vkB64));
-    SECRETS = (manifest.secrets || []).filter((s) => ! s.trashed);
-    FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
+    SECRETS = [];
+    FOLDERS = [];
+    if (cipher) {
+        const manifest = await openManifest(cipher, vkBytes);
+        SECRETS = (manifest.secrets || []).filter((s) => ! s.trashed);
+        FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
+    }
+    // Also surface entries from shared Tresore the user is an active member of.
+    // These live in per-vault sealed stores the web app writes; the extension
+    // reads them for autofill (writes still target the personal manifest).
+    const sharedOk = await loadSharedVaults(serverUrl, token, vkBytes);
+    // Only hard-fail if we could reach neither the personal store (no cache)
+    // nor the shared vaults — i.e. we are effectively offline with nothing.
+    if (! cipher && ! personalReachable && ! sharedOk) throw new Error('store fetch failed');
     return SECRETS;
+}
+
+// Load every active shared-vault membership, decrypt its sealed store, and
+// append its (non-trashed) items to SECRETS. Best-effort: any failure for a
+// single vault (or the whole set) is swallowed so personal autofill still works.
+// Returns true if the shared-vault endpoints were reachable at all.
+async function loadSharedVaults(serverUrl, token, vkBytes) {
+    let keys;
+    try { keys = await api.getUserKeys(serverUrl, token); } catch (e) { return false; }
+    if (! keys || ! keys.public_key || ! keys.wrapped_secret_key) return true; // no identity → no shared vaults
+    let pub, sk;
+    try {
+        pub = await fromB64(keys.public_key);
+        sk = await unwrapIdentitySecret(keys.wrapped_secret_key, vkBytes);
+    } catch (e) { return true; }
+    let vaults;
+    try { vaults = await api.getVaults(serverUrl, token); } catch (e) { return false; }
+    for (const v of (vaults || [])) {
+        if (v.status !== 'active') continue;
+        try {
+            const vk = await unwrapVaultKey(v.wrapped_vault_key, pub, sk);
+            const store = await api.getVaultStore(serverUrl, token, v.vault_id);
+            if (! store || ! store.sealed_manifest) continue;
+            const manifest = await openManifest(store.sealed_manifest, vk);
+            for (const s of (manifest.items || [])) {
+                if (s.trashed) continue;
+                SECRETS.push({ ...s, shared: true, vaultId: v.vault_id });
+            }
+        } catch (e) { /* skip this vault; others still load */ }
+    }
+    return true;
 }
 
 // Hostname of a login's first URL.

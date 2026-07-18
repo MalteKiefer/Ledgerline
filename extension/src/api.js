@@ -49,6 +49,32 @@ export async function saveStore(base, token, ciphertext, version) {
     return call(base, '/store', { method: 'PUT', token, body: { ciphertext, version } });
 }
 
+/** The user's own published X25519 identity key material (caller-scoped).
+ *  { public_key, wrapped_secret_key, fingerprint } — nulls if none published. */
+export async function getUserKeys(base, token) {
+    const res = await call(base, '/vaults/keys', { token });
+    if (res.status === 401) throw new Error('unauthorized');
+    if (! res.ok) throw new Error('keys fetch failed');
+    return res.json();
+}
+
+/** This user's shared-vault memberships.
+ *  [{ vault_id, role, status, wrapped_vault_key }] */
+export async function getVaults(base, token) {
+    const res = await call(base, '/vaults', { token });
+    if (res.status === 401) throw new Error('unauthorized');
+    if (! res.ok) throw new Error('vaults fetch failed');
+    return res.json();
+}
+
+/** A shared vault's sealed store ({ sealed_manifest, version }). */
+export async function getVaultStore(base, token, vaultId) {
+    const res = await call(base, '/vaults/' + encodeURIComponent(vaultId) + '/store', { token });
+    if (res.status === 401) throw new Error('unauthorized');
+    if (! res.ok) throw new Error('vault store fetch failed');
+    return res.json();
+}
+
 /** Revoke this bearer server-side (unpair). */
 export async function logout(base, token) {
     try { await call(base, '/auth/session', { method: 'DELETE', token }); } catch (e) { /* best effort */ }
