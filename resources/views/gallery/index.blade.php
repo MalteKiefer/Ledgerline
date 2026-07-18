@@ -925,7 +925,7 @@
       <div class="relative w-full max-w-2xl rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.edit_location') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.location_hint') }}</p>
-        <div class="relative mt-3">
+        <div class="relative z-20 mt-3">
           <form @submit.prevent="geoSearch()" class="flex gap-2">
             <input type="search" x-model="geoQuery" placeholder="{{ __('gallery.search_place') }}"
                 class="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
