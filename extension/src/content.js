@@ -23,6 +23,17 @@ function usernameFor(pw) {
     }
     return inputs.find((x) => /user|email|login/i.test(x.name + ' ' + x.id + ' ' + (x.autocomplete || ''))) || null;
 }
+// A standalone username/email field (login pages that ask for the identifier
+// first and reveal the password on a later step, e.g. Tresorit, Google).
+function usernameField() {
+    return [...document.querySelectorAll('input')].filter(isVisible).find((i) => {
+        const t = (i.type || 'text').toLowerCase();
+        if (! ['text', 'email', 'tel', ''].includes(t)) return false;
+        if ((i.autocomplete || '').toLowerCase() === 'one-time-code') return false;
+        const hay = (i.name + ' ' + i.id + ' ' + (i.autocomplete || '') + ' ' + (i.getAttribute('aria-label') || '') + ' ' + (i.placeholder || '')).toLowerCase();
+        return t === 'email' || (i.autocomplete || '').toLowerCase().includes('username') || /user|e-?mail|login|account/.test(hay);
+    }) || null;
+}
 
 function setValue(input, value) {
     if (! input) return;
@@ -66,7 +77,10 @@ async function fillCode(login) {
 
 async function doFill(login) {
     const pw = passwordField();
-    if (pw) { setValue(usernameFor(pw), login.username); setValue(pw, login.password); pw.focus(); }
+    const user = pw ? usernameFor(pw) : usernameField();
+    if (user) setValue(user, login.username);
+    if (pw) setValue(pw, login.password);
+    (pw || user)?.focus();
     if (login.hasTotp) await fillCode(login);
 }
 
@@ -140,16 +154,24 @@ function attachBadge(field, logins, onPick = doFill) {
 async function init() {
     const pw = passwordField();
     const otp = otpField();
-    if (! pw && ! otp) return;
+    const user = pw ? (usernameFor(pw) || pw) : usernameField();
+    if (! pw && ! user && ! otp) return;
     const res = await send({ type: 'match', hostname: location.hostname });
     if (! res?.ok || ! res.logins?.length) return;
-    if (pw) { attachBadge(usernameFor(pw) || pw, res.logins); attachBadge(pw, res.logins); }
-    // A standalone 2FA screen (no password field): offer the code on the OTP field.
+    if (user) attachBadge(user, res.logins);
+    if (pw && pw !== user) attachBadge(pw, res.logins);
+    // A standalone 2FA screen: offer the code on the OTP field.
     if (otp && res.logins.some((l) => l.hasTotp)) attachBadge(otp, res.logins, fillCode);
 }
 
 document.addEventListener('click', (e) => { if (host && ! host.contains(e.target)) closePicker(); });
-chrome.runtime.onMessage.addListener((msg) => { if (msg?.type === 'fill' && msg.login) doFill(msg.login); });
+chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
+    if (msg?.type === 'fill' && msg.login) {
+        const had = ! ! (passwordField() || usernameField());
+        doFill(msg.login);
+        sendResponse({ filled: had }); // popup falls back to opening the URL if false
+    }
+});
 
 // Run now and again after SPA/late-rendered forms appear.
 init();

@@ -11,7 +11,7 @@ let SECRETS = null;
 const local = {
     get: (k) => new Promise((r) => chrome.storage.local.get(k, (v) => r(v))),
     set: (o) => new Promise((r) => chrome.storage.local.set(o, r)),
-    clear: () => new Promise((r) => chrome.storage.local.remove(['serverUrl', 'token'], r)),
+    clear: () => new Promise((r) => chrome.storage.local.remove(['serverUrl', 'token', 'storeCipher', 'vaultMeta'], r)),
 };
 const session = {
     get: (k) => new Promise((r) => chrome.storage.session.get(k, (v) => r(v))),
@@ -33,9 +33,20 @@ async function ensureSecrets() {
     if (! vkB64) throw new Error('locked');
     const { serverUrl, token } = await creds();
     if (! serverUrl || ! token) throw new Error('unpaired');
-    const store = await api.getStore(serverUrl, token);
-    if (! store.ciphertext) { SECRETS = []; return SECRETS; }
-    const manifest = await openManifest(store.ciphertext, await fromB64(vkB64));
+    // Fetch the sealed manifest; cache the ciphertext locally so an offline
+    // browser can still decrypt with the in-session vault key. Ciphertext at
+    // rest is safe — the key is never stored on disk.
+    let cipher = '';
+    try {
+        const store = await api.getStore(serverUrl, token);
+        cipher = store.ciphertext || '';
+        if (cipher) await local.set({ storeCipher: cipher });
+    } catch (e) {
+        cipher = (await local.get('storeCipher')).storeCipher || '';
+        if (! cipher) throw e;
+    }
+    if (! cipher) { SECRETS = []; return SECRETS; }
+    const manifest = await openManifest(cipher, await fromB64(vkB64));
     SECRETS = (manifest.secrets || []).filter((s) => ! s.trashed);
     return SECRETS;
 }
@@ -146,7 +157,11 @@ const handlers = {
     async unlock({ passphrase }) {
         const { serverUrl, token } = await creds();
         if (! serverUrl || ! token) throw new Error('unpaired');
-        const vault = await api.getVault(serverUrl, token);
+        // Vault KDF params + wrapped key; cached locally (safe at rest — the
+        // passphrase is still required) so unlock works offline too.
+        let vault;
+        try { vault = await api.getVault(serverUrl, token); await local.set({ vaultMeta: vault }); }
+        catch (e) { vault = (await local.get('vaultMeta')).vaultMeta; if (! vault) throw e; }
         if (! vault.configured) throw new Error('no vault');
         const vk = await deriveVaultKey(passphrase, vault); // throws on wrong passphrase
         await session.set({ vk: await b64(vk) });
@@ -155,6 +170,7 @@ const handlers = {
         return { ok: true };
     },
     async lock() { SECRETS = null; await session.clear(); return { ok: true }; },
+    async refresh() { SECRETS = null; await ensureSecrets(); return { count: SECRETS.length }; },
     async unpair() {
         const { serverUrl, token } = await creds();
         if (serverUrl && token) await api.logout(serverUrl, token);
@@ -178,3 +194,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     Promise.resolve(fn(msg)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
     return true; // async
 });
+
+// Auto-lock: drop the vault key when the OS screen locks or after idle. The
+// paired token stays; only the decrypted state is cleared.
+try {
+    chrome.idle.setDetectionInterval(900); // 15 min idle
+    chrome.idle.onStateChanged.addListener((state) => {
+        if (state === 'locked' || state === 'idle') { SECRETS = null; chrome.storage.session.remove(['vk']); }
+    });
+} catch (e) { /* chrome.idle unavailable */ }

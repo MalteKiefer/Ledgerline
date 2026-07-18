@@ -3,7 +3,7 @@
   "name": "Ledgerline",
   "version": "1.0.0",
   "description": "Zero-knowledge password autofill for your self-hosted Ledgerline.",
-  "permissions": ["storage", "activeTab", "scripting", "contextMenus", "clipboardWrite"],
+  "permissions": ["storage", "activeTab", "scripting", "contextMenus", "clipboardWrite", "idle", "tabs"],
   "host_permissions": ["https://*/*", "http://*/*"],
   "background": { "service_worker": "dist/background.js", "type": "module" },
   "action": { "default_popup": "dist/src/popup.html", "default_title": "Ledgerline" },
