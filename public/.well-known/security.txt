@@ -1,0 +1,4 @@
+Contact: mailto:malte.kiefer@kiefer-networks.de
+Expires: 2027-07-18T00:00:00.000Z
+Preferred-Languages: de, en
+Canonical: https://home.kiefer-networks.de/.well-known/security.txt

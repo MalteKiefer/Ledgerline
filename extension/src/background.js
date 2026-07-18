@@ -247,6 +247,7 @@ const handlers = {
         return runPairing(serverUrl, code);
     },
     async unlock({ passphrase }) {
+        if (typeof passphrase !== 'string' || passphrase.length === 0 || passphrase.length > 4096) throw new Error('invalid passphrase');
         const { serverUrl, token } = await creds();
         if (! serverUrl || ! token) throw new Error('unpaired');
         // Vault KDF params + wrapped key; cached locally (safe at rest — the
@@ -270,7 +271,7 @@ const handlers = {
         return { ok: true };
     },
     async match({ hostname }) { return { logins: await matchFor(hostname) }; },
-    async search({ query }) { return { logins: await search(query) }; },
+    async search({ query }) { return { logins: await search(typeof query === 'string' ? query.slice(0, 200) : '') }; },
     async folders() { await ensureSecrets(); return { folders: FOLDERS }; },
     // Public 2fa.directory dataset: domains that support app 2FA. Cached locally
     // (public data, not sensitive) so we hint where a login could add a code.
@@ -307,7 +308,11 @@ const handlers = {
     },
 };
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    // Only accept messages from our own extension pages/content scripts. Web
+    // pages can't reach a runtime listener without externally_connectable (we
+    // don't set it), but this is cheap defence-in-depth.
+    if (sender.id !== chrome.runtime.id) return false;
     const fn = handlers[msg?.type];
     if (! fn) return false;
     Promise.resolve(fn(msg)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
