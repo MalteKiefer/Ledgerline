@@ -28,7 +28,7 @@ Detail-Historie in `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerlin
 
 ## Stack
 - Laravel 13 / PHP 8.4 (`declare(strict_types=1)`), PostgreSQL 17 **pgvector** (prod) / sqlite (tests), Valkey 8 (predis, kein phpredis).
-- Frontend: **Alpine.js in EINER Datei** `resources/js/app.js` (~8000 Z.) + Blade + Tailwind 4 + Vite 8. Kein externes CDN — alles via npm/Vite gebündelt. (Split in Module ist geplant/„später" — Plan in Sektion REFACTORING.)
+- Frontend: **Alpine.js modularisiert (Vite-gebündelt)** — `resources/js/app.js` (~1588 Z., Bootstrap + Store-/Komponenten-Registrierungen) + `resources/js/shared/*` (Utilities) + `resources/js/components/*` (ein Modul pro Alpine.data-Komponente) + Blade + Tailwind 4 + Vite 8. Kein externes CDN. **Konvention „Alpine in EINER Datei" ist aufgehoben** (Refactor abgeschlossen, s. REFACTORING). `npm run lint` (eslint `no-undef`) MUSS vor jedem Commit an resources/js grün sein — fängt fehlende Imports, die der Bundler NICHT meldet.
 - **Client-Crypto** `resources/js/vault.js`: Passphrase --Argon2id(ops=4/mem=256MiB)--> KEK --unwrap--> Vault Key (VK). Sealing via libsodium-wrappers-sumo (XChaCha20-Poly1305 secretbox). Wrap der VK auf Trusted-Device via AES-256-GCM (WebCrypto, non-extractable, in IndexedDB). Entschlüsselung schwerer Blobs im Worker-Pool `resources/js/decrypt.worker.js`.
 - Auth: Pocket-ID OIDC (Socialite `pocketid`, **PKCE + state**), Match auf stabiler `sub`. Keine App-Passwörter. `groups`-Claim → Admin-Gate (fail-closed bei Multi-User ohne Gruppe).
 - Sanctum 4 Bearer-Tokens für Mobile/CLI/Extension-API (`/api/v1`). sabre/dav v4 NUR für Files-over-WebDAV + WebDAV-Backup-Ziel (kein CalDAV/CardDAV). Bilder: intervention/image v4 + imagick. ML: immich-machine-learning Sidecar (profile-gated, optional).
@@ -145,17 +145,19 @@ ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus 
 
 ## RELEASE-RITUAL (Git Flow)
 1. Auf `develop`. Version-Bump `config/app.php` (`env('APP_VERSION','X.Y.Z')`) + bei Extension-Änderung `extension/manifest.json` gleiche Version.
-2. `vendor/bin/pint --dirty` → passed. `npm run build` (+ `npm run build:ext` bei Extension). EN/DE-Parität. AI-Scan (grep geänderte Dateien). ZK-Scan (keine neuen Klartext-Spalten/Server-Render-Pfade). **CLAUDE.md aktualisiert** (Features + Security-Register).
+2. `vendor/bin/pint --dirty` → passed. `npm run build` (+ `npm run build:ext` bei Extension). **`npm run lint`** (eslint no-undef) grün. **`npm run test:js`** (Vitest) grün. EN/DE-Parität. AI-Scan (grep geänderte Dateien). ZK-Scan (keine neuen Klartext-Spalten/Server-Render-Pfade). **CLAUDE.md aktualisiert** (Features + Security-Register).
 3. Tests: `php artisan test --teamcity` (Hook erzwingt `--teamcity`; PhotoEdit-Segfault → in Häppchen `--filter`). **JS-Unit-Tests: `npm run test:js`** (Vitest).
 4. `php artisan view:cache`. Commit. `git checkout main && git merge --no-ff develop && git tag vX.Y.Z && git push origin main develop --tags`. `gh release create`. Zurück `develop`. Deploy (s. o., außer reine Extension-/CI-Änderung).
 - Hotfixes = Patch-Bump. Docker-Dateien nur auf `main`/`develop` — Tag auschecken zum Deployen.
 
-## REFACTORING (LÄUFT — verhaltensneutrale Phasen, je einzeln build+test-verifiziert)
-app.js (~8000 Z.) wird in ES-Module gesplittet (Vite-gebündelt): `resources/js/shared/*` (api, blob-fetch/-delete, store, gallery-store, zk-module, wordlists, file-categories, ocr, lazy-loaders), `components/*` (pro Modul; gallery/files/passwords in Mixins), `boot.js` (lazy/auto-discovery). Regel: app.js darf nach jeder Scheibe nie kaputt sein (Build + `npm run test:js` grün + **`npm run lint`** grün — eslint `no-undef` fängt fehlende Imports, die der Bundler NICHT meldet).
-- **Konvention „Alpine in EINER Datei" ist damit aufgehoben** → app.js wird zum Bootstrap, Logik zieht in `shared/`+`components/`. Freigabe erteilt (2026-07-18).
-- **Erledigt:** `shared/wordlists.js` (v1.500.3); `shared/dom.js` + `shared/vector-math.js` (v1.500.4); `shared/file-categories.js` (v1.500.5); `shared/api.js` (v1.500.6); `shared/contact-utils.js` (v1.500.7); `shared/ocr.js` (v1.500.8); `shared/lazy-loaders.js` (v1.500.9); `shared/blob-io.js` (fetchBlobBuffer/fetchDecrypt/fetchDecryptWorker + decrypt-Worker-Pool/thumbLane/queueBlobDelete, Worker-URL `../decrypt.worker.js`, v1.500.10).
-- **Erledigt (Forts.):** `shared/markdown.js` (v1.500.11); `shared/zk-module.js` (v1.500.12); erste `components/*`-Dateien: toast-hub, crop-modal (v1.500.13); backup-runs, device-pairing (v1.500.14); paperless-settings, notification-bell (v1.500.15); eslint no-undef-Netz (v1.500.16); große ALLE raus: contacts (v1.500.17), passwords (v1.500.18), files (v1.500.19), gallery (v1.500.20, scan.worker-Pfad `../scan.worker.js`). **app.js 8085 → ~1588 Z.**
-- **Rest (einfach):** publicShare, fileShare, invoices, todos, notes, bookmarks + Stores (confirm/nav/vault/paperless) noch inline in app.js — können bei Gelegenheit raus., dann Stores + einfache Komponenten, zuletzt gallery/files/passwords in Mixins.
+## REFACTORING app.js — GRÖSSTENTEILS ABGESCHLOSSEN (v1.500.3–v1.500.20)
+app.js **8085 → ~1588 Z.** (Bootstrap + Store-/Komponenten-Registrierungen). Verhaltensneutral in einzeln build+test+**lint**-verifizierten Scheiben; jede Scheibe deployed. Struktur:
+- `resources/js/shared/` (12): `api` (csrfToken/jsonHeaders/apiRequest), `dom` (escapeHtml/saveBlobAs), `vector-math` (normVec/dotVec), `wordlists` (PW_WORDS), `contact-utils`, `ocr` (tesseract), `lazy-loaders` (leaflet/codemirror — `cmModule` als Live-Binding), `file-categories`, `blob-io` (fetch/decrypt-Worker-Pool/thumbLane/delete-queue; Worker `../decrypt.worker.js`), `markdown`, `zk-module` (bootStore/bootGalleryStore/zkModule), `padme` (padmeSize/padBlob).
+- `resources/js/components/` (8): toast-hub, crop-modal, backup-runs, device-pairing, paperless-settings, notification-bell, **contacts** (inkl. inline vCard-Codec), **passwords**, **files** (inkl. fileText/fileEmb-Suchcaches), **gallery** (Worker `../scan.worker.js`). Muster: `export default factory` → in app.js `Alpine.data(name, factory)`.
+- **eslint `no-undef`-Netz** (`eslint.config.mjs`, `npm run lint`) fing 3 echte Bugs, die der Bundler NICHT meldet: `cmModule` (Files-Editor, Live-Bug seit v1.500.9), `scan.worker.js`-Pfad, toter `_contactsReconAt`. **Regel: nach jeder Extraktion `npm run lint` grün.**
+- **Konvention „Alpine in EINER Datei" aufgehoben** (Freigabe 2026-07-18).
+- **Noch inline in app.js (optional, klein):** publicShare, fileShare, invoices, todos, notes, bookmarks + Stores (confirm/nav/vault/paperless). Nach gleichem Muster extrahierbar.
+- Große Komponenten sind **nur im Browser testbar** (Krypto/Worker/Autofill) — headless nur build+test+lint; nach Deploy visuell prüfen.
 
 ## HISTORIE (Kurz)
 - **v1.298 → ~1.480** (2026-07): Umbau plaintext → zero-knowledge (Vault-Kern, opaque store, ZK-Galerie, ML client-seitig, ZK-Kontakte/Invoices, Photon-Geocoding). **Entfernt:** Mail, Kalender/CalDAV, CardDAV.
