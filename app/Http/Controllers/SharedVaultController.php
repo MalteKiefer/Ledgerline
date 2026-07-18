@@ -156,28 +156,35 @@ class SharedVaultController extends Controller
             'remove_member_id'   => ['required', 'integer'],
         ]);
 
-        // Verify remove_member_id belongs to this vault before entering the
-        // transaction, to return a clean 422 outside the lock.
-        $removeMemberRow = SharedVaultMember::where('vault_id', $vault->id)
-            ->where('id', $data['remove_member_id'])
-            ->first();
+        // Inject authenticated user id so the transaction closure can perform the self-remove guard.
+        $data['_auth_user_id'] = $request->user()->id;
 
-        if ($removeMemberRow === null) {
-            return response()->json(['error' => 'remove_member_id not a member of this vault'], 422);
-        }
-
-        // Verify the removed member does not appear in the supplied members list.
-        $incomingUserIds = array_column($data['members'], 'user_id');
-
-        if (in_array((int) $removeMemberRow->user_id, array_map('intval', $incomingUserIds), true)) {
-            return response()->json(['error' => 'removed member must not appear in members list'], 422);
-        }
-
-        $result = DB::transaction(function () use ($vault, $data, $removeMemberRow): array {
+        $result = DB::transaction(function () use ($vault, $data): array {
             /** @var SharedVaultStore|null $row */
             $row = SharedVaultStore::where('vault_id', $vault->id)
                 ->lockForUpdate()
                 ->first();
+
+            // Verify remove_member_id belongs to this vault (inside the lock to prevent races).
+            $removeMemberRow = SharedVaultMember::where('vault_id', $vault->id)
+                ->where('id', $data['remove_member_id'])
+                ->first();
+
+            if ($removeMemberRow === null) {
+                return ['conflict' => false, 'invalid_member' => true];
+            }
+
+            // R4: A manager cannot remove themselves via rotate.
+            if ((int) $removeMemberRow->user_id === (int) $data['_auth_user_id']) {
+                return ['conflict' => false, 'self_remove' => true];
+            }
+
+            // Verify the removed member does not appear in the supplied members list.
+            $incomingUserIds = array_column($data['members'], 'user_id');
+
+            if (in_array((int) $removeMemberRow->user_id, array_map('intval', $incomingUserIds), true)) {
+                return ['conflict' => false, 'invalid_user' => true, 'removed_in_list' => true];
+            }
 
             $current = (int) ($row?->version ?? 0);
 
@@ -232,6 +239,18 @@ class SharedVaultController extends Controller
                 'version'         => $result['version'],
                 'sealed_manifest' => $result['sealed_manifest'],
             ], 409);
+        }
+
+        if ($result['invalid_member'] ?? false) {
+            return response()->json(['error' => 'remove_member_id not a member of this vault'], 422);
+        }
+
+        if ($result['self_remove'] ?? false) {
+            return response()->json(['error' => 'A manager cannot remove themselves via rotate'], 422);
+        }
+
+        if ($result['removed_in_list'] ?? false) {
+            return response()->json(['error' => 'removed member must not appear in members list'], 422);
         }
 
         if ($result['invalid_user'] ?? false) {

@@ -365,4 +365,32 @@ class VaultRotateTest extends TestCase
         $this->assertNull(SharedVaultMember::find($mgr->id));
         $this->assertNull(SharedVaultMember::find($otherM->id));
     }
+    // -------------------------------------------------------------------------
+    // POST /vaults/{vault}/rotate — R4: manager cannot remove themselves
+    // -------------------------------------------------------------------------
+
+    public function test_rotate_rejects_manager_removing_themselves(): void
+    {
+        $manager = User::factory()->create();
+        $vault   = $this->makeVault($manager);
+        $mgr     = $this->addMember($vault, $manager, 'manager');
+        $other   = User::factory()->create();
+        $otherM  = $this->addMember($vault, $other, 'viewer');
+
+        // Manager passes their own membership row as remove_member_id
+        $response = $this->actingAs($manager)
+            ->postJson(route('vaults.rotate', $vault), [
+                'sealed_manifest'  => 'SEALED',
+                'expected_version' => 1,
+                'members'          => [
+                    ['user_id' => $other->id, 'wrapped_vault_key' => 'WRAP'],
+                ],
+                'remove_member_id' => $mgr->id,
+            ]);
+
+        $response->assertUnprocessable();
+        // Membership must NOT have been deleted
+        $this->assertNotNull(SharedVaultMember::find($mgr->id));
+    }
+
 }

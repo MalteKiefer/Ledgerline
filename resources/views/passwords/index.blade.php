@@ -73,7 +73,7 @@
             </button>
             <button type="button" @click="openGen(null)" title="{{ __('passwords.generate') }}" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="key" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.generate') }}</span></button>
             <button type="button" @click="openImport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('passwords.import') }}</button>
-            <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
+            <div x-show="! isSharedVault(filterFolder) || canEditVault(filterFolder)" class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
               <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
                 <template x-for="t in typeList()" :key="t">
@@ -189,8 +189,13 @@
                 <span class="text-xs text-gray-500 dark:text-gray-400" x-text="healthCount ? (healthCount + ' {{ __('passwords.health_issues') }}') : '{{ __('passwords.health_ok') }}'"></span>
                 <button type="button" @click="checkBreaches()" :disabled="breachChecking" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-2.5 py-1 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
               </div>
+              {{-- Read-only notice for shared vaults --}}
+              <div x-show="isSharedVault(filterFolder) && sharedVaultRole(filterFolder) === 'read'" x-cloak class="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+                <x-icon name="information-circle" class="h-4 w-4 shrink-0" />
+                <span>{{ __('passwords.read_only_notice') }}</span>
+              </div>
               {{-- Bulk-select toolbar --}}
-              <div x-show="selectedIds.length" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white dark:bg-gray-100 dark:text-gray-900">
+              <div x-show="selectedIds.length && ! isSharedVault(filterFolder)" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white dark:bg-gray-100 dark:text-gray-900">
                 <span class="text-xs font-medium" x-text="selectedIds.length + ' {{ __('passwords.selected') }}'"></span>
                 <div class="flex items-center gap-0.5">
                   <button type="button" @click="toggleSelectAll()" title="{{ __('passwords.select_all') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="check-circle" class="h-4 w-4" /></button>
@@ -202,7 +207,7 @@
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
                   <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
-                    <input type="checkbox" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
+                    <input type="checkbox" x-show="! isSharedVault(filterFolder)" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
                     <button type="button" @click="openItem(x)" class="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left">
                       <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                             :class="(x.type === 'login' && ! x.icon) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -364,10 +369,10 @@
                     </div>
                   </div>
                   <div class="flex shrink-0 items-center gap-1">
-                    <button type="button" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
-                    <button type="button" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
-                    <button type="button" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
-                    <button type="button" x-show="view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent()" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent()" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent() && view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent() && view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
                   </div>
                 </div>
 
@@ -397,7 +402,7 @@
                   <div class="min-w-0 flex-1">
                     <p>{{ __('passwords.tfa_available') }}</p>
                     <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <button type="button" @click="editCurrent()" class="text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
+                      <button type="button" x-show="canEditCurrent()" @click="editCurrent()" class="text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
                       <a x-show="tfaDoc(current)" x-cloak :href="tfaDoc(current)" target="_blank" rel="noopener noreferrer" class="text-xs font-medium underline">{{ __('passwords.tfa_how') }}</a>
                     </div>
                   </div>
@@ -483,7 +488,7 @@
                       <li class="rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
-                          <button type="button" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
+                          <button type="button" x-show="canEditCurrent()" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
                         </div>
                         <template x-if="Object.keys(versionDiff(i)).length">
                           <pre class="mt-1 overflow-x-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-snug text-gray-700 dark:bg-gray-800 dark:text-gray-300" x-text="JSON.stringify(versionDiff(i), null, 2)"></pre>
@@ -503,6 +508,51 @@
               </div>
             </template>
           </section>
+        </div>
+
+        {{-- Share vault dialog (manager only) --}}
+        <div x-show="shareDialog.open" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="closeShareDialog()">
+          <div class="absolute inset-0 bg-gray-900/50" @click="closeShareDialog()"></div>
+          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.share_vault') }}</h3>
+              <button type="button" @click="closeShareDialog()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+            </div>
+            <div class="mt-4 space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient_identifier') }}</label>
+                <div class="mt-1 flex items-center gap-2">
+                  <input type="text" x-model="shareDialog.identifier" @keydown.enter="lookUpRecipient()" placeholder="{{ __('passwords.recipient_identifier') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                  <button type="button" @click="lookUpRecipient()" :disabled="shareDialog.lookingUp || ! shareDialog.identifier.trim()" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50" x-text="shareDialog.lookingUp ? '…' : '{{ __('passwords.look_up') }}'"></button>
+                </div>
+              </div>
+              <template x-if="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'">
+                <div class="space-y-3">
+                  <div class="rounded-lg border border-gray-200 dark:border-gray-800 p-3 text-xs">
+                    <p class="font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.fingerprint') }}</p>
+                    <p class="mt-1 break-all font-mono text-gray-900 dark:text-gray-100" x-text="shareDialog.resolved && shareDialog.resolved.fingerprint"></p>
+                    <p x-show="shareDialog.fingerprintStatus === 'new'" class="mt-1 text-amber-600 dark:text-amber-400">{{ __('passwords.fingerprint_verify') }}</p>
+                    <p x-show="shareDialog.fingerprintStatus === 'verified'" class="mt-1 flex items-center gap-1 text-green-600 dark:text-green-400"><x-icon name="check-circle" class="h-3.5 w-3.5" /><span>{{ __('passwords.role_manage') !== '' ? '' : '' }}Verified</span></p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient') }}</label>
+                    <select x-model="shareDialog.role" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                      <option value="read">{{ __('passwords.role_read') }}</option>
+                      <option value="edit">{{ __('passwords.role_edit') }}</option>
+                      <option value="manage">{{ __('passwords.role_manage') }}</option>
+                    </select>
+                  </div>
+                </div>
+              </template>
+              <p x-show="shareDialog.notice" x-cloak class="rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300" x-text="shareDialog.notice"></p>
+            </div>
+            <div class="mt-5 flex justify-end gap-2">
+              <button type="button" @click="closeShareDialog()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.cancel') }}</button>
+              <button type="button" x-show="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'" @click="confirmShare()" :disabled="shareDialog.sharing" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                <span x-text="shareDialog.sharing ? '…' : '{{ __('passwords.share') }}'"></span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {{-- Password generator modal --}}
