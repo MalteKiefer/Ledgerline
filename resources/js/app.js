@@ -11,6 +11,7 @@ import { contactNameParts, contactDisplayName, contactsSortPref } from './shared
 import { ocrWorker, ocrImage } from './shared/ocr';
 import { loadLeaflet, loadCodeMirror } from './shared/lazy-loaders';
 import { fetchBlobBuffer, fetchDecrypt, fetchDecryptWorker, thumbLane, queueBlobDelete } from './shared/blob-io';
+import { loadMarkdown } from './shared/markdown';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -25,39 +26,6 @@ window.addEventListener('vite:preloadError', () => {
     }
 });
 
-// The markdown stack (marked + DOMPurify + highlight.js + its CSS) is only ever
-// needed to preview a note, so it is code-split out of the initial bundle and
-// loaded on first use. Returns a memoised { render(md) } that highlights fenced
-// code (client-side — notes are zero-knowledge) and DOMPurify-sanitises output.
-let _markdown = null;
-async function loadMarkdown() {
-    if (_markdown) return _markdown;
-    const [{ Marked }, DOMPurify, { markedHighlight }, hljs] = await Promise.all([
-        import('marked'),
-        import('dompurify'),
-        import('marked-highlight'),
-        import('highlight.js/lib/common'),
-    ]);
-    await Promise.all([
-        import('github-markdown-css/github-markdown-light.css'),
-        import('highlight.js/styles/github.css'),
-    ]);
-    const hl = hljs.default;
-    // marked v18: a per-instance Marked with GFM + hard line breaks and the
-    // highlight extension (client-side highlighting — notes are zero-knowledge).
-    const marked = new Marked(
-        { gfm: true, breaks: true },
-        markedHighlight({
-            langPrefix: 'hljs language-',
-            highlight(code, lang) {
-                const language = lang && hl.getLanguage(lang) ? lang : 'plaintext';
-                return hl.highlight(code, { language }).value;
-            },
-        }),
-    );
-    _markdown = { render: (md) => (md ? DOMPurify.default.sanitize(marked.parse(md)) : '') };
-    return _markdown;
-}
 
 // Zero-knowledge encryption vault (client-side crypto for the Files module).
 // Exposed globally so the vault UI + files component can lock/unlock/encrypt.
