@@ -23,12 +23,13 @@ class TwoFactorDirectoryController extends Controller
 {
     private const SOURCE = 'https://api.2fa.directory/v4/all.json';
 
-    // Methods that our TOTP feature (or a security key) can actually cover.
-    private const APP_METHODS = ['totp', 'u2f', 'hardware', 'fido2', 'webauthn'];
+    // App/hardware 2FA methods (v4 vocabulary) — the actionable ones our TOTP
+    // feature or a security key covers. SMS / e-mail / phone calls are excluded.
+    private const APP_METHODS = ['totp', 'u2f', 'custom-software', 'custom-hardware'];
 
     public function index(): JsonResponse
     {
-        $domains = Cache::remember('tfa_directory_domains', now()->addDay(), function (): array {
+        $domains = Cache::remember('tfa_directory_domains_v2', now()->addDay(), function (): array {
             try {
                 $res = OutboundUrl::client(self::SOURCE, 12)
                     ->withHeaders(['User-Agent' => 'Ledgerline', 'Accept' => 'application/json'])
@@ -50,31 +51,43 @@ class TwoFactorDirectoryController extends Controller
 
     /**
      * Flatten the v4 dataset to a unique, lower-cased list of domains whose
-     * entry advertises an app/hardware 2FA method.
+     * entry advertises an app/hardware 2FA method. v4 is a flat object keyed by
+     * domain: { "example.com": { "methods": ["totp","sms"], ... }, ... }.
      *
-     * @param  array<int, mixed>  $data
+     * @param  array<string, mixed>  $data
      * @return array<int, string>
      */
     private function parse(array $data): array
     {
         $domains = [];
-        foreach ($data as $entry) {
-            // v4 shape: ["Name", { domain, additional-domains, tfa, ... }].
-            $meta = is_array($entry) ? ($entry[1] ?? null) : null;
-            if (! is_array($meta)) {
+        foreach ($data as $domain => $meta) {
+            if (! is_string($domain) || $domain === '' || ! is_array($meta)) {
                 continue;
             }
-            $tfa = array_map('strtolower', array_filter((array) ($meta['tfa'] ?? []), 'is_string'));
-            if (empty(array_intersect($tfa, self::APP_METHODS))) {
-                continue;
-            }
-            foreach (array_merge([$meta['domain'] ?? null], (array) ($meta['additional-domains'] ?? [])) as $d) {
-                if (is_string($d) && $d !== '') {
-                    $domains[strtolower($d)] = true;
-                }
+            $methods = array_map('strtolower', array_filter((array) ($meta['methods'] ?? []), 'is_string'));
+            if (! empty(array_intersect($methods, self::APP_METHODS))) {
+                $d = strtolower($domain);
+                // The dataset keys specific subdomains (accounts.google.com), but
+                // users often store the bare domain — index both so either matches.
+                $domains[$d] = true;
+                $domains[$this->registrable($d)] = true;
             }
         }
 
         return array_keys($domains);
+    }
+
+    /** Best-effort registrable domain (no PSL): last 2 labels, or 3 for a ccSLD. */
+    private function registrable(string $d): string
+    {
+        $p = explode('.', $d);
+        $n = count($p);
+        if ($n <= 2) {
+            return $d;
+        }
+        $sld = ['co', 'com', 'org', 'net', 'gov', 'ac', 'edu', 'gob', 'go'];
+        $take = (strlen($p[$n - 1]) === 2 && in_array($p[$n - 2], $sld, true)) ? 3 : 2;
+
+        return implode('.', array_slice($p, -$take));
     }
 }

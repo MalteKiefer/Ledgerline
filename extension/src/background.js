@@ -144,19 +144,28 @@ async function search(query) {
 // Cached in local storage for a day; the data is public so this leaks nothing.
 async function tfaDomains() {
     const cache = await local.get(['tfaDomains', 'tfaAt']);
-    if (cache.tfaDomains && cache.tfaAt && Date.now() - cache.tfaAt < 86400000) return cache.tfaDomains;
-    const APP = ['totp', 'u2f', 'hardware', 'fido2', 'webauthn'];
+    if (cache.tfaDomains && cache.tfaDomains.length && cache.tfaAt && Date.now() - cache.tfaAt < 86400000) return cache.tfaDomains;
+    const APP = ['totp', 'u2f', 'custom-software', 'custom-hardware'];
     try {
         const res = await fetch('https://api.2fa.directory/v4/all.json', { headers: { Accept: 'application/json' } });
         if (! res.ok) return cache.tfaDomains || [];
-        const data = await res.json();
+        const data = await res.json(); // v4: { "domain": { methods:[...], ... }, ... }
         const set = {};
-        for (const e of (Array.isArray(data) ? data : [])) {
-            const m = Array.isArray(e) ? e[1] : null;
-            if (! m || typeof m !== 'object') continue;
-            const tfa = (m.tfa || []).map((x) => String(x).toLowerCase());
-            if (! tfa.some((t) => APP.includes(t))) continue;
-            for (const d of [m.domain, ...(m['additional-domains'] || [])]) if (typeof d === 'string' && d) set[d.toLowerCase()] = 1;
+        const registrable = (d) => {
+            const p = d.split('.'); const n = p.length;
+            if (n <= 2) return d;
+            const sld = ['co', 'com', 'org', 'net', 'gov', 'ac', 'edu', 'gob', 'go'];
+            const take = (p[n - 1].length === 2 && sld.includes(p[n - 2])) ? 3 : 2;
+            return p.slice(-take).join('.');
+        };
+        for (const domain in data) {
+            const m = data[domain];
+            if (! m || typeof m !== 'object' || ! Array.isArray(m.methods)) continue;
+            const methods = m.methods.map((x) => String(x).toLowerCase());
+            if (methods.some((t) => APP.includes(t))) {
+                const d = domain.toLowerCase();
+                set[d] = 1; set[registrable(d)] = 1; // index full key + bare domain
+            }
         }
         const domains = Object.keys(set);
         await local.set({ tfaDomains: domains, tfaAt: Date.now() });

@@ -7404,7 +7404,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     reveal: {},
     totpNow: {},
     _totpTimer: null,
-    history: { open: false, item: null },
+    historyOpen: false, // inline version-history accordion in the detail view
     wifiQr: '',
     gen: {
         open: false, target: null, mode: 'chars', preview: '',
@@ -7503,7 +7503,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         this.draft = { id: null, type, title: '', favorite: false, folder: this.filterFolder && this.filterFolder !== '_none' ? this.filterFolder : null, tags: [], custom: [], icon: '', fields: this._blankFields(type), created: null, updated: null, versions: [] };
         this.tagsValue = '';
     },
-    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this._refreshWifiQr(x); },
+    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this.historyOpen = false; this._refreshWifiQr(x); },
     editCurrent() {
         if (! this.current) return;
         this.draft = JSON.parse(JSON.stringify(this.current));
@@ -7613,7 +7613,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     _reusedCache: null,
     _save() { this._mut++; window.LLStore.touch(); },
     _pwTypes: ['login', 'password', 'server', 'wifi'],
-    _pw(x) { return (x.fields && x.fields.password) || ''; },
+    _pw(x) { return (x && x.fields && x.fields.password) || ''; },
     get healthItems() { return this.liveItems.filter((x) => this._pwTypes.includes(x.type) && this._pw(x)); },
     // Memoised — issuesFor()/the health list call this O(n) times per render.
     get _reusedSet() {
@@ -7635,6 +7635,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     hasIssue(x) { const i = this.issuesFor(x); return ! ! i && (i.weak || i.reused || i.breach > 0); },
     // Other entries that share this entry's password (for the reuse overview).
     reusedWith(x) {
+        if (! x) return [];
         const pw = this._pw(x); if (! pw) return [];
         return this.healthItems.filter((y) => y.id !== x.id && this._pw(y) === pw);
     },
@@ -7874,16 +7875,14 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         return out;
     },
 
-    /* ---- Version history ---- */
-    openHistory(x) { this.history = { open: true, item: x }; },
-    closeHistory() { this.history.open = false; this.history.item = null; },
+    /* ---- Version history (inline accordion; restores into the open item) ---- */
     restoreVersion(v) {
-        const it = this.history.item; if (! it) return;
+        const it = this.current; if (! it) return;
         it.versions = it.versions ?? [];
         it.versions.unshift({ at: it.updated || new Date().toISOString(), title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})) });
         if (it.versions.length > 100) it.versions.length = 100;
         it.title = v.title; it.fields = JSON.parse(JSON.stringify(v.fields || {})); it.updated = new Date().toISOString();
-        this.closeHistory(); this._refreshWifiQr(it); this._save();
+        this._refreshWifiQr(it); this._save();
     },
 
     /* ---- Secrets: reveal + copy-with-auto-clear ---- */
