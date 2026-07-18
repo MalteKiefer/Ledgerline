@@ -3,6 +3,7 @@
         clipboardClearSeconds: 20,
         iconUrl: '{{ url('/passwords/icon') }}',
         breachUrl: '{{ url('/passwords/breach') }}',
+        tfaUrl: '{{ url('/passwords/tfa-directory') }}',
      }, {
         copied: @js(__('passwords.copied')),
         iconsDone: @js(__('passwords.icons_done')),
@@ -329,6 +330,15 @@
                     </div>
                     <p x-show="issuesFor(current) && issuesFor(current).weak">{{ __('passwords.weak_warn') }}</p>
                     <button type="button" x-show="issuesFor(current) && issuesFor(current).breach === null" @click="checkBreaches()" :disabled="breachChecking" class="text-xs font-medium underline disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
+                  </div>
+                </div>
+
+                {{-- 2FA-available hint (from 2fa.directory), 1Password-style --}}
+                <div x-show="tfaReady && supports2fa(current)" x-cloak class="mb-3 flex items-start gap-2 rounded-lg bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                  <x-icon name="shield-check" class="mt-0.5 h-4 w-4 shrink-0" />
+                  <div class="min-w-0 flex-1">
+                    <p>{{ __('passwords.tfa_available') }}</p>
+                    <button type="button" @click="editCurrent()" class="mt-0.5 text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
                   </div>
                 </div>
 

@@ -7395,6 +7395,8 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     current: null, // item being viewed (live ref into items)
     draft: null, // editable copy while creating/editing (null = not editing)
     selectedIds: [], // multi-select for bulk actions
+    tfaReady: false, // 2fa.directory dataset loaded (gates the "offers 2FA" hint)
+    _tfaSet: null,
     filterType: '',
     filterFolder: '', // '' = all, '_none' = no folder, else folder id
     filterTag: '',
@@ -7432,6 +7434,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         this.$watch('state', (s) => { if (s === 'ready') this._autoSelect(); });
         for (const p of ['query', 'filterType', 'filterFolder', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
         this.$watch('view', () => this.clearSelection());
+        this._loadTfa();
     },
     // Auto-select the first item in the current list (unless something is being
     // edited or the current selection is still visible).
@@ -7691,6 +7694,31 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         this.selectedIds = [];
         this._save();
         this._autoSelect();
+    },
+
+    /* ---- "This site offers 2FA" hint (2fa.directory) ---- */
+    async _loadTfa() {
+        if (! config.tfaUrl) return;
+        try {
+            const res = await fetch(config.tfaUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) return;
+            const data = await res.json();
+            this._tfaSet = new Set((data.domains || []).map((d) => String(d).toLowerCase()));
+            this.tfaReady = true;
+        } catch (e) { /* offline or blocked — hint stays hidden */ }
+    },
+    _host(u) { try { return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } },
+    // A login with no stored TOTP whose domain is known to support app 2FA.
+    supports2fa(x) {
+        if (! this._tfaSet || ! x || x.type !== 'login' || (x.fields && x.fields.totp)) return false;
+        for (const u of (x.fields?.urls || [])) {
+            let d = this._host(u);
+            while (d && d.includes('.')) {
+                if (this._tfaSet.has(d)) return true;
+                d = d.slice(d.indexOf('.') + 1);
+            }
+        }
+        return false;
     },
 
     /* ---- Import (Bitwarden / 1Password / LastPass / KeePass / CSV) ----
