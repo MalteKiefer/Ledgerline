@@ -70,6 +70,19 @@ const unb64 = (str) => sodium.from_base64(str, sodium.base64_variants.ORIGINAL);
 // Secretstream message size for file content.
 const CHUNK = 4 * 1024 * 1024;
 
+/**
+ * Padmé (Nikitin et al.): round n up so at most O(log log n) size bits leak.
+ * Extracted as a module-level helper so both Vault and VaultShareCrypto can
+ * use it without copy-pasting the algorithm.
+ */
+function padme(n) {
+    if (n < 2) return n;
+    const e = Math.floor(Math.log2(n));
+    const s = Math.floor(Math.log2(e)) + 1;
+    const step = Math.pow(2, e - s);
+    return Math.ceil(n / step) * step;
+}
+
 // Little-endian uint32 length prefix framing each ciphertext chunk.
 function u32le(n) {
     return new Uint8Array([n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff]);
@@ -197,6 +210,94 @@ export const ShareCrypto = {
         const out = new Uint8Array(total);
         let p = 0; for (const c of chunks) { out.set(c, p); p += c.length; }
         return out;
+    },
+};
+
+/**
+ * Crypto primitives for ZK cross-user vault sharing. DISTINCT from ShareCrypto
+ * (which handles public share links). This object handles:
+ *   - identity keypairs (x25519) for wrapping per-vault keys to specific users
+ *   - anonymous sealed-box wrap/unwrap (crypto_box_seal)
+ *   - sealed vault manifests keyed by an arbitrary vault key (not the owner VK)
+ *
+ * All methods are async and call ready() internally, matching the ShareCrypto
+ * convention so callers can await each call without managing sodium state.
+ */
+export const VaultShareCrypto = {
+    /** Ensure libsodium is loaded. Called at the start of every method. */
+    async ready() { await ready(); },
+
+    /**
+     * Generate a fresh x25519 identity keypair.
+     * Returns { pub: base64, sk: Uint8Array } — sk is raw bytes kept in memory only.
+     */
+    async newIdentity() {
+        await ready();
+        const kp = sodium.crypto_box_keypair();
+        return { pub: b64(kp.publicKey), sk: kp.privateKey };
+    },
+
+    /** Fresh 32-byte vault key, base64. */
+    async newVaultKey() {
+        await ready();
+        return b64(sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES));
+    },
+
+    /**
+     * Seal a vault key for a recipient using anonymous sealed-box (crypto_box_seal).
+     * The sender needs only the recipient's public key; the recipient unwraps with
+     * their keypair. Returns base64 ciphertext.
+     */
+    async wrapVaultKeyFor(vkB64, recipientPubB64) {
+        await ready();
+        return b64(sodium.crypto_box_seal(unb64(vkB64), unb64(recipientPubB64)));
+    },
+
+    /**
+     * Unseal a vault key wrapped with crypto_box_seal.
+     * Requires both the recipient's public key and raw private key (Uint8Array).
+     * Returns the vault key as base64.
+     */
+    async unwrapVaultKey(wrappedB64, ownPubB64, ownSkBytes) {
+        await ready();
+        const out = sodium.crypto_box_seal_open(unb64(wrappedB64), unb64(ownPubB64), ownSkBytes);
+        if (out === false) {
+            throw new Error('unwrap failed: wrong keypair or corrupted ciphertext');
+        }
+        return b64(out);
+    },
+
+    /**
+     * Short deterministic fingerprint for TOFU display/verification.
+     * Returns 32-character lowercase hex (16 bytes via BLAKE2b).
+     */
+    async fingerprint(pubB64) {
+        await ready();
+        return sodium.to_hex(sodium.crypto_generichash(16, unb64(pubB64)));
+    },
+
+    /**
+     * Seal an object as a Padmé-padded manifest keyed by an arbitrary vault key
+     * (not the owner's VK). Mirrors Vault.sealManifest but accepts any key bytes.
+     * Returns a JSON string { c, n }.
+     */
+    async sealVaultManifest(obj, vkBytes) {
+        await ready();
+        let json = JSON.stringify(obj);
+        const target = Math.max(4096, padme(json.length + 1));
+        json += ' '.repeat(target - json.length);
+        const m = seal(sodium.from_string(json), vkBytes);
+        return JSON.stringify({ c: m.cipher, n: m.nonce });
+    },
+
+    /**
+     * Open a sealed vault manifest string back into an object.
+     * Mirrors Vault.openManifest but accepts any key bytes.
+     */
+    async openVaultManifest(str, vkBytes) {
+        await ready();
+        const { c, n } = JSON.parse(str);
+        return JSON.parse(sodium.to_string(open(c, n, vkBytes)));
     },
 };
 
@@ -419,6 +520,80 @@ export const Vault = {
         return sodium.to_hex(recoveryBytes).replace(/(.{4})/g, '$1 ').trim();
     },
 
+    // ---- Identity keypair (ZK vault sharing) ----
+
+    /**
+     * Ensure this user has an x25519 identity keypair registered on the server.
+     *
+     * Strategy:
+     *   1. Return cached {pub, sk} if already loaded this session.
+     *   2. Fetch GET /vaults/keys — if the server already has a keypair for this
+     *      user, unwrap the stored wrapped_secret_key with the VK (secretbox open)
+     *      to recover the private key. This handles the multi-device case: a second
+     *      browser recovers the SAME keypair the first browser published.
+     *   3. If no server keypair exists, generate a fresh x25519 keypair, wrap the
+     *      private key under the VK, and publish via PUT /vaults/keys.
+     *
+     * Returns { pub: base64, sk: Uint8Array } — sk is raw bytes kept in memory only.
+     */
+    async ensureIdentityKeys() {
+        await ready();
+
+        // 1. In-memory cache — avoids redundant server round-trips.
+        if (this._idKeys) {
+            return this._idKeys;
+        }
+
+        if (! this.vk) {
+            throw new Error('vault locked');
+        }
+
+        // 2. Try to recover an existing keypair from the server.
+        const existing = await fetch('/vaults/keys', {
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (! existing.ok) {
+            throw new Error('identity key fetch failed');
+        }
+        const data = await existing.json();
+
+        if (data.public_key && data.wrapped_secret_key) {
+            // Parse the wrapped secret key JSON {c, n} stored by a previous device.
+            const wrapped = JSON.parse(data.wrapped_secret_key);
+            const sk = open(wrapped.c, wrapped.n, this.vk);
+            this._idKeys = { pub: data.public_key, sk };
+            return this._idKeys;
+        }
+
+        // 3. No existing keypair — generate, wrap under VK, and publish.
+        const kp = sodium.crypto_box_keypair();
+        const wrapped = seal(kp.privateKey, this.vk);
+        const pub = b64(kp.publicKey);
+        const fingerprint = await VaultShareCrypto.fingerprint(pub);
+
+        const res = await fetch('/vaults/keys', {
+            method: 'PUT',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrf(),
+            },
+            body: JSON.stringify({
+                public_key: pub,
+                wrapped_secret_key: JSON.stringify({ c: wrapped.cipher, n: wrapped.nonce }),
+                fingerprint,
+            }),
+        });
+
+        if (! res.ok && res.status !== 200) {
+            throw new Error('identity key publish failed');
+        }
+
+        this._idKeys = { pub, sk: kp.privateKey };
+        return this._idKeys;
+    },
+
     // ---- Data operations (used by later phases) ----
 
     encryptMeta(obj) {
@@ -441,13 +616,7 @@ export const Vault = {
     },
 
     /** Padmé (Nikitin et al.): round n up so at most O(log log n) size bits leak. */
-    _padme(n) {
-        if (n < 2) return n;
-        const e = Math.floor(Math.log2(n));
-        const s = Math.floor(Math.log2(e)) + 1;
-        const step = Math.pow(2, e - s);
-        return Math.ceil(n / step) * step;
-    },
+    _padme(n) { return padme(n); },
 
     /** Open a sealed manifest string back into the workspace object. */
     openManifest(enc) {

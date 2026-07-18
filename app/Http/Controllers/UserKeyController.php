@@ -18,6 +18,23 @@ use Illuminate\Http\Request;
 class UserKeyController extends Controller
 {
     /**
+     * Return the current user's published identity key material so the browser
+     * can recover the wrapped private key on a second device without regenerating.
+     *
+     * Returns null fields when no identity key has been published yet.
+     */
+    public function show(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json([
+            'public_key' => $user->x25519_public_key,
+            'wrapped_secret_key' => $user->wrapped_x25519_secret_key,
+            'fingerprint' => $user->public_key_fingerprint,
+        ]);
+    }
+
+    /**
      * Publish (or re-publish) the authenticated user's x25519 identity keypair.
      *
      * Returns 200 OK on first publish or same-key idempotent re-publish.
@@ -26,9 +43,9 @@ class UserKeyController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'public_key'         => ['required', 'string'],
+            'public_key' => ['required', 'string'],
             'wrapped_secret_key' => ['required', 'string'],
-            'fingerprint'        => ['required', 'string'],
+            'fingerprint' => ['required', 'string'],
         ]);
 
         $user = $request->user();
@@ -44,9 +61,9 @@ class UserKeyController extends Controller
         }
 
         $user->forceFill([
-            'x25519_public_key'         => $data['public_key'],
+            'x25519_public_key' => $data['public_key'],
             'wrapped_x25519_secret_key' => $data['wrapped_secret_key'],
-            'public_key_fingerprint'    => $data['fingerprint'],
+            'public_key_fingerprint' => $data['fingerprint'],
         ])->save();
 
         return response()->json(['ok' => true]);
