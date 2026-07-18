@@ -5,7 +5,7 @@ alles wird im Browser ver-/entschlüsselt. Selbst der Server-Betreiber kann Date
 nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**.
 
 Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter, Kontakte,
-Rechnungen, Backup, Paperless**. Version **v1.501.0** (live https://home.kiefer-networks.de, `/up`=200).
+Rechnungen, Backup, Paperless**. Version **v1.501.1** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill.
 
 `README.md` ist die maßgebliche, gepflegte Feature-Beschreibung. Diese Datei =
@@ -99,7 +99,7 @@ ZK Passwort-Autofill. Nutzt bestehende `/api/v1` (KEINE neuen Server-Read-Routes
 - **Krypto NUR im Background-SW** (`background.js`): VK nur in `chrome.storage.session`, nie Disk. `chrome.storage.local` hält nur Ciphertext/öffentliche Daten: `serverUrl,token,storeCipher,vaultMeta,tfaEntries,tfaAt` (alle unkritisch at rest). `crypto.js` spiegelt `vault.js` exakt (inkl. Padmé). Auto-Lock bei OS-Screen-Lock / 15 min idle. onMessage nur von eigener Extension (`sender.id`-Check), Input-Caps (passphrase/query).
 - **Autofill** (`content.js`): Inline-Picker im Shadow-DOM, sichtbares In-Field-Icon, `focusin`+`composedPath()` fängt Shadow-DOM- und spät gerenderte Felder. Multi-Step-Login + Auto-Fill nach Pick. TOTP inkl. **segmentierter OTP-Boxen**. **Kreditkarten-Autofill** (cc-*-autocomplete + Heuristik), Ablauf-Format MM/YY vs MM/YYYY aus Placeholder/pattern/maxlength.
 - **Anlegen:** manuelles Formular (Generator), **Passwort-Vorschlag** auf Registrier-Feldern, **Auto-Capture** bei Submit (In-Page-Prompt, escaped). **Löschen** (Papierkorb, Confirm). **QR-2FA:** `captureVisibleTab`+jsQR dekodiert otpauth-QR und hängt TOTP an. Popup = 1Password-Master-Detail.
-- Build: `npm run build:ext` (eigenes `extension/vite.config.mjs`, bundlet libsodium+jsQR; `content.js` self-contained; `extension/dist` gitignored). **Manifest-Version = App-Version** (bei jedem Release mitziehen). CI `.github/workflows/extension-release.yml` baut bei `release: published`, pinnt Version=Tag, hängt Zip ans Release. **Kein Deploy** (nicht Teil der served App).
+- Build: `npm run build:ext` (eigenes `extension/vite.config.mjs`, bundlet libsodium+jsQR; `content.js` self-contained; `extension/dist` gitignored). **Manifest-Version = App-Version — bei JEDEM Release mitziehen, auch ohne Extension-Änderung (nie hinterherdriften).** CI `.github/workflows/extension-release.yml` baut bei `release: published`, pinnt Version=Tag, hängt Zip ans Release. **Kein Deploy** (nicht Teil der served App).
 
 ---
 
@@ -161,7 +161,7 @@ ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus 
 - Infra: Debian 13, Docker; `/srv/ledgerline`, App-Port **8300** (bind 127.0.0.1, `APP_PORT`), Domain **home.kiefer-networks.de** (DNS IPv6-only). Caddy auf HOST (`systemctl restart caddy`, admin-API aus). Build-DNS-Quirk: compose `build.network: host`. Worker `--scale worker=N`. ML im `ml`-Profil, Photon im `geocode`-Profil. Server single-user, führt KEINE Tests.
 
 ## RELEASE-RITUAL (Git Flow)
-1. Auf `develop`. Version-Bump `config/app.php` (`env('APP_VERSION','X.Y.Z')`) + bei Extension-Änderung `extension/manifest.json` gleiche Version.
+1. Auf `develop`. **VERBINDLICH: bei JEDEM Release ALLE Versionsnummern auf dasselbe `X.Y.Z` bumpen — auch ohne Änderung am jeweiligen Teil.** Das sind: `config/app.php` (`env('APP_VERSION','X.Y.Z')`) UND `extension/manifest.json` (`"version"`). App und Extension tragen IMMER dieselbe Version (die Extension driftet NIE hinterher, egal ob sie geändert wurde). Kommt künftig eine weitere versionstragende Datei dazu, wird sie hier ergänzt und mitgezogen. Vor dem Commit prüfen: `grep APP_VERSION config/app.php` == `grep '"version"' extension/manifest.json`.
 2. `vendor/bin/pint --dirty` → passed. `npm run build` (+ `npm run build:ext` bei Extension). **`npm run lint`** (eslint no-undef) grün. **`npm run test:js`** (Vitest) grün. EN/DE-Parität. AI-Scan (grep geänderte Dateien). ZK-Scan (keine neuen Klartext-Spalten/Server-Render-Pfade). **CLAUDE.md aktualisiert** (Features + Security-Register).
 3. Tests: `php artisan test --teamcity` (Hook erzwingt `--teamcity`; PhotoEdit-Segfault → in Häppchen `--filter`). **JS-Unit-Tests: `npm run test:js`** (Vitest).
 4. `php artisan view:cache`. Commit. `git checkout main && git merge --no-ff develop && git tag vX.Y.Z && git push origin main develop --tags`. `gh release create`. Zurück `develop`. Deploy (s. o., außer reine Extension-/CI-Änderung).
