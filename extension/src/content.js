@@ -76,6 +76,7 @@ async function fillCode(login) {
 }
 
 async function doFill(login) {
+    lastLogin = login; lastAt = Date.now();
     const pw = passwordField();
     const user = pw ? usernameFor(pw) : usernameField();
     if (user) setValue(user, login.username);
@@ -86,6 +87,12 @@ async function doFill(login) {
 
 // --- Inline picker UI (Shadow DOM so the page's CSS can't touch it) ---
 let host = null;
+// After a fill we refocus a field, which would retrigger its focus handler and
+// reopen the picker (covering the page's own submit button). Suppress briefly.
+let suppress = false;
+// The last login the user picked, so a password field revealed on a later step
+// (multi-step / SPA logins) can be completed automatically.
+let lastLogin = null, lastAt = 0;
 function closePicker() { if (host) { host.remove(); host = null; } }
 
 function openPicker(anchor, logins, onPick = doFill) {
@@ -111,7 +118,7 @@ function openPicker(anchor, logins, onPick = doFill) {
         const u = document.createElement('div'); u.style.cssText = 'font-size:11px;color:#9ca3af;'; u.textContent = lg.username;
         txt.append(t, u);
         item.append(av, txt);
-        item.onclick = () => { onPick(lg); closePicker(); };
+        item.onclick = () => { suppress = true; closePicker(); onPick(lg); setTimeout(() => { suppress = false; }, 700); };
         box.append(item);
     }
     shadow.append(box);
@@ -123,6 +130,7 @@ function attachBadge(field, logins, onPick = doFill) {
     if (! field || field.dataset.llBadge) return;
     field.dataset.llBadge = '1';
     const show = async () => {
+        if (suppress) return;
         const fresh = await send({ type: 'match', hostname: location.hostname });
         let list = fresh?.ok ? fresh.logins : logins;
         if (onPick === fillCode) list = list.filter((l) => l.hasTotp); // OTP field: only logins with a code
@@ -151,7 +159,7 @@ function attachBadge(field, logins, onPick = doFill) {
     setInterval(place, 1000); // follow dynamic/SPA layouts
 }
 
-async function init() {
+async function scan() {
     const pw = passwordField();
     const otp = otpField();
     const user = pw ? (usernameFor(pw) || pw) : usernameField();
@@ -159,7 +167,15 @@ async function init() {
     const res = await send({ type: 'match', hostname: location.hostname });
     if (! res?.ok || ! res.logins?.length) return;
     if (user) attachBadge(user, res.logins);
-    if (pw && pw !== user) attachBadge(pw, res.logins);
+    if (pw && pw !== user) {
+        attachBadge(pw, res.logins);
+        // Multi-step login: the password appeared after the identifier step. If
+        // the user just picked a login, finish the fill without a second click.
+        if (lastLogin && ! pw.value && Date.now() - lastAt < 90000) {
+            setValue(pw, lastLogin.password);
+            if (lastLogin.hasTotp) fillCode(lastLogin);
+        }
+    }
     // A standalone 2FA screen: offer the code on the OTP field.
     if (otp && res.logins.some((l) => l.hasTotp)) attachBadge(otp, res.logins, fillCode);
 }
@@ -173,7 +189,11 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     }
 });
 
-// Run now and again after SPA/late-rendered forms appear.
-init();
-let tries = 0;
-const iv = setInterval(() => { if (++tries > 10 || document.querySelector('[data-ll-badge]')) { clearInterval(iv); return; } init(); }, 1200);
+// Attach on load, then keep watching: login forms are frequently rendered late
+// or in steps (identifier first, password after). A debounced observer re-scans
+// as fields appear, so both the badge and the auto-fill catch up.
+scan();
+let _t = null;
+const mo = new MutationObserver(() => { clearTimeout(_t); _t = setTimeout(scan, 300); });
+mo.observe(document.documentElement, { childList: true, subtree: true });
+setTimeout(() => mo.disconnect(), 60000);
