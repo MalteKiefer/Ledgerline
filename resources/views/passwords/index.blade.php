@@ -211,7 +211,7 @@
                       {{-- multi-url (login) --}}
                       <template x-if="ft === 'urls'">
                         <div class="mt-1 space-y-1.5">
-                          <template x-for="(u, i) in draft.fields.urls" :key="i">
+                          <template x-for="(u, i) in (draft?.fields?.urls || [])" :key="i">
                             <div class="flex items-center gap-1.5">
                               <input type="text" x-model="draft.fields.urls[i]" placeholder="https://…" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
                               <button type="button" @click="removeUrl(i)" class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
@@ -242,7 +242,7 @@
                   <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.custom_fields') }}</label>
                     <div class="mt-1 space-y-2">
-                      <template x-for="(c, i) in draft.custom" :key="i">
+                      <template x-for="(c, i) in (draft?.custom || [])" :key="i">
                         <div class="space-y-1.5 rounded-md border border-gray-200 dark:border-gray-800 p-2">
                           <div class="flex items-center gap-1.5">
                             <input type="text" x-model="c.label" placeholder="{{ __('passwords.custom_label') }}" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
@@ -270,7 +270,7 @@
                 </div>
 
                 {{-- Version history with what changed (edit of an existing item) --}}
-                <div x-show="draft.id && current && versionChanges(current).length" x-cloak class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
+                <div x-show="draft?.id && current && versionChanges(current).length" x-cloak class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
                   <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.versions_heading') }}</p>
                   <ul class="max-h-40 space-y-1.5 overflow-y-auto">
                     <template x-for="(vc, i) in (current ? versionChanges(current) : [])" :key="i">
@@ -308,7 +308,6 @@
                   </div>
                   <div class="flex shrink-0 items-center gap-1">
                     <button type="button" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
-                    <button type="button" @click="openHistory(current)" :title="'{{ __('passwords.history') }}'" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clock" class="h-4 w-4" /><span x-show="(current.versions||[]).length" x-text="(current.versions||[]).length" class="ml-0.5 text-[10px]"></span></button>
                     <button type="button" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
                     <button type="button" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
                     <button type="button" x-show="view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
@@ -410,6 +409,26 @@
                     </div>
                   </template>
                 </dl>
+
+                {{-- Version history: collapsible, under the fields (1Password-style) --}}
+                <div x-show="(current.versions || []).length" x-cloak class="mt-4">
+                  <button type="button" @click="historyOpen = ! historyOpen" class="flex w-full items-center gap-2 rounded-lg px-1 py-2 text-left text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">
+                    <span class="transition-transform" :class="historyOpen ? 'rotate-90' : ''"><x-icon name="chevron-right" class="h-4 w-4" /></span>
+                    <span class="flex-1" x-text="@js(__('passwords.updated')) + ' ' + fmtDate(current.updated || current.created)"></span>
+                    <span class="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500 dark:bg-gray-800 dark:text-gray-400" x-text="(current.versions || []).length"></span>
+                  </button>
+                  <ul x-show="historyOpen" x-cloak class="mt-1 space-y-1.5 border-l border-gray-100 pl-3 dark:border-gray-800">
+                    <template x-for="(v, i) in (current.versions || [])" :key="i">
+                      <li class="rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <div class="flex items-center justify-between gap-2">
+                          <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
+                          <button type="button" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
+                        </div>
+                        <p class="mt-0.5 truncate text-[11px] text-gray-400" x-text="Object.entries(v.fields || {}).filter(([kk, vv]) => vv && ! ['password','totp','cvv','pin','licensekey'].includes(kk)).map(([kk, vv]) => fieldLabel(kk) + ': ' + vv).join(' · ')"></p>
+                      </li>
+                    </template>
+                  </ul>
+                </div>
               </div>
             </template>
 
@@ -421,27 +440,6 @@
               </div>
             </template>
           </section>
-        </div>
-
-        {{-- Version history modal --}}
-        <div x-show="history.open" x-cloak class="fixed inset-0 z-[960] flex items-center justify-center p-4" @keydown.escape.window="closeHistory()">
-          <div class="absolute inset-0 bg-gray-900/50" @click="closeHistory()"></div>
-          <div class="relative w-full max-w-lg rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
-            <div class="flex items-center justify-between"><h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.history') }}</h3><button type="button" @click="closeHistory()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button></div>
-            <template x-if="! (history.item?.versions || []).length"><p class="mt-6 text-center text-sm text-gray-400">{{ __('passwords.history_empty') }}</p></template>
-            <ul class="mt-3 max-h-[60vh] space-y-2 overflow-y-auto">
-              <template x-for="(v, i) in (history.item?.versions || [])" :key="i">
-                <li class="rounded-lg border border-gray-100 dark:border-gray-800 p-3">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
-                    <button type="button" @click="restoreVersion(v)" class="rounded-md px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.version_restore') }}</button>
-                  </div>
-                  <p class="mt-1 truncate text-sm text-gray-800 dark:text-gray-200" x-text="v.title"></p>
-                  <p class="mt-0.5 truncate text-xs text-gray-400" x-text="Object.entries(v.fields || {}).filter(([kk, vv]) => vv && ! ['password','totp','cvv','pin','licensekey'].includes(kk)).map(([kk, vv]) => fieldLabel(kk) + ': ' + vv).join(' · ')"></p>
-                </li>
-              </template>
-            </ul>
-          </div>
         </div>
 
         {{-- Password generator modal --}}
