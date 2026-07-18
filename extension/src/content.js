@@ -298,9 +298,12 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
 // Attach on load, then keep watching: login forms are frequently rendered late
 // or in steps (identifier first, password after). A debounced observer re-scans
 // as fields appear, so both the badge and the auto-fill catch up.
-const runScan = () => { scan(); scanCards(); };
-runScan();
 let _t = null;
-const mo = new MutationObserver(() => { clearTimeout(_t); _t = setTimeout(runScan, 300); });
+const runScan = () => { clearTimeout(_t); _t = setTimeout(() => { scan(); scanCards(); }, 250); };
+runScan();
+const mo = new MutationObserver(runScan);
 mo.observe(document.documentElement, { childList: true, subtree: true });
 setTimeout(() => mo.disconnect(), 60000);
+// Login/checkout forms in dialogs often appear long after load (well past the
+// observer window). Focusing any input re-scans, so the badge still shows.
+document.addEventListener('focusin', (e) => { if (e.target?.tagName === 'INPUT') runScan(); }, true);
