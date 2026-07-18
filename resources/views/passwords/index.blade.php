@@ -158,7 +158,7 @@
                 <span>{{ __('passwords.read_only_notice') }}</span>
               </div>
               {{-- Bulk-select toolbar --}}
-              <div x-show="selectedIds.length" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white dark:bg-gray-100 dark:text-gray-900">
+              <div x-show="selectedIds.length && ! isSharedVault(filterFolder)" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white dark:bg-gray-100 dark:text-gray-900">
                 <span class="text-xs font-medium" x-text="selectedIds.length + ' {{ __('passwords.selected') }}'"></span>
                 <div class="flex items-center gap-0.5">
                   <button type="button" @click="toggleSelectAll()" title="{{ __('passwords.select_all') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="check-circle" class="h-4 w-4" /></button>
@@ -170,7 +170,7 @@
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
                   <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
-                    <input type="checkbox" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
+                    <input type="checkbox" x-show="! isSharedVault(filterFolder)" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
                     <button type="button" @click="openItem(x)" class="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left">
                       <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                             :class="(x.type === 'login' && ! x.icon) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -365,7 +365,7 @@
                   <div class="min-w-0 flex-1">
                     <p>{{ __('passwords.tfa_available') }}</p>
                     <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <button type="button" @click="editCurrent()" class="text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
+                      <button type="button" x-show="! current.shared" @click="editCurrent()" class="text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
                       <a x-show="tfaDoc(current)" x-cloak :href="tfaDoc(current)" target="_blank" rel="noopener noreferrer" class="text-xs font-medium underline">{{ __('passwords.tfa_how') }}</a>
                     </div>
                   </div>
@@ -451,7 +451,7 @@
                       <li class="rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
-                          <button type="button" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
+                          <button type="button" x-show="! current.shared" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
                         </div>
                         <template x-if="Object.keys(versionDiff(i)).length">
                           <pre class="mt-1 overflow-x-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-snug text-gray-700 dark:bg-gray-800 dark:text-gray-300" x-text="JSON.stringify(versionDiff(i), null, 2)"></pre>

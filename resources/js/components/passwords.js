@@ -144,10 +144,6 @@ export default (config = {}, labels = {}) => ({
         const map = { viewer: 'read', editor: 'edit', manager: 'manage' };
         return map[r] || 'read';
     },
-    _clientToServerRole(r) {
-        const map = { read: 'viewer', edit: 'editor', manage: 'manager' };
-        return map[r] || 'viewer';
-    },
     isSharedVault(id) { return this.sharedVaults.some((sv) => sv.id === id); },
     sharedVaultRole(id) { const sv = this.sharedVaults.find((v) => v.id === id); return sv ? sv.role : 'read'; },
 
@@ -159,6 +155,8 @@ export default (config = {}, labels = {}) => ({
             for (const m of active) {
                 try {
                     const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.pub, id.sk);
+                    // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
+                    // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
                     const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
                     const store = await apiRequest('GET', '/vaults/' + m.vault_id + '/store');
                     let manifest = null;
