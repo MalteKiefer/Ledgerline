@@ -154,7 +154,7 @@ ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus 
 app.js (~8000 Z.) wird in ES-Module gesplittet (Vite-gebündelt): `resources/js/shared/*` (api, blob-fetch/-delete, store, gallery-store, zk-module, wordlists, file-categories, ocr, lazy-loaders), `components/*` (pro Modul; gallery/files/passwords in Mixins), `boot.js` (lazy/auto-discovery). Regel: app.js darf nach jeder Scheibe nie kaputt sein (Build + `npm run test:js` grün).
 - **Konvention „Alpine in EINER Datei" ist damit aufgehoben** → app.js wird zum Bootstrap, Logik zieht in `shared/`+`components/`. Freigabe erteilt (2026-07-18).
 - **Erledigt:** `shared/wordlists.js` (v1.500.3); `shared/dom.js` + `shared/vector-math.js` (v1.500.4); `shared/file-categories.js` (v1.500.5); `shared/api.js` (v1.500.6); `shared/contact-utils.js` (v1.500.7); `shared/ocr.js` (v1.500.8); `shared/lazy-loaders.js` (v1.500.9); `shared/blob-io.js` (fetchBlobBuffer/fetchDecrypt/fetchDecryptWorker + decrypt-Worker-Pool/thumbLane/queueBlobDelete, Worker-URL `../decrypt.worker.js`, v1.500.10).
-- **Erledigt (Forts.):** `shared/markdown.js` (v1.500.11); `shared/zk-module.js` (v1.500.12); erste `components/*`-Dateien: toast-hub, crop-modal (Muster `export default factory` + `Alpine.data(name, factory)`, v1.500.13).
+- **Erledigt (Forts.):** `shared/markdown.js` (v1.500.11); `shared/zk-module.js` (v1.500.12); erste `components/*`-Dateien: toast-hub, crop-modal (v1.500.13); backup-runs, device-pairing (v1.500.14).
 - **Nächste Scheiben:** Stores (confirm/nav/vault/paperless), einfache Komponenten (toastHub/cropModal/…), dann gallery/files/passwords/contacts als eigene Komponenten-Dateien, dann Stores + einfache Komponenten, zuletzt gallery/files/passwords in Mixins.
 
 ## HISTORIE (Kurz)

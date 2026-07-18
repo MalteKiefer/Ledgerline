@@ -15,6 +15,8 @@ import { loadMarkdown } from './shared/markdown';
 import { bootStore, zkModule } from './shared/zk-module';
 import toastHub from './components/toast-hub';
 import cropModal from './components/crop-modal';
+import backupRuns from './components/backup-runs';
+import devicePairing from './components/device-pairing';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -446,128 +448,7 @@ document.addEventListener('submit', (e) => {
  * now" (no page reload) and polls while any run is still running. Each finished
  * run can be expanded to its log or downloaded.
  */
-Alpine.data('backupRuns', (labels = {}) => ({
-    runs: [],
-    expanded: {},
-    pollUntil: 0, // keep polling until this timestamp (covers queue lag + run time)
-    _timer: null,
-    decrypt: { open: false, id: null },
-    // Guided restore + non-destructive verify (dry run).
-    restore: { open: false, run: null },
-    verifyPass: '',
-    verifyBusy: false,
-    verifyResult: null, // { ok, message }
-    // Per-row actions live in a 3-dot menu, teleported to <body> and positioned
-    // by the trigger's rect so the runs table's horizontal scroll can't clip it.
-    menuRunId: null,
-    menuX: 0,
-    menuY: 0,
-    get menuRun() { return this.runs.find((r) => r.id === this.menuRunId) || null; },
-    toggleMenu(r, ev) {
-        if (this.menuRunId === r.id) { this.menuRunId = null; return; }
-        const rect = ev.currentTarget.getBoundingClientRect();
-        this.menuX = Math.round(rect.right);
-        this.menuY = Math.round(rect.bottom + 4);
-        this.menuRunId = r.id;
-    },
-    closeMenu() { this.menuRunId = null; },
-
-    openDecrypt(id) {
-        this.decrypt = { open: true, id };
-    },
-    get decryptAction() {
-        return (labels.decryptBase || '').replace('__id__', this.decrypt.id);
-    },
-
-    openRestore(r) {
-        this.restore = { open: true, run: r };
-        this.verifyPass = '';
-        this.verifyBusy = false;
-        this.verifyResult = null;
-    },
-    closeRestore() {
-        this.restore = { open: false, run: null };
-    },
-    restoreDecryptAction() {
-        return this.restore.run ? (labels.decryptBase || '').replace('__id__', this.restore.run.id) : '';
-    },
-    restoreDownloadUrl() {
-        return this.restore.run ? this.downloadUrl(this.restore.run.id) : '';
-    },
-    async runVerify() {
-        const r = this.restore.run;
-        if (! r) return;
-        this.verifyBusy = true;
-        this.verifyResult = null;
-        try {
-            const body = new URLSearchParams();
-            if (this.verifyPass) body.set('passphrase', this.verifyPass);
-            const res = await fetch((labels.verifyBase || '').replace('__id__', r.id), {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: body.toString(),
-            });
-            const data = res.ok ? await res.json() : { ok: false, message: 'Request failed.' };
-            this.verifyResult = { ok: !! data.ok, message: data.message || '' };
-            this.load(); // refresh the row's stored verify badge
-        } catch (e) {
-            this.verifyResult = { ok: false, message: 'Verification could not be started.' };
-        } finally {
-            this.verifyBusy = false;
-        }
-    },
-
-    init() {
-        this.load();
-        // A job was triggered (here or elsewhere): poll for a window so the new
-        // run appears and updates even if the queue is slow to pick it up.
-        window.addEventListener('backup-ran', () => {
-            this.pollUntil = Date.now() + 180000; // 3 min
-            this.load();
-        });
-        // Poll while something is running, or within a post-trigger window.
-        this._timer = setInterval(() => {
-            if (! document.hidden && (this.anyRunning() || Date.now() < this.pollUntil)) {
-                this.load();
-            }
-        }, 5000);
-    },
-
-    anyRunning() {
-        return this.runs.some((r) => r.status === 'running');
-    },
-
-    async load() {
-        try {
-            const res = await fetch(labels.runsUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) return;
-            this.runs = (await res.json()).runs ?? [];
-        } catch (e) { /* keep current on error */ }
-    },
-
-    toggle(id) {
-        this.expanded[id] = ! this.expanded[id];
-    },
-
-    downloadUrl(id) {
-        return labels.downloadBase.replace('__id__', id);
-    },
-
-    async cancel(id) {
-        // Flip the flag optimistically so the button turns into "cancelling…"
-        // right away; the manager stops at its next checkpoint.
-        const run = this.runs.find((r) => r.id === id);
-        if (run) { run.cancellable = false; run.cancelling = true; }
-        try {
-            await fetch(labels.cancelBase.replace('__id__', id), {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
-            });
-        } catch (e) { /* poll will reconcile */ }
-        this.pollUntil = Date.now() + 60000;
-        this.load();
-    },
-}));
+Alpine.data('backupRuns', backupRuns);
 
 /**
  * Fire a transient toast. `url` (optional) renders a link inside the toast.
@@ -577,118 +458,10 @@ function toast(message, url = null) {
 }
 window.llToast = toast;
 
-/**
- * Toast hub rendered once in the layout; listens for `ll-toast` events.
- */
+// Component registrations (definitions live in ./components/*).
 Alpine.data('toastHub', toastHub);
-
-/**
- * Shared square-crop modal. `await window.llCrop(blobOrUrl)` opens it and
- * resolves to a 256px square JPEG as a Uint8Array (or null if cancelled). Pan by
- * dragging, zoom with the slider; the visible square window is drawn to a canvas.
- * Rendered once in the layout so contacts + gallery reuse the same UI.
- */
 Alpine.data('cropModal', cropModal);
-
-/**
- * QR device pairing (profile page). Starts a pairing, shows the QR, polls its
- * state, and lets the owner approve/reject the device that scanned it. The app
- * exchanges the code for a bearer once approved — no token ever touches this UI.
- */
-// `opts.cli` switches the code channel: the app pairing renders a scannable QR,
-// the command-line pairing shows a copyable text code (shorter-lived). The claim,
-// approval and token-collect states are shared by both.
-Alpine.data('devicePairing', (opts = {}) => ({
-    method: 'app', // 'app' = QR (mobile), 'cli' = copy/paste code
-    get cli() { return this.method === 'cli'; },
-    active: false, qr: '', code: '', copied: false, id: null, status: '', deviceName: '', expiresAt: 0, remaining: 0, devices: [], _timer: null, _tick: null,
-    init() { this.loadDevices(); },
-    async loadDevices() {
-        try {
-            const r = await fetch('/devices', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) this.devices = (await r.json()).devices || [];
-        } catch (e) { /* keep current list */ }
-    },
-    async revokeDevice(id) {
-        try {
-            const r = await fetch(`/devices/${id}`, { method: 'DELETE', headers: jsonHeaders() });
-            if (r.ok) this.loadDevices();
-        } catch (e) { /* ignore */ }
-    },
-    // Remote kill switch: flag a client to erase its local state on next contact.
-    async wipeDevice(id) {
-        if (! await this.$store.confirm.ask(opts.wipeConfirm || 'Wipe this client on its next connection?')) return;
-        try {
-            const r = await fetch(`/devices/${id}/wipe`, { method: 'POST', headers: jsonHeaders() });
-            if (r.ok) this.loadDevices();
-        } catch (e) { /* ignore */ }
-    },
-    async start(kind) {
-        if (kind) this.method = kind;
-        this._stopTimers();
-        this.copied = false;
-        try {
-            const r = await fetch(this.cli ? '/device-pairings/cli' : '/device-pairings', { method: 'POST', headers: jsonHeaders() });
-            if (! r.ok) {
-                window.llToast?.(r.status === 429 ? (opts.rateLimited || 'Too many attempts — wait a moment') : (opts.startFailed || 'Could not start pairing'));
-                return;
-            }
-            const d = await r.json();
-            this.id = d.id; this.qr = d.qr || ''; this.code = d.code || ''; this.status = 'pending_scan'; this.active = true;
-            this.expiresAt = Date.parse(d.expires_at) || 0;
-            this._countdown();
-            this._poll();
-        } catch (e) { /* ignore */ }
-    },
-    async copyCode() {
-        try { await navigator.clipboard.writeText(this.code); this.copied = true; setTimeout(() => { this.copied = false; }, 1500); } catch (e) { /* ignore */ }
-    },
-    // "Generate a new code" — start a fresh pairing (invalidates the old one).
-    regenerate() { return this.start(); },
-    _poll() {
-        clearTimeout(this._timer);
-        this._timer = setTimeout(async () => {
-            // Keep polling through 'approved' until the app actually collects its
-            // token (status becomes 'consumed'), so the device list refreshes live.
-            if (! this.active || ['consumed', 'rejected', 'expired'].includes(this.status)) return;
-            try {
-                const r = await fetch(`/device-pairings/${this.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (r.ok) {
-                    const d = await r.json();
-                    this.status = d.status; this.deviceName = d.device_name || '';
-                    if (this.status === 'consumed') this.loadDevices();
-                }
-            } catch (e) { /* keep polling */ }
-            this._poll();
-        }, 2000);
-    },
-    _countdown() {
-        clearInterval(this._tick);
-        const step = () => {
-            this.remaining = Math.max(0, Math.round((this.expiresAt - Date.now()) / 1000));
-            if (this.remaining <= 0 && ['pending_scan', 'pending_approval'].includes(this.status)) {
-                this.status = 'expired';
-                clearInterval(this._tick);
-            }
-        };
-        step();
-        this._tick = setInterval(step, 1000);
-    },
-    get remainingText() {
-        const s = Math.max(0, this.remaining);
-        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-    },
-    approve() { return this._act('approve'); },
-    reject() { return this._act('reject'); },
-    async _act(what) {
-        try {
-            const r = await fetch(`/device-pairings/${this.id}/${what}`, { method: 'POST', headers: jsonHeaders() });
-            if (r.ok) { const d = await r.json(); this.status = d.status; clearInterval(this._tick); }
-        } catch (e) { /* ignore */ }
-    },
-    _stopTimers() { clearTimeout(this._timer); clearInterval(this._tick); },
-    reset() { this._stopTimers(); this.active = false; this.qr = ''; this.id = null; this.status = ''; this.deviceName = ''; this.remaining = 0; },
-}));
+Alpine.data('devicePairing', devicePairing);
 
 /**
  * Paperless settings page: connection test and on-demand cache refresh, both
