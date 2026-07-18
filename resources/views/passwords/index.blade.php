@@ -127,7 +127,7 @@
                        :class="(filterFolder === sv.id && view === 'list') ? 'bg-gray-100 dark:bg-gray-800' : (_dragOver === sv.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50')"
                        @dragover="canEditVault(sv.id) ? ($event.preventDefault(), _dragOver = sv.id) : null"
                        @dragleave="_dragOver = null"
-                       @drop.prevent="_dragOver = null; moveItems(_dragId ? [_dragId] : selectedIds, sv.id)">
+                       @drop.prevent="_dragOver = null; if (canEditVault(sv.id)) moveItems(_dragId ? [_dragId] : selectedIds, sv.id)">
                     <button
                       type="button"
                       @click="filterFolder = filterFolder === sv.id ? '' : sv.id; view = 'list'"

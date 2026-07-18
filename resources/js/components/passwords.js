@@ -64,7 +64,8 @@ export default (config = {}, labels = {}) => ({
         this._autoSelect();
         // Keep the first matching entry selected as the state/filters change.
         this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); this._loadSharedVaults(); } });
-        for (const p of ['query', 'filterType', 'filterFolder', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
+        for (const p of ['query', 'filterType', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
+        this.$watch('filterFolder', () => { this.selectedIds = []; this._autoSelect(); });
         this.$watch('view', () => this.clearSelection());
         this._loadTfa();
     },
@@ -1018,7 +1019,7 @@ export default (config = {}, labels = {}) => ({
             const manifest = { name, items: [] };
             const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
             const res = await apiRequest('PUT', '/vaults/' + id + '/store', { sealed_manifest: sealed, expected_version: 0 });
-            const version = (res && res.version) || 1;
+            const version = (res && typeof res.version === 'number') ? res.version : 1;
             this._sharedKeys[id] = vkBytes;
             this._sharedVersion[id] = version;
             this.sharedVaults.push({ id, name, role: 'manage', shared: true, version, vaultId: id });
@@ -1037,13 +1038,17 @@ export default (config = {}, labels = {}) => ({
         if (! isTargetEditable) { window.llToast(labels.moveDenied || ''); return; }
 
         // Gather items to move and validate source editability.
+        // Snapshot the original item and its source location for rollback.
         const toMove = [];
         for (const id of ids) {
             const personal = this.items.find((x) => x.id === id);
-            if (personal) { toMove.push({ item: personal, sourceVaultId: null }); continue; }
+            if (personal) {
+                toMove.push({ item: personal, originalItem: { ...personal }, sourceVaultId: null });
+                continue;
+            }
             for (const sv of this.sharedVaults) {
                 const found = (this.sharedItems[sv.id] || []).find((x) => x.id === id);
-                if (found) { toMove.push({ item: found, sourceVaultId: sv.id }); break; }
+                if (found) { toMove.push({ item: found, originalItem: { ...found }, sourceVaultId: sv.id }); break; }
             }
         }
         if (! toMove.length) return;
@@ -1064,7 +1069,7 @@ export default (config = {}, labels = {}) => ({
             }
         });
 
-        // Add to target in-memory.
+        // Add to target in-memory (do NOT remove from source yet).
         if (isTargetShared) {
             const arr = [...(this.sharedItems[targetId] || [])];
             for (const mi of movedItems) {
@@ -1079,34 +1084,49 @@ export default (config = {}, labels = {}) => ({
             }
         }
 
-        // Write target FIRST. Rollback if it fails.
-        try {
-            if (isTargetShared) {
+        // Write target FIRST. On failure: restore item(s) to source in-memory,
+        // so no item ever disappears from both places.
+        if (isTargetShared) {
+            try {
                 await this._saveVault(targetId);
-            } else {
-                this._save();
-            }
-        } catch (e) {
-            // Rollback: remove moved items from target.
-            if (isTargetShared) {
+            } catch (e) {
+                // Full rollback: remove from target, restore originals to source.
                 const arr = (this.sharedItems[targetId] || []).filter((x) => ! idSet.has(x.id));
                 this.sharedItems = { ...this.sharedItems, [targetId]: arr };
-            } else {
-                for (let i = this.items.length - 1; i >= 0; i--) {
-                    if (idSet.has(this.items[i].id) && (! this.items[i].vaultId || this.items[i].folder === targetId)) this.items.splice(i, 1);
+                // Restore each item to its source collection.
+                for (const { originalItem, sourceVaultId } of toMove) {
+                    if (sourceVaultId === null) {
+                        const i = this.items.findIndex((x) => x.id === originalItem.id);
+                        if (i < 0) this.items.unshift(originalItem);
+                        else this.items[i] = originalItem;
+                    } else {
+                        const srcArr = [...(this.sharedItems[sourceVaultId] || [])];
+                        const i = srcArr.findIndex((x) => x.id === originalItem.id);
+                        if (i < 0) srcArr.unshift(originalItem); else srcArr[i] = originalItem;
+                        this.sharedItems = { ...this.sharedItems, [sourceVaultId]: srcArr };
+                    }
                 }
+                window.llToast(labels.saveFailed || '');
+                return;
             }
-            window.llToast(labels.saveFailed || '');
-            return;
+        } else {
+            // Personal target: _save() is synchronous and cannot fail network-wise.
+            this._save();
         }
 
-        // Remove from each source.
+        // Target saved successfully. Now remove from each source.
         const sourceVaultIds = new Set(toMove.map((t) => t.sourceVaultId));
         for (const srcId of sourceVaultIds) {
             if (srcId === null) {
-                // personal source
-                for (let i = this.items.length - 1; i >= 0; i--) if (idSet.has(this.items[i].id)) this.items.splice(i, 1);
-                this._save();
+                if (isTargetShared) {
+                    // personal→shared: items were copied to sharedItems; remove originals from personal.
+                    for (let i = this.items.length - 1; i >= 0; i--) {
+                        if (idSet.has(this.items[i].id)) this.items.splice(i, 1);
+                    }
+                    this._save();
+                }
+                // personal→personal: items were mutated in-place in this.items by the
+                // "Add to target" block; _save() already called in the target write step.
             } else {
                 const arr = (this.sharedItems[srcId] || []).filter((x) => ! idSet.has(x.id));
                 this.sharedItems = { ...this.sharedItems, [srcId]: arr };
@@ -1114,12 +1134,21 @@ export default (config = {}, labels = {}) => ({
             }
         }
 
-        // Update this.current if it was moved.
+        // Clear current if it was one of the moved items (its ref may be stale).
         if (this.current && idSet.has(this.current.id)) {
-            const updated = movedItems.find((x) => x.id === this.current.id);
-            if (updated) this.current = updated;
+            this.current = null;
         }
+
+        // If the active filter pointed at a source shared vault and it is now empty, reset to All.
+        const sourceVaultIdSet = new Set(toMove.map((t) => t.sourceVaultId).filter((id) => id !== null));
+        for (const srcId of sourceVaultIdSet) {
+            if (this.filterFolder === srcId && ! (this.sharedItems[srcId] || []).length) {
+                this.filterFolder = '';
+            }
+        }
+
         this.selectedIds = [];
+        this._autoSelect();
     },
 
     fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; } },
