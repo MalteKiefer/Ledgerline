@@ -58,6 +58,7 @@ return [
     'issue_breached' => 'Breached',
     'issue_reused' => 'Reused',
     'issue_weak' => 'Weak',
+    'issue_no2fa' => 'No 2FA',
     'breach_warn' => 'This password appeared in :count known breaches. Change it.',
     'reused_warn' => 'This password is reused on another entry.',
     'reused_where' => 'Also used in:',

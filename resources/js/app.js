@@ -7630,7 +7630,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     issuesFor(x) {
         const pw = this._pw(x); if (! pw) return null;
         const b = this.breachMap[pw];
-        return { weak: this._pwScore(pw) < 3, reused: this._reusedSet.has(x.id), breach: (b == null ? null : b) };
+        return { weak: this._pwScore(pw) < 3, reused: this._reusedSet.has(x.id), breach: (b == null ? null : b), no2fa: this.supports2fa(x) };
     },
     hasIssue(x) { const i = this.issuesFor(x); return ! ! i && (i.weak || i.reused || i.breach > 0); },
     // Other entries that share this entry's password (for the reuse overview).
@@ -7639,7 +7639,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         return this.healthItems.filter((y) => y.id !== x.id && this._pw(y) === pw);
     },
     get healthProblems() {
-        const rank = (i) => (i.breach > 0 ? 4 : 0) + (i.reused ? 2 : 0) + (i.weak ? 1 : 0);
+        const rank = (i) => (i.breach > 0 ? 4 : 0) + (i.reused ? 2 : 0) + (i.weak ? 1 : 0) + (i.no2fa ? 1 : 0);
         return this.healthItems.map((x) => ({ x, iss: this.issuesFor(x) })).filter((o) => o.iss && rank(o.iss) > 0)
             .sort((a, b) => rank(b.iss) - rank(a.iss));
     },
@@ -7710,7 +7710,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     _host(u) { try { return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; } },
     // A login with no stored TOTP whose domain is known to support app 2FA.
     supports2fa(x) {
-        if (! this._tfaSet || ! x || x.type !== 'login' || (x.fields && x.fields.totp)) return false;
+        if (! this.tfaReady || ! this._tfaSet || ! x || x.type !== 'login' || (x.fields && x.fields.totp)) return false;
         for (const u of (x.fields?.urls || [])) {
             let d = this._host(u);
             while (d && d.includes('.')) {

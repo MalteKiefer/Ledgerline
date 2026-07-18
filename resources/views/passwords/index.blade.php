@@ -162,6 +162,7 @@
                           <template x-if="issuesFor(x) && issuesFor(x).breach > 0"><span class="rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300">{{ __('passwords.issue_breached') }}</span></template>
                           <template x-if="issuesFor(x) && issuesFor(x).reused"><span class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">{{ __('passwords.issue_reused') }}</span></template>
                           <template x-if="issuesFor(x) && issuesFor(x).weak"><span class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ __('passwords.issue_weak') }}</span></template>
+                          <template x-if="issuesFor(x) && issuesFor(x).no2fa"><span class="rounded bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-300">{{ __('passwords.issue_no2fa') }}</span></template>
                         </span>
                       </span>
                       <span x-show="x.favorite" class="shrink-0 text-amber-500"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
