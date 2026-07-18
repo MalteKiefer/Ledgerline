@@ -92,6 +92,17 @@ let filterFolder = '';
 let filterTag = '';
 let selected = null;
 let showAll = false; // when the current site matches entries, list is prefiltered to them
+let tfaSet = null; // domains known to support app 2FA (2fa.directory)
+
+// A login with no stored TOTP whose site is known to support app 2FA.
+function supports2fa(it) {
+    if (! tfaSet || ! it || it.type !== 'login' || it.hasTotp) return false;
+    for (const u of (it.urls || [])) {
+        let d = hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u);
+        while (d && d.includes('.')) { if (tfaSet.has(d)) return true; d = d.slice(d.indexOf('.') + 1); }
+    }
+    return false;
+}
 
 async function renderMain() {
     filterFolder = ''; filterTag = ''; selected = null; showAll = false;
@@ -206,6 +217,7 @@ async function renderMain() {
         detailEl.innerHTML = '';
         detailEl.append(el(`<div>
             <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div></div>
+            ${supports2fa(it) ? `<div class="tfahint">${icon('key', 16)}<span>This website offers two-factor authentication — add a one-time code to this login.</span></div>` : ''}
             ${rows.join('')}
             ${tags}
             ${canFill ? `<button class="fillbtn" id="fillBtn">${icon('login', 16)} ${esc(fillLabel)}</button>` : ''}
@@ -236,6 +248,7 @@ async function renderMain() {
     const first = await send({ type: 'search', query: '' });
     library = first.logins || [];
     folders = (await send({ type: 'folders' })).folders || [];
+    tfaSet = new Set((await send({ type: 'tfa' })).domains || []);
     paintNav();
     q.addEventListener('input', () => paint(q.value));
     folderEl.onchange = () => { filterFolder = folderEl.value; paint(q.value); };

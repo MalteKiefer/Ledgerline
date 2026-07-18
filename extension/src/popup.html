@@ -61,9 +61,13 @@
     .dhead .av { width: 40px; height: 40px; border-radius: 9px; font-size: 15px; }
     .dtitle { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dtype { font-size: 11px; color: #9ca3af; }
+    .tfahint { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; padding: 9px 11px; border-radius: 9px; background: #eff6ff; color: #1e40af; font-size: 12px; line-height: 1.35; }
+    .tfahint svg { flex: none; margin-top: 1px; }
+    @media (prefers-color-scheme: dark) { .tfahint { background: #1e3a8a33; color: #93c5fd; } }
     .field { border: 1px solid #0000001a; border-radius: 9px; padding: 8px 10px; margin-bottom: 8px; }
     @media (prefers-color-scheme: dark) { .field { border-color: #ffffff14; } }
-    .field .flabel { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #9ca3af; }
+    .field .flabel { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #2563eb; font-weight: 600; }
+    @media (prefers-color-scheme: dark) { .field .flabel { color: #60a5fa; } }
     .field .frow { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
     .field .fval { flex: 1; min-width: 0; word-break: break-all; }
     .field .fval.mono { font-family: ui-monospace, SFMono-Regular, monospace; }

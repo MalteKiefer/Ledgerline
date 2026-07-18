@@ -12,7 +12,7 @@ let FOLDERS = [];
 const local = {
     get: (k) => new Promise((r) => chrome.storage.local.get(k, (v) => r(v))),
     set: (o) => new Promise((r) => chrome.storage.local.set(o, r)),
-    clear: () => new Promise((r) => chrome.storage.local.remove(['serverUrl', 'token', 'storeCipher', 'vaultMeta'], r)),
+    clear: () => new Promise((r) => chrome.storage.local.remove(['serverUrl', 'token', 'storeCipher', 'vaultMeta', 'tfaDomains', 'tfaAt'], r)),
 };
 const session = {
     get: (k) => new Promise((r) => chrome.storage.session.get(k, (v) => r(v))),
@@ -140,6 +140,30 @@ async function search(query) {
         .slice(0, 300);
 }
 
+// Domains that support app-based 2FA, from the public 2fa.directory v4 dataset.
+// Cached in local storage for a day; the data is public so this leaks nothing.
+async function tfaDomains() {
+    const cache = await local.get(['tfaDomains', 'tfaAt']);
+    if (cache.tfaDomains && cache.tfaAt && Date.now() - cache.tfaAt < 86400000) return cache.tfaDomains;
+    const APP = ['totp', 'u2f', 'hardware', 'fido2', 'webauthn'];
+    try {
+        const res = await fetch('https://api.2fa.directory/v4/all.json', { headers: { Accept: 'application/json' } });
+        if (! res.ok) return cache.tfaDomains || [];
+        const data = await res.json();
+        const set = {};
+        for (const e of (Array.isArray(data) ? data : [])) {
+            const m = Array.isArray(e) ? e[1] : null;
+            if (! m || typeof m !== 'object') continue;
+            const tfa = (m.tfa || []).map((x) => String(x).toLowerCase());
+            if (! tfa.some((t) => APP.includes(t))) continue;
+            for (const d of [m.domain, ...(m['additional-domains'] || [])]) if (typeof d === 'string' && d) set[d.toLowerCase()] = 1;
+        }
+        const domains = Object.keys(set);
+        await local.set({ tfaDomains: domains, tfaAt: Date.now() });
+        return domains;
+    } catch (e) { return cache.tfaDomains || []; }
+}
+
 // Poll the pairing until the owner approves it (or time out).
 async function runPairing(serverUrl, code) {
     await api.pair(serverUrl, code, 'Browser Extension');
@@ -190,6 +214,9 @@ const handlers = {
     async match({ hostname }) { return { logins: await matchFor(hostname) }; },
     async search({ query }) { return { logins: await search(query) }; },
     async folders() { await ensureSecrets(); return { folders: FOLDERS }; },
+    // Public 2fa.directory dataset: domains that support app 2FA. Cached locally
+    // (public data, not sensitive) so we hint where a login could add a code.
+    async tfa() { return { domains: await tfaDomains() }; },
     // Stored cards, for autofilling payment forms (no domain match — cards work
     // on any checkout page).
     async cards() {
