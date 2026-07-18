@@ -97,6 +97,11 @@ return [
     'role_edit' => 'Bearbeiter',
     'role_manage' => 'Verwalter',
     'read_only_notice' => 'Sie haben nur Lesezugriff auf diesen Tresor.',
+    'new_shared_vault' => 'Neuer geteilter Tresor',
+    'new_shared_vault_name' => 'Tresor-Name',
+    'move_to' => 'Verschieben nach…',
+    'move_denied' => 'Du kannst Einträge nicht aus einem schreibgeschützten Tresor verschieben oder dorthin.',
+    'no_shared_yet' => 'Noch keine geteilten Tresore.',
 
     // Tresor-Teilen (Verwalter)
     'share' => 'Teilen',
@@ -114,8 +119,6 @@ return [
     'pending_invites' => 'Ausstehende Einladungen',
     'accept' => 'Annehmen',
     'invite_invalid' => 'Einladung konnte nicht entschlüsselt werden. Der Schlüssel ist möglicherweise ungültig.',
-    'make_shared' => 'In geteilten Tresor umwandeln',
-    'make_shared_confirm' => 'Diesen Tresor in einen geteilten Tresor umwandeln? Du wirst Verwalter und kannst andere einladen.',
     'role_viewer' => 'Leser',
     'role_editor' => 'Bearbeiter',
     'role_manager' => 'Verwalter',
