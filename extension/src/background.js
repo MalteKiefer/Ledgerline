@@ -79,6 +79,10 @@ function itemView(s) {
         urls: (s.fields?.urls || []).filter(Boolean),
         hasTotp: ! ! (s.fields?.totp),
         note: s.fields?.note || '',
+        cardholder: s.fields?.cardholder || '',
+        number: s.fields?.number || '',
+        expiry: s.fields?.expiry || '',
+        cvv: s.fields?.cvv || '',
         tags: s.tags || [],
         folder: s.folder || null,
     };
@@ -186,6 +190,21 @@ const handlers = {
     async match({ hostname }) { return { logins: await matchFor(hostname) }; },
     async search({ query }) { return { logins: await search(query) }; },
     async folders() { await ensureSecrets(); return { folders: FOLDERS }; },
+    // Stored cards, for autofilling payment forms (no domain match — cards work
+    // on any checkout page).
+    async cards() {
+        const secrets = await ensureSecrets();
+        return {
+            cards: secrets.filter((s) => s.type === 'card').map((c) => ({
+                id: c.id,
+                title: c.title || '',
+                cardholder: c.fields?.cardholder || '',
+                number: c.fields?.number || '',
+                expiry: c.fields?.expiry || '',
+                cvv: c.fields?.cvv || '',
+            })).sort(byTitle),
+        };
+    },
     // Current TOTP code for a login id (secret stays in the worker).
     async totp({ id }) {
         const secrets = await ensureSecrets();

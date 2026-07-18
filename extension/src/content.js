@@ -37,11 +37,25 @@ function usernameField() {
 
 function setValue(input, value) {
     if (! input) return;
-    const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const proto = input instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+        : input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+// Set a value, matching a <select> option by value or visible text.
+function setChoice(el, candidates) {
+    if (! el) return;
+    if (el.tagName === 'SELECT') {
+        for (const c of candidates) {
+            const o = [...el.options].find((o) => o.value === c || o.textContent.trim() === c);
+            if (o) { setValue(el, o.value); return; }
+        }
+        return;
+    }
+    setValue(el, candidates[0]);
 }
 
 // A one-time-code / 2FA field, by autocomplete, name/label heuristics, or a
@@ -88,6 +102,64 @@ async function fillCode(login) {
     const otp = otpField();
     if (otp) { setValue(otp, code); otp.focus(); return; }
     try { await navigator.clipboard.writeText(code); notify('2FA code copied'); } catch (e) { /* clipboard blocked */ }
+}
+
+// --- Credit-card autofill ---
+function fieldByHay(re, tags = 'input') {
+    return [...document.querySelectorAll(tags)].filter(isVisible).find((i) => {
+        const hay = (i.name + ' ' + i.id + ' ' + (i.getAttribute('aria-label') || '') + ' ' + (i.placeholder || '') + ' ' + (i.autocomplete || '')).toLowerCase();
+        return re.test(hay);
+    }) || null;
+}
+function acField(token, tags = 'input,select') {
+    return [...document.querySelectorAll(tags)].filter(isVisible)
+        .find((i) => (i.autocomplete || '').toLowerCase().split(/\s+/).includes(token)) || null;
+}
+function ccNumberField() {
+    return acField('cc-number', 'input') || fieldByHay(/card.?number|cardnum|ccnum|creditcard|cc-?num|kreditkart/);
+}
+function ccGroup() {
+    return {
+        number: ccNumberField(),
+        name: acField('cc-name', 'input') || fieldByHay(/card.?holder|name.?on.?card|karteninhaber/),
+        exp: acField('cc-exp'),
+        month: acField('cc-exp-month'),
+        year: acField('cc-exp-year'),
+        csc: acField('cc-csc', 'input') || fieldByHay(/\bcvv\b|\bcvc\b|security.?code|card.?code|pr(u|ü)fnummer/),
+    };
+}
+function cardMask(number) { const d = String(number || '').replace(/\D/g, ''); return d ? '•••• ' + d.slice(-4) : ''; }
+
+// A single expiry field wants MM/YY on some sites and MM/YYYY on others (and a
+// few want no separator). Read the wanted shape from placeholder / pattern /
+// maxlength rather than guessing.
+function expShape(el) {
+    const hay = ((el.placeholder || '') + ' ' + (el.getAttribute('pattern') || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+    const ml = el.maxLength;
+    const long = /y{4}|j{4}/.test(hay) || ml === 7 || ml === 6;
+    const sep = hay.includes('/') ? '/' : hay.includes('-') ? '-' : (ml === 4 || ml === 6) ? '' : '/';
+    return { long, sep };
+}
+
+async function fillCard(card) {
+    const g = ccGroup();
+    if (card.number && g.number) setValue(g.number, String(card.number).replace(/\s+/g, ''));
+    if (card.cardholder && g.name) setValue(g.name, card.cardholder);
+    const m = String(card.expiry || '').match(/(\d{1,2})\s*[/\-.]?\s*(\d{2,4})/);
+    const mm = m ? m[1].padStart(2, '0') : '';
+    const yr = m ? m[2] : '';
+    const yy = yr.length === 4 ? yr.slice(2) : yr;
+    const yyyy = yr.length === 2 ? '20' + yr : yr;
+    if (g.exp && mm && yr) {
+        const { long, sep } = expShape(g.exp);
+        setValue(g.exp, mm + sep + (long ? yyyy : yy));
+    } else if (g.exp && card.expiry) {
+        setValue(g.exp, card.expiry);
+    }
+    if (g.month && mm) setChoice(g.month, [mm, String(+mm)]);
+    if (g.year && yr) setChoice(g.year, [yyyy, yy]);
+    if (card.cvv && g.csc) setValue(g.csc, card.cvv);
+    (g.number || g.csc)?.focus?.();
 }
 
 async function doFill(login) {
@@ -141,14 +213,19 @@ function openPicker(anchor, logins, onPick = doFill) {
 }
 
 // Small badge inside the username field that opens the picker.
-function attachBadge(field, logins, onPick = doFill) {
+function attachBadge(field, logins, onPick = doFill, fetchList = null) {
     if (! field || field.dataset.llBadge) return;
     field.dataset.llBadge = '1';
     const show = async () => {
         if (suppress) return;
-        const fresh = await send({ type: 'match', hostname: location.hostname });
-        let list = fresh?.ok ? fresh.logins : logins;
-        if (onPick === fillCode) list = list.filter((l) => l.hasTotp); // OTP field: only logins with a code
+        let list;
+        if (fetchList) {
+            list = await fetchList();
+        } else {
+            const fresh = await send({ type: 'match', hostname: location.hostname });
+            list = fresh?.ok ? fresh.logins : logins;
+            if (onPick === fillCode) list = list.filter((l) => l.hasTotp); // OTP field: only logins with a code
+        }
         if (list && list.length) openPicker(field, list, onPick);
     };
     field.addEventListener('focus', show);
@@ -195,20 +272,35 @@ async function scan() {
     if (otp && res.logins.some((l) => l.hasTotp)) attachBadge(otp, res.logins, fillCode);
 }
 
+// Payment forms: offer stored cards on the card-number field (cards match any
+// site, so no host filtering — the list comes from a dedicated card fetch).
+async function scanCards() {
+    const num = ccNumberField();
+    if (! num || num.dataset.llBadge) return;
+    const fetchCards = () => send({ type: 'cards' }).then((r) => (r?.ok ? (r.cards || []).map((c) => ({ ...c, username: cardMask(c.number) })) : []));
+    const cards = await fetchCards();
+    if (cards.length) attachBadge(num, cards, fillCard, fetchCards);
+}
+
 document.addEventListener('click', (e) => { if (host && ! host.contains(e.target)) closePicker(); });
 chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg?.type === 'fill' && msg.login) {
         const had = ! ! (passwordField() || usernameField());
         doFill(msg.login);
         sendResponse({ filled: had }); // popup falls back to opening the URL if false
+    } else if (msg?.type === 'fillCard' && msg.card) {
+        const had = ! ! ccNumberField();
+        if (had) fillCard(msg.card);
+        sendResponse({ filled: had });
     }
 });
 
 // Attach on load, then keep watching: login forms are frequently rendered late
 // or in steps (identifier first, password after). A debounced observer re-scans
 // as fields appear, so both the badge and the auto-fill catch up.
-scan();
+const runScan = () => { scan(); scanCards(); };
+runScan();
 let _t = null;
-const mo = new MutationObserver(() => { clearTimeout(_t); _t = setTimeout(scan, 300); });
+const mo = new MutationObserver(() => { clearTimeout(_t); _t = setTimeout(runScan, 300); });
 mo.observe(document.documentElement, { childList: true, subtree: true });
 setTimeout(() => mo.disconnect(), 60000);
