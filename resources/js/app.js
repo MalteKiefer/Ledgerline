@@ -3,6 +3,8 @@ import intersect from '@alpinejs/intersect';
 import { Vault, ShareCrypto } from './vault';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from './passwords-util';
 import { PW_WORDS } from './shared/wordlists';
+import { escapeHtml, saveBlobAs } from './shared/dom';
+import { normVec as _normVec, dotVec as _dotVec } from './shared/vector-math';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -3867,21 +3869,6 @@ async function _runBlobDelete(job) {
     _pumpBlobDeletes();
 }
 
-function escapeHtml(text) {
-    return String(text ?? '').replace(/[&<>"']/g, (c) =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function saveBlobAs(bytes, name, mime) {
-    const url = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name || 'download';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
 
 /**
  * Shared Paperless transfer state. One store drives a single modal reused by
@@ -4054,19 +4041,6 @@ let _contactsReconAt = 0;
 // Normalised CLIP embeddings of image FILES (fileId -> Float32Array), for
 // semantic ("find the image of X") file search. Module-scoped + non-reactive.
 const fileEmb = {};
-// Cosine helpers (embeddings are pre-normalised, so cosine == dot product).
-function _normVec(v) {
-    let s = 0; for (let i = 0; i < v.length; i++) s += v[i] * v[i];
-    const inv = s > 0 ? 1 / Math.sqrt(s) : 0;
-    const out = new Float32Array(v.length);
-    for (let i = 0; i < v.length; i++) out[i] = v[i] * inv;
-    return out;
-}
-function _dotVec(a, b) {
-    if (! a || ! b || a.length !== b.length) return 0;
-    let d = 0; for (let i = 0; i < a.length; i++) d += a[i] * b[i];
-    return d;
-}
 
 // Lazy, singleton OCR worker (tesseract.js). All assets are self-hosted under
 // /tesseract (worker + WASM core + eng/deu data) so nothing is fetched from a
