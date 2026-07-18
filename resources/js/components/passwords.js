@@ -18,6 +18,8 @@ export default (config = {}, labels = {}) => ({
     current: null, // item being viewed (live ref into items)
     draft: null, // editable copy while creating/editing (null = not editing)
     selectedIds: [], // multi-select for bulk actions
+    _dragId: null,   // id being dragged (or null)
+    _dragOver: null, // tresor id being hovered for drop
     tfaReady: false, // 2fa.directory dataset loaded (gates the "offers 2FA" hint)
     _tfaMap: null, // { domain: documentationUrl }
     filterType: '',
@@ -62,7 +64,8 @@ export default (config = {}, labels = {}) => ({
         this._autoSelect();
         // Keep the first matching entry selected as the state/filters change.
         this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); this._loadSharedVaults(); } });
-        for (const p of ['query', 'filterType', 'filterFolder', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
+        for (const p of ['query', 'filterType', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
+        this.$watch('filterFolder', () => { this.selectedIds = []; this._autoSelect(); });
         this.$watch('view', () => this.clearSelection());
         this._loadTfa();
     },
@@ -1004,38 +1007,148 @@ export default (config = {}, labels = {}) => ({
             window.llToast(labels.saveFailed || '');
         }
     },
-    async convertToShared(f) {
-        if (! await this.$store.confirm.ask(labels.makeSharedConfirm || '')) return;
+    async createSharedVault() {
+        const raw = await this.$store.confirm.prompt('', { placeholder: labels.newSharedVaultName || '', ok: labels.save || '' });
+        const name = (raw || '').trim(); if (! name) return;
         try {
             const vk = await VaultShareCrypto.newVaultKey();
             const idk = await Vault.ensureIdentityKeys();
-            const wrappedForSelf = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub);
-            const { id: newVaultId } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrappedForSelf });
-            // vkBytes from b64
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub);
+            const { id } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped });
             const vkBytes = Uint8Array.from(atob(vk), (c) => c.charCodeAt(0));
-            // Build manifest from the folder's items.
-            const folderItems = this.items.filter((x) => x.folder === f.id);
-            const manifest = { name: f.name, items: folderItems };
+            const manifest = { name, items: [] };
             const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
-            await apiRequest('PUT', '/vaults/' + newVaultId + '/store', { sealed_manifest: sealed, expected_version: 0 });
-            // Move items locally: remove from personal, register as shared.
-            const folderItemIds = new Set(folderItems.map((x) => x.id));
-            for (let i = this.items.length - 1; i >= 0; i--) if (folderItemIds.has(this.items[i].id)) this.items.splice(i, 1);
-            // Remove the personal folder. If it was the last one, keep a fresh
-            // empty "Privat" so the personal side never ends up with zero vaults.
-            const fi = this.folders.findIndex((y) => y.id === f.id);
-            if (fi >= 0) this.folders.splice(fi, 1);
-            if (this.folders.length === 0) this.folders.push({ id: crypto.randomUUID(), name: 'Privat', role: 'manage' });
-            if (this.filterFolder === f.id) this.filterFolder = '';
-            this._save(); // save personal manifest without those items
-            // Register the new shared vault in-memory.
-            this._sharedKeys[newVaultId] = vkBytes;
-            this._sharedVersion[newVaultId] = 0;
-            this.sharedVaults.push({ id: newVaultId, name: f.name, role: 'manage', shared: true, version: 0, vaultId: newVaultId });
-            this.sharedItems[newVaultId] = folderItems.map((item) => ({ ...item, shared: true, vaultId: newVaultId }));
+            const res = await apiRequest('PUT', '/vaults/' + id + '/store', { sealed_manifest: sealed, expected_version: 0 });
+            const version = (res && typeof res.version === 'number') ? res.version : 1;
+            this._sharedKeys[id] = vkBytes;
+            this._sharedVersion[id] = version;
+            this.sharedVaults.push({ id, name, role: 'manage', shared: true, version, vaultId: id });
+            this.sharedItems[id] = [];
         } catch (e) {
             window.llToast(labels.saveFailed || '');
         }
+    },
+
+    async moveItems(ids, targetId) {
+        if (! ids || ! ids.length) return;
+        const idSet = new Set(ids);
+        // Determine source vault(s): find where each id lives.
+        const isTargetShared = this.isSharedVault(targetId);
+        const isTargetEditable = this.canEditVault(targetId);
+        if (! isTargetEditable) { window.llToast(labels.moveDenied || ''); return; }
+
+        // Gather items to move and validate source editability.
+        // Snapshot the original item and its source location for rollback.
+        const toMove = [];
+        for (const id of ids) {
+            const personal = this.items.find((x) => x.id === id);
+            if (personal) {
+                toMove.push({ item: personal, originalItem: { ...personal }, sourceVaultId: null });
+                continue;
+            }
+            for (const sv of this.sharedVaults) {
+                const found = (this.sharedItems[sv.id] || []).find((x) => x.id === id);
+                if (found) { toMove.push({ item: found, originalItem: { ...found }, sourceVaultId: sv.id }); break; }
+            }
+        }
+        if (! toMove.length) return;
+
+        // Check each source is editable.
+        for (const { sourceVaultId } of toMove) {
+            if (! this.canEditVault(sourceVaultId || '')) { window.llToast(labels.moveDenied || ''); return; }
+        }
+
+        // Build the moved items for the target.
+        const movedItems = toMove.map(({ item }) => {
+            if (isTargetShared) {
+                const { shared: _s, vaultId: _v, folder: _f, ...rest } = item;
+                return { ...rest, shared: true, vaultId: targetId, folder: targetId };
+            } else {
+                const { shared: _s, vaultId: _v, ...rest } = item;
+                return { ...rest, folder: targetId || null };
+            }
+        });
+
+        // Add to target in-memory (do NOT remove from source yet).
+        if (isTargetShared) {
+            const arr = [...(this.sharedItems[targetId] || [])];
+            for (const mi of movedItems) {
+                const idx = arr.findIndex((x) => x.id === mi.id);
+                if (idx >= 0) arr[idx] = mi; else arr.unshift(mi);
+            }
+            this.sharedItems = { ...this.sharedItems, [targetId]: arr };
+        } else {
+            for (const mi of movedItems) {
+                const idx = this.items.findIndex((x) => x.id === mi.id);
+                if (idx >= 0) this.items[idx] = mi; else this.items.unshift(mi);
+            }
+        }
+
+        // Write target FIRST. On failure: restore item(s) to source in-memory,
+        // so no item ever disappears from both places.
+        if (isTargetShared) {
+            try {
+                await this._saveVault(targetId);
+            } catch (e) {
+                // Full rollback: remove from target, restore originals to source.
+                const arr = (this.sharedItems[targetId] || []).filter((x) => ! idSet.has(x.id));
+                this.sharedItems = { ...this.sharedItems, [targetId]: arr };
+                // Restore each item to its source collection.
+                for (const { originalItem, sourceVaultId } of toMove) {
+                    if (sourceVaultId === null) {
+                        const i = this.items.findIndex((x) => x.id === originalItem.id);
+                        if (i < 0) this.items.unshift(originalItem);
+                        else this.items[i] = originalItem;
+                    } else {
+                        const srcArr = [...(this.sharedItems[sourceVaultId] || [])];
+                        const i = srcArr.findIndex((x) => x.id === originalItem.id);
+                        if (i < 0) srcArr.unshift(originalItem); else srcArr[i] = originalItem;
+                        this.sharedItems = { ...this.sharedItems, [sourceVaultId]: srcArr };
+                    }
+                }
+                window.llToast(labels.saveFailed || '');
+                return;
+            }
+        } else {
+            // Personal target: _save() is synchronous and cannot fail network-wise.
+            this._save();
+        }
+
+        // Target saved successfully. Now remove from each source.
+        const sourceVaultIds = new Set(toMove.map((t) => t.sourceVaultId));
+        for (const srcId of sourceVaultIds) {
+            if (srcId === null) {
+                if (isTargetShared) {
+                    // personal→shared: items were copied to sharedItems; remove originals from personal.
+                    for (let i = this.items.length - 1; i >= 0; i--) {
+                        if (idSet.has(this.items[i].id)) this.items.splice(i, 1);
+                    }
+                    this._save();
+                }
+                // personal→personal: items were mutated in-place in this.items by the
+                // "Add to target" block; _save() already called in the target write step.
+            } else {
+                const arr = (this.sharedItems[srcId] || []).filter((x) => ! idSet.has(x.id));
+                this.sharedItems = { ...this.sharedItems, [srcId]: arr };
+                try { await this._saveVault(srcId); } catch (e) { window.llToast(labels.saveFailed || ''); }
+            }
+        }
+
+        // Clear current if it was one of the moved items (its ref may be stale).
+        if (this.current && idSet.has(this.current.id)) {
+            this.current = null;
+        }
+
+        // If the active filter pointed at a source shared vault and it is now empty, reset to All.
+        const sourceVaultIdSet = new Set(toMove.map((t) => t.sourceVaultId).filter((id) => id !== null));
+        for (const srcId of sourceVaultIdSet) {
+            if (this.filterFolder === srcId && ! (this.sharedItems[srcId] || []).length) {
+                this.filterFolder = '';
+            }
+        }
+
+        this.selectedIds = [];
+        this._autoSelect();
     },
 
     fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; } },

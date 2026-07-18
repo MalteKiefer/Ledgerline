@@ -22,7 +22,6 @@
         inviteSent: @js(__('passwords.invite_sent')),
         alreadyMember: @js(__('passwords.already_member')),
         inviteInvalid: @js(__('passwords.invite_invalid')),
-        makeSharedConfirm: @js(__('passwords.make_shared_confirm')),
         manageMembers: @js(__('passwords.manage_members')),
         members: @js(__('passwords.members')),
         memberStatusPending: @js(__('passwords.member_status_pending')),
@@ -33,6 +32,8 @@
         deleteVault: @js(__('passwords.delete_vault')),
         deleteVaultConfirm: @js(__('passwords.delete_vault_confirm')),
         memberRemoved: @js(__('passwords.member_removed')),
+        newSharedVaultName: @js(__('passwords.new_shared_vault_name')),
+        moveDenied: @js(__('passwords.move_denied')),
         types: {
             login: @js(__('passwords.type_login')), password: @js(__('passwords.type_password')),
             card: @js(__('passwords.type_card')), wifi: @js(__('passwords.type_wifi')),
@@ -102,39 +103,48 @@
                   <x-icon name="squares-2x2" class="h-3.5 w-3.5 text-gray-400" /><span>{{ __('passwords.all_vaults') }}</span>
                 </button>
                 <template x-for="f in folders" :key="f.id">
-                  <div class="group flex items-center gap-1 rounded-md pr-1" :class="filterFolder === f.id && view === 'list' ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                  <div class="group flex items-center gap-1 rounded-md pr-1"
+                       :class="(filterFolder === f.id && view === 'list') ? 'bg-gray-100 dark:bg-gray-800' : (_dragOver === f.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50')"
+                       @dragover.prevent="_dragOver = f.id"
+                       @dragleave="_dragOver = null"
+                       @drop.prevent="_dragOver = null; moveItems(_dragId ? [_dragId] : selectedIds, f.id)">
                     <button type="button" @click="filterFolder = filterFolder === f.id ? '' : f.id; view = 'list'" class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs" :class="filterFolder === f.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'">
                       <x-icon name="archive-box" class="h-3.5 w-3.5 shrink-0 text-gray-400" /><span class="truncate" x-text="f.name"></span>
                     </button>
                     <button type="button" x-show="canManageVault(f.id)" @click="renameFolder(f)" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="pencil" class="h-3 w-3" /></button>
                     <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="deleteFolder(f)" class="shrink-0 text-gray-400 md:opacity-0 hover:text-red-600 md:group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
-                    <button type="button" x-show="canManageVault(f.id)" @click="convertToShared(f)" title="{{ __('passwords.make_shared') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="share" class="h-3 w-3" /></button>
                   </div>
                 </template>
               </div>
               {{-- Shared vaults --}}
-              <template x-if="sharedVaults.length > 0">
-                <div class="mt-2 border-t border-gray-100 dark:border-gray-800 pt-2">
-                  <span class="mb-1 block px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.shared_vaults') }}</span>
-                  <template x-for="sv in sharedVaults" :key="sv.id">
-                    <div class="group flex items-center gap-1 rounded-md pr-1" :class="filterFolder === sv.id && view === 'list' ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
-                      <button
-                        type="button"
-                        @click="filterFolder = filterFolder === sv.id ? '' : sv.id; view = 'list'"
-                        class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
-                        :class="filterFolder === sv.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'"
-                      >
-                        <x-icon name="users" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                        <span class="flex-1 truncate" x-text="sv.name"></span>
-                        <span class="shrink-0 text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
-                      </button>
-                      <button type="button" x-show="sv.role === 'manage'" @click="openShareDialog(sv.id)" title="{{ __('passwords.share_vault') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="user-plus" class="h-3 w-3" /></button>
-                      <button type="button" x-show="sv.role === 'manage'" @click="openManageMembers(sv.id)" title="{{ __('passwords.manage_members') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="users" class="h-3 w-3" /></button>
-                      <button type="button" x-show="sv.role === 'manage'" @click="deleteSharedVault(sv.id)" title="{{ __('passwords.delete_vault') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-red-600 md:group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
-                    </div>
-                  </template>
+              <div class="mt-2 border-t border-gray-100 dark:border-gray-800 pt-2">
+                <div class="mb-1 flex items-center justify-between px-1">
+                  <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.shared_vaults') }}</span>
+                  <button type="button" @click="createSharedVault()" title="{{ __('passwords.new_shared_vault') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
-              </template>
+                <template x-for="sv in sharedVaults" :key="sv.id">
+                  <div class="group flex items-center gap-1 rounded-md pr-1"
+                       :class="(filterFolder === sv.id && view === 'list') ? 'bg-gray-100 dark:bg-gray-800' : (_dragOver === sv.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50')"
+                       @dragover="canEditVault(sv.id) ? ($event.preventDefault(), _dragOver = sv.id) : null"
+                       @dragleave="_dragOver = null"
+                       @drop.prevent="_dragOver = null; if (canEditVault(sv.id)) moveItems(_dragId ? [_dragId] : selectedIds, sv.id)">
+                    <button
+                      type="button"
+                      @click="filterFolder = filterFolder === sv.id ? '' : sv.id; view = 'list'"
+                      class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
+                      :class="filterFolder === sv.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'"
+                    >
+                      <x-icon name="users" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      <span class="flex-1 truncate" x-text="sv.name"></span>
+                      <span class="shrink-0 text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
+                    </button>
+                    <button type="button" x-show="sv.role === 'manage'" @click="openShareDialog(sv.id)" title="{{ __('passwords.share_vault') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="user-plus" class="h-3 w-3" /></button>
+                    <button type="button" x-show="sv.role === 'manage'" @click="openManageMembers(sv.id)" title="{{ __('passwords.manage_members') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="users" class="h-3 w-3" /></button>
+                    <button type="button" x-show="sv.role === 'manage'" @click="deleteSharedVault(sv.id)" title="{{ __('passwords.delete_vault') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-red-600 md:group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
+                  </div>
+                </template>
+                <p x-show="! sharedVaults.length" x-cloak class="px-2.5 py-1.5 text-xs text-gray-400">{{ __('passwords.no_shared_yet') }}</p>
+              </div>
               {{-- Pending invitations --}}
               <template x-if="pendingInvites.length > 0">
                 <div class="mt-2 border-t border-gray-100 dark:border-gray-800 pt-2">
@@ -195,18 +205,51 @@
                 <span>{{ __('passwords.read_only_notice') }}</span>
               </div>
               {{-- Bulk-select toolbar --}}
-              <div x-show="selectedIds.length && ! isSharedVault(filterFolder)" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white dark:bg-gray-100 dark:text-gray-900">
-                <span class="text-xs font-medium" x-text="selectedIds.length + ' {{ __('passwords.selected') }}'"></span>
-                <div class="flex items-center gap-0.5">
-                  <button type="button" @click="toggleSelectAll()" title="{{ __('passwords.select_all') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="check-circle" class="h-4 w-4" /></button>
-                  <button type="button" @click="bulkDelete()" title="{{ __('passwords.delete') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="trash" class="h-4 w-4" /></button>
-                  <button type="button" @click="clearSelection()" title="{{ __('passwords.cancel') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="x-mark" class="h-4 w-4" /></button>
+              <div x-show="selectedIds.length && (! isSharedVault(filterFolder) || canEditVault(filterFolder))" x-cloak class="mb-2 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900">
+                <div class="flex items-center justify-between gap-2 px-3 py-2">
+                  <span class="text-xs font-medium" x-text="selectedIds.length + ' {{ __('passwords.selected') }}'"></span>
+                  <div class="flex items-center gap-0.5">
+                    <button type="button" @click="toggleSelectAll()" title="{{ __('passwords.select_all') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="check-circle" class="h-4 w-4" /></button>
+                    <button type="button" x-show="! isSharedVault(filterFolder)" @click="bulkDelete()" title="{{ __('passwords.delete') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="trash" class="h-4 w-4" /></button>
+                    <button type="button" @click="clearSelection()" title="{{ __('passwords.cancel') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                  </div>
+                </div>
+                {{-- Move-to submenu --}}
+                <div class="border-t border-white/20 dark:border-gray-900/20 px-3 py-2" x-data="{ moveOpen: false }" @click.outside="moveOpen = false">
+                  <button type="button" @click="moveOpen = ! moveOpen" class="flex w-full items-center gap-1.5 text-xs font-medium opacity-80 hover:opacity-100">
+                    <x-icon name="arrows-right-left" class="h-3.5 w-3.5" />
+                    <span>{{ __('passwords.move_to') }}</span>
+                    <x-icon name="chevron-down" class="h-3 w-3 ml-auto" />
+                  </button>
+                  <div x-show="moveOpen" x-cloak class="mt-1 space-y-0.5">
+                    <template x-for="f in folders" :key="'mv' + f.id">
+                      <button type="button"
+                              x-show="f.id !== filterFolder"
+                              @click="moveItems(selectedIds, f.id); moveOpen = false"
+                              class="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-white/80 dark:text-gray-900/80 hover:bg-white/15 dark:hover:bg-black/10">
+                        <x-icon name="archive-box" class="h-3 w-3" />
+                        <span x-text="f.name"></span>
+                      </button>
+                    </template>
+                    <template x-for="sv in sharedVaults" :key="'mv' + sv.id">
+                      <button type="button"
+                              x-show="sv.id !== filterFolder && canEditVault(sv.id)"
+                              @click="moveItems(selectedIds, sv.id); moveOpen = false"
+                              class="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-white/80 dark:text-gray-900/80 hover:bg-white/15 dark:hover:bg-black/10">
+                        <x-icon name="users" class="h-3 w-3" />
+                        <span x-text="sv.name"></span>
+                      </button>
+                    </template>
+                  </div>
                 </div>
               </div>
               <div class="max-h-[70vh] overflow-y-auto">
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
-                  <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                  <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+                       draggable="true"
+                       @dragstart="_dragId = selectedIds.includes(x.id) ? null : x.id"
+                       @dragend="_dragId = null; _dragOver = null">
                     <input type="checkbox" x-show="! isSharedVault(filterFolder)" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
                     <button type="button" @click="openItem(x)" class="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left">
                       <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"

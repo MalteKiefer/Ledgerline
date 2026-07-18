@@ -97,6 +97,11 @@ return [
     'role_edit' => 'Editor',
     'role_manage' => 'Manager',
     'read_only_notice' => 'You have read-only access to this vault.',
+    'new_shared_vault' => 'New shared vault',
+    'new_shared_vault_name' => 'Vault name',
+    'move_to' => 'Move to…',
+    'move_denied' => "You can't move items into or out of a read-only vault.",
+    'no_shared_yet' => 'No shared vaults yet.',
 
     // Vault sharing (manager)
     'share' => 'Share',
@@ -114,8 +119,6 @@ return [
     'pending_invites' => 'Pending Invitations',
     'accept' => 'Accept',
     'invite_invalid' => 'Could not decrypt the invitation. The key may be invalid.',
-    'make_shared' => 'Convert to shared vault',
-    'make_shared_confirm' => 'Convert this vault to a shared vault? You will be the manager and can invite others.',
     'role_viewer' => 'Viewer',
     'role_editor' => 'Editor',
     'role_manager' => 'Manager',
