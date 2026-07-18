@@ -153,8 +153,8 @@ ssh -p 2222 -i ~/.ssh/id_priv -o StrictHostKeyChecking=no root@server.p37.nexus 
 ## REFACTORING (LÄUFT — verhaltensneutrale Phasen, je einzeln build+test-verifiziert)
 app.js (~8000 Z.) wird in ES-Module gesplittet (Vite-gebündelt): `resources/js/shared/*` (api, blob-fetch/-delete, store, gallery-store, zk-module, wordlists, file-categories, ocr, lazy-loaders), `components/*` (pro Modul; gallery/files/passwords in Mixins), `boot.js` (lazy/auto-discovery). Regel: app.js darf nach jeder Scheibe nie kaputt sein (Build + `npm run test:js` grün).
 - **Konvention „Alpine in EINER Datei" ist damit aufgehoben** → app.js wird zum Bootstrap, Logik zieht in `shared/`+`components/`. Freigabe erteilt (2026-07-18).
-- **Erledigt:** `shared/wordlists.js` (PW_WORDS ausgelagert, v1.500.3).
-- **Nächste Scheiben:** file-categories, api-helpers, html-escape, blob-fetch/-delete, lazy-loaders, zk-module, dann Stores + einfache Komponenten, zuletzt gallery/files/passwords in Mixins.
+- **Erledigt:** `shared/wordlists.js` (v1.500.3); `shared/dom.js` (escapeHtml/saveBlobAs) + `shared/vector-math.js` (normVec/dotVec, in app.js als `_normVec`/`_dotVec` aliased) (v1.500.4).
+- **Nächste Scheiben:** file-categories, api-helpers, blob-fetch/-delete, lazy-loaders, zk-module, dann Stores + einfache Komponenten, zuletzt gallery/files/passwords in Mixins.
 
 ## HISTORIE (Kurz)
 - **v1.298 → ~1.480** (2026-07): Umbau plaintext → zero-knowledge (Vault-Kern, opaque store, ZK-Galerie, ML client-seitig, ZK-Kontakte/Invoices, Photon-Geocoding). **Entfernt:** Mail, Kalender/CalDAV, CardDAV.
