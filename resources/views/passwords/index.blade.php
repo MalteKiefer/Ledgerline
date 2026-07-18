@@ -106,9 +106,9 @@
                     <button type="button" @click="filterFolder = filterFolder === f.id ? '' : f.id; view = 'list'" class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs" :class="filterFolder === f.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'">
                       <x-icon name="archive-box" class="h-3.5 w-3.5 shrink-0 text-gray-400" /><span class="truncate" x-text="f.name"></span>
                     </button>
-                    <button type="button" x-show="canManageVault(f.id)" @click="renameFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="pencil" class="h-3 w-3" /></button>
-                    <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="deleteFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-red-600 group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
-                    <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="convertToShared(f)" title="{{ __('passwords.make_shared') }}" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="share" class="h-3 w-3" /></button>
+                    <button type="button" x-show="canManageVault(f.id)" @click="renameFolder(f)" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="pencil" class="h-3 w-3" /></button>
+                    <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="deleteFolder(f)" class="shrink-0 text-gray-400 md:opacity-0 hover:text-red-600 md:group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
+                    <button type="button" x-show="canManageVault(f.id)" @click="convertToShared(f)" title="{{ __('passwords.make_shared') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="share" class="h-3 w-3" /></button>
                   </div>
                 </template>
               </div>
@@ -128,9 +128,9 @@
                         <span class="flex-1 truncate" x-text="sv.name"></span>
                         <span class="shrink-0 text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
                       </button>
-                      <button type="button" x-show="sv.role === 'manage'" @click="openShareDialog(sv.id)" title="{{ __('passwords.share_vault') }}" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="user-plus" class="h-3 w-3" /></button>
-                      <button type="button" x-show="sv.role === 'manage'" @click="openManageMembers(sv.id)" title="{{ __('passwords.manage_members') }}" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="users" class="h-3 w-3" /></button>
-                      <button type="button" x-show="sv.role === 'manage'" @click="deleteSharedVault(sv.id)" title="{{ __('passwords.delete_vault') }}" class="shrink-0 text-gray-400 opacity-0 hover:text-red-600 group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
+                      <button type="button" x-show="sv.role === 'manage'" @click="openShareDialog(sv.id)" title="{{ __('passwords.share_vault') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="user-plus" class="h-3 w-3" /></button>
+                      <button type="button" x-show="sv.role === 'manage'" @click="openManageMembers(sv.id)" title="{{ __('passwords.manage_members') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="users" class="h-3 w-3" /></button>
+                      <button type="button" x-show="sv.role === 'manage'" @click="deleteSharedVault(sv.id)" title="{{ __('passwords.delete_vault') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-red-600 md:group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
                     </div>
                   </template>
                 </div>
