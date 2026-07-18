@@ -72,10 +72,13 @@ function itemView(s) {
         id: s.id,
         title: s.title || '',
         type: s.type || 'login',
+        icon: s.icon || '',
+        favorite: ! ! s.favorite,
         username: s.fields?.username || '',
         password: s.fields?.password || '',
         urls: (s.fields?.urls || []).filter(Boolean),
         hasTotp: ! ! (s.fields?.totp),
+        note: s.fields?.note || '',
         tags: s.tags || [],
         folder: s.folder || null,
     };
