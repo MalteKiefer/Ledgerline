@@ -66,7 +66,9 @@ class CreateMemberRequest extends FormRequest
                 ->where('status', 'active')
                 ->first();
 
-            $actorRank = isset($actorMembership->role) ? (self::ROLE_RANK[$actorMembership->role] ?? 0) : 0;
+            // Defense-in-depth: manager (rank 3) is the ceiling today; this guard
+            // also blocks any future role above manager without further changes.
+            $actorRank = self::ROLE_RANK[$actorMembership?->role] ?? 0;
             $requestedRank = self::ROLE_RANK[$requested];
 
             if ($requestedRank > $actorRank) {

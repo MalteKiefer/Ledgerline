@@ -13,6 +13,7 @@ use Illuminate\Contracts\Validation\Factory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
 
 class VaultPolicyTest extends TestCase
@@ -58,6 +59,53 @@ class VaultPolicyTest extends TestCase
 
         $result = $outsider->can('view', $vault);
         $this->assertFalse($result);
+    }
+
+    /**
+     * Enumeration-resistance: a non-member denial must be denyAsNotFound()
+     * (HTTP 404), not a plain deny() (HTTP 403), so vault existence is not
+     * leaked to unauthorized callers.
+     */
+    public function test_non_member_view_denial_is_404_not_found_style(): void
+    {
+        $owner = User::factory()->create();
+        $outsider = User::factory()->create();
+        $vault = $this->makeVault($owner);
+
+        $response = Gate::forUser($outsider)->inspect('view', $vault);
+
+        $this->assertTrue($response->denied(), 'Expected denial for non-member view.');
+        $this->assertSame(404, $response->status(), 'Denial must be denyAsNotFound() (404), not plain deny() (403).');
+    }
+
+    /**
+     * Confirm enumeration-resistance holds for the update ability as well.
+     */
+    public function test_non_member_update_denial_is_404_not_found_style(): void
+    {
+        $owner = User::factory()->create();
+        $outsider = User::factory()->create();
+        $vault = $this->makeVault($owner);
+
+        $response = Gate::forUser($outsider)->inspect('update', $vault);
+
+        $this->assertTrue($response->denied());
+        $this->assertSame(404, $response->status());
+    }
+
+    /**
+     * Confirm enumeration-resistance holds for the manage ability as well.
+     */
+    public function test_non_member_manage_denial_is_404_not_found_style(): void
+    {
+        $owner = User::factory()->create();
+        $outsider = User::factory()->create();
+        $vault = $this->makeVault($owner);
+
+        $response = Gate::forUser($outsider)->inspect('manage', $vault);
+
+        $this->assertTrue($response->denied());
+        $this->assertSame(404, $response->status());
     }
 
     public function test_viewer_can_view_vault(): void
@@ -187,17 +235,16 @@ class VaultPolicyTest extends TestCase
         $this->assertEmpty($this->extractRoleRankErrors($request));
     }
 
-    public function test_manager_cannot_add_role_above_their_own(): void
+    public function test_non_manager_is_blocked_at_authorize(): void
     {
-        // A manager is rank 3 = highest — this test covers an editor trying to
-        // grant manager, since an editor is rank 2 < manager rank 3.
+        // An editor (rank 2) lacks the `manage` ability entirely; authorize()
+        // returns false before the withValidator rank-guard is ever reached.
         $owner = User::factory()->create();
         $editor = User::factory()->create();
         $target = User::factory()->create();
         $vault = $this->makeVault($owner);
         $this->addMember($vault, $editor, 'editor');
 
-        // Editor is rank 2, requesting manager (rank 3) → must fail authorize.
         $request = $this->buildCreateRequest($editor, $vault, [
             'user_id' => $target->id,
             'role' => 'manager',
