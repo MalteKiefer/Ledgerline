@@ -38,15 +38,17 @@ class SharedVaultMemberController extends Controller
         $this->authorize('manage', $vault);
 
         $members = $vault->members()
-            ->with('user:id,x25519_public_key')
+            ->with('user:id,name,email,x25519_public_key')
             ->get()
             ->map(fn (SharedVaultMember $m) => [
-                'id'                    => $m->id,
-                'user_id'               => $m->user_id,
-                'role'                  => $m->role,
-                'status'                => $m->status,
+                'id' => $m->id,
+                'user_id' => $m->user_id,
+                'name' => $m->user?->name,
+                'email' => $m->user?->email,
+                'role' => $m->role,
+                'status' => $m->status,
                 'recipient_fingerprint' => $m->recipient_fingerprint,
-                'public_key'            => $m->user?->x25519_public_key,
+                'public_key' => $m->user?->x25519_public_key,
             ]);
 
         return response()->json($members);
@@ -63,11 +65,11 @@ class SharedVaultMemberController extends Controller
         $data = $request->validated();
 
         SharedVaultMember::create([
-            'vault_id'              => $vault->id,
-            'user_id'               => $data['user_id'],
-            'role'                  => $data['role'],
-            'status'                => 'pending',
-            'wrapped_vault_key'     => $data['wrapped_vault_key'],
+            'vault_id' => $vault->id,
+            'user_id' => $data['user_id'],
+            'role' => $data['role'],
+            'status' => 'pending',
+            'wrapped_vault_key' => $data['wrapped_vault_key'],
             'recipient_fingerprint' => $data['recipient_fingerprint'] ?? null,
         ]);
 

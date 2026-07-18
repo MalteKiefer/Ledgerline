@@ -687,7 +687,7 @@
                         <li class="flex items-center gap-3 px-5 py-3">
                           <x-icon name="user" class="h-5 w-5 shrink-0 text-gray-400" />
                           <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" x-text="'#' + m.user_id"></p>
+                            <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" x-text="m.email || m.name || ('#' + m.user_id)"></p>
                             <p class="text-xs text-gray-400 font-mono truncate" x-text="m.recipient_fingerprint ? m.recipient_fingerprint.slice(0,16) + '…' : '—'"></p>
                           </div>
                           <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
