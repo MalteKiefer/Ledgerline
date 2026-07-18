@@ -5,7 +5,7 @@ alles wird im Browser ver-/entschlüsselt. Selbst der Server-Betreiber kann Date
 nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**.
 
 Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter, Kontakte,
-Rechnungen, Backup, Paperless**. Version **v1.500.x** (live https://home.kiefer-networks.de, `/up`=200).
+Rechnungen, Backup, Paperless**. Version **v1.501.0** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill.
 
 `README.md` ist die maßgebliche, gepflegte Feature-Beschreibung. Diese Datei =
