@@ -29,7 +29,7 @@ class TwoFactorDirectoryController extends Controller
 
     public function index(): JsonResponse
     {
-        $domains = Cache::remember('tfa_directory_domains_v2', now()->addDay(), function (): array {
+        $entries = Cache::remember('tfa_directory_entries_v3', now()->addDay(), function (): array {
             try {
                 $res = OutboundUrl::client(self::SOURCE, 12)
                     ->withHeaders(['User-Agent' => 'Ledgerline', 'Accept' => 'application/json'])
@@ -44,7 +44,9 @@ class TwoFactorDirectoryController extends Controller
             }
         });
 
-        return response()->json(['domains' => $domains], 200, [
+        // { domain: documentationUrl } — the client matches its own login
+        // domains against the keys and links the doc URL for setup instructions.
+        return response()->json(['entries' => $entries], 200, [
             'Cache-Control' => 'private, max-age=86400',
         ]);
     }
@@ -55,26 +57,31 @@ class TwoFactorDirectoryController extends Controller
      * domain: { "example.com": { "methods": ["totp","sms"], ... }, ... }.
      *
      * @param  array<string, mixed>  $data
-     * @return array<int, string>
+     * @return array<string, string>
      */
     private function parse(array $data): array
     {
-        $domains = [];
+        $map = [];
         foreach ($data as $domain => $meta) {
             if (! is_string($domain) || $domain === '' || ! is_array($meta)) {
                 continue;
             }
             $methods = array_map('strtolower', array_filter((array) ($meta['methods'] ?? []), 'is_string'));
-            if (! empty(array_intersect($methods, self::APP_METHODS))) {
-                $d = strtolower($domain);
-                // The dataset keys specific subdomains (accounts.google.com), but
-                // users often store the bare domain — index both so either matches.
-                $domains[$d] = true;
-                $domains[$this->registrable($d)] = true;
+            if (empty(array_intersect($methods, self::APP_METHODS))) {
+                continue;
+            }
+            $doc = is_string($meta['documentation'] ?? null) ? $meta['documentation'] : '';
+            $d = strtolower($domain);
+            // The dataset keys specific subdomains (accounts.google.com), but users
+            // often store the bare domain — index both so either matches.
+            $map[$d] = $doc;
+            $reg = $this->registrable($d);
+            if (! isset($map[$reg]) || $map[$reg] === '') {
+                $map[$reg] = $doc;
             }
         }
 
-        return array_keys($domains);
+        return $map;
     }
 
     /** Best-effort registrable domain (no PSL): last 2 labels, or 3 for a ccSLD. */

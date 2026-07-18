@@ -12,7 +12,7 @@ let FOLDERS = [];
 const local = {
     get: (k) => new Promise((r) => chrome.storage.local.get(k, (v) => r(v))),
     set: (o) => new Promise((r) => chrome.storage.local.set(o, r)),
-    clear: () => new Promise((r) => chrome.storage.local.remove(['serverUrl', 'token', 'storeCipher', 'vaultMeta', 'tfaDomains', 'tfaAt'], r)),
+    clear: () => new Promise((r) => chrome.storage.local.remove(['serverUrl', 'token', 'storeCipher', 'vaultMeta', 'tfaEntries', 'tfaAt'], r)),
 };
 const session = {
     get: (k) => new Promise((r) => chrome.storage.session.get(k, (v) => r(v))),
@@ -142,15 +142,15 @@ async function search(query) {
 
 // Domains that support app-based 2FA, from the public 2fa.directory v4 dataset.
 // Cached in local storage for a day; the data is public so this leaks nothing.
-async function tfaDomains() {
-    const cache = await local.get(['tfaDomains', 'tfaAt']);
-    if (cache.tfaDomains && cache.tfaDomains.length && cache.tfaAt && Date.now() - cache.tfaAt < 86400000) return cache.tfaDomains;
+async function tfaEntries() {
+    const cache = await local.get(['tfaEntries', 'tfaAt']);
+    if (cache.tfaEntries && Object.keys(cache.tfaEntries).length && cache.tfaAt && Date.now() - cache.tfaAt < 86400000) return cache.tfaEntries;
     const APP = ['totp', 'u2f', 'custom-software', 'custom-hardware'];
     try {
         const res = await fetch('https://api.2fa.directory/v4/all.json', { headers: { Accept: 'application/json' } });
-        if (! res.ok) return cache.tfaDomains || [];
-        const data = await res.json(); // v4: { "domain": { methods:[...], ... }, ... }
-        const set = {};
+        if (! res.ok) return cache.tfaEntries || {};
+        const data = await res.json(); // v4: { "domain": { methods:[...], documentation, ... }, ... }
+        const map = {};
         const registrable = (d) => {
             const p = d.split('.'); const n = p.length;
             if (n <= 2) return d;
@@ -162,21 +162,22 @@ async function tfaDomains() {
             const m = data[domain];
             if (! m || typeof m !== 'object' || ! Array.isArray(m.methods)) continue;
             const methods = m.methods.map((x) => String(x).toLowerCase());
-            if (methods.some((t) => APP.includes(t))) {
-                const d = domain.toLowerCase();
-                set[d] = 1; set[registrable(d)] = 1; // index full key + bare domain
-            }
+            if (! methods.some((t) => APP.includes(t))) continue;
+            const doc = typeof m.documentation === 'string' ? m.documentation : '';
+            const d = domain.toLowerCase();
+            map[d] = doc; // full key + bare domain
+            const reg = registrable(d);
+            if (! map[reg]) map[reg] = doc;
         }
-        const domains = Object.keys(set);
-        await local.set({ tfaDomains: domains, tfaAt: Date.now() });
-        return domains;
-    } catch (e) { return cache.tfaDomains || []; }
+        await local.set({ tfaEntries: map, tfaAt: Date.now() });
+        return map;
+    } catch (e) { return cache.tfaEntries || {}; }
 }
 
-// Create a new login in the sealed manifest. Fetches the current store, adds
-// the record, re-seals with the session VK and writes back with optimistic
-// concurrency — retrying on a version conflict. Mirrors the web item shape.
-async function createLogin(rec) {
+// Fetch the sealed manifest, apply a mutation, re-seal with the session VK and
+// write back with optimistic concurrency — retrying on a version conflict. The
+// single write path for create / trash / update from the extension.
+async function mutateManifest(fn) {
     const vkB64 = (await session.get('vk')).vk;
     if (! vkB64) throw new Error('locked');
     const { serverUrl, token } = await creds();
@@ -187,34 +188,33 @@ async function createLogin(rec) {
         const store = await api.getStore(serverUrl, token); // { ciphertext, version }
         const manifest = store.ciphertext ? await openManifest(store.ciphertext, vk) : {};
         if (! Array.isArray(manifest.secrets)) manifest.secrets = [];
-        const now = new Date().toISOString();
-        const item = {
-            id: crypto.randomUUID(),
-            type: 'login',
-            title: rec.title || rec.username || rec.url || 'Login',
-            favorite: false,
-            folder: null,
-            tags: [],
-            custom: [],
-            icon: '',
-            fields: { username: rec.username || '', password: rec.password || '', urls: (rec.url ? [rec.url] : []).filter(Boolean), totp: '', note: '' },
-            created: now,
-            updated: now,
-            versions: [],
-        };
-        manifest.secrets.unshift(item);
+        const result = fn(manifest);
         const ciphertext = await sealManifest(manifest, vk);
         const res = await api.saveStore(serverUrl, token, ciphertext, store.version || 0);
         if (res.ok) {
             await local.set({ storeCipher: ciphertext });
             SECRETS = manifest.secrets.filter((s) => ! s.trashed);
             FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
-            return { id: item.id };
+            return result ?? { ok: true };
         }
         if (res.status !== 409) throw new Error('save failed');
         // 409: another device wrote in between — loop refetches and re-applies.
     }
     throw new Error('conflict');
+}
+
+// A new login record, mirroring the web item shape.
+function createLogin(rec) {
+    const now = new Date().toISOString();
+    const item = {
+        id: crypto.randomUUID(),
+        type: 'login',
+        title: rec.title || rec.username || rec.url || 'Login',
+        favorite: false, folder: null, tags: [], custom: [], icon: '',
+        fields: { username: rec.username || '', password: rec.password || '', urls: (rec.url ? [rec.url] : []).filter(Boolean), totp: '', note: '' },
+        created: now, updated: now, versions: [],
+    };
+    return mutateManifest((m) => { m.secrets.unshift(item); return { id: item.id }; });
 }
 
 // Poll the pairing until the owner approves it (or time out).
@@ -269,8 +269,15 @@ const handlers = {
     async folders() { await ensureSecrets(); return { folders: FOLDERS }; },
     // Public 2fa.directory dataset: domains that support app 2FA. Cached locally
     // (public data, not sensitive) so we hint where a login could add a code.
-    async tfa() { return { domains: await tfaDomains() }; },
+    async tfa() { return { entries: await tfaEntries() }; },
     async createLogin({ login }) { return createLogin(login || {}); },
+    async trashItem({ id }) { return mutateManifest((m) => { const s = m.secrets.find((x) => x.id === id); if (s) s.trashed = new Date().toISOString(); }); },
+    async updateItem({ id, patch }) {
+        return mutateManifest((m) => {
+            const s = m.secrets.find((x) => x.id === id);
+            if (s) { s.fields = { ...(s.fields || {}), ...(patch || {}) }; s.updated = new Date().toISOString(); }
+        });
+    },
     // Stored cards, for autofilling payment forms (no domain match — cards work
     // on any checkout page).
     async cards() {
