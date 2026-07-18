@@ -385,6 +385,9 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
         const had = CARDS_ALLOWED && ! ! ccNumberField();
         if (had) fillCard(msg.card);
         sendResponse({ filled: had });
+    } else if (msg?.type === 'passkey.pick' && Array.isArray(msg.candidates)) {
+        openPasskeyPicker(msg.candidates).then((choice) => sendResponse(choice || {}));
+        return true; // async response
     }
 });
 
@@ -473,6 +476,42 @@ async function captureSubmit(form) {
         promptSave(cred);
     } catch (e) { /* ignore */ }
 }
+// Passkey chooser: when the SW has >1 stored passkey for the RP and cannot
+// auto-select, it asks us to show a picker. We reuse the existing openPicker
+// Shadow-DOM component, mapping candidates into the picker's item shape.
+// The SW sends { type:'passkey.pick', candidates:[{credentialId,userName,userDisplayName,rpId}] }
+// via chrome.tabs.sendMessage; we reply with { credentialId } or {} on cancel.
+let _pkPickResolve = null;
+function openPasskeyPicker(candidates) {
+    closePicker();
+    return new Promise((resolve) => {
+        _pkPickResolve = resolve;
+        // Build display items compatible with openPicker's rendering (title + username).
+        const items = candidates.map((c) => ({
+            title: c.userDisplayName || c.userName || c.rpId || 'Passkey',
+            username: c.userName || c.rpId || '',
+            __credentialId: c.credentialId,
+        }));
+        // Find any visible input as an anchor (passkey flows may not have a focused field).
+        const anchor = document.querySelector('input:not([type=hidden])') || document.body;
+        openPicker(anchor, items, (lg) => {
+            _pkPickResolve = null;
+            resolve({ credentialId: lg.__credentialId });
+        });
+        // If the picker is closed without picking (e.g. click-outside), resolve with {}.
+        // We hook into the closePicker path by observing host removal.
+        if (host) {
+            const obs = new MutationObserver(() => {
+                if (! document.contains(host)) {
+                    obs.disconnect();
+                    if (_pkPickResolve) { _pkPickResolve = null; resolve({}); }
+                }
+            });
+            obs.observe(document.documentElement, { childList: true, subtree: true });
+        }
+    });
+}
+
 // Relay passkey messages from the MAIN-world shim to the background SW and back.
 // The shim posts { __ll_pk:'req', id, kind, request, origin } on window; we
 // forward to the SW as { type: kind, request, origin } and return the result.

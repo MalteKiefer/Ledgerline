@@ -424,6 +424,89 @@ const handlers = {
             },
         };
     },
+    async 'passkey.get'({ request, origin }, sender) {
+        // Require message from a real content-script tab (not just any extension page).
+        if (! sender?.tab?.id) return { ok: false, error: 'no tab' };
+
+        // Require vault unlocked.
+        const vkB64 = (await session.get('vk')).vk;
+        if (! vkB64) return { ok: false, error: 'locked' };
+
+        // Deserialize: replace { __b64u } markers with Uint8Array bytes.
+        function des(v) {
+            if (v && typeof v === 'object' && typeof v.__b64u === 'string') return pk.b64uDecode(v.__b64u);
+            if (Array.isArray(v)) return v.map(des);
+            if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = des(v[k]); return o; }
+            return v;
+        }
+        request = des(request);
+
+        // rpId enforcement: must equal or be a registrable parent of the origin host.
+        // origin was set by the content script to location.origin — trusted.
+        const pageHost = hostOf(origin);
+        const rpId = request.rpId ? request.rpId : pageHost;
+        if (! hostsMatch(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
+
+        // Load secrets and find candidates matching this rpId.
+        const secrets = await ensureSecrets();
+        let candidates = secrets.filter((s) => s.type === 'passkey' && s.fields?.rpId === rpId);
+
+        // If allowCredentials is specified, intersect to only those credential IDs.
+        if (Array.isArray(request.allowCredentials) && request.allowCredentials.length > 0) {
+            const allowedIds = new Set(
+                request.allowCredentials.map((ac) => {
+                    const id = ac.id;
+                    return id instanceof Uint8Array ? pk.b64uEncode(id) : (id ? String(id) : '');
+                }).filter(Boolean)
+            );
+            candidates = candidates.filter((s) => allowedIds.has(s.fields.credentialId || ''));
+        }
+
+        // 0 candidates → fall through to native.
+        if (candidates.length === 0) return { ok: false, error: 'no-credential' };
+
+        // >1 candidates → ask the content script to show a picker.
+        let chosen;
+        if (candidates.length === 1) {
+            chosen = candidates[0];
+        } else {
+            const pickerCandidates = candidates.map((s) => ({
+                credentialId: s.fields.credentialId,
+                userName: s.fields.userName || '',
+                userDisplayName: s.fields.userDisplayName || '',
+                rpId: s.fields.rpId || rpId,
+            }));
+            const pickRes = await new Promise((resolve) => {
+                chrome.tabs.sendMessage(sender.tab.id, { type: 'passkey.pick', candidates: pickerCandidates }, resolve);
+            });
+            if (! pickRes || ! pickRes.credentialId) return { ok: false, error: 'cancelled' };
+            chosen = candidates.find((s) => s.fields.credentialId === pickRes.credentialId);
+            if (! chosen) return { ok: false, error: 'cancelled' };
+        }
+
+        // Sign the assertion.
+        const priv = JSON.parse(chosen.fields.privateKey);
+        const authData = await pk.buildAuthData({ rpId, flags: { up: true, uv: true, at: false }, signCount: 0 });
+        const cdj = pk.clientDataJSON({ type: 'webauthn.get', challenge: request.challenge, origin });
+        const cdjHash = new Uint8Array(await crypto.subtle.digest('SHA-256', cdj));
+        const len = authData.length + cdjHash.length;
+        const message = new Uint8Array(len);
+        message.set(authData, 0);
+        message.set(cdjHash, authData.length);
+        const signature = await pk.signEs256(priv, message);
+
+        return {
+            ok: true,
+            result: {
+                credentialId: chosen.fields.credentialId,
+                authenticatorData: pk.b64uEncode(authData),
+                clientDataJSON: pk.b64uEncode(cdj),
+                signature: pk.b64uEncode(signature),
+                userHandle: chosen.fields.userHandle || null,
+            },
+        };
+    },
+
     async updateItem({ id, patch }) {
         return mutateManifest((m) => {
             const s = m.secrets.find((x) => x.id === id);
