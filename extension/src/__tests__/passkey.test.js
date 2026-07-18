@@ -24,6 +24,8 @@ describe('rawEcdsaToDer', () => {
         const der = pk.rawEcdsaToDer(raw);
         // r integer content is 33 bytes (0x00 + 32) => length byte 0x21
         expect(der[3]).toBe(0x21);
+        // s integer starts at 4 + 33 = 37: tag 0x02 at 37, length at 38 => also 0x21
+        expect(der[38]).toBe(0x21);
     });
 });
 
@@ -37,13 +39,17 @@ describe('derToRawEcdsa', () => {
         expect(Array.from(recovered)).toEqual(Array.from(original));
     });
     it('strips the 0x00 padding byte when the high bit is set', () => {
-        // r[0]=0x80 → DER adds 0x00 prefix; derToRawEcdsa must strip it back to 32 bytes per component
+        // r[0]=0x80 and s[0]=0x80 → rawEcdsaToDer adds 0x00 prefix for each;
+        // derToRawEcdsa must strip those prefixes, returning the original 64 bytes.
         const raw = new Uint8Array(64);
-        raw[0] = 0x7f; // no high bit on r so no padding
-        raw[32] = 0x7f; // no high bit on s
+        raw[0] = 0x80; // high bit set on r → DER adds 0x00 prefix
+        raw[32] = 0x80; // high bit set on s → DER adds 0x00 prefix
         const der = pk.rawEcdsaToDer(raw);
         const recovered = pk.derToRawEcdsa(der);
         expect(recovered.length).toBe(64);
+        expect(recovered[0]).toBe(0x80);
+        expect(recovered[32]).toBe(0x80);
+        expect(Array.from(recovered)).toEqual(Array.from(raw));
     });
 });
 
