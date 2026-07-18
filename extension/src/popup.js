@@ -91,8 +91,10 @@ function renderUnlock() {
 let filterFolder = '';
 let filterTag = '';
 let selected = null;
+let showAll = false; // when the current site matches entries, list is prefiltered to them
 
 async function renderMain() {
+    filterFolder = ''; filterTag = ''; selected = null; showAll = false;
     links.innerHTML = iconBtn('gen', 'key', 'Generate password') + iconBtn('refresh', 'refresh', 'Refresh from server') + iconBtn('lock', 'lock', 'Lock');
     document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
     document.getElementById('gen').onclick = () => renderGen();
@@ -147,6 +149,11 @@ async function renderMain() {
         if (filterFolder === '_none') items = items.filter((x) => ! x.folder);
         else if (filterFolder) items = items.filter((x) => x.folder === filterFolder);
         if (filterTag) items = items.filter((x) => (x.tags || []).includes(filterTag));
+        // On a recognized login site, prefilter to just the matching entries
+        // until the user searches, picks a folder/tag, or asks to show all.
+        const siteMatches = items.filter((x) => matchScore(x, host));
+        const prefilter = ! query && ! filterFolder && ! filterTag && ! showAll && siteMatches.length > 0;
+        if (prefilter) items = siteMatches;
         items = items.slice().sort((a, b) => matchScore(b, host) - matchScore(a, host));
         listEl.innerHTML = '';
         if (! items.length) { listEl.append(el('<li class="muted">Nothing found</li>')); return; }
@@ -159,6 +166,11 @@ async function renderMain() {
             </button></li>`);
             li.querySelector('button').onclick = () => { selected = it; paint(q.value); showDetail(it, tab); };
             listEl.append(li);
+        }
+        if (prefilter && library.length > items.length) {
+            const more = el(`<li><button class="row" style="justify-content:center;color:#9ca3af">Show all items (${library.length})</button></li>`);
+            more.querySelector('button').onclick = () => { showAll = true; paint(q.value); };
+            listEl.append(more);
         }
     }
 
@@ -236,7 +248,10 @@ async function renderMain() {
         rf.disabled = false;
         paintNav(); paint(q.value);
     };
-    detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>';
+    // Preselect the best match for the current site (matching 1Password).
+    const matches = library.filter((x) => matchScore(x, host)).sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    if (matches.length) { selected = matches[0]; showDetail(selected, tab); }
+    else detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>';
     paint('');
 }
 

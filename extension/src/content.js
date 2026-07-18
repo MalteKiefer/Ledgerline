@@ -4,6 +4,14 @@
 
 const send = (msg) => new Promise((r) => { try { chrome.runtime.sendMessage(msg, r); } catch (e) { r(null); } });
 
+// Frame trust (defense-in-depth). The content script runs in the top frame only
+// (manifest all_frames:false) to avoid leaking credentials into untrusted
+// cross-origin embeds. These guards keep card autofill top/same-origin only,
+// so the behaviour stays safe even if frame injection is ever re-enabled.
+const IS_TOP = window.top === window.self;
+function sameOriginAsTop() { try { return window.top.location.origin === location.origin; } catch (e) { return false; } }
+const CARDS_ALLOWED = IS_TOP || sameOriginAsTop();
+
 function passwordField() {
     return [...document.querySelectorAll('input[type=password]')].find(isVisible) || null;
 }
@@ -275,6 +283,7 @@ async function scan() {
 // Payment forms: offer stored cards on the card-number field (cards match any
 // site, so no host filtering — the list comes from a dedicated card fetch).
 async function scanCards() {
+    if (! CARDS_ALLOWED) return; // never offer cards inside an untrusted cross-origin frame
     const num = ccNumberField();
     if (! num || num.dataset.llBadge) return;
     const fetchCards = () => send({ type: 'cards' }).then((r) => (r?.ok ? (r.cards || []).map((c) => ({ ...c, username: cardMask(c.number) })) : []));
@@ -289,7 +298,7 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
         doFill(msg.login);
         sendResponse({ filled: had }); // popup falls back to opening the URL if false
     } else if (msg?.type === 'fillCard' && msg.card) {
-        const had = ! ! ccNumberField();
+        const had = CARDS_ALLOWED && ! ! ccNumberField();
         if (had) fillCard(msg.card);
         sendResponse({ filled: had });
     }
@@ -304,6 +313,35 @@ runScan();
 const mo = new MutationObserver(runScan);
 mo.observe(document.documentElement, { childList: true, subtree: true });
 setTimeout(() => mo.disconnect(), 60000);
-// Login/checkout forms in dialogs often appear long after load (well past the
-// observer window). Focusing any input re-scans, so the badge still shows.
-document.addEventListener('focusin', (e) => { if (e.target?.tagName === 'INPUT') runScan(); }, true);
+
+// Attach a badge directly to whatever field the user focuses. This covers the
+// cases the light-DOM scan misses: fields inside an open shadow root (the game
+// login on kingdoms.com) and dialogs opened long after the observer stopped.
+// composedPath()[0] is the real focused node even across shadow boundaries.
+async function onFocusField(input) {
+    if (! input || input.tagName !== 'INPUT' || input.dataset.llBadge) return;
+    const t = (input.type || 'text').toLowerCase();
+    const ac = (input.autocomplete || '').toLowerCase().split(/\s+/);
+    const hay = (input.name + ' ' + input.id + ' ' + (input.autocomplete || '') + ' ' + (input.getAttribute('aria-label') || '') + ' ' + (input.placeholder || '')).toLowerCase();
+
+    if (CARDS_ALLOWED && (ac.includes('cc-number') || /card.?number|cardnum|ccnum|creditcard|cc-?num|kreditkart/.test(hay))) {
+        const fetchCards = () => send({ type: 'cards' }).then((r) => (r?.ok ? (r.cards || []).map((c) => ({ ...c, username: cardMask(c.number) })) : []));
+        const cards = await fetchCards();
+        if (cards.length) attachBadge(input, cards, fillCard, fetchCards);
+        return;
+    }
+    if (ac.includes('one-time-code') || /otp|totp|2fa|mfa|one.?time|auth.?code|verification|security.?code|\btoken\b/.test(hay)) {
+        const res = await send({ type: 'match', hostname: location.hostname });
+        if (res?.ok && res.logins.some((l) => l.hasTotp)) attachBadge(input, res.logins, fillCode);
+        return;
+    }
+    if (['password', 'text', 'email', 'tel', ''].includes(t)) {
+        const res = await send({ type: 'match', hostname: location.hostname });
+        if (res?.ok && res.logins.length) attachBadge(input, res.logins);
+    }
+}
+document.addEventListener('focusin', (e) => {
+    runScan();
+    const real = (e.composedPath && e.composedPath()[0]) || e.target;
+    onFocusField(real);
+}, true);
