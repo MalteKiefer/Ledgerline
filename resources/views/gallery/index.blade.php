@@ -925,13 +925,13 @@
       <div class="relative w-full max-w-2xl rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.edit_location') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.location_hint') }}</p>
-        <div class="relative z-20 mt-3">
+        <div class="relative z-[1100] mt-3">
           <form @submit.prevent="geoSearch()" class="flex gap-2">
             <input type="search" x-model="geoQuery" placeholder="{{ __('gallery.search_place') }}"
                 class="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
             <button type="submit" :disabled="geoBusy || ! geoQuery.trim()" class="inline-flex shrink-0 items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"><x-icon name="magnifying-glass" class="h-4 w-4" /></button>
           </form>
-          <div x-show="geoResults.length" x-cloak class="absolute z-10 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
+          <div x-show="geoResults.length" x-cloak class="absolute z-[1101] mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
             <template x-for="(r, i) in geoResults" :key="i">
               <button type="button" @click="pickGeoResult(r)" class="block w-full truncate rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" x-text="r.display"></button>
             </template>
