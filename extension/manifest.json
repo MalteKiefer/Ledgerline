@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ledgerline",
-  "version": "1.500.0",
+  "version": "1.501.0",
   "description": "Zero-knowledge password autofill for your self-hosted Ledgerline.",
   "permissions": ["storage", "activeTab", "scripting", "contextMenus", "clipboardWrite", "idle", "tabs"],
   "host_permissions": ["https://*/*", "http://*/*"],
