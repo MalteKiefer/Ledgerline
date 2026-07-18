@@ -10,6 +10,7 @@
         save: @js(__('passwords.save')),
         folderName: @js(__('passwords.folder_name')),
         deleteFolderConfirm: @js(__('passwords.delete_folder_confirm')),
+        bulkPurgeConfirm: @js(__('passwords.bulk_purge_confirm')),
         titleLabel: @js(__('passwords.title_label')),
         customLabel: @js(__('passwords.custom_changed')),
         types: {
@@ -67,10 +68,10 @@
           </x-slot:actions>
         </x-page-heading>
 
-        <div class="mt-6 flex flex-col gap-4 md:flex-row" style="min-height: calc(100vh - 16rem);">
+        <div class="mt-6 flex flex-col divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white md:flex-row md:divide-x md:divide-y-0 dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-900" style="min-height: calc(100vh - 15rem);">
           {{-- Left: filters only (folders, types, tags) --}}
-          <aside class="w-full shrink-0 md:w-52">
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
+          <aside class="w-full shrink-0 md:w-56">
+            <div class="p-3">
               <div class="mb-2 flex flex-wrap gap-1">
                 <button type="button" @click="filterType = ''; filterFolder = ''; filterTag = ''; view = 'list'" :class="filterType === '' && filterFolder === '' && filterTag === '' && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs">{{ __('passwords.all') }}</button>
                 <template x-for="t in typeList()" :key="'f' + t">
@@ -121,38 +122,50 @@
           </aside>
 
           {{-- Middle: the item list --}}
-          <div class="w-full shrink-0 md:w-72">
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
+          <div class="w-full shrink-0 md:w-80">
+            <div class="p-3">
               <div class="relative mb-2">
                 <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:ring-0">
+                <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:bg-white focus:ring-0 dark:border-gray-700 dark:bg-gray-800 dark:focus:bg-gray-900">
               </div>
               <div x-show="view === 'health'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400" x-text="healthCount ? (healthCount + ' {{ __('passwords.health_issues') }}') : '{{ __('passwords.health_ok') }}'"></span>
                 <button type="button" @click="checkBreaches()" :disabled="breachChecking" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-2.5 py-1 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
               </div>
+              {{-- Bulk-select toolbar --}}
+              <div x-show="selectedIds.length" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-900 px-3 py-2 text-white dark:bg-gray-100 dark:text-gray-900">
+                <span class="text-xs font-medium" x-text="selectedIds.length + ' {{ __('passwords.selected') }}'"></span>
+                <div class="flex items-center gap-0.5">
+                  <button type="button" @click="toggleSelectAll()" title="{{ __('passwords.select_all') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="check-circle" class="h-4 w-4" /></button>
+                  <button type="button" @click="bulkDelete()" title="{{ __('passwords.delete') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="trash" class="h-4 w-4" /></button>
+                  <button type="button" @click="clearSelection()" title="{{ __('passwords.cancel') }}" class="rounded-md p-1.5 hover:bg-white/15 dark:hover:bg-black/10"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                </div>
+              </div>
               <div class="max-h-[70vh] overflow-y-auto">
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
-                  <button type="button" @click="openItem(x)" :class="current && current.id === x.id ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'" class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left">
-                    <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                          :class="(x.type === 'login' && ! x.icon) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
-                          :style="(x.type === 'login' && ! x.icon) ? ('background:' + avatarColor(x)) : ''">
-                      <template x-if="x.type === 'login' && x.icon"><img :src="x.icon" alt="" class="h-full w-full object-contain"></template>
-                      <template x-if="x.type === 'login' && ! x.icon"><span x-text="avatarText(x)"></span></template>
-                      <template x-if="x.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'x.type', 'cls' => 'h-4 w-4'])</span></template>
-                    </span>
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="x.title"></span>
-                      <span class="block truncate text-xs text-gray-400" x-text="x.type === 'card' ? (cardBrand(x.fields.number) || typeLabel('card')) : (x.fields.username || (x.fields.urls && x.fields.urls[0]) || x.fields.ssid || x.fields.host || x.fields.product || typeLabel(x.type))"></span>
-                      <span x-show="view === 'health'" x-cloak class="mt-1 flex flex-wrap gap-1">
-                        <template x-if="issuesFor(x) && issuesFor(x).breach > 0"><span class="rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300">{{ __('passwords.issue_breached') }}</span></template>
-                        <template x-if="issuesFor(x) && issuesFor(x).reused"><span class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">{{ __('passwords.issue_reused') }}</span></template>
-                        <template x-if="issuesFor(x) && issuesFor(x).weak"><span class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ __('passwords.issue_weak') }}</span></template>
+                  <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                    <input type="checkbox" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
+                    <button type="button" @click="openItem(x)" class="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left">
+                      <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+                            :class="(x.type === 'login' && ! x.icon) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
+                            :style="(x.type === 'login' && ! x.icon) ? ('background:' + avatarColor(x)) : ''">
+                        <template x-if="x.type === 'login' && x.icon"><img :src="x.icon" alt="" class="h-full w-full object-contain"></template>
+                        <template x-if="x.type === 'login' && ! x.icon"><span x-text="avatarText(x)"></span></template>
+                        <template x-if="x.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'x.type', 'cls' => 'h-4 w-4'])</span></template>
                       </span>
-                    </span>
-                    <span x-show="x.favorite" class="shrink-0 text-amber-500"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
-                  </button>
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="x.title"></span>
+                        <span class="block truncate text-xs text-gray-400" x-text="x.type === 'card' ? (cardBrand(x.fields.number) || typeLabel('card')) : (x.fields.username || (x.fields.urls && x.fields.urls[0]) || x.fields.ssid || x.fields.host || x.fields.product || typeLabel(x.type))"></span>
+                        <span x-show="view === 'health'" x-cloak class="mt-1 flex flex-wrap gap-1">
+                          <template x-if="issuesFor(x) && issuesFor(x).breach > 0"><span class="rounded bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:text-red-300">{{ __('passwords.issue_breached') }}</span></template>
+                          <template x-if="issuesFor(x) && issuesFor(x).reused"><span class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">{{ __('passwords.issue_reused') }}</span></template>
+                          <template x-if="issuesFor(x) && issuesFor(x).weak"><span class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ __('passwords.issue_weak') }}</span></template>
+                        </span>
+                      </span>
+                      <span x-show="x.favorite" class="shrink-0 text-amber-500"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
+                    </button>
+                  </div>
                 </template>
               </div>
             </div>
@@ -162,7 +175,7 @@
           <section class="min-w-0 flex-1">
             {{-- EDIT / NEW --}}
             <template x-if="draft">
-              <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+              <div class="p-6">
                 <div class="mb-4 flex items-center gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                         :class="(draft.type === 'login' && ! draft.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -275,7 +288,7 @@
 
             {{-- DETAIL (read-only) --}}
             <template x-if="! draft && current">
-              <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+              <div class="p-6">
                 <div class="mb-4 flex items-start gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                         :class="(current.type === 'login' && ! current.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -391,7 +404,7 @@
 
             {{-- Empty --}}
             <template x-if="! draft && ! current">
-              <div class="flex h-full min-h-[40vh] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
+              <div class="flex h-full min-h-[40vh] flex-col items-center justify-center p-12 text-center">
                 <x-icon name="key" class="h-10 w-10 text-gray-300 dark:text-gray-600" />
                 <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('passwords.pick_hint') }}</p>
               </div>
