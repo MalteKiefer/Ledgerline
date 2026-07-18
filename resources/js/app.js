@@ -7394,6 +7394,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     view: 'list', // list | trash
     current: null, // item being viewed (live ref into items)
     draft: null, // editable copy while creating/editing (null = not editing)
+    selectedIds: [], // multi-select for bulk actions
     filterType: '',
     filterFolder: '', // '' = all, '_none' = no folder, else folder id
     filterTag: '',
@@ -7430,6 +7431,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         // Keep the first matching entry selected as the state/filters change.
         this.$watch('state', (s) => { if (s === 'ready') this._autoSelect(); });
         for (const p of ['query', 'filterType', 'filterFolder', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
+        this.$watch('view', () => this.clearSelection());
     },
     // Auto-select the first item in the current list (unless something is being
     // edited or the current selection is still visible).
@@ -7663,6 +7665,33 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     restore(x) { x.trashed = null; this._save(); },
     purge(x) { const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); this._autoSelect(); },
     emptyTrash() { return this._emptyTrashArr(this.items, labels.emptyTrashConfirm); },
+
+    /* ---- Multi-select bulk actions ---- */
+    isSelected(id) { return this.selectedIds.includes(id); },
+    toggleSelect(id) { const i = this.selectedIds.indexOf(id); if (i < 0) this.selectedIds.push(id); else this.selectedIds.splice(i, 1); },
+    clearSelection() { this.selectedIds = []; },
+    // Select all currently visible items, or clear them if all are already selected.
+    toggleSelectAll() {
+        const ids = this.filtered.map((x) => x.id);
+        const all = ids.length && ids.every((id) => this.selectedIds.includes(id));
+        this.selectedIds = all ? this.selectedIds.filter((id) => ! ids.includes(id)) : [...new Set([...this.selectedIds, ...ids])];
+    },
+    bulkDelete() {
+        if (! this.selectedIds.length) return;
+        const permanent = this.view === 'trash';
+        if (permanent && ! confirm(labels.bulkPurgeConfirm)) return;
+        const ids = new Set(this.selectedIds);
+        if (permanent) {
+            for (let i = this.items.length - 1; i >= 0; i--) if (ids.has(this.items[i].id)) this.items.splice(i, 1);
+        } else {
+            const now = new Date().toISOString();
+            for (const x of this.items) if (ids.has(x.id)) x.trashed = now;
+        }
+        if (this.current && ids.has(this.current.id)) { this.current = null; this.draft = null; }
+        this.selectedIds = [];
+        this._save();
+        this._autoSelect();
+    },
 
     /* ---- Import (Bitwarden / 1Password / LastPass / KeePass / CSV) ----
        Everything parses in the browser and lands straight in the sealed
