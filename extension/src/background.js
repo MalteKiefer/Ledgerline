@@ -2,7 +2,7 @@
 // live (in memory / chrome.storage.session — never written to disk). The popup
 // and content scripts hold no secrets; they message this worker.
 import * as api from './api.js';
-import { deriveVaultKey, openManifest, b64, fromB64 } from './crypto.js';
+import { deriveVaultKey, openManifest, sealManifest, b64, fromB64 } from './crypto.js';
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -164,6 +164,50 @@ async function tfaDomains() {
     } catch (e) { return cache.tfaDomains || []; }
 }
 
+// Create a new login in the sealed manifest. Fetches the current store, adds
+// the record, re-seals with the session VK and writes back with optimistic
+// concurrency — retrying on a version conflict. Mirrors the web item shape.
+async function createLogin(rec) {
+    const vkB64 = (await session.get('vk')).vk;
+    if (! vkB64) throw new Error('locked');
+    const { serverUrl, token } = await creds();
+    if (! serverUrl || ! token) throw new Error('unpaired');
+    const vk = await fromB64(vkB64);
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+        const store = await api.getStore(serverUrl, token); // { ciphertext, version }
+        const manifest = store.ciphertext ? await openManifest(store.ciphertext, vk) : {};
+        if (! Array.isArray(manifest.secrets)) manifest.secrets = [];
+        const now = new Date().toISOString();
+        const item = {
+            id: crypto.randomUUID(),
+            type: 'login',
+            title: rec.title || rec.username || rec.url || 'Login',
+            favorite: false,
+            folder: null,
+            tags: [],
+            custom: [],
+            icon: '',
+            fields: { username: rec.username || '', password: rec.password || '', urls: (rec.url ? [rec.url] : []).filter(Boolean), totp: '', note: '' },
+            created: now,
+            updated: now,
+            versions: [],
+        };
+        manifest.secrets.unshift(item);
+        const ciphertext = await sealManifest(manifest, vk);
+        const res = await api.saveStore(serverUrl, token, ciphertext, store.version || 0);
+        if (res.ok) {
+            await local.set({ storeCipher: ciphertext });
+            SECRETS = manifest.secrets.filter((s) => ! s.trashed);
+            FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
+            return { id: item.id };
+        }
+        if (res.status !== 409) throw new Error('save failed');
+        // 409: another device wrote in between — loop refetches and re-applies.
+    }
+    throw new Error('conflict');
+}
+
 // Poll the pairing until the owner approves it (or time out).
 async function runPairing(serverUrl, code) {
     await api.pair(serverUrl, code, 'Browser Extension');
@@ -217,6 +261,7 @@ const handlers = {
     // Public 2fa.directory dataset: domains that support app 2FA. Cached locally
     // (public data, not sensitive) so we hint where a login could add a code.
     async tfa() { return { domains: await tfaDomains() }; },
+    async createLogin({ login }) { return createLogin(login || {}); },
     // Stored cards, for autofilling payment forms (no domain match — cards work
     // on any checkout page).
     async cards() {
