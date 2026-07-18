@@ -58,6 +58,7 @@ return [
     'issue_breached' => 'Geleakt',
     'issue_reused' => 'Wiederverwendet',
     'issue_weak' => 'Schwach',
+    'issue_no2fa' => 'Kein 2FA',
     'breach_warn' => 'Dieses Passwort tauchte in :count bekannten Leaks auf. Ändere es.',
     'reused_warn' => 'Dieses Passwort wird bei einem anderen Eintrag wiederverwendet.',
     'reused_where' => 'Auch verwendet in:',
