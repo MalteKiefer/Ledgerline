@@ -88,7 +88,8 @@ return [
     'versions_heading' => 'Version history',
     'no_change' => 'No visible change',
 
-    // Shared vaults (read-only display)
+    // Shared vaults (read + write)
+    'save_conflict' => 'Vault was updated elsewhere — reloading.',
     'shared_vaults' => 'Shared Vaults',
     'shared_vault_untitled' => 'Untitled Shared Vault',
     'role_read' => 'Viewer',

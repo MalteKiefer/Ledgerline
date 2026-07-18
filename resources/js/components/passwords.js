@@ -3,7 +3,7 @@ import { zkModule } from '../shared/zk-module';
 import { PW_WORDS } from '../shared/wordlists';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from '../passwords-util';
 import { Vault, VaultShareCrypto } from '../vault';
-import { apiRequest } from '../shared/api';
+import { apiRequest, jsonHeaders } from '../shared/api';
 
 export default (config = {}, labels = {}) => ({
     ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; } }),
@@ -135,11 +135,10 @@ export default (config = {}, labels = {}) => ({
     vaultRole(id) { const v = this.folders.find((f) => f.id === id); return v ? (v.role || 'manage') : 'manage'; },
     canManageVault(id) { return this.vaultRole(id) === 'manage'; },
 
-    /* ---- Shared vaults (read-only display) ----
+    /* ---- Shared vaults (read + write, role-gated) ----
        Maps server role names (viewer/editor/manager) to client (read/edit/manage).
-       The `_loadSharedVaults` method fetches active memberships and decrypts
-       each shared vault manifest using VaultShareCrypto. All write paths
-       (CRUD, import, generate, bulk-delete) remain gated on personal vaults. */
+       `_sharedKeys` caches the raw vault key bytes (Uint8Array) per vault id
+       in-memory only — never persisted. Write paths are gated on canEditVault(). */
     _serverToClientRole(r) {
         const map = { viewer: 'read', editor: 'edit', manager: 'manage' };
         return map[r] || 'read';
@@ -147,7 +146,23 @@ export default (config = {}, labels = {}) => ({
     isSharedVault(id) { return this.sharedVaults.some((sv) => sv.id === id); },
     sharedVaultRole(id) { const sv = this.sharedVaults.find((v) => v.id === id); return sv ? sv.role : 'read'; },
 
+    // Whether the given vault (object or id) allows write access.
+    canEditVault(vaultOrId) {
+        if (! vaultOrId) return true; // personal vault = always editable
+        const id = typeof vaultOrId === 'string' ? vaultOrId : vaultOrId.id;
+        const v = this.sharedVaults.find((sv) => sv.id === id);
+        if (! v) return true; // personal vault
+        return v.role === 'edit' || v.role === 'manage';
+    },
+    // Whether the currently-viewed/editing item can be written.
+    canEditCurrent() {
+        if (! this.current) return false;
+        if (! this.current.shared) return true; // personal
+        return this.canEditVault(this.current.vaultId);
+    },
+
     async _loadSharedVaults() {
+        this._sharedKeys = this._sharedKeys || {};
         try {
             const id = await Vault.ensureIdentityKeys();
             const memberships = await apiRequest('GET', '/vaults');
@@ -158,6 +173,8 @@ export default (config = {}, labels = {}) => ({
                     // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
                     // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
                     const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
+                    // Cache the raw key bytes for write operations (in-memory only).
+                    this._sharedKeys[m.vault_id] = vkBytes;
                     const store = await apiRequest('GET', '/vaults/' + m.vault_id + '/store');
                     let manifest = null;
                     if (store.sealed_manifest) {
@@ -182,6 +199,66 @@ export default (config = {}, labels = {}) => ({
         } catch (e) {
             console.warn('[shared vaults] load aborted', e);
         }
+    },
+
+    // Seal and PUT the shared vault manifest with optimistic concurrency.
+    // On 409 the server body contains the current sealed manifest + version;
+    // we re-apply the pending mutation and retry once before surfacing an error.
+    async _saveVault(vaultId, pendingMutation) {
+        const vault = this.sharedVaults.find((sv) => sv.id === vaultId);
+        const vkBytes = this._sharedKeys && this._sharedKeys[vaultId];
+        if (! vault || ! vkBytes) throw new Error('Vault key not available for ' + vaultId);
+        const manifest = { name: vault.name, items: this.sharedItems[vaultId] || [] };
+        const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
+        const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._sharedVersion[vaultId] });
+        const res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+        if (res.ok) {
+            const { version } = await res.json();
+            this._sharedVersion[vaultId] = version;
+            return;
+        }
+        if (res.status === 409 && pendingMutation) {
+            // Server has a newer version — merge and retry once.
+            const data = await res.json();
+            const serverManifest = await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes);
+            let serverItems = (serverManifest.items || []).map((item) => ({ ...item, shared: true, vaultId }));
+            if (pendingMutation.op === 'upsert') {
+                const idx = serverItems.findIndex((i) => i.id === pendingMutation.item.id);
+                if (idx >= 0) serverItems[idx] = pendingMutation.item; else serverItems.push(pendingMutation.item);
+            } else if (pendingMutation.op === 'delete') {
+                serverItems = serverItems.filter((i) => i.id !== pendingMutation.item.id);
+            }
+            this.sharedItems = { ...this.sharedItems, [vaultId]: serverItems };
+            this._sharedVersion[vaultId] = data.version;
+            const sealed2 = await VaultShareCrypto.sealVaultManifest(
+                { name: vault.name, items: serverItems },
+                vkBytes,
+            );
+            const res2 = await fetch('/vaults/' + vaultId + '/store', {
+                method: 'PUT',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ sealed_manifest: sealed2, expected_version: data.version }),
+            });
+            if (res2.ok) {
+                const { version } = await res2.json();
+                this._sharedVersion[vaultId] = version;
+                return;
+            }
+            // Second conflict — surface error and reload vault state.
+            window.llToast(labels.saveConflict || '');
+            await this._loadSharedVaults();
+            return;
+        }
+        throw new Error('Save vault failed: ' + res.status);
+    },
+
+    // Route a mutation through the correct save path.
+    // Shared items go to _saveVault(); personal items go to _save().
+    async _persist(item, op = 'upsert') {
+        if (item && item.shared && item.vaultId) {
+            return this._saveVault(item.vaultId, { op, item });
+        }
+        return this._save();
     },
 
     async addFolder() {
@@ -211,7 +288,14 @@ export default (config = {}, labels = {}) => ({
     },
     newItem(type) {
         this.current = null; this.reveal = {}; this.wifiQr = '';
-        this.draft = { id: null, type, title: '', favorite: false, folder: (this.filterFolder && this.filterFolder !== '_none') ? this.filterFolder : ((this.folders[0] && this.folders[0].id) || null), tags: [], custom: [], icon: '', fields: this._blankFields(type), created: null, updated: null, versions: [] };
+        const isShared = this.isSharedVault(this.filterFolder);
+        this.draft = {
+            id: null, type, title: '', favorite: false,
+            folder: (! isShared && this.filterFolder && this.filterFolder !== '_none') ? this.filterFolder : ((this.folders[0] && this.folders[0].id) || null),
+            tags: [], custom: [], icon: '', fields: this._blankFields(type), created: null, updated: null, versions: [],
+            shared: isShared || undefined,
+            vaultId: isShared ? this.filterFolder : undefined,
+        };
         this.tagsValue = '';
     },
     openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this.historyOpen = false; this._refreshWifiQr(x); },
@@ -236,13 +320,41 @@ export default (config = {}, labels = {}) => ({
     customKind(c) { return c.kind || (c.secret ? 'secret' : 'text'); },
     customSecret(c) { return this.customKind(c) === 'secret'; },
 
-    save() {
+    async save() {
         const d = this.draft; if (! d) return;
         d.title = (d.title || '').trim() || this.typeLabel(d.type);
         d.tags = (this.tagsValue || '').split(',').map((t) => t.trim()).filter(Boolean);
         if (Array.isArray(d.fields.urls)) d.fields.urls = d.fields.urls.map((u) => (u || '').trim()).filter(Boolean);
         d.custom = (d.custom || []).map((c) => ({ label: (c.label || '').trim(), value: (c.value || '').trim(), kind: this.customKind(c) })).filter((c) => c.label || c.value);
         const now = new Date().toISOString();
+        const isShared = ! ! (d.shared && d.vaultId);
+        if (isShared) {
+            // Shared vault item: mutate sharedItems, then PUT the sealed vault.
+            if (! d.id) {
+                d.id = crypto.randomUUID(); d.created = now; d.updated = now; d.versions = [];
+            } else {
+                const arr = this.sharedItems[d.vaultId] || [];
+                const it = arr.find((x) => x.id === d.id);
+                if (it && this._changed(it, d)) {
+                    it.versions = it.versions ?? [];
+                    it.versions.unshift({ at: it.updated || it.created || now, title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})), custom: JSON.parse(JSON.stringify(it.custom || [])) });
+                    if (it.versions.length > 100) it.versions.length = 100;
+                    d.updated = now;
+                }
+            }
+            const item = { ...d };
+            const arr = this.sharedItems[d.vaultId] || [];
+            const idx = arr.findIndex((x) => x.id === item.id);
+            if (idx >= 0) arr[idx] = item; else arr.unshift(item);
+            this.sharedItems = { ...this.sharedItems, [d.vaultId]: arr };
+            this.current = item;
+            this.draft = null; this.reveal = {};
+            this._refreshWifiQr(item);
+            await this._saveVault(item.vaultId, { op: 'upsert', item });
+            if (item.type === 'login') this._fetchIcon(item);
+            return;
+        }
+        // Personal vault path.
         if (! d.id) {
             d.id = crypto.randomUUID(); d.created = now; d.updated = now; d.versions = [];
             this.items.unshift(d);
@@ -386,10 +498,38 @@ export default (config = {}, labels = {}) => ({
             }
         } finally { this.breachChecking = false; }
     },
-    toggleFavorite(x) { x.favorite = ! x.favorite; this._save(); },
-    trash(x) { if (! confirm(labels.deleteConfirm)) return; x.trashed = new Date().toISOString(); if (this.current === x) { this.current = null; this.draft = null; } this._save(); this._autoSelect(); },
-    restore(x) { x.trashed = null; this._save(); },
-    purge(x) { const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); this._autoSelect(); },
+    toggleFavorite(x) { x.favorite = ! x.favorite; this._persist(x); },
+    trash(x) {
+        if (! confirm(labels.deleteConfirm)) return;
+        x.trashed = new Date().toISOString();
+        if (x.shared && x.vaultId) {
+            // Shared item: update the in-memory array reactively.
+            const arr = (this.sharedItems[x.vaultId] || []).map((i) => (i.id === x.id ? { ...i, trashed: x.trashed } : i));
+            this.sharedItems = { ...this.sharedItems, [x.vaultId]: arr };
+        }
+        if (this.current === x) { this.current = null; this.draft = null; }
+        this._persist(x, 'upsert');
+        this._autoSelect();
+    },
+    restore(x) {
+        x.trashed = null;
+        if (x.shared && x.vaultId) {
+            const arr = (this.sharedItems[x.vaultId] || []).map((i) => (i.id === x.id ? { ...i, trashed: null } : i));
+            this.sharedItems = { ...this.sharedItems, [x.vaultId]: arr };
+        }
+        this._persist(x, 'upsert');
+    },
+    purge(x) {
+        if (x.shared && x.vaultId) {
+            const arr = (this.sharedItems[x.vaultId] || []).filter((i) => i.id !== x.id);
+            this.sharedItems = { ...this.sharedItems, [x.vaultId]: arr };
+            if (this.current === x) this.current = null;
+            this._saveVault(x.vaultId, { op: 'delete', item: x });
+            this._autoSelect();
+            return;
+        }
+        const i = this.items.findIndex((y) => y.id === x.id); if (i >= 0) this.items.splice(i, 1); if (this.current === x) this.current = null; this._save(); this._autoSelect();
+    },
     emptyTrash() { return this._emptyTrashArr(this.items, labels.emptyTrashConfirm); },
 
     /* ---- Multi-select bulk actions ---- */
@@ -625,7 +765,7 @@ export default (config = {}, labels = {}) => ({
         it.versions.unshift({ at: it.updated || new Date().toISOString(), title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})) });
         if (it.versions.length > 100) it.versions.length = 100;
         it.title = v.title; it.fields = JSON.parse(JSON.stringify(v.fields || {})); it.updated = new Date().toISOString();
-        this._refreshWifiQr(it); this._save();
+        this._refreshWifiQr(it); this._persist(it);
     },
 
     /* ---- Secrets: reveal + copy-with-auto-clear ---- */

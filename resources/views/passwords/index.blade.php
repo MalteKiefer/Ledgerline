@@ -15,6 +15,7 @@
         deleteConfirm: @js(__('passwords.delete_confirm')),
         titleLabel: @js(__('passwords.title_label')),
         customLabel: @js(__('passwords.custom_changed')),
+        saveConflict: @js(__('passwords.save_conflict')),
         types: {
             login: @js(__('passwords.type_login')), password: @js(__('passwords.type_password')),
             card: @js(__('passwords.type_card')), wifi: @js(__('passwords.type_wifi')),
@@ -55,7 +56,7 @@
             </button>
             <button type="button" @click="openGen(null)" title="{{ __('passwords.generate') }}" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="key" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.generate') }}</span></button>
             <button type="button" @click="openImport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('passwords.import') }}</button>
-            <div x-show="! isSharedVault(filterFolder)" class="relative" x-data="{ open: false }" @keydown.escape="open = false">
+            <div x-show="! isSharedVault(filterFolder) || canEditVault(filterFolder)" class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
               <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
                 <template x-for="t in typeList()" :key="t">
@@ -332,10 +333,10 @@
                     </div>
                   </div>
                   <div class="flex shrink-0 items-center gap-1">
-                    <button type="button" x-show="! current.shared" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
-                    <button type="button" x-show="! current.shared" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
-                    <button type="button" x-show="! current.shared && view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
-                    <button type="button" x-show="! current.shared && view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent()" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent()" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent() && view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent() && view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
                   </div>
                 </div>
 
@@ -365,7 +366,7 @@
                   <div class="min-w-0 flex-1">
                     <p>{{ __('passwords.tfa_available') }}</p>
                     <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <button type="button" x-show="! current.shared" @click="editCurrent()" class="text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
+                      <button type="button" x-show="canEditCurrent()" @click="editCurrent()" class="text-xs font-medium underline">{{ __('passwords.tfa_add') }}</button>
                       <a x-show="tfaDoc(current)" x-cloak :href="tfaDoc(current)" target="_blank" rel="noopener noreferrer" class="text-xs font-medium underline">{{ __('passwords.tfa_how') }}</a>
                     </div>
                   </div>
@@ -451,7 +452,7 @@
                       <li class="rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
-                          <button type="button" x-show="! current.shared" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
+                          <button type="button" x-show="canEditCurrent()" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
                         </div>
                         <template x-if="Object.keys(versionDiff(i)).length">
                           <pre class="mt-1 overflow-x-auto rounded-md bg-gray-50 p-2 font-mono text-[11px] leading-snug text-gray-700 dark:bg-gray-800 dark:text-gray-300" x-text="JSON.stringify(versionDiff(i), null, 2)"></pre>
