@@ -70,7 +70,10 @@ class TwoFactorDirectoryController extends Controller
             if (empty(array_intersect($methods, self::APP_METHODS))) {
                 continue;
             }
-            $doc = is_string($meta['documentation'] ?? null) ? $meta['documentation'] : '';
+            $rawDoc = $meta['documentation'] ?? null;
+            // Only keep http(s) docs — a non-http scheme (e.g. javascript:) must
+            // never reach an href on the client.
+            $doc = (is_string($rawDoc) && preg_match('#^https?://#i', $rawDoc) === 1) ? $rawDoc : '';
             $d = strtolower($domain);
             // The dataset keys specific subdomains (accounts.google.com), but users
             // often store the bare domain — index both so either matches.

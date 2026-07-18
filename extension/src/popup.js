@@ -221,7 +221,8 @@ async function renderMain() {
         const tags = (it.tags || []).length ? `<div class="dtags">${it.tags.map((t) => `<span class="tg">#${esc(t)}</span>`).join('')}</div>` : '';
         const canFill = it.type === 'login' || (it.type === 'card' && it.number) || ! ! it.password;
         const fillLabel = it.type === 'card' ? 'Fill card on this page' : 'Fill on this page';
-        const doc = tfaMap ? (tfaMap[tfaMatch(it)] || '') : '';
+        const rawDoc = tfaMap ? (tfaMap[tfaMatch(it)] || '') : '';
+        const doc = /^https?:\/\//i.test(rawDoc) ? rawDoc : '';
         const tfaHtml = supports2fa(it)
             ? `<div class="tfahint">${icon('key', 16)}<div><div>This website offers two-factor authentication. Add a one-time code to this login.</div>${doc ? `<a href="${esc(doc)}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;color:inherit">How to enable it</a>` : ''}</div></div>`
             : '';
