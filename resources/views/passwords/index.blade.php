@@ -361,10 +361,10 @@
                 </div>
 
                 {{-- Fields --}}
-                <dl class="space-y-3">
+                <dl class="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
                   <template x-for="[k, ft] in fieldsOf(current.type)" :key="'d' + k">
-                    <div x-show="k !== 'totp' && (ft === 'checkbox' ? true : (ft === 'urls' ? (current.fields[k] || []).some((u) => u) : (current.fields[k] !== '' && current.fields[k] != null)))">
-                      <dt class="text-xs font-medium text-gray-500 dark:text-gray-400" x-text="fieldLabel(k)"></dt>
+                    <div class="px-4 py-2.5" x-show="k !== 'totp' && (ft === 'checkbox' ? true : (ft === 'urls' ? (current.fields[k] || []).some((u) => u) : (current.fields[k] !== '' && current.fields[k] != null)))">
+                      <dt class="text-xs font-semibold text-blue-600 dark:text-blue-400" x-text="fieldLabel(k)"></dt>
                       <dd class="mt-0.5 flex items-start gap-2">
                         <template x-if="ft === 'checkbox'"><span class="text-sm text-gray-900 dark:text-gray-100" x-text="current.fields[k] ? @js(__('passwords.yes')) : @js(__('passwords.no'))"></span></template>
                         {{-- multi-url --}}
@@ -397,8 +397,8 @@
                   </template>
                   {{-- Custom fields --}}
                   <template x-for="(c, i) in (current.custom || [])" :key="'c' + i">
-                    <div x-show="c.value">
-                      <dt class="text-xs font-medium text-gray-500 dark:text-gray-400" x-text="c.label"></dt>
+                    <div class="px-4 py-2.5" x-show="c.value">
+                      <dt class="text-xs font-semibold text-blue-600 dark:text-blue-400" x-text="c.label"></dt>
                       <dd class="mt-0.5 flex items-start gap-2">
                         <template x-if="customKind(c) === 'url'"><a :href="/^https?:\/\//.test(c.value) ? c.value : 'https://' + c.value" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100 underline hover:text-gray-600" x-text="c.value"></a></template>
                         <template x-if="customKind(c) !== 'url'"><span :role="customKind(c) === 'secret' ? 'button' : null" @click="customKind(c) === 'secret' && toggleReveal('c' + i)" class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100" :class="(customKind(c) === 'secret' ? 'font-mono cursor-pointer ' : '') + (customKind(c) === 'multiline' ? 'whitespace-pre-wrap' : '')" x-text="(customKind(c) === 'secret' && ! reveal['c' + i]) ? '••••••••••' : c.value"></span></template>
