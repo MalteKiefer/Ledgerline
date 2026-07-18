@@ -7,6 +7,7 @@ import { deriveVaultKey, openManifest, b64, fromB64 } from './crypto.js';
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
 let SECRETS = null;
+let FOLDERS = [];
 
 const local = {
     get: (k) => new Promise((r) => chrome.storage.local.get(k, (v) => r(v))),
@@ -45,9 +46,10 @@ async function ensureSecrets() {
         cipher = (await local.get('storeCipher')).storeCipher || '';
         if (! cipher) throw e;
     }
-    if (! cipher) { SECRETS = []; return SECRETS; }
+    if (! cipher) { SECRETS = []; FOLDERS = []; return SECRETS; }
     const manifest = await openManifest(cipher, await fromB64(vkB64));
     SECRETS = (manifest.secrets || []).filter((s) => ! s.trashed);
+    FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
     return SECRETS;
 }
 
@@ -75,6 +77,7 @@ function itemView(s) {
         urls: (s.fields?.urls || []).filter(Boolean),
         hasTotp: ! ! (s.fields?.totp),
         tags: s.tags || [],
+        folder: s.folder || null,
     };
 }
 const byTitle = (a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
@@ -179,6 +182,7 @@ const handlers = {
     },
     async match({ hostname }) { return { logins: await matchFor(hostname) }; },
     async search({ query }) { return { logins: await search(query) }; },
+    async folders() { await ensureSecrets(); return { folders: FOLDERS }; },
     // Current TOTP code for a login id (secret stays in the worker).
     async totp({ id }) {
         const secrets = await ensureSecrets();

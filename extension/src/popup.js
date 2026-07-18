@@ -1,3 +1,5 @@
+import { generate, GEN_LANGS } from './generator.js';
+
 const app = document.getElementById('app');
 const links = document.getElementById('links');
 const send = (msg) => new Promise((r) => chrome.runtime.sendMessage(msg, r));
@@ -10,6 +12,8 @@ async function activeTab() {
     return tab;
 }
 function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
+
+const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server' };
 
 async function render() {
     const st = await send({ type: 'getState' });
@@ -60,25 +64,64 @@ function renderUnlock() {
     document.getElementById('pass').focus();
 }
 
+// Left-column filters: folder ('' = all, '_none' = no folder, else id) and tag.
+let filterFolder = '';
+let filterTag = '';
+
 async function renderList() {
-    links.innerHTML = '<a id="refresh">Refresh</a><a id="lock">Lock</a>';
+    links.innerHTML = '<a id="gen">Generate</a><a id="refresh">Refresh</a><a id="lock">Lock</a>';
     document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
+    document.getElementById('gen').onclick = () => renderGen();
     app.innerHTML = '';
-    app.append(el(`<div>
-        <input id="q" placeholder="Search logins…" autofocus>
-        <ul id="list"></ul>
+    app.append(el(`<div class="cols">
+        <div class="side" id="side"></div>
+        <div class="main">
+            <input id="q" placeholder="Search…" autofocus>
+            <ul id="list"></ul>
+        </div>
     </div>`));
     const tab = await activeTab();
     const host = tab ? hostOf(tab.url) : '';
     const q = document.getElementById('q');
     const listEl = document.getElementById('list');
+    const sideEl = document.getElementById('side');
 
-    const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server' };
+    let library = []; // full set, drives the sidebar (independent of the search box)
+    let folders = [];
+
+    function paintSide() {
+        const counts = {};
+        for (const it of library) counts[it.folder || '_none'] = (counts[it.folder || '_none'] || 0) + 1;
+        const tags = [...new Set(library.flatMap((it) => it.tags || []))].sort((a, b) => a.localeCompare(b));
+        sideEl.innerHTML = '';
+        const btn = (label, active, on, count) => {
+            const b = el(`<button class="f${active ? ' on' : ''}"><span class="n">${esc(label)}</span>${count != null ? `<span class="c">${count}</span>` : ''}</button>`);
+            b.onclick = on; return b;
+        };
+        sideEl.append(el('<div class="grp">Folders</div>'));
+        sideEl.append(btn('All items', filterFolder === '', () => { filterFolder = ''; paintSide(); paint(q.value); }, library.length));
+        for (const f of folders) sideEl.append(btn(f.name, filterFolder === f.id, () => { filterFolder = f.id; paintSide(); paint(q.value); }, counts[f.id] || 0));
+        if (counts._none) sideEl.append(btn('No folder', filterFolder === '_none', () => { filterFolder = '_none'; paintSide(); paint(q.value); }, counts._none));
+        if (tags.length) {
+            sideEl.append(el('<div class="grp">Tags</div>'));
+            const wrap = el('<div class="chips"></div>');
+            for (const t of tags) {
+                const c = el(`<button class="chip${filterTag === t ? ' on' : ''}">#${esc(t)}</button>`);
+                c.onclick = () => { filterTag = filterTag === t ? '' : t; paintSide(); paint(q.value); };
+                wrap.append(c);
+            }
+            sideEl.append(wrap);
+        }
+    }
+
     async function paint(query) {
         const r = await send({ type: 'search', query });
-        const items = r.logins || [];
-        // Current-site logins first; the background already sorts the rest A–Z.
-        items.sort((a, b) => matchScore(b, host) - matchScore(a, host));
+        let items = r.logins || [];
+        if (filterFolder === '_none') items = items.filter((x) => ! x.folder);
+        else if (filterFolder) items = items.filter((x) => x.folder === filterFolder);
+        if (filterTag) items = items.filter((x) => (x.tags || []).includes(filterTag));
+        // Current-site logins first; the rest stay A–Z from the background.
+        items = items.slice().sort((a, b) => matchScore(b, host) - matchScore(a, host));
         listEl.innerHTML = '';
         if (! items.length) { listEl.append(el('<li class="muted">Nothing found</li>')); return; }
         for (const it of items) {
@@ -93,16 +136,97 @@ async function renderList() {
             listEl.append(li);
         }
     }
-    function matchScore(lg, h) { return lg.type === 'login' && (lg.urls || []).some((u) => hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u) === h || h.endsWith('.' + hostOf('https://' + u))) ? 1 : 0; }
+
+    const first = await send({ type: 'search', query: '' });
+    library = first.logins || [];
+    folders = (await send({ type: 'folders' })).folders || [];
+    paintSide();
     q.addEventListener('input', () => paint(q.value));
     document.getElementById('refresh').onclick = async () => {
         const rf = document.getElementById('refresh');
         rf.textContent = '…';
-        const r = await send({ type: 'refresh' });
+        await send({ type: 'refresh' });
         rf.textContent = 'Refresh';
-        if (r?.ok) paint(q.value);
+        library = (await send({ type: 'search', query: '' })).logins || [];
+        folders = (await send({ type: 'folders' })).folders || [];
+        paintSide(); await paint(q.value);
     };
     paint('');
+}
+
+function matchScore(lg, h) { return lg.type === 'login' && (lg.urls || []).some((u) => hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u) === h || h.endsWith('.' + hostOf('https://' + u))) ? 1 : 0; }
+
+// --- Password generator view ---
+const gen = { mode: 'chars', length: 20, upper: true, lower: true, digits: true, symbols: true, similar: false, words: 4, lang: 'en', sep: '-', capitalize: true, number: true };
+
+function renderGen() {
+    links.innerHTML = '<a id="back">Back</a>';
+    document.getElementById('back').onclick = () => render();
+    app.innerHTML = '';
+    const langOpts = GEN_LANGS.map((l) => `<option value="${l}">${l.toUpperCase()}</option>`).join('');
+    app.append(el(`<div>
+        <div class="prev"><span class="grow" id="prev"></span>
+            <button class="iconbtn" id="regen" title="Regenerate">↻</button>
+            <button class="iconbtn" id="copy" title="Copy">⧉</button>
+        </div>
+        <div class="seg">
+            <button id="mChars" class="on">Characters</button>
+            <button id="mWords">Memorable words</button>
+        </div>
+        <div id="cChars">
+            <label class="hint">Length: <span id="lenv"></span></label>
+            <input type="range" min="8" max="64" id="len">
+            <div class="opts">
+                <label><input type="checkbox" id="upper" checked>A-Z</label>
+                <label><input type="checkbox" id="lower" checked>a-z</label>
+                <label><input type="checkbox" id="digits" checked>0-9</label>
+                <label><input type="checkbox" id="symbols" checked>!@#</label>
+                <label class="full"><input type="checkbox" id="similar">Allow look-alike characters</label>
+            </div>
+        </div>
+        <div id="cWords" style="display:none">
+            <label class="hint">Words: <span id="wcv"></span></label>
+            <input type="range" min="3" max="8" id="wc">
+            <div class="opts">
+                <label class="full">Language<select id="lang">${langOpts}</select></label>
+                <label class="full">Separator<select id="sep">
+                    <option value="-">-</option><option value=".">.</option><option value="_">_</option><option value="space">Space</option><option value="">None</option>
+                </select></label>
+                <label><input type="checkbox" id="cap" checked>Capitalize</label>
+                <label><input type="checkbox" id="num" checked>Add number</label>
+            </div>
+        </div>
+        <button class="primary" id="use">Copy to clipboard</button>
+    </div>`));
+
+    const $ = (id) => document.getElementById(id);
+    const prev = $('prev');
+    const regen = () => { prev.textContent = generate(gen); };
+    const syncMode = () => {
+        $('mChars').classList.toggle('on', gen.mode === 'chars');
+        $('mWords').classList.toggle('on', gen.mode === 'words');
+        $('cChars').style.display = gen.mode === 'chars' ? '' : 'none';
+        $('cWords').style.display = gen.mode === 'words' ? '' : 'none';
+    };
+    $('len').value = gen.length; $('lenv').textContent = gen.length;
+    $('wc').value = gen.words; $('wcv').textContent = gen.words;
+    $('lang').value = gen.lang; $('sep').value = gen.sep;
+
+    $('mChars').onclick = () => { gen.mode = 'chars'; syncMode(); regen(); };
+    $('mWords').onclick = () => { gen.mode = 'words'; syncMode(); regen(); };
+    $('len').oninput = (e) => { gen.length = +e.target.value; $('lenv').textContent = gen.length; regen(); };
+    $('wc').oninput = (e) => { gen.words = +e.target.value; $('wcv').textContent = gen.words; regen(); };
+    for (const [id, key] of [['upper', 'upper'], ['lower', 'lower'], ['digits', 'digits'], ['symbols', 'symbols'], ['similar', 'similar'], ['cap', 'capitalize'], ['num', 'number']]) {
+        $(id).checked = gen[key];
+        $(id).onchange = (e) => { gen[key] = e.target.checked; regen(); };
+    }
+    $('lang').onchange = (e) => { gen.lang = e.target.value; regen(); };
+    $('sep').onchange = (e) => { gen.sep = e.target.value; regen(); };
+    $('regen').onclick = regen;
+    const copyPrev = async () => { try { await navigator.clipboard.writeText(prev.textContent); } catch (e) { /* ignore */ } };
+    $('copy').onclick = copyPrev;
+    $('use').onclick = async () => { await copyPrev(); window.close(); };
+    syncMode(); regen();
 }
 
 async function copyValue(it) {

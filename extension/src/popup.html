@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <style>
     :root { color-scheme: light dark; }
-    body { width: 340px; margin: 0; font: 13px/1.4 system-ui, sans-serif; background: #fff; color: #111; }
+    body { width: 620px; margin: 0; font: 13px/1.4 system-ui, sans-serif; background: #fff; color: #111; }
     @media (prefers-color-scheme: dark) { body { background: #111827; color: #f3f4f6; } }
     header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #0000001a; }
     header b { font-weight: 600; }
@@ -26,6 +26,39 @@
     .badge { flex: none; font-size: 10px; color: #6b7280; background: #0000000d; border-radius: 6px; padding: 2px 6px; }
     @media (prefers-color-scheme: dark) { .badge { background: #ffffff14; color: #9ca3af; } }
     .muted { color: #9ca3af; text-align: center; padding: 16px 0; font-size: 12px; }
+    /* two-column list */
+    .cols { display: flex; gap: 12px; }
+    .side { width: 168px; flex: none; border-right: 1px solid #0000001a; padding-right: 10px; max-height: 380px; overflow-y: auto; }
+    .main { flex: 1; min-width: 0; }
+    @media (prefers-color-scheme: dark) { .side { border-color: #ffffff14; } }
+    .grp { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #9ca3af; margin: 10px 2px 4px; }
+    .grp:first-child { margin-top: 2px; }
+    button.f { display: flex; width: 100%; align-items: center; gap: 6px; padding: 5px 7px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; font-size: 12px; }
+    button.f:hover { background: #0000000d; }
+    button.f.on { background: #1118270f; color: #111827; font-weight: 600; }
+    button.f .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    button.f .c { color: #9ca3af; font-size: 11px; }
+    @media (prefers-color-scheme: dark) { button.f.on { background: #ffffff14; color: #f3f4f6; } }
+    .chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px; }
+    .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #0000000d; color: #6b7280; border: 0; cursor: pointer; }
+    .chip.on { background: #111827; color: #fff; }
+    @media (prefers-color-scheme: dark) { .chip.on { background: #f3f4f6; color: #111827; } }
+    /* generator */
+    .iconbtn { border: 0; background: transparent; cursor: pointer; color: #6b7280; padding: 5px; border-radius: 6px; font-size: 13px; }
+    .iconbtn:hover { background: #0000000d; }
+    .prev { display: flex; align-items: center; gap: 6px; margin-top: 4px; padding: 10px; border: 1px solid #0000001a; border-radius: 8px; background: #0000000a; }
+    .prev .grow { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; word-break: break-all; }
+    @media (prefers-color-scheme: dark) { .prev { border-color: #ffffff14; } }
+    .seg { display: flex; background: #0000000d; border-radius: 8px; padding: 2px; margin-top: 12px; }
+    .seg button { flex: 1; border: 0; background: transparent; padding: 7px; border-radius: 6px; font: inherit; cursor: pointer; color: #6b7280; }
+    .seg button.on { background: #fff; color: #111; font-weight: 600; }
+    @media (prefers-color-scheme: dark) { .seg button.on { background: #111827; color: #f3f4f6; } }
+    .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 10px; font-size: 13px; }
+    .opts label { display: flex; align-items: center; gap: 6px; }
+    .opts .full { grid-column: 1 / -1; }
+    select { width: 100%; box-sizing: border-box; padding: 7px; border: 1px solid #d1d5db; border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+    @media (prefers-color-scheme: dark) { select { border-color: #374151; } }
+    input[type=range] { width: 100%; }
   </style>
 </head>
 <body>

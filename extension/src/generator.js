@@ -1,0 +1,53 @@
+// Password generator, mirroring the web app. Runs in the popup (no secrets),
+// so a plain CSPRNG is fine. Two modes: random characters, or a memorable
+// passphrase built from per-language word pools.
+
+const WORDS = {
+    en: 'able acid acorn actor agile album alert amber anchor angel apple arena armor arrow aspen atlas audio autumn azure bacon badge baker balloon bamboo banana banjo barrel basil beacon beans berry birch bison blaze bloom board bonus boots brave bread brick bridge brisk bronze brush bubble cabin cable cactus camel candle canoe canvas carbon cargo carrot castle cedar cello chalk cherry chess chili cider cliff cloud clover cobra cocoa comet coral cotton cougar crane crater cream crown crystal dagger daisy dawn delta denim desert diamond diesel dolphin dragon dream drift eagle earth ember emerald engine ferry fiber field flame flint garden ginger glacier globe granite grape grove harbor hazel honey ivory jaguar jungle kayak koala lemon lily lunar mango maple marble meadow melon meteor mint mosaic nectar noble oasis ocean olive onyx opal orbit otter oxide panda paper peach pearl pebble pepper pilot pine planet plaza polar pond prairie prism pumpkin quartz quiver rabbit radar raven river robin rocket ruby saffron salmon sapphire satin savanna shadow shell silver slate solar spark spruce squid stone storm sugar summit sunset swan tango temple thistle thunder tiger timber topaz torch trail tulip tundra ultra valley velvet violet walnut willow winter wolf zebra zenith',
+    de: 'ahorn adler akkord alpen ampel anker apfel arena atlas balken banane beere berg biber birke blume boden bogen bohne bonus brise brot burg dachs delfin diamant distel donner dorf drache eiche eimer eisen elch engel esche fabrik faden falke feder feld fels ferien feuer fisch flagge flamme flieder floss fluss forelle frost fuchs gabel garten gecko gipfel gitarre glanz globus gold granit hafen hain hammer harfe hase hecke helm herbst honig hummel igel insel jaguar kachel kaefer kajak kamel kanu karotte kastanie kerze kessel kiesel kobra komet koralle kran krater krone kupfer lampe laterne libelle lilie linde loewe luchs magnet mais mandel marmor melone meteor minze mond mosaik nebel nelke ocker ozean palme panda papier pfeil pilot pinie planet platz pudel quarz rabe radar rakete rebe regen reif riff robbe rose rubin salbei samt sand schnee segel silber span specht spiegel stein sturm sucher tango tanne teich tiger topas tulpe tundra ufer veilchen violett vogel wald walnuss weide winter wolf zeder zenit zucker',
+    es: 'abeja acero agua aguila alga almendra ambar ancla angel arce arena aroma atlas avena bahia balcon bambu banana barco bosque brisa bronce burbuja cabra cactus camino canela canoa canon caoba carbon carro castor cedro ceniza cereza cielo cima ciruela cobre cometa coral corcho corona cristal cuervo delfin diamante estrella faro fibra flauta flor fresa fuego galaxia ganso gato gema girasol glaciar globo grano halcon hierba higo hoja huerto isla jaguar jardin kayak koala lago lampara lapiz lavanda leon lima limon lirio llama luna maiz mango manzana mapache marfil marmol melon menta meteoro miel monte mosaico naranja nectar niebla nube oasis ocre ola olivo onice opalo orbita oso palma panda papel pera perla pico piedra pino planeta plata playa plaza pluma polar puente rana radar raton rio roble roca rosa rubi sabana salvia satin selva sol tango templo tigre topacio trigo tulipan tundra valle vela venado violeta zafiro zorro',
+    fr: 'abeille acier aigle airain amande ambre ancre ange arene argent atlas aube avoine balcon bambou banane barque basilic bison bleuet bois boussole branche brise bronze brume bulle cabane cactus canard canne canoe carotte castor cedre cerise chalet chene cidre ciel cime citron cobra colombe comete corail couronne cratere cristal crocus cygne dauphin diamant erable etoile falaise fibre fleche fleur flute foret fraise galaxie givre glacier globe grain grenat hameau harpe hetre hibou ile jardin jaguar kayak koala lac lampe lavande lezard lilas lion loutre lune lynx magie mais mangue marbre melon menthe meteore miel montagne mosaique nacre nectar neige noyer nuage oasis ocre ocean olive onyx opale orbite ours palme panda papier peche perle phare pic pierre pin pingouin planete plume polaire pont prairie prisme quartz radar raton renard riviere roche rose rubis safran sauge satin savane soleil tango temple tigre topaze tulipe tundra vallon velours violette',
+    it: 'acero aceto ala albero alce ambra ancora angelo aquila arancia arco arena aroma atlante avena balcone bambu banana barca basilico bisonte bosco brezza bronzo bolla cabina cactus camino cammello canoa carota castoro cedro ceramica ciliegia cielo cima cobra colomba cometa corallo corona cratere cristallo cigno delfino diamante edera erba faggio falco faro felce fibra fiamma fiore flauto foresta fragola galassia gelo ghiaccio giada girasole globo grano granato golfo isola giaguaro kayak koala lago lampada lavanda lucertola lilla leone lontra luna magia mais mango marmo melone menta meteora miele montagna mosaico nettare neve noce nuvola oasi ocra oceano oliva onice opale orbita orso palma panda carta pesca perla picco pietra pino pinguino pianeta piazza piuma polare ponte prateria prisma quarzo radar topo volpe fiume roccia rosa rubino zafferano salmone salvia raso savana sole tempio tigre topazio tulipano tundra valle velluto viola',
+};
+
+export const GEN_LANGS = Object.keys(WORDS);
+
+// Uniform random index in [0, max) via rejection sampling (no modulo bias).
+function randInt(max) {
+    const limit = Math.floor(0xffffffff / max) * max;
+    const a = new Uint32Array(1);
+    do { crypto.getRandomValues(a); } while (a[0] >= limit);
+    return a[0] % max;
+}
+
+export function genPassword(g) {
+    let set = '';
+    if (g.lower) set += g.similar ? 'abcdefghijklmnopqrstuvwxyz' : 'abcdefghijkmnpqrstuvwxyz';
+    if (g.upper) set += g.similar ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' : 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    if (g.digits) set += g.similar ? '0123456789' : '23456789';
+    if (g.symbols) set += '!@#$%^&*()-_=+[]{}';
+    if (! set) set = 'abcdefghijkmnpqrstuvwxyz';
+    const n = Math.max(6, Math.min(128, g.length | 0));
+    let out = '';
+    for (let i = 0; i < n; i++) out += set[randInt(set.length)];
+    return out;
+}
+
+export function genPassphrase(g) {
+    const pool = (WORDS[g.lang] || WORDS.en).split(' ');
+    const n = Math.max(2, Math.min(12, g.words | 0));
+    const picked = [];
+    for (let i = 0; i < n; i++) {
+        let w = pool[randInt(pool.length)];
+        if (g.capitalize) w = w.charAt(0).toUpperCase() + w.slice(1);
+        picked.push(w);
+    }
+    const sep = g.sep === 'space' ? ' ' : (g.sep || '');
+    let out = picked.join(sep);
+    if (g.number) out += sep + (randInt(90) + 10);
+    return out;
+}
+
+export function generate(g) {
+    return g.mode === 'words' ? genPassphrase(g) : genPassword(g);
+}
