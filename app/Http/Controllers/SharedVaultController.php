@@ -81,6 +81,7 @@ class SharedVaultController extends Controller
             ->with('vault')
             ->get()
             ->map(fn (SharedVaultMember $m) => [
+                'id'                => $m->id,
                 'vault_id'          => $m->vault_id,
                 'role'              => $m->role,
                 'status'            => $m->status,

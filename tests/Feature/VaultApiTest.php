@@ -153,6 +153,7 @@ class VaultApiTest extends TestCase
 
         // Every item must have the expected shape.
         foreach ($items as $item) {
+            $this->assertArrayHasKey('id', $item);
             $this->assertArrayHasKey('vault_id', $item);
             $this->assertArrayHasKey('role', $item);
             $this->assertArrayHasKey('status', $item);

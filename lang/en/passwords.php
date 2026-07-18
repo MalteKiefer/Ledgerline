@@ -98,6 +98,27 @@ return [
     'role_manage' => 'Manager',
     'read_only_notice' => 'You have read-only access to this vault.',
 
+    // Vault sharing (manager)
+    'share' => 'Share',
+    'share_vault' => 'Share Vault',
+    'recipient' => 'Recipient',
+    'recipient_identifier' => 'Email or OIDC subject',
+    'look_up' => 'Look up',
+    'recipient_not_found' => 'Recipient not found or has no identity key registered.',
+    'fingerprint' => 'Key fingerprint',
+    'fingerprint_verify' => 'Verify this fingerprint with the recipient out-of-band before sharing.',
+    'fingerprint_changed_warn' => 'Warning: the stored fingerprint for this recipient has changed. This may indicate a key compromise. Share aborted.',
+    'invite_sent' => 'Invitation sent.',
+    'already_member' => 'This user is already a member of the vault.',
+    'pending_invites' => 'Pending Invitations',
+    'accept' => 'Accept',
+    'invite_invalid' => 'Could not decrypt the invitation. The key may be invalid.',
+    'make_shared' => 'Convert to shared vault',
+    'make_shared_confirm' => 'Convert this vault to a shared vault? You will be the manager and can invite others.',
+    'role_viewer' => 'Viewer',
+    'role_editor' => 'Editor',
+    'role_manager' => 'Manager',
+
     // Folders + tags + custom fields
     'folders' => 'Vaults',
     'new_folder' => 'New vault',

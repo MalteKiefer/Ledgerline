@@ -35,6 +35,8 @@ export default (config = {}, labels = {}) => ({
         words: 4, lang: 'en', sep: '-', capitalize: true, number: true,
     },
     genLangs: ['en', 'de', 'es', 'fr', 'it'],
+    pendingInvites: [],  // [{vault_id, member_id, role, wrapped_vault_key}]
+    shareDialog: { open: false, vaultId: null, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' },
 
     // Field metadata per type: [key, inputType]. Labels come from labels.fields.
     types: {
@@ -144,6 +146,10 @@ export default (config = {}, labels = {}) => ({
         const map = { viewer: 'read', editor: 'edit', manager: 'manage' };
         return map[r] || 'read';
     },
+    _clientToServerRole(r) {
+        const map = { read: 'viewer', edit: 'editor', manage: 'manager' };
+        return map[r] || 'viewer';
+    },
     isSharedVault(id) { return this.sharedVaults.some((sv) => sv.id === id); },
     sharedVaultRole(id) { const sv = this.sharedVaults.find((v) => v.id === id); return sv ? sv.role : 'read'; },
 
@@ -166,7 +172,12 @@ export default (config = {}, labels = {}) => ({
         try {
             const id = await Vault.ensureIdentityKeys();
             const memberships = await apiRequest('GET', '/vaults');
-            const active = (Array.isArray(memberships) ? memberships : []).filter((m) => m.status === 'active');
+            const all = Array.isArray(memberships) ? memberships : [];
+            const active = all.filter((m) => m.status === 'active');
+            // Collect pending invites so the UI can show them for acceptance.
+            this.pendingInvites = all
+                .filter((m) => m.status === 'pending')
+                .map((m) => ({ vault_id: m.vault_id, member_id: m.id, role: m.role, wrapped_vault_key: m.wrapped_vault_key }));
             for (const m of active) {
                 try {
                     const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.pub, id.sk);
@@ -897,6 +908,134 @@ export default (config = {}, labels = {}) => ({
     hasTotp(x) { return x.type === 'login' && ! ! x.fields?.totp; },
     totpCode(x) { const c = this.totpNow[x.id]?.code || ''; return c ? c.slice(0, 3) + ' ' + c.slice(3) : '··· ···'; },
     totpRemain(x) { return this.totpNow[x.id]?.remain ?? 0; },
+
+    /* ---- Vault sharing (manager) ---- */
+    openShareDialog(vaultId) {
+        this.shareDialog = { open: true, vaultId, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' };
+    },
+    closeShareDialog() { this.shareDialog = { ...this.shareDialog, open: false }; },
+    async lookUpRecipient() {
+        const d = this.shareDialog; if (! d.vaultId || ! d.identifier.trim()) return;
+        d.lookingUp = true; d.resolved = null; d.fingerprintStatus = null; d.notice = '';
+        try {
+            const res = await fetch('/vaults/' + d.vaultId + '/resolve-recipient', {
+                method: 'POST',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ identifier: d.identifier.trim() }),
+            });
+            if (res.status === 422) { d.notice = labels.recipientNotFound || ''; return; }
+            if (! res.ok) { d.notice = labels.saveFailed || ''; return; }
+            const data = await res.json();
+            // Verify server fingerprint matches client-computed one.
+            const computed = await VaultShareCrypto.fingerprint(data.public_key);
+            if (computed !== data.fingerprint) {
+                d.notice = (labels.fingerprintChangedWarn || '') + ' (server/client mismatch)';
+                return;
+            }
+            d.resolved = data; // {user_id, public_key, fingerprint}
+            // TOFU check: look up stored fingerprint in personal manifest.
+            const store = window.LLStore.data;
+            store.knownFingerprints = store.knownFingerprints || {};
+            const stored = store.knownFingerprints[data.user_id];
+            if (! stored) {
+                d.fingerprintStatus = 'new'; // show fingerprint for out-of-band verification
+            } else if (stored === data.fingerprint) {
+                d.fingerprintStatus = 'verified';
+            } else {
+                d.fingerprintStatus = 'changed';
+                d.notice = labels.fingerprintChangedWarn || '';
+                d.resolved = null; // block share
+            }
+        } finally { d.lookingUp = false; }
+    },
+    async confirmShare() {
+        const d = this.shareDialog;
+        if (! d.resolved || d.fingerprintStatus === 'changed') return;
+        if (d.fingerprintStatus === 'new') {
+            // Store fingerprint in personal manifest on confirmation.
+            const store = window.LLStore.data;
+            store.knownFingerprints = store.knownFingerprints || {};
+            store.knownFingerprints[d.resolved.user_id] = d.resolved.fingerprint;
+            this._save();
+        }
+        d.sharing = true; d.notice = '';
+        try {
+            const vkBytes = this._sharedKeys[d.vaultId];
+            if (! vkBytes) { d.notice = labels.saveFailed || ''; return; }
+            const vkB64 = btoa(String.fromCharCode(...new Uint8Array(vkBytes)));
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, d.resolved.public_key);
+            const res = await fetch('/vaults/' + d.vaultId + '/members', {
+                method: 'POST',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ user_id: d.resolved.user_id, role: this._clientToServerRole(d.role), wrapped_vault_key: wrapped, recipient_fingerprint: d.resolved.fingerprint }),
+            });
+            if (res.status === 422 || (res.status >= 300 && res.status < 500)) {
+                const body = await res.json().catch(() => ({}));
+                if (res.status === 422 && body && Object.keys(body).length) {
+                    d.notice = labels.alreadyMember || '';
+                } else {
+                    d.notice = labels.saveFailed || '';
+                }
+                return;
+            }
+            if (! res.ok) { d.notice = labels.saveFailed || ''; return; }
+            d.notice = labels.inviteSent || '';
+            d.resolved = null; d.identifier = '';
+        } finally { d.sharing = false; }
+    },
+    async acceptInvite(inv) {
+        const id = await Vault.ensureIdentityKeys();
+        // Verify the wrapped key actually decrypts before accepting.
+        try {
+            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.pub, id.sk);
+        } catch (e) {
+            window.llToast(labels.inviteInvalid || '');
+            return;
+        }
+        try {
+            await apiRequest('POST', '/vaults/' + inv.vault_id + '/members/' + inv.member_id + '/accept');
+            this.pendingInvites = this.pendingInvites.filter((p) => p.member_id !== inv.member_id);
+            await this._loadSharedVaults();
+        } catch (e) {
+            window.llToast(labels.saveFailed || '');
+        }
+    },
+    async convertToShared(f) {
+        // Guard: don't convert if it's the only personal vault.
+        if (this.folders.length <= 1) {
+            window.llToast(labels.deleteFolderConfirm || '');
+            return;
+        }
+        if (! await this.$store.confirm.ask(labels.makeSharedConfirm || '')) return;
+        try {
+            const vk = await VaultShareCrypto.newVaultKey();
+            const idk = await Vault.ensureIdentityKeys();
+            const wrappedForSelf = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub);
+            const { id: newVaultId } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrappedForSelf });
+            // vkBytes from b64
+            const vkBytes = Uint8Array.from(atob(vk), (c) => c.charCodeAt(0));
+            // Build manifest from the folder's items.
+            const folderItems = this.items.filter((x) => x.folder === f.id);
+            const manifest = { name: f.name, items: folderItems };
+            const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
+            await apiRequest('PUT', '/vaults/' + newVaultId + '/store', { sealed_manifest: sealed, expected_version: 0 });
+            // Move items locally: remove from personal, register as shared.
+            const folderItemIds = new Set(folderItems.map((x) => x.id));
+            for (let i = this.items.length - 1; i >= 0; i--) if (folderItemIds.has(this.items[i].id)) this.items.splice(i, 1);
+            // Remove the personal folder.
+            const fi = this.folders.findIndex((y) => y.id === f.id);
+            if (fi >= 0) this.folders.splice(fi, 1);
+            if (this.filterFolder === f.id) this.filterFolder = '';
+            this._save(); // save personal manifest without those items
+            // Register the new shared vault in-memory.
+            this._sharedKeys[newVaultId] = vkBytes;
+            this._sharedVersion[newVaultId] = 0;
+            this.sharedVaults.push({ id: newVaultId, name: f.name, role: 'manage', shared: true, version: 0, vaultId: newVaultId });
+            this.sharedItems[newVaultId] = folderItems.map((item) => ({ ...item, shared: true, vaultId: newVaultId }));
+        } catch (e) {
+            window.llToast(labels.saveFailed || '');
+        }
+    },
 
     fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; } },
 });

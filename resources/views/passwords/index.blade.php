@@ -16,6 +16,12 @@
         titleLabel: @js(__('passwords.title_label')),
         customLabel: @js(__('passwords.custom_changed')),
         saveConflict: @js(__('passwords.save_conflict')),
+        recipientNotFound: @js(__('passwords.recipient_not_found')),
+        fingerprintChangedWarn: @js(__('passwords.fingerprint_changed_warn')),
+        inviteSent: @js(__('passwords.invite_sent')),
+        alreadyMember: @js(__('passwords.already_member')),
+        inviteInvalid: @js(__('passwords.invite_invalid')),
+        makeSharedConfirm: @js(__('passwords.make_shared_confirm')),
         types: {
             login: @js(__('passwords.type_login')), password: @js(__('passwords.type_password')),
             card: @js(__('passwords.type_card')), wifi: @js(__('passwords.type_wifi')),
@@ -91,6 +97,7 @@
                     </button>
                     <button type="button" x-show="canManageVault(f.id)" @click="renameFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="pencil" class="h-3 w-3" /></button>
                     <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="deleteFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-red-600 group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
+                    <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="convertToShared(f)" title="{{ __('passwords.make_shared') }}" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="share" class="h-3 w-3" /></button>
                   </div>
                 </template>
               </div>
@@ -99,16 +106,32 @@
                 <div class="mt-2 border-t border-gray-100 dark:border-gray-800 pt-2">
                   <span class="mb-1 block px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.shared_vaults') }}</span>
                   <template x-for="sv in sharedVaults" :key="sv.id">
-                    <button
-                      type="button"
-                      @click="filterFolder = filterFolder === sv.id ? '' : sv.id; view = 'list'"
-                      class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
-                      :class="filterFolder === sv.id && view === 'list' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
-                    >
-                      <x-icon name="users" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                      <span class="flex-1 truncate" x-text="sv.name"></span>
-                      <span class="shrink-0 text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
-                    </button>
+                    <div class="group flex items-center gap-1 rounded-md pr-1" :class="filterFolder === sv.id && view === 'list' ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                      <button
+                        type="button"
+                        @click="filterFolder = filterFolder === sv.id ? '' : sv.id; view = 'list'"
+                        class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
+                        :class="filterFolder === sv.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'"
+                      >
+                        <x-icon name="users" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                        <span class="flex-1 truncate" x-text="sv.name"></span>
+                        <span class="shrink-0 text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
+                      </button>
+                      <button type="button" x-show="sv.role === 'manage'" @click="openShareDialog(sv.id)" title="{{ __('passwords.share_vault') }}" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="user-plus" class="h-3 w-3" /></button>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              {{-- Pending invitations --}}
+              <template x-if="pendingInvites.length > 0">
+                <div class="mt-2 border-t border-gray-100 dark:border-gray-800 pt-2">
+                  <span class="mb-1 block px-1 text-[11px] font-semibold uppercase tracking-wide text-amber-500">{{ __('passwords.pending_invites') }}</span>
+                  <template x-for="inv in pendingInvites" :key="inv.member_id">
+                    <div class="flex items-center gap-1 rounded-md px-2.5 py-1.5">
+                      <x-icon name="envelope-open" class="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                      <span class="min-w-0 flex-1 truncate text-xs text-gray-600 dark:text-gray-400" x-text="inv.vault_id"></span>
+                      <button type="button" @click="acceptInvite(inv)" class="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800/40">{{ __('passwords.accept') }}</button>
+                    </div>
                   </template>
                 </div>
               </template>
@@ -472,6 +495,51 @@
               </div>
             </template>
           </section>
+        </div>
+
+        {{-- Share vault dialog (manager only) --}}
+        <div x-show="shareDialog.open" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="closeShareDialog()">
+          <div class="absolute inset-0 bg-gray-900/50" @click="closeShareDialog()"></div>
+          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.share_vault') }}</h3>
+              <button type="button" @click="closeShareDialog()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+            </div>
+            <div class="mt-4 space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient_identifier') }}</label>
+                <div class="mt-1 flex items-center gap-2">
+                  <input type="text" x-model="shareDialog.identifier" @keydown.enter="lookUpRecipient()" placeholder="{{ __('passwords.recipient_identifier') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                  <button type="button" @click="lookUpRecipient()" :disabled="shareDialog.lookingUp || ! shareDialog.identifier.trim()" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50" x-text="shareDialog.lookingUp ? '…' : '{{ __('passwords.look_up') }}'"></button>
+                </div>
+              </div>
+              <template x-if="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'">
+                <div class="space-y-3">
+                  <div class="rounded-lg border border-gray-200 dark:border-gray-800 p-3 text-xs">
+                    <p class="font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.fingerprint') }}</p>
+                    <p class="mt-1 break-all font-mono text-gray-900 dark:text-gray-100" x-text="shareDialog.resolved && shareDialog.resolved.fingerprint"></p>
+                    <p x-show="shareDialog.fingerprintStatus === 'new'" class="mt-1 text-amber-600 dark:text-amber-400">{{ __('passwords.fingerprint_verify') }}</p>
+                    <p x-show="shareDialog.fingerprintStatus === 'verified'" class="mt-1 flex items-center gap-1 text-green-600 dark:text-green-400"><x-icon name="check-circle" class="h-3.5 w-3.5" /><span>{{ __('passwords.role_manage') !== '' ? '' : '' }}Verified</span></p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient') }}</label>
+                    <select x-model="shareDialog.role" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                      <option value="read">{{ __('passwords.role_read') }}</option>
+                      <option value="edit">{{ __('passwords.role_edit') }}</option>
+                      <option value="manage">{{ __('passwords.role_manage') }}</option>
+                    </select>
+                  </div>
+                </div>
+              </template>
+              <p x-show="shareDialog.notice" x-cloak class="rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300" x-text="shareDialog.notice"></p>
+            </div>
+            <div class="mt-5 flex justify-end gap-2">
+              <button type="button" @click="closeShareDialog()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.cancel') }}</button>
+              <button type="button" x-show="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'" @click="confirmShare()" :disabled="shareDialog.sharing" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                <span x-text="shareDialog.sharing ? '…' : '{{ __('passwords.share') }}'"></span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {{-- Password generator modal --}}

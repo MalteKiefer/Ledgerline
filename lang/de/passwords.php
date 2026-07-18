@@ -98,6 +98,27 @@ return [
     'role_manage' => 'Verwalter',
     'read_only_notice' => 'Sie haben nur Lesezugriff auf diesen Tresor.',
 
+    // Tresor-Teilen (Verwalter)
+    'share' => 'Teilen',
+    'share_vault' => 'Tresor teilen',
+    'recipient' => 'Empfänger',
+    'recipient_identifier' => 'E-Mail oder OIDC-Subject',
+    'look_up' => 'Nachschlagen',
+    'recipient_not_found' => 'Empfänger nicht gefunden oder hat keinen Identitätsschlüssel registriert.',
+    'fingerprint' => 'Schlüssel-Fingerabdruck',
+    'fingerprint_verify' => 'Bitte verifiziere diesen Fingerabdruck außerhalb dieser App mit dem Empfänger, bevor du teilst.',
+    'fingerprint_changed_warn' => 'Warnung: Der gespeicherte Fingerabdruck für diesen Empfänger hat sich geändert. Dies könnte auf eine Kompromittierung des Schlüssels hinweisen. Teilen abgebrochen.',
+    'invite_sent' => 'Einladung gesendet.',
+    'already_member' => 'Dieser Benutzer ist bereits Mitglied des Tresors.',
+    'pending_invites' => 'Ausstehende Einladungen',
+    'accept' => 'Annehmen',
+    'invite_invalid' => 'Einladung konnte nicht entschlüsselt werden. Der Schlüssel ist möglicherweise ungültig.',
+    'make_shared' => 'In geteilten Tresor umwandeln',
+    'make_shared_confirm' => 'Diesen Tresor in einen geteilten Tresor umwandeln? Du wirst Verwalter und kannst andere einladen.',
+    'role_viewer' => 'Leser',
+    'role_editor' => 'Bearbeiter',
+    'role_manager' => 'Verwalter',
+
     // Ordner + Tags + Custom-Felder
     'folders' => 'Tresore',
     'new_folder' => 'Neuer Tresor',
