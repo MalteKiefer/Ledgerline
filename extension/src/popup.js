@@ -73,25 +73,36 @@ async function renderList() {
     const q = document.getElementById('q');
     const listEl = document.getElementById('list');
 
+    const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server' };
     async function paint(query) {
         const r = await send({ type: 'search', query });
-        const logins = r.logins || [];
-        // Sort current-site matches to the top.
-        logins.sort((a, b) => matchScore(b, host) - matchScore(a, host));
+        const items = r.logins || [];
+        // Current-site logins first; the background already sorts the rest A–Z.
+        items.sort((a, b) => matchScore(b, host) - matchScore(a, host));
         listEl.innerHTML = '';
-        if (! logins.length) { listEl.append(el('<li class="muted">No logins</li>')); return; }
-        for (const lg of logins) {
+        if (! items.length) { listEl.append(el('<li class="muted">Nothing found</li>')); return; }
+        for (const it of items) {
+            const sub = it.username || TYPE[it.type] || it.type;
+            const tags = (it.tags || []).map((t) => `<span class="tag">#${esc(t)}</span>`).join('');
             const li = el(`<li><button>
-                <span class="av">${esc((lg.title || lg.username || '?')[0].toUpperCase())}</span>
-                <span><span class="t">${esc(lg.title)}</span><br><span class="u">${esc(lg.username)}</span></span>
+                <span class="av">${esc((it.title || it.username || '?')[0].toUpperCase())}</span>
+                <span class="grow"><span class="t">${esc(it.title)}</span><br><span class="u">${esc(sub)}${tags}</span></span>
+                <span class="badge">${esc(TYPE[it.type] || it.type)}</span>
             </button></li>`);
-            li.querySelector('button').onclick = () => fill(lg, tab);
+            li.querySelector('button').onclick = () => it.type === 'login' ? fill(it, tab) : copyValue(it);
             listEl.append(li);
         }
     }
-    function matchScore(lg, h) { return (lg.urls || []).some((u) => hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u) === h || h.endsWith('.' + hostOf('https://' + u))) ? 1 : 0; }
+    function matchScore(lg, h) { return lg.type === 'login' && (lg.urls || []).some((u) => hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u) === h || h.endsWith('.' + hostOf('https://' + u))) ? 1 : 0; }
     q.addEventListener('input', () => paint(q.value));
     paint('');
+}
+
+async function copyValue(it) {
+    const val = it.password || it.username || it.title;
+    if (! val) return;
+    try { await navigator.clipboard.writeText(val); } catch (e) { /* ignore */ }
+    window.close();
 }
 
 async function fill(login, tab) {

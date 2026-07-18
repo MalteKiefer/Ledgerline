@@ -54,16 +54,19 @@ function hostsMatch(page, stored) {
     return page === stored || page.endsWith('.' + stored);
 }
 
-function loginView(s) {
+function itemView(s) {
     return {
         id: s.id,
         title: s.title || '',
+        type: s.type || 'login',
         username: s.fields?.username || '',
         password: s.fields?.password || '',
         urls: (s.fields?.urls || []).filter(Boolean),
         hasTotp: ! ! (s.fields?.totp),
+        tags: s.tags || [],
     };
 }
+const byTitle = (a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
 
 // TOTP (RFC 6238, SHA-1, 6 digits) via WebCrypto — the secret never leaves the
 // worker; only the current code is handed out.
@@ -98,17 +101,22 @@ async function matchFor(hostname) {
     return secrets
         .filter((s) => s.type === 'login')
         .filter((s) => (s.fields?.urls || []).some((u) => hostsMatch(hostname, hostOf(u))))
-        .map(loginView);
+        .map(itemView)
+        .sort(byTitle);
 }
 
 async function search(query) {
     const secrets = await ensureSecrets();
     const q = (query || '').toLowerCase();
     return secrets
-        .filter((s) => s.type === 'login')
-        .filter((s) => ! q || (s.title || '').toLowerCase().includes(q) || (s.fields?.username || '').toLowerCase().includes(q) || (s.fields?.urls || []).some((u) => u.toLowerCase().includes(q)))
-        .slice(0, 50)
-        .map(loginView);
+        .filter((s) => ! q
+            || (s.title || '').toLowerCase().includes(q)
+            || (s.fields?.username || '').toLowerCase().includes(q)
+            || (s.fields?.urls || []).some((u) => u.toLowerCase().includes(q))
+            || (s.tags || []).some((t) => t.toLowerCase().includes(q)))
+        .map(itemView)
+        .sort(byTitle)
+        .slice(0, 300);
 }
 
 // Poll the pairing until the owner approves it (or time out).
