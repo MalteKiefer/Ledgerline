@@ -8,6 +8,7 @@ import { normVec as _normVec, dotVec as _dotVec } from './shared/vector-math';
 import { EXT_CATEGORY, extOf, fileCategory, CATEGORY_ICON, formatBytes } from './shared/file-categories';
 import { csrfToken, jsonHeaders, apiRequest } from './shared/api';
 import { contactNameParts, contactDisplayName, contactsSortPref } from './shared/contact-utils';
+import { ocrWorker, ocrImage } from './shared/ocr';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -3914,35 +3915,6 @@ let _contactsReconAt = 0;
 // semantic ("find the image of X") file search. Module-scoped + non-reactive.
 const fileEmb = {};
 
-// Lazy, singleton OCR worker (tesseract.js). All assets are self-hosted under
-// /tesseract (worker + WASM core + eng/deu data) so nothing is fetched from a
-// CDN — the whole OCR runs in the browser, keeping the ZK boundary intact.
-let _ocrWorker = null, _ocrInit = null;
-async function ocrWorker() {
-    if (_ocrWorker) return _ocrWorker;
-    if (! _ocrInit) {
-        _ocrInit = (async () => {
-            const { createWorker } = await import('tesseract.js');
-            _ocrWorker = await createWorker(['eng', 'deu'], 1, {
-                workerPath: '/tesseract/worker.min.js',
-                corePath: '/tesseract/core',
-                langPath: '/tesseract/lang',
-                workerBlobURL: false, // same-origin worker (CSP worker-src 'self')
-                gzip: false,          // raw .traineddata (not gzipped)
-            });
-            return _ocrWorker;
-        })();
-    }
-    return _ocrInit;
-}
-// OCR a Blob / canvas / ImageData → recognised text ('' on any failure).
-async function ocrImage(input) {
-    try {
-        const w = await ocrWorker();
-        const { data } = await w.recognize(input);
-        return (data && data.text) ? data.text : '';
-    } catch (e) { return ''; }
-}
 
 Alpine.data('vaultFiles', (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | unconfigured | ready | error
