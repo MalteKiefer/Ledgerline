@@ -65,14 +65,29 @@ async function notify(text) {
     setTimeout(() => n.remove(), 2500);
 }
 
+// Segmented one-time-code inputs: a run of visible single-character boxes (as
+// on desec.io). Each digit goes into its own box.
+function otpCells() {
+    return [...document.querySelectorAll('input')].filter(isVisible).filter((i) => {
+        const t = (i.type || 'text').toLowerCase();
+        return ['text', 'tel', 'number', 'password', ''].includes(t) && i.maxLength === 1;
+    });
+}
+
 async function fillCode(login) {
     if (! login.hasTotp || ! login.id) return;
     const r = await send({ type: 'totp', id: login.id });
     if (! r?.ok || ! r.code) return;
-    const otp = otpField();
-    if (otp) { setValue(otp, r.code); otp.focus(); } else {
-        try { await navigator.clipboard.writeText(r.code); notify('2FA code copied'); } catch (e) { /* clipboard blocked */ }
+    const code = r.code;
+    const cells = otpCells();
+    if (cells.length >= code.length) {
+        for (let i = 0; i < code.length; i++) setValue(cells[i], code[i]);
+        cells[code.length - 1].focus();
+        return;
     }
+    const otp = otpField();
+    if (otp) { setValue(otp, code); otp.focus(); return; }
+    try { await navigator.clipboard.writeText(code); notify('2FA code copied'); } catch (e) { /* clipboard blocked */ }
 }
 
 async function doFill(login) {
