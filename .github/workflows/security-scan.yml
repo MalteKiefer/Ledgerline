@@ -1,0 +1,80 @@
+name: Security scan
+
+# Dependency + filesystem vulnerability scanning and SBOM generation. Runs on
+# pushes, PRs, and weekly so new CVEs against pinned versions surface promptly.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+
+      - name: Composer install
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Composer audit
+        run: composer audit --no-interaction
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: npm audit (runtime deps)
+        run: |
+          npm ci
+          npm audit --omit=dev || true
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan (lockfiles + IaC)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload results to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Generate SBOM (SPDX)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: spdx-json
+          output: sbom.spdx.json
+
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
