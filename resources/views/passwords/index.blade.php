@@ -519,7 +519,7 @@
                     <p class="font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.fingerprint') }}</p>
                     <p class="mt-1 break-all font-mono text-gray-900 dark:text-gray-100" x-text="shareDialog.resolved && shareDialog.resolved.fingerprint"></p>
                     <p x-show="shareDialog.fingerprintStatus === 'new'" class="mt-1 text-amber-600 dark:text-amber-400">{{ __('passwords.fingerprint_verify') }}</p>
-                    <p x-show="shareDialog.fingerprintStatus === 'verified'" class="mt-1 flex items-center gap-1 text-green-600 dark:text-green-400"><x-icon name="check-circle" class="h-3.5 w-3.5" /><span>{{ __('passwords.role_manage') !== '' ? '' : '' }}Verified</span></p>
+                    <p x-show="shareDialog.fingerprintStatus === 'verified'" class="mt-1 flex items-center gap-1 text-green-600 dark:text-green-400"><x-icon name="check-circle" class="h-3.5 w-3.5" /><span>{{ __('passwords.fingerprint_verified') }}</span></p>
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient') }}</label>

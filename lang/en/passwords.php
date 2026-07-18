@@ -107,6 +107,7 @@ return [
     'recipient_not_found' => 'Recipient not found or has no identity key registered.',
     'fingerprint' => 'Key fingerprint',
     'fingerprint_verify' => 'Verify this fingerprint with the recipient out-of-band before sharing.',
+    'fingerprint_verified' => 'Verified',
     'fingerprint_changed_warn' => 'Warning: the stored fingerprint for this recipient has changed. This may indicate a key compromise. Share aborted.',
     'invite_sent' => 'Invitation sent.',
     'already_member' => 'This user is already a member of the vault.',

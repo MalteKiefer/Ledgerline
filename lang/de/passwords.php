@@ -107,6 +107,7 @@ return [
     'recipient_not_found' => 'Empfänger nicht gefunden oder hat keinen Identitätsschlüssel registriert.',
     'fingerprint' => 'Schlüssel-Fingerabdruck',
     'fingerprint_verify' => 'Bitte verifiziere diesen Fingerabdruck außerhalb dieser App mit dem Empfänger, bevor du teilst.',
+    'fingerprint_verified' => 'Verifiziert',
     'fingerprint_changed_warn' => 'Warnung: Der gespeicherte Fingerabdruck für diesen Empfänger hat sich geändert. Dies könnte auf eine Kompromittierung des Schlüssels hinweisen. Teilen abgebrochen.',
     'invite_sent' => 'Einladung gesendet.',
     'already_member' => 'Dieser Benutzer ist bereits Mitglied des Tresors.',
