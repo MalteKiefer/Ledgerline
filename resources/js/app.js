@@ -7394,7 +7394,6 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     view: 'list', // list | trash
     current: null, // item being viewed (live ref into items)
     draft: null, // editable copy while creating/editing (null = not editing)
-    panelOpen: false, // detail slide-over visibility (auto-select highlights without opening it)
     filterType: '',
     filterFolder: '', // '' = all, '_none' = no folder, else folder id
     filterTag: '',
@@ -7495,12 +7494,11 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         return f;
     },
     newItem(type) {
-        this.current = null; this.reveal = {}; this.wifiQr = ''; this.panelOpen = true;
+        this.current = null; this.reveal = {}; this.wifiQr = '';
         this.draft = { id: null, type, title: '', favorite: false, folder: this.filterFolder && this.filterFolder !== '_none' ? this.filterFolder : null, tags: [], custom: [], icon: '', fields: this._blankFields(type), created: null, updated: null, versions: [] };
         this.tagsValue = '';
     },
-    openItem(x) { this.current = x; this.draft = null; this.panelOpen = true; this.reveal = {}; this._refreshWifiQr(x); },
-    closePanel() { this.panelOpen = false; this.reveal = {}; },
+    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this._refreshWifiQr(x); },
     editCurrent() {
         if (! this.current) return;
         this.draft = JSON.parse(JSON.stringify(this.current));
