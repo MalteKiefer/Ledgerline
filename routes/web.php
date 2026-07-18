@@ -35,6 +35,7 @@ use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\TwoFactorDirectoryController;
 use App\Http\Controllers\VaultController;
 use Illuminate\Support\Facades\Route;
 
@@ -243,6 +244,9 @@ Route::middleware('auth')->group(function (): void {
     // Have I Been Pwned k-anonymity range proxy (only a 5-char SHA-1 prefix is
     // ever sent; SSRF-guarded; nothing stored).
     Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('passwords.breach');
+    // Public 2fa.directory dataset (server-cached; leaks nothing about the vault):
+    // domains that support app 2FA, so the client can hint where to add a code.
+    Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The company
     // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
     Route::view('/invoices', 'invoices.index')->name('invoices.index');

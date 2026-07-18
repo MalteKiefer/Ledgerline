@@ -36,6 +36,8 @@ return [
     'trash' => 'Trash',
     'empty_trash' => 'Empty trash',
     'empty_trash_confirm' => 'Permanently delete everything in the trash?',
+    'tfa_available' => 'This website offers two-factor authentication.',
+    'tfa_add' => 'Add a one-time code',
     'selected' => 'selected',
     'select_all' => 'Select all',
     'bulk_purge_confirm' => 'Permanently delete the selected entries?',

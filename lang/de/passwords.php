@@ -36,6 +36,8 @@ return [
     'trash' => 'Papierkorb',
     'empty_trash' => 'Papierkorb leeren',
     'empty_trash_confirm' => 'Alles im Papierkorb endgültig löschen?',
+    'tfa_available' => 'Diese Website bietet Zwei-Faktor-Authentifizierung.',
+    'tfa_add' => 'Einmalcode hinzufügen',
     'selected' => 'ausgewählt',
     'select_all' => 'Alle auswählen',
     'bulk_purge_confirm' => 'Ausgewählte Einträge endgültig löschen?',
