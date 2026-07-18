@@ -12,6 +12,7 @@ import { ocrWorker, ocrImage } from './shared/ocr';
 import { loadLeaflet, loadCodeMirror } from './shared/lazy-loaders';
 import { fetchBlobBuffer, fetchDecrypt, fetchDecryptWorker, thumbLane, queueBlobDelete } from './shared/blob-io';
 import { loadMarkdown } from './shared/markdown';
+import { bootStore, zkModule } from './shared/zk-module';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -148,12 +149,6 @@ window.LLStore = {
 // Wait for the vault, then load the opaque manifest once (shared across the
 // notes/bookmarks/todos components). Returns true when the manifest is ready,
 // false while the vault is still locked.
-async function bootStore(store) {
-    while (! store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
-    if (! store.vault.unlocked) return false;
-    if (! window.LLStore.loaded) await window.LLStore.load();
-    return true;
-}
 
 // Separate sealed store for the gallery index (photos/albums/people), kept apart
 // from the shared workspace manifest so gallery churn never re-seals notes/todos.
@@ -5433,55 +5428,6 @@ window.Alpine = Alpine;
  *          wire (e.g. { todos: 'tasks', todoLists: 'lists' }).
  * cfg.onLock(self): optional extra reset (e.g. notes clears currentId).
  */
-function zkModule(cfg) {
-    return {
-        state: 'boot',
-        query: '',
-        activeTag: '',
-        error: '',
-        tagsValue: '',
-
-        // Persist the manifest (debounced, sealed) after a mutation.
-        _save() { window.LLStore.touch(); },
-
-        // Point the mapped component properties at the (already-decrypted) store
-        // arrays; false while the vault is still locked.
-        async _bootAssign() {
-            if (! await bootStore(this.$store)) { this.state = 'locked'; return false; }
-            for (const [key, prop] of Object.entries(cfg.map)) this[prop] = window.LLStore.data[key];
-            this.state = 'ready';
-            return true;
-        },
-
-        async _initZk() {
-            await this._bootAssign();
-            this.$watch('$store.vault.unlocked', async (on) => {
-                if (on && this.state !== 'ready') await this._bootAssign();
-                if (! on) {
-                    this.state = 'locked';
-                    for (const prop of Object.values(cfg.map)) this[prop] = [];
-                    if (cfg.onLock) cfg.onLock(this);
-                    window.LLStore.reset();
-                }
-            });
-        },
-
-        // Sorted union of every tag on the rows of a collection (for suggestions).
-        _tagsOf(list) {
-            const set = new Set();
-            for (const x of list) for (const t of x.tags ?? []) set.add(t);
-            return [...set].sort((a, b) => a.localeCompare(b));
-        },
-        _trashCount(list) { return list.filter((x) => x.trashed).length; },
-
-        // Permanently drop every trashed row of a collection (in place).
-        async _emptyTrashArr(list, confirmMsg) {
-            if (! await this.$store.confirm.ask(confirmMsg)) return;
-            for (let i = list.length - 1; i >= 0; i--) if (list[i].trashed) list.splice(i, 1);
-            this._save();
-        },
-    };
-}
 
 Alpine.data('invoices', (config = {}, labels = {}) => ({
     ...zkModule({ map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
