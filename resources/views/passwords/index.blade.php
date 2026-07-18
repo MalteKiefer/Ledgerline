@@ -50,6 +50,7 @@
               <span :class="iconRefreshing ? 'animate-spin' : ''"><x-icon name="arrow-path" class="h-4 w-4" /></span>
               <span class="hidden sm:inline" x-text="iconRefreshing ? (iconProgress.done + ' / ' + iconProgress.total) : '{{ __('passwords.refresh_icons') }}'"></span>
             </button>
+            <button type="button" @click="openGen(null)" title="{{ __('passwords.generate') }}" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="key" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.generate') }}</span></button>
             <button type="button" @click="openImport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('passwords.import') }}</button>
             <div class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
@@ -67,8 +68,8 @@
         </x-page-heading>
 
         <div class="mt-6 flex flex-col gap-4 md:flex-row" style="min-height: calc(100vh - 16rem);">
-          {{-- Left: filters only (folders, types, tags) --}}
-          <aside class="w-full shrink-0 md:w-52">
+          {{-- Left column: folders, tags and filters --}}
+          <aside class="w-full shrink-0 md:w-64">
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
               <div class="mb-2 flex flex-wrap gap-1">
                 <button type="button" @click="filterType = ''; filterFolder = ''; filterTag = ''; view = 'list'" :class="filterType === '' && filterFolder === '' && filterTag === '' && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs">{{ __('passwords.all') }}</button>
@@ -119,8 +120,8 @@
             </div>
           </aside>
 
-          {{-- Middle: the item list --}}
-          <div class="w-full shrink-0 md:w-72">
+          {{-- Right column: the passwords list --}}
+          <section class="min-w-0 flex-1">
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
               <div class="relative mb-2">
                 <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -155,13 +156,19 @@
                 </template>
               </div>
             </div>
-          </div>
+          </section>
+        </div>
 
-          {{-- Right: detail or edit --}}
-          <section class="min-w-0 flex-1">
+        {{-- Detail / edit as a right slide-over --}}
+        <div x-show="draft || (current && panelOpen)" x-cloak class="fixed inset-0 z-[900] flex" @keydown.escape.window="draft ? cancelEdit() : closePanel()">
+          <div class="absolute inset-0 bg-gray-900/40" @click="draft ? cancelEdit() : closePanel()"></div>
+          <div class="relative ml-auto flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white dark:bg-gray-900 shadow-2xl"
+               x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+               x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
+            <button type="button" @click="draft ? cancelEdit() : closePanel()" title="{{ __('passwords.close') }}" class="absolute right-3 top-3 z-10 rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
             {{-- EDIT / NEW --}}
             <template x-if="draft">
-              <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+              <div class="p-5">
                 <div class="mb-4 flex items-center gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                         :class="(draft.type === 'login' && ! draft.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -274,7 +281,7 @@
 
             {{-- DETAIL (read-only) --}}
             <template x-if="! draft && current">
-              <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+              <div class="p-5">
                 <div class="mb-4 flex items-start gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                         :class="(current.type === 'login' && ! current.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -388,14 +395,7 @@
               </div>
             </template>
 
-            {{-- Empty --}}
-            <template x-if="! draft && ! current">
-              <div class="flex h-full min-h-[40vh] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
-                <x-icon name="key" class="h-10 w-10 text-gray-300 dark:text-gray-600" />
-                <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('passwords.pick_hint') }}</p>
-              </div>
-            </template>
-          </section>
+          </div>
         </div>
 
         {{-- Version history modal --}}
@@ -422,20 +422,62 @@
         {{-- Password generator modal --}}
         <div x-show="gen.open" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="gen.open = false">
           <div class="absolute inset-0 bg-gray-900/50" @click="gen.open = false"></div>
-          <div class="relative w-full max-w-sm rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.generate') }}</h3>
-            <label class="mt-4 block text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.length') }}: <span x-text="gen.length"></span>
-              <input type="range" min="8" max="64" x-model.number="gen.length" class="mt-1 w-full">
-            </label>
-            <div class="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
-              <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.upper" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">A-Z</label>
-              <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.lower" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">a-z</label>
-              <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.digits" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">0-9</label>
-              <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.symbols" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">!@#</label>
+
+            {{-- Live preview --}}
+            <div class="mt-4 flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 p-3">
+              <span class="min-w-0 flex-1 break-all font-mono text-sm text-gray-900 dark:text-gray-100" x-text="gen.preview"></span>
+              <button type="button" @click="regen()" title="{{ __('passwords.gen_regen') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="arrow-path" class="h-4 w-4" /></button>
+              <button type="button" @click="copy(gen.preview)" title="{{ __('passwords.copy') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="clipboard" class="h-4 w-4" /></button>
             </div>
+
+            {{-- Mode toggle --}}
+            <div class="mt-4 flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 text-sm">
+              <button type="button" @click="gen.mode = 'chars'; regen()" :class="gen.mode === 'chars' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow' : 'text-gray-500'" class="flex-1 rounded-md px-3 py-1.5 font-medium">{{ __('passwords.gen_chars') }}</button>
+              <button type="button" @click="gen.mode = 'words'; regen()" :class="gen.mode === 'words' ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow' : 'text-gray-500'" class="flex-1 rounded-md px-3 py-1.5 font-medium">{{ __('passwords.gen_words') }}</button>
+            </div>
+
+            {{-- Character options --}}
+            <div x-show="gen.mode === 'chars'" x-cloak class="mt-4">
+              <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.length') }}: <span class="font-medium text-gray-700 dark:text-gray-300" x-text="gen.length"></span>
+                <input type="range" min="8" max="64" x-model.number="gen.length" @input="regen()" class="mt-1 w-full">
+              </label>
+              <div class="mt-3 grid grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.upper" @change="regen()" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">A-Z</label>
+                <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.lower" @change="regen()" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">a-z</label>
+                <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.digits" @change="regen()" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">0-9</label>
+                <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.symbols" @change="regen()" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">!@#</label>
+                <label class="col-span-2 flex items-center gap-2"><input type="checkbox" x-model="gen.similar" @change="regen()" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">{{ __('passwords.gen_similar') }}</label>
+              </div>
+            </div>
+
+            {{-- Memorable-word options --}}
+            <div x-show="gen.mode === 'words'" x-cloak class="mt-4 space-y-3">
+              <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.gen_wordcount') }}: <span class="font-medium text-gray-700 dark:text-gray-300" x-text="gen.words"></span>
+                <input type="range" min="3" max="8" x-model.number="gen.words" @input="regen()" class="mt-1 w-full">
+              </label>
+              <div class="grid grid-cols-2 gap-3">
+                <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.gen_language') }}
+                  <select x-model="gen.lang" @change="regen()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                    <template x-for="l in genLangs" :key="l"><option :value="l" x-text="l.toUpperCase()"></option></template>
+                  </select>
+                </label>
+                <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.gen_separator') }}
+                  <select x-model="gen.sep" @change="regen()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                    <option value="-">-</option><option value=".">.</option><option value="_">_</option><option value="space">{{ __('passwords.gen_sep_space') }}</option><option value="">{{ __('passwords.gen_sep_none') }}</option>
+                  </select>
+                </label>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.capitalize" @change="regen()" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">{{ __('passwords.gen_capitalize') }}</label>
+                <label class="flex items-center gap-2"><input type="checkbox" x-model="gen.number" @change="regen()" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">{{ __('passwords.gen_number') }}</label>
+              </div>
+            </div>
+
             <div class="mt-5 flex justify-end gap-2">
               <button type="button" @click="gen.open = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.cancel') }}</button>
-              <button type="button" @click="applyGen()" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900">{{ __('passwords.generate_apply') }}</button>
+              <button type="button" @click="applyGen()" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900" x-text="gen.target ? '{{ __('passwords.generate_apply') }}' : '{{ __('passwords.copy') }}'"></button>
             </div>
           </div>
         </div>
