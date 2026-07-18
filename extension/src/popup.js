@@ -20,6 +20,7 @@ const PATHS = {
     open: '<path d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>',
     magnifier: '<path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>',
     login: '<path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>',
+    plus: '<path d="M12 4.5v15m7.5-7.5h-15"/>',
     star: '<path d="M11.48 3.5a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/>',
 };
 function icon(name, size = 18) {
@@ -106,7 +107,7 @@ function supports2fa(it) {
 
 async function renderMain() {
     filterFolder = ''; filterTag = ''; selected = null; showAll = false;
-    links.innerHTML = iconBtn('gen', 'key', 'Generate password') + iconBtn('refresh', 'refresh', 'Refresh from server') + iconBtn('lock', 'lock', 'Lock');
+    links.innerHTML = iconBtn('new', 'plus', 'New login') + iconBtn('gen', 'key', 'Generate password') + iconBtn('refresh', 'refresh', 'Refresh from server') + iconBtn('lock', 'lock', 'Lock');
     document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
     document.getElementById('gen').onclick = () => renderGen();
     app.innerHTML = '';
@@ -124,6 +125,7 @@ async function renderMain() {
 
     const tab = await activeTab();
     const host = tab ? hostOf(tab.url) : '';
+    document.getElementById('new').onclick = () => renderNew({ url: host ? 'https://' + host : '' });
     const q = document.getElementById('q');
     const listEl = document.getElementById('list');
     const folderEl = document.getElementById('folder');
@@ -269,6 +271,39 @@ async function renderMain() {
 }
 
 function matchScore(lg, h) { return lg.type === 'login' && (lg.urls || []).some((u) => hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u) === h || h.endsWith('.' + hostOf('https://' + u))) ? 1 : 0; }
+
+// --- Create a new login ---
+function renderNew(prefill = {}) {
+    stopTotp();
+    links.innerHTML = iconBtn('back', 'back', 'Back');
+    document.getElementById('back').onclick = () => render();
+    app.innerHTML = '';
+    app.append(el(`<div>
+        <label class="fld">Title</label><input id="n-title">
+        <label class="fld">Username</label><input id="n-user">
+        <label class="fld">Password</label>
+        <div class="prev" style="margin-top:4px"><input id="n-pass" type="text" class="grow" style="border:0;background:transparent;padding:0"><button class="ic" id="n-gen" title="Generate">${icon('refresh', 16)}</button><button class="ic" id="n-copy" title="Copy">${icon('clipboard', 16)}</button></div>
+        <label class="fld">Website</label><input id="n-url">
+        <button class="primary" id="n-save">Save login</button>
+        <p class="err" id="n-err"></p>
+    </div>`));
+    const $ = (id) => document.getElementById(id);
+    $('n-title').value = prefill.title || '';
+    $('n-user').value = prefill.username || '';
+    $('n-pass').value = prefill.password || '';
+    $('n-url').value = prefill.url || '';
+    $('n-gen').onclick = () => { $('n-pass').value = generate({ mode: 'chars', length: 20, upper: true, lower: true, digits: true, symbols: true, similar: false }); };
+    $('n-copy').onclick = () => navigator.clipboard.writeText($('n-pass').value).catch(() => {});
+    $('n-save').onclick = async () => {
+        const login = { title: $('n-title').value.trim(), username: $('n-user').value.trim(), password: $('n-pass').value, url: $('n-url').value.trim() };
+        if (! login.title && ! login.username && ! login.url) { $('n-err').textContent = 'Enter at least a title or website.'; return; }
+        $('n-save').disabled = true; $('n-save').textContent = 'Saving…';
+        const r = await send({ type: 'createLogin', login });
+        if (r?.ok) render();
+        else { $('n-err').textContent = r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save.'; $('n-save').disabled = false; $('n-save').textContent = 'Save login'; }
+    };
+    $('n-title').focus();
+}
 
 // --- Password generator ---
 const gen = { mode: 'chars', length: 20, upper: true, lower: true, digits: true, symbols: true, similar: false, words: 4, lang: 'en', sep: '-', capitalize: true, number: true };

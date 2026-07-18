@@ -4,6 +4,17 @@
 
 const send = (msg) => new Promise((r) => { try { chrome.runtime.sendMessage(msg, r); } catch (e) { r(null); } });
 
+// Small local strong-password generator (kept inline so the content script has
+// no extra module chunk to load in the page context).
+function genStrong(len = 20) {
+    const set = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%^&*()-_=+[]{}';
+    const a = new Uint32Array(len);
+    crypto.getRandomValues(a);
+    let out = '';
+    for (let i = 0; i < len; i++) out += set[a[i] % set.length];
+    return out;
+}
+
 // Frame trust (defense-in-depth). The content script runs in the top frame only
 // (manifest all_frames:false) to avoid leaking credentials into untrusted
 // cross-origin embeds. These guards keep card autofill top/same-origin only,
@@ -170,6 +181,35 @@ async function fillCard(card) {
     (g.number || g.csc)?.focus?.();
 }
 
+// --- New-login suggestion & capture ---
+let lastGenerated = null;
+function passwordFields() { return [...document.querySelectorAll('input[type=password]')].filter(isVisible); }
+// Does this password field belong to a sign-up / change-password form (so we
+// should offer a fresh generated password rather than an existing login)?
+function isNewPw(input) {
+    if (! input) return false;
+    const ac = (input.autocomplete || '').toLowerCase();
+    if (ac.includes('new-password')) return true;
+    if (ac.includes('current-password')) return false;
+    const hay = (input.name + ' ' + input.id + ' ' + (input.getAttribute('aria-label') || '') + ' ' + (input.placeholder || '')).toLowerCase();
+    if (/new|confirm|repeat|wiederhol|register|signup|sign-?up|create/.test(hay)) return true;
+    return passwordFields().length >= 2; // two password boxes ⇒ sign-up / change form
+}
+async function suggestPassword(field) {
+    const pw = genStrong(20);
+    const fields = passwordFields();
+    if (fields.length) for (const f of fields) setValue(f, pw); // fill password + confirm
+    else if (field) setValue(field, pw);
+    field?.focus?.();
+    lastGenerated = pw;
+    try { await navigator.clipboard.writeText(pw); notify('Strong password filled & copied'); } catch (e) { notify('Strong password filled'); }
+}
+function attachGenBadge(field) {
+    if (! field || field.dataset.llBadge) return;
+    const item = { title: 'Use a suggested password', username: 'Strong · 20 characters', __gen: true };
+    attachBadge(field, [item], () => suggestPassword(field), async () => [item]);
+}
+
 async function doFill(login) {
     lastLogin = login; lastAt = Date.now();
     const pw = passwordField();
@@ -267,7 +307,7 @@ async function scan() {
     const res = await send({ type: 'match', hostname: location.hostname });
     if (! res?.ok || ! res.logins?.length) return;
     if (user) attachBadge(user, res.logins);
-    if (pw && pw !== user) {
+    if (pw && pw !== user && ! isNewPw(pw)) {
         attachBadge(pw, res.logins);
         // Multi-step login: the password appeared after the identifier step. If
         // the user just picked a login, finish the fill without a second click.
@@ -282,6 +322,13 @@ async function scan() {
 
 // Payment forms: offer stored cards on the card-number field (cards match any
 // site, so no host filtering — the list comes from a dedicated card fetch).
+// Offer a generated password on sign-up / change-password fields (independent
+// of whether we have a matching login for this site).
+function scanNewPw() {
+    const pw = passwordField();
+    if (pw && isNewPw(pw) && ! pw.dataset.llBadge) attachGenBadge(pw);
+}
+
 async function scanCards() {
     if (! CARDS_ALLOWED) return; // never offer cards inside an untrusted cross-origin frame
     const num = ccNumberField();
@@ -308,7 +355,7 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
 // or in steps (identifier first, password after). A debounced observer re-scans
 // as fields appear, so both the badge and the auto-fill catch up.
 let _t = null;
-const runScan = () => { clearTimeout(_t); _t = setTimeout(() => { scan(); scanCards(); }, 250); };
+const runScan = () => { clearTimeout(_t); _t = setTimeout(() => { scan(); scanCards(); scanNewPw(); }, 250); };
 runScan();
 const mo = new MutationObserver(runScan);
 mo.observe(document.documentElement, { childList: true, subtree: true });
@@ -335,11 +382,61 @@ async function onFocusField(input) {
         if (res?.ok && res.logins.some((l) => l.hasTotp)) attachBadge(input, res.logins, fillCode);
         return;
     }
+    if (t === 'password' && isNewPw(input)) { attachGenBadge(input); return; }
     if (['password', 'text', 'email', 'tel', ''].includes(t)) {
         const res = await send({ type: 'match', hostname: location.hostname });
         if (res?.ok && res.logins.length) attachBadge(input, res.logins);
     }
 }
+
+// --- Capture new credentials on submit and offer to save them ---
+let savePromptHost = null;
+function closeSavePrompt() { if (savePromptHost) { savePromptHost.remove(); savePromptHost = null; } }
+function promptSave(cred) {
+    closeSavePrompt();
+    const host = location.hostname.replace(/^www\./, '');
+    savePromptHost = document.createElement('div');
+    savePromptHost.style.cssText = 'position:fixed;z-index:2147483647;bottom:16px;right:16px;';
+    const shadow = savePromptHost.attachShadow({ mode: 'closed' });
+    const wrap = document.createElement('div');
+    const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    wrap.innerHTML = `
+      <div style="width:300px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;padding:14px;font:13px system-ui,sans-serif">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Save this login to Ledgerline?</div>
+        <label style="display:block;font-size:11px;color:#6b7280;margin:10px 0 3px">Title</label>
+        <input id="t" style="width:100%;box-sizing:border-box;padding:7px;border:1px solid #d1d5db;border-radius:8px;font:inherit" value="${esc(host)}">
+        <div style="font-size:12px;color:#6b7280;margin-top:8px">${cred.username ? ('Username: ' + esc(cred.username)) : 'No username detected'}</div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button id="d" style="flex:1;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
+          <button id="s" style="flex:1;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit">Save</button>
+        </div>
+      </div>`;
+    shadow.append(wrap);
+    document.body.append(savePromptHost);
+    wrap.querySelector('#d').onclick = closeSavePrompt;
+    wrap.querySelector('#s').onclick = async () => {
+        const title = wrap.querySelector('#t').value.trim() || host;
+        const btn = wrap.querySelector('#s'); btn.textContent = 'Saving…'; btn.disabled = true;
+        const r = await send({ type: 'createLogin', login: { title, username: cred.username, password: cred.password, url: cred.url } });
+        closeSavePrompt();
+        notify(r?.ok ? 'Saved to Ledgerline' : (r?.error === 'locked' ? 'Unlock Ledgerline to save' : 'Could not save'));
+    };
+    setTimeout(closeSavePrompt, 20000);
+}
+async function captureSubmit(form) {
+    try {
+        const pws = form ? [...form.querySelectorAll('input[type=password]')].filter(isVisible) : passwordFields();
+        const pw = pws[0] || passwordField();
+        if (! pw || ! pw.value) return;
+        const user = usernameFor(pw) || usernameField();
+        const cred = { url: location.origin + '/', username: user ? user.value.trim() : '', password: pw.value };
+        const known = await send({ type: 'match', hostname: location.hostname });
+        const exists = cred.username && known?.ok && (known.logins || []).some((l) => (l.username || '').toLowerCase() === cred.username.toLowerCase());
+        if (exists) return; // already stored
+        promptSave(cred);
+    } catch (e) { /* ignore */ }
+}
+document.addEventListener('submit', (e) => { if (e.target && e.target.tagName === 'FORM') captureSubmit(e.target); }, true);
 document.addEventListener('focusin', (e) => {
     runScan();
     const real = (e.composedPath && e.composedPath()[0]) || e.target;

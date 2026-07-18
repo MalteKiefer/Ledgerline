@@ -46,5 +46,31 @@ export async function openManifest(ciphertext, vkBytes) {
     return JSON.parse(sodium.to_string(open(c, n, vkBytes)));
 }
 
+/** Padmé (Nikitin et al.) — mirrors vault.js so manifests we write match. */
+function padme(n) {
+    if (n < 2) return n;
+    const e = Math.floor(Math.log2(n));
+    const s = Math.floor(Math.log2(e)) + 1;
+    const step = Math.pow(2, e - s);
+    return Math.ceil(n / step) * step;
+}
+
+/**
+ * Seal the whole workspace manifest back into a {c,n} JSON string, identical to
+ * vault.js sealManifest: Padmé-padded JSON (4 KiB floor), XChaCha20 secretbox.
+ */
+export async function sealManifest(obj, vkBytes) {
+    await ready();
+    let json = JSON.stringify(obj);
+    const target = Math.max(4096, padme(json.length + 1));
+    json += ' '.repeat(target - json.length);
+    const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+    const cipher = sodium.crypto_secretbox_easy(sodium.from_string(json), nonce, vkBytes);
+    return JSON.stringify({
+        c: sodium.to_base64(cipher, sodium.base64_variants.ORIGINAL),
+        n: sodium.to_base64(nonce, sodium.base64_variants.ORIGINAL),
+    });
+}
+
 export async function b64(bytes) { await ready(); return sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL); }
 export async function fromB64(str) { await ready(); return sodium.from_base64(str, sodium.base64_variants.ORIGINAL); }

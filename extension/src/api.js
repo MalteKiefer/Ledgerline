@@ -44,6 +44,11 @@ export async function getStore(base, token) {
     return res.json();
 }
 
+/** Write the sealed manifest back with optimistic concurrency (409 on conflict). */
+export async function saveStore(base, token, ciphertext, version) {
+    return call(base, '/store', { method: 'PUT', token, body: { ciphertext, version } });
+}
+
 /** Revoke this bearer server-side (unpair). */
 export async function logout(base, token) {
     try { await call(base, '/auth/session', { method: 'DELETE', token }); } catch (e) { /* best effort */ }
