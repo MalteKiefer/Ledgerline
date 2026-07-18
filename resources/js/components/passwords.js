@@ -37,6 +37,10 @@ export default (config = {}, labels = {}) => ({
     genLangs: ['en', 'de', 'es', 'fr', 'it'],
     pendingInvites: [],  // [{vault_id, member_id, role, wrapped_vault_key}]
     shareDialog: { open: false, vaultId: null, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' },
+    managingVaultId: null, // vault id open in the members panel
+    managingVaultMembers: [], // [{id, user_id, role, status, recipient_fingerprint, public_key}]
+    managingVaultLoading: false,
+    rotatingKeys: false,
 
     // Field metadata per type: [key, inputType]. Labels come from labels.fields.
     types: {
@@ -1038,4 +1042,92 @@ export default (config = {}, labels = {}) => ({
     },
 
     fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; } },
+
+    /* ---- Member management + cryptographic revocation ---- */
+
+    // Open the manage-members panel: fetch the current member list from the server.
+    async openManageMembers(vaultId) {
+        this.managingVaultId = vaultId;
+        this.managingVaultMembers = [];
+        this.managingVaultLoading = true;
+        try {
+            const members = await apiRequest('GET', '/vaults/' + vaultId + '/members');
+            this.managingVaultMembers = Array.isArray(members) ? members : [];
+        } catch (e) {
+            window.llToast(labels.saveFailed || '');
+        } finally {
+            this.managingVaultLoading = false;
+        }
+    },
+
+    // Remove a member from a shared vault via atomic key rotation.
+    // Generates a new vault key, re-wraps it for every remaining active member,
+    // and atomically replaces the sealed manifest + removes the revoked member.
+    async removeMember(memberId, memberUserId) {
+        if (! await this.$store.confirm.ask(labels.removeMemberConfirm || '')) return;
+        const vaultId = this.managingVaultId;
+        if (! vaultId) return;
+        const vkBytes = this._sharedKeys && this._sharedKeys[vaultId];
+        if (! vkBytes) { window.llToast(labels.saveFailed || ''); return; }
+        this.rotatingKeys = true;
+        try {
+            // Generate a new vault key for forward secrecy.
+            const newVkB64 = await VaultShareCrypto.newVaultKey();
+            const newVkBytes = Uint8Array.from(atob(newVkB64), (c) => c.charCodeAt(0));
+            // Remaining active members (exclude the one being removed).
+            const remaining = this.managingVaultMembers.filter(
+                (m) => m.id !== memberId && m.status === 'active' && m.public_key,
+            );
+            // Re-wrap the new vault key for each remaining member.
+            const members = await Promise.all(remaining.map(async (m) => ({
+                user_id: m.user_id,
+                wrapped_vault_key: await VaultShareCrypto.wrapVaultKeyFor(newVkB64, m.public_key),
+            })));
+            // Seal the current manifest under the new key.
+            const vault = this.sharedVaults.find((sv) => sv.id === vaultId);
+            const manifest = { name: vault ? vault.name : '', items: this.sharedItems[vaultId] || [] };
+            const sealed = await VaultShareCrypto.sealVaultManifest(manifest, newVkBytes);
+            const expectedVersion = this._sharedVersion[vaultId] ?? 0;
+            const res = await fetch('/vaults/' + vaultId + '/rotate', {
+                method: 'POST',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ sealed_manifest: sealed, expected_version: expectedVersion, members, remove_member_id: memberId }),
+            });
+            if (res.status === 409) {
+                // Version conflict: reload vault state and retry once.
+                await this._loadSharedVaults();
+                window.llToast(labels.saveConflict || '');
+                return;
+            }
+            if (! res.ok) { window.llToast(labels.saveFailed || ''); return; }
+            const { version } = await res.json();
+            // Update in-memory state with the new key and version.
+            this._sharedKeys[vaultId] = newVkBytes;
+            this._sharedVersion[vaultId] = version;
+            this.managingVaultMembers = this.managingVaultMembers.filter((m) => m.id !== memberId);
+            window.llToast(labels.memberRemoved || '');
+        } catch (e) {
+            window.llToast(labels.saveFailed || '');
+        } finally {
+            this.rotatingKeys = false;
+        }
+    },
+
+    // Delete a shared vault permanently (manager only).
+    async deleteSharedVault(vaultId) {
+        if (! await this.$store.confirm.ask(labels.deleteVaultConfirm || '')) return;
+        try {
+            const res = await fetch('/vaults/' + vaultId, { method: 'DELETE', headers: jsonHeaders() });
+            if (! res.ok) { window.llToast(labels.saveFailed || ''); return; }
+            // Remove from local state.
+            this.sharedVaults = this.sharedVaults.filter((sv) => sv.id !== vaultId);
+            delete this.sharedItems[vaultId];
+            delete this._sharedKeys[vaultId];
+            delete this._sharedVersion[vaultId];
+            if (this.filterFolder === vaultId) this.filterFolder = '';
+            if (this.managingVaultId === vaultId) this.managingVaultId = null;
+        } catch (e) {
+            window.llToast(labels.saveFailed || '');
+        }
+    },
 });

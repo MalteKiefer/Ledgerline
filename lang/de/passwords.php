@@ -120,6 +120,18 @@ return [
     'role_editor' => 'Bearbeiter',
     'role_manager' => 'Verwalter',
 
+    // Mitglieder-Verwaltung + Widerruf
+    'manage_members' => 'Mitglieder verwalten',
+    'members' => 'Mitglieder',
+    'member_status_pending' => 'Ausstehend',
+    'member_status_active' => 'Aktiv',
+    'remove_member' => 'Entfernen',
+    'remove_member_confirm' => 'Dieses Mitglied entfernen? Der Tresor-Schlüssel wird rotiert — der Zugriff wird sofort entzogen.',
+    'rotating_keys' => 'Schlüssel rotieren…',
+    'delete_vault' => 'Tresor löschen',
+    'delete_vault_confirm' => 'Diesen geteilten Tresor und alle Inhalte endgültig löschen? Dies kann nicht rückgängig gemacht werden.',
+    'member_removed' => 'Mitglied entfernt.',
+
     // Ordner + Tags + Custom-Felder
     'folders' => 'Tresore',
     'new_folder' => 'Neuer Tresor',

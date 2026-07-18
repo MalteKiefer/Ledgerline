@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Auth;
  * Manages membership rows in shared password-Tresore.
  *
  * Membership lifecycle:
+ *   index   → list all active members with their public keys (manage-gated)
  *   create  → pending  (manager invites a user; client supplies the vault key
  *                        wrapped for the recipient's x25519 public key)
  *   accept  → active   (only the invited user may accept their own invitation)
@@ -24,6 +25,33 @@ use Illuminate\Support\Facades\Auth;
  */
 class SharedVaultMemberController extends Controller
 {
+    /**
+     * List all members of the vault with their public keys.
+     *
+     * Manage-gated. Returns id, user_id, role, status, recipient_fingerprint,
+     * and the user's x25519 public key. wrapped_vault_key is intentionally
+     * excluded (the key material is per-recipient ciphertext that only the
+     * client that generated it would need).
+     */
+    public function index(Request $request, SharedVault $vault): JsonResponse
+    {
+        $this->authorize('manage', $vault);
+
+        $members = $vault->members()
+            ->with('user:id,x25519_public_key')
+            ->get()
+            ->map(fn (SharedVaultMember $m) => [
+                'id'                    => $m->id,
+                'user_id'               => $m->user_id,
+                'role'                  => $m->role,
+                'status'                => $m->status,
+                'recipient_fingerprint' => $m->recipient_fingerprint,
+                'public_key'            => $m->user?->x25519_public_key,
+            ]);
+
+        return response()->json($members);
+    }
+
     /**
      * Add a pending member to the vault.
      *

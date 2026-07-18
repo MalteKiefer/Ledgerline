@@ -106,6 +106,9 @@ Route::prefix('v1')->group(function (): void {
             Route::post('/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])->name('members.accept');
             Route::patch('/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])->name('members.update');
             Route::delete('/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])->name('members.destroy');
+            Route::get('/{vault}/members', [SharedVaultMemberController::class, 'index'])->middleware('throttle:60,1')->name('members.index');
+            Route::post('/{vault}/rotate', [SharedVaultController::class, 'rotate'])->middleware('throttle:30,1')->name('rotate');
+            Route::delete('/{vault}', [SharedVaultController::class, 'destroy'])->middleware('throttle:30,1')->name('destroy');
         });
     });
 });

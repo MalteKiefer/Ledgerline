@@ -120,6 +120,18 @@ return [
     'role_editor' => 'Editor',
     'role_manager' => 'Manager',
 
+    // Vault member management + revocation
+    'manage_members' => 'Manage members',
+    'members' => 'Members',
+    'member_status_pending' => 'Pending',
+    'member_status_active' => 'Active',
+    'remove_member' => 'Remove',
+    'remove_member_confirm' => 'Remove this member? The vault key will be rotated — they will lose access immediately.',
+    'rotating_keys' => 'Rotating keys…',
+    'delete_vault' => 'Delete vault',
+    'delete_vault_confirm' => 'Permanently delete this shared vault and all its contents? This cannot be undone.',
+    'member_removed' => 'Member removed.',
+
     // Folders + tags + custom fields
     'folders' => 'Vaults',
     'new_folder' => 'New vault',

@@ -327,4 +327,19 @@ Route::middleware('auth')->group(function (): void {
     Route::delete('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])
         ->middleware('throttle:60,1')
         ->name('vaults.members.destroy');
+
+    // Vault member list (manage-gated).
+    Route::get('/vaults/{vault}/members', [SharedVaultMemberController::class, 'index'])
+        ->middleware('throttle:60,1')
+        ->name('vaults.members.index');
+
+    // Cryptographic key rotation (atomic member removal + manifest re-seal).
+    Route::post('/vaults/{vault}/rotate', [SharedVaultController::class, 'rotate'])
+        ->middleware('throttle:30,1')
+        ->name('vaults.rotate');
+
+    // Vault deletion (manager only; cascades members + store).
+    Route::delete('/vaults/{vault}', [SharedVaultController::class, 'destroy'])
+        ->middleware('throttle:30,1')
+        ->name('vaults.destroy');
 });
