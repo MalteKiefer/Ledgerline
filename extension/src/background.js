@@ -323,7 +323,10 @@ const handlers = {
     async createLogin({ login }) { return createLogin(login || {}); },
     async trashItem({ id }) { return mutateManifest((m) => { const s = m.secrets.find((x) => x.id === id); if (s) s.trashed = new Date().toISOString(); }); },
 
-    async 'passkey.create'({ request, origin }) {
+    async 'passkey.create'({ request, origin }, sender) {
+        // Require message from a real content-script tab (not just any extension page).
+        if (! sender?.tab?.id) return { ok: false, error: 'no tab' };
+
         // Require vault unlocked.
         const vkB64 = (await session.get('vk')).vk;
         if (! vkB64) return { ok: false, error: 'locked' };
@@ -338,18 +341,22 @@ const handlers = {
         request = des(request);
 
         // rpId enforcement: must equal or be a registrable parent of the origin host.
+        // origin was set by the content script to location.origin — trusted.
         const pageHost = hostOf(origin);
         const rpId = (request.rp && request.rp.id) ? request.rp.id : pageHost;
         if (! hostsMatch(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
 
-        // ES256 must be offered (alg -7).
-        if (Array.isArray(request.pubKeyCredParams) && request.pubKeyCredParams.length > 0) {
-            if (! request.pubKeyCredParams.some((p) => p.alg === -7)) return { ok: false, error: 'NotSupported' };
+        // pubKeyCredParams must be a non-empty array that includes ES256 (alg -7).
+        if (! Array.isArray(request.pubKeyCredParams) || request.pubKeyCredParams.length === 0
+            || ! request.pubKeyCredParams.some((p) => p.alg === -7)) {
+            return { ok: false, error: 'NotSupported' };
         }
 
         // excludeCredentials: reject if we already hold a matching passkey for this rpId.
+        // ensureSecrets() is called here so SECRETS is never stale/null at this point.
         if (Array.isArray(request.excludeCredentials) && request.excludeCredentials.length > 0) {
-            const existing = (SECRETS || []).filter((s) => s.type === 'passkey' && s.fields && s.fields.rpId === rpId);
+            const stored = await ensureSecrets();
+            const existing = stored.filter((s) => s.type === 'passkey' && s.fields && s.fields.rpId === rpId);
             const existingIds = new Set(existing.map((s) => s.fields.credentialId));
             for (const ex of request.excludeCredentials) {
                 const exId = ex.id instanceof Uint8Array ? pk.b64uEncode(ex.id) : (ex.id ? String(ex.id) : '');
@@ -454,7 +461,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (sender.id !== chrome.runtime.id) return false;
     const fn = handlers[msg?.type];
     if (! fn) return false;
-    Promise.resolve(fn(msg)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+    Promise.resolve(fn(msg, sender)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
     return true; // async
 });
 

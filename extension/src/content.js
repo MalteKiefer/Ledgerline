@@ -476,10 +476,13 @@ async function captureSubmit(form) {
 // Relay passkey messages from the MAIN-world shim to the background SW and back.
 // The shim posts { __ll_pk:'req', id, kind, request, origin } on window; we
 // forward to the SW as { type: kind, request, origin } and return the result.
+// Security: origin is ALWAYS taken from location.origin (the content script's
+// own trusted execution context) — e.data.origin from the page is ignored to
+// prevent a forged-origin attack on the SW's rpId binding check.
 window.addEventListener('message', async (e) => {
-    if (e.source !== window || ! e.data || e.data.__ll_pk !== 'req') return;
+    if (e.source !== window || e.origin !== location.origin || ! e.data || e.data.__ll_pk !== 'req') return;
     let res;
-    try { res = await chrome.runtime.sendMessage({ type: e.data.kind, request: e.data.request, origin: e.data.origin }); }
+    try { res = await chrome.runtime.sendMessage({ type: e.data.kind, request: e.data.request, origin: location.origin }); }
     catch (err) { res = { ok: false, error: String(err) }; }
     window.postMessage({ __ll_pk: 'res', id: e.data.id, ok: ! ! (res && res.ok), result: res && res.result, error: res && res.error }, location.origin);
 });
