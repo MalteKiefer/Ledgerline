@@ -7,6 +7,7 @@ import { escapeHtml, saveBlobAs } from './shared/dom';
 import { normVec as _normVec, dotVec as _dotVec } from './shared/vector-math';
 import { EXT_CATEGORY, extOf, fileCategory, CATEGORY_ICON, formatBytes } from './shared/file-categories';
 import { csrfToken, jsonHeaders, apiRequest } from './shared/api';
+import { contactNameParts, contactDisplayName, contactsSortPref } from './shared/contact-utils';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -197,29 +198,6 @@ async function sha256Hex(str) {
     return [...new Uint8Array(dig)].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-// Split a contact record into { first, last } — falling back to a "First Last"
-// FN split. Shared by the contacts module and the gallery People panel so the
-// two render linked names identically.
-function contactNameParts(c) {
-    if (! c) return { first: '', last: '' };
-    let first = (c.first || '').trim(), last = (c.last || '').trim();
-    if (! first && ! last) {
-        const p = (c.fn || '').trim().split(/\s+/).filter(Boolean);
-        if (p.length > 1) { last = p.pop(); first = p.join(' '); } else if (p.length === 1) { first = p[0]; }
-    }
-    return { first, last };
-}
-// Canonical contact display label — always "Last, First".
-function contactDisplayName(c) {
-    const { first, last } = contactNameParts(c);
-    if (last || first) return [last, first].filter(Boolean).join(', ');
-    return (c?.fn || c?.org || (c?.emails ?? [])[0]?.value || '').trim();
-}
-// The contacts module persists its sort mode in localStorage; the gallery reads
-// the same pref so People ordering follows the contacts setting.
-function contactsSortPref() {
-    try { return (JSON.parse(localStorage.getItem('ll-contacts-prefs') || '{}').sortBy) || 'name'; } catch (e) { return 'name'; }
-}
 
 window.LLGalleryStore = {
     data: null,
