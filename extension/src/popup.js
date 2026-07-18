@@ -61,7 +61,7 @@ function renderUnlock() {
 }
 
 async function renderList() {
-    links.innerHTML = '<a id="lock">Lock</a>';
+    links.innerHTML = '<a id="refresh">Refresh</a><a id="lock">Lock</a>';
     document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
     app.innerHTML = '';
     app.append(el(`<div>
@@ -95,6 +95,13 @@ async function renderList() {
     }
     function matchScore(lg, h) { return lg.type === 'login' && (lg.urls || []).some((u) => hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u) === h || h.endsWith('.' + hostOf('https://' + u))) ? 1 : 0; }
     q.addEventListener('input', () => paint(q.value));
+    document.getElementById('refresh').onclick = async () => {
+        const rf = document.getElementById('refresh');
+        rf.textContent = '…';
+        const r = await send({ type: 'refresh' });
+        rf.textContent = 'Refresh';
+        if (r?.ok) paint(q.value);
+    };
     paint('');
 }
 
@@ -107,9 +114,16 @@ async function copyValue(it) {
 
 async function fill(login, tab) {
     if (! tab) return;
+    let filled = false;
     try {
-        await chrome.tabs.sendMessage(tab.id, { type: 'fill', login: { id: login.id, username: login.username, password: login.password, hasTotp: login.hasTotp } });
-    } catch (e) { /* content script not present on this page */ }
+        const r = await chrome.tabs.sendMessage(tab.id, { type: 'fill', login: { id: login.id, username: login.username, password: login.password, hasTotp: login.hasTotp } });
+        filled = ! ! (r && r.filled);
+    } catch (e) { /* no content script on this page */ }
+    // Nothing to fill here → open the login's site (first of possibly many URLs).
+    if (! filled) {
+        const u = (login.urls || [])[0];
+        if (u) chrome.tabs.create({ url: /^https?:\/\//.test(u) ? u : 'https://' + u });
+    }
     window.close();
 }
 
