@@ -8,7 +8,8 @@
   "background": { "service_worker": "dist/background.js", "type": "module" },
   "action": { "default_popup": "dist/src/popup.html", "default_title": "Ledgerline" },
   "content_scripts": [
-    { "matches": ["<all_urls>"], "js": ["content-loader.js"], "run_at": "document_idle", "all_frames": false }
+    { "matches": ["<all_urls>"], "js": ["content-loader.js"], "run_at": "document_idle", "all_frames": false },
+    { "matches": ["<all_urls>"], "js": ["dist/passkey-inject.js"], "run_at": "document_start", "all_frames": false, "world": "MAIN" }
   ],
   "web_accessible_resources": [
     { "resources": ["dist/content.js", "dist/assets/*"], "matches": ["<all_urls>"] }

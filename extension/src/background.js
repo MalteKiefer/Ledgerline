@@ -3,6 +3,7 @@
 // and content scripts hold no secrets; they message this worker.
 import * as api from './api.js';
 import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentitySecret, unwrapVaultKey } from './crypto.js';
+import * as pk from './passkey.js';
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -321,6 +322,101 @@ const handlers = {
     async tfa() { return { entries: await tfaEntries() }; },
     async createLogin({ login }) { return createLogin(login || {}); },
     async trashItem({ id }) { return mutateManifest((m) => { const s = m.secrets.find((x) => x.id === id); if (s) s.trashed = new Date().toISOString(); }); },
+
+    async 'passkey.create'({ request, origin }) {
+        // Require vault unlocked.
+        const vkB64 = (await session.get('vk')).vk;
+        if (! vkB64) return { ok: false, error: 'locked' };
+
+        // Deserialize: replace { __b64u } markers with Uint8Array bytes.
+        function des(v) {
+            if (v && typeof v === 'object' && typeof v.__b64u === 'string') return pk.b64uDecode(v.__b64u);
+            if (Array.isArray(v)) return v.map(des);
+            if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = des(v[k]); return o; }
+            return v;
+        }
+        request = des(request);
+
+        // rpId enforcement: must equal or be a registrable parent of the origin host.
+        const pageHost = hostOf(origin);
+        const rpId = (request.rp && request.rp.id) ? request.rp.id : pageHost;
+        if (! hostsMatch(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
+
+        // ES256 must be offered (alg -7).
+        if (Array.isArray(request.pubKeyCredParams) && request.pubKeyCredParams.length > 0) {
+            if (! request.pubKeyCredParams.some((p) => p.alg === -7)) return { ok: false, error: 'NotSupported' };
+        }
+
+        // excludeCredentials: reject if we already hold a matching passkey for this rpId.
+        if (Array.isArray(request.excludeCredentials) && request.excludeCredentials.length > 0) {
+            const existing = (SECRETS || []).filter((s) => s.type === 'passkey' && s.fields && s.fields.rpId === rpId);
+            const existingIds = new Set(existing.map((s) => s.fields.credentialId));
+            for (const ex of request.excludeCredentials) {
+                const exId = ex.id instanceof Uint8Array ? pk.b64uEncode(ex.id) : (ex.id ? String(ex.id) : '');
+                if (existingIds.has(exId)) return { ok: false, error: 'InvalidState' };
+            }
+        }
+
+        // Generate keypair and credential ID.
+        const credentialId = pk.randomCredentialId();
+        const { privateJwk, publicJwk } = await pk.generateEs256();
+
+        // Persist a passkey item into the personal vault manifest.
+        const now = new Date().toISOString();
+        const userHandle = request.user && request.user.id instanceof Uint8Array ? pk.b64uEncode(request.user.id) : '';
+        const userName = (request.user && request.user.name) ? request.user.name : '';
+        const userDisplayName = (request.user && request.user.displayName) ? request.user.displayName : '';
+        const rpName = (request.rp && request.rp.name) ? request.rp.name : rpId;
+        const credIdB64u = pk.b64uEncode(credentialId);
+
+        await mutateManifest((m) => {
+            const item = {
+                id: crypto.randomUUID(),
+                type: 'passkey',
+                title: rpId,
+                favorite: false, folder: null, tags: [], custom: [], icon: '',
+                fields: {
+                    rpId,
+                    rpName,
+                    userHandle,
+                    userName,
+                    userDisplayName,
+                    credentialId: credIdB64u,
+                    alg: -7,
+                    privateKey: JSON.stringify(privateJwk),
+                    publicKey: JSON.stringify(publicJwk),
+                    signCount: 0,
+                    createdAt: now,
+                },
+                created: now, updated: now, versions: [],
+            };
+            m.secrets.unshift(item);
+        });
+
+        // Build the attestation response.
+        const cose = pk.coseFromPublicJwk(publicJwk);
+        const authData = await pk.buildAuthData({
+            rpId,
+            flags: { up: true, uv: true, at: true },
+            signCount: 0,
+            attested: { aaguid: new Uint8Array(16), credentialId, cosePublicKey: cose },
+        });
+        const attObj = pk.attestationObjectNone(authData);
+        const cdj = pk.clientDataJSON({ type: 'webauthn.create', challenge: request.challenge, origin });
+
+        // Invalidate the secrets cache so the new passkey shows on next read.
+        SECRETS = null;
+
+        return {
+            ok: true,
+            result: {
+                credentialId: pk.b64uEncode(credentialId),
+                attestationObject: pk.b64uEncode(attObj),
+                clientDataJSON: pk.b64uEncode(cdj),
+                transports: ['internal', 'hybrid'],
+            },
+        };
+    },
     async updateItem({ id, patch }) {
         return mutateManifest((m) => {
             const s = m.secrets.find((x) => x.id === id);
