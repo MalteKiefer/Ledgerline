@@ -68,8 +68,8 @@
         </x-page-heading>
 
         <div class="mt-6 flex flex-col gap-4 md:flex-row" style="min-height: calc(100vh - 16rem);">
-          {{-- Left column: folders, tags and filters --}}
-          <aside class="w-full shrink-0 md:w-64">
+          {{-- Left: filters only (folders, types, tags) --}}
+          <aside class="w-full shrink-0 md:w-52">
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
               <div class="mb-2 flex flex-wrap gap-1">
                 <button type="button" @click="filterType = ''; filterFolder = ''; filterTag = ''; view = 'list'" :class="filterType === '' && filterFolder === '' && filterTag === '' && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs">{{ __('passwords.all') }}</button>
@@ -120,8 +120,8 @@
             </div>
           </aside>
 
-          {{-- Right column: the passwords list --}}
-          <section class="min-w-0 flex-1">
+          {{-- Middle: the item list --}}
+          <div class="w-full shrink-0 md:w-72">
             <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2">
               <div class="relative mb-2">
                 <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -156,19 +156,13 @@
                 </template>
               </div>
             </div>
-          </section>
-        </div>
+          </div>
 
-        {{-- Detail / edit as a right slide-over --}}
-        <div x-show="draft || (current && panelOpen)" x-cloak class="fixed inset-0 z-[900] flex" @keydown.escape.window="draft ? cancelEdit() : closePanel()">
-          <div class="absolute inset-0 bg-gray-900/40" @click="draft ? cancelEdit() : closePanel()"></div>
-          <div class="relative ml-auto flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white dark:bg-gray-900 shadow-2xl"
-               x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
-               x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
-            <button type="button" @click="draft ? cancelEdit() : closePanel()" title="{{ __('passwords.close') }}" class="absolute right-3 top-3 z-10 rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+          {{-- Right: detail or edit --}}
+          <section class="min-w-0 flex-1">
             {{-- EDIT / NEW --}}
             <template x-if="draft">
-              <div class="p-5">
+              <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
                 <div class="mb-4 flex items-center gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                         :class="(draft.type === 'login' && ! draft.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -281,7 +275,7 @@
 
             {{-- DETAIL (read-only) --}}
             <template x-if="! draft && current">
-              <div class="p-5">
+              <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
                 <div class="mb-4 flex items-start gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                         :class="(current.type === 'login' && ! current.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
@@ -395,7 +389,14 @@
               </div>
             </template>
 
-          </div>
+            {{-- Empty --}}
+            <template x-if="! draft && ! current">
+              <div class="flex h-full min-h-[40vh] flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-12 text-center">
+                <x-icon name="key" class="h-10 w-10 text-gray-300 dark:text-gray-600" />
+                <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('passwords.pick_hint') }}</p>
+              </div>
+            </template>
+          </section>
         </div>
 
         {{-- Version history modal --}}
