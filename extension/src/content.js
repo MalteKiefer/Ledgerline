@@ -116,6 +116,25 @@ function attachBadge(field, logins, onPick = doFill) {
     };
     field.addEventListener('focus', show);
     field.addEventListener('click', (e) => { e.stopPropagation(); show(); });
+
+    // Visible in-field icon so the user can see autofill is available.
+    const icon = document.createElement('div');
+    icon.textContent = 'L';
+    icon.title = 'Ledgerline — fill';
+    icon.style.cssText = 'position:absolute;z-index:2147483646;width:18px;height:18px;border-radius:5px;background:#111827;color:#fff;font:600 11px/18px system-ui,sans-serif;text-align:center;cursor:pointer;box-shadow:0 1px 3px #0004;';
+    icon.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); show(); });
+    const place = () => {
+        const r = field.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) { icon.style.display = 'none'; return; }
+        icon.style.display = 'block';
+        icon.style.top = (window.scrollY + r.top + (r.height - 18) / 2) + 'px';
+        icon.style.left = (window.scrollX + r.right - 24) + 'px';
+    };
+    document.body.append(icon);
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    setInterval(place, 1000); // follow dynamic/SPA layouts
 }
 
 async function init() {
