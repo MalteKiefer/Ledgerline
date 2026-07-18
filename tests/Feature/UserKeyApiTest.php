@@ -102,13 +102,11 @@ class UserKeyApiTest extends TestCase
     {
         $this->signIn();
 
-        // Web routes with missing fields redirect back with flashed errors (302)
-        // rather than returning 422 JSON — the exception handler is configured
-        // to render JSON only for api/* paths. Assert the request is rejected.
-        $response = $this->putJson(route('user.keys.store'), []);
+        // Web routes use shouldRenderJsonWhen(api/*) so validation failures on
+        // web routes redirect back (302) rather than returning 422. Assert
+        // redirect specifically to lock down the rejection behaviour.
+        $response = $this->put(route('user.keys.store'), []);
 
-        // Redirect back with validation errors (not a successful 2xx).
-        $this->assertGreaterThanOrEqual(300, $response->getStatusCode());
-        $this->assertLessThan(500, $response->getStatusCode());
+        $response->assertRedirect();
     }
 }

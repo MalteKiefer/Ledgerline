@@ -65,7 +65,7 @@ class SharedVaultStoreController extends Controller
             'expected_version' => ['required', 'integer', 'min:0'],
         ]);
 
-        $result = DB::transaction(function () use ($vault, $data): array|null {
+        $result = DB::transaction(function () use ($vault, $data): array {
             /** @var SharedVaultStore|null $row */
             $row = SharedVaultStore::where('vault_id', $vault->id)
                 ->lockForUpdate()

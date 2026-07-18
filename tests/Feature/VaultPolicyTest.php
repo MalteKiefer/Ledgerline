@@ -13,6 +13,7 @@ use Illuminate\Contracts\Validation\Factory;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Facades\Gate;
 use Tests\TestCase;
 
 class VaultPolicyTest extends TestCase
@@ -58,6 +59,39 @@ class VaultPolicyTest extends TestCase
 
         $result = $outsider->can('view', $vault);
         $this->assertFalse($result);
+    }
+
+    public function test_non_member_view_denial_is_404_not_found_style(): void
+    {
+        $outsider = User::factory()->create();
+        $vault = $this->makeVault(User::factory()->create());
+
+        $response = Gate::forUser($outsider)->inspect('view', $vault);
+
+        $this->assertTrue($response->denied());
+        $this->assertSame(404, $response->status());
+    }
+
+    public function test_non_member_update_denial_is_404_not_found_style(): void
+    {
+        $outsider = User::factory()->create();
+        $vault = $this->makeVault(User::factory()->create());
+
+        $response = Gate::forUser($outsider)->inspect('update', $vault);
+
+        $this->assertTrue($response->denied());
+        $this->assertSame(404, $response->status());
+    }
+
+    public function test_non_member_manage_denial_is_404_not_found_style(): void
+    {
+        $outsider = User::factory()->create();
+        $vault = $this->makeVault(User::factory()->create());
+
+        $response = Gate::forUser($outsider)->inspect('manage', $vault);
+
+        $this->assertTrue($response->denied());
+        $this->assertSame(404, $response->status());
     }
 
     public function test_viewer_can_view_vault(): void
@@ -187,17 +221,17 @@ class VaultPolicyTest extends TestCase
         $this->assertEmpty($this->extractRoleRankErrors($request));
     }
 
-    public function test_manager_cannot_add_role_above_their_own(): void
+    public function test_non_manager_editor_is_blocked_at_authorize(): void
     {
-        // A manager is rank 3 = highest — this test covers an editor trying to
-        // grant manager, since an editor is rank 2 < manager rank 3.
+        // An editor lacks the `manage` ability → authorize() returns false
+        // before any role-rank guard is reached.
         $owner = User::factory()->create();
         $editor = User::factory()->create();
         $target = User::factory()->create();
         $vault = $this->makeVault($owner);
         $this->addMember($vault, $editor, 'editor');
 
-        // Editor is rank 2, requesting manager (rank 3) → must fail authorize.
+        // Editor tries to invite another user as manager (rank 3).
         $request = $this->buildCreateRequest($editor, $vault, [
             'user_id' => $target->id,
             'role' => 'manager',

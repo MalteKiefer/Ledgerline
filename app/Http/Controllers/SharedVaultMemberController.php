@@ -59,6 +59,10 @@ class SharedVaultMemberController extends Controller
             abort(404);
         }
 
+        // Only pending invitations may be accepted — a revoked/active member
+        // cannot re-activate themselves via a stale accept URL.
+        abort_unless($member->status === 'pending', 422);
+
         // Only the target user may accept their own invitation.
         abort_unless((int) $member->user_id === (int) Auth::id(), 403);
 

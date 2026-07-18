@@ -7,6 +7,7 @@ namespace App\Http\Requests\Vault;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
@@ -37,8 +38,17 @@ class CreateMemberRequest extends FormRequest
     /** @return array<string, mixed> */
     public function rules(): array
     {
+        /** @var SharedVault $vault */
+        $vault = $this->route('vault');
+
         return [
-            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'user_id' => [
+                'required',
+                'integer',
+                'exists:users,id',
+                Rule::unique('shared_vault_members', 'user_id')
+                    ->where('vault_id', $vault->id),
+            ],
             'role' => ['required', 'string', 'in:viewer,editor,manager'],
             'wrapped_vault_key' => ['required', 'string'],
             'recipient_fingerprint' => ['nullable', 'string'],

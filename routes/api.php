@@ -100,7 +100,7 @@ Route::prefix('v1')->group(function (): void {
                 ->middleware('throttle:pubkey-lookup')
                 ->name('resolve-recipient');
             Route::get('/{vault}/store', [SharedVaultStoreController::class, 'show'])->name('store.show');
-            Route::put('/{vault}/store', [SharedVaultStoreController::class, 'save'])->name('store.save');
+            Route::put('/{vault}/store', [SharedVaultStoreController::class, 'save'])->middleware('throttle:600,1')->name('store.save');
             Route::post('/{vault}/members', [SharedVaultMemberController::class, 'store'])->name('members.store');
             Route::post('/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])->name('members.accept');
             Route::patch('/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])->name('members.update');

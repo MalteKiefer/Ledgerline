@@ -466,6 +466,28 @@ class VaultApiTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_adding_already_existing_member_is_rejected_not_500(): void
+    {
+        $manager = $this->signIn();
+        $vault = $this->makeVault($manager);
+        $this->addMember($vault, $manager, 'manager');
+
+        $target = User::factory()->create();
+        // Pre-existing membership for target.
+        $this->addMember($vault, $target, 'viewer');
+
+        $response = $this->postJson(route('vaults.members.store', $vault), [
+            'user_id'           => $target->id,
+            'role'              => 'viewer',
+            'wrapped_vault_key' => 'WRAPPED',
+        ]);
+
+        // Duplicate (vault_id, user_id) → validation rejects gracefully, not 500.
+        // Web route: validation redirects back (302) or returns 422; never a server error.
+        $this->assertLessThan(500, $response->getStatusCode());
+        $this->assertGreaterThanOrEqual(300, $response->getStatusCode());
+    }
+
     // -------------------------------------------------------------------------
     // POST /vaults/{vault}/members/{member}/accept — accept invite
     // -------------------------------------------------------------------------
