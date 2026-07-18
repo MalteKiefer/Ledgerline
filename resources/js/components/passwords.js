@@ -1005,11 +1005,6 @@ export default (config = {}, labels = {}) => ({
         }
     },
     async convertToShared(f) {
-        // Guard: don't convert if it's the only personal vault.
-        if (this.folders.length <= 1) {
-            window.llToast(labels.deleteFolderConfirm || '');
-            return;
-        }
         if (! await this.$store.confirm.ask(labels.makeSharedConfirm || '')) return;
         try {
             const vk = await VaultShareCrypto.newVaultKey();
@@ -1026,9 +1021,11 @@ export default (config = {}, labels = {}) => ({
             // Move items locally: remove from personal, register as shared.
             const folderItemIds = new Set(folderItems.map((x) => x.id));
             for (let i = this.items.length - 1; i >= 0; i--) if (folderItemIds.has(this.items[i].id)) this.items.splice(i, 1);
-            // Remove the personal folder.
+            // Remove the personal folder. If it was the last one, keep a fresh
+            // empty "Privat" so the personal side never ends up with zero vaults.
             const fi = this.folders.findIndex((y) => y.id === f.id);
             if (fi >= 0) this.folders.splice(fi, 1);
+            if (this.folders.length === 0) this.folders.push({ id: crypto.randomUUID(), name: 'Privat', role: 'manage' });
             if (this.filterFolder === f.id) this.filterFolder = '';
             this._save(); // save personal manifest without those items
             // Register the new shared vault in-memory.
