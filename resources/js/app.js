@@ -9,6 +9,7 @@ import { EXT_CATEGORY, extOf, fileCategory, CATEGORY_ICON, formatBytes } from '.
 import { csrfToken, jsonHeaders, apiRequest } from './shared/api';
 import { contactNameParts, contactDisplayName, contactsSortPref } from './shared/contact-utils';
 import { ocrWorker, ocrImage } from './shared/ocr';
+import { loadLeaflet, loadCodeMirror } from './shared/lazy-loaders';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -473,53 +474,6 @@ document.addEventListener('submit', (e) => {
 // they stay out of the initial bundle (pages that never open an editor / export
 // a PDF / bulk-download / view a map never download them). Each loader is
 // memoised.
-let leafletModule = null;
-async function loadLeaflet() {
-    if (! leafletModule) {
-        const L = (await import('leaflet')).default;
-        await import('leaflet.markercluster'); // augments L with markerClusterGroup
-        await Promise.all([
-            import('leaflet/dist/leaflet.css'),
-            import('leaflet.markercluster/dist/MarkerCluster.css'),
-            import('leaflet.markercluster/dist/MarkerCluster.Default.css'),
-        ]);
-        const [icon, icon2x, shadow] = await Promise.all([
-            import('leaflet/dist/images/marker-icon.png'),
-            import('leaflet/dist/images/marker-icon-2x.png'),
-            import('leaflet/dist/images/marker-shadow.png'),
-        ]);
-        // Leaflet's default marker resolves its images by a relative URL that
-        // 404s under a bundler; point it at the bundled assets so pins render.
-        L.Icon.Default.mergeOptions({
-            iconUrl: icon.default,
-            iconRetinaUrl: icon2x.default,
-            shadowUrl: shadow.default,
-        });
-        leafletModule = L;
-    }
-    return leafletModule;
-}
-
-let cmModule = null;
-async function loadCodeMirror() {
-    if (! cmModule) {
-        const [core, state, language, data] = await Promise.all([
-            import('codemirror'),
-            import('@codemirror/state'),
-            import('@codemirror/language'),
-            import('@codemirror/language-data'),
-        ]);
-        cmModule = {
-            EditorView: core.EditorView,
-            basicSetup: core.basicSetup,
-            EditorState: state.EditorState,
-            Compartment: state.Compartment,
-            LanguageDescription: language.LanguageDescription,
-            languages: data.languages,
-        };
-    }
-    return cmModule;
-}
 
 /**
  * Live backup run list: loads recent runs as JSON, refreshes after "back up

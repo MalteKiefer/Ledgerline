@@ -1,0 +1,50 @@
+// Memoised lazy loaders for heavy, rarely-used libraries so they never bloat
+// the main bundle (users who never open a map / edit code don't download them).
+
+let leafletModule = null;
+export async function loadLeaflet() {
+    if (! leafletModule) {
+        const L = (await import('leaflet')).default;
+        await import('leaflet.markercluster'); // augments L with markerClusterGroup
+        await Promise.all([
+            import('leaflet/dist/leaflet.css'),
+            import('leaflet.markercluster/dist/MarkerCluster.css'),
+            import('leaflet.markercluster/dist/MarkerCluster.Default.css'),
+        ]);
+        const [icon, icon2x, shadow] = await Promise.all([
+            import('leaflet/dist/images/marker-icon.png'),
+            import('leaflet/dist/images/marker-icon-2x.png'),
+            import('leaflet/dist/images/marker-shadow.png'),
+        ]);
+        // Leaflet's default marker resolves its images by a relative URL that
+        // 404s under a bundler; point it at the bundled assets so pins render.
+        L.Icon.Default.mergeOptions({
+            iconUrl: icon.default,
+            iconRetinaUrl: icon2x.default,
+            shadowUrl: shadow.default,
+        });
+        leafletModule = L;
+    }
+    return leafletModule;
+}
+
+let cmModule = null;
+export async function loadCodeMirror() {
+    if (! cmModule) {
+        const [core, state, language, data] = await Promise.all([
+            import('codemirror'),
+            import('@codemirror/state'),
+            import('@codemirror/language'),
+            import('@codemirror/language-data'),
+        ]);
+        cmModule = {
+            EditorView: core.EditorView,
+            basicSetup: core.basicSetup,
+            EditorState: state.EditorState,
+            Compartment: state.Compartment,
+            LanguageDescription: language.LanguageDescription,
+            languages: data.languages,
+        };
+    }
+    return cmModule;
+}
