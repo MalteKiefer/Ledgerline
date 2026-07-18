@@ -163,7 +163,8 @@ async function tfaEntries() {
             if (! m || typeof m !== 'object' || ! Array.isArray(m.methods)) continue;
             const methods = m.methods.map((x) => String(x).toLowerCase());
             if (! methods.some((t) => APP.includes(t))) continue;
-            const doc = typeof m.documentation === 'string' ? m.documentation : '';
+            // Only keep http(s) docs — never let a non-http scheme reach an href.
+            const doc = (typeof m.documentation === 'string' && /^https?:\/\//i.test(m.documentation)) ? m.documentation : '';
             const d = domain.toLowerCase();
             map[d] = doc; // full key + bare domain
             const reg = registrable(d);
@@ -214,7 +215,11 @@ function createLogin(rec) {
         fields: { username: rec.username || '', password: rec.password || '', urls: (rec.url ? [rec.url] : []).filter(Boolean), totp: '', note: '' },
         created: now, updated: now, versions: [],
     };
-    return mutateManifest((m) => { m.secrets.unshift(item); return { id: item.id }; });
+    return mutateManifest((m) => {
+        item.folder = (m.secretFolders && m.secretFolders[0] && m.secretFolders[0].id) || null; // default to the first vault
+        m.secrets.unshift(item);
+        return { id: item.id };
+    });
 }
 
 // Poll the pairing until the owner approves it (or time out).

@@ -7427,11 +7427,12 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
 
     async init() {
         await this._initZk();
+        this._migrateVaults();
         this._totpTimer = setInterval(() => this._tickTotp(), 1000);
         this._tickTotp();
         this._autoSelect();
         // Keep the first matching entry selected as the state/filters change.
-        this.$watch('state', (s) => { if (s === 'ready') this._autoSelect(); });
+        this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); } });
         for (const p of ['query', 'filterType', 'filterFolder', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
         this.$watch('view', () => this.clearSelection());
         this._loadTfa();
@@ -7462,11 +7463,13 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     get filtered() {
         if (this.view === 'health') return this.healthProblems.map((o) => o.x);
         const q = this.query.trim().toLowerCase();
+        // Health and Trash span every vault; the list view is scoped to filters.
+        const global = this.view === 'trash';
         const list = this.view === 'trash' ? this.items.filter((x) => x.trashed) : this.liveItems;
         return list
-            .filter((x) => ! this.filterType || x.type === this.filterType)
-            .filter((x) => this.filterFolder === '' || (this.filterFolder === '_none' ? ! x.folder : x.folder === this.filterFolder))
-            .filter((x) => ! this.filterTag || (x.tags || []).includes(this.filterTag))
+            .filter((x) => global || ! this.filterType || x.type === this.filterType)
+            .filter((x) => global || this.filterFolder === '' || (this.filterFolder === '_none' ? ! x.folder : x.folder === this.filterFolder))
+            .filter((x) => global || ! this.filterTag || (x.tags || []).includes(this.filterTag))
             .filter((x) => ! q || (x.title || '').toLowerCase().includes(q)
                 || (x.tags || []).some((t) => t.toLowerCase().includes(q))
                 || Object.values(x.fields || {}).some((v) => (typeof v === 'string' && v.toLowerCase().includes(q)) || (Array.isArray(v) && v.some((u) => String(u).toLowerCase().includes(q))))
@@ -7474,19 +7477,43 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
             .sort((a, b) => ((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (a.title || '').localeCompare(b.title || ''));
     },
 
-    /* ---- Folders ---- */
+    /* ---- Vaults (formerly folders) ----
+       One-time migration to the vault model: collapse everything into a single
+       "Privat" vault and drop the old folders. Vaults carry a `role` so vault
+       sharing (read / edit / manage) can be layered on later. Runs once, gated
+       by a durable flag in the sealed manifest. */
+    _migrateVaults() {
+        if (this.state !== 'ready' || ! window.LLStore.data) return;
+        const store = window.LLStore.data;
+        // Every vault gets a role (owner = manage) so the UI can gate actions.
+        for (const v of this.folders) if (! v.role) v.role = 'manage';
+        if (store.pwVaultMigrated) return;
+        const id = crypto.randomUUID();
+        const privat = { id, name: 'Privat', role: 'manage' };
+        this.folders.splice(0, this.folders.length, privat); // keep the bound ref
+        for (const it of this.items) it.folder = id;
+        store.pwVaultMigrated = true;
+        this.filterFolder = '';
+        this._save();
+    },
+    // The user's role in a vault: 'read' | 'edit' | 'manage'. Owner = manage.
+    vaultRole(id) { const v = this.folders.find((f) => f.id === id); return v ? (v.role || 'manage') : 'manage'; },
+    canManageVault(id) { return this.vaultRole(id) === 'manage'; },
+
     async addFolder() {
         const raw = await this.$store.confirm.prompt('', { placeholder: labels.folderName || '', ok: labels.save || '' });
         const name = (raw || '').trim(); if (! name) return;
-        this.folders.push({ id: crypto.randomUUID(), name }); this._save();
+        this.folders.push({ id: crypto.randomUUID(), name, role: 'manage' }); this._save();
     },
     async renameFolder(f) {
         const raw = await this.$store.confirm.prompt('', { value: f.name, ok: labels.save || '' });
         const name = (raw || '').trim(); if (name) { f.name = name; this._save(); }
     },
     async deleteFolder(f) {
+        if (this.folders.length <= 1) return; // never delete the last vault
         if (! await this.$store.confirm.ask(labels.deleteFolderConfirm || '')) return;
-        for (const x of this.items) if (x.folder === f.id) x.folder = null;
+        const fallback = this.folders.find((y) => y.id !== f.id);
+        for (const x of this.items) if (x.folder === f.id) x.folder = fallback ? fallback.id : null;
         const i = this.folders.findIndex((y) => y.id === f.id); if (i >= 0) this.folders.splice(i, 1);
         if (this.filterFolder === f.id) this.filterFolder = '';
         this._save();
@@ -7500,7 +7527,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     },
     newItem(type) {
         this.current = null; this.reveal = {}; this.wifiQr = '';
-        this.draft = { id: null, type, title: '', favorite: false, folder: this.filterFolder && this.filterFolder !== '_none' ? this.filterFolder : null, tags: [], custom: [], icon: '', fields: this._blankFields(type), created: null, updated: null, versions: [] };
+        this.draft = { id: null, type, title: '', favorite: false, folder: (this.filterFolder && this.filterFolder !== '_none') ? this.filterFolder : ((this.folders[0] && this.folders[0].id) || null), tags: [], custom: [], icon: '', fields: this._blankFields(type), created: null, updated: null, versions: [] };
         this.tagsValue = '';
     },
     openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this.historyOpen = false; this._refreshWifiQr(x); },
@@ -7614,7 +7641,16 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     _save() { this._mut++; window.LLStore.touch(); },
     _pwTypes: ['login', 'password', 'server', 'wifi'],
     _pw(x) { return (x && x.fields && x.fields.password) || ''; },
-    get healthItems() { return this.liveItems.filter((x) => this._pwTypes.includes(x.type) && this._pw(x)); },
+    get healthItems() { return this.liveItems.filter((x) => (this._pwTypes.includes(x.type) && this._pw(x)) || (x.type === 'card' && this._cardExpiring(x))); },
+    // A card that is expired or expires within ~45 days.
+    _cardExpiring(x) {
+        const m = String((x.fields && x.fields.expiry) || '').match(/(\d{1,2})\D+(\d{2,4})/);
+        if (! m) return false;
+        const mm = +m[1]; let yr = +m[2]; if (yr < 100) yr += 2000;
+        if (mm < 1 || mm > 12) return false;
+        const end = new Date(yr, mm, 1); // first day after the expiry month
+        return end.getTime() <= Date.now() + 45 * 86400000;
+    },
     // Memoised — issuesFor()/the health list call this O(n) times per render.
     get _reusedSet() {
         const sig = this._mut + '|' + this.items.length;
@@ -7628,11 +7664,13 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     },
     _pwScore(pw) { return pwStrength(pw); },
     issuesFor(x) {
+        if (! x) return null;
+        if (x.type === 'card') { return this._cardExpiring(x) ? { weak: false, reused: false, breach: null, no2fa: false, expiring: true } : null; }
         const pw = this._pw(x); if (! pw) return null;
         const b = this.breachMap[pw];
-        return { weak: this._pwScore(pw) < 3, reused: this._reusedSet.has(x.id), breach: (b == null ? null : b), no2fa: this.supports2fa(x) };
+        return { weak: this._pwScore(pw) < 3, reused: this._reusedSet.has(x.id), breach: (b == null ? null : b), no2fa: this.supports2fa(x), expiring: false };
     },
-    hasIssue(x) { const i = this.issuesFor(x); return ! ! i && (i.weak || i.reused || i.breach > 0); },
+    hasIssue(x) { const i = this.issuesFor(x); return ! ! i && (i.weak || i.reused || i.breach > 0 || i.expiring); },
     // Other entries that share this entry's password (for the reuse overview).
     reusedWith(x) {
         if (! x) return [];
@@ -7640,7 +7678,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
         return this.healthItems.filter((y) => y.id !== x.id && this._pw(y) === pw);
     },
     get healthProblems() {
-        const rank = (i) => (i.breach > 0 ? 4 : 0) + (i.reused ? 2 : 0) + (i.weak ? 1 : 0) + (i.no2fa ? 1 : 0);
+        const rank = (i) => (i.breach > 0 ? 4 : 0) + (i.expiring ? 3 : 0) + (i.reused ? 2 : 0) + (i.weak ? 1 : 0) + (i.no2fa ? 1 : 0);
         return this.healthItems.map((x) => ({ x, iss: this.issuesFor(x) })).filter((o) => o.iss && rank(o.iss) > 0)
             .sort((a, b) => rank(b.iss) - rank(a.iss));
     },
@@ -7725,7 +7763,7 @@ Alpine.data('passwords', (config = {}, labels = {}) => ({
     // A login with no stored TOTP whose domain is known to support app 2FA.
     supports2fa(x) { return ! (x && x.fields && x.fields.totp) && ! ! this._tfaMatch(x); },
     // The dataset's setup-instructions URL for the login's site (or '').
-    tfaDoc(x) { const d = this._tfaMatch(x); return d ? (this._tfaMap[d] || '') : ''; },
+    tfaDoc(x) { const d = this._tfaMatch(x); const u = d ? (this._tfaMap[d] || '') : ''; return /^https?:\/\//i.test(u) ? u : ''; },
 
     /* ---- Import (Bitwarden / 1Password / LastPass / KeePass / CSV) ----
        Everything parses in the browser and lands straight in the sealed

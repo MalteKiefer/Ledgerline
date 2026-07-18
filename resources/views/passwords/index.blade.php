@@ -71,31 +71,25 @@
         </x-page-heading>
 
         <div class="mt-6 flex flex-col divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white md:flex-row md:divide-x md:divide-y-0 dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-900" style="min-height: calc(100vh - 15rem);">
-          {{-- Left: filters only (folders, types, tags) --}}
+          {{-- Left: vaults and tags --}}
           <aside class="w-full shrink-0 md:w-56">
             <div class="p-3">
-              <div class="mb-2 flex flex-wrap gap-1">
-                <button type="button" @click="filterType = ''; filterFolder = ''; filterTag = ''; view = 'list'" :class="filterType === '' && filterFolder === '' && filterTag === '' && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs">{{ __('passwords.all') }}</button>
-                <template x-for="t in typeList()" :key="'f' + t">
-                  <button type="button" x-show="countOf(t)" @click="filterType = t; view = 'list'" :class="filterType === t && view === 'list' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2.5 py-1 text-xs" x-text="typeLabel(t) + ' ' + countOf(t)"></button>
-                </template>
-              </div>
-              {{-- Folders --}}
-              <div class="mb-2 border-t border-gray-100 dark:border-gray-800 pt-2">
+              {{-- Vaults (Tresore) --}}
+              <div class="mb-2">
                 <div class="mb-1 flex items-center justify-between px-1">
                   <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.folders') }}</span>
-                  <button type="button" @click="addFolder()" title="{{ __('passwords.new_folder') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="folder-plus" class="h-4 w-4" /></button>
+                  <button type="button" @click="addFolder()" title="{{ __('passwords.new_folder') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
-                <button type="button" @click="filterFolder = filterFolder === '_none' ? '' : '_none'" :class="filterFolder === '_none' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs">
-                  <x-icon name="folder" class="h-3.5 w-3.5 text-gray-400" /><span>{{ __('passwords.no_folder') }}</span>
+                <button type="button" @click="filterFolder = ''; view = 'list'" :class="filterFolder === '' && view === 'list' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs">
+                  <x-icon name="squares-2x2" class="h-3.5 w-3.5 text-gray-400" /><span>{{ __('passwords.all_vaults') }}</span>
                 </button>
                 <template x-for="f in folders" :key="f.id">
-                  <div class="group flex items-center gap-1 rounded-md pr-1" :class="filterFolder === f.id ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
-                    <button type="button" @click="filterFolder = filterFolder === f.id ? '' : f.id" class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs" :class="filterFolder === f.id ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'">
-                      <x-icon name="folder" class="h-3.5 w-3.5 shrink-0 text-gray-400" /><span class="truncate" x-text="f.name"></span>
+                  <div class="group flex items-center gap-1 rounded-md pr-1" :class="filterFolder === f.id && view === 'list' ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                    <button type="button" @click="filterFolder = filterFolder === f.id ? '' : f.id; view = 'list'" class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs" :class="filterFolder === f.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'">
+                      <x-icon name="archive-box" class="h-3.5 w-3.5 shrink-0 text-gray-400" /><span class="truncate" x-text="f.name"></span>
                     </button>
-                    <button type="button" @click="renameFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="pencil" class="h-3 w-3" /></button>
-                    <button type="button" @click="deleteFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-red-600 group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
+                    <button type="button" x-show="canManageVault(f.id)" @click="renameFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-gray-600 group-hover:opacity-100"><x-icon name="pencil" class="h-3 w-3" /></button>
+                    <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="deleteFolder(f)" class="shrink-0 text-gray-400 opacity-0 hover:text-red-600 group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
                   </div>
                 </template>
               </div>
@@ -126,9 +120,15 @@
           {{-- Middle: the item list --}}
           <div class="w-full shrink-0 md:w-80">
             <div class="p-3">
-              <div class="relative mb-2">
-                <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:bg-white focus:ring-0 dark:border-gray-700 dark:bg-gray-800 dark:focus:bg-gray-900">
+              <div class="mb-2 flex items-center gap-2">
+                <div class="relative min-w-0 flex-1">
+                  <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:bg-white focus:ring-0 dark:border-gray-700 dark:bg-gray-800 dark:focus:bg-gray-900">
+                </div>
+                <select x-show="view === 'list'" x-model="filterType" title="{{ __('passwords.filter_type') }}" class="shrink-0 rounded-lg border-gray-200 bg-gray-50 py-2 pl-2 pr-7 text-sm focus:border-gray-400 focus:ring-0 dark:border-gray-700 dark:bg-gray-800">
+                  <option value="">{{ __('passwords.all') }}</option>
+                  <template x-for="t in typeList()" :key="'ft' + t"><option :value="t" x-text="typeLabel(t)"></option></template>
+                </select>
               </div>
               <div x-show="view === 'health'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400" x-text="healthCount ? (healthCount + ' {{ __('passwords.health_issues') }}') : '{{ __('passwords.health_ok') }}'"></span>
@@ -164,6 +164,7 @@
                           <template x-if="issuesFor(x) && issuesFor(x).reused"><span class="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">{{ __('passwords.issue_reused') }}</span></template>
                           <template x-if="issuesFor(x) && issuesFor(x).weak"><span class="rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-400">{{ __('passwords.issue_weak') }}</span></template>
                           <template x-if="issuesFor(x) && issuesFor(x).no2fa"><span class="rounded bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-300">{{ __('passwords.issue_no2fa') }}</span></template>
+                          <template x-if="issuesFor(x) && issuesFor(x).expiring"><span class="rounded bg-orange-100 dark:bg-orange-900/40 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:text-orange-300">{{ __('passwords.issue_expiring') }}</span></template>
                         </span>
                       </span>
                       <span x-show="x.favorite" class="shrink-0 text-amber-500"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
@@ -330,6 +331,7 @@
                       </div>
                     </div>
                     <p x-show="issuesFor(current) && issuesFor(current).weak">{{ __('passwords.weak_warn') }}</p>
+                    <p x-show="issuesFor(current) && issuesFor(current).expiring">{{ __('passwords.card_expiring_warn') }}</p>
                     <button type="button" x-show="issuesFor(current) && issuesFor(current).breach === null" @click="checkBreaches()" :disabled="breachChecking" class="text-xs font-medium underline disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
                   </div>
                 </div>
