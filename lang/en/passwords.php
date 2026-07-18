@@ -90,6 +90,7 @@ return [
 
     // Shared vaults (read + write)
     'save_conflict' => 'Vault was updated elsewhere — reloading.',
+    'save_failed' => 'Save failed. Please try again.',
     'shared_vaults' => 'Shared Vaults',
     'shared_vault_untitled' => 'Untitled Shared Vault',
     'role_read' => 'Viewer',

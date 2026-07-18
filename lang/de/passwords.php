@@ -90,6 +90,7 @@ return [
 
     // Geteilte Tresore (Lesen + Schreiben)
     'save_conflict' => 'Tresor wurde anderweitig aktualisiert — lade neu.',
+    'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
     'shared_vaults' => 'Geteilte Tresore',
     'shared_vault_untitled' => 'Unbenannter geteilter Tresor',
     'role_read' => 'Leser',

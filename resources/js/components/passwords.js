@@ -6,13 +6,14 @@ import { Vault, VaultShareCrypto } from '../vault';
 import { apiRequest, jsonHeaders } from '../shared/api';
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; } }),
+    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; } }),
 
     items: [],
     folders: [],
     sharedVaults: [],  // [{id, name, role, shared: true, vaultId}]
     sharedItems: {},   // map of vaultId -> items array
     _sharedVersion: {}, // map of vaultId -> version number
+    _sharedKeys: {}, // map of vaultId -> Uint8Array vault key (in-memory only)
     view: 'list', // list | trash
     current: null, // item being viewed (live ref into items)
     draft: null, // editable copy while creating/editing (null = not editing)
@@ -162,7 +163,6 @@ export default (config = {}, labels = {}) => ({
     },
 
     async _loadSharedVaults() {
-        this._sharedKeys = this._sharedKeys || {};
         try {
             const id = await Vault.ensureIdentityKeys();
             const memberships = await apiRequest('GET', '/vaults');
@@ -211,7 +211,13 @@ export default (config = {}, labels = {}) => ({
         const manifest = { name: vault.name, items: this.sharedItems[vaultId] || [] };
         const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
         const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._sharedVersion[vaultId] });
-        const res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+        let res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+        // On 429, honour Retry-After and retry once (mirrors personal LLStore.flush behaviour).
+        if (res.status === 429) {
+            const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+            await this._sleep((isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000);
+            res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+        }
         if (res.ok) {
             const { version } = await res.json();
             this._sharedVersion[vaultId] = version;
@@ -230,6 +236,10 @@ export default (config = {}, labels = {}) => ({
             }
             this.sharedItems = { ...this.sharedItems, [vaultId]: serverItems };
             this._sharedVersion[vaultId] = data.version;
+            // Re-point this.current if it belongs to this vault so it tracks the merged array element.
+            if (this.current && this.current.vaultId === vaultId) {
+                this.current = serverItems.find((i) => i.id === this.current.id) || null;
+            }
             const sealed2 = await VaultShareCrypto.sealVaultManifest(
                 { name: vault.name, items: serverItems },
                 vkBytes,
@@ -333,20 +343,21 @@ export default (config = {}, labels = {}) => ({
             if (! d.id) {
                 d.id = crypto.randomUUID(); d.created = now; d.updated = now; d.versions = [];
             } else {
-                const arr = this.sharedItems[d.vaultId] || [];
-                const it = arr.find((x) => x.id === d.id);
-                if (it && this._changed(it, d)) {
-                    it.versions = it.versions ?? [];
-                    it.versions.unshift({ at: it.updated || it.created || now, title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})), custom: JSON.parse(JSON.stringify(it.custom || [])) });
-                    if (it.versions.length > 100) it.versions.length = 100;
+                const existing = (this.sharedItems[d.vaultId] || []).find((x) => x.id === d.id);
+                if (existing && this._changed(existing, d)) {
+                    existing.versions = existing.versions ?? [];
+                    existing.versions.unshift({ at: existing.updated || existing.created || now, title: existing.title, fields: JSON.parse(JSON.stringify(existing.fields || {})), custom: JSON.parse(JSON.stringify(existing.custom || [])) });
+                    if (existing.versions.length > 100) existing.versions.length = 100;
+                    // Carry the updated version history onto the draft so the spread below includes it.
+                    d.versions = existing.versions;
                     d.updated = now;
                 }
             }
             const item = { ...d };
-            const arr = this.sharedItems[d.vaultId] || [];
-            const idx = arr.findIndex((x) => x.id === item.id);
-            if (idx >= 0) arr[idx] = item; else arr.unshift(item);
-            this.sharedItems = { ...this.sharedItems, [d.vaultId]: arr };
+            const sharedArr = this.sharedItems[d.vaultId] || [];
+            const idx = sharedArr.findIndex((x) => x.id === item.id);
+            if (idx >= 0) sharedArr[idx] = item; else sharedArr.unshift(item);
+            this.sharedItems = { ...this.sharedItems, [d.vaultId]: sharedArr };
             this.current = item;
             this.draft = null; this.reveal = {};
             this._refreshWifiQr(item);
@@ -414,6 +425,7 @@ export default (config = {}, labels = {}) => ({
     primaryUrl(x) { const u = (x.fields?.urls || [])[0] || x.fields?.url || ''; return u; },
     _domain(x) { try { const u = this.primaryUrl(x); if (! u) return ''; return new URL(/^https?:\/\//.test(u) ? u : 'https://' + u).hostname; } catch (e) { return ''; } },
     // Server-proxied favicon/BIMI fetch, cached as a data URI in the sealed item.
+    // Routes the persist through _persist() so shared items go to the correct vault store.
     async _fetchIcon(x) {
         const domain = this._domain(x); if (! domain) return 'skip';
         try {
@@ -421,7 +433,7 @@ export default (config = {}, labels = {}) => ({
             if (res.status === 429) return '429';
             if (! res.ok) return 'skip';
             const { icon } = await res.json();
-            if (icon && x.icon !== icon) { x.icon = icon; this._save(); }
+            if (icon && x.icon !== icon) { x.icon = icon; await this._persist(x); }
             return 'ok';
         } catch (e) { return 'skip'; }
     },
@@ -498,8 +510,8 @@ export default (config = {}, labels = {}) => ({
             }
         } finally { this.breachChecking = false; }
     },
-    toggleFavorite(x) { x.favorite = ! x.favorite; this._persist(x); },
-    trash(x) {
+    async toggleFavorite(x) { x.favorite = ! x.favorite; try { await this._persist(x); } catch (e) { window.llToast(labels.saveFailed || ''); } },
+    async trash(x) {
         if (! confirm(labels.deleteConfirm)) return;
         x.trashed = new Date().toISOString();
         if (x.shared && x.vaultId) {
@@ -508,23 +520,23 @@ export default (config = {}, labels = {}) => ({
             this.sharedItems = { ...this.sharedItems, [x.vaultId]: arr };
         }
         if (this.current === x) { this.current = null; this.draft = null; }
-        this._persist(x, 'upsert');
+        try { await this._persist(x, 'upsert'); } catch (e) { window.llToast(labels.saveFailed || ''); }
         this._autoSelect();
     },
-    restore(x) {
+    async restore(x) {
         x.trashed = null;
         if (x.shared && x.vaultId) {
             const arr = (this.sharedItems[x.vaultId] || []).map((i) => (i.id === x.id ? { ...i, trashed: null } : i));
             this.sharedItems = { ...this.sharedItems, [x.vaultId]: arr };
         }
-        this._persist(x, 'upsert');
+        try { await this._persist(x, 'upsert'); } catch (e) { window.llToast(labels.saveFailed || ''); }
     },
-    purge(x) {
+    async purge(x) {
         if (x.shared && x.vaultId) {
             const arr = (this.sharedItems[x.vaultId] || []).filter((i) => i.id !== x.id);
             this.sharedItems = { ...this.sharedItems, [x.vaultId]: arr };
             if (this.current === x) this.current = null;
-            this._saveVault(x.vaultId, { op: 'delete', item: x });
+            try { await this._saveVault(x.vaultId, { op: 'delete', item: x }); } catch (e) { window.llToast(labels.saveFailed || ''); }
             this._autoSelect();
             return;
         }
@@ -759,13 +771,14 @@ export default (config = {}, labels = {}) => ({
         }
         return diff;
     },
-    restoreVersion(v) {
+    async restoreVersion(v) {
         const it = this.current; if (! it) return;
         it.versions = it.versions ?? [];
         it.versions.unshift({ at: it.updated || new Date().toISOString(), title: it.title, fields: JSON.parse(JSON.stringify(it.fields || {})) });
         if (it.versions.length > 100) it.versions.length = 100;
         it.title = v.title; it.fields = JSON.parse(JSON.stringify(v.fields || {})); it.updated = new Date().toISOString();
-        this._refreshWifiQr(it); this._persist(it);
+        this._refreshWifiQr(it);
+        try { await this._persist(it); } catch (e) { window.llToast(labels.saveFailed || ''); }
     },
 
     /* ---- Secrets: reveal + copy-with-auto-clear ---- */
