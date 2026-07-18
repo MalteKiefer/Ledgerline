@@ -88,6 +88,14 @@ return [
     'versions_heading' => 'Versionsverlauf',
     'no_change' => 'Keine sichtbare Änderung',
 
+    // Geteilte Tresore (nur Anzeige)
+    'shared_vaults' => 'Geteilte Tresore',
+    'shared_vault_untitled' => 'Unbenannter geteilter Tresor',
+    'role_read' => 'Leser',
+    'role_edit' => 'Bearbeiter',
+    'role_manage' => 'Verwalter',
+    'read_only_notice' => 'Sie haben nur Lesezugriff auf diesen Tresor.',
+
     // Ordner + Tags + Custom-Felder
     'folders' => 'Tresore',
     'new_folder' => 'Neuer Tresor',

@@ -88,6 +88,14 @@ return [
     'versions_heading' => 'Version history',
     'no_change' => 'No visible change',
 
+    // Shared vaults (read-only display)
+    'shared_vaults' => 'Shared Vaults',
+    'shared_vault_untitled' => 'Untitled Shared Vault',
+    'role_read' => 'Viewer',
+    'role_edit' => 'Editor',
+    'role_manage' => 'Manager',
+    'read_only_notice' => 'You have read-only access to this vault.',
+
     // Folders + tags + custom fields
     'folders' => 'Vaults',
     'new_folder' => 'New vault',

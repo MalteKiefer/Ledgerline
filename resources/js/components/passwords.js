@@ -2,12 +2,17 @@
 import { zkModule } from '../shared/zk-module';
 import { PW_WORDS } from '../shared/wordlists';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from '../passwords-util';
+import { Vault, VaultShareCrypto } from '../vault';
+import { apiRequest } from '../shared/api';
 
 export default (config = {}, labels = {}) => ({
     ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; } }),
 
     items: [],
     folders: [],
+    sharedVaults: [],  // [{id, name, role, shared: true, vaultId}]
+    sharedItems: {},   // map of vaultId -> items array
+    _sharedVersion: {}, // map of vaultId -> version number
     view: 'list', // list | trash
     current: null, // item being viewed (live ref into items)
     draft: null, // editable copy while creating/editing (null = not editing)
@@ -49,7 +54,7 @@ export default (config = {}, labels = {}) => ({
         this._tickTotp();
         this._autoSelect();
         // Keep the first matching entry selected as the state/filters change.
-        this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); } });
+        this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); this._loadSharedVaults(); } });
         for (const p of ['query', 'filterType', 'filterFolder', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
         this.$watch('view', () => this.clearSelection());
         this._loadTfa();
@@ -80,6 +85,19 @@ export default (config = {}, labels = {}) => ({
     get filtered() {
         if (this.view === 'health') return this.healthProblems.map((o) => o.x);
         const q = this.query.trim().toLowerCase();
+        // When a shared vault is selected, serve its items (read-only, no trash/health).
+        const isShared = this.view === 'list' && this.sharedVaults.some((sv) => sv.id === this.filterFolder);
+        if (isShared) {
+            const list = (this.sharedItems[this.filterFolder] || []);
+            return list
+                .filter((x) => ! this.filterType || x.type === this.filterType)
+                .filter((x) => ! this.filterTag || (x.tags || []).includes(this.filterTag))
+                .filter((x) => ! q || (x.title || '').toLowerCase().includes(q)
+                    || (x.tags || []).some((t) => t.toLowerCase().includes(q))
+                    || Object.values(x.fields || {}).some((v) => (typeof v === 'string' && v.toLowerCase().includes(q)) || (Array.isArray(v) && v.some((u) => String(u).toLowerCase().includes(q))))
+                    || (x.custom || []).some((c) => (c.value || '').toLowerCase().includes(q) || (c.label || '').toLowerCase().includes(q)))
+                .sort((a, b) => ((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (a.title || '').localeCompare(b.title || ''));
+        }
         // Health and Trash span every vault; the list view is scoped to filters.
         const global = this.view === 'trash';
         const list = this.view === 'trash' ? this.items.filter((x) => x.trashed) : this.liveItems;
@@ -116,6 +134,57 @@ export default (config = {}, labels = {}) => ({
     // The user's role in a vault: 'read' | 'edit' | 'manage'. Owner = manage.
     vaultRole(id) { const v = this.folders.find((f) => f.id === id); return v ? (v.role || 'manage') : 'manage'; },
     canManageVault(id) { return this.vaultRole(id) === 'manage'; },
+
+    /* ---- Shared vaults (read-only display) ----
+       Maps server role names (viewer/editor/manager) to client (read/edit/manage).
+       The `_loadSharedVaults` method fetches active memberships and decrypts
+       each shared vault manifest using VaultShareCrypto. All write paths
+       (CRUD, import, generate, bulk-delete) remain gated on personal vaults. */
+    _serverToClientRole(r) {
+        const map = { viewer: 'read', editor: 'edit', manager: 'manage' };
+        return map[r] || 'read';
+    },
+    _clientToServerRole(r) {
+        const map = { read: 'viewer', edit: 'editor', manage: 'manager' };
+        return map[r] || 'viewer';
+    },
+    isSharedVault(id) { return this.sharedVaults.some((sv) => sv.id === id); },
+    sharedVaultRole(id) { const sv = this.sharedVaults.find((v) => v.id === id); return sv ? sv.role : 'read'; },
+
+    async _loadSharedVaults() {
+        try {
+            const id = await Vault.ensureIdentityKeys();
+            const memberships = await apiRequest('GET', '/vaults');
+            const active = (Array.isArray(memberships) ? memberships : []).filter((m) => m.status === 'active');
+            for (const m of active) {
+                try {
+                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.pub, id.sk);
+                    const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
+                    const store = await apiRequest('GET', '/vaults/' + m.vault_id + '/store');
+                    let manifest = null;
+                    if (store.sealed_manifest) {
+                        manifest = await VaultShareCrypto.openVaultManifest(store.sealed_manifest, vkBytes);
+                    }
+                    // Avoid duplicates if _loadSharedVaults is somehow called twice.
+                    if (this.sharedVaults.some((sv) => sv.id === m.vault_id)) continue;
+                    this.sharedVaults.push({
+                        id: m.vault_id,
+                        name: (manifest && manifest.name) || 'Shared Vault',
+                        role: this._serverToClientRole(m.role),
+                        shared: true,
+                        version: store.version,
+                        vaultId: m.vault_id,
+                    });
+                    this.sharedItems[m.vault_id] = ((manifest && manifest.items) || []).map((item) => ({ ...item, shared: true, vaultId: m.vault_id }));
+                    this._sharedVersion[m.vault_id] = store.version;
+                } catch (e) {
+                    console.warn('[shared vault] failed to load vault', m.vault_id, e);
+                }
+            }
+        } catch (e) {
+            console.warn('[shared vaults] load aborted', e);
+        }
+    },
 
     async addFolder() {
         const raw = await this.$store.confirm.prompt('', { placeholder: labels.folderName || '', ok: labels.save || '' });
