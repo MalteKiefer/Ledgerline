@@ -5,6 +5,8 @@ import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBr
 import { Vault, VaultShareCrypto } from '../vault';
 import { apiRequest, jsonHeaders } from '../shared/api';
 import { estimateStrength } from '../shared/strength';
+import { buildBitwardenJson, buildCsv, encryptExport } from '../shared/vault-export';
+import { saveBlobAs } from '../shared/dom';
 
 export default (config = {}, labels = {}) => ({
     ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
@@ -694,6 +696,62 @@ export default (config = {}, labels = {}) => ({
         } catch (e) { this.importResult = { ok: false, count: 0 }; } finally { this.importing = false; }
     },
     async _importIcons(list) { for (const r of list) { try { await this._fetchIcon(r); } catch (e) { /* best effort */ } } },
+
+    /* ---- Export (client-side, personal vault only) ----
+       Plaintext and encrypted exports are generated entirely in the browser from
+       the already-decrypted items. Nothing touches the server. Shared-vault items
+       are intentionally excluded from v1 exports. --- */
+    exportOpen: false,
+    exportConfirmed: false,
+    exportPassphrase: '',
+    exportWorking: false,
+    exportDone: '',
+    openExport() {
+        this.exportOpen = true;
+        this.exportConfirmed = false;
+        this.exportPassphrase = '';
+        this.exportWorking = false;
+        this.exportDone = '';
+    },
+    _exportTimestamp() {
+        const d = new Date();
+        return d.getFullYear() + '-'
+            + String(d.getMonth() + 1).padStart(2, '0') + '-'
+            + String(d.getDate()).padStart(2, '0') + '_'
+            + String(d.getHours()).padStart(2, '0')
+            + String(d.getMinutes()).padStart(2, '0');
+    },
+    async exportJson() {
+        if (! this.exportConfirmed) return;
+        this.exportWorking = true;
+        try {
+            const obj = buildBitwardenJson(this.items, this.folders);
+            const json = JSON.stringify(obj, null, 2);
+            saveBlobAs(json, 'ledgerline-export-' + this._exportTimestamp() + '.json', 'application/json');
+            this.exportDone = labels.exportDone || 'Done.';
+        } finally { this.exportWorking = false; }
+    },
+    async exportCsv() {
+        if (! this.exportConfirmed) return;
+        this.exportWorking = true;
+        try {
+            const csv = buildCsv(this.items);
+            saveBlobAs(csv, 'ledgerline-export-' + this._exportTimestamp() + '.csv', 'text/csv');
+            this.exportDone = labels.exportDone || 'Done.';
+        } finally { this.exportWorking = false; }
+    },
+    async exportEncrypted() {
+        if (! this.exportPassphrase.trim()) return;
+        this.exportWorking = true;
+        try {
+            const obj = buildBitwardenJson(this.items, this.folders);
+            const envelope = await encryptExport(JSON.stringify(obj), this.exportPassphrase);
+            saveBlobAs(envelope, 'ledgerline-export-enc-' + this._exportTimestamp() + '.json', 'application/json');
+            this.exportDone = labels.exportDone || 'Done.';
+            this.exportPassphrase = '';
+        } finally { this.exportWorking = false; }
+    },
+
     // Re-fetch the site icon for every login (server-proxied; sequential to
     // respect the endpoint throttle). Updates only entries whose icon changed.
     iconRefreshing: false,

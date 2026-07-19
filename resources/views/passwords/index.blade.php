@@ -56,6 +56,7 @@
             host: @js(__('passwords.f_host')), port: @js(__('passwords.f_port')),
             rpId: @js(__('passwords.f_rpId')), userName: @js(__('passwords.f_userName')), userDisplayName: @js(__('passwords.f_userDisplayName')),
         },
+        exportDone: @js(__('passwords.export_done')),
      })" @keydown.window="_hotkey($event)">
 
     {{-- Zero-knowledge gate: secrets decrypt with the vault key. --}}
@@ -82,6 +83,7 @@
             </button>
             <button type="button" @click="openGen(null)" title="{{ __('passwords.generate') }}" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="key" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.generate') }}</span></button>
             <button type="button" @click="openImport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('passwords.import') }}</button>
+            <button type="button" @click="openExport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-down-tray" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.export') }}</span></button>
             <div x-show="! isSharedVault(filterFolder) || canEditVault(filterFolder)" class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
               <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
@@ -778,6 +780,54 @@
             <p class="mt-3 text-[11px] leading-relaxed text-gray-400">{{ __('passwords.import_hint') }}</p>
             <div class="mt-4 flex justify-end">
               <button type="button" @click="importOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Export modal --}}
+        <div x-show="exportOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="exportOpen = false">
+          <div class="absolute inset-0 bg-gray-900/50" @click="exportOpen = false"></div>
+          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.export') }}</h3>
+              <button type="button" @click="exportOpen = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+            </div>
+            <p class="mt-1 text-xs text-gray-400">{{ __('passwords.export_shared_note') }}</p>
+
+            {{-- Plaintext section --}}
+            <div class="mt-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+              <p class="text-xs font-medium text-amber-800 dark:text-amber-300">{{ __('passwords.export_plaintext') }}</p>
+              <p class="mt-1 text-xs leading-relaxed text-amber-700 dark:text-amber-400">{{ __('passwords.export_warning') }}</p>
+              <label class="mt-2 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
+                <input type="checkbox" x-model="exportConfirmed" class="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-0">
+                <span>{{ __('passwords.export_confirm') }}</span>
+              </label>
+              <div x-show="exportConfirmed" x-cloak class="mt-3 flex gap-2">
+                <button type="button" @click="exportJson()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                  <x-icon name="document-arrow-down" class="h-3.5 w-3.5" />
+                  {{ __('passwords.export_json') }}
+                </button>
+                <button type="button" @click="exportCsv()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                  <x-icon name="document-text" class="h-3.5 w-3.5" />
+                  {{ __('passwords.export_csv') }}
+                </button>
+              </div>
+            </div>
+
+            {{-- Encrypted section --}}
+            <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('passwords.export_encrypted') }}</p>
+              <div class="mt-2 flex items-center gap-2">
+                <input type="password" x-model="exportPassphrase" placeholder="{{ __('passwords.export_passphrase') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                <button type="button" @click="exportEncrypted()" :disabled="exportWorking || ! exportPassphrase.trim()" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                  <x-icon name="lock-closed" class="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <p x-show="exportDone" x-cloak class="mt-3 text-sm font-medium text-green-600 dark:text-green-400" x-text="exportDone"></p>
+            <div class="mt-4 flex justify-end">
+              <button type="button" @click="exportOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
             </div>
           </div>
         </div>
