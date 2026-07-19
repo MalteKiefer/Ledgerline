@@ -136,10 +136,10 @@ describe('rpIdAllowed', () => {
         // example.com origin cannot use accounts.example.com as rpId
         expect(pk.rpIdAllowed('example.com', 'accounts.example.com')).toBe(false);
     });
-    it('allows bare TLD — no PSL lookup, mirrors hostsMatch gap', () => {
-        // Acknowledged: no PSL; 'example.com'.endsWith('.com') is true.
-        // This matches background.js hostsMatch behaviour exactly (deliberate mirror).
-        expect(pk.rpIdAllowed('example.com', 'com')).toBe(true);
+    it('rejects bare TLD (no dot in rpId) — credential-scope vulnerability', () => {
+        // A bare TLD rpId ('com', 'net') would match every site → reject unconditionally.
+        expect(pk.rpIdAllowed('example.com', 'com')).toBe(false);
+        expect(pk.rpIdAllowed('example.co.uk', 'co.uk')).toBe(true); // co.uk has a dot → allowed
     });
     it('rejects empty origin or rpId', () => {
         expect(pk.rpIdAllowed('', 'example.com')).toBe(false);

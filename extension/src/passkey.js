@@ -121,20 +121,20 @@ export function clientDataJSON({ type, challenge, origin }) {
 // Returns true iff rpId is the origin host OR a registrable parent (dot-boundary).
 // Both sides have www. stripped first to match background.js behaviour.
 //
-// Security invariant: parent→child only (child cannot claim parent as rpId).
-//   ('accounts.example.com', 'example.com') → true   ✓ parent rpId
-//   ('example.com', 'example.com')          → true   ✓ exact match
-//   ('example.com', 'evil.com')             → false  ✓ unrelated
-//   ('example.com', 'com')                  → true   ⚠ bare TLD: no PSL lookup (matches hostsMatch)
+// Security: bare TLDs (no dot in stored after www-strip) are REJECTED — an rpId of
+// 'com' or 'net' would match every site, which is a credential-scope vulnerability.
+// ('accounts.example.com', 'example.com') → true   ✓ parent rpId
+// ('example.com', 'example.com')          → true   ✓ exact match
+// ('example.com', 'evil.com')             → false  ✓ unrelated
+// ('example.com', 'com')                  → false  ✓ bare TLD rejected
 //
-// NOTE: bare TLD acceptance ('example.com','com') is an acknowledged gap.
-// A full PSL dependency was deliberately avoided (binary-size / update-lag trade-off).
-// Mitigation: RPs must specify a valid rpId; browsers also accept bare TLDs in the
-// WebAuthn spec only when the RP's registrable domain matches — same gap exists in
-// Chrome's own implementation for non-PSL-aware builds.
+// Residual: multi-label eTLDs (co.uk) — no PSL dep (consistent with hostsMatch
+// trade-off; a page can only over-scope its OWN credential).
 export function rpIdAllowed(originHost, rpId) {
     if (! originHost || ! rpId) return false;
     const page = originHost.replace(/^www\./, '');
     const stored = rpId.replace(/^www\./, '');
+    // Reject bare TLDs (no dot → single label like 'com', 'net', 'localhost')
+    if (! stored.includes('.')) return false;
     return page === stored || page.endsWith('.' + stored);
 }
