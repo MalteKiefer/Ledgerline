@@ -3,6 +3,7 @@
 // and content scripts hold no secrets; they message this worker.
 import * as api from './api.js';
 import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentitySecret, unwrapVaultKey } from './crypto.js';
+import * as pk from './passkey.js';
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -280,6 +281,15 @@ async function runPairing(serverUrl, code) {
     }
 }
 
+// Deserialize { __b64u } markers in a message payload back to Uint8Array.
+// Shared by both passkey.create and passkey.get so the logic cannot diverge.
+function des(v) {
+    if (v && typeof v === 'object' && typeof v.__b64u === 'string') return pk.b64uDecode(v.__b64u);
+    if (Array.isArray(v)) return v.map(des);
+    if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = des(v[k]); return o; }
+    return v;
+}
+
 const handlers = {
     async getState() {
         const { serverUrl, token } = await creds();
@@ -321,6 +331,182 @@ const handlers = {
     async tfa() { return { entries: await tfaEntries() }; },
     async createLogin({ login }) { return createLogin(login || {}); },
     async trashItem({ id }) { return mutateManifest((m) => { const s = m.secrets.find((x) => x.id === id); if (s) s.trashed = new Date().toISOString(); }); },
+
+    async 'passkey.create'({ request, origin }, sender) {
+        // Require message from a real content-script tab (not just any extension page).
+        if (! sender?.tab?.id) return { ok: false, error: 'no tab' };
+
+        // Require vault unlocked.
+        const vkB64 = (await session.get('vk')).vk;
+        if (! vkB64) return { ok: false, error: 'locked' };
+
+        request = des(request);
+
+        // rpId enforcement: must equal or be a registrable parent of the origin host.
+        // origin was set by the content script to location.origin — trusted.
+        // Uses the tested pure function rpIdAllowed() from passkey.js (mirrors hostsMatch).
+        const pageHost = hostOf(origin);
+        const rpId = (request.rp && request.rp.id) ? request.rp.id : pageHost;
+        if (! pk.rpIdAllowed(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
+
+        // pubKeyCredParams must be a non-empty array that includes ES256 (alg -7).
+        if (! Array.isArray(request.pubKeyCredParams) || request.pubKeyCredParams.length === 0
+            || ! request.pubKeyCredParams.some((p) => p.alg === -7)) {
+            return { ok: false, error: 'NotSupported' };
+        }
+
+        // excludeCredentials: reject if we already hold a matching passkey for this rpId.
+        // ensureSecrets() is called here so SECRETS is never stale/null at this point.
+        if (Array.isArray(request.excludeCredentials) && request.excludeCredentials.length > 0) {
+            const stored = await ensureSecrets();
+            const existing = stored.filter((s) => s.type === 'passkey' && s.fields && s.fields.rpId === rpId);
+            const existingIds = new Set(existing.map((s) => s.fields.credentialId));
+            for (const ex of request.excludeCredentials) {
+                const exId = ex.id instanceof Uint8Array ? pk.b64uEncode(ex.id) : (ex.id ? String(ex.id) : '');
+                if (existingIds.has(exId)) return { ok: false, error: 'InvalidState' };
+            }
+        }
+
+        // Generate keypair and credential ID.
+        const credentialId = pk.randomCredentialId();
+        const { privateJwk, publicJwk } = await pk.generateEs256();
+
+        // Persist a passkey item into the personal vault manifest (v1: personal vault only; passkey.get reads personal + shared).
+        const now = new Date().toISOString();
+        const userHandle = request.user && request.user.id instanceof Uint8Array ? pk.b64uEncode(request.user.id) : '';
+        const userName = (request.user && request.user.name) ? request.user.name : '';
+        const userDisplayName = (request.user && request.user.displayName) ? request.user.displayName : '';
+        const rpName = (request.rp && request.rp.name) ? request.rp.name : rpId;
+        const credIdB64u = pk.b64uEncode(credentialId);
+
+        await mutateManifest((m) => {
+            const item = {
+                id: crypto.randomUUID(),
+                type: 'passkey',
+                title: rpId,
+                favorite: false, folder: null, tags: [], custom: [], icon: '',
+                fields: {
+                    rpId,
+                    rpName,
+                    userHandle,
+                    userName,
+                    userDisplayName,
+                    credentialId: credIdB64u,
+                    alg: -7,
+                    privateKey: JSON.stringify(privateJwk),
+                    publicKey: JSON.stringify(publicJwk),
+                    signCount: 0,
+                    createdAt: now,
+                },
+                created: now, updated: now, versions: [],
+            };
+            m.secrets.unshift(item);
+        });
+
+        // Build the attestation response.
+        const cose = pk.coseFromPublicJwk(publicJwk);
+        const authData = await pk.buildAuthData({
+            rpId,
+            flags: { up: true, uv: true, at: true },
+            signCount: 0,
+            attested: { aaguid: new Uint8Array(16), credentialId, cosePublicKey: cose },
+        });
+        const attObj = pk.attestationObjectNone(authData);
+        const cdj = pk.clientDataJSON({ type: 'webauthn.create', challenge: request.challenge, origin });
+
+        // Invalidate the secrets cache so the new passkey shows on next read.
+        SECRETS = null;
+
+        return {
+            ok: true,
+            result: {
+                credentialId: pk.b64uEncode(credentialId),
+                attestationObject: pk.b64uEncode(attObj),
+                clientDataJSON: pk.b64uEncode(cdj),
+                transports: ['internal', 'hybrid'],
+            },
+        };
+    },
+    async 'passkey.get'({ request, origin }, sender) {
+        // Require message from a real content-script tab (not just any extension page).
+        if (! sender?.tab?.id) return { ok: false, error: 'no tab' };
+
+        // Require vault unlocked.
+        const vkB64 = (await session.get('vk')).vk;
+        if (! vkB64) return { ok: false, error: 'locked' };
+
+        request = des(request);
+
+        // rpId enforcement: must equal or be a registrable parent of the origin host.
+        // origin was set by the content script to location.origin — trusted.
+        // Uses the tested pure function rpIdAllowed() from passkey.js (mirrors hostsMatch).
+        const pageHost = hostOf(origin);
+        const rpId = request.rpId ? request.rpId : pageHost;
+        if (! pk.rpIdAllowed(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
+
+        // Load secrets and find candidates matching this rpId.
+        const secrets = await ensureSecrets();
+        let candidates = secrets.filter((s) => s.type === 'passkey' && s.fields?.rpId === rpId);
+
+        // If allowCredentials is specified, intersect to only those credential IDs.
+        // Ignore entries whose type is not 'public-key' — browsers skip them too.
+        if (Array.isArray(request.allowCredentials) && request.allowCredentials.length > 0) {
+            const allowedIds = new Set(
+                request.allowCredentials
+                    .filter((ac) => ! ac.type || ac.type === 'public-key')
+                    .map((ac) => {
+                        const id = ac.id;
+                        return id instanceof Uint8Array ? pk.b64uEncode(id) : (id ? String(id) : '');
+                    }).filter(Boolean)
+            );
+            candidates = candidates.filter((s) => allowedIds.has(s.fields.credentialId || ''));
+        }
+
+        // 0 candidates → fall through to native.
+        if (candidates.length === 0) return { ok: false, error: 'no-credential' };
+
+        // >1 candidates → ask the content script to show a picker.
+        let chosen;
+        if (candidates.length === 1) {
+            chosen = candidates[0];
+        } else {
+            const pickerCandidates = candidates.map((s) => ({
+                credentialId: s.fields.credentialId,
+                userName: s.fields.userName || '',
+                userDisplayName: s.fields.userDisplayName || '',
+                rpId: s.fields.rpId || rpId,
+            }));
+            const pickRes = await new Promise((resolve) => {
+                chrome.tabs.sendMessage(sender.tab.id, { type: 'passkey.pick', candidates: pickerCandidates }, resolve);
+            });
+            if (! pickRes || ! pickRes.credentialId) return { ok: false, error: 'cancelled' };
+            chosen = candidates.find((s) => s.fields.credentialId === pickRes.credentialId);
+            if (! chosen) return { ok: false, error: 'cancelled' };
+        }
+
+        // Sign the assertion.
+        const priv = JSON.parse(chosen.fields.privateKey);
+        const authData = await pk.buildAuthData({ rpId, flags: { up: true, uv: true, at: false }, signCount: 0 });
+        const cdj = pk.clientDataJSON({ type: 'webauthn.get', challenge: request.challenge, origin });
+        const cdjHash = new Uint8Array(await crypto.subtle.digest('SHA-256', cdj));
+        const len = authData.length + cdjHash.length;
+        const message = new Uint8Array(len);
+        message.set(authData, 0);
+        message.set(cdjHash, authData.length);
+        const signature = await pk.signEs256(priv, message);
+
+        return {
+            ok: true,
+            result: {
+                credentialId: chosen.fields.credentialId,
+                authenticatorData: pk.b64uEncode(authData),
+                clientDataJSON: pk.b64uEncode(cdj),
+                signature: pk.b64uEncode(signature),
+                userHandle: chosen.fields.userHandle || null,
+            },
+        };
+    },
+
     async updateItem({ id, patch }) {
         return mutateManifest((m) => {
             const s = m.secrets.find((x) => x.id === id);
@@ -358,7 +544,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (sender.id !== chrome.runtime.id) return false;
     const fn = handlers[msg?.type];
     if (! fn) return false;
-    Promise.resolve(fn(msg)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
+    Promise.resolve(fn(msg, sender)).then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: false, error: String(e?.message || e) }));
     return true; // async
 });
 

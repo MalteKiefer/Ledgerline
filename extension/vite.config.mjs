@@ -19,6 +19,7 @@ export default defineConfig({
                 background: resolve(dir, 'src/background.js'),
                 content: resolve(dir, 'src/content.js'),
                 popup: resolve(dir, 'src/popup.html'),
+                'passkey-inject': resolve(dir, 'src/passkey-inject.js'),
             },
             output: {
                 entryFileNames: '[name].js',

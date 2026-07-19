@@ -52,8 +52,9 @@ export default (config = {}, labels = {}) => ({
         wifi: { icon: 'wifi', fields: [['ssid', 'text'], ['password', 'password'], ['security', 'select'], ['hidden', 'checkbox'], ['note', 'textarea']] },
         license: { icon: 'document', fields: [['product', 'text'], ['licensekey', 'textarea'], ['owner', 'text'], ['email', 'text'], ['note', 'textarea']] },
         server: { icon: 'server', fields: [['host', 'text'], ['port', 'text'], ['username', 'text'], ['password', 'password'], ['note', 'textarea']] },
+        passkey: { icon: 'finger-print', fields: [['rpId', 'text'], ['userName', 'text'], ['userDisplayName', 'text'], ['note', 'textarea']] },
     },
-    secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey'],
+    secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey', 'privateKey'],
     securityOptions: ['nopass', 'WEP', 'WPA', 'WPA2', 'WPA3', 'WPA2-Enterprise', 'WPA3-Enterprise'],
 
     async init() {
@@ -81,6 +82,7 @@ export default (config = {}, labels = {}) => ({
     },
 
     typeList() { return Object.keys(this.types); },
+    get creatableTypes() { return Object.keys(this.types).filter((t) => t !== 'passkey'); },
     typeLabel(t) { return (labels.types && labels.types[t]) || t; },
     typeIcon(t) { return this.types[t]?.icon || 'key'; },
     fieldLabel(k) { return (labels.fields && labels.fields[k]) || k; },
