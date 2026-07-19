@@ -386,7 +386,11 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
         if (had) fillCard(msg.card);
         sendResponse({ filled: had });
     } else if (msg?.type === 'passkey.pick' && Array.isArray(msg.candidates)) {
-        openPasskeyPicker(msg.candidates).then((choice) => sendResponse(choice || {}));
+        openPasskeyPicker(msg.candidates, msg.rpId).then((choice) => sendResponse(choice || {}));
+        return true; // async response
+    } else if (msg?.type === 'passkey.savePrompt') {
+        openPasskeySavePrompt(msg.rpId, msg.userName, msg.logins || [])
+            .then((choice) => sendResponse(choice || { target: null }));
         return true; // async response
     }
 });
@@ -488,7 +492,7 @@ async function captureSubmit(form) {
 //        module-level variable; obs.disconnect() is called on every teardown path.
 //  F3 — resolve/cancel via a closure-local settled flag; no shared module slot.
 //        A new openPasskeyPicker tears down any existing picker first via closePicker().
-function openPasskeyPickerFixed(candidates) {
+function openPasskeyPickerFixed(candidates, rpId) {
     // Tear down any in-flight picker first (F3: no abandoned resolver).
     closePicker();
 
@@ -502,37 +506,60 @@ function openPasskeyPickerFixed(candidates) {
             resolve(result);
         };
 
-        // Build display items compatible with the picker rendering.
-        const items = candidates.map((c) => ({
-            title: c.userDisplayName || c.userName || c.rpId || 'Passkey',
-            username: c.userName || c.rpId || '',
-            __credentialId: c.credentialId,
-        }));
-
         // F1: render fixed, centered — position is independent of any input element.
-        closePicker();
         host = document.createElement('div');
         // position:fixed keeps it in-viewport regardless of page scroll/length.
         host.style.cssText = 'position:fixed;z-index:2147483647;top:12vh;left:50%;transform:translateX(-50%);';
         const shadow = host.attachShadow({ mode: 'closed' });
         const box = document.createElement('div');
-        box.style.cssText = 'min-width:220px;max-width:320px;background:#fff;color:#111;border:1px solid #0003;border-radius:10px;box-shadow:0 8px 24px #0003;overflow:hidden;font:13px system-ui,sans-serif;';
-        for (const lg of items) {
-            const item = document.createElement('button');
-            item.style.cssText = 'display:flex;gap:8px;align-items:center;width:100%;padding:8px 10px;border:0;background:transparent;text-align:left;cursor:pointer;';
-            item.onmouseenter = () => { item.style.background = '#0000000d'; };
-            item.onmouseleave = () => { item.style.background = 'transparent'; };
-            const av = document.createElement('span');
-            av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;';
-            av.textContent = (lg.title || '?').charAt(0).toUpperCase();
-            const txt = document.createElement('span');
-            const t = document.createElement('div'); t.style.fontWeight = '500'; t.textContent = lg.title;
-            const u = document.createElement('div'); u.style.cssText = 'font-size:11px;color:#9ca3af;'; u.textContent = lg.username;
-            txt.append(t, u);
-            item.append(av, txt);
-            item.onclick = () => { finish({ credentialId: lg.__credentialId }); };
-            box.append(item);
+        box.style.cssText = 'min-width:260px;max-width:340px;background:#fff;color:#111;border:1px solid #0003;border-radius:12px;box-shadow:0 8px 24px #0003;overflow:hidden;font:13px system-ui,sans-serif;';
+
+        if (candidates.length === 1 && rpId) {
+            // Confirm-style prompt for a single candidate.
+            const c = candidates[0];
+            const hdr = document.createElement('div');
+            hdr.style.cssText = 'padding:14px 14px 8px;font-weight:600;border-bottom:1px solid #0000000d;';
+            hdr.textContent = 'Bei ' + rpId + ' anmelden?';
+            const lbl = document.createElement('div');
+            lbl.style.cssText = 'padding:10px 14px;font-size:12px;color:#6b7280;';
+            lbl.textContent = c.label || c.userName || rpId;
+            const actions = document.createElement('div');
+            actions.style.cssText = 'display:flex;gap:8px;padding:10px 14px 14px;';
+            const btnCancel = document.createElement('button');
+            btnCancel.style.cssText = 'flex:1;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit;';
+            btnCancel.textContent = 'Abbrechen';
+            btnCancel.onclick = () => finish({ cancel: true });
+            const btnOk = document.createElement('button');
+            btnOk.style.cssText = 'flex:1;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit;';
+            btnOk.textContent = 'Anmelden';
+            btnOk.onclick = () => finish({ credentialId: c.credentialId });
+            actions.append(btnCancel, btnOk);
+            box.append(hdr, lbl, actions);
+        } else {
+            // Build display items compatible with the list-style picker rendering.
+            const items = candidates.map((c) => ({
+                title: c.label || c.userDisplayName || c.userName || c.rpId || 'Passkey',
+                username: c.userName || c.rpId || '',
+                __credentialId: c.credentialId,
+            }));
+            for (const lg of items) {
+                const item = document.createElement('button');
+                item.style.cssText = 'display:flex;gap:8px;align-items:center;width:100%;padding:8px 10px;border:0;background:transparent;text-align:left;cursor:pointer;';
+                item.onmouseenter = () => { item.style.background = '#0000000d'; };
+                item.onmouseleave = () => { item.style.background = 'transparent'; };
+                const av = document.createElement('span');
+                av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;';
+                av.textContent = (lg.title || '?').charAt(0).toUpperCase();
+                const txt = document.createElement('span');
+                const t = document.createElement('div'); t.style.fontWeight = '500'; t.textContent = lg.title;
+                const u = document.createElement('div'); u.style.cssText = 'font-size:11px;color:#9ca3af;'; u.textContent = lg.username;
+                txt.append(t, u);
+                item.append(av, txt);
+                item.onclick = () => { finish({ credentialId: lg.__credentialId }); };
+                box.append(item);
+            }
         }
+
         shadow.append(box);
         document.body.append(host);
 
@@ -550,6 +577,98 @@ function openPasskeyPickerFixed(candidates) {
 }
 // Named alias used by the message listener below (matches the old call site name).
 const openPasskeyPicker = openPasskeyPickerFixed;
+
+// Save-target prompt for passkey.create: lets the user attach the new passkey
+// to an existing login item or create a standalone passkey entry.
+// Resolves { target: <loginId> | 'new' | null } — null means cancelled.
+function openPasskeySavePrompt(rpId, userName, logins) {
+    closePicker();
+
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            obs.disconnect();
+            closePicker();
+            resolve(result);
+        };
+
+        host = document.createElement('div');
+        host.style.cssText = 'position:fixed;z-index:2147483647;top:12vh;left:50%;transform:translateX(-50%);';
+        const shadow = host.attachShadow({ mode: 'closed' });
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'min-width:280px;max-width:360px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;overflow:hidden;font:13px system-ui,sans-serif;';
+
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'padding:14px 14px 8px;font-weight:600;border-bottom:1px solid #0000000d;display:flex;align-items:center;gap:8px;';
+        const badge = document.createElement('span');
+        badge.style.cssText = 'width:20px;height:20px;border-radius:5px;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:none;';
+        badge.textContent = 'L';
+        const hdrText = document.createElement('span');
+        hdrText.textContent = 'Passkey für ' + rpId + ' speichern?';
+        hdr.append(badge, hdrText);
+
+        const sub = document.createElement('div');
+        sub.style.cssText = 'padding:8px 14px 6px;font-size:12px;color:#6b7280;';
+        sub.textContent = 'User: ' + (userName || '');
+
+        wrap.append(hdr, sub);
+
+        if (logins.length > 0) {
+            const sectionLbl = document.createElement('div');
+            sectionLbl.style.cssText = 'padding:6px 14px 4px;font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;';
+            sectionLbl.textContent = 'Zu bestehendem Login hinzufügen';
+            wrap.append(sectionLbl);
+
+            for (const lg of logins) {
+                const btn = document.createElement('button');
+                btn.style.cssText = 'display:flex;gap:8px;align-items:center;width:100%;padding:8px 14px;border:0;background:transparent;text-align:left;cursor:pointer;';
+                btn.onmouseenter = () => { btn.style.background = '#0000000d'; };
+                btn.onmouseleave = () => { btn.style.background = 'transparent'; };
+                const av = document.createElement('span');
+                av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;font-size:12px;';
+                av.textContent = (lg.title || lg.username || '?').charAt(0).toUpperCase();
+                const txt = document.createElement('span');
+                const t = document.createElement('div'); t.style.fontWeight = '500'; t.textContent = lg.title || lg.username;
+                const u = document.createElement('div'); u.style.cssText = 'font-size:11px;color:#9ca3af;'; u.textContent = lg.username;
+                txt.append(t, u);
+                btn.append(av, txt);
+                btn.onclick = () => finish({ target: lg.id });
+                wrap.append(btn);
+            }
+        }
+
+        const sep = document.createElement('div');
+        sep.style.cssText = 'border-top:1px solid #0000000d;margin:4px 0;';
+        wrap.append(sep);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:10px 14px 14px;';
+
+        const btnNew = document.createElement('button');
+        btnNew.style.cssText = 'width:100%;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit;';
+        btnNew.textContent = 'Neuer Passkey-Eintrag';
+        btnNew.onclick = () => finish({ target: 'new' });
+
+        const btnCancel = document.createElement('button');
+        btnCancel.style.cssText = 'width:100%;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit;';
+        btnCancel.textContent = 'Abbrechen';
+        btnCancel.onclick = () => finish({ target: null });
+
+        actions.append(btnNew, btnCancel);
+        wrap.append(actions);
+
+        shadow.append(wrap);
+        document.body.append(host);
+
+        const capturedHost = host;
+        const obs = new MutationObserver(() => {
+            if (! document.contains(capturedHost)) finish({ target: null });
+        });
+        obs.observe(document.documentElement, { childList: true, subtree: true });
+    });
+}
 
 // Relay passkey messages from the MAIN-world shim to the background SW and back.
 // The shim posts { __ll_pk:'req', id, kind, request, origin } on window; we
