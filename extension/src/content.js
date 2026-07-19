@@ -507,6 +507,11 @@ setTimeout(() => mo.disconnect(), 60000);
 // cases the light-DOM scan misses: fields inside an open shadow root (the game
 // login on kingdoms.com) and dialogs opened long after the observer stopped.
 // composedPath()[0] is the real focused node even across shadow boundaries.
+//
+// Conditional passkey mediation: a field with autocomplete="username webauthn"
+// (or any login field while a conditional get() is pending) triggers an
+// availability check; if the vault is unlocked and has a matching passkey, we
+// show the inline picker anchored to the field.
 async function onFocusField(input) {
     if (! input || input.tagName !== 'INPUT' || input.dataset.llBadge) return;
     const t = (input.type || 'text').toLowerCase();
@@ -525,7 +530,35 @@ async function onFocusField(input) {
         return;
     }
     if (t === 'password' && isNewPw(input)) { attachGenBadge(input); return; }
-    if (['password', 'text', 'email', 'tel', ''].includes(t)) {
+
+    // Conditional passkey mediation: check if this field should surface passkeys
+    // inline. Two triggers:
+    //   1. Field has the 'webauthn' autocomplete token (explicit RP opt-in).
+    //   2. Any login-type field while a conditional request is pending (pragmatic
+    //      fallback for RPs that omit the token on their identifier field).
+    const isLoginField = ['text', 'email', 'tel', ''].includes(t);
+    const hasWebAuthnAc = ac.includes('webauthn');
+    if (conditionalRequest && isLoginField && (hasWebAuthnAc || ac.some((a) => ['username', 'email'].includes(a)) || t === 'email')) {
+        // Ask the SW: are there passkey candidates for this rpId and is the vault unlocked?
+        const avail = await send({ type: 'passkey.conditional.available', rpId: conditionalRequest.rpId });
+        if (avail && avail.ok && avail.unlocked && avail.count > 0) {
+            // Build a display list from the candidates returned by the SW.
+            const candidates = (avail.candidates || []).map((c) => ({
+                title: c.label || c.userName || conditionalRequest.rpId || 'Passkey',
+                username: c.userName || conditionalRequest.rpId || '',
+                __credentialId: c.credentialId,
+                __passkey: true,
+            }));
+            if (candidates.length) {
+                // Use openPicker anchored to the field; onPick resolves the conditional promise.
+                openPicker(input, candidates, (picked) => resolveConditional(input, picked.__credentialId));
+                return;
+            }
+        }
+        // No passkeys or vault locked — fall through to normal login autofill.
+    }
+
+    if (isLoginField) {
         const res = await send({ type: 'match', hostname: location.hostname });
         if (res?.ok && res.logins.length) attachBadge(input, res.logins);
     }
@@ -813,19 +846,67 @@ function openPasskeySavePrompt(rpId, userName, logins) {
     });
 }
 
+// --- Passkey conditional mediation state ---
+// Tracks a pending conditional get() request registered by the shim. The shim
+// calls navigator.credentials.get({mediation:'conditional',...}) which never
+// resolves on its own; we resolve it when the user picks a passkey inline.
+// Cleared on abort or on successful pick.
+let conditionalRequest = null; // { requestId, rpId, allowCredentials, challenge }
+
 // Relay passkey messages from the MAIN-world shim to the background SW and back.
-// The shim posts { __ll_pk:'req', id, kind, request, origin } on window; we
-// forward to the SW as { type: kind, request, origin } and return the result.
+// The shim posts { __ll_pk:'req', kind, ... } on window; we forward to the SW.
 // Security: origin is ALWAYS taken from location.origin (the content script's
 // own trusted execution context) — e.data.origin from the page is ignored to
 // prevent a forged-origin attack on the SW's rpId binding check.
 window.addEventListener('message', async (e) => {
     if (e.source !== window || e.origin !== location.origin || ! e.data || e.data.__ll_pk !== 'req') return;
+
+    // Conditional registration: remember the pending request; no SW round-trip yet.
+    if (e.data.kind === 'passkey.conditional') {
+        const req = e.data.request || {};
+        conditionalRequest = {
+            requestId: e.data.requestId,
+            rpId: req.rpId || location.hostname.replace(/^www\./, ''),
+            allowCredentials: req.allowCredentials || [],
+            challenge: req.challenge,
+        };
+        return;
+    }
+
+    // Conditional abort: clean up and close any open inline picker.
+    if (e.data.kind === 'passkey.conditional.abort') {
+        if (conditionalRequest && conditionalRequest.requestId === e.data.requestId) {
+            conditionalRequest = null;
+            closePicker();
+        }
+        return;
+    }
+
     let res;
     try { res = await chrome.runtime.sendMessage({ type: e.data.kind, request: e.data.request, origin: location.origin }); }
     catch (err) { res = { ok: false, error: String(err) }; }
     window.postMessage({ __ll_pk: 'res', id: e.data.id, ok: ! ! (res && res.ok), result: res && res.result, error: res && res.error }, location.origin);
 });
+
+// Resolve a pending conditional request: sign via the existing passkey.get path
+// for the chosen credential and post the result back to the shim.
+async function resolveConditional(field, credentialId) {
+    if (! conditionalRequest) return;
+    const cr = conditionalRequest;
+    conditionalRequest = null; // consume — one-shot
+    suppress = true; setTimeout(() => { suppress = false; }, 700);
+    closePicker();
+    const res = await send({
+        type: 'passkey.get',
+        request: { rpId: cr.rpId, allowCredentials: [{ type: 'public-key', id: credentialId }], challenge: cr.challenge },
+        origin: location.origin,
+    });
+    if (res && res.ok && res.result) {
+        window.postMessage({ __ll_pk: 'res', conditional: true, requestId: cr.requestId, ok: true, result: res.result }, location.origin);
+    } else {
+        window.postMessage({ __ll_pk: 'res', conditional: true, requestId: cr.requestId, ok: false, error: (res && res.error) || 'cancelled' }, location.origin);
+    }
+}
 
 document.addEventListener('submit', (e) => { if (e.target && e.target.tagName === 'FORM') captureSubmit(e.target); }, true);
 document.addEventListener('focusin', (e) => {

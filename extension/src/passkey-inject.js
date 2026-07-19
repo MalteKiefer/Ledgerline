@@ -10,9 +10,33 @@
     const nativeGet = navigator.credentials.get.bind(navigator.credentials);
     let seq = 0;
     const pending = new Map();
+    // Pending conditional requests keyed by requestId: { resolve, reject }.
+    const conditionalPending = new Map();
+
+    // Advertise conditional mediation support. Guard: if a native implementation
+    // already returns true (future browser or other provider), honour it without
+    // clobbering — we still offer our own inline suggestion on top.
+    try {
+        const _nativeCMA = typeof PublicKeyCredential.isConditionalMediationAvailable === 'function'
+            ? PublicKeyCredential.isConditionalMediationAvailable.bind(PublicKeyCredential)
+            : null;
+        PublicKeyCredential.isConditionalMediationAvailable = async () => {
+            if (_nativeCMA) { try { if (await _nativeCMA()) return true; } catch (_) {} }
+            return true;
+        };
+    } catch (_) { /* non-writable — native impl present, leave it */ }
 
     window.addEventListener('message', (e) => {
         if (e.source !== window || ! e.data || e.data.__ll_pk !== 'res') return;
+        // Conditional resolution: content script posts back with requestId.
+        if (e.data.conditional) {
+            const cp = conditionalPending.get(e.data.requestId);
+            if (! cp) return;
+            conditionalPending.delete(e.data.requestId);
+            if (e.data.ok && e.data.result) cp.resolve(e.data.result);
+            else cp.reject(new DOMException(e.data.error || 'NotAllowedError', 'NotAllowedError'));
+            return;
+        }
         const p = pending.get(e.data.id); if (! p) return;
         pending.delete(e.data.id); p(e.data);
     });
@@ -66,6 +90,50 @@
     try {
         navigator.credentials.get = async function (opts) {
             if (! opts || ! opts.publicKey) return nativeGet(opts);
+
+            // Conditional mediation: long-lived request resolved by inline picker.
+            // We register a pending promise and notify the content script. The
+            // content script will resolve it when the user picks a passkey from
+            // the inline autofill suggestion. If opts.signal aborts, we reject.
+            if (opts.mediation === 'conditional') {
+                const requestId = ++seq;
+                const promise = new Promise((resolve, reject) => {
+                    conditionalPending.set(requestId, { resolve, reject });
+                });
+                window.postMessage({
+                    __ll_pk: 'req',
+                    kind: 'passkey.conditional',
+                    requestId,
+                    request: serialize(opts.publicKey),
+                    origin: location.origin,
+                }, location.origin);
+                // Honor AbortSignal: if the page navigates away or calls abort(),
+                // reject with AbortError and tell the content script to hide.
+                if (opts.signal) {
+                    opts.signal.addEventListener('abort', () => {
+                        const cp = conditionalPending.get(requestId);
+                        if (cp) {
+                            conditionalPending.delete(requestId);
+                            cp.reject(new DOMException('Conditional get aborted', 'AbortError'));
+                        }
+                        window.postMessage({ __ll_pk: 'req', kind: 'passkey.conditional.abort', requestId, origin: location.origin }, location.origin);
+                    }, { once: true });
+                }
+                // Wrap the raw result into a PublicKeyCredential-like object once resolved.
+                return promise.then((r) => ({
+                    id: r.credentialId, rawId: unb64u(r.credentialId).buffer, type: 'public-key',
+                    authenticatorAttachment: 'platform',
+                    response: {
+                        clientDataJSON: unb64u(r.clientDataJSON).buffer,
+                        authenticatorData: unb64u(r.authenticatorData).buffer,
+                        signature: unb64u(r.signature).buffer,
+                        userHandle: r.userHandle ? unb64u(r.userHandle).buffer : null,
+                    },
+                    getClientExtensionResults: () => ({}),
+                }));
+            }
+
+            // Normal (non-conditional) get: ask via modal picker.
             const res = await ask('passkey.get', serialize(opts.publicKey));
             if (! res.ok) return nativeGet(opts);
             const r = res.result;

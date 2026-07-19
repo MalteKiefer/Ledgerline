@@ -609,6 +609,35 @@ const handlers = {
         };
     },
 
+    // Lightweight availability check for conditional passkey mediation.
+    // Returns { unlocked, count, candidates } so the content script can decide
+    // whether to surface the inline passkey suggestion on field focus.
+    // candidates is a metadata-only list (no private keys) for the picker display.
+    // No sender.tab.id gate — the content script calls this proactively on every
+    // focusin; we return quickly with unlocked:false if the vault is locked.
+    async 'passkey.conditional.available'({ rpId }) {
+        const vkB64 = (await session.get('vk')).vk;
+        if (! vkB64) return { ok: true, unlocked: false, count: 0, candidates: [] };
+        try {
+            const secrets = await ensureSecrets();
+            const candidates = [];
+            for (const s of secrets) {
+                if (s.type === 'passkey' && s.fields?.rpId === rpId) {
+                    candidates.push({ credentialId: s.fields.credentialId, userName: s.fields.userName || s.fields.userDisplayName || '', label: s.title || rpId });
+                } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
+                    for (const pkEntry of s.fields.passkeys) {
+                        if (pkEntry.rpId === rpId) {
+                            candidates.push({ credentialId: pkEntry.credentialId, userName: pkEntry.userName || pkEntry.userDisplayName || '', label: s.title || rpId });
+                        }
+                    }
+                }
+            }
+            return { ok: true, unlocked: true, count: candidates.length, candidates };
+        } catch (e) {
+            return { ok: true, unlocked: false, count: 0, candidates: [] };
+        }
+    },
+
     async updateItem({ id, patch }) {
         return mutateManifest((m) => {
             const s = m.secrets.find((x) => x.id === id);
