@@ -191,16 +191,18 @@ async function search(query) {
         .slice(0, 300);
 }
 
-// Domains that support app-based 2FA, from the public 2fa.directory v4 dataset.
-// Cached in local storage for a day; the data is public so this leaks nothing.
+// Domains that support app-based 2FA. Fetched EXCLUSIVELY through the user's own
+// server (GET /api/v1/passwords/tfa-directory) — never directly from a third
+// party. The server proxies 2fa.directory (SSRF-guarded, cached) and returns an
+// already-filtered { domain: docUrl } map (app-2FA methods only, http(s) docs
+// only). Cached in local storage for a day.
 async function tfaEntries() {
     const cache = await local.get(['tfaEntries', 'tfaAt']);
     if (cache.tfaEntries && Object.keys(cache.tfaEntries).length && cache.tfaAt && Date.now() - cache.tfaAt < 86400000) return cache.tfaEntries;
-    const APP = ['totp', 'u2f', 'custom-software', 'custom-hardware'];
+    const { serverUrl, token } = await creds();
+    if (! serverUrl || ! token) return cache.tfaEntries || {};
     try {
-        const res = await fetch('https://api.2fa.directory/v4/all.json', { headers: { Accept: 'application/json' } });
-        if (! res.ok) return cache.tfaEntries || {};
-        const data = await res.json(); // v4: { "domain": { methods:[...], documentation, ... }, ... }
+        const entries = await api.getTfaDirectory(serverUrl, token); // { domain: docUrl }
         const map = {};
         const registrable = (d) => {
             const p = d.split('.'); const n = p.length;
@@ -209,13 +211,8 @@ async function tfaEntries() {
             const take = (p[n - 1].length === 2 && sld.includes(p[n - 2])) ? 3 : 2;
             return p.slice(-take).join('.');
         };
-        for (const domain in data) {
-            const m = data[domain];
-            if (! m || typeof m !== 'object' || ! Array.isArray(m.methods)) continue;
-            const methods = m.methods.map((x) => String(x).toLowerCase());
-            if (! methods.some((t) => APP.includes(t))) continue;
-            // Only keep http(s) docs — never let a non-http scheme reach an href.
-            const doc = (typeof m.documentation === 'string' && /^https?:\/\//i.test(m.documentation)) ? m.documentation : '';
+        for (const domain in entries) {
+            const doc = typeof entries[domain] === 'string' ? entries[domain] : '';
             const d = domain.toLowerCase();
             map[d] = doc; // full key + bare domain
             const reg = registrable(d);

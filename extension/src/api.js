@@ -49,6 +49,16 @@ export async function saveStore(base, token, ciphertext, version) {
     return call(base, '/store', { method: 'PUT', token, body: { ciphertext, version } });
 }
 
+/** 2fa.directory hint map, proxied by the user's own server (SSRF-guarded,
+ *  cached, method-filtered, http(s)-docs-only). Returns { domain: docUrl }.
+ *  The extension never fetches 2fa.directory directly — only via this route. */
+export async function getTfaDirectory(base, token) {
+    const res = await call(base, '/passwords/tfa-directory', { token });
+    if (! res.ok) throw new Error('tfa fetch failed');
+    const data = await res.json();
+    return (data && data.entries) || {};
+}
+
 /** The user's own published X25519 identity key material (caller-scoped).
  *  { public_key, wrapped_secret_key, fingerprint } — nulls if none published. */
 export async function getUserKeys(base, token) {
