@@ -177,6 +177,71 @@ async function fillCard(card) {
     (g.number || g.csc)?.focus?.();
 }
 
+// --- Identity autofill ---
+// Maps autocomplete tokens to identity item field names.
+const IDENTITY_AC = {
+    'given-name': 'firstName',
+    'family-name': 'lastName',
+    'email': 'email',
+    'tel': 'phone',
+    'organization': 'company',
+    'street-address': 'street',
+    'address-level2': 'city',
+    'address-level1': 'state',
+    'postal-code': 'zip',
+    'country': 'country',
+    'country-name': 'country',
+};
+// Name/id/placeholder heuristics used when autocomplete is absent or generic.
+const IDENTITY_HAY = [
+    { field: 'firstName', re: /\bfirst.?name\b|\bvorname\b|\bfname\b|\bgiven.?name\b/ },
+    { field: 'lastName', re: /\blast.?name\b|\bnachname\b|\bfamily.?name\b|\bsurname\b|\blname\b/ },
+    { field: 'email', re: /\bemail\b|\be-?mail\b/ },
+    { field: 'phone', re: /\bphone\b|\btel\b|\bmobile\b|\bhandy\b|\btelefon\b/ },
+    { field: 'company', re: /\bcompany\b|\borgani[sz]ation\b|\bfirma\b|\bunternehmen\b/ },
+    { field: 'street', re: /\bstreet\b|\bstra(ß|ss)e\b|\baddress.?1\b|\baddr\b|\banschrift\b/ },
+    { field: 'city', re: /\bcity\b|\bort\b|\bstadt\b|\btown\b/ },
+    { field: 'state', re: /\bstate\b|\bprovince\b|\bregion\b|\bbundesland\b/ },
+    { field: 'zip', re: /\bzip\b|\bpostal\b|\bpostcode\b|\bplz\b/ },
+    { field: 'country', re: /\bcountry\b|\bland\b/ },
+];
+function fillIdentity(identity) {
+    const inputs = [...document.querySelectorAll('input,select,textarea')].filter(isVisible);
+    const filled = new Set();
+    for (const input of inputs) {
+        // Skip password/hidden/submit/button/checkbox/radio fields.
+        const t = (input.type || 'text').toLowerCase();
+        if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(t)) continue;
+        // Try autocomplete tokens first (most reliable).
+        let matched = false;
+        const ac = (input.autocomplete || '').toLowerCase().split(/\s+/);
+        for (const [token, fname] of Object.entries(IDENTITY_AC)) {
+            if (ac.includes(token) && identity[fname] && ! filled.has(token)) {
+                setValue(input, identity[fname]);
+                filled.add(token);
+                matched = true;
+                break;
+            }
+        }
+        if (matched) continue;
+        // Fallback: name/id/placeholder heuristics (only if autocomplete didn't match).
+        const hay = (input.name + ' ' + input.id + ' ' + (input.placeholder || '') + ' ' + (input.getAttribute('aria-label') || '')).toLowerCase();
+        for (const { field, re } of IDENTITY_HAY) {
+            if (re.test(hay) && identity[field] && ! filled.has('hay:' + field)) {
+                setValue(input, identity[field]);
+                filled.add('hay:' + field);
+                break;
+            }
+        }
+    }
+    // Focus the first visible text field that we could have filled.
+    const first = inputs.find((i) => {
+        const t = (i.type || 'text').toLowerCase();
+        return ['text', 'email', 'tel', ''].includes(t);
+    });
+    first?.focus?.();
+}
+
 // --- New-login suggestion & capture ---
 let lastGenerated = null;
 function passwordFields() { return [...document.querySelectorAll('input[type=password]')].filter(isVisible); }
@@ -375,6 +440,36 @@ async function scanCards() {
     if (cards.length) attachBadge(num, cards, fillCard, fetchCards);
 }
 
+// Detect whether the page has any personal-info fields (by autocomplete or
+// heuristic) and, if so, offer stored identity items on the first one found.
+// An identity item is labelled by first+last name or title.
+function identityLabel(id) {
+    const parts = [id.firstName, id.lastName].filter(Boolean);
+    return parts.length ? parts.join(' ') : (id.title || 'Identity');
+}
+function hasPersonalInfoField() {
+    const inputs = [...document.querySelectorAll('input,select,textarea')].filter(isVisible);
+    const personalAc = new Set(['given-name', 'family-name', 'email', 'tel', 'organization', 'street-address', 'address-level2', 'address-level1', 'postal-code', 'country', 'country-name']);
+    for (const input of inputs) {
+        const t = (input.type || 'text').toLowerCase();
+        if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(t)) continue;
+        const ac = (input.autocomplete || '').toLowerCase().split(/\s+/);
+        if (ac.some((a) => personalAc.has(a))) return input;
+        const hay = (input.name + ' ' + input.id + ' ' + (input.placeholder || '') + ' ' + (input.getAttribute('aria-label') || '')).toLowerCase();
+        if (IDENTITY_HAY.some(({ re }) => re.test(hay))) return input;
+    }
+    return null;
+}
+async function scanIdentity() {
+    const anchor = hasPersonalInfoField();
+    if (! anchor || anchor.dataset.llBadge) return;
+    const fetchIdentities = () => send({ type: 'identities' }).then((r) => (r?.ok ? (r.identities || []).map((id) => ({
+        ...id, title: identityLabel(id), username: id.email || '', __identity: true,
+    })) : []));
+    const identities = await fetchIdentities();
+    if (identities.length) attachBadge(anchor, identities, (id) => fillIdentity(id), fetchIdentities);
+}
+
 document.addEventListener('click', (e) => { if (host && ! host.contains(e.target)) closePicker(); });
 chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
     if (msg?.type === 'fill' && msg.login) {
@@ -385,6 +480,9 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
         const had = CARDS_ALLOWED && ! ! ccNumberField();
         if (had) fillCard(msg.card);
         sendResponse({ filled: had });
+    } else if (msg?.type === 'fillIdentity' && msg.identity) {
+        fillIdentity(msg.identity);
+        sendResponse({ filled: true });
     } else if (msg?.type === 'passkey.pick' && Array.isArray(msg.candidates)) {
         openPasskeyPicker(msg.candidates, msg.rpId).then((choice) => sendResponse(choice || {}));
         return true; // async response
@@ -399,7 +497,7 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
 // or in steps (identifier first, password after). A debounced observer re-scans
 // as fields appear, so both the badge and the auto-fill catch up.
 let _t = null;
-const runScan = () => { clearTimeout(_t); _t = setTimeout(() => { scan(); scanCards(); scanNewPw(); }, 250); };
+const runScan = () => { clearTimeout(_t); _t = setTimeout(() => { scan(); scanCards(); scanNewPw(); scanIdentity(); }, 250); };
 runScan();
 const mo = new MutationObserver(runScan);
 mo.observe(document.documentElement, { childList: true, subtree: true });
@@ -436,6 +534,9 @@ async function onFocusField(input) {
 // --- Capture new credentials on submit and offer to save them ---
 let savePromptHost = null;
 function closeSavePrompt() { if (savePromptHost) { savePromptHost.remove(); savePromptHost = null; } }
+// Shared HTML-escape used by prompts to prevent XSS when injecting domain /
+// username strings into Shadow-DOM innerHTML.
+const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function promptSave(cred) {
     closeSavePrompt();
     const host = location.hostname.replace(/^www\./, '');
@@ -443,7 +544,6 @@ function promptSave(cred) {
     savePromptHost.style.cssText = 'position:fixed;z-index:2147483647;bottom:16px;right:16px;';
     const shadow = savePromptHost.attachShadow({ mode: 'closed' });
     const wrap = document.createElement('div');
-    const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     wrap.innerHTML = `
       <div style="width:300px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;padding:14px;font:13px system-ui,sans-serif">
         <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Save this login to Ledgerline?</div>
@@ -467,6 +567,34 @@ function promptSave(cred) {
     };
     setTimeout(closeSavePrompt, 20000);
 }
+// Update-password prompt: shown when a personal login exists with a different
+// stored password. domain + username are HTML-escaped before innerHTML injection.
+function promptUpdate(loginId, domain, username, newPassword) {
+    closeSavePrompt();
+    savePromptHost = document.createElement('div');
+    savePromptHost.style.cssText = 'position:fixed;z-index:2147483647;bottom:16px;right:16px;';
+    const shadow = savePromptHost.attachShadow({ mode: 'closed' });
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div style="width:300px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;padding:14px;font:13px system-ui,sans-serif">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Update password for ${esc(domain)}?</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:8px">${username ? esc(username) : 'No username'}</div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button id="d" style="flex:1;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
+          <button id="s" style="flex:1;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit">Update</button>
+        </div>
+      </div>`;
+    shadow.append(wrap);
+    document.body.append(savePromptHost);
+    wrap.querySelector('#d').onclick = closeSavePrompt;
+    wrap.querySelector('#s').onclick = async () => {
+        const btn = wrap.querySelector('#s'); btn.textContent = 'Updating…'; btn.disabled = true;
+        const r = await send({ type: 'updateItem', id: loginId, patch: { password: newPassword } });
+        closeSavePrompt();
+        notify(r?.ok ? 'Password updated in Ledgerline' : (r?.error === 'locked' ? 'Unlock Ledgerline to update' : 'Could not update'));
+    };
+    setTimeout(closeSavePrompt, 20000);
+}
 async function captureSubmit(form) {
     try {
         const pws = form ? [...form.querySelectorAll('input[type=password]')].filter(isVisible) : passwordFields();
@@ -475,8 +603,23 @@ async function captureSubmit(form) {
         const user = usernameFor(pw) || usernameField();
         const cred = { url: location.origin + '/', username: user ? user.value.trim() : '', password: pw.value };
         const known = await send({ type: 'match', hostname: location.hostname });
-        const exists = cred.username && known?.ok && (known.logins || []).some((l) => (l.username || '').toLowerCase() === cred.username.toLowerCase());
-        if (exists) return; // already stored
+        const matches = known?.ok ? (known.logins || []) : [];
+        // Personal logins: non-shared items whose username matches the submitted one.
+        const personal = cred.username
+            ? matches.filter((l) => ! l.shared && (l.username || '').toLowerCase() === cred.username.toLowerCase())
+            : [];
+        if (personal.length > 0) {
+            // A personal match with a different password → offer to update.
+            // Same password on all personal matches → silent no-op.
+            const stale = personal.find((l) => l.password !== cred.password);
+            if (stale) {
+                const domain = location.hostname.replace(/^www\./, '');
+                promptUpdate(stale.id, domain, stale.username, cred.password);
+            }
+            return;
+        }
+        // No personal match. If the only match is a shared (read-only) login, fall
+        // through to the new-save prompt so the user can create a personal copy.
         promptSave(cred);
     } catch (e) { /* ignore */ }
 }

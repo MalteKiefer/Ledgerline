@@ -132,6 +132,17 @@ function itemView(s) {
         number: s.fields?.number || '',
         expiry: s.fields?.expiry || '',
         cvv: s.fields?.cvv || '',
+        // Identity fields (type === 'identity').
+        firstName: s.fields?.firstName || '',
+        lastName: s.fields?.lastName || '',
+        email: s.fields?.email || '',
+        phone: s.fields?.phone || '',
+        company: s.fields?.company || '',
+        street: s.fields?.street || '',
+        city: s.fields?.city || '',
+        state: s.fields?.state || '',
+        zip: s.fields?.zip || '',
+        country: s.fields?.country || '',
         tags: s.tags || [],
         folder: s.folder || null,
         shared: ! ! s.shared,
@@ -335,6 +346,16 @@ const handlers = {
     async tfa() { return { entries: await tfaEntries() }; },
     async createLogin({ login }) { return createLogin(login || {}); },
     async trashItem({ id }) { return mutateManifest((m) => { const s = m.secrets.find((x) => x.id === id); if (s) s.trashed = new Date().toISOString(); }); },
+    // All stored identity items, for the content-script identity-autofill picker.
+    async identities() {
+        const secrets = await ensureSecrets();
+        return {
+            identities: secrets
+                .filter((s) => s.type === 'identity')
+                .map(itemView)
+                .sort(byTitle),
+        };
+    },
 
     async 'passkey.create'({ request, origin }, sender) {
         // Require message from a real content-script tab (not just any extension page).
