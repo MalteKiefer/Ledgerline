@@ -4,6 +4,7 @@ import { PW_WORDS } from '../shared/wordlists';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from '../passwords-util';
 import { Vault, VaultShareCrypto } from '../vault';
 import { apiRequest, jsonHeaders } from '../shared/api';
+import { estimateStrength } from '../shared/strength';
 
 export default (config = {}, labels = {}) => ({
     ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; } }),
@@ -36,6 +37,10 @@ export default (config = {}, labels = {}) => ({
         length: 20, upper: true, lower: true, digits: true, symbols: true, similar: false,
         words: 4, lang: 'en', sep: '-', capitalize: true, number: true,
     },
+    strengthScore: null,  // 0–4 from zxcvbn (null = not yet computed)
+    strengthLabel: '',    // localised label (very weak … strong)
+    crackTime: '',        // human crack-time string from zxcvbn
+    _strengthTimer: null, // debounce handle
     genLangs: ['en', 'de', 'es', 'fr', 'it'],
     pendingInvites: [],  // [{vault_id, member_id, role, wrapped_vault_key}]
     shareDialog: { open: false, vaultId: null, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' },
@@ -69,6 +74,9 @@ export default (config = {}, labels = {}) => ({
         this.$watch('filterFolder', () => { this.selectedIds = []; this._autoSelect(); });
         this.$watch('view', () => this.clearSelection());
         this._loadTfa();
+        // Strength estimation: watch the generator preview and the draft password field.
+        this.$watch('gen.preview', (v) => this._updateStrength(v));
+        this.$watch('draft', (d) => { this._updateStrength(d?.fields?.password || ''); });
     },
     // Auto-select the first item in the current list (unless something is being
     // edited or the current selection is still visible).
@@ -327,8 +335,9 @@ export default (config = {}, labels = {}) => ({
             vaultId: isShared ? this.filterFolder : undefined,
         };
         this.tagsValue = '';
+        this._updateStrength('');
     },
-    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this.historyOpen = false; this._refreshWifiQr(x); },
+    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this.historyOpen = false; this._refreshWifiQr(x); this._updateStrength((x && x.fields && x.fields.password) || ''); },
     editCurrent() {
         if (! this.current) return;
         this.draft = JSON.parse(JSON.stringify(this.current));
@@ -337,8 +346,9 @@ export default (config = {}, labels = {}) => ({
         // Migrate an older single url field into the multi-url array.
         if (this.draft.type === 'login' && ! Array.isArray(this.draft.fields.urls)) this.draft.fields.urls = this.draft.fields.url ? [this.draft.fields.url] : [''];
         this.tagsValue = (this.draft.tags || []).join(', ');
+        this._updateStrength(this.draft.fields?.password || '');
     },
-    cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; this._autoSelect(); },
+    cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; this._updateStrength(''); this._autoSelect(); },
     changeDraftType(t) { if (! this.draft || this.draft.id) return; this.draft.type = t; this.draft.fields = this._blankFields(t); },
 
     addUrl() { if (this.draft) (this.draft.fields.urls = this.draft.fields.urls || []).push(''); },
@@ -501,6 +511,34 @@ export default (config = {}, labels = {}) => ({
         return set;
     },
     _pwScore(pw) { return pwStrength(pw); },
+    _scoreLabel(score) {
+        const map = [
+            (labels.strengthVeryWeak || ''),
+            (labels.strengthWeak || ''),
+            (labels.strengthFair || ''),
+            (labels.strengthGood || ''),
+            (labels.strengthStrong || ''),
+        ];
+        return map[score] || '';
+    },
+    // Debounced async strength update: sets a coarse score immediately from the
+    // synchronous fallback, then resolves to the zxcvbn result (~50–200 ms).
+    _updateStrength(pw) {
+        if (this._strengthTimer) clearTimeout(this._strengthTimer);
+        if (! pw) { this.strengthScore = null; this.strengthLabel = ''; this.crackTime = ''; return; }
+        // Optimistic synchronous score while zxcvbn loads.
+        this.strengthScore = pwStrength(pw);
+        this.strengthLabel = this._scoreLabel(this.strengthScore);
+        this.crackTime = '';
+        this._strengthTimer = setTimeout(async () => {
+            try {
+                const r = await estimateStrength(pw);
+                this.strengthScore = r.score;
+                this.strengthLabel = this._scoreLabel(r.score);
+                this.crackTime = r.crackTimeDisplay;
+            } catch (e) { /* best effort — keep the coarse score */ }
+        }, 200);
+    },
     issuesFor(x) {
         if (! x) return null;
         if (x.type === 'card') { return this._cardExpiring(x) ? { weak: false, reused: false, breach: null, no2fa: false, expiring: true } : null; }

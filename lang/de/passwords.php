@@ -51,6 +51,15 @@ return [
     'large_type' => 'Große Anzeige',
     'reveal' => 'Anzeigen',
     'hide' => 'Verbergen',
+    // Passwort-Stärke
+    'strength' => 'Stärke',
+    'strength_very_weak' => 'Sehr schwach',
+    'strength_weak' => 'Schwach',
+    'strength_fair' => 'Mittel',
+    'strength_good' => 'Gut',
+    'strength_strong' => 'Stark',
+    'crack_time' => 'Knackzeit',
+
     // Passwort-Gesundheit + Breach-Check
     'health' => 'Gesundheit',
     'health_issues' => 'Probleme',

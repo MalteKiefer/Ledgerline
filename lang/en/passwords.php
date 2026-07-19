@@ -51,6 +51,15 @@ return [
     'large_type' => 'Large type',
     'reveal' => 'Show',
     'hide' => 'Hide',
+    // Password strength estimation
+    'strength' => 'Strength',
+    'strength_very_weak' => 'Very Weak',
+    'strength_weak' => 'Weak',
+    'strength_fair' => 'Fair',
+    'strength_good' => 'Good',
+    'strength_strong' => 'Strong',
+    'crack_time' => 'Crack time',
+
     // Password health + breach check
     'health' => 'Health',
     'health_issues' => 'issues',
