@@ -7,7 +7,7 @@ import { apiRequest, jsonHeaders } from '../shared/api';
 import { estimateStrength } from '../shared/strength';
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; } }),
+    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
 
     items: [],
     folders: [],

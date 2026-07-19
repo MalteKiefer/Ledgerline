@@ -4,9 +4,17 @@
 // Note: @zxcvbn-ts v4 uses ZxcvbnFactory (no global zxcvbnOptions/zxcvbn).
 
 let _factory = null;
+let _loadPromise = null;
 
 async function load() {
     if (_factory) return _factory;
+    // Single-flight: concurrent first callers share ONE import + factory, so the
+    // ~450 KB dictionaries are never fetched/parsed twice.
+    if (! _loadPromise) _loadPromise = _doLoad();
+    return _loadPromise;
+}
+
+async function _doLoad() {
     const [{ ZxcvbnFactory }, common, en, de] = await Promise.all([
         import('@zxcvbn-ts/core'),
         import('@zxcvbn-ts/language-common'),
