@@ -706,11 +706,19 @@ export default (config = {}, labels = {}) => ({
     exportPassphrase: '',
     exportWorking: false,
     exportDone: '',
+    exportError: '',
     openExport() {
         this.exportOpen = true;
         this.exportConfirmed = false;
         this.exportPassphrase = '';
         this.exportWorking = false;
+        this.exportDone = '';
+        this.exportError = '';
+    },
+    _closeExport() {
+        this.exportOpen = false;
+        this.exportPassphrase = '';
+        this.exportError = '';
         this.exportDone = '';
     },
     _exportTimestamp() {
@@ -724,31 +732,46 @@ export default (config = {}, labels = {}) => ({
     async exportJson() {
         if (! this.exportConfirmed) return;
         this.exportWorking = true;
+        this.exportError = '';
+        this.exportDone = '';
         try {
             const obj = buildBitwardenJson(this.items, this.folders);
             const json = JSON.stringify(obj, null, 2);
             saveBlobAs(json, 'ledgerline-export-' + this._exportTimestamp() + '.json', 'application/json');
             this.exportDone = labels.exportDone || 'Done.';
+        } catch (e) {
+            this.exportDone = '';
+            this.exportError = labels.exportFailed || 'Export failed.';
         } finally { this.exportWorking = false; }
     },
     async exportCsv() {
         if (! this.exportConfirmed) return;
         this.exportWorking = true;
+        this.exportError = '';
+        this.exportDone = '';
         try {
             const csv = buildCsv(this.items);
             saveBlobAs(csv, 'ledgerline-export-' + this._exportTimestamp() + '.csv', 'text/csv');
             this.exportDone = labels.exportDone || 'Done.';
+        } catch (e) {
+            this.exportDone = '';
+            this.exportError = labels.exportFailed || 'Export failed.';
         } finally { this.exportWorking = false; }
     },
     async exportEncrypted() {
         if (! this.exportPassphrase.trim()) return;
         this.exportWorking = true;
+        this.exportError = '';
+        this.exportDone = '';
         try {
             const obj = buildBitwardenJson(this.items, this.folders);
             const envelope = await encryptExport(JSON.stringify(obj), this.exportPassphrase);
             saveBlobAs(envelope, 'ledgerline-export-enc-' + this._exportTimestamp() + '.json', 'application/json');
             this.exportDone = labels.exportDone || 'Done.';
             this.exportPassphrase = '';
+        } catch (e) {
+            this.exportDone = '';
+            this.exportError = labels.exportFailed || 'Export failed.';
         } finally { this.exportWorking = false; }
     },
 

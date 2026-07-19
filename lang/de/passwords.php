@@ -18,6 +18,7 @@ return [
     'export_confirm' => 'Ich verstehe — unverschlüsselt exportieren',
     'export_passphrase' => 'Export-Passphrase',
     'export_done' => 'Datei heruntergeladen.',
+    'export_failed' => 'Export fehlgeschlagen.',
     'export_shared_note' => 'Einträge aus geteilten Tresoren sind nicht enthalten (nur persönlicher Tresor).',
     'import' => 'Import',
     'import_intro' => 'Aus einem anderen Manager importieren. Alles wird im Browser verarbeitet und lokal versiegelt — die Datei wird nie hochgeladen.',

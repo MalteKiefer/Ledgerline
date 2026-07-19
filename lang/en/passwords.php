@@ -18,6 +18,7 @@ return [
     'export_confirm' => 'I understand — export unencrypted',
     'export_passphrase' => 'Export passphrase',
     'export_done' => 'File downloaded.',
+    'export_failed' => 'Export failed.',
     'export_shared_note' => 'Shared-vault items are not included (personal vault only).',
     'import' => 'Import',
     'import_intro' => 'Import from another manager. Everything is parsed in your browser and sealed locally — the file is never uploaded.',

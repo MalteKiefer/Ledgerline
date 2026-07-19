@@ -57,6 +57,7 @@
             rpId: @js(__('passwords.f_rpId')), userName: @js(__('passwords.f_userName')), userDisplayName: @js(__('passwords.f_userDisplayName')),
         },
         exportDone: @js(__('passwords.export_done')),
+        exportFailed: @js(__('passwords.export_failed')),
      })" @keydown.window="_hotkey($event)">
 
     {{-- Zero-knowledge gate: secrets decrypt with the vault key. --}}
@@ -785,12 +786,12 @@
         </div>
 
         {{-- Export modal --}}
-        <div x-show="exportOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="exportOpen = false">
-          <div class="absolute inset-0 bg-gray-900/50" @click="exportOpen = false"></div>
+        <div x-show="exportOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="_closeExport()">
+          <div class="absolute inset-0 bg-gray-900/50" @click="_closeExport()"></div>
           <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
             <div class="flex items-center justify-between">
               <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.export') }}</h3>
-              <button type="button" @click="exportOpen = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+              <button type="button" @click="_closeExport()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
             </div>
             <p class="mt-1 text-xs text-gray-400">{{ __('passwords.export_shared_note') }}</p>
 
@@ -826,8 +827,9 @@
             </div>
 
             <p x-show="exportDone" x-cloak class="mt-3 text-sm font-medium text-green-600 dark:text-green-400" x-text="exportDone"></p>
+            <p x-show="exportError" x-cloak class="mt-3 text-sm font-medium text-red-600 dark:text-red-400" x-text="exportError"></p>
             <div class="mt-4 flex justify-end">
-              <button type="button" @click="exportOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
+              <button type="button" @click="_closeExport()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
             </div>
           </div>
         </div>
