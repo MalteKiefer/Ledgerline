@@ -53,6 +53,8 @@ export default (config = {}, labels = {}) => ({
         license: { icon: 'document', fields: [['product', 'text'], ['licensekey', 'textarea'], ['owner', 'text'], ['email', 'text'], ['note', 'textarea']] },
         server: { icon: 'server', fields: [['host', 'text'], ['port', 'text'], ['username', 'text'], ['password', 'password'], ['note', 'textarea']] },
         passkey: { icon: 'finger-print', fields: [['rpId', 'text'], ['userName', 'text'], ['userDisplayName', 'text'], ['note', 'textarea']] },
+        identity: { icon: 'identification', fields: [['firstName', 'text'], ['lastName', 'text'], ['email', 'text'], ['phone', 'text'], ['company', 'text'], ['street', 'text'], ['city', 'text'], ['state', 'text'], ['zip', 'text'], ['country', 'text'], ['note', 'textarea']] },
+        secure_note: { icon: 'document-text', fields: [['note', 'textarea']] },
     },
     secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey', 'privateKey'],
     securityOptions: ['nopass', 'WEP', 'WPA', 'WPA2', 'WPA3', 'WPA2-Enterprise', 'WPA3-Enterprise'],

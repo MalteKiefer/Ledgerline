@@ -167,6 +167,8 @@ return [
     'type_license' => 'Softwarelizenz',
     'type_server' => 'Server',
     'type_passkey' => 'Passkey',
+    'type_identity' => 'Identität',
+    'type_secure_note' => 'Sichere Notiz',
 
     // Passkey
     'passkey_ext_only' => 'Passkeys werden über die Ledgerline-Browser-Erweiterung erstellt und verwendet.',
@@ -202,4 +204,13 @@ return [
     'f_rpId' => 'Website (Domain)',
     'f_userName' => 'Konto',
     'f_userDisplayName' => 'Anzeigename',
+    'f_firstName' => 'Vorname',
+    'f_lastName' => 'Nachname',
+    'f_phone' => 'Telefon',
+    'f_company' => 'Unternehmen',
+    'f_street' => 'Straße',
+    'f_city' => 'Stadt',
+    'f_state' => 'Bundesland / Region',
+    'f_zip' => 'PLZ / Postleitzahl',
+    'f_country' => 'Land',
 ];
