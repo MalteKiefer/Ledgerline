@@ -415,7 +415,7 @@ const handlers = {
         // suggestion list, not a security gate; the credential still binds to rpId.
         const allSecrets = await ensureSecrets();
         const logins = allSecrets
-            .filter((s) => s.type === 'login')
+            .filter((s) => s.type === 'login' && ! s.shared)
             .filter((s) => (s.fields?.urls || []).some((u) => hostsMatch(hostOf(u), rpId) || hostsMatch(rpId, hostOf(u))))
             .map((s) => ({ id: s.id, title: s.title || '', username: s.fields?.username || '' }));
 
@@ -435,15 +435,22 @@ const handlers = {
         }
 
         if (saveRes.target !== 'new') {
-            // Attach the passkey to an existing login item.
+            // Attach the passkey to an existing personal login item.
+            // Verify the target exists in the personal manifest BEFORE building the
+            // attestation — if it is missing (e.g. the user somehow selected a shared
+            // login that slipped through), abort the entire ceremony so no orphaned
+            // credential is ever handed to the RP.
+            let attachFailed = false;
             await mutateManifest((m) => {
                 const loginItem = m.secrets.find((x) => x.id === saveRes.target);
-                if (loginItem) {
-                    if (! Array.isArray(loginItem.fields.passkeys)) loginItem.fields.passkeys = [];
-                    loginItem.fields.passkeys.push(passkeyFields);
-                    loginItem.updated = now;
-                }
+                if (! loginItem) { attachFailed = true; return; }
+                if (! Array.isArray(loginItem.fields.passkeys)) loginItem.fields.passkeys = [];
+                loginItem.fields.passkeys.push(passkeyFields);
+                loginItem.updated = now;
             });
+            if (attachFailed) {
+                return { ok: false, error: { name: 'NotAllowedError', message: 'attach target not found' } };
+            }
         } else {
             // Create a standalone passkey item.
             await mutateManifest((m) => {
