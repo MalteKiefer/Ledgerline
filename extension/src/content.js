@@ -477,40 +477,79 @@ async function captureSubmit(form) {
     } catch (e) { /* ignore */ }
 }
 // Passkey chooser: when the SW has >1 stored passkey for the RP and cannot
-// auto-select, it asks us to show a picker. We reuse the existing openPicker
-// Shadow-DOM component, mapping candidates into the picker's item shape.
+// auto-select, it asks us to show a picker. We render it fixed/centered in the
+// viewport so it is visible regardless of whether a focused input exists.
 // The SW sends { type:'passkey.pick', candidates:[{credentialId,userName,userDisplayName,rpId}] }
 // via chrome.tabs.sendMessage; we reply with { credentialId } or {} on cancel.
-let _pkPickResolve = null;
-function openPasskeyPicker(candidates) {
+//
+// Design invariants (review fixes):
+//  F1 — picker is position:fixed, top:12vh, centered: always visible, no anchor needed.
+//  F2 — MutationObserver closes over a local snapshot of host (capturedHost), not the
+//        module-level variable; obs.disconnect() is called on every teardown path.
+//  F3 — resolve/cancel via a closure-local settled flag; no shared module slot.
+//        A new openPasskeyPicker tears down any existing picker first via closePicker().
+function openPasskeyPickerFixed(candidates) {
+    // Tear down any in-flight picker first (F3: no abandoned resolver).
     closePicker();
+
     return new Promise((resolve) => {
-        _pkPickResolve = resolve;
-        // Build display items compatible with openPicker's rendering (title + username).
+        let settled = false;
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            obs.disconnect(); // F2: always disconnect the observer
+            closePicker();
+            resolve(result);
+        };
+
+        // Build display items compatible with the picker rendering.
         const items = candidates.map((c) => ({
             title: c.userDisplayName || c.userName || c.rpId || 'Passkey',
             username: c.userName || c.rpId || '',
             __credentialId: c.credentialId,
         }));
-        // Find any visible input as an anchor (passkey flows may not have a focused field).
-        const anchor = document.querySelector('input:not([type=hidden])') || document.body;
-        openPicker(anchor, items, (lg) => {
-            _pkPickResolve = null;
-            resolve({ credentialId: lg.__credentialId });
-        });
-        // If the picker is closed without picking (e.g. click-outside), resolve with {}.
-        // We hook into the closePicker path by observing host removal.
-        if (host) {
-            const obs = new MutationObserver(() => {
-                if (! document.contains(host)) {
-                    obs.disconnect();
-                    if (_pkPickResolve) { _pkPickResolve = null; resolve({}); }
-                }
-            });
-            obs.observe(document.documentElement, { childList: true, subtree: true });
+
+        // F1: render fixed, centered — position is independent of any input element.
+        closePicker();
+        host = document.createElement('div');
+        // position:fixed keeps it in-viewport regardless of page scroll/length.
+        host.style.cssText = 'position:fixed;z-index:2147483647;top:12vh;left:50%;transform:translateX(-50%);';
+        const shadow = host.attachShadow({ mode: 'closed' });
+        const box = document.createElement('div');
+        box.style.cssText = 'min-width:220px;max-width:320px;background:#fff;color:#111;border:1px solid #0003;border-radius:10px;box-shadow:0 8px 24px #0003;overflow:hidden;font:13px system-ui,sans-serif;';
+        for (const lg of items) {
+            const item = document.createElement('button');
+            item.style.cssText = 'display:flex;gap:8px;align-items:center;width:100%;padding:8px 10px;border:0;background:transparent;text-align:left;cursor:pointer;';
+            item.onmouseenter = () => { item.style.background = '#0000000d'; };
+            item.onmouseleave = () => { item.style.background = 'transparent'; };
+            const av = document.createElement('span');
+            av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;';
+            av.textContent = (lg.title || '?').charAt(0).toUpperCase();
+            const txt = document.createElement('span');
+            const t = document.createElement('div'); t.style.fontWeight = '500'; t.textContent = lg.title;
+            const u = document.createElement('div'); u.style.cssText = 'font-size:11px;color:#9ca3af;'; u.textContent = lg.username;
+            txt.append(t, u);
+            item.append(av, txt);
+            item.onclick = () => { finish({ credentialId: lg.__credentialId }); };
+            box.append(item);
         }
+        shadow.append(box);
+        document.body.append(host);
+
+        // F2: capture a local snapshot so the observer doesn't close over the
+        // module-level `host` variable which may be reassigned by a later picker.
+        const capturedHost = host;
+
+        // Resolve with {} if the picker element is removed from the DOM without a pick
+        // (e.g. closePicker() called by a click-outside handler).
+        const obs = new MutationObserver(() => {
+            if (! document.contains(capturedHost)) finish({});
+        });
+        obs.observe(document.documentElement, { childList: true, subtree: true });
     });
 }
+// Named alias used by the message listener below (matches the old call site name).
+const openPasskeyPicker = openPasskeyPickerFixed;
 
 // Relay passkey messages from the MAIN-world shim to the background SW and back.
 // The shim posts { __ll_pk:'req', id, kind, request, origin } on window; we

@@ -281,6 +281,15 @@ async function runPairing(serverUrl, code) {
     }
 }
 
+// Deserialize { __b64u } markers in a message payload back to Uint8Array.
+// Shared by both passkey.create and passkey.get so the logic cannot diverge.
+function des(v) {
+    if (v && typeof v === 'object' && typeof v.__b64u === 'string') return pk.b64uDecode(v.__b64u);
+    if (Array.isArray(v)) return v.map(des);
+    if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = des(v[k]); return o; }
+    return v;
+}
+
 const handlers = {
     async getState() {
         const { serverUrl, token } = await creds();
@@ -331,13 +340,6 @@ const handlers = {
         const vkB64 = (await session.get('vk')).vk;
         if (! vkB64) return { ok: false, error: 'locked' };
 
-        // Deserialize: replace { __b64u } markers with Uint8Array bytes.
-        function des(v) {
-            if (v && typeof v === 'object' && typeof v.__b64u === 'string') return pk.b64uDecode(v.__b64u);
-            if (Array.isArray(v)) return v.map(des);
-            if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = des(v[k]); return o; }
-            return v;
-        }
         request = des(request);
 
         // rpId enforcement: must equal or be a registrable parent of the origin host.
@@ -432,13 +434,6 @@ const handlers = {
         const vkB64 = (await session.get('vk')).vk;
         if (! vkB64) return { ok: false, error: 'locked' };
 
-        // Deserialize: replace { __b64u } markers with Uint8Array bytes.
-        function des(v) {
-            if (v && typeof v === 'object' && typeof v.__b64u === 'string') return pk.b64uDecode(v.__b64u);
-            if (Array.isArray(v)) return v.map(des);
-            if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = des(v[k]); return o; }
-            return v;
-        }
         request = des(request);
 
         // rpId enforcement: must equal or be a registrable parent of the origin host.
@@ -452,12 +447,15 @@ const handlers = {
         let candidates = secrets.filter((s) => s.type === 'passkey' && s.fields?.rpId === rpId);
 
         // If allowCredentials is specified, intersect to only those credential IDs.
+        // Ignore entries whose type is not 'public-key' — browsers skip them too.
         if (Array.isArray(request.allowCredentials) && request.allowCredentials.length > 0) {
             const allowedIds = new Set(
-                request.allowCredentials.map((ac) => {
-                    const id = ac.id;
-                    return id instanceof Uint8Array ? pk.b64uEncode(id) : (id ? String(id) : '');
-                }).filter(Boolean)
+                request.allowCredentials
+                    .filter((ac) => ! ac.type || ac.type === 'public-key')
+                    .map((ac) => {
+                        const id = ac.id;
+                        return id instanceof Uint8Array ? pk.b64uEncode(id) : (id ? String(id) : '');
+                    }).filter(Boolean)
             );
             candidates = candidates.filter((s) => allowedIds.has(s.fields.credentialId || ''));
         }
