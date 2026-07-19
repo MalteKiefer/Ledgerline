@@ -163,6 +163,60 @@ function open(cipherB64, nonceB64, key) {
 }
 
 /**
+ * Minimal crypto primitives used by vault-export.js (and potentially other
+ * consumers that need raw Argon2id + secretbox without the full Vault object).
+ * Returns an object with ready-to-call helpers after ensuring libsodium loaded.
+ */
+export async function vaultCryptoPrimitives() {
+    const s = await ready();
+    return {
+        /** base64-encode raw bytes → standard (non-URL-safe) base64 string */
+        b64: (bytes) => s.to_base64(bytes, s.base64_variants.ORIGINAL),
+        /** decode standard base64 string → Uint8Array */
+        unb64: (str) => s.from_base64(str, s.base64_variants.ORIGINAL),
+        /** Argon2id: passphrase + salt → 32-byte key */
+        deriveKek: (passphrase, salt, ops, mem) => s.crypto_pwhash(
+            s.crypto_secretbox_KEYBYTES,
+            passphrase,
+            salt,
+            ops,
+            mem,
+            s.crypto_pwhash_ALG_ARGON2ID13,
+        ),
+        /** XChaCha20-Poly1305 secretbox seal → {cipher, nonce} both base64 */
+        seal: (data, key) => {
+            const nonce = s.randombytes_buf(s.crypto_secretbox_NONCEBYTES);
+            return {
+                cipher: s.to_base64(s.crypto_secretbox_easy(data, nonce, key), s.base64_variants.ORIGINAL),
+                nonce: s.to_base64(nonce, s.base64_variants.ORIGINAL),
+            };
+        },
+        /** XChaCha20-Poly1305 secretbox open → Uint8Array; throws on auth failure */
+        open: (cipherB64, nonceB64, key) => {
+            const out = s.crypto_secretbox_open_easy(
+                s.from_base64(cipherB64, s.base64_variants.ORIGINAL),
+                s.from_base64(nonceB64, s.base64_variants.ORIGINAL),
+                key,
+            );
+            if (out === false) throw new Error('decrypt failed');
+            return out;
+        },
+        /** Generate n random bytes */
+        randomBytes: (n) => s.randombytes_buf(n),
+        /** Encode Uint8Array to UTF-8 string */
+        toString: (bytes) => s.to_string(bytes),
+        /** Encode UTF-8 string to Uint8Array */
+        fromString: (str) => s.from_string(str),
+        /** KDF parameter: ops limit SENSITIVE */
+        OPSLIMIT_SENSITIVE: s.crypto_pwhash_OPSLIMIT_SENSITIVE,
+        /** KDF parameter: mem limit MODERATE (256 MiB) */
+        MEMLIMIT_MODERATE: s.crypto_pwhash_MEMLIMIT_MODERATE,
+        /** Salt length for Argon2id */
+        SALTBYTES: s.crypto_pwhash_SALTBYTES,
+    };
+}
+
+/**
  * Crypto for public share links, independent of the vault key. A share carries
  * its own random share key (SK) that lives only in the link fragment. At share
  * time the owner unwraps each blob's per-file key with the vault key and re-wraps

@@ -41,6 +41,11 @@
             license: @js(__('passwords.type_license')), server: @js(__('passwords.type_server')),
             passkey: @js(__('passwords.type_passkey')),
         },
+        strengthVeryWeak: @js(__('passwords.strength_very_weak')),
+        strengthWeak: @js(__('passwords.strength_weak')),
+        strengthFair: @js(__('passwords.strength_fair')),
+        strengthGood: @js(__('passwords.strength_good')),
+        strengthStrong: @js(__('passwords.strength_strong')),
         fields: {
             username: @js(__('passwords.f_username')), password: @js(__('passwords.f_password')), url: @js(__('passwords.f_url')), urls: @js(__('passwords.f_urls')),
             totp: @js(__('passwords.f_totp')), note: @js(__('passwords.f_note')), cardholder: @js(__('passwords.f_cardholder')),
@@ -51,6 +56,8 @@
             host: @js(__('passwords.f_host')), port: @js(__('passwords.f_port')),
             rpId: @js(__('passwords.f_rpId')), userName: @js(__('passwords.f_userName')), userDisplayName: @js(__('passwords.f_userDisplayName')),
         },
+        exportDone: @js(__('passwords.export_done')),
+        exportFailed: @js(__('passwords.export_failed')),
      })" @keydown.window="_hotkey($event)">
 
     {{-- Zero-knowledge gate: secrets decrypt with the vault key. --}}
@@ -77,6 +84,7 @@
             </button>
             <button type="button" @click="openGen(null)" title="{{ __('passwords.generate') }}" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="key" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.generate') }}</span></button>
             <button type="button" @click="openImport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-up-tray" class="h-4 w-4" />{{ __('passwords.import') }}</button>
+            <button type="button" @click="openExport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-down-tray" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.export') }}</span></button>
             <div x-show="! isSharedVault(filterFolder) || canEditVault(filterFolder)" class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
               <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
@@ -310,10 +318,25 @@
                       <template x-if="ft === 'checkbox'"><label class="mt-1 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" x-model="draft.fields[k]" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0"> <span x-text="fieldLabel(k)"></span></label></template>
                       {{-- password/secret --}}
                       <template x-if="ft === 'password'">
-                        <div class="mt-1 flex items-center gap-1.5">
-                          <input :type="reveal[k] ? 'text' : 'password'" x-model="draft.fields[k]" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 font-mono text-sm focus:border-gray-500 focus:ring-gray-500">
-                          <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
-                          <button type="button" x-show="k === 'password'" @click="openGen(k)" title="{{ __('passwords.generate') }}" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-path" class="h-4 w-4" /></button>
+                        <div class="mt-1">
+                          <div class="flex items-center gap-1.5">
+                            <input :type="reveal[k] ? 'text' : 'password'" x-model="draft.fields[k]" @input="k === 'password' && _updateStrength($event.target.value)" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 font-mono text-sm focus:border-gray-500 focus:ring-gray-500">
+                            <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
+                            <button type="button" x-show="k === 'password'" @click="openGen(k)" title="{{ __('passwords.generate') }}" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-path" class="h-4 w-4" /></button>
+                          </div>
+                          {{-- Strength bar (edit form, password field only) --}}
+                          <div x-show="k === 'password' && strengthScore !== null" class="mt-1.5">
+                            <div class="flex items-center gap-2">
+                              <div class="flex flex-1 gap-0.5">
+                                <template x-for="si in [0,1,2,3,4]" :key="si">
+                                  <div class="h-1.5 flex-1 rounded-full transition-colors"
+                                       :class="strengthScore >= si ? (['bg-red-500','bg-orange-500','bg-yellow-500','bg-lime-500','bg-green-500'][strengthScore]) : 'bg-gray-200 dark:bg-gray-700'"></div>
+                                </template>
+                              </div>
+                              <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400" x-text="strengthLabel"></span>
+                            </div>
+                            <div x-show="crackTime" class="mt-0.5 text-xs text-gray-400">{{ __('passwords.crack_time') }}: <span x-text="crackTime"></span></div>
+                          </div>
                         </div>
                       </template>
                       {{-- multi-url (login) --}}
@@ -436,7 +459,21 @@
                         </template>
                       </div>
                     </div>
-                    <p x-show="issuesFor(current) && issuesFor(current).weak">{{ __('passwords.weak_warn') }}</p>
+                    <div x-show="issuesFor(current) && issuesFor(current).weak">
+                      <p>{{ __('passwords.weak_warn') }}</p>
+                      <div x-show="strengthScore !== null && issuesFor(current) && issuesFor(current).weak" class="mt-1.5">
+                        <div class="flex items-center gap-2">
+                          <div class="flex flex-1 gap-0.5">
+                            <template x-for="wi in [0,1,2,3,4]" :key="wi">
+                              <div class="h-1.5 flex-1 rounded-full transition-colors"
+                                   :class="strengthScore >= wi ? (['bg-red-400','bg-orange-400','bg-yellow-400','bg-lime-400','bg-green-400'][strengthScore]) : 'bg-amber-200 dark:bg-amber-900/40'"></div>
+                            </template>
+                          </div>
+                          <span class="shrink-0 text-xs" x-text="strengthLabel"></span>
+                        </div>
+                        <div x-show="crackTime" class="mt-0.5 text-xs opacity-75">{{ __('passwords.crack_time') }}: <span x-text="crackTime"></span></div>
+                      </div>
+                    </div>
                     <p x-show="issuesFor(current) && issuesFor(current).expiring">{{ __('passwords.card_expiring_warn') }}</p>
                     <button type="button" x-show="issuesFor(current) && issuesFor(current).breach === null" @click="checkBreaches()" :disabled="breachChecking" class="text-xs font-medium underline disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
                   </div>
@@ -654,6 +691,19 @@
               <button type="button" @click="regen()" title="{{ __('passwords.gen_regen') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="arrow-path" class="h-4 w-4" /></button>
               <button type="button" @click="copy(gen.preview)" title="{{ __('passwords.copy') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="clipboard" class="h-4 w-4" /></button>
             </div>
+            {{-- Strength bar (generator) --}}
+            <div x-show="strengthScore !== null" class="mt-2">
+              <div class="flex items-center gap-2">
+                <div class="flex flex-1 gap-0.5">
+                  <template x-for="i in [0,1,2,3,4]" :key="i">
+                    <div class="h-1.5 flex-1 rounded-full transition-colors"
+                         :class="strengthScore >= i ? (['bg-red-500','bg-orange-500','bg-yellow-500','bg-lime-500','bg-green-500'][strengthScore]) : 'bg-gray-200 dark:bg-gray-700'"></div>
+                  </template>
+                </div>
+                <span class="text-xs text-gray-500 dark:text-gray-400 shrink-0" x-text="strengthLabel"></span>
+              </div>
+              <div x-show="crackTime" class="mt-0.5 text-xs text-gray-400">{{ __('passwords.crack_time') }}: <span x-text="crackTime"></span></div>
+            </div>
 
             {{-- Mode toggle --}}
             <div class="mt-4 flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 text-sm">
@@ -731,6 +781,55 @@
             <p class="mt-3 text-[11px] leading-relaxed text-gray-400">{{ __('passwords.import_hint') }}</p>
             <div class="mt-4 flex justify-end">
               <button type="button" @click="importOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
+            </div>
+          </div>
+        </div>
+
+        {{-- Export modal --}}
+        <div x-show="exportOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="_closeExport()">
+          <div class="absolute inset-0 bg-gray-900/50" @click="_closeExport()"></div>
+          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.export') }}</h3>
+              <button type="button" @click="_closeExport()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+            </div>
+            <p class="mt-1 text-xs text-gray-400">{{ __('passwords.export_shared_note') }}</p>
+
+            {{-- Plaintext section --}}
+            <div class="mt-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+              <p class="text-xs font-medium text-amber-800 dark:text-amber-300">{{ __('passwords.export_plaintext') }}</p>
+              <p class="mt-1 text-xs leading-relaxed text-amber-700 dark:text-amber-400">{{ __('passwords.export_warning') }}</p>
+              <label class="mt-2 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
+                <input type="checkbox" x-model="exportConfirmed" class="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-0">
+                <span>{{ __('passwords.export_confirm') }}</span>
+              </label>
+              <div x-show="exportConfirmed" x-cloak class="mt-3 flex gap-2">
+                <button type="button" @click="exportJson()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                  <x-icon name="document-arrow-down" class="h-3.5 w-3.5" />
+                  {{ __('passwords.export_json') }}
+                </button>
+                <button type="button" @click="exportCsv()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                  <x-icon name="document-text" class="h-3.5 w-3.5" />
+                  {{ __('passwords.export_csv') }}
+                </button>
+              </div>
+            </div>
+
+            {{-- Encrypted section --}}
+            <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('passwords.export_encrypted') }}</p>
+              <div class="mt-2 flex items-center gap-2">
+                <input type="password" x-model="exportPassphrase" placeholder="{{ __('passwords.export_passphrase') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                <button type="button" @click="exportEncrypted()" :disabled="exportWorking || ! exportPassphrase.trim()" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                  <x-icon name="lock-closed" class="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <p x-show="exportDone" x-cloak class="mt-3 text-sm font-medium text-green-600 dark:text-green-400" x-text="exportDone"></p>
+            <p x-show="exportError" x-cloak class="mt-3 text-sm font-medium text-red-600 dark:text-red-400" x-text="exportError"></p>
+            <div class="mt-4 flex justify-end">
+              <button type="button" @click="_closeExport()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
             </div>
           </div>
         </div>

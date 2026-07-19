@@ -4,9 +4,12 @@ import { PW_WORDS } from '../shared/wordlists';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from '../passwords-util';
 import { Vault, VaultShareCrypto } from '../vault';
 import { apiRequest, jsonHeaders } from '../shared/api';
+import { estimateStrength } from '../shared/strength';
+import { buildBitwardenJson, buildCsv, encryptExport } from '../shared/vault-export';
+import { saveBlobAs } from '../shared/dom';
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; } }),
+    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
 
     items: [],
     folders: [],
@@ -36,6 +39,10 @@ export default (config = {}, labels = {}) => ({
         length: 20, upper: true, lower: true, digits: true, symbols: true, similar: false,
         words: 4, lang: 'en', sep: '-', capitalize: true, number: true,
     },
+    strengthScore: null,  // 0–4 from zxcvbn (null = not yet computed)
+    strengthLabel: '',    // localised label (very weak … strong)
+    crackTime: '',        // human crack-time string from zxcvbn
+    _strengthTimer: null, // debounce handle
     genLangs: ['en', 'de', 'es', 'fr', 'it'],
     pendingInvites: [],  // [{vault_id, member_id, role, wrapped_vault_key}]
     shareDialog: { open: false, vaultId: null, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' },
@@ -53,6 +60,8 @@ export default (config = {}, labels = {}) => ({
         license: { icon: 'document', fields: [['product', 'text'], ['licensekey', 'textarea'], ['owner', 'text'], ['email', 'text'], ['note', 'textarea']] },
         server: { icon: 'server', fields: [['host', 'text'], ['port', 'text'], ['username', 'text'], ['password', 'password'], ['note', 'textarea']] },
         passkey: { icon: 'finger-print', fields: [['rpId', 'text'], ['userName', 'text'], ['userDisplayName', 'text'], ['note', 'textarea']] },
+        identity: { icon: 'identification', fields: [['firstName', 'text'], ['lastName', 'text'], ['email', 'text'], ['phone', 'text'], ['company', 'text'], ['street', 'text'], ['city', 'text'], ['state', 'text'], ['zip', 'text'], ['country', 'text'], ['note', 'textarea']] },
+        secure_note: { icon: 'document-text', fields: [['note', 'textarea']] },
     },
     secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey', 'privateKey'],
     securityOptions: ['nopass', 'WEP', 'WPA', 'WPA2', 'WPA3', 'WPA2-Enterprise', 'WPA3-Enterprise'],
@@ -69,6 +78,9 @@ export default (config = {}, labels = {}) => ({
         this.$watch('filterFolder', () => { this.selectedIds = []; this._autoSelect(); });
         this.$watch('view', () => this.clearSelection());
         this._loadTfa();
+        // Strength estimation: watch the generator preview and the draft password field.
+        this.$watch('gen.preview', (v) => this._updateStrength(v));
+        this.$watch('draft', (d) => { this._updateStrength(d?.fields?.password || ''); });
     },
     // Auto-select the first item in the current list (unless something is being
     // edited or the current selection is still visible).
@@ -327,8 +339,9 @@ export default (config = {}, labels = {}) => ({
             vaultId: isShared ? this.filterFolder : undefined,
         };
         this.tagsValue = '';
+        this._updateStrength('');
     },
-    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this.historyOpen = false; this._refreshWifiQr(x); },
+    openItem(x) { this.current = x; this.draft = null; this.reveal = {}; this.historyOpen = false; this._refreshWifiQr(x); this._updateStrength((x && x.fields && x.fields.password) || ''); },
     editCurrent() {
         if (! this.current) return;
         this.draft = JSON.parse(JSON.stringify(this.current));
@@ -337,8 +350,9 @@ export default (config = {}, labels = {}) => ({
         // Migrate an older single url field into the multi-url array.
         if (this.draft.type === 'login' && ! Array.isArray(this.draft.fields.urls)) this.draft.fields.urls = this.draft.fields.url ? [this.draft.fields.url] : [''];
         this.tagsValue = (this.draft.tags || []).join(', ');
+        this._updateStrength(this.draft.fields?.password || '');
     },
-    cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; this._autoSelect(); },
+    cancelEdit() { if (this.draft && ! this.draft.id) this.current = null; this.draft = null; this._updateStrength(''); this._autoSelect(); },
     changeDraftType(t) { if (! this.draft || this.draft.id) return; this.draft.type = t; this.draft.fields = this._blankFields(t); },
 
     addUrl() { if (this.draft) (this.draft.fields.urls = this.draft.fields.urls || []).push(''); },
@@ -501,6 +515,34 @@ export default (config = {}, labels = {}) => ({
         return set;
     },
     _pwScore(pw) { return pwStrength(pw); },
+    _scoreLabel(score) {
+        const map = [
+            (labels.strengthVeryWeak || ''),
+            (labels.strengthWeak || ''),
+            (labels.strengthFair || ''),
+            (labels.strengthGood || ''),
+            (labels.strengthStrong || ''),
+        ];
+        return map[score] || '';
+    },
+    // Debounced async strength update: sets a coarse score immediately from the
+    // synchronous fallback, then resolves to the zxcvbn result (~50–200 ms).
+    _updateStrength(pw) {
+        if (this._strengthTimer) clearTimeout(this._strengthTimer);
+        if (! pw) { this.strengthScore = null; this.strengthLabel = ''; this.crackTime = ''; return; }
+        // Optimistic synchronous score while zxcvbn loads.
+        this.strengthScore = pwStrength(pw);
+        this.strengthLabel = this._scoreLabel(this.strengthScore);
+        this.crackTime = '';
+        this._strengthTimer = setTimeout(async () => {
+            try {
+                const r = await estimateStrength(pw);
+                this.strengthScore = r.score;
+                this.strengthLabel = this._scoreLabel(r.score);
+                this.crackTime = r.crackTimeDisplay;
+            } catch (e) { /* best effort — keep the coarse score */ }
+        }, 200);
+    },
     issuesFor(x) {
         if (! x) return null;
         if (x.type === 'card') { return this._cardExpiring(x) ? { weak: false, reused: false, breach: null, no2fa: false, expiring: true } : null; }
@@ -654,6 +696,85 @@ export default (config = {}, labels = {}) => ({
         } catch (e) { this.importResult = { ok: false, count: 0 }; } finally { this.importing = false; }
     },
     async _importIcons(list) { for (const r of list) { try { await this._fetchIcon(r); } catch (e) { /* best effort */ } } },
+
+    /* ---- Export (client-side, personal vault only) ----
+       Plaintext and encrypted exports are generated entirely in the browser from
+       the already-decrypted items. Nothing touches the server. Shared-vault items
+       are intentionally excluded from v1 exports. --- */
+    exportOpen: false,
+    exportConfirmed: false,
+    exportPassphrase: '',
+    exportWorking: false,
+    exportDone: '',
+    exportError: '',
+    openExport() {
+        this.exportOpen = true;
+        this.exportConfirmed = false;
+        this.exportPassphrase = '';
+        this.exportWorking = false;
+        this.exportDone = '';
+        this.exportError = '';
+    },
+    _closeExport() {
+        this.exportOpen = false;
+        this.exportPassphrase = '';
+        this.exportError = '';
+        this.exportDone = '';
+    },
+    _exportTimestamp() {
+        const d = new Date();
+        return d.getFullYear() + '-'
+            + String(d.getMonth() + 1).padStart(2, '0') + '-'
+            + String(d.getDate()).padStart(2, '0') + '_'
+            + String(d.getHours()).padStart(2, '0')
+            + String(d.getMinutes()).padStart(2, '0');
+    },
+    async exportJson() {
+        if (! this.exportConfirmed) return;
+        this.exportWorking = true;
+        this.exportError = '';
+        this.exportDone = '';
+        try {
+            const obj = buildBitwardenJson(this.items, this.folders);
+            const json = JSON.stringify(obj, null, 2);
+            saveBlobAs(json, 'ledgerline-export-' + this._exportTimestamp() + '.json', 'application/json');
+            this.exportDone = labels.exportDone || 'Done.';
+        } catch (e) {
+            this.exportDone = '';
+            this.exportError = labels.exportFailed || 'Export failed.';
+        } finally { this.exportWorking = false; }
+    },
+    async exportCsv() {
+        if (! this.exportConfirmed) return;
+        this.exportWorking = true;
+        this.exportError = '';
+        this.exportDone = '';
+        try {
+            const csv = buildCsv(this.items);
+            saveBlobAs(csv, 'ledgerline-export-' + this._exportTimestamp() + '.csv', 'text/csv');
+            this.exportDone = labels.exportDone || 'Done.';
+        } catch (e) {
+            this.exportDone = '';
+            this.exportError = labels.exportFailed || 'Export failed.';
+        } finally { this.exportWorking = false; }
+    },
+    async exportEncrypted() {
+        if (! this.exportPassphrase.trim()) return;
+        this.exportWorking = true;
+        this.exportError = '';
+        this.exportDone = '';
+        try {
+            const obj = buildBitwardenJson(this.items, this.folders);
+            const envelope = await encryptExport(JSON.stringify(obj), this.exportPassphrase);
+            saveBlobAs(envelope, 'ledgerline-export-enc-' + this._exportTimestamp() + '.json', 'application/json');
+            this.exportDone = labels.exportDone || 'Done.';
+            this.exportPassphrase = '';
+        } catch (e) {
+            this.exportDone = '';
+            this.exportError = labels.exportFailed || 'Export failed.';
+        } finally { this.exportWorking = false; }
+    },
+
     // Re-fetch the site icon for every login (server-proxied; sequential to
     // respect the endpoint throttle). Updates only entries whose icon changed.
     iconRefreshing: false,
