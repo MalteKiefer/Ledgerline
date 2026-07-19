@@ -62,13 +62,13 @@ describe('authenticatorData', () => {
             attested: { aaguid: new Uint8Array(16), credentialId: new Uint8Array(32).fill(7), cosePublicKey: new Uint8Array([0xa1, 0x01, 0x02]) },
         });
         expect(ad.length).toBe(32 + 1 + 4 + 16 + 2 + 32 + 3);
-        expect(ad[32]).toBe(0x45); // UP(0x01)|UV(0x04)|AT(0x40)
+        expect(ad[32]).toBe(0x5d); // UP(0x01)|UV(0x04)|BE(0x08)|BS(0x10)|AT(0x40) — synced credential
         expect(Array.from(ad.slice(33, 37))).toEqual([0, 0, 0, 0]); // signCount 0
     });
     it('omits attested data and sets AT=0 for an assertion', async () => {
         const ad = await pk.buildAuthData({ rpId: 'example.com', flags: { up: true, uv: true, at: false }, signCount: 0 });
         expect(ad.length).toBe(37);
-        expect(ad[32]).toBe(0x05); // UP|UV, no AT
+        expect(ad[32]).toBe(0x1d); // UP(0x01)|UV(0x04)|BE(0x08)|BS(0x10), no AT — synced credential
     });
 });
 

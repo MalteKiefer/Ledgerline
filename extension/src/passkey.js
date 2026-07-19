@@ -68,7 +68,16 @@ function concat(arrs) { const len = arrs.reduce((a, x) => a + x.length, 0); cons
 
 export async function buildAuthData({ rpId, flags, signCount, attested }) {
     const rpIdHash = await sha256(new TextEncoder().encode(rpId));
-    let f = 0; if (flags.up) f |= 0x01; if (flags.uv) f |= 0x04; if (flags.at) f |= 0x40;
+    // Ledgerline passkeys sync across devices via the sealed vault, so they are
+    // multi-device (synced) credentials, not device-bound: set BE (backup
+    // eligible, 0x08) and BS (backed up, 0x10) unless a caller opts out. Without
+    // these, RPs label the credential "device-bound".
+    let f = 0;
+    if (flags.up) f |= 0x01;
+    if (flags.uv) f |= 0x04;
+    if (flags.be ?? true) f |= 0x08;
+    if (flags.bs ?? true) f |= 0x10;
+    if (flags.at) f |= 0x40;
     const parts = [rpIdHash, Uint8Array.from([f]), u32be(signCount >>> 0)];
     if (attested) {
         const credLen = Uint8Array.from([(attested.credentialId.length >> 8) & 255, attested.credentialId.length & 255]);
