@@ -305,6 +305,42 @@ function des(v) {
     return v;
 }
 
+// Extract passkey candidates for an rpId from the secrets list.
+// Returns full candidate objects (including privateKey) for signing.
+// Used by passkey.get, passkey.conditionalSign, and passkey.conditional.available.
+function passkeyCandidates(secrets, rpId) {
+    const candidates = [];
+    for (const s of secrets) {
+        if (s.type === 'passkey' && s.fields?.rpId === rpId) {
+            candidates.push({
+                credentialId: s.fields.credentialId,
+                privateKey: s.fields.privateKey,
+                userHandle: s.fields.userHandle || null,
+                userName: s.fields.userName || s.fields.userDisplayName || '',
+                label: s.title || rpId,
+                sourceItemId: s.id,
+            });
+        } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
+            for (const pkEntry of s.fields.passkeys) {
+                if (pkEntry.rpId === rpId) {
+                    candidates.push({
+                        credentialId: pkEntry.credentialId,
+                        privateKey: pkEntry.privateKey,
+                        userHandle: pkEntry.userHandle || null,
+                        userName: pkEntry.userName || pkEntry.userDisplayName || '',
+                        label: s.title || rpId,
+                        sourceItemId: s.id,
+                    });
+                }
+            }
+        }
+    }
+    return candidates;
+}
+
+// Short-lived cache for passkey.conditional.available to avoid repeated decrypt per focus event.
+let _pkAvailCache = null; // { rpId, at, result }
+
 const handlers = {
     async getState() {
         const { serverUrl, token } = await creds();
@@ -386,16 +422,7 @@ const handlers = {
         // was stored. ensureSecrets() is called here so SECRETS is never stale/null.
         if (Array.isArray(request.excludeCredentials) && request.excludeCredentials.length > 0) {
             const stored = await ensureSecrets();
-            const existingIds = new Set();
-            for (const s of stored) {
-                if (s.type === 'passkey' && s.fields && s.fields.rpId === rpId && s.fields.credentialId) {
-                    existingIds.add(s.fields.credentialId);
-                } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
-                    for (const pkEntry of s.fields.passkeys) {
-                        if (pkEntry.rpId === rpId && pkEntry.credentialId) existingIds.add(pkEntry.credentialId);
-                    }
-                }
-            }
+            const existingIds = new Set(passkeyCandidates(stored, rpId).map((c) => c.credentialId).filter(Boolean));
             for (const ex of request.excludeCredentials) {
                 const exId = ex.id instanceof Uint8Array ? pk.b64uEncode(ex.id) : (ex.id ? String(ex.id) : '');
                 if (existingIds.has(exId)) return { ok: false, error: { name: 'InvalidStateError', message: 'credential already registered' } };
@@ -528,32 +555,7 @@ const handlers = {
         // Load secrets and find candidates matching this rpId — both standalone
         // passkey items and passkeys embedded in login items' fields.passkeys[].
         const secrets = await ensureSecrets();
-        const candidates = [];
-        for (const s of secrets) {
-            if (s.type === 'passkey' && s.fields?.rpId === rpId) {
-                candidates.push({
-                    credentialId: s.fields.credentialId,
-                    privateKey: s.fields.privateKey,
-                    userHandle: s.fields.userHandle || null,
-                    userName: s.fields.userName || s.fields.userDisplayName || '',
-                    label: s.title || rpId,
-                    sourceItemId: s.id,
-                });
-            } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
-                for (const pkEntry of s.fields.passkeys) {
-                    if (pkEntry.rpId === rpId) {
-                        candidates.push({
-                            credentialId: pkEntry.credentialId,
-                            privateKey: pkEntry.privateKey,
-                            userHandle: pkEntry.userHandle || null,
-                            userName: pkEntry.userName || pkEntry.userDisplayName || '',
-                            label: s.title || rpId,
-                            sourceItemId: s.id,
-                        });
-                    }
-                }
-            }
-        }
+        const candidates = passkeyCandidates(secrets, rpId);
 
         // If allowCredentials is specified, intersect to only those credential IDs.
         // Ignore entries whose type is not 'public-key' — browsers skip them too.
@@ -615,27 +617,82 @@ const handlers = {
     // candidates is a metadata-only list (no private keys) for the picker display.
     // No sender.tab.id gate — the content script calls this proactively on every
     // focusin; we return quickly with unlocked:false if the vault is locked.
+    // Uses a 3-second TTL cache keyed by rpId to avoid decrypt on every focus event.
     async 'passkey.conditional.available'({ rpId }) {
         const vkB64 = (await session.get('vk')).vk;
         if (! vkB64) return { ok: true, unlocked: false, count: 0, candidates: [] };
+        if (_pkAvailCache && _pkAvailCache.rpId === rpId && Date.now() - _pkAvailCache.at < 3000) {
+            return _pkAvailCache.result;
+        }
         try {
             const secrets = await ensureSecrets();
-            const candidates = [];
-            for (const s of secrets) {
-                if (s.type === 'passkey' && s.fields?.rpId === rpId) {
-                    candidates.push({ credentialId: s.fields.credentialId, userName: s.fields.userName || s.fields.userDisplayName || '', label: s.title || rpId });
-                } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
-                    for (const pkEntry of s.fields.passkeys) {
-                        if (pkEntry.rpId === rpId) {
-                            candidates.push({ credentialId: pkEntry.credentialId, userName: pkEntry.userName || pkEntry.userDisplayName || '', label: s.title || rpId });
-                        }
-                    }
-                }
-            }
-            return { ok: true, unlocked: true, count: candidates.length, candidates };
+            const full = passkeyCandidates(secrets, rpId);
+            const candidates = full.map((c) => ({ credentialId: c.credentialId, userName: c.userName, label: c.label }));
+            const result = { ok: true, unlocked: true, count: candidates.length, candidates };
+            _pkAvailCache = { rpId, at: Date.now(), result };
+            return result;
         } catch (e) {
             return { ok: true, unlocked: false, count: 0, candidates: [] };
         }
+    },
+
+    // Sign a conditional passkey assertion for a pre-chosen credential. Unlike
+    // passkey.get this does NOT show a modal picker — the user already chose the
+    // credential via the inline autofill suggestion in the content script.
+    // chosenCredentialId is validated against the actual candidate list to prevent
+    // a forged pick from signing an arbitrary stored credential.
+    async 'passkey.conditionalSign'({ request, origin, chosenCredentialId }, sender) {
+        if (! sender?.tab?.id) return { ok: false, error: 'no tab' };
+        const vkB64 = (await session.get('vk')).vk;
+        if (! vkB64) return { ok: false, error: 'locked' };
+
+        request = des(request);
+
+        const pageHost = hostOf(origin);
+        const rpId = request.rpId ? request.rpId : pageHost;
+        if (! pk.rpIdAllowed(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
+
+        const secrets = await ensureSecrets();
+        const candidates = passkeyCandidates(secrets, rpId);
+
+        // If allowCredentials is specified, intersect with those IDs first.
+        let filtered = candidates;
+        if (Array.isArray(request.allowCredentials) && request.allowCredentials.length > 0) {
+            const allowedIds = new Set(
+                request.allowCredentials
+                    .filter((ac) => ! ac.type || ac.type === 'public-key')
+                    .map((ac) => {
+                        const id = ac.id;
+                        return id instanceof Uint8Array ? pk.b64uEncode(id) : (id ? String(id) : '');
+                    }).filter(Boolean)
+            );
+            filtered = candidates.filter((c) => allowedIds.has(c.credentialId || ''));
+        }
+
+        // Validate chosenCredentialId is actually in our candidate list.
+        const chosen = filtered.find((c) => c.credentialId === chosenCredentialId);
+        if (! chosen) return { ok: false, error: { name: 'NotAllowedError', message: 'credential not found' } };
+
+        const priv = JSON.parse(chosen.privateKey);
+        const authData = await pk.buildAuthData({ rpId, flags: { up: true, uv: true, at: false }, signCount: 0 });
+        const cdj = pk.clientDataJSON({ type: 'webauthn.get', challenge: request.challenge, origin });
+        const cdjHash = new Uint8Array(await crypto.subtle.digest('SHA-256', cdj));
+        const len = authData.length + cdjHash.length;
+        const message = new Uint8Array(len);
+        message.set(authData, 0);
+        message.set(cdjHash, authData.length);
+        const signature = await pk.signEs256(priv, message);
+
+        return {
+            ok: true,
+            result: {
+                credentialId: chosen.credentialId,
+                authenticatorData: pk.b64uEncode(authData),
+                clientDataJSON: pk.b64uEncode(cdj),
+                signature: pk.b64uEncode(signature),
+                userHandle: chosen.userHandle || null,
+            },
+        };
     },
 
     async updateItem({ id, patch }) {

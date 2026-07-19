@@ -530,6 +530,12 @@ async function onFocusField(input) {
         return;
     }
     if (t === 'password' && isNewPw(input)) { attachGenBadge(input); return; }
+    // F5: non-new password field (sign-in form) gets the normal login autofill badge.
+    if (t === 'password') {
+        const res = await send({ type: 'match', hostname: location.hostname });
+        if (res?.ok && res.logins.length) attachBadge(input, res.logins);
+        return;
+    }
 
     // Conditional passkey mediation: check if this field should surface passkeys
     // inline. Two triggers:
@@ -862,7 +868,12 @@ window.addEventListener('message', async (e) => {
     if (e.source !== window || e.origin !== location.origin || ! e.data || e.data.__ll_pk !== 'req') return;
 
     // Conditional registration: remember the pending request; no SW round-trip yet.
+    // F3: supersede any prior pending conditional request so the shim's old promise
+    // does not hang indefinitely when a SPA re-registers the ceremony.
     if (e.data.kind === 'passkey.conditional') {
+        if (conditionalRequest) {
+            window.postMessage({ __ll_pk: 'res', conditional: true, requestId: conditionalRequest.requestId, ok: false, error: 'superseded' }, location.origin);
+        }
         const req = e.data.request || {};
         conditionalRequest = {
             requestId: e.data.requestId,
@@ -888,8 +899,8 @@ window.addEventListener('message', async (e) => {
     window.postMessage({ __ll_pk: 'res', id: e.data.id, ok: ! ! (res && res.ok), result: res && res.result, error: res && res.error }, location.origin);
 });
 
-// Resolve a pending conditional request: sign via the existing passkey.get path
-// for the chosen credential and post the result back to the shim.
+// Resolve a pending conditional request: sign via conditionalSign (no modal
+// picker) for the chosen credential and post the result back to the shim.
 async function resolveConditional(field, credentialId) {
     if (! conditionalRequest) return;
     const cr = conditionalRequest;
@@ -897,11 +908,17 @@ async function resolveConditional(field, credentialId) {
     suppress = true; setTimeout(() => { suppress = false; }, 700);
     closePicker();
     const res = await send({
-        type: 'passkey.get',
-        request: { rpId: cr.rpId, allowCredentials: [{ type: 'public-key', id: credentialId }], challenge: cr.challenge },
+        type: 'passkey.conditionalSign',
+        request: { rpId: cr.rpId, allowCredentials: cr.allowCredentials, challenge: cr.challenge },
+        chosenCredentialId: credentialId,
         origin: location.origin,
     });
-    if (res && res.ok && res.result) {
+    if (! res) {
+        // SW unavailable (e.g. service worker recycled) — settle the shim promise.
+        window.postMessage({ __ll_pk: 'res', conditional: true, requestId: cr.requestId, ok: false, error: 'SW unavailable' }, location.origin);
+        return;
+    }
+    if (res.ok && res.result) {
         window.postMessage({ __ll_pk: 'res', conditional: true, requestId: cr.requestId, ok: true, result: res.result }, location.origin);
     } else {
         window.postMessage({ __ll_pk: 'res', conditional: true, requestId: cr.requestId, ok: false, error: (res && res.error) || 'cancelled' }, location.origin);

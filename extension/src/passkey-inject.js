@@ -34,7 +34,13 @@
             if (! cp) return;
             conditionalPending.delete(e.data.requestId);
             if (e.data.ok && e.data.result) cp.resolve(e.data.result);
-            else cp.reject(new DOMException(e.data.error || 'NotAllowedError', 'NotAllowedError'));
+            else {
+                // F4: 'SW unavailable' and 'superseded' are transient/abort conditions;
+                // hard signing failures are NotAllowedError.
+                const errMsg = e.data.error || 'NotAllowedError';
+                const isAbort = errMsg === 'SW unavailable' || errMsg === 'superseded';
+                cp.reject(new DOMException(errMsg, isAbort ? 'AbortError' : 'NotAllowedError'));
+            }
             return;
         }
         const p = pending.get(e.data.id); if (! p) return;
@@ -96,6 +102,12 @@
             // content script will resolve it when the user picks a passkey from
             // the inline autofill suggestion. If opts.signal aborts, we reject.
             if (opts.mediation === 'conditional') {
+                // F3: supersede any prior pending conditional requests (SPA re-registration).
+                for (const [oldId, cp] of conditionalPending) {
+                    cp.reject(new DOMException('Superseded by new conditional request', 'AbortError'));
+                }
+                conditionalPending.clear();
+
                 const requestId = ++seq;
                 const promise = new Promise((resolve, reject) => {
                     conditionalPending.set(requestId, { resolve, reject });
