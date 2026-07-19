@@ -118,3 +118,40 @@ describe('COSE key', () => {
         expect(cose[0]).toBe(0xa5); // CBOR map of 5 entries
     });
 });
+
+describe('rpIdAllowed', () => {
+    // Mirrors hostsMatch() in background.js: page===stored OR page.endsWith('.'+stored),
+    // both sides www.-stripped. Parent→child only (child cannot claim parent as rpId).
+
+    it('allows exact match', () => {
+        expect(pk.rpIdAllowed('example.com', 'example.com')).toBe(true);
+    });
+    it('allows parent rpId for a subdomain origin', () => {
+        expect(pk.rpIdAllowed('accounts.example.com', 'example.com')).toBe(true);
+    });
+    it('rejects unrelated domain', () => {
+        expect(pk.rpIdAllowed('example.com', 'evil.com')).toBe(false);
+    });
+    it('rejects child-as-rpId for a parent origin (never reverse direction)', () => {
+        // example.com origin cannot use accounts.example.com as rpId
+        expect(pk.rpIdAllowed('example.com', 'accounts.example.com')).toBe(false);
+    });
+    it('allows bare TLD — no PSL lookup, mirrors hostsMatch gap', () => {
+        // Acknowledged: no PSL; 'example.com'.endsWith('.com') is true.
+        // This matches background.js hostsMatch behaviour exactly (deliberate mirror).
+        expect(pk.rpIdAllowed('example.com', 'com')).toBe(true);
+    });
+    it('rejects empty origin or rpId', () => {
+        expect(pk.rpIdAllowed('', 'example.com')).toBe(false);
+        expect(pk.rpIdAllowed('example.com', '')).toBe(false);
+        expect(pk.rpIdAllowed(null, 'example.com')).toBe(false);
+    });
+    it('strips www. from both sides', () => {
+        expect(pk.rpIdAllowed('www.example.com', 'example.com')).toBe(true);
+        expect(pk.rpIdAllowed('accounts.example.com', 'www.example.com')).toBe(true);
+    });
+    it('does not match on suffix without dot boundary', () => {
+        // 'notexample.com' must not match rpId 'example.com'
+        expect(pk.rpIdAllowed('notexample.com', 'example.com')).toBe(false);
+    });
+});

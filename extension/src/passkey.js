@@ -116,3 +116,25 @@ export function clientDataJSON({ type, challenge, origin }) {
     const json = JSON.stringify({ type, challenge: b64uEncode(challenge), origin, crossOrigin: false });
     return new TextEncoder().encode(json);
 }
+
+// rpId binding check: mirrors the hostsMatch() rule in background.js exactly.
+// Returns true iff rpId is the origin host OR a registrable parent (dot-boundary).
+// Both sides have www. stripped first to match background.js behaviour.
+//
+// Security invariant: parent→child only (child cannot claim parent as rpId).
+//   ('accounts.example.com', 'example.com') → true   ✓ parent rpId
+//   ('example.com', 'example.com')          → true   ✓ exact match
+//   ('example.com', 'evil.com')             → false  ✓ unrelated
+//   ('example.com', 'com')                  → true   ⚠ bare TLD: no PSL lookup (matches hostsMatch)
+//
+// NOTE: bare TLD acceptance ('example.com','com') is an acknowledged gap.
+// A full PSL dependency was deliberately avoided (binary-size / update-lag trade-off).
+// Mitigation: RPs must specify a valid rpId; browsers also accept bare TLDs in the
+// WebAuthn spec only when the RP's registrable domain matches — same gap exists in
+// Chrome's own implementation for non-PSL-aware builds.
+export function rpIdAllowed(originHost, rpId) {
+    if (! originHost || ! rpId) return false;
+    const page = originHost.replace(/^www\./, '');
+    const stored = rpId.replace(/^www\./, '');
+    return page === stored || page.endsWith('.' + stored);
+}

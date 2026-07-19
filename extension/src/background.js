@@ -344,9 +344,10 @@ const handlers = {
 
         // rpId enforcement: must equal or be a registrable parent of the origin host.
         // origin was set by the content script to location.origin — trusted.
+        // Uses the tested pure function rpIdAllowed() from passkey.js (mirrors hostsMatch).
         const pageHost = hostOf(origin);
         const rpId = (request.rp && request.rp.id) ? request.rp.id : pageHost;
-        if (! hostsMatch(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
+        if (! pk.rpIdAllowed(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
 
         // pubKeyCredParams must be a non-empty array that includes ES256 (alg -7).
         if (! Array.isArray(request.pubKeyCredParams) || request.pubKeyCredParams.length === 0
@@ -438,9 +439,10 @@ const handlers = {
 
         // rpId enforcement: must equal or be a registrable parent of the origin host.
         // origin was set by the content script to location.origin — trusted.
+        // Uses the tested pure function rpIdAllowed() from passkey.js (mirrors hostsMatch).
         const pageHost = hostOf(origin);
         const rpId = request.rpId ? request.rpId : pageHost;
-        if (! hostsMatch(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
+        if (! pk.rpIdAllowed(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
 
         // Load secrets and find candidates matching this rpId.
         const secrets = await ensureSecrets();
