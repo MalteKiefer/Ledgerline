@@ -25,6 +25,7 @@ const PATHS = {
     trash: '<path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/>',
     qr: '<path d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z"/><path d="M6.75 6.75h.008v.008H6.75V6.75ZM6.75 16.5h.008v.008H6.75V16.5ZM16.5 6.75h.008v.008H16.5V6.75ZM13.5 13.5h.008v.008H13.5V13.5ZM13.5 19.5h.008v.008H13.5V19.5ZM19.5 13.5h.008v.008H19.5V13.5ZM19.5 19.5h.008v.008H19.5V19.5ZM16.5 16.5h.008v.008H16.5V16.5Z"/>',
     star: '<path d="M11.48 3.5a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/>',
+    pencil: '<path d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/>',
 };
 function icon(name, size = 18) {
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="${size}" height="${size}">${PATHS[name] || ''}</svg>`;
@@ -37,7 +38,7 @@ async function activeTab() {
 }
 function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
 
-const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server' };
+const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server', passkey: 'Passkey' };
 let totpTimer = null;
 function stopTotp() { if (totpTimer) { clearInterval(totpTimer); totpTimer = null; } }
 
@@ -194,6 +195,11 @@ async function renderMain() {
 
     function showDetail(it, tab) {
         stopTotp();
+        renderDetailView(it, tab);
+    }
+
+    function renderDetailView(it, tab) {
+        stopTotp();
         const rows = [];
         const secrets = {};
         let si = 0;
@@ -218,6 +224,11 @@ async function renderMain() {
         for (const u of (it.urls || [])) rows.push(field('Website', `<a class="fval" href="${esc(/^https?:\/\//.test(u) ? u : 'https://' + u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`, `<button class="ic" data-open="${esc(u)}" title="Open">${icon('open', 16)}</button>` + copyBtn(u)));
         if (it.note) rows.push(field('Note', `<span class="fval" style="white-space:pre-wrap">${esc(it.note)}</span>`, ''));
 
+        // Embedded passkeys: list each with metadata only (no private/public key).
+        const embeddedPasskeys = (it.type === 'login' && Array.isArray(it.passkeys) && it.passkeys.length > 0)
+            ? it.passkeys.map((pk, idx) => `<div class="field"><div class="flabel">Passkey</div><div class="frow"><span class="fval">${esc(pk.userName || pk.rpId || 'Passkey')}</span><button class="ic" data-rm-pk="${idx}" title="Remove passkey">${icon('trash', 16)}</button></div></div>`).join('')
+            : '';
+
         const tags = (it.tags || []).length ? `<div class="dtags">${it.tags.map((t) => `<span class="tg">#${esc(t)}</span>`).join('')}</div>` : '';
         const canFill = it.type === 'login' || (it.type === 'card' && it.number) || ! ! it.password;
         const fillLabel = it.type === 'card' ? 'Fill card on this page' : 'Fill on this page';
@@ -227,16 +238,19 @@ async function renderMain() {
             ? `<div class="tfahint">${icon('key', 16)}<div><div>This website offers two-factor authentication. Add a one-time code to this login.</div>${doc ? `<a href="${esc(doc)}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;color:inherit">How to enable it</a>` : ''}</div></div>`
             : '';
         const canScan = it.type === 'login' && ! it.hasTotp;
+        const canEdit = it.type === 'login' || it.type === 'password';
         detailEl.innerHTML = '';
         detailEl.append(el(`<div>
             <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div>
               <div class="dactions">
+                ${canEdit ? `<button class="ic" id="edit" title="Edit">${icon('pencil', 18)}</button>` : ''}
                 ${canScan ? `<button class="ic" id="scan2fa" title="Scan a 2FA QR code">${icon('qr', 18)}</button>` : ''}
                 <button class="ic" id="del" title="Move to trash">${icon('trash', 18)}</button>
               </div>
             </div>
             ${tfaHtml}
             ${rows.join('')}
+            ${embeddedPasskeys}
             ${tags}
             ${canFill ? `<button class="fillbtn" id="fillBtn">${icon('login', 16)} ${esc(fillLabel)}</button>` : ''}
         </div>`));
@@ -246,6 +260,26 @@ async function renderMain() {
         detailEl.querySelectorAll('[data-reveal]').forEach((b) => {
             const id = b.dataset.reveal; let shown = false;
             b.onclick = () => { shown = ! shown; detailEl.querySelector(`[data-sec="${id}"]`).textContent = shown ? secrets[id] : '••••••••••'; b.innerHTML = icon(shown ? 'eyeslash' : 'eye', 16); };
+        });
+        // Per-passkey remove buttons.
+        detailEl.querySelectorAll('[data-rm-pk]').forEach((b) => {
+            const idx = parseInt(b.dataset.rmPk, 10);
+            b.onclick = async () => {
+                const pkEntry = (it.passkeys || [])[idx];
+                const label = pkEntry ? (pkEntry.userName || pkEntry.rpId || 'this passkey') : 'this passkey';
+                if (! confirm(`Remove ${label} from this login?`)) return;
+                b.disabled = true;
+                const newPasskeys = (it.passkeys || []).filter((_, i) => i !== idx);
+                const r = await send({ type: 'updateItem', id: it.id, patch: { passkeys: newPasskeys } });
+                if (r?.ok) {
+                    await reloadLibrary();
+                    const fresh = library.find((x) => x.id === it.id);
+                    if (fresh) { selected = fresh; renderDetailView(fresh, tab); } else renderDetailView(it, tab);
+                } else {
+                    b.disabled = false;
+                    alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not remove passkey.');
+                }
+            };
         });
         const fillBtn = detailEl.querySelector('#fillBtn');
         if (fillBtn) fillBtn.onclick = () => it.type === 'card' ? fillCardOnPage(it, tab) : fill(it, tab);
@@ -257,6 +291,8 @@ async function renderMain() {
             if (r?.ok) { selected = null; await reloadLibrary(); detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>'; }
             else { delBtn.disabled = false; alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not delete.'); }
         };
+        const editBtn = detailEl.querySelector('#edit');
+        if (editBtn) editBtn.onclick = () => renderEditView(it, tab);
         const scanBtn = detailEl.querySelector('#scan2fa');
         if (scanBtn) scanBtn.onclick = () => scan2fa(it);
 
@@ -271,6 +307,68 @@ async function renderMain() {
             };
             tick(); totpTimer = setInterval(tick, 1000);
         }
+    }
+
+    function renderEditView(it, tab) {
+        stopTotp();
+        const isLogin = it.type === 'login';
+        detailEl.innerHTML = '';
+        // Build edit form fields depending on item type.
+        // login: username, password, first url, totp secret, note
+        // password: password, note
+        const urlVal = esc((it.urls || [])[0] || '');
+        const totpHint = it.hasTotp ? ' (leave blank to keep existing)' : '';
+        const loginFields = isLogin ? `
+            <label class="fld">Username</label><input id="e-user" value="${esc(it.username || '')}">
+            <label class="fld">Password</label><input id="e-pass" type="password" value="${esc(it.password || '')}">
+            <label class="fld">Website URL</label><input id="e-url" value="${urlVal}">
+            <label class="fld">TOTP secret${esc(totpHint)}</label><input id="e-totp" autocomplete="off">
+            <label class="fld">Note</label><textarea id="e-note" rows="3" style="resize:vertical">${esc(it.note || '')}</textarea>
+        ` : `
+            <label class="fld">Password</label><input id="e-pass" type="password" value="${esc(it.password || '')}">
+            <label class="fld">Note</label><textarea id="e-note" rows="3" style="resize:vertical">${esc(it.note || '')}</textarea>
+        `;
+        detailEl.append(el(`<div>
+            <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div></div>
+            ${loginFields}
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="primary" id="e-save" style="flex:1">Save</button>
+                <button id="e-cancel" style="flex:1">Cancel</button>
+            </div>
+            <p class="err" id="e-err"></p>
+        </div>`));
+        const $ = (id) => document.getElementById(id);
+        $('e-cancel').onclick = () => renderDetailView(it, tab);
+        $('e-save').onclick = async () => {
+            $('e-save').disabled = true; $('e-save').textContent = 'Saving…';
+            const patch = {};
+            if (isLogin) {
+                patch.username = $('e-user').value;
+                patch.password = $('e-pass').value;
+                // Replace first URL; preserve any additional URLs beyond the first.
+                const newUrl = $('e-url').value.trim();
+                const oldUrls = it.urls || [];
+                patch.urls = newUrl ? [newUrl, ...oldUrls.slice(1)] : oldUrls.slice(1);
+                const totpVal = $('e-totp').value.trim();
+                if (totpVal) patch.totp = totpVal; // only overwrite TOTP if a new value was entered
+                patch.note = $('e-note').value;
+            } else {
+                patch.password = $('e-pass').value;
+                patch.note = $('e-note').value;
+            }
+            const r = await send({ type: 'updateItem', id: it.id, patch });
+            if (r?.ok) {
+                await reloadLibrary();
+                const fresh = library.find((x) => x.id === it.id);
+                selected = fresh || it;
+                renderDetailView(fresh || it, tab);
+            } else {
+                $('e-save').disabled = false; $('e-save').textContent = 'Save';
+                $('e-err').textContent = r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save.';
+            }
+        };
+        const passEl = $('e-pass');
+        if (passEl) passEl.focus();
     }
 
     async function reloadLibrary() {

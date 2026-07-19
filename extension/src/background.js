@@ -112,6 +112,11 @@ function hostsMatch(page, stored) {
 }
 
 function itemView(s) {
+    // Expose embedded passkeys without private key material — only metadata
+    // the popup needs to display and remove entries (rpId, userName, credentialId).
+    const passkeys = Array.isArray(s.fields?.passkeys)
+        ? s.fields.passkeys.map((p) => ({ rpId: p.rpId || '', userName: p.userName || p.userDisplayName || '', credentialId: p.credentialId || '' }))
+        : [];
     return {
         id: s.id,
         title: s.title || '',
@@ -129,6 +134,7 @@ function itemView(s) {
         cvv: s.fields?.cvv || '',
         tags: s.tags || [],
         folder: s.folder || null,
+        passkeys,
     };
 }
 const byTitle = (a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
