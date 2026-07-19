@@ -8,10 +8,13 @@ use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryStoreController;
+use App\Http\Controllers\PasswordBreachController;
+use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
 use App\Http\Controllers\SharedVaultStoreController;
 use App\Http\Controllers\StoreController;
+use App\Http\Controllers\TwoFactorDirectoryController;
 use App\Http\Controllers\UserKeyController;
 use App\Http\Controllers\VaultController;
 use App\Http\Middleware\UpdateTokenIp;
@@ -88,6 +91,13 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.contacts.upload');
         Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.contacts.raw');
         Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.contacts.blob.destroy');
+
+        // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
+        // k-anonymity), and 2fa.directory dataset. Same controllers as the web
+        // routes — guard-agnostic, SSRF-guarded, nothing stored server-side.
+        Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('api.passwords.icon');
+        Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('api.passwords.breach');
+        Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('api.passwords.tfa');
 
         // Shared vault-sharing: identity keys, vault containers, sealed manifest
         // stores, and membership management. Same controllers as the web routes —
