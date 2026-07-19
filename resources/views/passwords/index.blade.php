@@ -41,6 +41,11 @@
             license: @js(__('passwords.type_license')), server: @js(__('passwords.type_server')),
             passkey: @js(__('passwords.type_passkey')),
         },
+        strengthVeryWeak: @js(__('passwords.strength_very_weak')),
+        strengthWeak: @js(__('passwords.strength_weak')),
+        strengthFair: @js(__('passwords.strength_fair')),
+        strengthGood: @js(__('passwords.strength_good')),
+        strengthStrong: @js(__('passwords.strength_strong')),
         fields: {
             username: @js(__('passwords.f_username')), password: @js(__('passwords.f_password')), url: @js(__('passwords.f_url')), urls: @js(__('passwords.f_urls')),
             totp: @js(__('passwords.f_totp')), note: @js(__('passwords.f_note')), cardholder: @js(__('passwords.f_cardholder')),
@@ -310,10 +315,25 @@
                       <template x-if="ft === 'checkbox'"><label class="mt-1 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" x-model="draft.fields[k]" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0"> <span x-text="fieldLabel(k)"></span></label></template>
                       {{-- password/secret --}}
                       <template x-if="ft === 'password'">
-                        <div class="mt-1 flex items-center gap-1.5">
-                          <input :type="reveal[k] ? 'text' : 'password'" x-model="draft.fields[k]" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 font-mono text-sm focus:border-gray-500 focus:ring-gray-500">
-                          <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
-                          <button type="button" x-show="k === 'password'" @click="openGen(k)" title="{{ __('passwords.generate') }}" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-path" class="h-4 w-4" /></button>
+                        <div class="mt-1">
+                          <div class="flex items-center gap-1.5">
+                            <input :type="reveal[k] ? 'text' : 'password'" x-model="draft.fields[k]" @input="k === 'password' && _updateStrength($event.target.value)" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 font-mono text-sm focus:border-gray-500 focus:ring-gray-500">
+                            <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
+                            <button type="button" x-show="k === 'password'" @click="openGen(k)" title="{{ __('passwords.generate') }}" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-path" class="h-4 w-4" /></button>
+                          </div>
+                          {{-- Strength bar (edit form, password field only) --}}
+                          <div x-show="k === 'password' && strengthScore !== null" class="mt-1.5">
+                            <div class="flex items-center gap-2">
+                              <div class="flex flex-1 gap-0.5">
+                                <template x-for="si in [0,1,2,3,4]" :key="si">
+                                  <div class="h-1.5 flex-1 rounded-full transition-colors"
+                                       :class="strengthScore >= si ? (['bg-red-500','bg-orange-500','bg-yellow-500','bg-lime-500','bg-green-500'][strengthScore]) : 'bg-gray-200 dark:bg-gray-700'"></div>
+                                </template>
+                              </div>
+                              <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400" x-text="strengthLabel"></span>
+                            </div>
+                            <div x-show="crackTime" class="mt-0.5 text-xs text-gray-400">{{ __('passwords.crack_time') }}: <span x-text="crackTime"></span></div>
+                          </div>
                         </div>
                       </template>
                       {{-- multi-url (login) --}}
@@ -436,7 +456,21 @@
                         </template>
                       </div>
                     </div>
-                    <p x-show="issuesFor(current) && issuesFor(current).weak">{{ __('passwords.weak_warn') }}</p>
+                    <div x-show="issuesFor(current) && issuesFor(current).weak">
+                      <p>{{ __('passwords.weak_warn') }}</p>
+                      <div x-show="strengthScore !== null && issuesFor(current) && issuesFor(current).weak" class="mt-1.5">
+                        <div class="flex items-center gap-2">
+                          <div class="flex flex-1 gap-0.5">
+                            <template x-for="wi in [0,1,2,3,4]" :key="wi">
+                              <div class="h-1.5 flex-1 rounded-full transition-colors"
+                                   :class="strengthScore >= wi ? (['bg-red-400','bg-orange-400','bg-yellow-400','bg-lime-400','bg-green-400'][strengthScore]) : 'bg-amber-200 dark:bg-amber-900/40'"></div>
+                            </template>
+                          </div>
+                          <span class="shrink-0 text-xs" x-text="strengthLabel"></span>
+                        </div>
+                        <div x-show="crackTime" class="mt-0.5 text-xs opacity-75">{{ __('passwords.crack_time') }}: <span x-text="crackTime"></span></div>
+                      </div>
+                    </div>
                     <p x-show="issuesFor(current) && issuesFor(current).expiring">{{ __('passwords.card_expiring_warn') }}</p>
                     <button type="button" x-show="issuesFor(current) && issuesFor(current).breach === null" @click="checkBreaches()" :disabled="breachChecking" class="text-xs font-medium underline disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
                   </div>
@@ -653,6 +687,19 @@
               <span class="min-w-0 flex-1 break-all font-mono text-sm text-gray-900 dark:text-gray-100" x-text="gen.preview"></span>
               <button type="button" @click="regen()" title="{{ __('passwords.gen_regen') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="arrow-path" class="h-4 w-4" /></button>
               <button type="button" @click="copy(gen.preview)" title="{{ __('passwords.copy') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="clipboard" class="h-4 w-4" /></button>
+            </div>
+            {{-- Strength bar (generator) --}}
+            <div x-show="strengthScore !== null" class="mt-2">
+              <div class="flex items-center gap-2">
+                <div class="flex flex-1 gap-0.5">
+                  <template x-for="i in [0,1,2,3,4]" :key="i">
+                    <div class="h-1.5 flex-1 rounded-full transition-colors"
+                         :class="strengthScore >= i ? (['bg-red-500','bg-orange-500','bg-yellow-500','bg-lime-500','bg-green-500'][strengthScore]) : 'bg-gray-200 dark:bg-gray-700'"></div>
+                  </template>
+                </div>
+                <span class="text-xs text-gray-500 dark:text-gray-400 shrink-0" x-text="strengthLabel"></span>
+              </div>
+              <div x-show="crackTime" class="mt-0.5 text-xs text-gray-400">{{ __('passwords.crack_time') }}: <span x-text="crackTime"></span></div>
             </div>
 
             {{-- Mode toggle --}}
