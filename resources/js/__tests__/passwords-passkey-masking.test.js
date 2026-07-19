@@ -57,6 +57,10 @@ describe('passkey nested-secret masking in versionDiff', () => {
         // Private/public key material must NEVER appear in the diff output
         expect(serialised).not.toContain('SECRET_PRIVATE_KEY_VALUE');
         expect(serialised).not.toContain('SECRET_PUBLIC_KEY_VALUE');
+
+        // passkeys differ (createdAt changed) → must appear as masked sentinel, not dropped
+        expect(diff).toHaveProperty('passkeys');
+        expect(diff.passkeys).toBe('(changed)');
     });
 
     it('preserves non-secret passkey metadata in versionDiff', () => {
