@@ -17,6 +17,11 @@
         return new Promise((resolve) => {
             const id = ++seq; pending.set(id, resolve);
             window.postMessage({ __ll_pk: 'req', id, kind, request, origin: location.origin }, location.origin);
+            setTimeout(() => {
+                if (! pending.has(id)) return; // already resolved
+                pending.delete(id);
+                resolve({ ok: false, error: 'timeout' });
+            }, 30000);
         });
     }
     function toBytes(v) { return v instanceof ArrayBuffer ? new Uint8Array(v) : (ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : v); }

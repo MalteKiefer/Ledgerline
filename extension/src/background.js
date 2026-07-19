@@ -371,7 +371,7 @@ const handlers = {
         const credentialId = pk.randomCredentialId();
         const { privateJwk, publicJwk } = await pk.generateEs256();
 
-        // Persist a passkey item into the personal vault manifest.
+        // Persist a passkey item into the personal vault manifest (v1: personal vault only; passkey.get reads personal + shared).
         const now = new Date().toISOString();
         const userHandle = request.user && request.user.id instanceof Uint8Array ? pk.b64uEncode(request.user.id) : '';
         const userName = (request.user && request.user.name) ? request.user.name : '';
