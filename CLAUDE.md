@@ -4,8 +4,8 @@ Self-hosted **zero-knowledge personal cloud** (Laravel). Server hält NUR Cipher
 alles wird im Browser ver-/entschlüsselt. Selbst der Server-Betreiber kann Daten
 nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**.
 
-Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ), Kontakte,
-Rechnungen, Backup, Paperless**. Version **v1.502.1** (live https://home.kiefer-networks.de, `/up`=200).
+Module: **Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ + eingebettete Passkeys in `login`-Items), Kontakte,
+Rechnungen, Backup, Paperless**. Version **v1.503.0** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill + **WebAuthn-Authenticator** (Passkeys).
 
 `README.md` ist die maßgebliche, gepflegte Feature-Beschreibung. Diese Datei =
@@ -92,6 +92,7 @@ Detail-Historie in `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerlin
 - **2fa.directory-Hinweis** (`TwoFactorDirectoryController`, server-cached, SSRF-guarded): Domain→Doku-URL-Map, nur http(s)-URLs. Client matcht eigene Login-Domains (inkl. registrierbarer Parent-Domain) und zeigt 1Password-artigen Hinweis + Setup-Link. Extension holt denselben Datensatz direkt (host_permissions), 24h-Cache.
 - **7 Typen** (login/password/card/wifi/license/server/**passkey**), per-item Versions-Historie, client-TOTP (WebCrypto HMAC-SHA1, RFC 6238), Passwort-Generator (Zeichen + merkbare Wörter en/de/es/fr/it, rejection-sampled CSPRNG), WiFi-QR, Favicon/BIMI (`PasswordIconController`, SSRF-guarded, data-URI im sealed Item), Multiselect+Bulk-Delete.
 - **`passkey`-Item-Typ** (v1.502.0): sealed im Vault-Manifest (inherits Sharing/Move/Trash), read-only Web-UI. Felder: `rpId, rpName, userHandle, userName, userDisplayName, credentialId (b64url), alg=-7, privateKey (P-256 JWK JSON), publicKey (P-256 JWK JSON), signCount=0, createdAt`. Keine eigene Datenbank-Spalte — Klartext-Boundary bleibt dicht.
+- **Eingebettete Passkeys in `login`-Items** (v1.503.0, 1Password-Stil): ein `login`-Item kann `fields.passkeys[]` tragen — jedes Element hat dieselben Felder wie der standalone `passkey`-Typ (`rpId, credentialId, alg, privateKey JWK, publicKey JWK, userHandle, userName, userDisplayName, signCount=0, createdAt`). **Web-App:** Login-Detail zeigt angehängte Passkeys read-only (kein Private/Public-Key sichtbar); remove-passkey-Action (Confirm, nur im edit-Mode); Versions-Historie maskiert `fields.passkeys` (nested Private/Public-Key werden nie im Diff exponiert — analog zu anderen Secrets als „(changed)" dargestellt). **Extension popup (v1.503.0):** edit-Formular für `login`/`password`-Items (Felder via `updateItem` gepatcht; leeres Feld = bestehenden Wert behalten); single-delete Papierkorb mit Confirm für ALLE Item-Typen inkl. Passkeys (kein Bulk); per-passkey Remove via Background-SW-Handler `removePasskey({id,credentialId})` — filtert das gespeicherte volle Array nach `credentialId` (Klartext-JWK-Material wird nie durch die projizierte View round-getrippt). **Shared-Vault-Items sind in der Extension read-only** (edit/trash/remove-Controls versteckt) — Writes würden ins Personal-Manifest gehen, nicht in das SharedVaultStore des Tresors. Design-Entscheidung v1: kein Wrong-Store-Divergenz-Risiko.
 
 ---
 
@@ -107,7 +108,8 @@ ZK Passwort-Autofill + **WebAuthn-Authenticator (Passkeys)**. Nutzt bestehende `
   - **`sender.tab.id`-Gate**: passkey-Handler akzeptieren nur Messages von echten Content-Script-Tabs (`sender.tab.id` vorhanden), nie von Extension-Pages direkt.
   - **Keine PRF, kein Import/Export, kein Ed25519** in v1 (out-of-scope).
   - **Passkey-Private-JWK** nur transient im SW-Memory (Background-Handler), nie geloggt, nie in `chrome.storage`.
-- **Anlegen:** manuelles Formular (Generator), **Passwort-Vorschlag** auf Registrier-Feldern, **Auto-Capture** bei Submit (In-Page-Prompt, escaped). **Löschen** (Papierkorb, Confirm). **QR-2FA:** `captureVisibleTab`+jsQR dekodiert otpauth-QR und hängt TOTP an. Popup = 1Password-Master-Detail.
+- **Anlegen/Bearbeiten/Löschen (Popup, v1.503.0):** edit-Formular für `login`/`password`-Items (Felder gepatcht via `updateItem`, blank = beibehalten); single-trash-to-Papierkorb mit Confirm für ALLE Item-Typen (login, password, card, wifi, license, server, passkey) — kein Bulk; per-passkey Remove (Shadow-DOM Confirm, Background-SW filtert Full-Array nach `credentialId`). **Shared-Vault-Items read-only** in der Extension (keine edit/trash/remove-Controls) — bewusste v1-Entscheidung, kein Wrong-Store-Write. **Passwort-Vorschlag** auf Registrier-Feldern, **Auto-Capture** bei Submit (In-Page-Prompt, escaped). **QR-2FA:** `captureVisibleTab`+jsQR dekodiert otpauth-QR und hängt TOTP an. Popup = 1Password-Master-Detail.
+- **Passkey-Save-Prompt / Attach (v1.503.0):** Extension `create()` zeigt Shadow-DOM Save-Prompt mit drei Optionen: (1) an passendes bestehendes `login`-Item anhängen (`rpId`-Match), (2) neues standalone `passkey`-Item anlegen, (3) abbrechen. Extension `get()` zeigt immer Confirm/Picker (welcher Passkey + bestätigen) — kein Silent-Use.
 - Build: `npm run build:ext` (eigenes `extension/vite.config.mjs`, bundlet libsodium+jsQR; `content.js` self-contained; `extension/dist` gitignored). **Manifest-Version = App-Version — bei JEDEM Release mitziehen, auch ohne Extension-Änderung (nie hinterherdriften).** CI `.github/workflows/extension-release.yml` baut bei `release: published`, pinnt Version=Tag, hängt Zip ans Release. **Kein Deploy** (nicht Teil der served App).
 
 ---
@@ -123,6 +125,11 @@ Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier ei
 - **`SharedVaultPolicy` fail-closed:** `before()` gibt null zurück (kein Admin-Bypass, kein Owner-Superpower); alle Denials via `denyAsNotFound()` (versteckt Vault-Existenz). Role-Checks erfordern `status='active'`.
 - **Server sieht nie Klartext-VK_vault:** `shared_vault_stores.sealed_manifest` ist Padmé-gepadder Ciphertext unter VK_vault. `wrapped_vault_key` in `shared_vault_members` ist `crypto_box_seal`-Blob. `GET /vaults/keys` liefert nur das eigene wrapped Material des Callers zurück.
 - **Endpoint-Doppelbelichtung:** Vault-Sharing-Endpunkte auf Web (Session-Auth) + `/api/v1` (Sanctum `abilities:device`), selbe Controller. Extension/Mobile nutzen `/api/v1` mit Sanctum-Token. Kompensation: Auth-Middleware identisch, Policy-Prüfungen controller-unabhängig.
+
+**Eingebettete Passkeys + Extension Edit/Delete (2026-07-19):** <!-- banned-token-ok: audit log, not code -->
+- **Nested private JWK sealed, nie gerendert:** `fields.passkeys[].privateKey` + `.publicKey` in `login`-Items liegen ausschließlich als Ciphertext im sealed Manifest. Die Web-App rendert weder Private- noch Public-Key. Versions-Historie maskiert den gesamten `passkeys`-Array (wird als „(changed)" dargestellt analog zu anderen Secrets) — keine Diff-Exposition von Key-Material in Revisions-Ansichten.
+- **Extension writes nur Personal-Manifest:** Extension-Writes gehen immer an `PUT /store` (Personal-Manifest). Shared-Vault-Items sind in der Extension read-only (edit/trash/remove-Controls versteckt). Begründung: ein Write würde in das falsche Store gehen (Personal statt SharedVaultStore) und den Shared-Vault-Inhalt divergieren lassen. Kompensation: bewusste Einschränkung v1, Shared-Vault-Edits ausschließlich in der Web-App.
+- **`removePasskey` filtert Full-Array im Background-SW:** der per-passkey Remove-Handler filtert das gespeicherte volle Passkeys-Array nach `credentialId` und versiegelt das aktualisierte Item neu. Key-Material wird nie durch die projizierte Popup-View round-getrippt — der Popup sieht nur die nicht-sensitiven Metafelder (rpId, userName, credentialId, createdAt).
 
 **Passkeys / WebAuthn-Authenticator (2026-07-19):**
 - **Private P-256 JWK sealed im Manifest:** `passkey`-Items werden wie alle anderen Vault-Items als Ciphertext im sealed Manifest gespeichert. Klartext-JWK (`privateKey`) existiert nur transient im Background-SW während create/get — nie in `chrome.storage`, nie geloggt, nie an den Server. Server sieht ausschließlich Padmé-gepaddten Ciphertext.
@@ -201,6 +208,7 @@ app.js **8085 → ~753 Z.** (Bootstrap + Store-/Komponenten-Registrierungen). Ve
 - **v1.500.x**: ZK Cross-User Vault Sharing — X25519-Identitätspaar pro User, VK_vault per Tresor, `crypto_box_seal` Key-Wrapping, TOFU-Fingerprint-Verifizierung, Rotate-on-Removal (echte kryptographische Revokation), Accept-Flow, Convert personal→shared. Modelle SharedVault/SharedVaultMember/SharedVaultStore, SharedVaultPolicy, Web+/api/v1-Endpoints.
 - **v1.501.x → v1.502.0**: Passkeys — `passkey`-Vault-Item-Typ (sealed, Web read-only UI), Extension als WebAuthn-Authenticator (MAIN-world Shim + Trusted-Origin-Relay + Background-SW create/get), ES256-only, none-attestation, signCount=0, `rpIdAllowed()` pure+getestet (Vitest), `sender.tab.id`-Gate, fall-through zu nativen Authenticatoren.
 - **v1.502.1**: Passkey-Shim robustness (try/catch um credential-Assignments — 1Password-Lock-Kompatibilität); bare-TLD-Security-Fix in `rpIdAllowed` (`!stored.includes('.')→false`); Vitest-Vektor aktualisiert.
+- **v1.502.x → v1.503.0**: 1Password-Stil Passkey-Attach — Passkeys in `login`-Items eingebettet (`fields.passkeys[]`), Extension Save-Prompt (Attach/Neu/Abbrechen), `get()` immer Confirm/Picker; Extension edit/single-delete (alle Typen, Confirm, kein Bulk); Shared-Vault-Items read-only in der Extension; Web-App Login-Detail read-only + remove-passkey; Versions-Diff maskiert nested Key-Material.
 
 ## MEMORY & CHECKS
 - Memory: `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerline/memory/` (Index `MEMORY.md`).
