@@ -225,8 +225,9 @@ async function renderMain() {
         if (it.note) rows.push(field('Note', `<span class="fval" style="white-space:pre-wrap">${esc(it.note)}</span>`, ''));
 
         // Embedded passkeys: list each with metadata only (no private/public key).
-        const embeddedPasskeys = (it.type === 'login' && Array.isArray(it.passkeys) && it.passkeys.length > 0)
-            ? it.passkeys.map((pk, idx) => `<div class="field"><div class="flabel">Passkey</div><div class="frow"><span class="fval">${esc(pk.userName || pk.rpId || 'Passkey')}</span><button class="ic" data-rm-pk="${idx}" title="Remove passkey">${icon('trash', 16)}</button></div></div>`).join('')
+        // Shared items are read-only — never show remove on shared items.
+        const embeddedPasskeys = (it.type === 'login' && ! it.shared && Array.isArray(it.passkeys) && it.passkeys.length > 0)
+            ? it.passkeys.map((pk) => `<div class="field"><div class="flabel">Passkey</div><div class="frow"><span class="fval">${esc(pk.userName || pk.rpId || 'Passkey')}</span><button class="ic" data-rm-pk="${esc(pk.credentialId)}" title="Remove passkey">${icon('trash', 16)}</button></div></div>`).join('')
             : '';
 
         const tags = (it.tags || []).length ? `<div class="dtags">${it.tags.map((t) => `<span class="tg">#${esc(t)}</span>`).join('')}</div>` : '';
@@ -237,15 +238,16 @@ async function renderMain() {
         const tfaHtml = supports2fa(it)
             ? `<div class="tfahint">${icon('key', 16)}<div><div>This website offers two-factor authentication. Add a one-time code to this login.</div>${doc ? `<a href="${esc(doc)}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;color:inherit">How to enable it</a>` : ''}</div></div>`
             : '';
-        const canScan = it.type === 'login' && ! it.hasTotp;
-        const canEdit = it.type === 'login' || it.type === 'password';
+        const canScan = it.type === 'login' && ! it.hasTotp && ! it.shared;
+        const canEdit = (it.type === 'login' || it.type === 'password') && ! it.shared;
+        const canTrash = ! it.shared;
         detailEl.innerHTML = '';
         detailEl.append(el(`<div>
-            <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div>
+            <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}${it.shared ? ' <span class="muted" style="font-size:11px">(shared)</span>' : ''}</div></div>
               <div class="dactions">
                 ${canEdit ? `<button class="ic" id="edit" title="Edit">${icon('pencil', 18)}</button>` : ''}
                 ${canScan ? `<button class="ic" id="scan2fa" title="Scan a 2FA QR code">${icon('qr', 18)}</button>` : ''}
-                <button class="ic" id="del" title="Move to trash">${icon('trash', 18)}</button>
+                ${canTrash ? `<button class="ic" id="del" title="Move to trash">${icon('trash', 18)}</button>` : ''}
               </div>
             </div>
             ${tfaHtml}
@@ -261,23 +263,29 @@ async function renderMain() {
             const id = b.dataset.reveal; let shown = false;
             b.onclick = () => { shown = ! shown; detailEl.querySelector(`[data-sec="${id}"]`).textContent = shown ? secrets[id] : '••••••••••'; b.innerHTML = icon(shown ? 'eyeslash' : 'eye', 16); };
         });
-        // Per-passkey remove buttons.
+        // Per-passkey remove buttons. Uses credentialId (non-secret) to identify
+        // the entry; the background filters the stored full array so private keys
+        // of remaining passkeys are never lost.
         detailEl.querySelectorAll('[data-rm-pk]').forEach((b) => {
-            const idx = parseInt(b.dataset.rmPk, 10);
+            const credentialId = b.dataset.rmPk;
             b.onclick = async () => {
-                const pkEntry = (it.passkeys || [])[idx];
+                const pkEntry = (it.passkeys || []).find((p) => p.credentialId === credentialId);
                 const label = pkEntry ? (pkEntry.userName || pkEntry.rpId || 'this passkey') : 'this passkey';
                 if (! confirm(`Remove ${label} from this login?`)) return;
                 b.disabled = true;
-                const newPasskeys = (it.passkeys || []).filter((_, i) => i !== idx);
-                const r = await send({ type: 'updateItem', id: it.id, patch: { passkeys: newPasskeys } });
-                if (r?.ok) {
-                    await reloadLibrary();
-                    const fresh = library.find((x) => x.id === it.id);
-                    if (fresh) { selected = fresh; renderDetailView(fresh, tab); } else renderDetailView(it, tab);
-                } else {
+                try {
+                    const r = await send({ type: 'removePasskey', id: it.id, credentialId });
+                    if (r?.ok) {
+                        await reloadLibrary();
+                        const fresh = library.find((x) => x.id === it.id);
+                        if (fresh) { selected = fresh; renderDetailView(fresh, tab); } else renderDetailView(it, tab);
+                    } else {
+                        b.disabled = false;
+                        alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not remove passkey.');
+                    }
+                } catch (e) {
                     b.disabled = false;
-                    alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not remove passkey.');
+                    alert('Could not remove passkey.');
                 }
             };
         });
@@ -287,9 +295,14 @@ async function renderMain() {
         if (delBtn) delBtn.onclick = async () => {
             if (! confirm('Move this entry to the trash?')) return;
             delBtn.disabled = true;
-            const r = await send({ type: 'trashItem', id: it.id });
-            if (r?.ok) { selected = null; await reloadLibrary(); detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>'; }
-            else { delBtn.disabled = false; alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not delete.'); }
+            try {
+                const r = await send({ type: 'trashItem', id: it.id });
+                if (r?.ok) { selected = null; await reloadLibrary(); detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>'; }
+                else { delBtn.disabled = false; alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not delete.'); }
+            } catch (e) {
+                delBtn.disabled = false;
+                alert('Could not delete.');
+            }
         };
         const editBtn = detailEl.querySelector('#edit');
         if (editBtn) editBtn.onclick = () => renderEditView(it, tab);
@@ -345,10 +358,11 @@ async function renderMain() {
             if (isLogin) {
                 patch.username = $('e-user').value;
                 patch.password = $('e-pass').value;
-                // Replace first URL; preserve any additional URLs beyond the first.
+                // Replace first URL only when the field has a value; blank = keep
+                // existing URLs (mirrors TOTP blank=keep semantics — never silently wipe).
                 const newUrl = $('e-url').value.trim();
                 const oldUrls = it.urls || [];
-                patch.urls = newUrl ? [newUrl, ...oldUrls.slice(1)] : oldUrls.slice(1);
+                patch.urls = newUrl ? [newUrl, ...oldUrls.slice(1)] : oldUrls;
                 const totpVal = $('e-totp').value.trim();
                 if (totpVal) patch.totp = totpVal; // only overwrite TOTP if a new value was entered
                 patch.note = $('e-note').value;
@@ -356,15 +370,20 @@ async function renderMain() {
                 patch.password = $('e-pass').value;
                 patch.note = $('e-note').value;
             }
-            const r = await send({ type: 'updateItem', id: it.id, patch });
-            if (r?.ok) {
-                await reloadLibrary();
-                const fresh = library.find((x) => x.id === it.id);
-                selected = fresh || it;
-                renderDetailView(fresh || it, tab);
-            } else {
+            try {
+                const r = await send({ type: 'updateItem', id: it.id, patch });
+                if (r?.ok) {
+                    await reloadLibrary();
+                    const fresh = library.find((x) => x.id === it.id);
+                    selected = fresh || it;
+                    renderDetailView(fresh || it, tab);
+                } else {
+                    $('e-save').disabled = false; $('e-save').textContent = 'Save';
+                    $('e-err').textContent = r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save.';
+                }
+            } catch (e) {
                 $('e-save').disabled = false; $('e-save').textContent = 'Save';
-                $('e-err').textContent = r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save.';
+                $('e-err').textContent = 'Could not save.';
             }
         };
         const passEl = $('e-pass');

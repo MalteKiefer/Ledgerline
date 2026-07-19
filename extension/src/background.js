@@ -134,6 +134,7 @@ function itemView(s) {
         cvv: s.fields?.cvv || '',
         tags: s.tags || [],
         folder: s.folder || null,
+        shared: ! ! s.shared,
         passkeys,
     };
 }
@@ -587,6 +588,17 @@ const handlers = {
         return mutateManifest((m) => {
             const s = m.secrets.find((x) => x.id === id);
             if (s) { s.fields = { ...(s.fields || {}), ...(patch || {}) }; s.updated = new Date().toISOString(); }
+        });
+    },
+    // Remove a single passkey from a login by credentialId, operating on the
+    // stored (unstripped) passkeys array so private keys are never lost.
+    async removePasskey({ id, credentialId }) {
+        return mutateManifest((m) => {
+            const s = m.secrets.find((x) => x.id === id);
+            if (s && Array.isArray(s.fields?.passkeys)) {
+                s.fields.passkeys = s.fields.passkeys.filter((p) => p.credentialId !== credentialId);
+                s.updated = new Date().toISOString();
+            }
         });
     },
     // Stored cards, for autofilling payment forms (no domain match — cards work
