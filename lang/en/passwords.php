@@ -172,6 +172,10 @@ return [
     'passkey_ext_only' => 'Passkeys are created and used through the Ledgerline browser extension.',
     'passkey_created' => 'Created',
     'passkey_algo' => 'Algorithm',
+    'passkey_attached' => 'Passkey',
+    'passkey_remove' => 'Remove passkey',
+    'passkey_remove_confirm' => 'Remove this passkey from the item?',
+    'passkey_none' => 'No passkeys attached',
 
     // Fields
     'f_username' => 'Username',

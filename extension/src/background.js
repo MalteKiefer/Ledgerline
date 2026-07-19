@@ -112,6 +112,11 @@ function hostsMatch(page, stored) {
 }
 
 function itemView(s) {
+    // Expose embedded passkeys without private key material — only metadata
+    // the popup needs to display and remove entries (rpId, userName, credentialId).
+    const passkeys = Array.isArray(s.fields?.passkeys)
+        ? s.fields.passkeys.map((p) => ({ rpId: p.rpId || '', userName: p.userName || p.userDisplayName || '', credentialId: p.credentialId || '' }))
+        : [];
     return {
         id: s.id,
         title: s.title || '',
@@ -129,6 +134,8 @@ function itemView(s) {
         cvv: s.fields?.cvv || '',
         tags: s.tags || [],
         folder: s.folder || null,
+        shared: ! ! s.shared,
+        passkeys,
     };
 }
 const byTitle = (a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
@@ -356,14 +363,24 @@ const handlers = {
         }
 
         // excludeCredentials: reject if we already hold a matching passkey for this rpId.
-        // ensureSecrets() is called here so SECRETS is never stale/null at this point.
+        // Scan both standalone passkey items AND passkeys embedded in login items so
+        // a previously registered credential is never duplicated regardless of how it
+        // was stored. ensureSecrets() is called here so SECRETS is never stale/null.
         if (Array.isArray(request.excludeCredentials) && request.excludeCredentials.length > 0) {
             const stored = await ensureSecrets();
-            const existing = stored.filter((s) => s.type === 'passkey' && s.fields && s.fields.rpId === rpId);
-            const existingIds = new Set(existing.map((s) => s.fields.credentialId));
+            const existingIds = new Set();
+            for (const s of stored) {
+                if (s.type === 'passkey' && s.fields && s.fields.rpId === rpId && s.fields.credentialId) {
+                    existingIds.add(s.fields.credentialId);
+                } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
+                    for (const pkEntry of s.fields.passkeys) {
+                        if (pkEntry.rpId === rpId && pkEntry.credentialId) existingIds.add(pkEntry.credentialId);
+                    }
+                }
+            }
             for (const ex of request.excludeCredentials) {
                 const exId = ex.id instanceof Uint8Array ? pk.b64uEncode(ex.id) : (ex.id ? String(ex.id) : '');
-                if (existingIds.has(exId)) return { ok: false, error: 'InvalidState' };
+                if (existingIds.has(exId)) return { ok: false, error: { name: 'InvalidStateError', message: 'credential already registered' } };
             }
         }
 
@@ -371,7 +388,6 @@ const handlers = {
         const credentialId = pk.randomCredentialId();
         const { privateJwk, publicJwk } = await pk.generateEs256();
 
-        // Persist a passkey item into the personal vault manifest (v1: personal vault only; passkey.get reads personal + shared).
         const now = new Date().toISOString();
         const userHandle = request.user && request.user.id instanceof Uint8Array ? pk.b64uEncode(request.user.id) : '';
         const userName = (request.user && request.user.name) ? request.user.name : '';
@@ -379,29 +395,76 @@ const handlers = {
         const rpName = (request.rp && request.rp.name) ? request.rp.name : rpId;
         const credIdB64u = pk.b64uEncode(credentialId);
 
-        await mutateManifest((m) => {
-            const item = {
-                id: crypto.randomUUID(),
-                type: 'passkey',
-                title: rpId,
-                favorite: false, folder: null, tags: [], custom: [], icon: '',
-                fields: {
-                    rpId,
-                    rpName,
-                    userHandle,
-                    userName,
-                    userDisplayName,
-                    credentialId: credIdB64u,
-                    alg: -7,
-                    privateKey: JSON.stringify(privateJwk),
-                    publicKey: JSON.stringify(publicJwk),
-                    signCount: 0,
-                    createdAt: now,
-                },
-                created: now, updated: now, versions: [],
-            };
-            m.secrets.unshift(item);
+        // Build the passkey object to store (not sealed yet — we need the target first).
+        const passkeyFields = {
+            rpId,
+            credentialId: credIdB64u,
+            alg: -7,
+            privateKey: JSON.stringify(privateJwk),
+            publicKey: JSON.stringify(publicJwk),
+            userHandle,
+            userName,
+            userDisplayName,
+            signCount: 0,
+            createdAt: now,
+        };
+
+        // Find login items whose URLs match this rpId so the user can attach the
+        // new passkey to an existing login instead of creating a standalone entry.
+        // Match is bidirectional (parent↔child on a dot boundary) — this is only a
+        // suggestion list, not a security gate; the credential still binds to rpId.
+        const allSecrets = await ensureSecrets();
+        const logins = allSecrets
+            .filter((s) => s.type === 'login' && ! s.shared)
+            .filter((s) => (s.fields?.urls || []).some((u) => hostsMatch(hostOf(u), rpId) || hostsMatch(rpId, hostOf(u))))
+            .map((s) => ({ id: s.id, title: s.title || '', username: s.fields?.username || '' }));
+
+        // Ask the active tab's content script to show a save-target prompt.
+        const [activeTab] = await new Promise((r) => chrome.tabs.query({ active: true, currentWindow: true }, r));
+        const tabId = (activeTab && activeTab.id != null) ? activeTab.id : sender.tab.id;
+        const saveRes = await new Promise((resolve) => {
+            chrome.tabs.sendMessage(tabId, { type: 'passkey.savePrompt', rpId, userName, logins }, (r) => resolve(r || null));
         });
+
+        // null, missing target, or empty-string target = user cancelled.
+        // A valid target is the literal string 'new' (standalone) or a non-empty
+        // login-id string (attach). Anything else — including undefined, null, or
+        // {} — is treated as cancel so we never silently create without intent.
+        if (! saveRes || (saveRes.target !== 'new' && typeof saveRes.target !== 'string') || saveRes.target === '') {
+            return { ok: false, error: { name: 'NotAllowedError', message: 'cancelled' } };
+        }
+
+        if (saveRes.target !== 'new') {
+            // Attach the passkey to an existing personal login item.
+            // Verify the target exists in the personal manifest BEFORE building the
+            // attestation — if it is missing (e.g. the user somehow selected a shared
+            // login that slipped through), abort the entire ceremony so no orphaned
+            // credential is ever handed to the RP.
+            let attachFailed = false;
+            await mutateManifest((m) => {
+                const loginItem = m.secrets.find((x) => x.id === saveRes.target);
+                if (! loginItem) { attachFailed = true; return; }
+                if (! Array.isArray(loginItem.fields.passkeys)) loginItem.fields.passkeys = [];
+                loginItem.fields.passkeys.push(passkeyFields);
+                loginItem.updated = now;
+            });
+            if (attachFailed) {
+                return { ok: false, error: { name: 'NotAllowedError', message: 'attach target not found' } };
+            }
+        } else {
+            // Create a standalone passkey item.
+            await mutateManifest((m) => {
+                const item = {
+                    id: crypto.randomUUID(),
+                    type: 'passkey',
+                    title: rpId,
+                    favorite: false, folder: null, tags: [], custom: [], icon: '',
+                    fields: { rpName, ...passkeyFields },
+                    created: now, updated: now, versions: [],
+                };
+                m.secrets.unshift(item);
+            });
+        }
 
         // Build the attestation response.
         const cose = pk.coseFromPublicJwk(publicJwk);
@@ -444,12 +507,39 @@ const handlers = {
         const rpId = request.rpId ? request.rpId : pageHost;
         if (! pk.rpIdAllowed(pageHost, rpId)) return { ok: false, error: 'rpId mismatch' };
 
-        // Load secrets and find candidates matching this rpId.
+        // Load secrets and find candidates matching this rpId — both standalone
+        // passkey items and passkeys embedded in login items' fields.passkeys[].
         const secrets = await ensureSecrets();
-        let candidates = secrets.filter((s) => s.type === 'passkey' && s.fields?.rpId === rpId);
+        const candidates = [];
+        for (const s of secrets) {
+            if (s.type === 'passkey' && s.fields?.rpId === rpId) {
+                candidates.push({
+                    credentialId: s.fields.credentialId,
+                    privateKey: s.fields.privateKey,
+                    userHandle: s.fields.userHandle || null,
+                    userName: s.fields.userName || s.fields.userDisplayName || '',
+                    label: s.title || rpId,
+                    sourceItemId: s.id,
+                });
+            } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
+                for (const pkEntry of s.fields.passkeys) {
+                    if (pkEntry.rpId === rpId) {
+                        candidates.push({
+                            credentialId: pkEntry.credentialId,
+                            privateKey: pkEntry.privateKey,
+                            userHandle: pkEntry.userHandle || null,
+                            userName: pkEntry.userName || pkEntry.userDisplayName || '',
+                            label: s.title || rpId,
+                            sourceItemId: s.id,
+                        });
+                    }
+                }
+            }
+        }
 
         // If allowCredentials is specified, intersect to only those credential IDs.
         // Ignore entries whose type is not 'public-key' — browsers skip them too.
+        let filtered = candidates;
         if (Array.isArray(request.allowCredentials) && request.allowCredentials.length > 0) {
             const allowedIds = new Set(
                 request.allowCredentials
@@ -459,33 +549,27 @@ const handlers = {
                         return id instanceof Uint8Array ? pk.b64uEncode(id) : (id ? String(id) : '');
                     }).filter(Boolean)
             );
-            candidates = candidates.filter((s) => allowedIds.has(s.fields.credentialId || ''));
+            filtered = candidates.filter((c) => allowedIds.has(c.credentialId || ''));
         }
 
         // 0 candidates → fall through to native.
-        if (candidates.length === 0) return { ok: false, error: 'no-credential' };
+        if (filtered.length === 0) return { ok: false, error: 'no-credential' };
 
-        // >1 candidates → ask the content script to show a picker.
-        let chosen;
-        if (candidates.length === 1) {
-            chosen = candidates[0];
-        } else {
-            const pickerCandidates = candidates.map((s) => ({
-                credentialId: s.fields.credentialId,
-                userName: s.fields.userName || '',
-                userDisplayName: s.fields.userDisplayName || '',
-                rpId: s.fields.rpId || rpId,
-            }));
-            const pickRes = await new Promise((resolve) => {
-                chrome.tabs.sendMessage(sender.tab.id, { type: 'passkey.pick', candidates: pickerCandidates }, resolve);
-            });
-            if (! pickRes || ! pickRes.credentialId) return { ok: false, error: 'cancelled' };
-            chosen = candidates.find((s) => s.fields.credentialId === pickRes.credentialId);
-            if (! chosen) return { ok: false, error: 'cancelled' };
-        }
+        // Always show a picker (even for a single candidate) for explicit user confirmation.
+        const pickerCandidates = filtered.map((c) => ({
+            credentialId: c.credentialId,
+            label: c.label,
+            userName: c.userName,
+        }));
+        const pickRes = await new Promise((resolve) => {
+            chrome.tabs.sendMessage(sender.tab.id, { type: 'passkey.pick', candidates: pickerCandidates, rpId }, (r) => resolve(r || null));
+        });
+        if (! pickRes || pickRes.cancel || ! pickRes.credentialId) return { ok: false, error: { name: 'NotAllowedError', message: 'cancelled' } };
+        const chosen = filtered.find((c) => c.credentialId === pickRes.credentialId);
+        if (! chosen) return { ok: false, error: { name: 'NotAllowedError', message: 'cancelled' } };
 
         // Sign the assertion.
-        const priv = JSON.parse(chosen.fields.privateKey);
+        const priv = JSON.parse(chosen.privateKey);
         const authData = await pk.buildAuthData({ rpId, flags: { up: true, uv: true, at: false }, signCount: 0 });
         const cdj = pk.clientDataJSON({ type: 'webauthn.get', challenge: request.challenge, origin });
         const cdjHash = new Uint8Array(await crypto.subtle.digest('SHA-256', cdj));
@@ -498,11 +582,11 @@ const handlers = {
         return {
             ok: true,
             result: {
-                credentialId: chosen.fields.credentialId,
+                credentialId: chosen.credentialId,
                 authenticatorData: pk.b64uEncode(authData),
                 clientDataJSON: pk.b64uEncode(cdj),
                 signature: pk.b64uEncode(signature),
-                userHandle: chosen.fields.userHandle || null,
+                userHandle: chosen.userHandle || null,
             },
         };
     },
@@ -511,6 +595,17 @@ const handlers = {
         return mutateManifest((m) => {
             const s = m.secrets.find((x) => x.id === id);
             if (s) { s.fields = { ...(s.fields || {}), ...(patch || {}) }; s.updated = new Date().toISOString(); }
+        });
+    },
+    // Remove a single passkey from a login by credentialId, operating on the
+    // stored (unstripped) passkeys array so private keys are never lost.
+    async removePasskey({ id, credentialId }) {
+        return mutateManifest((m) => {
+            const s = m.secrets.find((x) => x.id === id);
+            if (s && Array.isArray(s.fields?.passkeys)) {
+                s.fields.passkeys = s.fields.passkeys.filter((p) => p.credentialId !== credentialId);
+                s.updated = new Date().toISOString();
+            }
         });
     },
     // Stored cards, for autofilling payment forms (no domain match — cards work
