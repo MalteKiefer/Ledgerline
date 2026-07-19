@@ -546,7 +546,7 @@ async function onFocusField(input) {
     const hasWebAuthnAc = ac.includes('webauthn');
     if (conditionalRequest && isLoginField && (hasWebAuthnAc || ac.some((a) => ['username', 'email'].includes(a)) || t === 'email')) {
         // Ask the SW: are there passkey candidates for this rpId and is the vault unlocked?
-        const avail = await send({ type: 'passkey.conditional.available', rpId: conditionalRequest.rpId });
+        const avail = await send({ type: 'passkey.conditional.available', rpId: conditionalRequest.rpId, origin: location.origin });
         if (avail && avail.ok && avail.unlocked && avail.count > 0) {
             // Build a display list from the candidates returned by the SW.
             const candidates = (avail.candidates || []).map((c) => ({

@@ -243,6 +243,10 @@ export async function decryptExport(envelopeString, passphrase) {
         throw new Error('unsupported export format');
     }
 
+    if (env.ops !== 4 || env.mem !== 268435456) {
+        throw new Error('unsupported export parameters');
+    }
+
     const salt = p.unb64(env.salt);
     const key = p.deriveKek(passphrase, salt, env.ops, env.mem);
 
