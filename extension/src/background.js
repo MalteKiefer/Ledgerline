@@ -356,14 +356,24 @@ const handlers = {
         }
 
         // excludeCredentials: reject if we already hold a matching passkey for this rpId.
-        // ensureSecrets() is called here so SECRETS is never stale/null at this point.
+        // Scan both standalone passkey items AND passkeys embedded in login items so
+        // a previously registered credential is never duplicated regardless of how it
+        // was stored. ensureSecrets() is called here so SECRETS is never stale/null.
         if (Array.isArray(request.excludeCredentials) && request.excludeCredentials.length > 0) {
             const stored = await ensureSecrets();
-            const existing = stored.filter((s) => s.type === 'passkey' && s.fields && s.fields.rpId === rpId);
-            const existingIds = new Set(existing.map((s) => s.fields.credentialId));
+            const existingIds = new Set();
+            for (const s of stored) {
+                if (s.type === 'passkey' && s.fields && s.fields.rpId === rpId && s.fields.credentialId) {
+                    existingIds.add(s.fields.credentialId);
+                } else if (s.type === 'login' && Array.isArray(s.fields?.passkeys)) {
+                    for (const pkEntry of s.fields.passkeys) {
+                        if (pkEntry.rpId === rpId && pkEntry.credentialId) existingIds.add(pkEntry.credentialId);
+                    }
+                }
+            }
             for (const ex of request.excludeCredentials) {
                 const exId = ex.id instanceof Uint8Array ? pk.b64uEncode(ex.id) : (ex.id ? String(ex.id) : '');
-                if (existingIds.has(exId)) return { ok: false, error: 'InvalidState' };
+                if (existingIds.has(exId)) return { ok: false, error: { name: 'InvalidStateError', message: 'credential already registered' } };
             }
         }
 
@@ -394,10 +404,12 @@ const handlers = {
 
         // Find login items whose URLs match this rpId so the user can attach the
         // new passkey to an existing login instead of creating a standalone entry.
+        // Match is bidirectional (parent↔child on a dot boundary) — this is only a
+        // suggestion list, not a security gate; the credential still binds to rpId.
         const allSecrets = await ensureSecrets();
         const logins = allSecrets
             .filter((s) => s.type === 'login')
-            .filter((s) => (s.fields?.urls || []).some((u) => hostsMatch(hostOf(u), rpId)))
+            .filter((s) => (s.fields?.urls || []).some((u) => hostsMatch(hostOf(u), rpId) || hostsMatch(rpId, hostOf(u))))
             .map((s) => ({ id: s.id, title: s.title || '', username: s.fields?.username || '' }));
 
         // Ask the active tab's content script to show a save-target prompt.
@@ -407,12 +419,15 @@ const handlers = {
             chrome.tabs.sendMessage(tabId, { type: 'passkey.savePrompt', rpId, userName, logins }, (r) => resolve(r || null));
         });
 
-        // null or { target: null } = user cancelled.
-        if (saveRes === null || saveRes.target === null) {
+        // null, missing target, or empty-string target = user cancelled.
+        // A valid target is the literal string 'new' (standalone) or a non-empty
+        // login-id string (attach). Anything else — including undefined, null, or
+        // {} — is treated as cancel so we never silently create without intent.
+        if (! saveRes || (saveRes.target !== 'new' && typeof saveRes.target !== 'string') || saveRes.target === '') {
             return { ok: false, error: { name: 'NotAllowedError', message: 'cancelled' } };
         }
 
-        if (saveRes.target && saveRes.target !== 'new') {
+        if (saveRes.target !== 'new') {
             // Attach the passkey to an existing login item.
             await mutateManifest((m) => {
                 const loginItem = m.secrets.find((x) => x.id === saveRes.target);
