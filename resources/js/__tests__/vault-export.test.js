@@ -22,4 +22,10 @@ describe('vault export', () => {
         expect(JSON.parse(back)[0].title).toBe('Ex');
         await expect(decryptExport(env, 'wrong')).rejects.toThrow();
     });
+    it('rejects a tampered mem value in the envelope', async () => {
+        const env = await encryptExport(JSON.stringify(items), 'pass-1234');
+        const parsed = JSON.parse(env);
+        parsed.mem = 1048576; // tampered to a much lower cost
+        await expect(decryptExport(JSON.stringify(parsed), 'pass-1234')).rejects.toThrow('unsupported export parameters');
+    });
 });

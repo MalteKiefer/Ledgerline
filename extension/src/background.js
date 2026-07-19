@@ -339,7 +339,7 @@ function passkeyCandidates(secrets, rpId) {
 }
 
 // Short-lived cache for passkey.conditional.available to avoid repeated decrypt per focus event.
-let _pkAvailCache = null; // { rpId, at, result }
+let _pkAvailCache = null; // { origin, rpId, at, result }
 
 const handlers = {
     async getState() {
@@ -617,11 +617,12 @@ const handlers = {
     // candidates is a metadata-only list (no private keys) for the picker display.
     // No sender.tab.id gate — the content script calls this proactively on every
     // focusin; we return quickly with unlocked:false if the vault is locked.
-    // Uses a 3-second TTL cache keyed by rpId to avoid decrypt on every focus event.
-    async 'passkey.conditional.available'({ rpId }) {
+    // Uses a 3-second TTL cache keyed by origin+rpId to avoid decrypt on every focus event.
+    async 'passkey.conditional.available'({ rpId, origin }, sender) {
+        if (! origin || ! pk.rpIdAllowed(hostOf(origin), rpId)) return { ok: true, unlocked: false, count: 0, candidates: [] };
         const vkB64 = (await session.get('vk')).vk;
         if (! vkB64) return { ok: true, unlocked: false, count: 0, candidates: [] };
-        if (_pkAvailCache && _pkAvailCache.rpId === rpId && Date.now() - _pkAvailCache.at < 3000) {
+        if (_pkAvailCache && _pkAvailCache.origin === origin && _pkAvailCache.rpId === rpId && Date.now() - _pkAvailCache.at < 3000) {
             return _pkAvailCache.result;
         }
         try {
@@ -629,7 +630,7 @@ const handlers = {
             const full = passkeyCandidates(secrets, rpId);
             const candidates = full.map((c) => ({ credentialId: c.credentialId, userName: c.userName, label: c.label }));
             const result = { ok: true, unlocked: true, count: candidates.length, candidates };
-            _pkAvailCache = { rpId, at: Date.now(), result };
+            _pkAvailCache = { origin, rpId, at: Date.now(), result };
             return result;
         } catch (e) {
             return { ok: true, unlocked: false, count: 0, candidates: [] };
