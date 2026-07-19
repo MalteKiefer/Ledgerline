@@ -34,6 +34,7 @@
         memberRemoved: @js(__('passwords.member_removed')),
         newSharedVaultName: @js(__('passwords.new_shared_vault_name')),
         moveDenied: @js(__('passwords.move_denied')),
+        passkeyRemoveConfirm: @js(__('passwords.passkey_remove_confirm')),
         types: {
             login: @js(__('passwords.type_login')), password: @js(__('passwords.type_password')),
             card: @js(__('passwords.type_card')), wifi: @js(__('passwords.type_wifi')),
@@ -469,6 +470,29 @@
                 <div x-show="current.type === 'wifi' && wifiQr" x-cloak class="mb-3 flex flex-col items-center rounded-lg border border-gray-100 dark:border-gray-800 p-4">
                   <img :src="wifiQr" alt="" class="h-44 w-44 rounded bg-white p-1">
                   <p class="mt-2 text-xs text-gray-400">{{ __('passwords.wifi_scan') }}</p>
+                </div>
+
+                {{-- Attached passkeys (login items only) — privateKey/publicKey are never rendered --}}
+                <div x-show="current.type === 'login' && (current.fields?.passkeys || []).length" x-cloak class="mb-3">
+                  <dl class="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
+                    <template x-for="(pk, pkIdx) in (current.fields?.passkeys || [])" :key="pkIdx">
+                      <div class="px-4 py-2.5">
+                        <dt class="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400">
+                          <x-icon name="finger-print" class="h-3.5 w-3.5 shrink-0" />
+                          <span>{{ __('passwords.passkey_attached') }}</span>
+                          <span class="ml-auto inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:text-gray-400">ES-256</span>
+                        </dt>
+                        <dd class="mt-1.5 space-y-0.5 text-sm text-gray-900 dark:text-gray-100">
+                          <p class="break-all" x-text="pk.rpId"></p>
+                          <p class="text-xs text-gray-500 dark:text-gray-400" x-text="pk.userName"></p>
+                          <p x-show="pk.createdAt" class="text-xs text-gray-400" x-text="pk.createdAt ? fmtDate(pk.createdAt) : ''"></p>
+                        </dd>
+                        <div x-show="canEditCurrent()" class="mt-2">
+                          <button type="button" @click="removePasskey(pkIdx)" class="text-xs font-medium text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">{{ __('passwords.passkey_remove') }}</button>
+                        </div>
+                      </div>
+                    </template>
+                  </dl>
                 </div>
 
                 {{-- Passkey: extension-only notice + crypto metadata --}}

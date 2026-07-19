@@ -172,6 +172,10 @@ return [
     'passkey_ext_only' => 'Passkeys werden über die Ledgerline-Browser-Erweiterung erstellt und verwendet.',
     'passkey_created' => 'Erstellt',
     'passkey_algo' => 'Algorithmus',
+    'passkey_attached' => 'Passkey',
+    'passkey_remove' => 'Passkey entfernen',
+    'passkey_remove_confirm' => 'Diesen Passkey vom Eintrag entfernen?',
+    'passkey_none' => 'Keine Passkeys hinterlegt',
 
     // Felder
     'f_username' => 'Benutzername',

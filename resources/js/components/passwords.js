@@ -345,6 +345,16 @@ export default (config = {}, labels = {}) => ({
     removeUrl(i) { if (this.draft?.fields?.urls) this.draft.fields.urls.splice(i, 1); },
     addCustom() { if (this.draft) (this.draft.custom = this.draft.custom || []).push({ label: '', value: '', kind: 'text' }); },
     removeCustom(i) { if (this.draft?.custom) this.draft.custom.splice(i, 1); },
+    // Remove an attached passkey from the current login item (detail view, no draft needed).
+    // Confirms via the store confirm dialog, splices the entry, then persists.
+    async removePasskey(index) {
+        if (! this.current) return;
+        if (! await this.$store.confirm.ask(labels.passkeyRemoveConfirm || '')) return;
+        const passkeys = this.current.fields?.passkeys;
+        if (! Array.isArray(passkeys) || index < 0 || index >= passkeys.length) return;
+        passkeys.splice(index, 1);
+        try { await this._persist(this.current); } catch (e) { window.llToast(labels.saveFailed || ''); }
+    },
     customKinds: ['text', 'secret', 'multiline', 'url'],
     // Kind of a custom field, migrating the older {secret:bool} shape.
     customKind(c) { return c.kind || (c.secret ? 'secret' : 'text'); },
@@ -777,12 +787,14 @@ export default (config = {}, labels = {}) => ({
     /* ---- Version history (inline accordion; restores into the open item) ---- */
     // What changed between a stored snapshot and the next-newer state, as an
     // object for a JSON code block. Secret fields show "(changed)" not values.
+    // `passkeys` is treated as opaque-secret: the array may contain nested
+    // privateKey/publicKey — never serialize its contents into the diff.
     versionDiff(i) {
         const list = (this.current && this.current.versions) || [];
         const older = list[i]; if (! older) return {};
         const newer = i === 0 ? this.current : list[i - 1];
         const of = older.fields || {}; const nf = (newer && newer.fields) || {};
-        const secret = ['password', 'totp', 'cvv', 'pin', 'licensekey'];
+        const secret = ['password', 'totp', 'cvv', 'pin', 'licensekey', 'passkeys', 'privateKey', 'publicKey'];
         const diff = {};
         if ((older.title || '') !== ((newer && newer.title) || '')) diff.title = { from: older.title || '', to: (newer && newer.title) || '' };
         for (const k of new Set([...Object.keys(of), ...Object.keys(nf)])) {
