@@ -612,7 +612,13 @@ const handlers = {
     async updateItem({ id, patch }) {
         return mutateManifest((m) => {
             const s = m.secrets.find((x) => x.id === id);
-            if (s) { s.fields = { ...(s.fields || {}), ...(patch || {}) }; s.updated = new Date().toISOString(); }
+            if (s) {
+                s.versions = s.versions ?? [];
+                s.versions.unshift({ at: s.updated || s.created || new Date().toISOString(), title: s.title, fields: JSON.parse(JSON.stringify(s.fields || {})), custom: JSON.parse(JSON.stringify(s.custom || [])) });
+                if (s.versions.length > 100) s.versions.length = 100;
+                s.fields = { ...(s.fields || {}), ...(patch || {}) };
+                s.updated = new Date().toISOString();
+            }
         });
     },
     // Remove a single passkey from a login by credentialId, operating on the
