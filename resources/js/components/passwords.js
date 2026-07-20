@@ -96,7 +96,6 @@ export default (config = {}, labels = {}) => ({
     typeList() { return Object.keys(this.types); },
     get creatableTypes() { return Object.keys(this.types).filter((t) => t !== 'passkey'); },
     typeLabel(t) { return (labels.types && labels.types[t]) || t; },
-    typeIcon(t) { return this.types[t]?.icon || 'key'; },
     fieldLabel(k) { return (labels.fields && labels.fields[k]) || k; },
     fieldsOf(t) { return this.types[t]?.fields || []; },
     isSecret(k) { return this.secretFields.includes(k); },

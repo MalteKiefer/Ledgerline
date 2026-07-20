@@ -7,7 +7,7 @@ import { fileCategory, CATEGORY_ICON, formatBytes } from '../shared/file-categor
 import { normVec as _normVec, dotVec as _dotVec } from '../shared/vector-math';
 import { ocrImage } from '../shared/ocr';
 import { loadCodeMirror, cmModule } from '../shared/lazy-loaders';
-import { zkModule, bootStore } from '../shared/zk-module';
+import { bootStore } from '../shared/zk-module';
 
 // Files-only module state (fulltext + CLIP-embedding search caches + reconcile dedupe).
 const fileText = {};
@@ -1333,7 +1333,7 @@ export default (config = {}, labels = {}) => ({
         });
         if (init.status === 413) { const e = new Error('quota'); e.quota = true; throw e; }
         if (! init.ok) throw new Error('init failed');
-        const { token, id, partSize } = await init.json();
+        const { token, id: _id, partSize } = await init.json();
 
         // Rolling ciphertext buffer (array of Uint8Array frames); flushed as an
         // S3 part whenever it reaches partSize. Peak memory ≈ partSize + 4 MiB.

@@ -155,12 +155,4 @@ class ChannelNotifier
 
         (new Mailer($transport))->send($email);
     }
-
-    /** Whether outgoing mail is configured (used to gate the mail-share option). */
-    public static function mailConfigured(?AppSettings $s = null): bool
-    {
-        $s ??= AppSettings::current();
-
-        return (bool) $s->mail_enabled && (bool) $s->smtp_host && (bool) $s->smtp_from_address;
-    }
 }

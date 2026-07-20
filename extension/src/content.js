@@ -243,7 +243,7 @@ function fillIdentity(identity) {
 }
 
 // --- New-login suggestion & capture ---
-let lastGenerated = null;
+let _lastGenerated = null;
 function passwordFields() { return [...document.querySelectorAll('input[type=password]')].filter(isVisible); }
 // Does this password field belong to a sign-up / change-password form (so we
 // should offer a fresh generated password rather than an existing login)?
@@ -261,7 +261,7 @@ function fillGenerated(field, pw) {
     const fields = passwordFields();
     if (fields.length) for (const f of fields) setValue(f, pw);
     else if (field) setValue(field, pw);
-    lastGenerated = pw;
+    _lastGenerated = pw;
     navigator.clipboard.writeText(pw).catch(() => {});
 }
 
@@ -480,9 +480,6 @@ chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
         const had = CARDS_ALLOWED && ! ! ccNumberField();
         if (had) fillCard(msg.card);
         sendResponse({ filled: had });
-    } else if (msg?.type === 'fillIdentity' && msg.identity) {
-        fillIdentity(msg.identity);
-        sendResponse({ filled: true });
     } else if (msg?.type === 'passkey.pick' && Array.isArray(msg.candidates)) {
         openPasskeyPicker(msg.candidates, msg.rpId).then((choice) => sendResponse(choice || {}));
         return true; // async response

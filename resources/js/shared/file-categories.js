@@ -2,7 +2,7 @@
 // list. Extension is more reliable than the browser-supplied MIME (often empty
 // or application/octet-stream), so it is checked first.
 
-export const EXT_CATEGORY = {
+const EXT_CATEGORY = {
     // Images
     jpg: 'IMAGE', jpeg: 'IMAGE', png: 'IMAGE', gif: 'IMAGE', webp: 'IMAGE', bmp: 'IMAGE',
     tif: 'IMAGE', tiff: 'IMAGE', ico: 'IMAGE', heic: 'IMAGE', heif: 'IMAGE', avif: 'IMAGE', jfif: 'IMAGE',
@@ -35,7 +35,7 @@ export const EXT_CATEGORY = {
     ttf: 'FONT', otf: 'FONT', woff: 'FONT', woff2: 'FONT', eot: 'FONT',
 };
 
-export function extOf(name) {
+function extOf(name) {
     const i = (name || '').lastIndexOf('.');
     return i > 0 ? name.slice(i + 1).toLowerCase() : '';
 }
