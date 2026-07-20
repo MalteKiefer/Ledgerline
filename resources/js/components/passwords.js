@@ -330,6 +330,27 @@ export default (config = {}, labels = {}) => ({
         const raw = await this.$store.confirm.prompt('', { value: f.name, ok: labels.save || '' });
         const name = (raw || '').trim(); if (name) { f.name = name; this._save(); }
     },
+    // Danger zone: wipe ALL personal password items + personal vaults and reset
+    // to a single fresh default vault. Client-side crypto-shred — the server only
+    // ever sees the re-sealed manifest. Shared vaults (separate remote stores) are
+    // deliberately untouched.
+    openReset() { this.resetConfirmText = ''; this.resetOpen = true; },
+    _closeReset() { this.resetOpen = false; this.resetConfirmText = ''; },
+    async resetVault() {
+        if (this.resetWorking || this.resetConfirmText !== (labels.resetConfirmWord || '')) return;
+        this.resetWorking = true;
+        try {
+            this.items.length = 0;              // same ref as LLStore.data.secrets → in-place clear
+            this.folders.length = 0;            // same ref as LLStore.data.secretFolders
+            const id = crypto.randomUUID();
+            this.folders.push({ id, name: labels.defaultVaultName || 'Privat', role: 'manage' });
+            this.current = null; this.draft = null; this.view = 'list'; this.selectedIds = [];
+            this.query = ''; this.filterType = ''; this.filterFolder = id;
+            this._save();
+            this._closeReset();
+            window.llToast(labels.resetDone || '');
+        } catch (e) { window.llToast(labels.resetFailed || ''); } finally { this.resetWorking = false; }
+    },
     async deleteFolder(f) {
         if (this.folders.length <= 1) return; // never delete the last vault
         if (! await this.$store.confirm.ask(labels.deleteFolderConfirm || '')) return;
@@ -727,6 +748,9 @@ export default (config = {}, labels = {}) => ({
     exportWorking: false,
     exportDone: '',
     exportError: '',
+    resetOpen: false,
+    resetConfirmText: '',
+    resetWorking: false,
     openExport() {
         this.exportOpen = true;
         this.exportConfirmed = false;
