@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { zkModule } from '../shared/zk-module';
 
-// Test the _isTrashed logic inline (mirrors what zk-module provides)
-function isTrashed(x) {
-    return x.trashed === true || (typeof x.trashed === 'string' && x.trashed.length > 0);
-}
+// Exercise the REAL _isTrashed from zkModule (not an inline copy) so the test
+// tracks the shipped implementation.
+const { _isTrashed } = zkModule({ map: {} });
+const isTrashed = (x) => _isTrashed(x);
 
 describe('isTrashed (legacy boolean + ISO string)', () => {
     it('boolean true is trashed (legacy)', () => {

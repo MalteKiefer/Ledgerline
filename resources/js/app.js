@@ -173,11 +173,7 @@ window.LLGalleryStore = {
         return { ref: (await res.json()).id, key: enc.encFileKey };
     },
 
-    newId() {
-        const b = new Uint8Array(16);
-        crypto.getRandomValues(b);
-        return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-    },
+    newId() { return _newId(); },
 
     async load() {
         const res = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
