@@ -73,7 +73,7 @@
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
 
     <template x-if="state === 'locked'">
-        <div class="mx-auto mt-16 max-w-md rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center">
+        <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400" x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
             <button type="button" @click="$dispatch('vault-panel')" class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
@@ -96,9 +96,9 @@
             <button type="button" @click="openExport()" class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><x-icon name="arrow-down-tray" class="h-4 w-4" /><span class="hidden sm:inline">{{ __('passwords.export') }}</span></button>
             <div x-show="! isSharedVault(filterFolder) || canEditVault(filterFolder)" class="relative" x-data="{ open: false }" @keydown.escape="open = false">
               <x-button variant="primary" @click="open = ! open"><x-icon name="plus" class="mr-1.5 h-4 w-4" />{{ __('passwords.new') }}</x-button>
-              <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
+              <div x-show="open" x-cloak @click.outside="open = false" class="absolute right-0 z-30 mt-1 w-52 rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
                 <template x-for="t in creatableTypes" :key="t">
-                  <button type="button" @click="newItem(t); open = false" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <button type="button" @click="newItem(t); open = false" class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5">
                     <span class="text-gray-400">@include('passwords._icon', ['expr' => 't', 'cls' => 'h-4 w-4'])</span>
                     <span x-text="typeLabel(t)"></span>
                   </button>
@@ -109,7 +109,7 @@
           </x-slot:actions>
         </x-page-heading>
 
-        <div class="mt-6 flex flex-col divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white md:flex-row md:divide-x md:divide-y-0 dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-900" style="min-height: calc(100vh - 15rem);">
+        <div class="mt-6 flex flex-col divide-y divide-black/[0.06] overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm shadow-black/5 md:flex-row md:divide-x md:divide-y-0 dark:divide-white/10 dark:border-white/10 dark:bg-[#1c1c1e]" style="min-height: calc(100vh - 15rem);">
           {{-- Left: vaults and tags --}}
           <aside class="w-full shrink-0 md:w-56">
             <div class="p-3">
@@ -119,12 +119,12 @@
                   <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.folders') }}</span>
                   <button type="button" @click="addFolder()" title="{{ __('passwords.new_folder') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
-                <button type="button" @click="filterFolder = ''; view = 'list'" :class="filterFolder === '' && view === 'list' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs">
+                <button type="button" @click="filterFolder = ''; view = 'list'" :class="filterFolder === '' && view === 'list' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5/50'" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs">
                   <x-icon name="squares-2x2" class="h-3.5 w-3.5 text-gray-400" /><span>{{ __('passwords.all_vaults') }}</span>
                 </button>
                 <template x-for="f in folders" :key="f.id">
                   <div class="group flex items-center gap-1 rounded-md pr-1"
-                       :class="(filterFolder === f.id && view === 'list') ? 'bg-gray-100 dark:bg-gray-800' : (_dragOver === f.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50')"
+                       :class="(filterFolder === f.id && view === 'list') ? 'bg-accent/10 text-accent' : (_dragOver === f.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-accent/5/50')"
                        @dragover.prevent="_dragOver = f.id"
                        @dragleave="_dragOver = null"
                        @drop.prevent="_dragOver = null; moveItems(_dragId ? [_dragId] : selectedIds, f.id)">
@@ -144,7 +144,7 @@
                 </div>
                 <template x-for="sv in sharedVaults" :key="sv.id">
                   <div class="group flex items-center gap-1 rounded-md pr-1"
-                       :class="(filterFolder === sv.id && view === 'list') ? 'bg-gray-100 dark:bg-gray-800' : (_dragOver === sv.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50')"
+                       :class="(filterFolder === sv.id && view === 'list') ? 'bg-accent/10 text-accent' : (_dragOver === sv.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-accent/5/50')"
                        @dragover="canEditVault(sv.id) ? ($event.preventDefault(), _dragOver = sv.id) : null"
                        @dragleave="_dragOver = null"
                        @drop.prevent="_dragOver = null; if (canEditVault(sv.id)) moveItems(_dragId ? [_dragId] : selectedIds, sv.id)">
@@ -183,17 +183,17 @@
                 <span class="mb-1 block px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.tags') }}</span>
                 <div class="flex flex-wrap gap-1">
                   <template x-for="t in allTags" :key="'t' + t">
-                    <button type="button" @click="filterTag = filterTag === t ? '' : t" :class="filterTag === t ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2 py-0.5 text-[11px]" x-text="'#' + t"></button>
+                    <button type="button" @click="filterTag = filterTag === t ? '' : t" :class="filterTag === t ? 'll-accent dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2 py-0.5 text-[11px]" x-text="'#' + t"></button>
                   </template>
                 </div>
               </div>
               {{-- Health + Trash --}}
               <div class="border-t border-gray-100 dark:border-gray-800 pt-2">
-                <button type="button" @click="view = view === 'health' ? 'list' : 'health'; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'health' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                <button type="button" @click="view = view === 'health' ? 'list' : 'health'; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'health' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5/50'">
                   <x-icon name="shield-check" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.health') }}</span>
                   <span x-show="healthCount" x-text="healthCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"></span>
                 </button>
-                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'">
+                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'trash' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5/50'">
                   <x-icon name="trash" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
                   <span x-show="trashCount" x-text="trashCount" class="text-gray-400"></span>
                 </button>
@@ -217,14 +217,14 @@
                   <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input type="search" x-model="query" placeholder="{{ __('passwords.search') }}" class="w-full rounded-lg border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-gray-400 focus:bg-white focus:ring-0 dark:border-gray-700 dark:bg-gray-800 dark:focus:bg-gray-900">
                 </div>
-                <select x-show="view === 'list'" x-model="filterType" title="{{ __('passwords.filter_type') }}" class="shrink-0 rounded-lg border-gray-200 bg-gray-50 py-2 pl-2 pr-7 text-sm focus:border-gray-400 focus:ring-0 dark:border-gray-700 dark:bg-gray-800">
+                <select x-show="view === 'list'" x-model="filterType" title="{{ __('passwords.filter_type') }}" class="shrink-0 rounded-lg border-gray-200 bg-gray-50 py-2 pl-2 pr-7 text-sm focus:border-accent focus:ring-accent dark:border-gray-700 dark:bg-gray-800">
                   <option value="">{{ __('passwords.all') }}</option>
                   <template x-for="t in typeList()" :key="'ft' + t"><option :value="t" x-text="typeLabel(t)"></option></template>
                 </select>
               </div>
               <div x-show="view === 'health'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400" x-text="healthCount ? (healthCount + ' {{ __('passwords.health_issues') }}') : '{{ __('passwords.health_ok') }}'"></span>
-                <button type="button" @click="checkBreaches()" :disabled="breachChecking" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-2.5 py-1 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
+                <button type="button" @click="checkBreaches()" :disabled="breachChecking" class="shrink-0 rounded-md ll-accent px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
               </div>
               {{-- Read-only notice for shared vaults --}}
               <div x-show="isSharedVault(filterFolder) && sharedVaultRole(filterFolder) === 'read'" x-cloak class="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
@@ -232,7 +232,7 @@
                 <span>{{ __('passwords.read_only_notice') }}</span>
               </div>
               {{-- Bulk-select toolbar --}}
-              <div x-show="selectedIds.length && (! isSharedVault(filterFolder) || canEditVault(filterFolder))" x-cloak class="mb-2 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900">
+              <div x-show="selectedIds.length && (! isSharedVault(filterFolder) || canEditVault(filterFolder))" x-cloak class="mb-2 rounded-lg ll-accent text-white">
                 <div class="flex items-center justify-between gap-2 px-3 py-2">
                   <span class="text-xs font-medium" x-text="selectedIds.length + ' {{ __('passwords.selected') }}'"></span>
                   <div class="flex items-center gap-0.5">
@@ -273,15 +273,15 @@
               <div class="max-h-[70vh] overflow-y-auto">
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
-                  <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+                  <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-accent/10 text-accent' : 'hover:bg-accent/5/50'"
                        draggable="true"
                        @dragstart="_dragId = selectedIds.includes(x.id) ? null : x.id"
                        @dragend="_dragId = null; _dragOver = null">
                     <input type="checkbox" x-show="! isSharedVault(filterFolder)" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
                     <button type="button" @click="openItem(x)" class="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left">
                       <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                            :class="(x.type === 'login' && ! iconSrc(x)) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
-                            :style="(x.type === 'login' && ! iconSrc(x)) ? ('background:' + avatarColor(x)) : ''">
+                            :class="x.type === 'login' ? ((! iconSrc(x)) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500') : 'text-white shadow-sm'"
+                            :style="x.type === 'login' ? ((! iconSrc(x)) ? ('background:' + avatarColor(x)) : '') : ('background:' + typeTint(x.type))">
                         <template x-if="x.type === 'login' && iconSrc(x)"><img :src="iconSrc(x)" alt="" class="h-full w-full object-contain"></template>
                         <template x-if="x.type === 'login' && ! iconSrc(x)"><span x-text="avatarText(x)"></span></template>
                         <template x-if="x.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'x.type', 'cls' => 'h-4 w-4'])</span></template>
@@ -312,33 +312,33 @@
               <div class="p-6">
                 <div class="mb-4 flex items-center gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                        :class="(draft.type === 'login' && ! iconSrc(draft)) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
-                        :style="(draft.type === 'login' && ! iconSrc(draft)) ? ('background:' + avatarColor(draft)) : ''">
+                        :class="draft.type === 'login' ? ((! iconSrc(draft)) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500') : 'text-white shadow-sm'"
+                        :style="draft.type === 'login' ? ((! iconSrc(draft)) ? ('background:' + avatarColor(draft)) : '') : ('background:' + typeTint(draft.type))">
                     <template x-if="draft.type === 'login' && iconSrc(draft)"><img :src="iconSrc(draft)" alt="" class="h-full w-full object-contain"></template>
                     <template x-if="draft.type === 'login' && ! iconSrc(draft)"><span x-text="avatarText(draft)"></span></template>
                     <template x-if="draft.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'draft.type', 'cls' => 'h-5 w-5'])</span></template>
                   </span>
-                  <input type="text" x-model="draft.title" placeholder="{{ __('passwords.title_placeholder') }}" class="flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-base font-medium focus:border-gray-500 focus:ring-gray-500">
+                  <input type="text" x-model="draft.title" placeholder="{{ __('passwords.title_placeholder') }}" class="flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-base font-medium focus:border-accent focus:ring-accent">
                 </div>
                 <div class="space-y-3">
                   <template x-for="[k, ft] in fieldsOf(draft.type)" :key="k">
                     <div>
                       <label class="block text-xs font-medium text-gray-500 dark:text-gray-400" x-text="fieldLabel(k)"></label>
                       {{-- text --}}
-                      <template x-if="ft === 'text'"><input type="text" x-model="draft.fields[k]" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500"></template>
+                      <template x-if="ft === 'text'"><input type="text" x-model="draft.fields[k]" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent"></template>
                       {{-- textarea --}}
-                      <template x-if="ft === 'textarea'"><textarea x-model="draft.fields[k]" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500"></textarea></template>
+                      <template x-if="ft === 'textarea'"><textarea x-model="draft.fields[k]" rows="3" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent"></textarea></template>
                       {{-- select (security) --}}
-                      <template x-if="ft === 'select'"><select x-model="draft.fields[k]" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500"><template x-for="o in securityOptions" :key="o"><option :value="o" x-text="o"></option></template></select></template>
+                      <template x-if="ft === 'select'"><select x-model="draft.fields[k]" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent"><template x-for="o in securityOptions" :key="o"><option :value="o" x-text="o"></option></template></select></template>
                       {{-- checkbox (hidden) --}}
                       <template x-if="ft === 'checkbox'"><label class="mt-1 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" x-model="draft.fields[k]" class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0"> <span x-text="fieldLabel(k)"></span></label></template>
                       {{-- password/secret --}}
                       <template x-if="ft === 'password'">
                         <div class="mt-1">
                           <div class="flex items-center gap-1.5">
-                            <input :type="reveal[k] ? 'text' : 'password'" x-model="draft.fields[k]" @input="k === 'password' && _updateStrength($event.target.value)" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 font-mono text-sm focus:border-gray-500 focus:ring-gray-500">
-                            <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
-                            <button type="button" x-show="k === 'password'" @click="openGen(k)" title="{{ __('passwords.generate') }}" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-path" class="h-4 w-4" /></button>
+                            <input :type="reveal[k] ? 'text' : 'password'" x-model="draft.fields[k]" @input="k === 'password' && _updateStrength($event.target.value)" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 font-mono text-sm focus:border-accent focus:ring-accent">
+                            <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-accent/5"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
+                            <button type="button" x-show="k === 'password'" @click="openGen(k)" title="{{ __('passwords.generate') }}" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-accent/5"><x-icon name="arrow-path" class="h-4 w-4" /></button>
                           </div>
                           {{-- Strength bar (edit form, password field only) --}}
                           <div x-show="k === 'password' && strengthScore !== null" class="mt-1.5">
@@ -360,8 +360,8 @@
                         <div class="mt-1 space-y-1.5">
                           <template x-for="(u, i) in (draft?.fields?.urls || [])" :key="i">
                             <div class="flex items-center gap-1.5">
-                              <input type="text" x-model="draft.fields.urls[i]" placeholder="https://…" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
-                              <button type="button" @click="removeUrl(i)" class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                              <input type="text" x-model="draft.fields.urls[i]" placeholder="https://…" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
+                              <button type="button" @click="removeUrl(i)" class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-4 w-4" /></button>
                             </div>
                           </template>
                           <button type="button" @click="addUrl()" class="text-xs font-medium text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">+ {{ __('passwords.add_url') }}</button>
@@ -375,7 +375,7 @@
                   {{-- Folder --}}
                   <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.folder') }}</label>
-                    <select x-model="draft.folder" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                    <select x-model="draft.folder" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
                       <option :value="null">{{ __('passwords.no_folder') }}</option>
                       <template x-for="f in folders" :key="f.id"><option :value="f.id" x-text="f.name"></option></template>
                     </select>
@@ -383,7 +383,7 @@
                   {{-- Tags --}}
                   <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.tags') }}</label>
-                    <input type="text" x-model="tagsValue" placeholder="{{ __('passwords.tags_placeholder') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                    <input type="text" x-model="tagsValue" placeholder="{{ __('passwords.tags_placeholder') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
                   </div>
                   {{-- Custom fields --}}
                   <div>
@@ -392,20 +392,20 @@
                       <template x-for="(c, i) in (draft?.custom || [])" :key="i">
                         <div class="space-y-1.5 rounded-md border border-gray-200 dark:border-gray-800 p-2">
                           <div class="flex items-center gap-1.5">
-                            <input type="text" x-model="c.label" placeholder="{{ __('passwords.custom_label') }}" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
-                            <select x-model="c.kind" class="shrink-0 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs focus:border-gray-500 focus:ring-gray-500">
+                            <input type="text" x-model="c.label" placeholder="{{ __('passwords.custom_label') }}" class="min-w-0 flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
+                            <select x-model="c.kind" class="shrink-0 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs focus:border-accent focus:ring-accent">
                               <option value="text">{{ __('passwords.kind_text') }}</option>
                               <option value="secret">{{ __('passwords.kind_secret') }}</option>
                               <option value="multiline">{{ __('passwords.kind_multiline') }}</option>
                               <option value="url">{{ __('passwords.kind_url') }}</option>
                             </select>
-                            <button type="button" @click="removeCustom(i)" class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                            <button type="button" @click="removeCustom(i)" class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-4 w-4" /></button>
                           </div>
-                          <template x-if="c.kind === 'multiline'"><textarea x-model="c.value" rows="2" placeholder="{{ __('passwords.custom_value') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500"></textarea></template>
+                          <template x-if="c.kind === 'multiline'"><textarea x-model="c.value" rows="2" placeholder="{{ __('passwords.custom_value') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent"></textarea></template>
                           <template x-if="c.kind !== 'multiline'">
                             <div class="flex items-center gap-1.5">
-                              <input :type="c.kind === 'secret' && ! reveal['c' + i] ? 'password' : 'text'" x-model="c.value" placeholder="{{ __('passwords.custom_value') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500" :class="c.kind === 'secret' ? 'font-mono' : ''">
-                              <button type="button" x-show="c.kind === 'secret'" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
+                              <input :type="c.kind === 'secret' && ! reveal['c' + i] ? 'password' : 'text'" x-model="c.value" placeholder="{{ __('passwords.custom_value') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent" :class="c.kind === 'secret' ? 'font-mono' : ''">
+                              <button type="button" x-show="c.kind === 'secret'" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-2 text-gray-500 hover:bg-accent/5"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
                             </div>
                           </template>
                         </div>
@@ -429,8 +429,8 @@
                   </ul>
                 </div>
                 <div class="mt-5 flex justify-end gap-2">
-                  <button type="button" @click="cancelEdit()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.cancel') }}</button>
-                  <button type="button" @click="save()" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900">{{ __('passwords.save') }}</button>
+                  <button type="button" @click="cancelEdit()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.cancel') }}</button>
+                  <button type="button" @click="save()" class="rounded-md ll-accent px-4 py-2 text-sm font-medium text-white">{{ __('passwords.save') }}</button>
                 </div>
               </div>
             </template>
@@ -440,8 +440,8 @@
               <div class="p-6">
                 <div class="mb-4 flex items-start gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                        :class="(current.type === 'login' && ! iconSrc(current)) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
-                        :style="(current.type === 'login' && ! iconSrc(current)) ? ('background:' + avatarColor(current)) : ''">
+                        :class="current.type === 'login' ? ((! iconSrc(current)) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500') : 'text-white shadow-sm'"
+                        :style="current.type === 'login' ? ((! iconSrc(current)) ? ('background:' + avatarColor(current)) : '') : ('background:' + typeTint(current.type))">
                     <template x-if="current.type === 'login' && iconSrc(current)"><img :src="iconSrc(current)" alt="" class="h-full w-full object-contain"></template>
                     <template x-if="current.type === 'login' && ! iconSrc(current)"><span x-text="avatarText(current)"></span></template>
                     <template x-if="current.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'current.type', 'cls' => 'h-5 w-5'])</span></template>
@@ -454,10 +454,10 @@
                     </div>
                   </div>
                   <div class="flex shrink-0 items-center gap-1">
-                    <button type="button" x-show="canEditCurrent()" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
-                    <button type="button" x-show="canEditCurrent()" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent()" @click="toggleFavorite(current)" :class="current.favorite ? 'text-amber-500' : 'text-gray-400'" class="rounded-lg p-2 hover:bg-accent/5"><x-icon x-show="current.favorite" name="star-solid" class="h-4 w-4" /><x-icon x-show="!current.favorite" name="star" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent()" @click="editCurrent()" title="{{ __('passwords.edit') }}" class="rounded-lg p-2 text-gray-500 hover:bg-accent/5"><x-icon name="pencil" class="h-4 w-4" /></button>
                     <button type="button" x-show="canEditCurrent() && view !== 'trash'" @click="trash(current)" title="{{ __('passwords.delete') }}" class="rounded-lg p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"><x-icon name="trash" class="h-4 w-4" /></button>
-                    <button type="button" x-show="canEditCurrent() && view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
+                    <button type="button" x-show="canEditCurrent() && view === 'trash'" @click="restore(current)" title="{{ __('passwords.restore') }}" class="rounded-lg p-2 text-gray-500 hover:bg-accent/5"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
                   </div>
                 </div>
 
@@ -579,7 +579,7 @@
                             <template x-for="(u, i) in (current.fields[k] || [])" :key="i">
                               <span class="flex min-w-0 items-center gap-2">
                                 <a :href="/^https?:\/\//.test(u) ? u : 'https://' + u" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100 underline hover:text-gray-600" x-text="u"></a>
-                                <button type="button" @click="copy(u)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clipboard" class="h-4 w-4" /></button>
+                                <button type="button" @click="copy(u)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="clipboard" class="h-4 w-4" /></button>
                               </span>
                             </template>
                           </div>
@@ -587,15 +587,15 @@
                         <template x-if="ft !== 'checkbox' && ft !== 'urls' && isSecret(k)">
                           <span class="flex min-w-0 flex-1 items-center gap-2">
                             <span role="button" tabindex="0" @click="toggleReveal(k)" @keydown.enter="toggleReveal(k)" :title="reveal[k] ? '{{ __('passwords.hide') }}' : '{{ __('passwords.reveal') }}'" class="min-w-0 flex-1 cursor-pointer break-all font-mono text-sm text-gray-900 dark:text-gray-100 select-all" x-text="reveal[k] ? current.fields[k] : '••••••••••'"></span>
-                            <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
-                            <button type="button" @click="showBig(current.fields[k])" title="{{ __('passwords.large_type') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrows-pointing-out" class="h-4 w-4" /></button>
-                            <button type="button" @click="copy(current.fields[k])" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clipboard" class="h-4 w-4" /></button>
+                            <button type="button" @click="toggleReveal(k)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon x-show="!reveal[k]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal[k]" name="eye-slash" class="h-4 w-4" /></button>
+                            <button type="button" @click="showBig(current.fields[k])" title="{{ __('passwords.large_type') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="arrows-pointing-out" class="h-4 w-4" /></button>
+                            <button type="button" @click="copy(current.fields[k])" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="clipboard" class="h-4 w-4" /></button>
                           </span>
                         </template>
                         <template x-if="ft !== 'checkbox' && ft !== 'urls' && ! isSecret(k)">
                           <span class="flex min-w-0 flex-1 items-center gap-2">
                             <span class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100" :class="ft === 'textarea' ? 'whitespace-pre-wrap' : ''" x-text="current.fields[k]"></span>
-                            <button type="button" @click="copy(current.fields[k])" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clipboard" class="h-4 w-4" /></button>
+                            <button type="button" @click="copy(current.fields[k])" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="clipboard" class="h-4 w-4" /></button>
                           </span>
                         </template>
                       </dd>
@@ -608,9 +608,9 @@
                       <dd class="mt-0.5 flex items-start gap-2">
                         <template x-if="customKind(c) === 'url'"><a :href="/^https?:\/\//.test(c.value) ? c.value : 'https://' + c.value" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100 underline hover:text-gray-600" x-text="c.value"></a></template>
                         <template x-if="customKind(c) !== 'url'"><span :role="customKind(c) === 'secret' ? 'button' : null" @click="customKind(c) === 'secret' && toggleReveal('c' + i)" class="min-w-0 flex-1 break-all text-sm text-gray-900 dark:text-gray-100" :class="(customKind(c) === 'secret' ? 'font-mono cursor-pointer ' : '') + (customKind(c) === 'multiline' ? 'whitespace-pre-wrap' : '')" x-text="(customKind(c) === 'secret' && ! reveal['c' + i]) ? '••••••••••' : c.value"></span></template>
-                        <button type="button" x-show="customKind(c) === 'secret'" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
-                        <button type="button" x-show="customKind(c) === 'secret'" @click="showBig(c.value)" title="{{ __('passwords.large_type') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrows-pointing-out" class="h-4 w-4" /></button>
-                        <button type="button" @click="copy(c.value)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="clipboard" class="h-4 w-4" /></button>
+                        <button type="button" x-show="customKind(c) === 'secret'" @click="toggleReveal('c' + i)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon x-show="!reveal['c' + i]" name="eye" class="h-4 w-4" /><x-icon x-show="reveal['c' + i]" name="eye-slash" class="h-4 w-4" /></button>
+                        <button type="button" x-show="customKind(c) === 'secret'" @click="showBig(c.value)" title="{{ __('passwords.large_type') }}" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="arrows-pointing-out" class="h-4 w-4" /></button>
+                        <button type="button" @click="copy(c.value)" class="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="clipboard" class="h-4 w-4" /></button>
                       </dd>
                     </div>
                   </template>
@@ -625,7 +625,7 @@
                   </button>
                   <ul x-show="historyOpen" x-cloak class="mt-1 space-y-1.5 border-l border-gray-100 pl-3 dark:border-gray-800">
                     <template x-for="(v, i) in (current.versions || [])" :key="i">
-                      <li class="rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <li class="rounded-lg px-2 py-1.5 hover:bg-accent/5/50">
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
                           <button type="button" x-show="canEditCurrent()" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
@@ -653,17 +653,17 @@
         {{-- Share vault dialog (manager only) --}}
         <div x-show="shareDialog.open" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="closeShareDialog()">
           <div class="absolute inset-0 bg-gray-900/50" @click="closeShareDialog()"></div>
-          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <div class="flex items-center justify-between">
               <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.share_vault') }}</h3>
-              <button type="button" @click="closeShareDialog()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+              <button type="button" @click="closeShareDialog()" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button>
             </div>
             <div class="mt-4 space-y-3">
               <div>
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient_identifier') }}</label>
                 <div class="mt-1 flex items-center gap-2">
-                  <input type="text" x-model="shareDialog.identifier" @keydown.enter="lookUpRecipient()" placeholder="{{ __('passwords.recipient_identifier') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
-                  <button type="button" @click="lookUpRecipient()" :disabled="shareDialog.lookingUp || ! shareDialog.identifier.trim()" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50" x-text="shareDialog.lookingUp ? '…' : '{{ __('passwords.look_up') }}'"></button>
+                  <input type="text" x-model="shareDialog.identifier" @keydown.enter="lookUpRecipient()" placeholder="{{ __('passwords.recipient_identifier') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
+                  <button type="button" @click="lookUpRecipient()" :disabled="shareDialog.lookingUp || ! shareDialog.identifier.trim()" class="shrink-0 rounded-md ll-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50" x-text="shareDialog.lookingUp ? '…' : '{{ __('passwords.look_up') }}'"></button>
                 </div>
               </div>
               <template x-if="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'">
@@ -676,7 +676,7 @@
                   </div>
                   <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.recipient') }}</label>
-                    <select x-model="shareDialog.role" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                    <select x-model="shareDialog.role" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
                       <option value="read">{{ __('passwords.role_read') }}</option>
                       <option value="edit">{{ __('passwords.role_edit') }}</option>
                       <option value="manage">{{ __('passwords.role_manage') }}</option>
@@ -687,8 +687,8 @@
               <p x-show="shareDialog.notice" x-cloak class="rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300" x-text="shareDialog.notice"></p>
             </div>
             <div class="mt-5 flex justify-end gap-2">
-              <button type="button" @click="closeShareDialog()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.cancel') }}</button>
-              <button type="button" x-show="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'" @click="confirmShare()" :disabled="shareDialog.sharing" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
+              <button type="button" @click="closeShareDialog()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.cancel') }}</button>
+              <button type="button" x-show="shareDialog.resolved && shareDialog.fingerprintStatus !== 'changed'" @click="confirmShare()" :disabled="shareDialog.sharing" class="rounded-md ll-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
                 <span x-text="shareDialog.sharing ? '…' : '{{ __('passwords.share') }}'"></span>
               </button>
             </div>
@@ -698,7 +698,7 @@
         {{-- Password generator modal --}}
         <div x-show="gen.open" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="gen.open = false">
           <div class="absolute inset-0 bg-gray-900/50" @click="gen.open = false"></div>
-          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.generate') }}</h3>
 
             {{-- Live preview --}}
@@ -748,12 +748,12 @@
               </label>
               <div class="grid grid-cols-2 gap-3">
                 <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.gen_language') }}
-                  <select x-model="gen.lang" @change="regen()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                  <select x-model="gen.lang" @change="regen()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
                     <template x-for="l in genLangs" :key="l"><option :value="l" x-text="l.toUpperCase()"></option></template>
                   </select>
                 </label>
                 <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.gen_separator') }}
-                  <select x-model="gen.sep" @change="regen()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+                  <select x-model="gen.sep" @change="regen()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
                     <option value="-">-</option><option value=".">.</option><option value="_">_</option><option value="space">{{ __('passwords.gen_sep_space') }}</option><option value="">{{ __('passwords.gen_sep_none') }}</option>
                   </select>
                 </label>
@@ -765,8 +765,8 @@
             </div>
 
             <div class="mt-5 flex justify-end gap-2">
-              <button type="button" @click="gen.open = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.cancel') }}</button>
-              <button type="button" @click="applyGen()" class="rounded-md bg-gray-900 dark:bg-gray-100 px-4 py-2 text-sm font-medium text-white dark:text-gray-900" x-text="gen.target ? '{{ __('passwords.generate_apply') }}' : '{{ __('passwords.copy') }}'"></button>
+              <button type="button" @click="gen.open = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.cancel') }}</button>
+              <button type="button" @click="applyGen()" class="rounded-md ll-accent px-4 py-2 text-sm font-medium text-white" x-text="gen.target ? '{{ __('passwords.generate_apply') }}' : '{{ __('passwords.copy') }}'"></button>
             </div>
           </div>
         </div>
@@ -774,11 +774,11 @@
         {{-- Import modal --}}
         <div x-show="importOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="importOpen = false">
           <div class="absolute inset-0 bg-gray-900/50" @click="importOpen = false"></div>
-          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
-            <div class="flex items-center justify-between"><h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.import') }}</h3><button type="button" @click="importOpen = false" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button></div>
+          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
+            <div class="flex items-center justify-between"><h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.import') }}</h3><button type="button" @click="importOpen = false" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button></div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('passwords.import_intro') }}</p>
             <label class="mt-4 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.import_format') }}
-              <select x-model="importFormat" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+              <select x-model="importFormat" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
                 <option value="auto">{{ __('passwords.fmt_auto') }}</option>
                 <option value="bitwarden_json">{{ __('passwords.fmt_bitwarden_json') }}</option>
                 <option value="bitwarden_csv">{{ __('passwords.fmt_bitwarden_csv') }}</option>
@@ -796,7 +796,7 @@
             <p x-show="importResult && ! importResult.ok" x-cloak class="mt-3 text-sm text-red-600 dark:text-red-400">{{ __('passwords.import_failed') }}</p>
             <p class="mt-3 text-[11px] leading-relaxed text-gray-400">{{ __('passwords.import_hint') }}</p>
             <div class="mt-4 flex justify-end">
-              <button type="button" @click="importOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
+              <button type="button" @click="importOpen = false" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.close') }}</button>
             </div>
           </div>
         </div>
@@ -804,10 +804,10 @@
         {{-- Export modal --}}
         <div x-show="exportOpen" x-cloak class="fixed inset-0 z-[961] flex items-center justify-center p-4" @keydown.escape.window="_closeExport()">
           <div class="absolute inset-0 bg-gray-900/50" @click="_closeExport()"></div>
-          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <div class="flex items-center justify-between">
               <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.export') }}</h3>
-              <button type="button" @click="_closeExport()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+              <button type="button" @click="_closeExport()" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button>
             </div>
             <p class="mt-1 text-xs text-gray-400">{{ __('passwords.export_shared_note') }}</p>
 
@@ -820,11 +820,11 @@
                 <span>{{ __('passwords.export_confirm') }}</span>
               </label>
               <div x-show="exportConfirmed" x-cloak class="mt-3 flex gap-2">
-                <button type="button" @click="exportJson()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                <button type="button" @click="exportJson()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md ll-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
                   <x-icon name="document-arrow-down" class="h-3.5 w-3.5" />
                   {{ __('passwords.export_json') }}
                 </button>
-                <button type="button" @click="exportCsv()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-xs font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                <button type="button" @click="exportCsv()" :disabled="exportWorking" class="inline-flex items-center gap-1.5 rounded-md ll-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
                   <x-icon name="document-text" class="h-3.5 w-3.5" />
                   {{ __('passwords.export_csv') }}
                 </button>
@@ -835,8 +835,8 @@
             <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 p-3">
               <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('passwords.export_encrypted') }}</p>
               <div class="mt-2 flex items-center gap-2">
-                <input type="password" x-model="exportPassphrase" placeholder="{{ __('passwords.export_passphrase') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
-                <button type="button" @click="exportEncrypted()" :disabled="exportWorking || ! exportPassphrase.trim()" class="shrink-0 rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">
+                <input type="password" x-model="exportPassphrase" placeholder="{{ __('passwords.export_passphrase') }}" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
+                <button type="button" @click="exportEncrypted()" :disabled="exportWorking || ! exportPassphrase.trim()" class="shrink-0 rounded-md ll-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                   <x-icon name="lock-closed" class="h-4 w-4" />
                 </button>
               </div>
@@ -845,7 +845,7 @@
             <p x-show="exportDone" x-cloak class="mt-3 text-sm font-medium text-green-600 dark:text-green-400" x-text="exportDone"></p>
             <p x-show="exportError" x-cloak class="mt-3 text-sm font-medium text-red-600 dark:text-red-400" x-text="exportError"></p>
             <div class="mt-4 flex justify-end">
-              <button type="button" @click="_closeExport()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
+              <button type="button" @click="_closeExport()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.close') }}</button>
             </div>
           </div>
         </div>
@@ -853,10 +853,10 @@
         {{-- Reset password manager (destructive, type-to-confirm) --}}
         <div x-show="resetOpen" x-cloak class="fixed inset-0 z-[962] flex items-center justify-center p-4" @keydown.escape.window="_closeReset()">
           <div class="absolute inset-0 bg-gray-900/50" @click="_closeReset()"></div>
-          <div class="relative w-full max-w-md rounded-xl bg-white dark:bg-gray-900 p-5 shadow-xl">
+          <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl">
             <div class="flex items-center justify-between">
               <h3 class="text-base font-semibold text-red-600 dark:text-red-400">{{ __('passwords.reset_title') }}</h3>
-              <button type="button" @click="_closeReset()" class="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="x-mark" class="h-5 w-5" /></button>
+              <button type="button" @click="_closeReset()" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button>
             </div>
             <div class="mt-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3">
               <p class="text-xs leading-relaxed text-red-700 dark:text-red-300">{{ __('passwords.reset_warning') }}</p>
@@ -866,7 +866,7 @@
               <input type="text" x-model="resetConfirmText" autocomplete="off" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-red-500 focus:ring-red-500">
             </label>
             <div class="mt-4 flex justify-end gap-2">
-              <button type="button" @click="_closeReset()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">{{ __('passwords.close') }}</button>
+              <button type="button" @click="_closeReset()" class="rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('passwords.close') }}</button>
               <button type="button" @click="resetVault()" :disabled="resetWorking || resetConfirmText !== @js(__('passwords.reset_confirm_word'))" class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40">
                 <x-icon name="trash" class="h-4 w-4" />{{ __('passwords.reset_button') }}
               </button>
@@ -882,14 +882,14 @@
             <p class="break-all font-mono text-4xl leading-relaxed tracking-widest sm:text-5xl">
               <template x-for="(ch, i) in bigChars()" :key="i"><span :class="ch.cls" x-text="ch.c === ' ' ? ' ' : ch.c"></span></template>
             </p>
-            <button type="button" @click="closeBig()" class="mt-8 rounded-md bg-gray-900 dark:bg-gray-100 px-5 py-2 text-sm font-medium text-white dark:text-gray-900">{{ __('passwords.close') }}</button>
+            <button type="button" @click="closeBig()" class="mt-8 rounded-md ll-accent px-5 py-2 text-sm font-medium text-white">{{ __('passwords.close') }}</button>
           </div>
         </div>
 
         {{-- Manage vault members panel --}}
         <template x-if="managingVaultId !== null">
           <div class="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4" @keydown.escape.window="managingVaultId = null">
-            <div class="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl">
+            <div class="w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 px-5 py-4">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('passwords.manage_members') }}</h2>
                 <button type="button" @click="managingVaultId = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>
