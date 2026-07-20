@@ -275,6 +275,22 @@ export default (config = {}, labels = {}) => ({
 
     /* ---- Shared-context helpers ---- */
 
+    // Enter a shared folder vault context: set activeShared, reset cwd and view.
+    selectSharedFolder(vaultId) {
+        this.activeShared = vaultId;
+        this.cwd = null;
+        this.view = 'files';
+        this.selected = [];
+    },
+
+    // Return to the personal files context.
+    exitSharedFolder() {
+        this.activeShared = null;
+        this.cwd = null;
+        this.view = 'files';
+        this.selected = [];
+    },
+
     // True when the user is currently browsing a shared folder (not personal).
     _isSharedContext() { return this.activeShared !== null; },
 
