@@ -21,7 +21,7 @@
         wrongPassword: @js(__('gallery.share_err_wrong_password')),
      })" x-cloak>
 
-    <header class="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <header class="border-b border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e]">
       <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <span class="text-sm font-semibold tracking-tight">Ledgerline</span>
         <span x-show="state === 'ready' && manifest?.name" x-cloak class="truncate text-sm text-gray-500 dark:text-gray-400" x-text="manifest?.name"></span>
@@ -45,12 +45,12 @@
 
       {{-- Password gate --}}
       <template x-if="state === 'password'">
-        <form @submit.prevent="unlock()" class="mx-auto mt-16 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center shadow-sm">
+        <form @submit.prevent="unlock()" class="mx-auto mt-16 flex max-w-sm flex-col items-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-8 text-center shadow-sm">
           <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="lock-closed" class="h-6 w-6 text-gray-400" /></div>
           <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">{{ __('gallery.share_password_prompt') }}</p>
-          <input type="password" x-model="password" autocomplete="current-password" class="mt-4 w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+          <input type="password" x-model="password" autocomplete="current-password" class="mt-4 w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
           <p x-show="error" x-cloak class="mt-2 text-xs text-red-600 dark:text-red-400" x-text="error"></p>
-          <button type="submit" :disabled="unlocking || ! password" class="mt-4 w-full rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2.5 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">{{ __('gallery.share_unlock') }}</button>
+          <button type="submit" :disabled="unlocking || ! password" class="mt-4 w-full ll-accent rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50">{{ __('gallery.share_unlock') }}</button>
         </form>
       </template>
 

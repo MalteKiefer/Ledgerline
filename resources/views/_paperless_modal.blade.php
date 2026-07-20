@@ -5,7 +5,7 @@
         x-init="$store.paperless.labels = { failed: @js(__('paperless.failed')) }"
         @keydown.escape.window="$store.paperless.open && $store.paperless.close()">
         <div class="absolute inset-0 bg-gray-900/60" @click="$store.paperless.close()"></div>
-        <div class="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-lg bg-white shadow-xl dark:bg-gray-900">
+        <div class="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
             <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-3 dark:border-gray-800">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('paperless.modal_title') }}</h3>
                 <button type="button" @click="$store.paperless.close()" class="text-gray-400 hover:text-gray-600 dark:text-gray-500" aria-label="{{ __('paperless.cancel') }}"><x-icon name="x-mark" class="h-5 w-5" /></button>
@@ -20,13 +20,13 @@
                 {{-- Title --}}
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('paperless.doc_title') }}</label>
-                    <input type="text" x-model="s.form.title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                    <input type="text" x-model="s.form.title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
 
                 {{-- Date --}}
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('paperless.date') }}</label>
-                    <input type="date" x-model="s.form.created" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                    <input type="date" x-model="s.form.created" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
 
                 {{-- Correspondent --}}
@@ -36,11 +36,11 @@
                     <div class="relative mt-1">
                         <input type="text" x-model="s.corrQuery" @focus="show = true" @input="show = true; s.form.correspondent = ''"
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
-                            class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                            class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                         <button type="button" x-show="s.corrQuery" @click="s.clearCorrespondent(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-4 w-4" /></button>
-                        <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-800 dark:bg-gray-900">
+                        <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 text-sm shadow-lg">
                             <template x-for="c in s.filteredCorrespondents" :key="c.id">
-                                <button type="button" @click="s.selectCorrespondent(c); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800" x-text="c.name"></button>
+                                <button type="button" @click="s.selectCorrespondent(c); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-accent/5" x-text="c.name"></button>
                             </template>
                             <button type="button" x-show="s.canCreate(s.correspondents, s.corrQuery)" @click="s.createTerm('correspondent', s.corrQuery); show = false"
                                 class="block w-full truncate px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"><span class="text-gray-400 dark:text-gray-500">{{ __('paperless.create') }}:</span> «<span x-text="s.corrQuery"></span>»</button>
@@ -55,11 +55,11 @@
                     <div class="relative mt-1">
                         <input type="text" x-model="s.typeQuery" @focus="show = true" @input="show = true; s.form.documentType = ''"
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
-                            class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                            class="block w-full rounded-md border-gray-300 pr-8 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                         <button type="button" x-show="s.typeQuery" @click="s.clearDocumentType(); show = false" class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500"><x-icon name="x-mark" class="h-4 w-4" /></button>
-                        <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-800 dark:bg-gray-900">
+                        <div x-show="show" x-cloak class="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 text-sm shadow-lg">
                             <template x-for="t in s.filteredDocumentTypes" :key="t.id">
-                                <button type="button" @click="s.selectDocumentType(t); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800" x-text="t.name"></button>
+                                <button type="button" @click="s.selectDocumentType(t); show = false" class="block w-full truncate px-3 py-2.5 text-left hover:bg-accent/5" x-text="t.name"></button>
                             </template>
                             <button type="button" x-show="s.canCreate(s.documentTypes, s.typeQuery)" @click="s.createTerm('document_type', s.typeQuery); show = false"
                                 class="block w-full truncate px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"><span class="text-gray-400 dark:text-gray-500">{{ __('paperless.create') }}:</span> «<span x-text="s.typeQuery"></span>»</button>
@@ -82,12 +82,12 @@
                     <div class="relative mt-1">
                         <input type="text" x-model="s.tagQuery" @focus="show = true" @input="show = true"
                             placeholder="{{ __('paperless.search_or_create') }}" autocomplete="off"
-                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm">
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                         {{-- Opens upward: this is the last field, so a downward list is
                              clipped by the scroll area and hidden behind the footer. --}}
-                        <div x-show="show" x-cloak class="absolute bottom-full z-30 mb-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-800 dark:bg-gray-900">
+                        <div x-show="show" x-cloak class="absolute bottom-full z-30 mb-1 max-h-48 w-full overflow-auto rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 text-sm shadow-lg">
                             <template x-for="t in s.filteredTags" :key="t.id">
-                                <button type="button" @click="s.addTag(t)" class="block w-full truncate px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800" x-text="t.name"></button>
+                                <button type="button" @click="s.addTag(t)" class="block w-full truncate px-3 py-2.5 text-left hover:bg-accent/5" x-text="t.name"></button>
                             </template>
                             <button type="button" x-show="s.canCreate(s.tags, s.tagQuery)" @click="s.createTerm('tag', s.tagQuery)"
                                 class="block w-full truncate px-3 py-2.5 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"><span class="text-gray-400 dark:text-gray-500">{{ __('paperless.create') }}:</span> «<span x-text="s.tagQuery"></span>»</button>
@@ -98,7 +98,7 @@
 
                 {{-- File browser only: keep or delete the stored file after upload. --}}
                 <label x-show="s.allowDelete" class="flex items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
-                    <input type="checkbox" x-model="s.deleteAfter" class="rounded border-gray-300 text-gray-800 focus:ring-gray-500">
+                    <input type="checkbox" x-model="s.deleteAfter" class="rounded border-gray-300 text-gray-800 focus:ring-accent">
                     <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('paperless.delete_after') }}</span>
                 </label>
 
@@ -108,7 +108,7 @@
             <div class="flex items-center justify-end gap-3 border-t border-gray-100 px-5 py-3 dark:border-gray-800">
                 <button type="button" @click="$store.paperless.close()" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">{{ __('paperless.cancel') }}</button>
                 <button type="button" @click="$store.paperless.submit()" :disabled="$store.paperless.submitting || $store.paperless.preparing || ! $store.paperless.file"
-                    class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                    class="ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50"
                     x-text="$store.paperless.submitting ? @js(__('paperless.sending')) : @js(__('paperless.send'))"></button>
             </div>
         </div>

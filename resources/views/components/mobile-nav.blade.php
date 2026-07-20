@@ -17,20 +17,20 @@
                 <a href="{{ $item['url'] }}" @click="$store.nav.closeAll()"
                     @class([
                         'flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium',
-                        'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' => $item['active'],
-                        'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800' => ! $item['active'],
+                        'bg-accent/10 text-accent' => $item['active'],
+                        'text-gray-700 dark:text-gray-300 hover:bg-accent/5' => ! $item['active'],
                     ])>
-                    <x-icon :name="$item['icon']" class="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                    <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#7066f5"><x-icon :name="$item['icon']" class="h-4 w-4" /></span>
                     {{ $item['label'] }}
                 </a>
             @endforeach
         </nav>
 
         <div class="mt-4 space-y-1 border-t border-gray-100 dark:border-gray-800 pt-3">
-            <a href="{{ route('profile') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <a href="{{ route('profile') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">
                 <x-icon name="contacts" class="h-5 w-5 text-gray-400 dark:text-gray-500" />{{ __('messages.menu.profile') }}
             </a>
-            <a href="{{ route('settings') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <a href="{{ route('settings') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">
                 <x-icon name="ellipsis" class="h-5 w-5 text-gray-400 dark:text-gray-500" />{{ __('messages.menu.settings') }}
             </a>
         </div>
@@ -44,8 +44,8 @@
                     <button type="submit" title="{{ __('messages.menu.theme_'.$mode) }}"
                         @class([
                             'flex min-h-11 w-full items-center justify-center rounded-md',
-                            'bg-gray-800 text-white' => $llTheme === $mode,
-                            'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' => $llTheme !== $mode,
+                            'll-accent' => $llTheme === $mode,
+                            'text-gray-600 dark:text-gray-400 hover:bg-accent/5' => $llTheme !== $mode,
                         ])>
                         <x-icon :name="$icon" class="h-5 w-5" />
                     </button>
@@ -62,15 +62,15 @@
                         <button type="submit"
                             @class([
                                 'rounded px-3 py-2 text-xs font-medium',
-                                'bg-gray-800 text-white' => app()->getLocale() === $code,
-                                'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' => app()->getLocale() !== $code,
+                                'bg-accent text-white' => app()->getLocale() === $code,
+                                'text-gray-600 dark:text-gray-400 hover:bg-accent/5' => app()->getLocale() !== $code,
                             ])>{{ strtoupper($code) }}</button>
                     </form>
                 @endforeach
             </div>
             <form method="POST" action="{{ route('logout') }}" @submit="window.Vault && window.Vault.lock()">
                 @csrf
-                <button type="submit" class="rounded-md px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('messages.menu.logout') }}</button>
+                <button type="submit" class="rounded-md px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('messages.menu.logout') }}</button>
             </form>
         </div>
     </x-sheet>
