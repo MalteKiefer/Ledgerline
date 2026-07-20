@@ -75,7 +75,7 @@
       <div class="mx-auto mt-16 flex max-w-md flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-12 text-center">
         <div class="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="lock-closed" class="h-7 w-7 text-gray-400" /></div>
         <p class="mt-4 text-sm text-gray-500 dark:text-gray-400" x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-        <button type="button" @click="$dispatch('vault-panel')" class="mt-5 rounded-lg bg-gray-900 dark:bg-gray-100 px-5 py-2.5 text-sm font-medium text-white dark:text-gray-900"><span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span></button>
+        <button type="button" @click="$dispatch('vault-panel')" class="mt-5 ll-accent rounded-xl px-5 py-2.5 text-sm font-medium"><span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span></button>
       </div>
     </template>
     <template x-if="state === 'error'"><p class="mt-8 text-center text-sm text-red-500">{{ __('gallery.load_failed') }}</p></template>
@@ -83,54 +83,54 @@
     <div x-show="state === 'ready'" x-cloak class="mt-6 flex gap-6">
       {{-- Sidebar --}}
       <aside class="hidden w-44 shrink-0 md:block">
-        <nav class="sticky top-6 space-y-0.5 rounded-xl bg-white dark:bg-gray-900 p-2 ring-1 ring-gray-100 dark:ring-gray-800">
+        <nav class="sticky top-6 space-y-0.5 rounded-xl bg-white dark:bg-[#1c1c1e] p-2 ring-1 ring-black/[0.06] dark:ring-white/10">
           <button type="button" @click="view = 'library'"
-              :class="view === 'library' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'library' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="photo" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.library') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="photoCount()"></span>
           </button>
           <button type="button" @click="view = 'memories'" x-show="memoryCount()" x-cloak
-              :class="view === 'memories' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'memories' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="sparkles" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.memories') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="memoryCount()"></span>
           </button>
           <button type="button" @click="view = 'favorites'"
-              :class="view === 'favorites' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'favorites' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="star" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.favorites') }}</span><span x-show="favoriteCount()" class="text-xs tabular-nums text-gray-400" x-text="favoriteCount()"></span>
           </button>
           <button type="button" @click="view = 'map'"
-              :class="view === 'map' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'map' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="map-pin" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.map') }}</span><span x-show="mapPhotos.length" class="text-xs tabular-nums text-gray-400" x-text="mapPhotos.length"></span>
           </button>
           <button type="button" @click="view = 'albums'"
-              :class="view === 'albums' || view === 'album' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'albums' || view === 'album' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="folder" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.albums') }}</span><span x-show="albums.length" class="text-xs tabular-nums text-gray-400" x-text="albums.length"></span>
           </button>
           <button type="button" @click="view = 'people'"
-              :class="view === 'people' || view === 'person' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'people' || view === 'person' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="user" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.people') }}</span><span x-show="people.length" class="text-xs tabular-nums text-gray-400" x-text="people.length"></span>
           </button>
           <button type="button" @click="view = 'duplicates'"
-              :class="view === 'duplicates' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'duplicates' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="square-2-stack" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.duplicates') }}</span><span x-show="dupTotal" class="text-xs tabular-nums text-gray-400" x-text="dupTotal"></span>
           </button>
           <button type="button" @click="view = 'jobs'"
-              :class="view === 'jobs' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'jobs' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <span :class="_pipelineRunning ? 'animate-spin' : ''"><x-icon name="arrow-path" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.jobs') }}</span><span x-show="failedCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-xs font-medium tabular-nums text-amber-700 dark:text-amber-300" x-text="failedCount"></span>
           </button>
           <button type="button" @click="view = 'archive'"
-              :class="view === 'archive' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'archive' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="archive-box" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.archive') }}</span><span x-show="archiveCount()" class="text-xs tabular-nums text-gray-400" x-text="archiveCount()"></span>
           </button>
           <button type="button" @click="view = 'trash'"
-              :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+              :class="view === 'trash' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <x-icon name="trash" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.trash') }}</span><span x-show="trashCount()" class="text-xs tabular-nums text-gray-400" x-text="trashCount()"></span>
           </button>
@@ -139,7 +139,7 @@
 
       <div class="min-w-0 flex-1">
         {{-- Bulk-select bar --}}
-        <div x-show="selectedCount" x-cloak class="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-full border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 px-4 py-2 shadow-xl backdrop-blur">
+        <div x-show="selectedCount" x-cloak class="fixed bottom-5 left-1/2 z-40 flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-full border border-black/[0.06] dark:border-white/10 bg-white/95 dark:bg-[#1c1c1e]/95 px-4 py-2 shadow-xl backdrop-blur">
           <button type="button" @click="clearSelection()" class="shrink-0 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" class="h-5 w-5" /></button>
           <span class="shrink-0 whitespace-nowrap text-sm font-medium text-gray-800 dark:text-gray-200" x-text="@js(__('gallery.selected', ['count' => '{n}'])).replace('{n}', selectedCount)"></span>
           <button type="button" @click="selectAllVisible()" title="{{ __('gallery.select_all') }}" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="check-circle" class="h-5 w-5" /></button>
@@ -151,13 +151,13 @@
                 <button type="button" @click="openBulkDate()" title="{{ __('gallery.bulk_date') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="calendar" class="h-5 w-5" /></button>
                 <button type="button" @click="openBulkLocPicker()" title="{{ __('gallery.edit_location') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="map-pin" class="h-5 w-5" /></button>
                 <button type="button" @click="bulkArchive()" title="{{ __('gallery.archive_action') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="archive-box" class="h-5 w-5" /></button>
-                <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white"><x-icon name="trash" class="h-5 w-5" /></button>
+                <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full ll-accent hover:opacity-90"><x-icon name="trash" class="h-5 w-5" /></button>
               </span>
             </template>
             <template x-if="view === 'archive'">
               <span class="flex items-center gap-2">
                 <button type="button" @click="bulkUnarchive()" title="{{ __('gallery.unarchive_action') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"><x-icon name="arrow-uturn-left" class="h-5 w-5" /></button>
-                <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-black dark:hover:bg-white"><x-icon name="trash" class="h-5 w-5" /></button>
+                <button type="button" @click="bulkTrash()" title="{{ __('gallery.delete') }}" class="flex h-9 w-9 items-center justify-center rounded-full ll-accent hover:opacity-90"><x-icon name="trash" class="h-5 w-5" /></button>
               </span>
             </template>
             <template x-if="view === 'trash'">
@@ -171,15 +171,15 @@
 
         {{-- Mobile view switch --}}
         <div class="mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden">
-          <button type="button" @click="view = 'library'; clearSelection()" :class="view === 'library' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.library') }}</button>
-          <button type="button" x-show="memoryCount()" x-cloak @click="view = 'memories'; clearSelection()" :class="view === 'memories' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.memories') }}</button>
-          <button type="button" @click="view = 'favorites'; clearSelection()" :class="view === 'favorites' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.favorites') }}</button>
-          <button type="button" @click="view = 'albums'; clearSelection()" :class="view === 'albums' || view === 'album' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.albums') }}</button>
-          <button type="button" @click="view = 'people'; clearSelection()" :class="view === 'people' || view === 'person' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.people') }}</button>
-          <button type="button" @click="view = 'duplicates'; clearSelection()" :class="view === 'duplicates' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.duplicates') }}</button>
-          <button type="button" @click="view = 'map'; clearSelection()" :class="view === 'map' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.map') }}</button>
-          <button type="button" @click="view = 'archive'; clearSelection()" :class="view === 'archive' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.archive') }}</button>
-          <button type="button" @click="view = 'trash'; clearSelection()" :class="view === 'trash' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
+          <button type="button" @click="view = 'library'; clearSelection()" :class="view === 'library' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.library') }}</button>
+          <button type="button" x-show="memoryCount()" x-cloak @click="view = 'memories'; clearSelection()" :class="view === 'memories' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.memories') }}</button>
+          <button type="button" @click="view = 'favorites'; clearSelection()" :class="view === 'favorites' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.favorites') }}</button>
+          <button type="button" @click="view = 'albums'; clearSelection()" :class="view === 'albums' || view === 'album' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.albums') }}</button>
+          <button type="button" @click="view = 'people'; clearSelection()" :class="view === 'people' || view === 'person' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.people') }}</button>
+          <button type="button" @click="view = 'duplicates'; clearSelection()" :class="view === 'duplicates' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.duplicates') }}</button>
+          <button type="button" @click="view = 'map'; clearSelection()" :class="view === 'map' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.map') }}</button>
+          <button type="button" @click="view = 'archive'; clearSelection()" :class="view === 'archive' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.archive') }}</button>
+          <button type="button" @click="view = 'trash'; clearSelection()" :class="view === 'trash' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
         </div>
 
         {{-- LIBRARY --}}
@@ -188,7 +188,7 @@
           <div class="relative mb-4" x-show="libraryPhotos.length || isSearching">
             <x-icon name="magnifying-glass" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input type="search" x-model="query" @input="runSearch()" placeholder="{{ __('gallery.search_placeholder') }}"
-                class="w-full rounded-lg border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-2 pl-9 pr-9 text-sm shadow-sm focus:border-gray-400 focus:ring-0">
+                class="w-full rounded-lg border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-9 text-sm shadow-sm focus:border-accent focus:ring-accent">
             <button type="button" x-show="query" @click="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
             <svg x-show="searching" x-cloak class="absolute right-9 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
           </div>
@@ -261,7 +261,7 @@
           <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.jobs_hint') }}</p>
           <div class="space-y-3">
             {{-- Processing --}}
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+            <div class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-4">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.jobs_processing') }}</span>
                 <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="progress.active ? (progress.done + ' / ' + progress.total) : (failedCount ? (failedCount + ' ' + @js(__('gallery.failed_label'))) : @js(__('gallery.jobs_done')))"></span>
@@ -270,7 +270,7 @@
               <button type="button" x-show="failedCount && !progress.active" @click="retryFailed()" class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300 underline">{{ __('gallery.retry_failed') }}</button>
             </div>
             {{-- Face analysis (ML detection backlog — must run before faces can be grouped) --}}
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+            <div class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-4">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.jobs_analyze') }}</span>
                 <div class="flex items-center gap-3">
@@ -282,7 +282,7 @@
               <div x-show="deepScanning || _mlRunning" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${mlProgress.total ? (mlProgress.done / mlProgress.total * 100) : 8}%`"></div></div>
             </div>
             {{-- Faces --}}
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+            <div class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-4">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.people') }}</span>
                 <div class="flex items-center gap-3">
@@ -293,7 +293,7 @@
               <div x-show="peopleScanning" class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full bg-gray-800 dark:bg-gray-200 transition-all" :style="`width: ${peopleProgress.total ? (peopleProgress.done / peopleProgress.total * 100) : 0}%`"></div></div>
             </div>
             {{-- Duplicates --}}
-            <div class="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+            <div class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-4">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('gallery.duplicates') }}</span>
                 <div class="flex items-center gap-3">
@@ -409,7 +409,7 @@
 
         {{-- MAP --}}
         <div x-show="view === 'map'">
-          <div x-show="geoProgress.total && geoProgress.done < geoProgress.total" x-cloak class="mb-3 flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2 text-sm text-gray-600 dark:text-gray-300">
+          <div x-show="geoProgress.total && geoProgress.done < geoProgress.total" x-cloak class="mb-3 flex items-center gap-3 rounded-lg border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] px-4 py-2 text-sm text-gray-600 dark:text-gray-300">
             <svg class="h-4 w-4 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
             <span>{{ __('gallery.map_loading') }} <span class="tabular-nums" x-text="geoProgress.done + ' / ' + geoProgress.total"></span></span>
           </div>
@@ -481,7 +481,7 @@
         <div x-show="view === 'people'">
           {{-- Birthdays today: a linked person whose contact's birthday is today.
                Tap to open the person and see their photos. --}}
-          <div x-show="birthdayPeople.length" x-cloak class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+          <div x-show="birthdayPeople.length" x-cloak class="mb-5 rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-4">
             <div class="mb-3 flex items-center gap-2">
               <x-icon name="sparkles" class="h-4 w-4 text-gray-500" />
               <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">{{ __('gallery.birthdays_today') }}</h3>
@@ -528,7 +528,7 @@
           </div>
 
           {{-- Scanning card (face clustering OR deep ML re-analysis) --}}
-          <div x-show="peopleScanning || deepScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center shadow-sm">
+          <div x-show="peopleScanning || deepScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-10 text-center shadow-sm">
             <svg class="h-8 w-8 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
             <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200" x-text="deepScanning && _mlRunning ? '{{ __('gallery.analyzing') }}' : '{{ __('gallery.scanning') }}'"></p>
             <template x-if="deepScanning && _mlRunning">
@@ -640,7 +640,7 @@
           </div>
 
           {{-- Scanning card --}}
-          <div x-show="dupScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center shadow-sm">
+          <div x-show="dupScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-10 text-center shadow-sm">
             <svg class="h-8 w-8 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
             <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ __('gallery.scanning') }}</p>
             <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div class="h-full rounded-full bg-gray-800 dark:bg-gray-200 transition-all duration-300" :style="`width: ${dupProgress.total ? (dupProgress.done / dupProgress.total * 100) : 8}%`"></div></div>
@@ -662,7 +662,7 @@
           {{-- Result groups --}}
           <div x-show="dupGroups && dupGroups.length && ! dupScanning" class="space-y-3">
             <template x-for="(group, gi) in (dupGroups || [])" :key="gi">
-              <div class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-sm">
+              <div class="rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-3 shadow-sm">
                 <div class="mb-2 flex items-center gap-2 px-1">
                   <span class="inline-flex h-5 items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2 text-[11px] font-medium tabular-nums text-gray-500 dark:text-gray-400" x-text="@js(__('gallery.copies', ['count' => '{n}'])).replace('{n}', group.length)"></span>
                   <span class="text-[11px] text-gray-400">· {{ __('gallery.select_to_delete') }}</span>
@@ -701,7 +701,7 @@
 
     {{-- Floating upload / processing card --}}
     <div x-show="state === 'ready' && (uploading || progress.active || uploads.length || failedCount || _mlRunning || peopleScanning)" x-cloak x-transition
-        class="fixed bottom-4 right-4 z-[860] w-72 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 shadow-xl">
+        class="fixed bottom-4 right-4 z-[860] w-72 rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-3 shadow-xl">
       <div class="flex items-center justify-between">
         <span class="text-xs font-semibold text-gray-700 dark:text-gray-200" x-text="reindexProgress ? @js(__('gallery.reindex_all')) : (progress.active ? @js(__('gallery.processing')) : @js(__('gallery.upload')))"></span>
         <button type="button" @click="dismissUploads()" x-show="! uploading && ! progress.active" class="text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
@@ -812,7 +812,7 @@
         <div x-show="view !== 'trash'" class="mt-4">
           <label class="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('gallery.caption') }}</label>
           <textarea rows="2" @change="setCaption(viewer.photo, $event.target.value)" :value="viewer.photo?.caption || ''" placeholder="{{ __('gallery.caption_placeholder') }}"
-              class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500"></textarea>
+              class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent"></textarea>
         </div>
         <dl class="mt-5 space-y-4 text-sm">
           <div x-show="viewer.meta?.exif?.taken_at || viewer.photo?.taken_at">
@@ -861,7 +861,7 @@
           </div>
           <label class="mt-3 block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.edit_datetime') }}
             <input type="datetime-local" :value="toLocalInput(viewer.photo?.taken_at)" @change="setTakenAt(viewer.photo, $event.target.value)"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
           </label>
           <button type="button" @click="openLocPicker(viewer.photo)" class="mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="map-pin" class="h-4 w-4" />{{ __('gallery.edit_location') }}</button>
         </div>
@@ -898,11 +898,11 @@
           </label>
           <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_password') }}
             <input type="password" x-model="share.password" autocomplete="new-password" :placeholder="share.album?.share?.hasPassword ? '{{ __('gallery.share_password_set') }}' : '{{ __('gallery.share_password_hint') }}'"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
           </label>
           <label class="block text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.share_expiry') }}
             <input type="datetime-local" x-model="share.expiresAt"
-                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:ring-gray-500">
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
           </label>
         </div>
 
@@ -931,7 +931,7 @@
                 class="w-full rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
             <button type="submit" :disabled="geoBusy || ! geoQuery.trim()" class="inline-flex shrink-0 items-center rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"><x-icon name="magnifying-glass" class="h-4 w-4" /></button>
           </form>
-          <div x-show="geoResults.length" x-cloak class="absolute z-[1101] mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
+          <div x-show="geoResults.length" x-cloak class="absolute z-[1101] mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-1 shadow-lg">
             <template x-for="(r, i) in geoResults" :key="i">
               <button type="button" @click="pickGeoResult(r)" class="block w-full truncate rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" x-text="r.display"></button>
             </template>
@@ -991,7 +991,7 @@
       <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.assign_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.assign_hint') }}</p>
-        <input type="search" x-model="assignQuery" placeholder="{{ __('gallery.person_name') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+        <input type="search" x-model="assignQuery" placeholder="{{ __('gallery.person_name') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
         <button type="button" x-show="assignQuery.trim().length" x-cloak @click="assignToNew()" class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white">
           <x-icon name="user-plus" class="h-4 w-4" /><span x-text="'{{ __('gallery.assign_new') }}: ' + assignQuery.trim()"></span>
         </button>
@@ -1018,7 +1018,7 @@
       <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.merge_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.merge_hint') }}</p>
-        <input type="search" x-model="mergeQuery" placeholder="{{ __('gallery.person_name') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+        <input type="search" x-model="mergeQuery" placeholder="{{ __('gallery.person_name') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
         <p x-show="! mergeCandidates().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.merge_none') }}</p>
         <div class="mt-3 grid max-h-80 grid-cols-3 gap-3 overflow-y-auto sm:grid-cols-4">
           <template x-for="pp in mergeCandidates()" :key="pp.id">
@@ -1071,7 +1071,7 @@
       <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-4 shadow-xl">
         <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('gallery.link_heading') }}</h3>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('gallery.link_hint') }}</p>
-        <input type="search" x-model="linkQuery" placeholder="{{ __('contacts.search') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+        <input type="search" x-model="linkQuery" placeholder="{{ __('contacts.search') }}" class="mt-3 w-full rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
         <p x-show="! linkSuggestions().length" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.link_none') }}</p>
         <div class="mt-3 max-h-80 divide-y divide-gray-100 dark:divide-gray-800 overflow-y-auto">
           <template x-for="c in linkSuggestions()" :key="c.id">

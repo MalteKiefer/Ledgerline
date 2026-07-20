@@ -81,20 +81,20 @@
     <template x-teleport="body">
         <div x-show="open" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="open = false">
             <div class="absolute inset-0 bg-gray-900/40" @click="open = false"></div>
-            <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+            <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] bg-white p-6 shadow-xl">
 
                 {{-- Set up --}}
                 <template x-if="mode === 'setup'">
                     <div>
                         <h3 class="text-base font-semibold text-gray-900">{{ __('vault.setup_title') }}</h3>
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.setup_hint') }}</p>
-                        <input type="password" x-model="pass" placeholder="{{ __('vault.passphrase') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <input type="password" x-model="pass2" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="password" x-model="pass" placeholder="{{ __('vault.passphrase') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="password" x-model="pass2" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{{ __('vault.warning') }}</p>
                         <div class="mt-5 flex justify-end gap-3">
                             <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
-                            <button type="button" @click="doSetup()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.create') }}</button>
+                            <button type="button" @click="doSetup()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.create') }}</button>
                         </div>
                     </div>
                 </template>
@@ -106,7 +106,7 @@
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.recovery_hint') }}</p>
                         <pre class="mt-3 select-all whitespace-pre-wrap break-all rounded-md bg-gray-100 p-3 font-mono text-sm text-gray-900" x-text="recovery"></pre>
                         <div class="mt-5 flex justify-end">
-                            <button type="button" @click="open = false" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('vault.saved_it') }}</button>
+                            <button type="button" @click="open = false" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium">{{ __('vault.saved_it') }}</button>
                         </div>
                     </div>
                 </template>
@@ -116,12 +116,12 @@
                     <div>
                         <h3 class="text-base font-semibold text-gray-900">{{ __('vault.unlock_title') }}</h3>
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.unlock_hint') }}</p>
-                        <input type="password" x-model="pass" @keydown.enter="doUnlock()" placeholder="{{ __('vault.passphrase') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="password" x-model="pass" @keydown.enter="doUnlock()" placeholder="{{ __('vault.passphrase') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <label class="mt-3 flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" x-model="publicComputer" class="rounded border-gray-300 text-gray-900 focus:ring-0">{{ __('vault.public_computer') }}</label>
                         <div class="mt-4 flex items-center justify-between">
                             <button type="button" @click="mode = 'recover'; error = ''" class="text-sm text-gray-500 hover:text-gray-900">{{ __('vault.forgot') }}</button>
-                            <button type="button" @click="doUnlock()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.unlock') }}</button>
+                            <button type="button" @click="doUnlock()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.unlock') }}</button>
                         </div>
                     </div>
                 </template>
@@ -131,12 +131,12 @@
                     <div>
                         <h3 class="text-base font-semibold text-gray-900">{{ __('vault.change_title') }}</h3>
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.change_hint') }}</p>
-                        <input type="password" x-model="pass" placeholder="{{ __('vault.change_current') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <input type="password" x-model="pass2" @keydown.enter="doChange()" placeholder="{{ __('vault.change_new') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="password" x-model="pass" placeholder="{{ __('vault.change_current') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="password" x-model="pass2" @keydown.enter="doChange()" placeholder="{{ __('vault.change_new') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <div class="mt-5 flex justify-end gap-3">
                             <button type="button" @click="open = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('common.cancel') }}</button>
-                            <button type="button" @click="doChange()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.change') }}</button>
+                            <button type="button" @click="doChange()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.change') }}</button>
                         </div>
                     </div>
                 </template>
@@ -146,11 +146,11 @@
                     <div>
                         <h3 class="text-base font-semibold text-gray-900">{{ __('vault.recover_title') }}</h3>
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.recover_hint') }}</p>
-                        <textarea x-model="code" rows="2" class="mt-4 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500"></textarea>
+                        <textarea x-model="code" rows="2" class="mt-4 block w-full rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <div class="mt-5 flex items-center justify-between">
                             <button type="button" @click="mode = 'unlock'; error = ''" class="text-sm text-gray-500 hover:text-gray-900">{{ __('common.cancel') }}</button>
-                            <button type="button" @click="doRecover()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.restore') }}</button>
+                            <button type="button" @click="doRecover()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.restore') }}</button>
                         </div>
                     </div>
                 </template>
@@ -160,11 +160,11 @@
                     <div>
                         <h3 class="text-base font-semibold text-gray-900">{{ __('vault.setnew_title') }}</h3>
                         <p class="mt-2 text-sm text-gray-600">{{ __('vault.setnew_hint') }}</p>
-                        <input type="password" x-model="pass" placeholder="{{ __('vault.change_new') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
-                        <input type="password" x-model="pass2" @keydown.enter="doSetNew()" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        <input type="password" x-model="pass" placeholder="{{ __('vault.change_new') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <input type="password" x-model="pass2" @keydown.enter="doSetNew()" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
                         <div class="mt-5 flex justify-end">
-                            <button type="button" @click="doSetNew()" :disabled="busy" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">{{ __('vault.change') }}</button>
+                            <button type="button" @click="doSetNew()" :disabled="busy" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('vault.change') }}</button>
                         </div>
                     </div>
                 </template>

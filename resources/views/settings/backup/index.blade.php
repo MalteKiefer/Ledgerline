@@ -46,7 +46,7 @@
                         <span class="ml-2 rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-xs uppercase text-gray-500 dark:text-gray-400">{{ $destination->driver }}</span>
                     </div>
                     <div class="flex shrink-0 items-center gap-2">
-                        <button type="button" @click="editing = (editing === {{ $destination->id }} ? null : {{ $destination->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" /></button>
+                        <button type="button" @click="editing = (editing === {{ $destination->id }} ? null : {{ $destination->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5"><x-icon name="pencil" /></button>
                         <form method="POST" action="{{ route('settings.backup.destinations.destroy', $destination) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
                             <button type="submit" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-red-600 dark:text-red-400 hover:bg-red-50"><x-icon name="trash" /></button>
@@ -104,7 +104,7 @@
                             <span x-show="! queued">{{ __('settings.backup_run_now') }}</span>
                             <span x-show="queued" x-cloak>{{ __('settings.backup_queued_short') }}</span>
                         </button>
-                        <button type="button" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="pencil" /></button>
+                        <button type="button" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5"><x-icon name="pencil" /></button>
                         <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
                             <button type="submit" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-red-600 dark:text-red-400 hover:bg-red-50"><x-icon name="trash" /></button>
@@ -174,7 +174,7 @@
         <template x-teleport="body">
             <div x-show="decrypt.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="decrypt.open = false">
                 <div class="absolute inset-0 bg-gray-900/40" @click="decrypt.open = false"></div>
-                <form method="POST" :action="decryptAction" class="relative w-full max-w-md rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <form method="POST" :action="decryptAction" class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                     @csrf
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_decrypt') }}</h3>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_decrypt_hint') }}</p>
@@ -182,7 +182,7 @@
                         class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <div class="mt-4 flex justify-end gap-2">
                         <button type="button" @click="decrypt.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('common.cancel') }}</button>
-                        <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.backup_decrypt_download') }}</button>
+                        <button type="submit" class="ll-accent rounded-xl px-4 py-2 text-sm font-medium">{{ __('settings.backup_decrypt_download') }}</button>
                     </div>
                 </form>
             </div>
@@ -192,7 +192,7 @@
         <template x-teleport="body">
             <div x-show="restore.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4" @keydown.escape.window="closeRestore()">
                 <div class="absolute inset-0 bg-gray-900/40" @click="closeRestore()"></div>
-                <div class="relative w-full max-w-lg rounded-lg bg-white dark:bg-gray-900 p-6 shadow-xl">
+                <div class="relative w-full max-w-lg rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_restore_heading') }}</h3>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_restore_intro') }}</p>
 
@@ -230,12 +230,12 @@
         <template x-teleport="body">
             <div x-show="menuRunId" x-cloak @click.outside="closeMenu()" @keydown.escape.window="closeMenu()"
                  :style="`position:fixed; top:${menuY}px; left:${menuX}px; transform:translateX(-100%)`"
-                 class="z-50 w-52 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-lg">
+                 class="z-50 w-52 rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-1 shadow-lg">
                 <template x-if="menuRun">
                     <div>
-                        <button x-show="menuRun.verifiable" type="button" @click="openRestore(menuRun); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('settings.backup_restore') }}</button>
-                        <a x-show="menuRun.downloadable" :href="downloadUrl(menuRun.id)" @click="closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.backup_download') }}</a>
-                        <button x-show="menuRun.encrypted" type="button" @click="openDecrypt(menuRun.id); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"><x-icon name="lock-open" class="h-4 w-4" />{{ __('settings.backup_decrypt') }}</button>
+                        <button x-show="menuRun.verifiable" type="button" @click="openRestore(menuRun); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('settings.backup_restore') }}</button>
+                        <a x-show="menuRun.downloadable" :href="downloadUrl(menuRun.id)" @click="closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.backup_download') }}</a>
+                        <button x-show="menuRun.encrypted" type="button" @click="openDecrypt(menuRun.id); closeMenu()" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="lock-open" class="h-4 w-4" />{{ __('settings.backup_decrypt') }}</button>
                     </div>
                 </template>
             </div>
@@ -259,7 +259,7 @@
                 <tbody>
                     <tr class="border-t border-gray-100 dark:border-gray-800">
                         <td class="py-1.5 align-top">
-                            <button type="button" @click="toggle(r.id)" class="rounded p-0.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300">
+                            <button type="button" @click="toggle(r.id)" class="rounded p-0.5 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300">
                                 <x-icon name="chevron-down" class="h-4 w-4 transition-transform" ::class="expanded[r.id] ? 'rotate-180' : ''" />
                             </button>
                         </td>
@@ -280,7 +280,7 @@
                                 <button type="button" @click="cancel(r.id)" title="{{ __('settings.backup_force_stop') }}" :aria-label="'{{ __('settings.backup_force_stop') }}'" class="rounded p-1 text-gray-500 hover:bg-red-50 hover:text-red-600"><x-icon name="stop" class="h-4 w-4" /></button>
                             </span>
                             {{-- Success-run actions live behind a 3-dot menu --}}
-                            <button x-show="r.verifiable || r.downloadable || r.encrypted" type="button" @click.stop="toggleMenu(r, $event)" title="{{ __('common.actions') }}" :aria-label="'{{ __('common.actions') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="ellipsis" class="h-4 w-4" /></button>
+                            <button x-show="r.verifiable || r.downloadable || r.encrypted" type="button" @click.stop="toggleMenu(r, $event)" title="{{ __('common.actions') }}" :aria-label="'{{ __('common.actions') }}'" class="inline-flex rounded p-1 text-gray-500 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="ellipsis" class="h-4 w-4" /></button>
                           </div>
                         </td>
                     </tr>

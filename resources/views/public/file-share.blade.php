@@ -21,7 +21,7 @@
         wrongPassword: @js(__('files.share_err_wrong_password')),
      })" x-cloak>
 
-    <header class="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <header class="border-b border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e]">
       <div class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
         <span class="text-sm font-semibold tracking-tight">Ledgerline</span>
         <span x-show="state === 'ready' && manifest?.name" x-cloak class="truncate text-sm text-gray-500 dark:text-gray-400" x-text="manifest?.name"></span>
@@ -42,12 +42,12 @@
       </template>
 
       <template x-if="state === 'password'">
-        <form @submit.prevent="unlock()" class="mx-auto mt-16 flex max-w-sm flex-col items-center rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center shadow-sm">
+        <form @submit.prevent="unlock()" class="mx-auto mt-16 flex max-w-sm flex-col items-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-8 text-center shadow-sm">
           <div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="lock-closed" class="h-6 w-6 text-gray-400" /></div>
           <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">{{ __('gallery.share_password_prompt') }}</p>
-          <input type="password" x-model="password" autocomplete="current-password" class="mt-4 w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-gray-500 focus:ring-gray-500">
+          <input type="password" x-model="password" autocomplete="current-password" class="mt-4 w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
           <p x-show="error" x-cloak class="mt-2 text-xs text-red-600 dark:text-red-400" x-text="error"></p>
-          <button type="submit" :disabled="unlocking || ! password" class="mt-4 w-full rounded-lg bg-gray-900 dark:bg-gray-100 px-4 py-2.5 text-sm font-medium text-white dark:text-gray-900 disabled:opacity-50">{{ __('gallery.share_unlock') }}</button>
+          <button type="submit" :disabled="unlocking || ! password" class="mt-4 w-full ll-accent rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50">{{ __('gallery.share_unlock') }}</button>
         </form>
       </template>
 
@@ -67,12 +67,12 @@
         <template x-if="! allFiles.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('files.share_empty') }}</p></template>
         <template x-if="allFiles.length && ! subfolders.length && ! filesHere.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.album_empty') }}</p></template>
 
-        <ul x-show="subfolders.length || filesHere.length" class="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <ul x-show="subfolders.length || filesHere.length" class="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e]">
           {{-- Subfolders first --}}
           <template x-for="name in subfolders" :key="'d:' + name">
             <li>
-              <button type="button" @click="enterFolder(name)" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800"><x-icon name="folder" class="h-5 w-5 text-gray-400" /></span>
+              <button type="button" @click="enterFolder(name)" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-accent/5">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style="background:#3b9fd6"><x-icon name="folder" class="h-5 w-5" /></span>
                 <span class="min-w-0 flex-1">
                   <span class="block truncate text-sm font-medium text-gray-900 dark:text-gray-100" x-text="name"></span>
                   <span class="block text-xs text-gray-400" x-text="folderFileCount(name) + ' {{ __('files.share_items') }}'"></span>
@@ -83,7 +83,7 @@
           </template>
           {{-- Files in this folder --}}
           <template x-for="f in filesHere" :key="f.ref">
-            <li class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <li class="flex items-center gap-3 px-4 py-3 hover:bg-accent/5">
               <button type="button" @click="open(f)" class="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800" x-init="isImage(f) && $nextTick(() => thumbFor(f))">
                   <img x-show="isImage(f) && thumbs[f.ref]" :src="thumbs[f.ref]" class="h-full w-full object-cover">

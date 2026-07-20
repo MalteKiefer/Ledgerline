@@ -1,17 +1,17 @@
-                <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
-                    <button type="button" @click="view = 'all'; activeTag = ''" class="block w-full rounded px-3 py-1.5 text-left" :class="view === 'all' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">{{ __('bookmarks.all') }}</button>
-                    <button type="button" @click="view = 'favorites'; activeTag = ''" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left" :class="view === 'favorites' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"><x-icon name="heart" class="h-4 w-4" />{{ __('bookmarks.favorites') }}</button>
-                    <button type="button" @click="view = 'readlater'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'readlater' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">
-                        <span class="flex items-center gap-2"><x-icon name="clock" class="h-4 w-4" />{{ __('bookmarks.read_later') }}</span>
+                <div class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-2 text-sm shadow-sm">
+                    <button type="button" @click="view = 'all'; activeTag = ''" class="block w-full rounded px-3 py-1.5 text-left" :class="view === 'all' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5'">{{ __('bookmarks.all') }}</button>
+                    <button type="button" @click="view = 'favorites'; activeTag = ''" class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left" :class="view === 'favorites' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5'"><span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#d16ba5"><x-icon name="heart" class="h-4 w-4" /></span>{{ __('bookmarks.favorites') }}</button>
+                    <button type="button" @click="view = 'readlater'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'readlater' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5'">
+                        <span class="flex items-center gap-2"><span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#9e70fa"><x-icon name="clock" class="h-4 w-4" /></span>{{ __('bookmarks.read_later') }}</span>
                         <span x-show="readLaterCount" class="text-xs text-gray-400 dark:text-gray-500" x-text="readLaterCount"></span>
                     </button>
-                    <button type="button" @click="view = 'trash'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'trash' ? 'bg-gray-100 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'">
-                        <span class="flex items-center gap-2"><x-icon name="trash" class="h-4 w-4" />{{ __('bookmarks.trash') }}</span>
+                    <button type="button" @click="view = 'trash'; activeTag = ''" class="flex w-full items-center justify-between rounded px-3 py-1.5 text-left" :class="view === 'trash' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5'">
+                        <span class="flex items-center gap-2"><span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#6b7280"><x-icon name="trash" class="h-4 w-4" /></span>{{ __('bookmarks.trash') }}</span>
                         <span x-show="trashCount" class="text-xs text-gray-400 dark:text-gray-500" x-text="trashCount"></span>
                     </button>
                 </div>
 
-                <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
+                <div class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-2 text-sm shadow-sm">
                     <div class="flex items-center justify-between px-3 py-1">
                         <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('bookmarks.folders') }}</p>
                         <button type="button" @click="openFolderCreate(null)" title="{{ __('bookmarks.new_folder') }}" class="rounded p-0.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
@@ -21,7 +21,7 @@
                         @drop.prevent="$event.currentTarget.classList.remove('ring-1','ring-gray-400'); onFolderDrop(null)"
                         class="mx-1 rounded px-2 py-1 text-xs text-gray-400 dark:text-gray-500">{{ __('bookmarks.no_folder') }}</div>
                     <template x-for="f in folderTree" :key="f.id">
-                        <div class="group flex items-center justify-between rounded" :class="view === f.id ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800'"
+                        <div class="group flex items-center justify-between rounded" :class="view === f.id ? 'bg-accent/10' : 'hover:bg-accent/5'"
                             :style="'padding-left:' + (f.depth * 12) + 'px'"
                             draggable="true" @dragstart.stop="dragItem = { type: 'folder', id: f.id }" @dragend="dragItem = null"
                             @dragover.prevent="if (dragItem && dragItem.id !== f.id) $event.currentTarget.classList.add('ring-1','ring-gray-400')"
@@ -40,11 +40,11 @@
                     </template>
                 </div>
 
-                <div x-show="allTags.length" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm shadow-sm">
+                <div x-show="allTags.length" class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-2 text-sm shadow-sm">
                     <p class="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('bookmarks.tags') }}</p>
                     <div class="flex flex-wrap gap-1 px-2 py-1">
                         <template x-for="t in allTags" :key="t">
-                            <button type="button" @click="activeTag = (activeTag === t ? '' : t)" class="rounded px-2 py-0.5 text-xs" :class="activeTag === t ? 'bg-gray-800 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'" x-text="t"></button>
+                            <button type="button" @click="activeTag = (activeTag === t ? '' : t)" class="rounded px-2 py-0.5 text-xs" :class="activeTag === t ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-accent/5'" x-text="t"></button>
                         </template>
                     </div>
                 </div>

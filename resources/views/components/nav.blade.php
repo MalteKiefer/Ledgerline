@@ -21,8 +21,8 @@
                     <a href="{{ $item['url'] }}"
                         @class([
                             'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium',
-                            'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' => $item['active'],
-                            'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white' => ! $item['active'],
+                            'bg-accent/10 text-accent' => $item['active'],
+                            'text-gray-600 dark:text-gray-400 hover:bg-accent/5 hover:text-accent' => ! $item['active'],
                         ])>
                         <x-icon :name="$item['icon']" class="h-4 w-4" />
                         {{ $item['label'] }}
@@ -32,20 +32,20 @@
                     <button type="button" @click="open = ! open"
                         @class([
                             'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium',
-                            'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' => $moreActive,
-                            'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white' => ! $moreActive,
+                            'bg-accent/10 text-accent' => $moreActive,
+                            'text-gray-600 dark:text-gray-400 hover:bg-accent/5 hover:text-accent' => ! $moreActive,
                         ])>
                         <x-icon name="ellipsis" class="h-4 w-4" />
                         {{ __('messages.nav.more') }}
                         <x-icon name="chevron-down" class="h-3.5 w-3.5 transition" x-bind:class="open && 'rotate-180'" />
                     </button>
-                    <div x-show="open" x-cloak x-transition class="absolute left-0 z-40 mt-2 w-52 overflow-hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
+                    <div x-show="open" x-cloak x-transition class="absolute left-0 z-40 mt-2 w-52 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
                         @foreach ($more as $item)
                             <a href="{{ $item['url'] }}" @click="open = false"
                                 @class([
                                     'flex items-center gap-2 px-3 py-2 text-sm font-medium',
-                                    'bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100' => $item['active'],
-                                    'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800' => ! $item['active'],
+                                    'bg-accent/10 text-accent' => $item['active'],
+                                    'text-gray-700 dark:text-gray-300 hover:bg-accent/5' => ! $item['active'],
                                 ])>
                                 <x-icon :name="$item['icon']" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
                                 {{ $item['label'] }}
@@ -60,7 +60,7 @@
     @auth
         <div class="flex items-center gap-3">
             <div class="relative" x-data="notificationBell({ now: @js(__('common.now')) })" @click.outside="open = false">
-                <button type="button" @click="toggle()" class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800" :aria-label="'{{ __('notifications.title') }}'" title="{{ __('notifications.title') }}">
+                <button type="button" @click="toggle()" class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 dark:text-gray-400 hover:bg-accent/5" :aria-label="'{{ __('notifications.title') }}'" title="{{ __('notifications.title') }}">
                     <x-icon name="bell" class="h-5 w-5" />
                     <span x-show="unread > 0" x-cloak x-text="unread > 99 ? '99+' : unread"
                         class="absolute right-1 top-1 min-w-[1.1rem] rounded-full bg-red-500 px-1 text-center text-[10px] font-semibold leading-4 text-white"></span>
