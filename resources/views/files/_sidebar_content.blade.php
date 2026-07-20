@@ -70,7 +70,7 @@
                       :class="f.role === 'manage' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : (f.role === 'edit' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')"
                       x-text="f.role === 'manage' ? '{{ __('files.folder_role_manage') }}' : (f.role === 'edit' ? '{{ __('files.folder_role_edit') }}' : '{{ __('files.folder_role_read') }}')"></span>
                 {{-- Share / members buttons (manage only, desktop hover) --}}
-                <span x-show="f.role === 'manage' && activeShared === f.vaultId" class="flex items-center gap-1 md:hidden md:group-hover:flex" @click.stop>
+                <span x-show="f.role === 'manage'" class="flex items-center gap-1 md:hidden md:group-hover:flex" @click.stop>
                     <button type="button" @click.stop="openShareFolderDialog(f.vaultId)" :title="'{{ __('files.folder_share') }}'" class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="user-plus" class="h-3.5 w-3.5" /></button>
                     <button type="button" @click.stop="openManageFolderMembers(f.vaultId)" :title="'{{ __('files.folder_members') }}'" class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="users" class="h-3.5 w-3.5" /></button>
                 </span>

@@ -35,7 +35,7 @@
                         <p x-show="shareFolderDialog.fingerprintStatus === 'verified'" class="mt-1 flex items-center gap-1 text-green-600 dark:text-green-400"><x-icon name="check-circle" class="h-3.5 w-3.5" /><span>{{ __('files.folder_fingerprint_verified') }}</span></p>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('files.folder_recipient') }}</label>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('files.folder_role_label') }}</label>
                         <select x-model="shareFolderDialog.role" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
                             <option value="read">{{ __('files.folder_role_read') }}</option>
                             <option value="edit">{{ __('files.folder_role_edit') }}</option>
@@ -100,10 +100,22 @@
                                         <p class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate" x-text="m.email || m.name || ('#' + m.user_id)"></p>
                                         <p class="text-xs text-gray-400 font-mono truncate" x-text="m.recipient_fingerprint ? m.recipient_fingerprint.slice(0,16) + '…' : '—'"></p>
                                     </div>
-                                    {{-- Role badge with inline change select for managers --}}
-                                    <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                          :class="m.role === 'manager' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : (m.role === 'editor' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')"
-                                          x-text="m.role === 'manager' ? '{{ __('files.folder_role_manager') }}' : (m.role === 'editor' ? '{{ __('files.folder_role_editor') }}' : '{{ __('files.folder_role_viewer') }}')"></span>
+                                    {{-- Role: select for active non-manager members when current user has manage access; badge otherwise --}}
+                                    <template x-if="_canManageActive() && m.role !== 'manager' && m.status === 'active'">
+                                        <select
+                                            :value="_serverToClientRole(m.role)"
+                                            @change="changeFolderMemberRole(m.id, $event.target.value)"
+                                            class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-xs py-0.5 px-1 focus:border-accent focus:ring-accent">
+                                            <option value="read">{{ __('files.folder_role_read') }}</option>
+                                            <option value="edit">{{ __('files.folder_role_edit') }}</option>
+                                            <option value="manage">{{ __('files.folder_role_manage') }}</option>
+                                        </select>
+                                    </template>
+                                    <template x-if="! (_canManageActive() && m.role !== 'manager' && m.status === 'active')">
+                                        <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                              :class="m.role === 'manager' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : (m.role === 'editor' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')"
+                                              x-text="m.role === 'manager' ? '{{ __('files.folder_role_manager') }}' : (m.role === 'editor' ? '{{ __('files.folder_role_editor') }}' : '{{ __('files.folder_role_viewer') }}')"></span>
+                                    </template>
                                     <span class="shrink-0 text-[10px]"
                                           :class="m.status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-amber-500'"
                                           x-text="m.status === 'active' ? '{{ __('files.folder_member_status_active') }}' : '{{ __('files.folder_member_status_pending') }}'"></span>

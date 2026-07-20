@@ -137,6 +137,7 @@ return [
     'shared_folder_new' => 'New shared folder',
     'folder_share' => 'Invite member',
     'folder_recipient' => 'Email or OIDC subject',
+    'folder_role_label' => 'Role',
     'folder_role_read' => 'Read',
     'folder_role_edit' => 'Edit',
     'folder_role_manage' => 'Manage',

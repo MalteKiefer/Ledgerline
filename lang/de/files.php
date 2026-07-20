@@ -137,6 +137,7 @@ return [
     'shared_folder_new' => 'Neuer geteilter Ordner',
     'folder_share' => 'Mitglied einladen',
     'folder_recipient' => 'E-Mail oder OIDC-Subject',
+    'folder_role_label' => 'Rolle',
     'folder_role_read' => 'Lesen',
     'folder_role_edit' => 'Bearbeiten',
     'folder_role_manage' => 'Verwalten',
