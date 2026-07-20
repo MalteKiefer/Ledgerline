@@ -36,6 +36,12 @@ class SharedVault extends Model
             if ($vault->owner_id === null && Auth::check()) {
                 $vault->owner_id = Auth::id();
             }
+
+            // kind is server-assigned only (never from request input); default to
+            // a password vault so the existing sharing path is unchanged.
+            if (empty($vault->kind)) {
+                $vault->kind = 'password';
+            }
         });
     }
 

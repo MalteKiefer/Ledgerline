@@ -53,8 +53,18 @@ class SharedVaultController extends Controller
             'wrapped_vault_key' => ['required', 'string'],
         ]);
 
-        $vault = DB::transaction(function () use ($data, $request): SharedVault {
-            $vault = SharedVault::create([]);
+        // Validate kind explicitly so the controller always returns JSON for
+        // this endpoint (ValidationException on web routes redirects; abort
+        // emits the exact status code regardless of Accept header).
+        $kind = $request->input('kind', 'password');
+        if (! in_array($kind, ['password', 'folder'], true)) {
+            abort(422, 'The selected kind is invalid.');
+        }
+
+        $vault = DB::transaction(function () use ($data, $request, $kind): SharedVault {
+            $vault = new SharedVault;
+            $vault->kind = $kind; // server-assigned; not mass-assignable
+            $vault->save();
 
             SharedVaultStore::create([
                 'vault_id' => $vault->id,
@@ -84,17 +94,22 @@ class SharedVaultController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
+        $kind = $request->query('kind');
+
         $memberships = $request->user()
             ->vaultMemberships()
             ->with('vault')
             ->get()
+            ->when($kind !== null, fn ($c) => $c->filter(fn (SharedVaultMember $m) => $m->vault?->kind === $kind))
             ->map(fn (SharedVaultMember $m) => [
                 'id' => $m->id,
                 'vault_id' => $m->vault_id,
+                'kind' => $m->vault?->kind ?? 'password',
                 'role' => $m->role instanceof VaultRole ? $m->role->value : $m->role,
                 'status' => $m->status,
                 'wrapped_vault_key' => $m->wrapped_vault_key,
-            ]);
+            ])
+            ->values();
 
         return response()->json($memberships);
     }
