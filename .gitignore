@@ -46,3 +46,6 @@ docs/superpowers/
 /db-snapshots/
 /deploy-provenance.log
 /public/tesseract
+
+# Subagent git worktrees (transient)
+.claude/worktrees/
