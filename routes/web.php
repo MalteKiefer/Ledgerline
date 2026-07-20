@@ -251,6 +251,8 @@ Route::middleware('auth')->group(function (): void {
     // Public 2fa.directory dataset (server-cached; leaks nothing about the vault):
     // domains that support app 2FA, so the client can hint where to add a code.
     Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
+    // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
+    Route::view('/health', 'health.index')->name('health.index');
     // Invoices: zero-knowledge, records in the opaque /store manifest. The company
     // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
     Route::view('/invoices', 'invoices.index')->name('invoices.index');

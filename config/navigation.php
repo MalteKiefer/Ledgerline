@@ -24,5 +24,6 @@ return [
         ['label' => 'messages.nav.passwords', 'route' => 'passwords.index', 'pattern' => 'passwords.*', 'icon' => 'key'],
         ['label' => 'messages.nav.contacts', 'route' => 'contacts.index', 'pattern' => 'contacts.*', 'icon' => 'users'],
         ['label' => 'messages.nav.invoices', 'route' => 'invoices.index', 'pattern' => 'invoices.*', 'icon' => 'document-text'],
+        ['label' => 'messages.nav.health', 'route' => 'health.index', 'pattern' => 'health.*', 'icon' => 'heart'],
     ],
 ];
