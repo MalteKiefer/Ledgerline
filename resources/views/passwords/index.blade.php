@@ -155,8 +155,10 @@
                       :class="filterFolder === sv.id && view === 'list' ? 'text-accent' : 'text-gray-600 dark:text-gray-400'"
                     >
                       <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#59ad6b"><x-icon name="users" class="h-4 w-4" /></span>
-                      <span class="flex-1 truncate" x-text="sv.name"></span>
-                      <span class="shrink-0 text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate" x-text="sv.name"></span>
+                        <span class="block text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
+                      </span>
                     </button>
                     <button type="button" x-show="sv.role === 'manage'" @click="openShareDialog(sv.id)" title="{{ __('passwords.share_vault') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="user-plus" class="h-3 w-3" /></button>
                     <button type="button" x-show="sv.role === 'manage'" @click="openManageMembers(sv.id)" title="{{ __('passwords.manage_members') }}" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="users" class="h-3 w-3" /></button>
