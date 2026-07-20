@@ -60,6 +60,7 @@ Detail-Historie in `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerlin
 - `Alpine.store('nav')` {navOpen, sidebarOpen, toggleNav, toggleSidebar, closeAll}. `<body>` trägt `x-data`.
 - Hover-Row-Actions touch-fest: `flex md:hidden md:group-hover:flex`.
 - **Passwortmanager-Layout (Web):** EINE zusammenhängende Fläche (`rounded-2xl`, innere Trennlinien), 3 Zonen: links Tresore+Tags(+Health/Trash), Mitte Liste (Suche + Typ-Filter daneben), rechts Inline-Detail. NICHT drei schwebende Karten. Feld-Detail im 1Password-Stil: umrahmter Feld-Container, Labels in Akzentblau. Versions-Historie = aufklappbares Akkordeon unter den Feldern (JSON-Diff pro Revision, Secrets als „(changed)" maskiert), KEIN Modal. **Die Extension** nutzt hingegen ein 1Password-artiges Master-Detail-Popup — bewusst anders als die App.
+- **Extension-Popup-Palette (v1.504.15):** orientiert am iOS-App-Design-System (`ledgerline-ios/App/DesignSystem/Theme.swift`). Akzent Indigo→Violett-Gradient (`#7066f5`→`#9e70fa`, 135°) für Primär-Buttons/Fill/aktive Chips/Icon-Tiles/Wortmarke; `secondarySystemBackground`-artige Fills (light `#f2f2f7` / dark `#1c1c1e`); Card-Radius 16, Field/Chip-Radius 12; Hairline-Border; segmentierter Umschalter mit erhöhtem Thumb; fainter Twin-Glow-Hintergrund (`body::before`). Rein CSS im `extension/src/popup.html`-`<style>` (CSS-Variablen, light+dark), keine Klassennamen/Logik geändert.
 
 ## Alpine-Gotchas
 - `<template x-if>` braucht genau 1 Root-Element. Objekt-`:style` statt String-`:style`.
