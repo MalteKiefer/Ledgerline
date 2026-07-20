@@ -130,7 +130,6 @@ async function renderMain() {
         <button id="sw-pw" class="on">Passwords</button>
         <button id="sw-bm">Bookmarks</button>
     </div>`));
-    document.getElementById('sw-pw').classList.toggle('on', true);
     document.getElementById('sw-pw').onclick = () => { mainView = 'passwords'; renderMain(); };
     document.getElementById('sw-bm').onclick = () => { mainView = 'bookmarks'; renderMain(); };
     app.append(el(`<div class="cols">
@@ -607,7 +606,9 @@ async function renderBookmarks() {
             <p class="err" id="bm-det-err"></p>
         </div>`));
         const openBtn = detailEl.querySelector('#bm-open');
-        if (openBtn) openBtn.onclick = () => chrome.tabs.create({ url: bm.url });
+        // Re-check the scheme at click time so the guard is self-contained (never
+        // opens javascript:/data: even if the render branch is later refactored).
+        if (openBtn) openBtn.onclick = () => { if (/^https?:\/\//i.test(bm.url)) chrome.tabs.create({ url: bm.url }); };
         detailEl.querySelector('#bm-del').onclick = async () => {
             if (!confirm('Move this bookmark to trash?')) return;
             const btn = detailEl.querySelector('#bm-del');
