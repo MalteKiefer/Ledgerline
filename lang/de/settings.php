@@ -7,6 +7,7 @@ return [
     'index_title' => 'Einstellungen',
     'personal_heading' => 'Meine Einstellungen',
     'personal_subheading' => 'Einstellungen, die nur für dein Konto gelten.',
+    'passwords_reset_desc' => 'Alle Passwörter, Passkeys und persönlichen Tresore löschen und neu beginnen (öffnet im Passwortmanager).',
     'admin_heading' => 'Administration',
     'admin_note' => 'Diese Einstellungen gelten für den gesamten Workspace und betreffen alle Nutzer.',
     'files_limits_heading' => 'Globale Datei-Limits',

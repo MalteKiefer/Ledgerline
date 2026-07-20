@@ -84,12 +84,13 @@ export default (config = {}, labels = {}) => ({
         this._tickTotp();
         this._autoSelect();
         // Keep the first matching entry selected as the state/filters change.
-        this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); this._loadSharedVaults(); } });
+        this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); this._loadSharedVaults(); this._maybeOpenReset(); } });
         // Trusted-device auto-unlock: _initZk() may already have set state to
         // 'ready' BEFORE the watcher above was registered, so the watch never
         // fires and shared vaults would never load (shown right after create via
         // the optimistic push, but gone on a hard refresh). Load them directly.
         if (this.state === 'ready') this._loadSharedVaults();
+        this._maybeOpenReset();
         for (const p of ['query', 'filterType', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
         this.$watch('filterFolder', () => { this.selectedIds = []; this._autoSelect(); });
         this.$watch('view', () => this.clearSelection());
@@ -339,6 +340,15 @@ export default (config = {}, labels = {}) => ({
     // to a single fresh default vault. Client-side crypto-shred — the server only
     // ever sees the re-sealed manifest. Shared vaults (separate remote stores) are
     // deliberately untouched.
+    // Deep-link from Personal Settings (/passwords?reset=1) opens the reset modal
+    // once the vault is ready. The reset itself stays here (client-side crypto).
+    _maybeOpenReset() {
+        if (this._resetAutoDone) return;
+        if (new URLSearchParams(window.location.search).get('reset') !== '1') return;
+        if (this.state !== 'ready') return;
+        this._resetAutoDone = true;
+        this.openReset();
+    },
     openReset() { this.resetConfirmText = ''; this.resetOpen = true; },
     _closeReset() { this.resetOpen = false; this.resetConfirmText = ''; },
     async resetVault() {
