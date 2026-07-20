@@ -22,7 +22,9 @@ describe('content crypto with explicit vault key', () => {
     const other = freshVk();
     const { blob, encFileKey } = Vault.encryptContentWith(new Uint8Array([1, 2, 3]), { name: 'x', mime: 'text/plain' }, vk);
     const buf = new Uint8Array(await blob.arrayBuffer());
-    expect(() => Vault.decryptFileWith(buf, encFileKey, other)).toThrow();
+    // libsodium's secretbox open throws its own auth-failure message before our
+    // own `out === false` guard, so pin that (AEAD key-wrap rejection).
+    expect(() => Vault.decryptFileWith(buf, encFileKey, other)).toThrow(/wrong secret key/);
   });
 
   it('personal delegate equals the *With path for the same key', async () => {
