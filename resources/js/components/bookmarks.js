@@ -157,7 +157,7 @@ export default (labels = {}) => ({
 
     get filtered() {
         const q = this.query.trim().toLowerCase();
-        let list = this.bookmarks.filter((b) => this.view === 'trash' ? b.trashed : ! b.trashed);
+        let list = this.bookmarks.filter((b) => this.view === 'trash' ? this._isTrashed(b) : ! this._isTrashed(b));
         if (this.view === 'favorites') list = list.filter((b) => b.favorite);
         else if (this.view === 'readlater') list = list.filter((b) => b.readLater && ! b.read);
         else if (this.view !== 'all' && this.view !== 'trash') list = list.filter((b) => b.folderId === this.view);
@@ -211,8 +211,8 @@ export default (labels = {}) => ({
     toggleReadLater(b) { b.readLater = ! b.readLater; if (! b.readLater) b.read = false; this._save(); },
     markRead(b) { b.read = true; this._save(); },
     toggleFavorite(b) { b.favorite = ! b.favorite; this._save(); },
-    trash(b) { b.trashed = true; this._save(); },
-    restore(b) { b.trashed = false; this._save(); },
+    trash(b) { this._trash(b); },
+    restore(b) { this._restore(b); },
     async remove(b) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
         const i = this.bookmarks.findIndex((x) => x.id === b.id);

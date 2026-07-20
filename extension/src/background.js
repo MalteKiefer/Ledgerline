@@ -4,6 +4,8 @@
 import * as api from './api.js';
 import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentitySecret, unwrapVaultKey } from './crypto.js';
 import * as pk from './passkey.js';
+import { hostOf, hostsMatch } from './hosts.js';
+import { IDENTITY_FIELDS } from './identity.js';
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -92,20 +94,6 @@ async function loadSharedVaults(serverUrl, token, vkBytes) {
     return true;
 }
 
-// Hostname of a login's first URL.
-function hostOf(url) {
-    try { return new URL(/^https?:\/\//.test(url) ? url : 'https://' + url).hostname.replace(/^www\./, ''); } catch (e) { return ''; }
-}
-// A stored host matches the page only if it IS the page host or a parent of it
-// on a dot boundary (a credential for example.com fills on accounts.example.com,
-// never the reverse — that would let a child-domain credential surface on the
-// parent origin). No shared-suffix fuzzing beyond this.
-function hostsMatch(page, stored) {
-    if (! page || ! stored) return false;
-    page = page.replace(/^www\./, ''); stored = stored.replace(/^www\./, '');
-    return page === stored || page.endsWith('.' + stored);
-}
-
 function itemView(s) {
     // Expose embedded passkeys without private key material — only metadata
     // the popup needs to display and remove entries (rpId, userName, credentialId).
@@ -128,16 +116,7 @@ function itemView(s) {
         expiry: s.fields?.expiry || '',
         cvv: s.fields?.cvv || '',
         // Identity fields (type === 'identity').
-        firstName: s.fields?.firstName || '',
-        lastName: s.fields?.lastName || '',
-        email: s.fields?.email || '',
-        phone: s.fields?.phone || '',
-        company: s.fields?.company || '',
-        street: s.fields?.street || '',
-        city: s.fields?.city || '',
-        state: s.fields?.state || '',
-        zip: s.fields?.zip || '',
-        country: s.fields?.country || '',
+        ...Object.fromEntries(IDENTITY_FIELDS.map((k) => [k, s.fields?.[k] || ''])),
         tags: s.tags || [],
         folder: s.folder || null,
         shared: ! ! s.shared,

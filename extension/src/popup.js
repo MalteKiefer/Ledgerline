@@ -1,12 +1,14 @@
 import jsQR from 'jsqr';
 import { generate, GEN_LANGS } from './generator.js';
+import { esc } from './esc.js';
+import { hostOf, matchScore } from './hosts.js';
+import { IDENTITY_LABELS } from './identity.js';
 
 const app = document.getElementById('app');
 const links = document.getElementById('links');
 const send = (msg) => new Promise((r) => chrome.runtime.sendMessage(msg, r));
 
 function el(html) { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
-function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 // Monochrome icons (heroicons outline), rendered as inline SVG so the popup
 // needs no external assets and inherits currentColor.
@@ -36,7 +38,6 @@ async function activeTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     return tab;
 }
-function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
 
 const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server', passkey: 'Passkey', identity: 'Identity', secure_note: 'Secure note' };
 let totpTimer = null;
@@ -217,7 +218,7 @@ async function renderMain() {
             if (it.expiry) rows.push(plain('Expiry', it.expiry));
             if (it.cvv) rows.push(secret('CVV', it.cvv));
         } else if (it.type === 'identity') {
-            for (const [k, label] of [['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email'], ['phone', 'Phone'], ['company', 'Company'], ['street', 'Street'], ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country']]) {
+            for (const [k, label] of IDENTITY_LABELS) {
                 if (it[k]) rows.push(plain(label, it[k]));
             }
         } else {
@@ -440,8 +441,6 @@ async function renderMain() {
     else detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>';
     paint('');
 }
-
-function matchScore(lg, h) { return lg.type === 'login' && (lg.urls || []).some((u) => hostOf(/^https?:\/\//.test(u) ? u : 'https://' + u) === h || h.endsWith('.' + hostOf('https://' + u))) ? 1 : 0; }
 
 // --- Create a new login ---
 function renderNew(prefill = {}) {

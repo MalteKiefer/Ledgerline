@@ -1,5 +1,6 @@
 // fileShare component. Extracted from app.js.
 import { jsonHeaders } from '../shared/api';
+import { formatBytes } from '../shared/file-categories';
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | password | ready | error | expired | notfound
@@ -102,5 +103,5 @@ export default (config = {}, labels = {}) => ({
             setTimeout(() => URL.revokeObjectURL(url), 5000);
         } catch (e) { /* ignore */ }
     },
-    fmtSize(n) { n = n || 0; const u = ['B', 'KB', 'MB', 'GB']; let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return (i ? n.toFixed(1) : n) + ' ' + u[i]; },
+    fmtSize: formatBytes,
 });

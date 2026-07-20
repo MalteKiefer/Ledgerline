@@ -8,6 +8,10 @@ import { estimateStrength } from '../shared/strength';
 import { buildBitwardenJson, buildCsv, encryptExport } from '../shared/vault-export';
 import { saveBlobAs } from '../shared/dom';
 
+// Base set of secret field keys. versionDiff extends this with the extra
+// opaque-array fields so adding a new base secret can't silently leak in diffs.
+export const SECRET_FIELDS = ['password', 'totp', 'cvv', 'pin', 'licensekey', 'privateKey'];
+
 /**
  * Canonical type registry — single source of truth for type keys and their
  * field definitions. Exported for use in tests and derived computations.
@@ -70,7 +74,7 @@ export default (config = {}, labels = {}) => ({
 
     // Field metadata per type: [key, inputType]. Labels come from labels.fields.
     types: TYPES,
-    secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey', 'privateKey'],
+    secretFields: [...SECRET_FIELDS],
     securityOptions: ['nopass', 'WEP', 'WPA', 'WPA2', 'WPA3', 'WPA2-Enterprise', 'WPA3-Enterprise'],
 
     async init() {
@@ -929,7 +933,7 @@ export default (config = {}, labels = {}) => ({
         const older = list[i]; if (! older) return {};
         const newer = i === 0 ? this.current : list[i - 1];
         const of = older.fields || {}; const nf = (newer && newer.fields) || {};
-        const secret = ['password', 'totp', 'cvv', 'pin', 'licensekey', 'passkeys', 'privateKey', 'publicKey'];
+        const secret = [...SECRET_FIELDS, 'passkeys', 'publicKey'];
         const diff = {};
         if ((older.title || '') !== ((newer && newer.title) || '')) diff.title = { from: older.title || '', to: (newer && newer.title) || '' };
         for (const k of new Set([...Object.keys(of), ...Object.keys(nf)])) {

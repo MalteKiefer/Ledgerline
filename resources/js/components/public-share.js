@@ -1,5 +1,6 @@
 // publicShare component. Extracted from app.js.
 import { jsonHeaders } from '../shared/api';
+import { formatDate } from '../shared/dom';
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | password | ready | error | expired | notfound
@@ -90,5 +91,5 @@ export default (config = {}, labels = {}) => ({
             setTimeout(() => URL.revokeObjectURL(url), 5000);
         } catch (e) { /* ignore */ }
     },
-    fmtDate(v) { if (! v) return ''; try { return new Date(v).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }); } catch (e) { return ''; } },
+    fmtDate(v) { return formatDate(v, { year: 'numeric', month: 'long', day: 'numeric' }); },
 });

@@ -5,6 +5,7 @@ import { padBlob } from '../shared/padme';
 import { formatBytes } from '../shared/file-categories';
 import { loadLeaflet } from '../shared/lazy-loaders';
 import { bootStore, bootGalleryStore } from '../shared/zk-module';
+import { formatDate } from '../shared/dom';
 import { contactNameParts, contactDisplayName, contactsSortPref } from '../shared/contact-utils';
 
 export default (config = {}, labels = {}) => {
@@ -2313,11 +2314,7 @@ return {
     },
 
     fmtBytes: formatBytes,
-    fmtDate(iso) {
-        if (! iso) return '';
-        const d = new Date(iso);
-        return isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    },
+    fmtDate: formatDate,
     placeText(place) {
         if (! place) return '';
         if (typeof place === 'string') return place;
