@@ -3,7 +3,7 @@ import { zkModule } from '../shared/zk-module';
 import { PW_WORDS } from '../shared/wordlists';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from '../passwords-util';
 import { Vault, VaultShareCrypto } from '../vault';
-import { apiRequest, jsonHeaders } from '../shared/api';
+import { apiRequest, jsonHeaders, getJson, postForm } from '../shared/api';
 import { estimateStrength } from '../shared/strength';
 import { buildBitwardenJson, buildCsv, encryptExport } from '../shared/vault-export';
 import { saveBlobAs } from '../shared/dom';
@@ -665,9 +665,7 @@ export default (config = {}, labels = {}) => ({
     async _loadTfa() {
         if (! config.tfaUrl) return;
         try {
-            const res = await fetch(config.tfaUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) return;
-            const data = await res.json();
+            const data = await getJson(config.tfaUrl);
             this._tfaMap = data.entries || {};
             this.tfaReady = true;
         } catch (e) { /* offline or blocked — hint stays hidden */ }
@@ -1380,8 +1378,7 @@ export default (config = {}, labels = {}) => ({
     async deleteSharedVault(vaultId) {
         if (! await this.$store.confirm.ask(labels.deleteVaultConfirm || '')) return;
         try {
-            const res = await fetch('/vaults/' + vaultId, { method: 'DELETE', headers: jsonHeaders() });
-            if (! res.ok) { window.llToast(labels.saveFailed || ''); return; }
+            await postForm('/vaults/' + vaultId, null, 'DELETE');
             // Remove from local state.
             this.sharedVaults = this.sharedVaults.filter((sv) => sv.id !== vaultId);
             delete this.sharedItems[vaultId];

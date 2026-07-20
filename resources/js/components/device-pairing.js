@@ -1,4 +1,4 @@
-import { jsonHeaders } from '../shared/api';
+import { jsonHeaders, getJson, postForm } from '../shared/api';
 
 // QR device pairing (profile page). Starts a pairing, shows the QR, polls its
 // state, and lets the owner approve/reject the device that scanned it. The app
@@ -12,22 +12,22 @@ export default (opts = {}) => ({
     init() { this.loadDevices(); },
     async loadDevices() {
         try {
-            const r = await fetch('/devices', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (r.ok) this.devices = (await r.json()).devices || [];
+            const data = await getJson('/devices');
+            this.devices = data.devices || [];
         } catch (e) { /* keep current list */ }
     },
     async revokeDevice(id) {
         try {
-            const r = await fetch(`/devices/${id}`, { method: 'DELETE', headers: jsonHeaders() });
-            if (r.ok) this.loadDevices();
+            await postForm(`/devices/${id}`, null, 'DELETE');
+            this.loadDevices();
         } catch (e) { /* ignore */ }
     },
     // Remote kill switch: flag a client to erase its local state on next contact.
     async wipeDevice(id) {
         if (! await this.$store.confirm.ask(opts.wipeConfirm || 'Wipe this client on its next connection?')) return;
         try {
-            const r = await fetch(`/devices/${id}/wipe`, { method: 'POST', headers: jsonHeaders() });
-            if (r.ok) this.loadDevices();
+            await postForm(`/devices/${id}/wipe`, null, 'POST');
+            this.loadDevices();
         } catch (e) { /* ignore */ }
     },
     async start(kind) {
@@ -59,12 +59,9 @@ export default (opts = {}) => ({
             // token (status becomes 'consumed'), so the device list refreshes live.
             if (! this.active || ['consumed', 'rejected', 'expired'].includes(this.status)) return;
             try {
-                const r = await fetch(`/device-pairings/${this.id}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                if (r.ok) {
-                    const d = await r.json();
-                    this.status = d.status; this.deviceName = d.device_name || '';
-                    if (this.status === 'consumed') this.loadDevices();
-                }
+                const d = await getJson(`/device-pairings/${this.id}`);
+                this.status = d.status; this.deviceName = d.device_name || '';
+                if (this.status === 'consumed') this.loadDevices();
             } catch (e) { /* keep polling */ }
             this._poll();
         }, 2000);
@@ -89,8 +86,8 @@ export default (opts = {}) => ({
     reject() { return this._act('reject'); },
     async _act(what) {
         try {
-            const r = await fetch(`/device-pairings/${this.id}/${what}`, { method: 'POST', headers: jsonHeaders() });
-            if (r.ok) { const d = await r.json(); this.status = d.status; clearInterval(this._tick); }
+            const d = await postForm(`/device-pairings/${this.id}/${what}`, null, 'POST');
+            this.status = d.status; clearInterval(this._tick);
         } catch (e) { /* ignore */ }
     },
     _stopTimers() { clearTimeout(this._timer); clearInterval(this._tick); },

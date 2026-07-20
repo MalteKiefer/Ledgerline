@@ -1,5 +1,5 @@
 // Gallery module (ZK photos/albums/people/search/map). Extracted from app.js.
-import { jsonHeaders } from '../shared/api';
+import { getJson, postForm } from '../shared/api';
 import { fetchDecrypt, fetchDecryptWorker, queueBlobDelete, thumbLane } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
 import { formatBytes } from '../shared/file-categories';
@@ -1037,8 +1037,8 @@ return {
         if (! q) { this.geoResults = []; this.geoSearched = false; return; }
         this.geoBusy = true;
         try {
-            const res = await fetch(config.geocodeUrl + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
-            this.geoResults = res.ok ? ((await res.json()).results || []) : [];
+            const data = await getJson(config.geocodeUrl + '?q=' + encodeURIComponent(q));
+            this.geoResults = data.results || [];
         } catch (e) { this.geoResults = []; } finally { this.geoBusy = false; this.geoSearched = true; }
     },
     // Drop the map marker on a chosen search result.
@@ -1145,8 +1145,7 @@ return {
         let contentIds = [];
         try {
             await this._ensureEmbeddings();
-            const res = await fetch(config.embedTextUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ q }) });
-            const qv = res.ok ? (await res.json()).embedding : null;
+            const { embedding: qv } = await postForm(config.embedTextUrl, { q });
             if (Array.isArray(qv)) {
                 const qn = this._norm(qv); // normalised → cosine is a plain dot product
                 const scored = Object.entries(searchEmb).map(([id, emb]) => [id, this._dot(qn, emb)]);
@@ -1399,9 +1398,7 @@ return {
         try {
             const sk = await window.ShareCrypto.newKey();
             const { sealed, refs } = await this._buildShareManifest(al, sk, this.share.allowDownload);
-            const res = await fetch(config.sharesUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(this._shareBody(sealed, refs)) });
-            if (! res.ok) throw new Error('share failed');
-            const { token } = await res.json();
+            const { token } = await postForm(config.sharesUrl, this._shareBody(sealed, refs));
             al.share = { token, sk, allowDownload: this.share.allowDownload, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString() };
             this.share.password = '';
             this.share.link = this._shareLink(token, sk);
@@ -1420,8 +1417,7 @@ return {
             const { sealed, refs } = await this._buildShareManifest(al, sk, this.share.allowDownload);
             const body = this._shareBody(sealed, refs);
             if (! this.share.password.trim() && ! al.share.hasPassword) body.clear_password = true;
-            const res = await fetch(`${config.sharesUrl}/${al.share.token}`, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(body) });
-            if (! res.ok) throw new Error('share update failed');
+            await postForm(`${config.sharesUrl}/${al.share.token}`, body, 'PUT');
             al.share.allowDownload = this.share.allowDownload;
             al.share.expiresAt = this.share.expiresAt || null;
             if (this.share.password.trim()) al.share.hasPassword = true;
@@ -1432,7 +1428,7 @@ return {
     },
 
     _revokeShareRequest(token) {
-        return fetch(`${config.sharesUrl}/${token}`, { method: 'DELETE', headers: jsonHeaders() });
+        return postForm(`${config.sharesUrl}/${token}`, null, 'DELETE');
     },
     async revokeShare() {
         const al = this.share.album;
@@ -2309,8 +2305,8 @@ return {
         // The shard blobs hold the photo records themselves — keep them too, or the
         // sweep would treat the whole library index as orphaned.
         for (const ref of window.LLGalleryStore.shardRefs()) blobs.push(ref);
-        fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) })
-            .then((r) => r.ok && r.json()).then((u) => { if (u) this.usage = u; }).catch(() => {});
+        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] })
+            .then((u) => { if (u) this.usage = u; }).catch(() => {});
     },
 
     fmtBytes: formatBytes,

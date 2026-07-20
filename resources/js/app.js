@@ -1,7 +1,7 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { Vault, ShareCrypto } from './vault';
-import { csrfToken, jsonHeaders } from './shared/api';
+import { csrfToken, jsonHeaders, getJson } from './shared/api';
 import { newId as _newId } from './shared/sealed-store';
 import { fetchDecryptWorker, queueBlobDelete } from './shared/blob-io';
 import { padBlob } from './shared/padme';
@@ -68,9 +68,7 @@ window.LLStore = {
 
     // Load + decrypt the manifest once (call after the vault is unlocked).
     async load() {
-        const res = await fetch('/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-        if (! res.ok) throw new Error('store load failed');
-        const d = await res.json();
+        const d = await getJson('/store');
         this.version = d.version ?? 0;
         this.data = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
         // Forward-compat: ensure every collection exists.
@@ -176,9 +174,7 @@ window.LLGalleryStore = {
     newId() { return _newId(); },
 
     async load() {
-        const res = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-        if (! res.ok) throw new Error('gallery store load failed');
-        const d = await res.json();
+        const d = await getJson('/gallery/store');
         this.version = d.version ?? 0;
         this._shards = [];
         const root = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
@@ -524,9 +520,7 @@ Alpine.store('paperless', {
 
     async load() {
         try {
-            const res = await fetch('/paperless/terms', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) return;
-            const b = await res.json();
+            const b = await getJson('/paperless/terms');
             this.configured = !! b.configured;
             this.tags = b.tags ?? [];
             this.documentTypes = b.document_types ?? [];

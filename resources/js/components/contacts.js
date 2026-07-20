@@ -1,5 +1,5 @@
 // Contacts module (vCard 4.0, ZK). Extracted from app.js.
-import { jsonHeaders } from '../shared/api';
+import { getJson, postForm } from '../shared/api';
 import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
 import { loadLeaflet } from '../shared/lazy-loaders';
@@ -256,7 +256,7 @@ export default (config = {}, labels = {}) => ({
         const name = this.displayName(c);
         const title = kind === 'birthday' ? labels.bdayTitle : labels.annivTitle;
         const body = (kind === 'birthday' ? labels.bdayBody : labels.annivBody).replace(':name', name);
-        fetch(config.notifyUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ kind, title, body }) }).catch(() => {});
+        postForm(config.notifyUrl, { kind, title, body }).catch(() => {});
     },
 
     // Display preferences (name order + sort) are per-device UI state, not
@@ -335,8 +335,8 @@ export default (config = {}, labels = {}) => ({
         let pt = this._geoCache[q];
         if (pt === undefined) {
             try {
-                const res = await fetch('/gallery/geocode?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-                const r = res.ok ? ((await res.json()).results || [])[0] : null;
+                const geoData = await getJson('/gallery/geocode?q=' + encodeURIComponent(q));
+                const r = (geoData.results || [])[0];
                 pt = r && r.lat != null ? { lat: r.lat, lng: r.lng } : null;
             } catch (e) { pt = null; }
             this._geoCache[q] = pt;
@@ -615,7 +615,7 @@ export default (config = {}, labels = {}) => ({
         _contactsReconAt = Date.now();
         const blobs = [];
         for (const c of this.contacts) if (c.avatarRef) blobs.push(c.avatarRef);
-        fetch(config.reconcileUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ blobs: [...new Set(blobs)] }) }).catch(() => {});
+        postForm(config.reconcileUrl, { blobs: [...new Set(blobs)] }).catch(() => {});
     },
 
     /* ---- vCard import / export (client-side, ZK) ---- */
