@@ -119,8 +119,8 @@
                   <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.folders') }}</span>
                   <button type="button" @click="addFolder()" title="{{ __('passwords.new_folder') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
-                <button type="button" @click="filterFolder = ''; view = 'list'" :class="filterFolder === '' && view === 'list' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs">
-                  <x-icon name="squares-2x2" class="h-3.5 w-3.5 text-gray-400" /><span>{{ __('passwords.all_vaults') }}</span>
+                <button type="button" @click="filterFolder = ''; view = 'list'" :class="filterFolder === '' && view === 'list' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'" class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs">
+                  <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#7066f5"><x-icon name="squares-2x2" class="h-4 w-4" /></span><span class="truncate">{{ __('passwords.all_vaults') }}</span>
                 </button>
                 <template x-for="f in folders" :key="f.id">
                   <div class="group flex items-center gap-1 rounded-md pr-1"
@@ -128,8 +128,8 @@
                        @dragover.prevent="_dragOver = f.id"
                        @dragleave="_dragOver = null"
                        @drop.prevent="_dragOver = null; moveItems(_dragId ? [_dragId] : selectedIds, f.id)">
-                    <button type="button" @click="filterFolder = filterFolder === f.id ? '' : f.id; view = 'list'" class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs" :class="filterFolder === f.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'">
-                      <x-icon name="archive-box" class="h-3.5 w-3.5 shrink-0 text-gray-400" /><span class="truncate" x-text="f.name"></span>
+                    <button type="button" @click="filterFolder = filterFolder === f.id ? '' : f.id; view = 'list'" class="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs" :class="filterFolder === f.id && view === 'list' ? 'text-accent' : 'text-gray-600 dark:text-gray-400'">
+                      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3b9fd6"><x-icon name="archive-box" class="h-4 w-4" /></span><span class="truncate" x-text="f.name"></span>
                     </button>
                     <button type="button" x-show="canManageVault(f.id)" @click="renameFolder(f)" class="shrink-0 text-gray-400 md:opacity-0 hover:text-gray-600 md:group-hover:opacity-100"><x-icon name="pencil" class="h-3 w-3" /></button>
                     <button type="button" x-show="canManageVault(f.id) && folders.length > 1" @click="deleteFolder(f)" class="shrink-0 text-gray-400 md:opacity-0 hover:text-red-600 md:group-hover:opacity-100"><x-icon name="trash" class="h-3 w-3" /></button>
@@ -151,10 +151,10 @@
                     <button
                       type="button"
                       @click="filterFolder = filterFolder === sv.id ? '' : sv.id; view = 'list'"
-                      class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
-                      :class="filterFolder === sv.id && view === 'list' ? 'text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'"
+                      class="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs"
+                      :class="filterFolder === sv.id && view === 'list' ? 'text-accent' : 'text-gray-600 dark:text-gray-400'"
                     >
-                      <x-icon name="users" class="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#59ad6b"><x-icon name="users" class="h-4 w-4" /></span>
                       <span class="flex-1 truncate" x-text="sv.name"></span>
                       <span class="shrink-0 text-[10px] text-gray-400" x-text="sv.role === 'read' ? '{{ __('passwords.role_read') }}' : (sv.role === 'edit' ? '{{ __('passwords.role_edit') }}' : '{{ __('passwords.role_manage') }}')"></span>
                     </button>
@@ -189,12 +189,12 @@
               </div>
               {{-- Health + Trash --}}
               <div class="border-t border-gray-100 dark:border-gray-800 pt-2">
-                <button type="button" @click="view = view === 'health' ? 'list' : 'health'; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'health' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'">
-                  <x-icon name="shield-check" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.health') }}</span>
+                <button type="button" @click="view = view === 'health' ? 'list' : 'health'; draft = null" class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs" :class="view === 'health' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'">
+                  <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#d9a441"><x-icon name="shield-check" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('passwords.health') }}</span>
                   <span x-show="healthCount" x-text="healthCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"></span>
                 </button>
-                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'trash' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'">
-                  <x-icon name="trash" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
+                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs" :class="view === 'trash' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'">
+                  <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#6b7280"><x-icon name="trash" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
                   <span x-show="trashCount" x-text="trashCount" class="text-gray-400"></span>
                 </button>
                 <button type="button" x-show="view === 'trash' && trashCount" @click="emptyTrash()" class="mt-1 w-full rounded-md px-2.5 py-1 text-left text-[11px] font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">{{ __('passwords.empty_trash') }}</button>
