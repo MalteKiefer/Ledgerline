@@ -34,6 +34,8 @@ return [
     'import' => 'Import',
     'import_intro' => 'Import from another manager. Everything is parsed in your browser and sealed locally — the file is never uploaded.',
     'import_format' => 'Format',
+    'import_target_vault' => 'Import into vault',
+    'import_folder_note' => 'Source folders become tags; every item is placed in the selected vault.',
     'import_running' => 'Importing…',
     'import_done' => 'Imported :count entries.',
     'import_failed' => 'Could not read that file. Check the format.',

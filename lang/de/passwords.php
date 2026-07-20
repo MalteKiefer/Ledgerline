@@ -34,6 +34,8 @@ return [
     'import' => 'Import',
     'import_intro' => 'Aus einem anderen Manager importieren. Alles wird im Browser verarbeitet und lokal versiegelt — die Datei wird nie hochgeladen.',
     'import_format' => 'Format',
+    'import_target_vault' => 'Import in Tresor',
+    'import_folder_note' => 'Quell-Ordner werden zu Tags; jeder Eintrag landet im gewählten Tresor.',
     'import_running' => 'Importiere…',
     'import_done' => ':count Einträge importiert.',
     'import_failed' => 'Datei konnte nicht gelesen werden. Format prüfen.',

@@ -744,9 +744,10 @@ export default (config = {}, labels = {}) => ({
        manifest; nothing is uploaded. --- */
     importOpen: false,
     importFormat: 'auto',
+    importFolderId: '',
     importResult: null,
     importing: false,
-    openImport() { this.importOpen = true; this.importFormat = 'auto'; this.importResult = null; },
+    openImport() { this.importOpen = true; this.importFormat = 'auto'; this.importResult = null; this.importFolderId = this.folders.some((f) => f.id === this.filterFolder) ? this.filterFolder : ((this.folders[0] && this.folders[0].id) || ''); },
     async importFile(ev) {
         const file = ev.target.files[0]; if (! file) return;
         ev.target.value = '';
@@ -755,7 +756,10 @@ export default (config = {}, labels = {}) => ({
             const text = await file.text();
             const recs = this._parseImport(text, this.importFormat);
             if (! recs.length) { this.importResult = { ok: false, count: 0 }; return; }
-            for (const r of recs) { this._normalizeRecord(r); this.items.unshift(r); }
+            // Every imported item lands in the chosen target vault — never folderless.
+            let target = this.folders.some((f) => f.id === this.importFolderId) ? this.importFolderId : ((this.folders[0] && this.folders[0].id) || null);
+            if (! target) { target = crypto.randomUUID(); this.folders.push({ id: target, name: labels.defaultVaultName || 'Privat', role: 'manage' }); }
+            for (const r of recs) { this._normalizeRecord(r); r.folder = target; this.items.unshift(r); }
             this._save();
             this.importResult = { ok: true, count: recs.length };
             this._importIcons(recs.filter((r) => r.type === 'login'));
@@ -879,11 +883,13 @@ export default (config = {}, labels = {}) => ({
         r.custom = (r.custom || []).map((c) => ({ label: c.label || '', value: c.value || '', kind: c.kind || 'text' })).filter((c) => c.label || c.value);
         if (! r.title) r.title = this.typeLabel(r.type);
     },
-    _folderId(name) {
-        name = (name || '').trim(); if (! name) return null;
-        let f = this.folders.find((x) => x.name === name);
-        if (! f) { f = { id: crypto.randomUUID(), name }; this.folders.push(f); }
-        return f.id;
+    // Import: a source folder/group becomes tag(s), not a vault. Nested paths
+    // ("Parent/Child") split into one tag per segment. Items themselves are all
+    // placed into the chosen target vault (see importFile) — never folderless.
+    _addFolderTags(rec, name) {
+        for (const seg of String(name || '').split('/').map((s) => s.trim()).filter(Boolean)) {
+            if (! rec.tags.includes(seg)) rec.tags.push(seg);
+        }
     },
     _totpSecret(v) { return pwTotpSecret(v); },
     _parseImport(text, fmt) {
@@ -920,7 +926,7 @@ export default (config = {}, labels = {}) => ({
             }
             for (const f of (it.fields || [])) if (f.name || f.value) rec.custom.push({ label: f.name || '', value: String(f.value ?? ''), kind: f.type === 1 ? 'secret' : 'text' });
             if (it.favorite) rec.favorite = true;
-            if (it.folderId && folderById[it.folderId]) rec.folder = this._folderId(folderById[it.folderId]);
+            if (it.folderId && folderById[it.folderId]) this._addFolderTags(rec, folderById[it.folderId]);
             out.push(rec);
         }
         return out;
@@ -944,19 +950,19 @@ export default (config = {}, labels = {}) => ({
                     rec.fields.totp = this._totpSecret(o.login_totp || ''); rec.fields.note = o.notes || '';
                 }
                 if (o.favorite === '1' || (o.favorite || '').toLowerCase() === 'true') rec.favorite = true;
-                if (o.folder) rec.folder = this._folderId(o.folder);
+                if (o.folder) this._addFolderTags(rec, o.folder);
             } else if (kind === 'lastpass') {
                 rec = this._newRecord('login', o.name);
                 rec.fields.username = o.username || ''; rec.fields.password = o.password || '';
                 rec.fields.urls = [o.url].filter((u) => u && u !== 'http://sn');
                 rec.fields.totp = this._totpSecret(o.totp || ''); rec.fields.note = o.extra || '';
-                if (o.grouping) rec.folder = this._folderId(o.grouping);
+                if (o.grouping) this._addFolderTags(rec, o.grouping);
                 if (o.fav === '1') rec.favorite = true;
             } else if (kind === 'keepass') {
                 rec = this._newRecord('login', o.title || o.account);
                 rec.fields.username = o.username || ''; rec.fields.password = o.password || '';
                 rec.fields.urls = [o.url].filter(Boolean); rec.fields.note = o.notes || '';
-                if (o.group) rec.folder = this._folderId(o.group);
+                if (o.group) this._addFolderTags(rec, o.group);
             } else if (kind === 'onepassword') {
                 rec = this._newRecord('login', o.title || o.name);
                 rec.fields.username = o.username || ''; rec.fields.password = o.password || '';
