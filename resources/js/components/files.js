@@ -1,5 +1,5 @@
 // Files module (nestable ZK file browser). Extracted from app.js.
-import { jsonHeaders } from '../shared/api';
+import { jsonHeaders, postForm } from '../shared/api';
 import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
 import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
@@ -364,9 +364,7 @@ export default (config = {}, labels = {}) => ({
             const sk = await window.ShareCrypto.newKey();
             const { sealed, refs } = await this._buildShareManifest(sk);
             if (! refs.length) { this.share.error = labels.shareEmpty || 'empty'; this.share.busy = false; return; }
-            const res = await fetch(config.fileSharesUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(this._shareBody(sealed, refs)) });
-            if (! res.ok) throw new Error('share');
-            const { token } = await res.json();
+            const { token } = await postForm(config.fileSharesUrl, this._shareBody(sealed, refs));
             const src = this._shareSrc();
             if (src) src.share = { token, sk, kind: this.share.kind, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString() };
             this.share.hasPassword = ! ! this.share.password.trim();
@@ -383,8 +381,7 @@ export default (config = {}, labels = {}) => ({
             const { sealed, refs } = await this._buildShareManifest(src.share.sk);
             const body = this._shareBody(sealed, refs);
             if (! this.share.password.trim() && ! src.share.hasPassword) body.clear_password = true;
-            const res = await fetch(`${config.fileSharesUrl}/${src.share.token}`, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(body) });
-            if (! res.ok) throw new Error('share');
+            await postForm(`${config.fileSharesUrl}/${src.share.token}`, body, 'PUT');
             src.share.expiresAt = this.share.expiresAt || null;
             if (this.share.password.trim()) { src.share.hasPassword = true; this.share.hasPassword = true; } else if (body.clear_password) { src.share.hasPassword = false; this.share.hasPassword = false; }
             this.share.password = '';
@@ -395,7 +392,7 @@ export default (config = {}, labels = {}) => ({
         const src = this._shareSrc();
         if (! src?.share) return;
         this.share.busy = true;
-        try { await fetch(`${config.fileSharesUrl}/${src.share.token}`, { method: 'DELETE', headers: jsonHeaders() }); } catch (e) { /* best effort */ }
+        try { await postForm(`${config.fileSharesUrl}/${src.share.token}`, null, 'DELETE'); } catch (e) { /* best effort */ }
         delete src.share; this.share.link = ''; this.share.busy = false;
         this.persist();
     },

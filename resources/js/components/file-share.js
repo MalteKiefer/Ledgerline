@@ -1,5 +1,5 @@
 // fileShare component. Extracted from app.js.
-import { jsonHeaders } from '../shared/api';
+import { getJson, postForm } from '../shared/api';
 import { formatBytes } from '../shared/file-categories';
 
 export default (config = {}, labels = {}) => ({
@@ -31,8 +31,7 @@ export default (config = {}, labels = {}) => ({
         if (this.unlocking) return;
         this.unlocking = true; this.error = '';
         try {
-            const res = await fetch(config.unlockUrl, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ password: this.password }) });
-            if (! res.ok) { this.error = labels.wrongPassword || ''; return; }
+            await postForm(config.unlockUrl, { password: this.password });
             this.password = '';
             await this.loadManifest();
         } catch (e) { this.error = labels.wrongPassword || ''; } finally { this.unlocking = false; }
@@ -40,9 +39,7 @@ export default (config = {}, labels = {}) => ({
     async loadManifest() {
         this.state = 'boot';
         try {
-            const res = await fetch(config.manifestUrl, { headers: { Accept: 'application/json' } });
-            if (! res.ok) throw new Error('manifest');
-            const { sealed } = await res.json();
+            const { sealed } = await getJson(config.manifestUrl);
             const bytes = await window.ShareCrypto.unwrap(sealed, this.sk);
             this.manifest = JSON.parse(new TextDecoder().decode(bytes));
             this.state = 'ready';

@@ -1,4 +1,4 @@
-import { csrfToken } from '../shared/api';
+import { csrfToken, getJson, postForm } from '../shared/api';
 
 // Live backup run list: loads recent runs as JSON, refreshes after "back up
 // now" (no page reload) and polls while any run is still running. Each finished
@@ -96,9 +96,8 @@ export default (labels = {}) => ({
 
     async load() {
         try {
-            const res = await fetch(labels.runsUrl, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) return;
-            this.runs = (await res.json()).runs ?? [];
+            const data = await getJson(labels.runsUrl);
+            this.runs = data.runs ?? [];
         } catch (e) { /* keep current on error */ }
     },
 
@@ -116,10 +115,7 @@ export default (labels = {}) => ({
         const run = this.runs.find((r) => r.id === id);
         if (run) { run.cancellable = false; run.cancelling = true; }
         try {
-            await fetch(labels.cancelBase.replace('__id__', id), {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
-            });
+            await postForm(labels.cancelBase.replace('__id__', id), null, 'POST');
         } catch (e) { /* poll will reconcile */ }
         this.pollUntil = Date.now() + 60000;
         this.load();

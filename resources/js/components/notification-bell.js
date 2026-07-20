@@ -1,4 +1,4 @@
-import { csrfToken } from '../shared/api';
+import { postForm } from '../shared/api';
 
 // Bell menu: local in-app notifications with an unread badge, plus browser /
 // desktop notifications (Web Notifications API) while the app is open. Polls the
@@ -93,10 +93,7 @@ export default (labels = {}) => ({
         n.read = true;
         this.unread = Math.max(0, this.unread - 1);
         try {
-            await fetch(`/notifications/${n.id}/read`, {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
-            });
+            await postForm(`/notifications/${n.id}/read`, null, 'POST');
         } catch (e) { /* optimistic */ }
     },
 
@@ -104,10 +101,7 @@ export default (labels = {}) => ({
         this.items.forEach((n) => { n.read = true; });
         this.unread = 0;
         try {
-            await fetch('/notifications/read-all', {
-                method: 'POST',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': csrfToken() },
-            });
+            await postForm('/notifications/read-all', null, 'POST');
         } catch (e) { /* optimistic */ }
     },
 
