@@ -70,50 +70,64 @@
 
             <div class="relative" x-data="{ open: false }">
                 <button type="button" @click="open = ! open" @keydown.escape="open = false"
-                    class="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    class="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5">
                     <x-user-avatar :user="$currentUser" size="h-8 w-8" />
                     <span>{{ $currentUser->name }}</span>
-                    <x-icon name="chevron-down" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                    <x-icon name="chevron-down" class="h-4 w-4 text-gray-400 transition dark:text-gray-500" x-bind:class="open && 'rotate-180'" />
                 </button>
-                <div x-show="open" x-cloak @click.outside="open = false"
-                    class="absolute right-0 z-40 mt-2 w-48 overflow-hidden rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-1 shadow-lg">
-                    <a href="{{ route('profile') }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('messages.menu.profile') }}</a>
-                    <a href="{{ route('settings') }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('messages.menu.settings') }}</a>
-                    @php $llTheme = \App\Models\UserSetting::for((int) auth()->id())->theme ?? 'system'; @endphp
-                    <div class="flex gap-1 border-t border-gray-100 dark:border-gray-800 px-4 py-2">
-                        @foreach (['light' => 'sun', 'dark' => 'moon', 'system' => 'computer-desktop'] as $mode => $icon)
-                            <form method="POST" action="{{ route('theme.update') }}" class="flex-1">
-                                @csrf
-                                <input type="hidden" name="theme" value="{{ $mode }}">
-                                <button type="submit" title="{{ __('messages.menu.theme_'.$mode) }}"
-                                    @class([
-                                        'flex w-full items-center justify-center rounded px-2 py-1.5',
-                                        'bg-gray-800 text-white' => $llTheme === $mode,
-                                        'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' => $llTheme !== $mode,
-                                    ])>
-                                    <x-icon :name="$icon" class="h-4 w-4" />
-                                </button>
-                            </form>
-                        @endforeach
+                <div x-show="open" x-cloak x-transition.origin.top.right @click.outside="open = false"
+                    class="absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl shadow-black/10">
+                    {{-- Account header --}}
+                    <div class="flex items-center gap-3 px-4 py-3">
+                        <x-user-avatar :user="$currentUser" size="h-10 w-10" />
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ $currentUser->name }}</p>
+                            @if ($currentUser->email)<p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ $currentUser->email }}</p>@endif
+                        </div>
                     </div>
-                    <div class="flex gap-1 border-t border-gray-100 dark:border-gray-800 px-4 py-2">
-                        @foreach (config('locales.languages') as $code => $label)
-                            <form method="POST" action="{{ route('locale.update') }}">
-                                @csrf
-                                <input type="hidden" name="locale" value="{{ $code }}">
-                                <button type="submit"
-                                    @class([
-                                        'rounded px-2 py-1 text-xs font-medium',
-                                        'bg-gray-800 text-white' => app()->getLocale() === $code,
-                                        'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800' => app()->getLocale() !== $code,
-                                    ])>{{ strtoupper($code) }}</button>
-                            </form>
-                        @endforeach
+                    <div class="border-t border-black/[0.06] dark:border-white/10 py-1">
+                        <a href="{{ route('profile') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent"><x-icon name="user" class="h-4 w-4" />{{ __('messages.menu.profile') }}</a>
+                        <a href="{{ route('settings') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent"><x-icon name="shield-check" class="h-4 w-4" />{{ __('messages.menu.settings') }}</a>
+                    </div>
+                    @php $llTheme = \App\Models\UserSetting::for((int) auth()->id())->theme ?? 'system'; @endphp
+                    <div class="border-t border-black/[0.06] dark:border-white/10 px-3 py-2.5">
+                        <div class="flex gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1">
+                            @foreach (['light' => 'sun', 'dark' => 'moon', 'system' => 'computer-desktop'] as $mode => $icon)
+                                <form method="POST" action="{{ route('theme.update') }}" class="flex-1">
+                                    @csrf
+                                    <input type="hidden" name="theme" value="{{ $mode }}">
+                                    <button type="submit" title="{{ __('messages.menu.theme_'.$mode) }}"
+                                        @class([
+                                            'flex w-full items-center justify-center rounded-lg px-2 py-1.5 transition',
+                                            'll-accent shadow-sm shadow-accent/30' => $llTheme === $mode,
+                                            'text-gray-500 dark:text-gray-400 hover:text-accent' => $llTheme !== $mode,
+                                        ])>
+                                        <x-icon :name="$icon" class="h-4 w-4" />
+                                    </button>
+                                </form>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="border-t border-black/[0.06] dark:border-white/10 px-3 py-2.5">
+                        <div class="flex gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1">
+                            @foreach (config('locales.languages') as $code => $label)
+                                <form method="POST" action="{{ route('locale.update') }}" class="flex-1">
+                                    @csrf
+                                    <input type="hidden" name="locale" value="{{ $code }}">
+                                    <button type="submit"
+                                        @class([
+                                            'w-full rounded-lg px-2 py-1 text-xs font-semibold transition',
+                                            'll-accent shadow-sm shadow-accent/30' => app()->getLocale() === $code,
+                                            'text-gray-500 dark:text-gray-400 hover:text-accent' => app()->getLocale() !== $code,
+                                        ])>{{ strtoupper($code) }}</button>
+                                </form>
+                            @endforeach
+                        </div>
                     </div>
                     {{-- Drop the cached zero-knowledge vault key at logout time. --}}
-                    <form method="POST" action="{{ route('logout') }}" @submit="window.Vault && window.Vault.lock()">
+                    <form method="POST" action="{{ route('logout') }}" @submit="window.Vault && window.Vault.lock()" class="border-t border-black/[0.06] dark:border-white/10 py-1">
                         @csrf
-                        <button type="submit" class="block w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('messages.menu.logout') }}</button>
+                        <button type="submit" class="flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 transition hover:bg-red-500/10"><x-icon name="arrow-uturn-left" class="h-4 w-4" />{{ __('messages.menu.logout') }}</button>
                     </form>
                 </div>
             </div>
