@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\VaultRole;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
 use App\Models\SharedVaultStore;
@@ -57,15 +58,15 @@ class SharedVaultController extends Controller
 
             SharedVaultStore::create([
                 'vault_id' => $vault->id,
-                'version'  => 0,
+                'version' => 0,
             ]);
 
             SharedVaultMember::create([
-                'vault_id'           => $vault->id,
-                'user_id'            => $request->user()->id,
-                'role'               => 'manager',
-                'status'             => 'active',
-                'wrapped_vault_key'  => $data['wrapped_vault_key'],
+                'vault_id' => $vault->id,
+                'user_id' => $request->user()->id,
+                'role' => VaultRole::Manager->value,
+                'status' => 'active',
+                'wrapped_vault_key' => $data['wrapped_vault_key'],
                 'recipient_fingerprint' => null,
             ]);
 
@@ -88,10 +89,10 @@ class SharedVaultController extends Controller
             ->with('vault')
             ->get()
             ->map(fn (SharedVaultMember $m) => [
-                'id'                => $m->id,
-                'vault_id'          => $m->vault_id,
-                'role'              => $m->role,
-                'status'            => $m->status,
+                'id' => $m->id,
+                'vault_id' => $m->vault_id,
+                'role' => $m->role instanceof VaultRole ? $m->role->value : $m->role,
+                'status' => $m->status,
                 'wrapped_vault_key' => $m->wrapped_vault_key,
             ]);
 
@@ -127,8 +128,8 @@ class SharedVaultController extends Controller
         }
 
         return response()->json([
-            'user_id'     => $recipient->id,
-            'public_key'  => $recipient->x25519_public_key,
+            'user_id' => $recipient->id,
+            'public_key' => $recipient->x25519_public_key,
             'fingerprint' => $recipient->public_key_fingerprint,
         ]);
     }
@@ -148,12 +149,12 @@ class SharedVaultController extends Controller
         $this->authorize('manage', $vault);
 
         $data = $request->validate([
-            'sealed_manifest'    => ['required', 'string', 'max:16000000'],
-            'expected_version'   => ['required', 'integer', 'min:0'],
-            'members'            => ['required', 'array'],
-            'members.*.user_id'  => ['required', 'integer'],
+            'sealed_manifest' => ['required', 'string', 'max:'.config('vault.manifest_max_bytes')],
+            'expected_version' => ['required', 'integer', 'min:0'],
+            'members' => ['required', 'array'],
+            'members.*.user_id' => ['required', 'integer'],
             'members.*.wrapped_vault_key' => ['required', 'string'],
-            'remove_member_id'   => ['required', 'integer'],
+            'remove_member_id' => ['required', 'integer'],
         ]);
 
         // Inject authenticated user id so the transaction closure can perform the self-remove guard.
@@ -190,8 +191,8 @@ class SharedVaultController extends Controller
 
             if ($current !== (int) $data['expected_version']) {
                 return [
-                    'conflict'        => true,
-                    'version'         => $current,
+                    'conflict' => true,
+                    'version' => $current,
                     'sealed_manifest' => $row?->sealed_manifest,
                 ];
             }
@@ -206,7 +207,7 @@ class SharedVaultController extends Controller
             foreach ($data['members'] as $entry) {
                 if (! in_array((int) $entry['user_id'], $activeUserIds, true)) {
                     return [
-                        'conflict'     => false,
+                        'conflict' => false,
                         'invalid_user' => true,
                     ];
                 }
@@ -228,7 +229,7 @@ class SharedVaultController extends Controller
 
             SharedVaultStore::where('vault_id', $vault->id)->update([
                 'sealed_manifest' => $data['sealed_manifest'],
-                'version'         => $nextVersion,
+                'version' => $nextVersion,
             ]);
 
             return ['conflict' => false, 'invalid_user' => false, 'version' => $nextVersion];
@@ -236,7 +237,7 @@ class SharedVaultController extends Controller
 
         if ($result['conflict']) {
             return response()->json([
-                'version'         => $result['version'],
+                'version' => $result['version'],
                 'sealed_manifest' => $result['sealed_manifest'],
             ], 409);
         }

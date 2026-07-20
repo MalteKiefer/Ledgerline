@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\VaultRole;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,6 +26,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class SharedVaultMember extends Model
 {
+    /** @return array<string, mixed> */
+    protected function casts(): array
+    {
+        return [
+            'role' => VaultRole::class,
+        ];
+    }
+
     public function vault(): BelongsTo
     {
         return $this->belongsTo(SharedVault::class, 'vault_id');

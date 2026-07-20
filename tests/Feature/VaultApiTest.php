@@ -50,12 +50,12 @@ class VaultApiTest extends TestCase
         string $status = 'active',
     ): SharedVaultMember {
         return SharedVaultMember::create([
-            'vault_id'            => $vault->id,
-            'user_id'             => $user->id,
-            'role'                => $role,
-            'wrapped_vault_key'   => 'WRAPPED',
+            'vault_id' => $vault->id,
+            'user_id' => $user->id,
+            'role' => $role,
+            'wrapped_vault_key' => 'WRAPPED',
             'recipient_fingerprint' => null,
-            'status'              => $status,
+            'status' => $status,
         ]);
     }
 
@@ -90,7 +90,7 @@ class VaultApiTest extends TestCase
             ->first();
 
         $this->assertNotNull($membership);
-        $this->assertSame('manager', $membership->role);
+        $this->assertSame('manager', $membership->role->value);
         $this->assertSame('active', $membership->status);
         $this->assertSame('WRAPPED-VK', $membership->wrapped_vault_key);
     }
@@ -194,9 +194,9 @@ class VaultApiTest extends TestCase
         $vault = $this->makeVault($owner);
         $this->addMember($vault, $owner, 'manager');
         SharedVaultStore::create([
-            'vault_id'        => $vault->id,
+            'vault_id' => $vault->id,
             'sealed_manifest' => 'some-ciphertext',
-            'version'         => 3,
+            'version' => 3,
         ]);
 
         $response = $this->getJson(route('vaults.storeShow', $vault));
@@ -246,13 +246,13 @@ class VaultApiTest extends TestCase
         $vault = $this->makeVault($owner);
         $this->addMember($vault, $owner, 'manager');
         SharedVaultStore::create([
-            'vault_id'        => $vault->id,
+            'vault_id' => $vault->id,
             'sealed_manifest' => 'current-ciphertext',
-            'version'         => 5,
+            'version' => 5,
         ]);
 
         $response = $this->putJson(route('vaults.storeSave', $vault), [
-            'sealed_manifest'  => 'stale-write',
+            'sealed_manifest' => 'stale-write',
             'expected_version' => 3,  // stale
         ]);
 
@@ -273,7 +273,7 @@ class VaultApiTest extends TestCase
         SharedVaultStore::create(['vault_id' => $vault->id, 'version' => 0]);
 
         $response = $this->putJson(route('vaults.storeSave', $vault), [
-            'sealed_manifest'  => 'forbidden-write',
+            'sealed_manifest' => 'forbidden-write',
             'expected_version' => 0,
         ]);
 
@@ -289,7 +289,7 @@ class VaultApiTest extends TestCase
         SharedVaultStore::create(['vault_id' => $vault->id, 'version' => 0]);
 
         $response = $this->putJson(route('vaults.storeSave', $vault), [
-            'sealed_manifest'  => 'forbidden-write',
+            'sealed_manifest' => 'forbidden-write',
             'expected_version' => 0,
         ]);
 
@@ -308,9 +308,9 @@ class VaultApiTest extends TestCase
 
         $target = User::factory()->create(['email' => 'alice@example.com']);
         $target->forceFill([
-            'x25519_public_key'         => 'alice-pubkey',
+            'x25519_public_key' => 'alice-pubkey',
             'wrapped_x25519_secret_key' => 'wrapped-sk',
-            'public_key_fingerprint'    => 'alice-fp',
+            'public_key_fingerprint' => 'alice-fp',
         ])->save();
 
         $response = $this->postJson(route('vaults.resolveRecipient', $vault), [
@@ -319,8 +319,8 @@ class VaultApiTest extends TestCase
 
         $response->assertOk();
         $response->assertJson([
-            'user_id'     => $target->id,
-            'public_key'  => 'alice-pubkey',
+            'user_id' => $target->id,
+            'public_key' => 'alice-pubkey',
             'fingerprint' => 'alice-fp',
         ]);
     }
@@ -333,9 +333,9 @@ class VaultApiTest extends TestCase
 
         $target = User::factory()->create(['oidc_sub' => 'sub-abc123']);
         $target->forceFill([
-            'x25519_public_key'         => 'target-pubkey',
+            'x25519_public_key' => 'target-pubkey',
             'wrapped_x25519_secret_key' => 'wrapped-sk',
-            'public_key_fingerprint'    => 'target-fp',
+            'public_key_fingerprint' => 'target-fp',
         ])->save();
 
         $response = $this->postJson(route('vaults.resolveRecipient', $vault), [
@@ -344,8 +344,8 @@ class VaultApiTest extends TestCase
 
         $response->assertOk();
         $response->assertJson([
-            'user_id'     => $target->id,
-            'public_key'  => 'target-pubkey',
+            'user_id' => $target->id,
+            'public_key' => 'target-pubkey',
             'fingerprint' => 'target-fp',
         ]);
     }
@@ -431,9 +431,9 @@ class VaultApiTest extends TestCase
         $target = User::factory()->create();
 
         $response = $this->postJson(route('vaults.members.store', $vault), [
-            'user_id'            => $target->id,
-            'role'               => 'viewer',
-            'wrapped_vault_key'  => 'WRAPPED-FOR-TARGET',
+            'user_id' => $target->id,
+            'role' => 'viewer',
+            'wrapped_vault_key' => 'WRAPPED-FOR-TARGET',
             'recipient_fingerprint' => 'fp-target',
         ]);
 
@@ -445,7 +445,7 @@ class VaultApiTest extends TestCase
 
         $this->assertNotNull($member);
         $this->assertSame('pending', $member->status);
-        $this->assertSame('viewer', $member->role);
+        $this->assertSame('viewer', $member->role->value);
     }
 
     public function test_non_manager_cannot_add_member(): void
@@ -458,8 +458,8 @@ class VaultApiTest extends TestCase
         $target = User::factory()->create();
 
         $response = $this->postJson(route('vaults.members.store', $vault), [
-            'user_id'           => $target->id,
-            'role'              => 'viewer',
+            'user_id' => $target->id,
+            'role' => 'viewer',
             'wrapped_vault_key' => 'WRAPPED',
         ]);
 
@@ -478,8 +478,8 @@ class VaultApiTest extends TestCase
         $this->addMember($vault, $target, 'viewer');
 
         $response = $this->postJson(route('vaults.members.store', $vault), [
-            'user_id'           => $target->id,
-            'role'              => 'viewer',
+            'user_id' => $target->id,
+            'role' => 'viewer',
             'wrapped_vault_key' => 'WRAPPED',
         ]);
 
@@ -539,7 +539,7 @@ class VaultApiTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertSame('editor', $membership->fresh()->role);
+        $this->assertSame('editor', $membership->fresh()->role->value);
     }
 
     public function test_non_manager_cannot_update_member_role(): void

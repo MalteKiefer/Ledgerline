@@ -13,6 +13,7 @@ use App\Services\Backup\Sources\DatabaseSource;
 use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\GallerySource;
 use App\Support\Bytes;
+use App\Support\Redactor;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -241,14 +242,7 @@ final class BackupManager
      */
     private function redact(string $message): string
     {
-        $patterns = [
-            '/(--password[=\s]+)\S+/i' => '$1***',
-            '/(\s-p)\S+/' => '$1***',
-            '/(password["\']?\s*[:=]\s*["\']?)[^"\'\s,&]+/i' => '$1***',
-            '/([a-z][a-z0-9+.\-]*:\/\/[^:\/\s@]+:)[^@\/\s]+@/i' => '$1***@',
-        ];
-
-        return (string) preg_replace(array_keys($patterns), array_values($patterns), $message);
+        return Redactor::redact($message);
     }
 
     private function source(string $source): BackupSource
