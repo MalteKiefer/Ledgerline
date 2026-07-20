@@ -11,6 +11,7 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
+use App\Http\Controllers\SharedFolderBlobController;
 use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
 use App\Http\Controllers\SharedVaultStoreController;
@@ -123,6 +124,19 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/{vault}/members', [SharedVaultMemberController::class, 'index'])->middleware('throttle:60,1')->name('members.index');
             Route::post('/{vault}/rotate', [SharedVaultController::class, 'rotate'])->middleware('throttle:30,1')->name('rotate');
             Route::delete('/{vault}', [SharedVaultController::class, 'destroy'])->middleware('throttle:30,1')->name('destroy');
+
+            // Shared-folder blob store: member-scoped upload/download/delete/reconcile.
+            Route::prefix('{vault}/blobs')->name('blobs.')->group(function (): void {
+                Route::get('/usage', [SharedFolderBlobController::class, 'usage'])->name('usage');
+                Route::post('/reconcile', [SharedFolderBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('reconcile');
+                Route::post('/upload', [SharedFolderBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('upload');
+                Route::post('/upload/init', [SharedFolderBlobController::class, 'chunkInit'])->middleware('throttle:600,1')->name('upload.init');
+                Route::post('/upload/part', [SharedFolderBlobController::class, 'chunkPart'])->middleware('throttle:6000,1')->name('upload.part');
+                Route::post('/upload/complete', [SharedFolderBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('upload.complete');
+                Route::post('/upload/abort', [SharedFolderBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('upload.abort');
+                Route::get('/raw/{blob}', [SharedFolderBlobController::class, 'raw'])->middleware('throttle:600,1')->name('raw');
+                Route::delete('/{blob}', [SharedFolderBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('destroy');
+            });
         });
     });
 });

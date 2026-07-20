@@ -93,6 +93,32 @@ abstract class BlobStoreController extends Controller
     /** Hook for subclasses that need extra authorization on mutations (default: none). */
     protected function authorizeMutation(Request $request): void {}
 
+    /**
+     * Extra key→value pairs to merge into the chunk session cache when a
+     * multipart upload is initialised. Subclasses use this to thread context
+     * (e.g. vault_id) that is needed at completion time without re-authorising
+     * a route-bound model from the stale cached session.
+     *
+     * @return array<string, mixed>
+     */
+    protected function chunkSessionExtra(Request $request): array
+    {
+        return [];
+    }
+
+    /**
+     * Ledger columns (besides blob/size/created_at) written when a multipart
+     * upload completes. The default stamps `user_id` from `$session['owner']`,
+     * preserving the existing personal-blob behavior exactly.
+     *
+     * @param  array<string, mixed>  $session
+     * @return array<string, mixed>
+     */
+    protected function chunkLedgerAttributes(array $session): array
+    {
+        return ['user_id' => $session['owner']];
+    }
+
     // ---- End ownership strategy hooks ----
 
     /** Current storage usage for the user (live blob bytes vs quota). */
@@ -206,11 +232,11 @@ abstract class BlobStoreController extends Controller
         $res = $this->s3()->createMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $key]);
 
         $token = (string) Str::uuid();
-        Cache::put($this->chunkKey($token), [
+        Cache::put($this->chunkKey($token), array_merge([
             'uploadId' => $res['UploadId'], 'key' => $key, 'id' => $id,
             'actor' => (int) $request->user()->id,
             'owner' => $this->chunkOwnerId($request),
-        ], now()->addHours(12));
+        ], $this->chunkSessionExtra($request)), now()->addHours(12));
 
         return response()->json(['token' => $token, 'id' => $id, 'partSize' => self::CHUNK_PART_SIZE]);
     }
@@ -265,7 +291,7 @@ abstract class BlobStoreController extends Controller
         $model = $this->blobModel();
         $model::firstOrCreate(
             ['blob' => $s['id']],
-            array_merge(['user_id' => $s['owner']], ['size' => $size, 'created_at' => $this->stampedAt()]),
+            array_merge($this->chunkLedgerAttributes($s), ['size' => $size, 'created_at' => $this->stampedAt()]),
         );
         Cache::forget($this->chunkKey($token));
 
@@ -356,6 +382,11 @@ abstract class BlobStoreController extends Controller
     /** Stream a stored blob's ciphertext back to the browser (owner only). */
     public function raw(Request $request, string $blob): StreamedResponse
     {
+        // Use the named route parameter directly so subclasses whose routes have
+        // extra segments (e.g. {vault}/{blob}) don't receive the wrong value when
+        // Laravel's positional dependency resolver maps the first string route
+        // parameter to $blob instead of the one actually named "blob".
+        $blob = (string) ($request->route('blob') ?? $blob);
         abort_unless(Str::isUuid($blob), 404);
         $this->authorizeRaw($request, $blob);
         // Only serve bytes the caller is authorized to see in the blob ledger —
@@ -386,6 +417,8 @@ abstract class BlobStoreController extends Controller
      */
     public function deleteBlob(Request $request, string $blob): JsonResponse
     {
+        // Use the named route parameter for the same reason as raw() above.
+        $blob = (string) ($request->route('blob') ?? $blob);
         abort_unless(Str::isUuid($blob), 404);
         $this->authorizeMutation($request);
 
