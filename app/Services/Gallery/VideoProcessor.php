@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Gallery;
 
+use App\Support\BinaryProcess;
 use RuntimeException;
-use Symfony\Component\Process\Process;
 
 /**
  * Reads video metadata (ffprobe) and extracts a poster frame (ffmpeg). Binary
@@ -24,22 +24,20 @@ class VideoProcessor
     {
         $out = ['width' => null, 'height' => null, 'duration' => null, 'raw' => null];
 
-        $process = new Process([
+        $stdout = BinaryProcess::run([
             $this->ffprobe(),
             '-v', 'quiet',
             '-print_format', 'json',
             '-show_format',
             '-show_streams',
             $localPath,
-        ]);
-        $process->setTimeout(120);
-        $process->run();
+        ], 120);
 
-        if (! $process->isSuccessful()) {
+        if ($stdout === null) {
             return $out;
         }
 
-        $data = json_decode($process->getOutput(), true);
+        $data = json_decode($stdout, true);
         if (! is_array($data)) {
             return $out;
         }
@@ -100,7 +98,7 @@ class VideoProcessor
         // Try the requested second, then fall back to the very first frame:
         // short clips (e.g. ~1s Live Photo videos) have no frame at second 1.
         foreach ([max(0, $second), 0] as $ss) {
-            $process = new Process([
+            $stdout = BinaryProcess::run([
                 $this->ffmpeg(),
                 '-y',
                 '-ss', (string) $ss,
@@ -108,21 +106,18 @@ class VideoProcessor
                 '-frames:v', '1',
                 '-q:v', '3',
                 $destJpg,
-            ]);
-            $process->setTimeout(120);
-            $process->run();
+            ], 120);
 
-            if ($process->isSuccessful() && is_file($destJpg) && filesize($destJpg) > 0) {
+            if ($stdout !== null && is_file($destJpg) && filesize($destJpg) > 0) {
                 return;
             }
 
-            $error = $process->getErrorOutput();
             if ($ss === 0) {
                 break;
             }
         }
 
-        throw new RuntimeException('ffmpeg could not extract a poster frame: '.($error ?? ''));
+        throw new RuntimeException('ffmpeg could not extract a poster frame.');
     }
 
     /**

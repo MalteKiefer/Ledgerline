@@ -8,7 +8,6 @@ use App\Models\SharedVault;
 use App\Models\SharedVaultStore;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Opaque zero-knowledge sealed manifest store for a shared password-Tresor.
@@ -62,32 +61,11 @@ class SharedVaultStoreController extends Controller
             'expected_version' => ['required', 'integer', 'min:0'],
         ]);
 
-        $result = DB::transaction(function () use ($vault, $data): array {
-            /** @var SharedVaultStore|null $row */
-            $row = SharedVaultStore::where('vault_id', $vault->id)
-                ->lockForUpdate()
-                ->first();
-
-            $current = (int) ($row?->version ?? 0);
-
-            if ($current !== (int) $data['expected_version']) {
-                // Version conflict — return current state so the client can merge.
-                return [
-                    'conflict' => true,
-                    'version' => $current,
-                    'sealed_manifest' => $row?->sealed_manifest,
-                ];
-            }
-
-            $nextVersion = $current + 1;
-
-            SharedVaultStore::where('vault_id', $vault->id)->update([
-                'sealed_manifest' => $data['sealed_manifest'],
-                'version' => $nextVersion,
-            ]);
-
-            return ['conflict' => false, 'version' => $nextVersion];
-        });
+        $result = SharedVaultStore::tryWrite(
+            $vault->id,
+            $data['sealed_manifest'],
+            (int) $data['expected_version'],
+        );
 
         if ($result['conflict']) {
             return response()->json([

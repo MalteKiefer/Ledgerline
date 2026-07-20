@@ -7,7 +7,6 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
-use App\Models\AuditLog;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -39,8 +38,6 @@ class SecurityController extends Controller
 
         AppSettings::current()->update($data);
 
-        AuditLog::record('settings.updated', null, ['group' => 'security']);
-
-        return $this->savedRedirect('settings.security.edit', 'settings.security_saved');
+        return $this->savedSettings('security', 'settings.security.edit', 'settings.security_saved');
     }
 }

@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Backup\Sources;
 
+use App\Models\FileBlob;
+
 /**
  * Archives the stored files (the "files/" prefix on the files disk). Files are
  * plain (unencrypted) now, so the archive can optionally be encrypted by the
  * backup job like the database dump.
  */
-final class FilesSource extends DiskArchiveSource
+final class FilesSource extends DiskArchiveSource implements MirrorableSource
 {
     protected function prefix(): string
     {
@@ -19,5 +21,15 @@ final class FilesSource extends DiskArchiveSource
     protected function name(): string
     {
         return 'files';
+    }
+
+    public function diskPrefix(): string
+    {
+        return 'files';
+    }
+
+    public function ledgerModel(): string
+    {
+        return FileBlob::class;
     }
 }

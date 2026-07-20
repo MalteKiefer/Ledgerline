@@ -6,12 +6,11 @@ namespace App\Services\Backup;
 
 use App\Models\BackupJob;
 use App\Models\BackupRun;
-use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Services\Backup\Sources\BackupSource;
 use App\Services\Backup\Sources\DatabaseSource;
 use App\Services\Backup\Sources\FilesSource;
 use App\Services\Backup\Sources\GallerySource;
+use App\Services\Backup\Sources\MirrorableSource;
 use App\Support\Bytes;
 use App\Support\Redactor;
 use Carbon\Carbon;
@@ -28,16 +27,6 @@ use RuntimeException;
  */
 final class BackupManager
 {
-    /** Sources mirrored object-by-object (already-encrypted blobs), not archived. */
-    private const MIRROR_SOURCES = ['files', 'gallery'];
-
-    // Disk prefix per source = the blob controller's module() (where blobs are
-    // actually written): files→'files', gallery→'gallery' (NOT the old 'photos').
-    private const MIRROR_PREFIX = ['files' => 'files', 'gallery' => 'gallery'];
-
-    /** Blob ownership ledger per mirror source — drives the incremental delta + byte total. */
-    private const MIRROR_LEDGER = ['files' => FileBlob::class, 'gallery' => GalleryBlob::class];
-
     public function __construct(
         private readonly BackupDestinationFactory $destinations,
         private readonly ArchiveCipher $cipher,
@@ -97,11 +86,13 @@ final class BackupManager
 
             // Files/Gallery can be either an incremental mirror (default) or a
             // full archive; the database is always a full archive.
-            $useMirror = in_array($job->source, self::MIRROR_SOURCES, true) && ($job->mode ?? 'mirror') !== 'archive';
+            $sourceObj = $this->source($job->source);
+            $useMirror = ($sourceObj instanceof MirrorableSource) && ($job->mode ?? 'mirror') !== 'archive';
 
             if ($useMirror) {
-                $diskPrefix = self::MIRROR_PREFIX[$job->source];
-                $ledger = self::MIRROR_LEDGER[$job->source];
+                /** @var MirrorableSource $sourceObj */
+                $diskPrefix = $sourceObj->diskPrefix();
+                $ledger = $sourceObj->ledgerModel();
                 // Total stored size comes straight from the blob ledger (one SQL
                 // sum) instead of a size() HEAD per object — the metric no longer
                 // costs tens of thousands of storage calls per run.
@@ -142,7 +133,7 @@ final class BackupManager
                 }
             } else {
                 $step('Building '.$job->source.' archive…');
-                $artifact = $this->source($job->source)->build($workDir);
+                $artifact = $sourceObj->build($workDir);
                 $uploadPath = $artifact->path;
                 $extension = $artifact->extension;
                 $step('Archive built: '.Bytes::format((int) (filesize($uploadPath) ?: 0)).'.');

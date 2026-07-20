@@ -8,6 +8,7 @@ use App\Services\Files\ReverseGeocoder;
 use App\Services\Gallery\GalleryProcessor;
 use App\Services\Gallery\MachineLearning;
 use App\Services\Support\NominatimClient;
+use App\Support\DiskTempFile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,42 +33,38 @@ class GalleryProcessController extends Controller
         $mime = (string) ($upload->getClientMimeType() ?: $upload->getMimeType() ?: 'application/octet-stream');
 
         // Move into a controlled temp path so we can guarantee the unlink; the
-        // PHP upload temp is also cleaned at request end.
-        $tmp = tempnam(sys_get_temp_dir(), 'gproc');
-        $upload->move(dirname($tmp), basename($tmp));
+        // PHP upload temp is also cleaned at request end. DiskTempFile destructs
+        // at end of scope (including on throw) — no manual unlink needed.
+        $tmp = DiskTempFile::create('gproc');
+        $upload->move(dirname($tmp->path()), basename($tmp->path()));
 
-        try {
-            $this->guardPixelBudget($tmp);
-            // ml=0 → "fast" upload: skip the CLIP embedding + face detection so
-            // the photo is visible immediately; the client runs analyze() later.
-            $d = $processor->process($tmp, $mime, $request->boolean('ml', true));
+        $this->guardPixelBudget($tmp->path());
+        // ml=0 → "fast" upload: skip the CLIP embedding + face detection so
+        // the photo is visible immediately; the client runs analyze() later.
+        $d = $processor->process($tmp->path(), $mime, $request->boolean('ml', true));
 
-            // Binary outputs are base64-encoded for the JSON envelope; the client
-            // decodes, encrypts and stores each as its own opaque blob.
-            return response()->json([
-                'media_type' => $d['media_type'],
-                'width' => $d['width'],
-                'height' => $d['height'],
-                'duration' => $d['duration'],
-                'content_id' => $d['content_id'],
-                'exif' => $d['exif'],
-                'place' => $d['place'],
-                'embedding' => $d['embedding'],
-                'phash' => $d['phash'],
-                'faces' => array_map(fn (array $f): array => [
-                    'score' => $f['score'],
-                    'box' => $f['box'],
-                    'embedding' => $f['embedding'],
-                    'crop' => $f['crop'] !== null ? base64_encode($f['crop']) : null,
-                ], $d['faces']),
-                'thumb' => $d['thumb'] !== null ? base64_encode($d['thumb']) : null,
-                'medium' => $d['medium'] !== null ? base64_encode($d['medium']) : null,
-                'motion' => $d['motion'] !== null ? base64_encode($d['motion']) : null,
-            ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
-        } finally {
-            // Never leave plaintext at rest — discard immediately.
-            @unlink($tmp);
-        }
+        // Binary outputs are base64-encoded for the JSON envelope; the client
+        // decodes, encrypts and stores each as its own opaque blob.
+        return response()->json([
+            'media_type' => $d['media_type'],
+            'width' => $d['width'],
+            'height' => $d['height'],
+            'duration' => $d['duration'],
+            'content_id' => $d['content_id'],
+            'exif' => $d['exif'],
+            'place' => $d['place'],
+            'embedding' => $d['embedding'],
+            'phash' => $d['phash'],
+            'faces' => array_map(fn (array $f): array => [
+                'score' => $f['score'],
+                'box' => $f['box'],
+                'embedding' => $f['embedding'],
+                'crop' => $f['crop'] !== null ? base64_encode($f['crop']) : null,
+            ], $d['faces']),
+            'thumb' => $d['thumb'] !== null ? base64_encode($d['thumb']) : null,
+            'medium' => $d['medium'] !== null ? base64_encode($d['medium']) : null,
+            'motion' => $d['motion'] !== null ? base64_encode($d['motion']) : null,
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     /**
@@ -84,25 +81,21 @@ class GalleryProcessController extends Controller
         ]);
 
         $upload = $request->file('file');
-        $tmp = tempnam(sys_get_temp_dir(), 'ganalyze');
-        $upload->move(dirname($tmp), basename($tmp));
+        $tmp = DiskTempFile::create('ganalyze');
+        $upload->move(dirname($tmp->path()), basename($tmp->path()));
 
-        try {
-            $this->guardPixelBudget($tmp);
-            $d = $processor->analyze($tmp);
+        $this->guardPixelBudget($tmp->path());
+        $d = $processor->analyze($tmp->path());
 
-            return response()->json([
-                'embedding' => $d['embedding'],
-                'faces' => array_map(fn (array $f): array => [
-                    'score' => $f['score'],
-                    'box' => $f['box'],
-                    'embedding' => $f['embedding'],
-                    'crop' => $f['crop'] !== null ? base64_encode($f['crop']) : null,
-                ], $d['faces']),
-            ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
-        } finally {
-            @unlink($tmp);
-        }
+        return response()->json([
+            'embedding' => $d['embedding'],
+            'faces' => array_map(fn (array $f): array => [
+                'score' => $f['score'],
+                'box' => $f['box'],
+                'embedding' => $f['embedding'],
+                'crop' => $f['crop'] !== null ? base64_encode($f['crop']) : null,
+            ], $d['faces']),
+        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     /**

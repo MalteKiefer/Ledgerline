@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Gallery;
 
+use App\Support\BinaryProcess;
 use Illuminate\Support\Carbon;
-use Symfony\Component\Process\Process;
 use Throwable;
 
 /**
@@ -28,15 +28,13 @@ class ExifReader
         try {
             // -n: numeric values (signed decimal GPS), -G: group-prefixed keys,
             // -json: machine-readable, -api largefilesupport for big HEIC bursts.
-            $process = new Process([$this->binary(), '-json', '-n', '-G', '-api', 'largefilesupport=1', $path]);
-            $process->setTimeout(120);
-            $process->run();
+            $stdout = BinaryProcess::run([$this->binary(), '-json', '-n', '-G', '-api', 'largefilesupport=1', $path], 120);
 
-            if (! $process->isSuccessful()) {
+            if ($stdout === null) {
                 return $empty;
             }
 
-            $decoded = json_decode($process->getOutput(), true);
+            $decoded = json_decode($stdout, true);
             $tags = is_array($decoded) && isset($decoded[0]) && is_array($decoded[0]) ? $decoded[0] : [];
 
             return $this->normalize($tags);
