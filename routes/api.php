@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\GalleryBlobController;
@@ -40,6 +41,9 @@ Route::prefix('v1')->group(function (): void {
     // still pass) so a token's declared scope is actually checked.
     Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
+        // Streams the signed-in user's avatar (Pocket-ID image, same-origin, non-secret);
+        // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
+        Route::get('/avatar', AvatarController::class)->middleware('throttle:120,1')->name('api.avatar');
         Route::post('/device/heartbeat', [AuthController::class, 'heartbeat'])->middleware('throttle:120,1')->name('api.device.heartbeat');
         Route::delete('/auth/session', [AuthController::class, 'destroy'])->name('api.auth.destroy');
 
