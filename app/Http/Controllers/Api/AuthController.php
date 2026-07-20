@@ -117,6 +117,8 @@ class AuthController extends Controller
             'email' => $user->email,
             'locale' => $user->locale,
             'groups' => $user->groups ?? [],
+            // Non-secret Pocket-ID avatar. True → fetch GET /api/v1/avatar (Bearer).
+            'has_avatar' => is_string($user->avatar) && $user->avatar !== '',
         ];
     }
 }
