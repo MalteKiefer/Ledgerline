@@ -268,10 +268,10 @@
                     <input type="checkbox" x-show="! isSharedVault(filterFolder)" :checked="isSelected(x.id)" @change="toggleSelect(x.id)" @click.stop class="h-4 w-4 shrink-0 rounded border-gray-300 text-gray-900 focus:ring-0 dark:border-gray-600 dark:bg-gray-700" :class="(selectedIds.length || isSelected(x.id)) ? '' : 'opacity-0 group-hover:opacity-100'">
                     <button type="button" @click="openItem(x)" class="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left">
                       <span class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                            :class="(x.type === 'login' && ! x.icon) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
-                            :style="(x.type === 'login' && ! x.icon) ? ('background:' + avatarColor(x)) : ''">
-                        <template x-if="x.type === 'login' && x.icon"><img :src="x.icon" alt="" class="h-full w-full object-contain"></template>
-                        <template x-if="x.type === 'login' && ! x.icon"><span x-text="avatarText(x)"></span></template>
+                            :class="(x.type === 'login' && ! iconSrc(x)) ? 'text-xs font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
+                            :style="(x.type === 'login' && ! iconSrc(x)) ? ('background:' + avatarColor(x)) : ''">
+                        <template x-if="x.type === 'login' && iconSrc(x)"><img :src="iconSrc(x)" alt="" class="h-full w-full object-contain"></template>
+                        <template x-if="x.type === 'login' && ! iconSrc(x)"><span x-text="avatarText(x)"></span></template>
                         <template x-if="x.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'x.type', 'cls' => 'h-4 w-4'])</span></template>
                       </span>
                       <span class="min-w-0 flex-1">
@@ -300,10 +300,10 @@
               <div class="p-6">
                 <div class="mb-4 flex items-center gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                        :class="(draft.type === 'login' && ! draft.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
-                        :style="(draft.type === 'login' && ! draft.icon) ? ('background:' + avatarColor(draft)) : ''">
-                    <template x-if="draft.type === 'login' && draft.icon"><img :src="draft.icon" alt="" class="h-full w-full object-contain"></template>
-                    <template x-if="draft.type === 'login' && ! draft.icon"><span x-text="avatarText(draft)"></span></template>
+                        :class="(draft.type === 'login' && ! iconSrc(draft)) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
+                        :style="(draft.type === 'login' && ! iconSrc(draft)) ? ('background:' + avatarColor(draft)) : ''">
+                    <template x-if="draft.type === 'login' && iconSrc(draft)"><img :src="iconSrc(draft)" alt="" class="h-full w-full object-contain"></template>
+                    <template x-if="draft.type === 'login' && ! iconSrc(draft)"><span x-text="avatarText(draft)"></span></template>
                     <template x-if="draft.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'draft.type', 'cls' => 'h-5 w-5'])</span></template>
                   </span>
                   <input type="text" x-model="draft.title" placeholder="{{ __('passwords.title_placeholder') }}" class="flex-1 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-base font-medium focus:border-gray-500 focus:ring-gray-500">
@@ -428,10 +428,10 @@
               <div class="p-6">
                 <div class="mb-4 flex items-start gap-3">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                        :class="(current.type === 'login' && ! current.icon) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
-                        :style="(current.type === 'login' && ! current.icon) ? ('background:' + avatarColor(current)) : ''">
-                    <template x-if="current.type === 'login' && current.icon"><img :src="current.icon" alt="" class="h-full w-full object-contain"></template>
-                    <template x-if="current.type === 'login' && ! current.icon"><span x-text="avatarText(current)"></span></template>
+                        :class="(current.type === 'login' && ! iconSrc(current)) ? 'text-sm font-semibold text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'"
+                        :style="(current.type === 'login' && ! iconSrc(current)) ? ('background:' + avatarColor(current)) : ''">
+                    <template x-if="current.type === 'login' && iconSrc(current)"><img :src="iconSrc(current)" alt="" class="h-full w-full object-contain"></template>
+                    <template x-if="current.type === 'login' && ! iconSrc(current)"><span x-text="avatarText(current)"></span></template>
                     <template x-if="current.type !== 'login'"><span>@include('passwords._icon', ['expr' => 'current.type', 'cls' => 'h-5 w-5'])</span></template>
                   </span>
                   <div class="min-w-0 flex-1">
@@ -463,9 +463,9 @@
                         </template>
                       </div>
                     </div>
-                    <div x-show="issuesFor(current) && issuesFor(current).weak">
+                    <div x-show="strengthScore !== null && strengthScore <= 2">
                       <p>{{ __('passwords.weak_warn') }}</p>
-                      <div x-show="strengthScore !== null && issuesFor(current) && issuesFor(current).weak" class="mt-1.5">
+                      <div x-show="strengthScore !== null && strengthScore <= 2" class="mt-1.5">
                         <div class="flex items-center gap-2">
                           <div class="flex flex-1 gap-0.5">
                             <template x-for="wi in [0,1,2,3,4]" :key="wi">

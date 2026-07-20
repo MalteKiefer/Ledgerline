@@ -500,6 +500,10 @@ export default (config = {}, labels = {}) => ({
         } catch (e) { return 'skip'; }
     },
     _sleep(ms) { return new Promise((r) => setTimeout(r, ms)); },
+    // Usable image src for a login's stored icon. Only data:/http(s) URIs are
+    // rendered as <img>; imported items may carry a bare icon name (e.g. Apple
+    // Passwords' "person.crop.circle") which must never leak into an img src.
+    iconSrc(x) { const v = x && x.icon; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
     avatarText(x) { const s = (x.title || this._domain(x) || '?').trim(); return (s[0] || '?').toUpperCase(); },
     avatarColor(x) { let h = 0; const s = x.title || this._domain(x) || x.id || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 45% 55%)`; },
 
