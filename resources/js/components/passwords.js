@@ -537,6 +537,14 @@ export default (config = {}, labels = {}) => ({
     // rendered as <img>; imported items may carry a bare icon name (e.g. Apple
     // Passwords' "person.crop.circle") which must never leak into an img src.
     iconSrc(x) { const v = x && x.icon; return (typeof v === 'string' && /^(data:|https?:)/.test(v)) ? v : ''; },
+    // Per-type tint for the icon chip (iOS-style, mirrors the settings list chips).
+    typeTint(t) {
+        return ({
+            login: '#7066f5', password: '#9e70fa', card: '#3b9fd6', wifi: '#3fae9f',
+            license: '#d9a441', server: '#6b7280', passkey: '#59ad6b',
+            identity: '#e2915a', secure_note: '#8b8f9a',
+        })[t] || '#7066f5';
+    },
     avatarText(x) { const s = (x.title || this._domain(x) || '?').trim(); return (s[0] || '?').toUpperCase(); },
     avatarColor(x) { let h = 0; const s = x.title || this._domain(x) || x.id || ''; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 45% 55%)`; },
 
