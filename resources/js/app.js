@@ -6,6 +6,7 @@ import { newId as _newId } from './shared/sealed-store';
 import { fetchDecryptWorker, queueBlobDelete } from './shared/blob-io';
 import { padBlob } from './shared/padme';
 import contacts from './components/contacts';
+import health from './components/health';
 import passwords from './components/passwords';
 import vaultFiles from './components/files';
 import vaultGallery from './components/gallery';
@@ -60,7 +61,7 @@ window.LLStore = {
     _onError: null,
 
     _blank() {
-        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [], invoices: [], invoiceSeq: 0, secrets: [], secretFolders: [] };
+        return { v: 1, notes: [], bookmarks: [], bookmarkFolders: [], todos: [], todoLists: [], files: [], fileFolders: [], contacts: [], invoices: [], invoiceSeq: 0, secrets: [], secretFolders: [], healthEntries: [], healthProfile: null };
     },
 
     // A random client-side id for a new item (server never assigns ids now).
@@ -674,6 +675,8 @@ Alpine.data('notes', notes);
  * avatarRef/avatarKey. vCard mapping + gallery-person linking build on this.
  */
 Alpine.data('contacts', contacts);
+
+Alpine.data('health', health);
 
 
 /**

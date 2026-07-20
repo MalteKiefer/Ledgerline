@@ -12,6 +12,7 @@ return [
         'files' => 'Dateien',
         'gallery' => 'Galerie',
         'todos' => 'Aufgaben',
+        'health' => 'Gesundheit',
         'more' => 'Mehr',
     ],
     'menu' => [

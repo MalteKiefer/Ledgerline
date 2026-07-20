@@ -132,13 +132,28 @@
             </div>
             {{-- Browser actions (hidden in the trash view); empty-trash shown there --}}
             <div class="flex flex-wrap items-center gap-2">
-                <template x-if="view === 'files'">
-                    {{-- Upload --}}
+                <template x-if="view === 'files' && _canEditActive()">
+                    {{-- Upload (hidden for shared-folder viewers) --}}
                     <label title="{{ __('files.upload') }}" aria-label="{{ __('files.upload') }}"
                         class="cursor-pointer ll-accent rounded-xl p-2">
                         <x-icon name="arrow-up-tray" class="h-5 w-5" />
                         <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
                     </label>
+                </template>
+                {{-- Shared-folder management buttons (manage only) --}}
+                <template x-if="_isSharedContext() && _canManageActive()">
+                    <div class="flex items-center gap-1">
+                        <button type="button" @click="openShareFolderDialog(activeShared)"
+                            title="{{ __('files.folder_share') }}"
+                            class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-accent/5">
+                            <x-icon name="user-plus" class="h-5 w-5" />
+                        </button>
+                        <button type="button" @click="openManageFolderMembers(activeShared)"
+                            title="{{ __('files.folder_members') }}"
+                            class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-accent/5">
+                            <x-icon name="users" class="h-5 w-5" />
+                        </button>
+                    </div>
                 </template>
                 {{-- Vault lock toggle: unlocked padlock = click to lock now;
                      closed padlock = click to unlock. Sits next to Upload. --}}
@@ -177,8 +192,8 @@
                 <button type="button" @click="setLayout('list')" :class="layout === 'list' ? 'bg-accent text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_list') }}" aria-label="{{ __('files.view_list') }}" class="rounded p-1.5"><x-icon name="bars-3" class="h-4 w-4" /></button>
                 <button type="button" @click="setLayout('grid')" :class="layout === 'grid' ? 'bg-accent text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_grid') }}" aria-label="{{ __('files.view_grid') }}" class="rounded p-1.5"><x-icon name="squares-2x2" class="h-4 w-4" /></button>
             </div>
-            {{-- Index file contents for search (client-side text extraction) --}}
-            <button type="button" x-show="unextractedCount() > 0 && ! _extracting" x-cloak @click="extractAllText()" :title="'{{ __('files.extract_hint') }}'" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-accent/5">
+            {{-- Index file contents for search (personal only — not available in shared context) --}}
+            <button type="button" x-show="! _isSharedContext() && unextractedCount() > 0 && ! _extracting" x-cloak @click="extractAllText()" :title="'{{ __('files.extract_hint') }}'" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-accent/5">
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('files.extract_all') }} <span class="tabular-nums opacity-70" x-text="'(' + unextractedCount() + ')'"></span>
             </button>
             <span x-show="extractProgress" x-cloak class="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 tabular-nums">
@@ -325,7 +340,8 @@
                                     <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
                                     <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
-                                    <button type="button" x-show="view === 'files' || view === 'shared'" @click="openShare(row)" :title="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" :aria-label="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-accent/5" :class="row.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"><x-icon name="share" class="h-4 w-4" /></button>
+                                    {{-- Public share link: personal context only (not available inside shared folders) --}}
+                                    <button type="button" x-show="(view === 'files' || view === 'shared') && ! _isSharedContext()" @click="openShare(row)" :title="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" :aria-label="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-accent/5" :class="row.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"><x-icon name="share" class="h-4 w-4" /></button>
                                     <div class="relative inline-block text-left">
                                         <button type="button" @click="toggleMenu($event)" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
                                         {{-- Teleported to the body so the table's overflow-x-auto wrapper cannot
@@ -348,8 +364,9 @@
       </div>{{-- /flex row --}}
     </template>
 
-    {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling. --}}
-    <div x-show="selected.length && ! trashView" x-cloak x-transition
+    {{-- Bulk bar: floats at the bottom so actions are reachable without scrolling.
+         Write actions (move, delete) require _canEditActive(). --}}
+    <div x-show="selected.length && ! trashView && _canEditActive()" x-cloak x-transition
         :class="(uploads.length || dl.active) ? 'bottom-72' : 'bottom-5'"
         class="fixed inset-x-0 z-40 mx-auto flex w-max max-w-[95vw] flex-wrap items-center justify-center gap-3 rounded-full border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] px-4 py-2 shadow-xl">
         <span class="text-sm font-medium text-gray-700 dark:text-gray-300"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
@@ -687,5 +704,7 @@
     </template>
 
     @include('_paperless_modal')
+
+    @include('files._shared_dialogs')
   </div>
 </x-layouts.app>

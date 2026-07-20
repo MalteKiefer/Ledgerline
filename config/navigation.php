@@ -17,12 +17,17 @@ return [
         ['label' => 'messages.nav.files', 'route' => 'files.index', 'pattern' => 'files.*', 'icon' => 'files'],
     ],
     // The rest: a "More" dropdown on desktop, the "More" sheet on mobile.
-    'more' => [
+    'more' => array_values(array_filter([
         ['label' => 'messages.nav.notes', 'route' => 'notes.index', 'pattern' => 'notes.*', 'icon' => 'pencil'],
         ['label' => 'messages.nav.todos', 'route' => 'todos.index', 'pattern' => 'todos.*', 'icon' => 'todos'],
         ['label' => 'messages.nav.bookmarks', 'route' => 'bookmarks.index', 'pattern' => 'bookmarks.*', 'icon' => 'bookmark'],
         ['label' => 'messages.nav.passwords', 'route' => 'passwords.index', 'pattern' => 'passwords.*', 'icon' => 'key'],
         ['label' => 'messages.nav.contacts', 'route' => 'contacts.index', 'pattern' => 'contacts.*', 'icon' => 'users'],
         ['label' => 'messages.nav.invoices', 'route' => 'invoices.index', 'pattern' => 'invoices.*', 'icon' => 'document-text'],
-    ],
+        // Health is behind a feature flag while the module is still being built
+        // (FEATURE_HEALTH=true to expose it). Route + page exist regardless.
+        env('FEATURE_HEALTH', false)
+            ? ['label' => 'messages.nav.health', 'route' => 'health.index', 'pattern' => 'health.*', 'icon' => 'heart']
+            : null,
+    ])),
 ];
