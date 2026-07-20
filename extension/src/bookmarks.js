@@ -71,6 +71,7 @@ export function addBookmark(manifest, rec) {
         tags: Array.isArray(rec.tags) ? rec.tags.slice(0, 50).map(t => String(t).slice(0, 60)) : [],
         favorite: !!rec.favorite,
         readLater: !!rec.readLater,
+        read: false, // matches the web module's bookmark shape (read-later "done" flag)
     };
     manifest.bookmarks.unshift(item);
     return { id: item.id };
