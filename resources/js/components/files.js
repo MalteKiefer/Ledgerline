@@ -1,5 +1,6 @@
 // Files module (nestable ZK file browser). Extracted from app.js.
-import { jsonHeaders, postForm } from '../shared/api';
+import { jsonHeaders, postForm, getJson } from '../shared/api';
+import { Vault, VaultShareCrypto } from '../vault';
 import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
 import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
@@ -61,6 +62,14 @@ export default (config = {}, labels = {}) => ({
     busy: 0, // in-flight file operations (sync/save/trash/delete/move/…); drives the spinner badge
     error: '',
 
+    // ---- Shared folders (ZK cross-user, mirrors passwords.js sharedVaults) ----
+    sharedFolders: [],      // [{id, vaultId, name, role, version}]
+    sharedTree: {},          // {vaultId: {folders: [], files: []}}
+    _folderKeys: {},         // vaultId → Uint8Array VK_folder (in-memory only, never persisted)
+    _folderVersion: {},      // vaultId → optimistic-lock version
+    pendingFolderInvites: [], // [{vault_id, member_id, role, wrapped_vault_key}]
+    activeShared: null,      // vaultId currently browsed, or null for personal
+
     // Track an async file operation so the UI can show a "working" spinner badge
     // for every mutation (the user gets feedback even for a slow permanent delete).
     _track(p) {
@@ -87,6 +96,11 @@ export default (config = {}, labels = {}) => ({
             if (on && this.state !== 'ready') this.load();
             if (! on) { this.state = 'locked'; window.LLStore.reset(); }
         });
+        // Shared folders: watch state transitions to 'ready' (e.g. manual unlock).
+        // Also call directly when Trusted-Device auto-unlock sets state before the
+        // watcher is registered (mirrors the passwords.js v1.504.31 bugfix).
+        this.$watch('state', (s) => { if (s === 'ready') this._loadSharedFolders(); });
+        if (this.state === 'ready') this._loadSharedFolders();
     },
 
     initDropzone() {
@@ -219,6 +233,127 @@ export default (config = {}, labels = {}) => ({
             });
             if (res.ok) this.usage = await res.json();
         } catch (e) { /* best effort */ }
+    },
+
+    /* ---- Shared folders (ZK cross-user, mirrors passwords.js _loadSharedVaults / _saveVault) ----
+       Role mapping: server uses viewer/editor/manager; client uses read/edit/manage. */
+    _serverToClientRole(r) {
+        const map = { viewer: 'read', editor: 'edit', manager: 'manage' };
+        return map[r] || 'read';
+    },
+    _clientToServerRole(r) {
+        const map = { read: 'viewer', edit: 'editor', manage: 'manager' };
+        return map[r] || 'viewer';
+    },
+
+    async _loadSharedFolders() {
+        if (! this.$store.vault.unlocked()) return;
+        try {
+            const ids = await Vault.ensureIdentityKeys();
+            const rows = await getJson('/vaults?kind=folder').catch(() => []);
+            const all = Array.isArray(rows) ? rows : [];
+            const active = [];
+            this.pendingFolderInvites = all
+                .filter((m) => m.status === 'pending')
+                .map((m) => ({ vault_id: m.vault_id, member_id: m.id, role: m.role, wrapped_vault_key: m.wrapped_vault_key }));
+            for (const m of all) {
+                if (m.status === 'pending') continue;
+                if (m.status !== 'active') continue;
+                try {
+                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, ids.pub, ids.sk);
+                    // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
+                    // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
+                    const vk = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
+                    // Cache the raw key bytes for write operations (in-memory only).
+                    this._folderKeys[m.vault_id] = vk;
+                    const store = await getJson('/vaults/' + m.vault_id + '/store');
+                    let manifest = { name: '', folders: [], files: [] };
+                    if (store.sealed_manifest) {
+                        manifest = await VaultShareCrypto.openVaultManifest(store.sealed_manifest, vk);
+                    }
+                    this._folderVersion[m.vault_id] = store.version || 0;
+                    this.sharedTree[m.vault_id] = { folders: manifest.folders || [], files: manifest.files || [] };
+                    // Avoid duplicates if _loadSharedFolders is somehow called twice.
+                    if (this.sharedFolders.some((sf) => sf.vaultId === m.vault_id)) continue;
+                    active.push({
+                        id: m.vault_id,
+                        vaultId: m.vault_id,
+                        name: manifest.name || '',
+                        role: this._serverToClientRole(m.role),
+                        version: store.version || 0,
+                    });
+                } catch (e) {
+                    console.warn('[shared folder] failed to load vault', m.vault_id, e);
+                }
+            }
+            this.sharedFolders = active;
+        } catch (e) {
+            console.warn('[shared folders] load aborted', e);
+        }
+    },
+
+    // Seal and PUT the shared folder manifest with optimistic concurrency.
+    // On 409 the server body contains the current sealed manifest + version;
+    // we re-apply the pending mutation and retry once before surfacing an error.
+    // mutation = { op: 'upsertFile'|'deleteFile'|'upsertFolder'|'deleteFolder', item }
+    async _saveFolder(vaultId, mutation) {
+        const entry = this.sharedFolders.find((sf) => sf.vaultId === vaultId);
+        const vkBytes = this._folderKeys && this._folderKeys[vaultId];
+        if (! entry || ! vkBytes) throw new Error('Vault key not available for ' + vaultId);
+        const tree = this.sharedTree[vaultId] || { folders: [], files: [] };
+        const manifest = { name: entry.name, folders: tree.folders || [], files: tree.files || [] };
+        const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
+        const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._folderVersion[vaultId] });
+        let res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+        // On 429, honour Retry-After and retry once (mirrors personal LLStore.flush behaviour).
+        if (res.status === 429) {
+            const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+            await new Promise((r) => setTimeout(r, (isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000));
+            res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+        }
+        if (res.ok) {
+            const { version } = await res.json();
+            this._folderVersion[vaultId] = version;
+            return;
+        }
+        if (res.status === 409 && mutation) {
+            // Server has a newer version — merge and retry once.
+            const data = await res.json();
+            const serverManifest = await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes);
+            let serverFolders = serverManifest.folders || [];
+            let serverFiles = serverManifest.files || [];
+            if (mutation.op === 'upsertFolder') {
+                const idx = serverFolders.findIndex((f) => f.id === mutation.item.id);
+                if (idx >= 0) serverFolders[idx] = mutation.item; else serverFolders.push(mutation.item);
+            } else if (mutation.op === 'deleteFolder') {
+                serverFolders = serverFolders.filter((f) => f.id !== mutation.item.id);
+            } else if (mutation.op === 'upsertFile') {
+                const idx = serverFiles.findIndex((f) => f.id === mutation.item.id);
+                if (idx >= 0) serverFiles[idx] = mutation.item; else serverFiles.push(mutation.item);
+            } else if (mutation.op === 'deleteFile') {
+                serverFiles = serverFiles.filter((f) => f.id !== mutation.item.id);
+            }
+            this.sharedTree = { ...this.sharedTree, [vaultId]: { folders: serverFolders, files: serverFiles } };
+            this._folderVersion[vaultId] = data.version;
+            const sealed2 = await VaultShareCrypto.sealVaultManifest(
+                { name: entry.name, folders: serverFolders, files: serverFiles },
+                vkBytes,
+            );
+            const res2 = await fetch('/vaults/' + vaultId + '/store', {
+                method: 'PUT',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ sealed_manifest: sealed2, expected_version: data.version }),
+            });
+            if (res2.ok) {
+                const { version } = await res2.json();
+                this._folderVersion[vaultId] = version;
+                return;
+            }
+            // Second conflict — surface error and reload folder state.
+            await this._loadSharedFolders();
+            return;
+        }
+        throw new Error('Save shared folder failed: ' + res.status);
     },
 
     // All descendant folder ids of the given folders (inclusive of the roots).
