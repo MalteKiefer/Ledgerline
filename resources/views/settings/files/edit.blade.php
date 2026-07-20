@@ -1,12 +1,12 @@
 <x-layouts.app :title="__('settings.files_section')">
     <x-page-heading :title="__('settings.files_section')" :subtitle="__('settings.files_desc')" />
 
-    <form method="POST" action="{{ route('settings.files.update') }}" class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <form method="POST" action="{{ route('settings.files.update') }}" class="mt-6 ll-card">
         @csrf
         @method('PUT')
         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="file_max_versions">{{ __('settings.files_max_versions') }}</label>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.files_max_versions_hint') }}</p>
-        <select id="file_max_versions" name="file_max_versions" class="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:w-32">
+        <select id="file_max_versions" name="file_max_versions" class="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent sm:w-32">
             @foreach ([1, 3, 5, 10, 25, 50, 100, 200] as $i)
                 <option value="{{ $i }}" @selected($maxVersions === $i)>{{ $i }}</option>
             @endforeach
@@ -28,7 +28,7 @@
                             <span class="font-medium text-gray-700 dark:text-gray-300">{{ __($label) }}</span>
                             <input type="number" min="0" name="{{ $field }}" value="{{ old($field, $limits->{$field}) }}"
                                 placeholder="{{ __('settings.files_default_ph', ['n' => config($cfg)]) }}"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
                             @error($field)<span class="mt-1 block text-xs text-red-600 dark:text-red-400">{{ $message }}</span>@enderror
                         </label>
                     @endforeach

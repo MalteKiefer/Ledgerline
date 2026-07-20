@@ -36,8 +36,12 @@
     box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
 }
 
-/* Accent tint on checkboxes/radios app-wide. */
+/* Accent tint on checkboxes/radios + accent focus on all text inputs app-wide. */
 input[type='checkbox'], input[type='radio'] { accent-color: var(--color-accent); }
+:is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']), select, textarea):focus {
+    --tw-ring-color: var(--color-accent);
+    border-color: var(--color-accent);
+}
 
 /* Locally-bundled form-control base styles (no CDN). Gives inputs, selects and
    textareas consistent padding, borders and focus rings. */

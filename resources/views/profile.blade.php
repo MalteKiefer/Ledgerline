@@ -13,7 +13,7 @@
                 @if ($user->avatar_url)
                     <form method="POST" action="{{ route('profile.avatar.refresh') }}" class="mt-2">
                         @csrf
-                        <button type="submit" class="min-h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><span class="inline-flex items-center gap-1.5"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</span></button>
+                        <button type="submit" class="min-h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent"><span class="inline-flex items-center gap-1.5"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</span></button>
                     </form>
                 @endif
             </div>
@@ -86,10 +86,10 @@
             {{-- Pick how to connect: mobile app (QR) or command-line (code) --}}
             <template x-if="!active">
                 <div class="flex flex-wrap gap-2">
-                    <button type="button" x-on:click="start('app')" class="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <button type="button" x-on:click="start('app')" class="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">
                         <x-icon name="qr-code" class="h-4 w-4" />{{ __('account.devices_connect') }}
                     </button>
-                    <button type="button" x-on:click="start('cli')" class="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <button type="button" x-on:click="start('cli')" class="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">
                         <x-icon name="command-line" class="h-4 w-4" />{{ __('account.cli_connect') }}
                     </button>
                 </div>
@@ -107,7 +107,7 @@
                         <p class="text-gray-600 dark:text-gray-400">{{ __('account.cli_paste_hint') }}</p>
                         <div class="mt-2 flex items-center gap-2">
                             <code x-text="code" class="min-w-0 flex-1 truncate rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 font-mono text-sm text-gray-800 dark:text-gray-200"></code>
-                            <button type="button" x-on:click="copyCode()" class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                            <button type="button" x-on:click="copyCode()" class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">
                                 <x-icon name="clipboard" class="h-4 w-4" /><span x-text="copied ? @js(__('account.cli_copied')) : @js(__('account.cli_copy'))"></span>
                             </button>
                         </div>
@@ -151,7 +151,7 @@
                         </div>
                         <div class="flex shrink-0 gap-2">
                             <button type="button" x-on:click="wipeDevice(d.id)" x-show="!d.wipeRequested" class="inline-flex min-h-11 items-center rounded-md border border-red-300 dark:border-red-800 px-3 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30">{{ __('account.devices_wipe') }}</button>
-                            <button type="button" x-on:click="revokeDevice(d.id)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('account.devices_revoke') }}</button>
+                            <button type="button" x-on:click="revokeDevice(d.id)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('account.devices_revoke') }}</button>
                         </div>
                     </li>
                 </template>
@@ -185,7 +185,7 @@
                         @unless ($s['current'])
                             <form method="POST" action="{{ route('account.sessions.revoke', $s['id']) }}" class="shrink-0">
                                 @csrf @method('DELETE')
-                                <button type="submit" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('account.sessions_revoke') }}</button>
+                                <button type="submit" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('account.sessions_revoke') }}</button>
                             </form>
                         @endunless
                     </li>
@@ -220,7 +220,7 @@
                     @csrf @method('DELETE')
                     <label class="block text-sm text-gray-700 dark:text-gray-300">{{ __('account.delete_confirm_label') }}
                         <input type="text" name="confirmation" required autocomplete="off"
-                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     </label>
                     @error('confirmation')<p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>@enderror
                     <div class="flex justify-end gap-2">

@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('settings.notifications_heading')">
-    @php $input = 'mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm'; @endphp
+    @php $input = 'mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm'; @endphp
 
     <p class="text-sm text-gray-500 dark:text-gray-400">
         <a href="{{ route('settings') }}" class="hover:underline">{{ __('messages.menu.settings') }}</a>
@@ -12,9 +12,9 @@
         @method('PUT')
 
         {{-- Mail server --}}
-        <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <section class="ll-card">
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="mail_enabled" value="1" @checked(old('mail_enabled', $settings->mail_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">
+                <input type="checkbox" name="mail_enabled" value="1" @checked(old('mail_enabled', $settings->mail_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
                 <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.notify_mail_heading') }}</span>
             </label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.notify_mail_hint') }}</p>
@@ -43,9 +43,9 @@
         </section>
 
         {{-- NTFY --}}
-        <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <section class="ll-card">
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="ntfy_enabled" value="1" @checked(old('ntfy_enabled', $settings->ntfy_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">
+                <input type="checkbox" name="ntfy_enabled" value="1" @checked(old('ntfy_enabled', $settings->ntfy_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
                 <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.notify_ntfy_heading') }}</span>
             </label>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -61,9 +61,9 @@
         </section>
 
         {{-- Webhook --}}
-        <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <section class="ll-card">
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="webhook_enabled" value="1" @checked(old('webhook_enabled', $settings->webhook_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">
+                <input type="checkbox" name="webhook_enabled" value="1" @checked(old('webhook_enabled', $settings->webhook_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
                 <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.notify_webhook_heading') }}</span>
             </label>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -80,7 +80,7 @@
     </form>
 
     {{-- Send a test message over each channel (uses the saved settings above). --}}
-    <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="mt-4 ll-card">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.notify_test_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.notify_test_hint') }}</p>
         <div class="mt-3 flex flex-wrap gap-2">
@@ -88,7 +88,7 @@
                 <form method="POST" action="{{ route('settings.notifications.test') }}">
                     @csrf
                     <input type="hidden" name="channel" value="{{ $channel }}">
-                    <button type="submit" class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <button type="submit" class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">
                         {{ __('settings.notify_test_send', ['channel' => $label]) }}
                     </button>
                 </form>
