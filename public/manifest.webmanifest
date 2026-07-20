@@ -1,13 +1,13 @@
 {
     "name": "Ledgerline",
     "short_name": "Ledgerline",
-    "description": "Self-hosted personal suite: mail, calendar, contacts, gallery, files, notes.",
+    "description": "Self-hosted zero-knowledge personal cloud: passwords, gallery, files, notes, todos, bookmarks, contacts, invoices.",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",
     "orientation": "portrait-primary",
-    "background_color": "#f3f4f6",
-    "theme_color": "#111827",
+    "background_color": "#ffffff",
+    "theme_color": "#7066f5",
     "icons": [
         {
             "src": "/icon-192.png",

@@ -45,6 +45,7 @@ jobs:
           mkdir -p "$STAGE"
           cp extension/manifest.json extension/content-loader.js "$STAGE"/
           cp -r extension/dist "$STAGE"/dist
+          cp -r extension/icons "$STAGE"/icons
           ZIP="ledgerline-extension-v${VERSION}.zip"
           zip -qr "$ZIP" "$STAGE"
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
