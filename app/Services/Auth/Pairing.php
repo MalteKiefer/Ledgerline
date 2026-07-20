@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Auth;
 
+use App\Models\AppSettings;
 use App\Models\DevicePairing;
 use App\Models\User;
 use Illuminate\Support\Str;
@@ -109,7 +110,8 @@ class Pairing
         // Enforce the device cap (revoke the oldest tokens so this new one keeps
         // the user at the configured maximum), then mint once.
         $user = $pairing->user;
-        $max = max(1, (int) config('devices.max', 3));
+        // Admin-configurable cap (Security settings); null/0 falls back to config default.
+        $max = max(1, (int) (AppSettings::current()->max_connected_devices ?: config('devices.max', 3)));
         $existing = $user->tokens()->orderBy('id')->pluck('id');
         $overflow = $existing->count() - ($max - 1);
         if ($overflow > 0) {

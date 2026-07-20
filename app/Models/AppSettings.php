@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
     'gallery_geocode_grid_km',
     'vault_remember_days',
     'vault_public_idle_minutes',
+    'max_connected_devices',
     'mail_enabled',
     'smtp_host',
     'smtp_port',
@@ -99,6 +100,7 @@ class AppSettings extends Model
             'gallery_geocode_grid_km' => 'float',
             'vault_remember_days' => 'integer',
             'vault_public_idle_minutes' => 'integer',
+            'max_connected_devices' => 'integer',
             // Notification/mail credentials: usable in the clear at runtime but
             // encrypted at rest (so they are not readable in a database backup).
             'mail_enabled' => 'boolean',
