@@ -18,7 +18,7 @@ class ReverseGeocoderTest extends TestCase
             'nominatim.openstreetmap.org/*' => Http::response(['display_name' => 'Adalbert-Stifter-Str. 6, Neudrossenfeld'], 200),
         ]);
 
-        $address = new ReverseGeocoder()->lookup(50.05, 11.5);
+        $address = app(ReverseGeocoder::class)->lookup(50.05, 11.5);
         $this->assertSame('Adalbert-Stifter-Str. 6, Neudrossenfeld', $address);
         Http::assertSent(fn ($request): bool => str_contains($request->url(), 'nominatim.openstreetmap.org'));
     }
@@ -30,11 +30,11 @@ class ReverseGeocoderTest extends TestCase
             'nominatim.openstreetmap.org/*' => Http::response(['display_name' => 'Adalbert-Stifter-Str. 6, Neudrossenfeld'], 200),
         ]);
 
-        new ReverseGeocoder()->lookup(50.05, 11.5);
+        app(ReverseGeocoder::class)->lookup(50.05, 11.5);
 
         // Under the zero-knowledge model the resolved location must never be
         // cached at rest — a second lookup therefore hits Nominatim again.
-        new ReverseGeocoder()->lookup(50.05, 11.5);
+        app(ReverseGeocoder::class)->lookup(50.05, 11.5);
         Http::assertSentCount(2);
         $this->assertNull(Cache::get('geocode:50.05,11.5'));
     }
@@ -44,6 +44,6 @@ class ReverseGeocoderTest extends TestCase
         Cache::flush();
         Http::fake(['nominatim.openstreetmap.org/*' => Http::response('', 500)]);
 
-        $this->assertNull(new ReverseGeocoder()->lookup(1.0, 2.0));
+        $this->assertNull(app(ReverseGeocoder::class)->lookup(1.0, 2.0));
     }
 }
