@@ -2,6 +2,7 @@ import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { Vault, ShareCrypto } from './vault';
 import { csrfToken, jsonHeaders } from './shared/api';
+import { newId as _newId } from './shared/sealed-store';
 import { fetchDecryptWorker, queueBlobDelete } from './shared/blob-io';
 import { padBlob } from './shared/padme';
 import contacts from './components/contacts';
@@ -63,11 +64,7 @@ window.LLStore = {
     },
 
     // A random client-side id for a new item (server never assigns ids now).
-    newId() {
-        const b = new Uint8Array(16);
-        crypto.getRandomValues(b);
-        return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-    },
+    newId() { return _newId(); },
 
     // Load + decrypt the manifest once (call after the vault is unlocked).
     async load() {

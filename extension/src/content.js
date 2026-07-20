@@ -3,6 +3,8 @@
 // no secrets beyond the moment of filling; all matching happens in the worker.
 
 import { genPassword } from './generator';
+import { esc } from './esc.js';
+import { IDENTITY_AC, IDENTITY_HAY, personalAc } from './identity.js';
 
 const send = (msg) => new Promise((r) => { try { chrome.runtime.sendMessage(msg, r); } catch (e) { r(null); } });
 
@@ -178,33 +180,6 @@ async function fillCard(card) {
 }
 
 // --- Identity autofill ---
-// Maps autocomplete tokens to identity item field names.
-const IDENTITY_AC = {
-    'given-name': 'firstName',
-    'family-name': 'lastName',
-    'email': 'email',
-    'tel': 'phone',
-    'organization': 'company',
-    'street-address': 'street',
-    'address-level2': 'city',
-    'address-level1': 'state',
-    'postal-code': 'zip',
-    'country': 'country',
-    'country-name': 'country',
-};
-// Name/id/placeholder heuristics used when autocomplete is absent or generic.
-const IDENTITY_HAY = [
-    { field: 'firstName', re: /\bfirst.?name\b|\bvorname\b|\bfname\b|\bgiven.?name\b/ },
-    { field: 'lastName', re: /\blast.?name\b|\bnachname\b|\bfamily.?name\b|\bsurname\b|\blname\b/ },
-    { field: 'email', re: /\bemail\b|\be-?mail\b/ },
-    { field: 'phone', re: /\bphone\b|\btel\b|\bmobile\b|\bhandy\b|\btelefon\b/ },
-    { field: 'company', re: /\bcompany\b|\borgani[sz]ation\b|\bfirma\b|\bunternehmen\b/ },
-    { field: 'street', re: /\bstreet\b|\bstra(ß|ss)e\b|\baddress.?1\b|\baddr\b|\banschrift\b/ },
-    { field: 'city', re: /\bcity\b|\bort\b|\bstadt\b|\btown\b/ },
-    { field: 'state', re: /\bstate\b|\bprovince\b|\bregion\b|\bbundesland\b/ },
-    { field: 'zip', re: /\bzip\b|\bpostal\b|\bpostcode\b|\bplz\b/ },
-    { field: 'country', re: /\bcountry\b|\bland\b/ },
-];
 function fillIdentity(identity) {
     const inputs = [...document.querySelectorAll('input,select,textarea')].filter(isVisible);
     const filled = new Set();
@@ -449,7 +424,6 @@ function identityLabel(id) {
 }
 function hasPersonalInfoField() {
     const inputs = [...document.querySelectorAll('input,select,textarea')].filter(isVisible);
-    const personalAc = new Set(['given-name', 'family-name', 'email', 'tel', 'organization', 'street-address', 'address-level2', 'address-level1', 'postal-code', 'country', 'country-name']);
     for (const input of inputs) {
         const t = (input.type || 'text').toLowerCase();
         if (['password', 'hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'image', 'reset'].includes(t)) continue;
@@ -570,9 +544,6 @@ async function onFocusField(input) {
 // --- Capture new credentials on submit and offer to save them ---
 let savePromptHost = null;
 function closeSavePrompt() { if (savePromptHost) { savePromptHost.remove(); savePromptHost = null; } }
-// Shared HTML-escape used by prompts to prevent XSS when injecting domain /
-// username strings into Shadow-DOM innerHTML.
-const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function promptSave(cred) {
     closeSavePrompt();
     const host = location.hostname.replace(/^www\./, '');

@@ -58,12 +58,22 @@ export function zkModule(cfg) {
             for (const x of list) for (const t of x.tags ?? []) set.add(t);
             return [...set].sort((a, b) => a.localeCompare(b));
         },
-        _trashCount(list) { return list.filter((x) => x.trashed).length; },
+
+        // True for both legacy boolean true and an ISO timestamp string (new format).
+        _isTrashed(x) { return x.trashed === true || (typeof x.trashed === 'string' && x.trashed.length > 0); },
+
+        _trashCount(list) { return list.filter((x) => this._isTrashed(x)).length; },
+
+        // Trash an item: write an ISO timestamp (canonical form going forward).
+        _trash(item) { item.trashed = new Date().toISOString(); this._save(); },
+
+        // Restore a trashed item.
+        _restore(item) { item.trashed = false; this._save(); },
 
         // Permanently drop every trashed row of a collection (in place).
         async _emptyTrashArr(list, confirmMsg) {
             if (! await this.$store.confirm.ask(confirmMsg)) return;
-            for (let i = list.length - 1; i >= 0; i--) if (list[i].trashed) list.splice(i, 1);
+            for (let i = list.length - 1; i >= 0; i--) if (this._isTrashed(list[i])) list.splice(i, 1);
             this._save();
         },
     };

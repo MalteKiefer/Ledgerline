@@ -2,7 +2,7 @@
 import { jsonHeaders } from '../shared/api';
 import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
 import { padBlob, padmeSize } from '../shared/padme';
-import { saveBlobAs } from '../shared/dom';
+import { saveBlobAs, formatDate } from '../shared/dom';
 import { fileCategory, CATEGORY_ICON, formatBytes } from '../shared/file-categories';
 import { normVec as _normVec, dotVec as _dotVec } from '../shared/vector-math';
 import { ocrImage } from '../shared/ocr';
@@ -526,11 +526,7 @@ export default (config = {}, labels = {}) => ({
 
     fmtSize: formatBytes,
 
-    fmtDate(iso) {
-        return iso ? new Date(iso).toLocaleString(undefined, {
-            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-        }) : '';
-    },
+    fmtDate: formatDate,
 
     /* ---- Information ---- */
 

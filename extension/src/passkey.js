@@ -1,5 +1,6 @@
 // Pure WebAuthn encoding + ES256 crypto helpers for the extension authenticator.
 // No DOM, no chrome.* — headless-testable. WebCrypto SubtleCrypto is the crypto surface.
+import { hostsMatch } from './hosts.js';
 
 const B64U = { enc: (b) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') };
 export function b64uEncode(bytes) { return B64U.enc(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)); }
@@ -126,24 +127,17 @@ export function clientDataJSON({ type, challenge, origin }) {
     return new TextEncoder().encode(json);
 }
 
-// rpId binding check: mirrors the hostsMatch() rule in background.js exactly.
+// rpId binding check: delegates to hostsMatch() from hosts.js which already
+// implements the same exact semantics (www-strip + bare-TLD rejection + parent→child).
 // Returns true iff rpId is the origin host OR a registrable parent (dot-boundary).
-// Both sides have www. stripped first to match background.js behaviour.
 //
-// Security: bare TLDs (no dot in stored after www-strip) are REJECTED — an rpId of
+// Security: bare TLDs (no dot in rpId after www-strip) are REJECTED — an rpId of
 // 'com' or 'net' would match every site, which is a credential-scope vulnerability.
 // ('accounts.example.com', 'example.com') → true   ✓ parent rpId
 // ('example.com', 'example.com')          → true   ✓ exact match
 // ('example.com', 'evil.com')             → false  ✓ unrelated
 // ('example.com', 'com')                  → false  ✓ bare TLD rejected
-//
-// Residual: multi-label eTLDs (co.uk) — no PSL dep (consistent with hostsMatch
-// trade-off; a page can only over-scope its OWN credential).
 export function rpIdAllowed(originHost, rpId) {
     if (! originHost || ! rpId) return false;
-    const page = originHost.replace(/^www\./, '');
-    const stored = rpId.replace(/^www\./, '');
-    // Reject bare TLDs (no dot → single label like 'com', 'net', 'localhost')
-    if (! stored.includes('.')) return false;
-    return page === stored || page.endsWith('.' + stored);
+    return hostsMatch(originHost, rpId);
 }

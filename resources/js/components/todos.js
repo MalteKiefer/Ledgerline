@@ -43,7 +43,7 @@ export default (labels = {}) => ({
 
     get filteredTasks() {
         const q = this.query.trim().toLowerCase();
-        let list = this.tasks.filter((t) => this.view === 'trash' ? t.trashed : ! t.trashed);
+        let list = this.tasks.filter((t) => this.view === 'trash' ? this._isTrashed(t) : ! this._isTrashed(t));
         if (this.view === 'marked') list = list.filter((t) => t.marked);
         else if (this.view !== 'all' && this.view !== 'trash') list = list.filter((t) => t.listId === this.view);
         if (this.activeTag !== '') list = list.filter((t) => (t.tags ?? []).includes(this.activeTag));
@@ -99,8 +99,8 @@ export default (labels = {}) => ({
 
     toggleDone(t) { t.done = ! t.done; this._save(); },
     toggleMark(t) { t.marked = ! t.marked; this._save(); },
-    trashTask(t) { t.trashed = true; this._save(); },
-    restoreTask(t) { t.trashed = false; this._save(); },
+    trashTask(t) { this._trash(t); },
+    restoreTask(t) { this._restore(t); },
     async deleteForever(t) {
         if (! await this.$store.confirm.ask(labels.deleteConfirm)) return;
         const i = this.tasks.findIndex((x) => x.id === t.id);
