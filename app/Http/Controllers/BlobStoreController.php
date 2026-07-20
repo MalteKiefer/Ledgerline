@@ -55,13 +55,57 @@ abstract class BlobStoreController extends Controller
         return BlobStore::disk();
     }
 
+    // ---- Ownership strategy hooks ----
+    // Subclasses override these to redirect ownership to a shared folder owner
+    // instead of the acting caller. For the personal subclasses (FileController /
+    // GalleryBlobController / ContactBlobController) the defaults reproduce the
+    // current behavior exactly, so no call-site changes are needed there.
+
+    /** Id stamped on new ledger rows and used for quota. Default: the caller. */
+    protected function ownerId(Request $request): int
+    {
+        return (int) $request->user()->id;
+    }
+
+    /** Base ledger query the access/usage/reconcile paths are scoped through. */
+    protected function scopeLedger(Request $request)
+    {
+        $model = $this->blobModel();
+
+        return $model::where('user_id', (int) $request->user()->id);
+    }
+
+    /** Columns (besides blob/size/created_at) written when registering a blob. */
+    protected function stampAttributes(Request $request): array
+    {
+        return ['user_id' => (int) $request->user()->id];
+    }
+
+    /** Owner id recorded in a chunk session's ledger row. Default: the caller. */
+    protected function chunkOwnerId(Request $request): int
+    {
+        return (int) $request->user()->id;
+    }
+
+    /** Hook for subclasses that need extra authorization on raw reads (default: none). */
+    protected function authorizeRaw(Request $request, string $blob): void {}
+
+    /** Hook for subclasses that need extra authorization on mutations (default: none). */
+    protected function authorizeMutation(Request $request): void {}
+
+    // ---- End ownership strategy hooks ----
+
     /** Current storage usage for the user (live blob bytes vs quota). */
     public function usage(Request $request): JsonResponse
     {
-        $uid = (int) $request->user()->id;
-
-        return response()->json(['used' => $this->usedBytes($uid), 'quota' => $this->quotaBytes()])
+        return response()->json(['used' => $this->usedBytesFor($request), 'quota' => $this->quotaBytes()])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+
+    /** Bytes occupied by the ledger scope for this request (live blob bytes vs quota). */
+    protected function usedBytesFor(Request $request): int
+    {
+        return (int) $this->scopeLedger($request)->sum('size');
     }
 
     /**
@@ -83,13 +127,12 @@ abstract class BlobStoreController extends Controller
         $live = array_flip($data['blobs']);
         $grace = Carbon::now()->subHours((int) config($this->module().'.blob_orphan_grace_hours', 24));
         $disk = $this->disk();
-        $model = $this->blobModel();
         $prefix = $this->module();
 
         // Serialize against the user's uploads so a blob registered mid-reconcile
         // isn't judged against a stale live set.
-        $this->withUserLock($uid, function () use ($uid, $live, $grace, $disk, $model, $prefix): void {
-            $model::where('user_id', $uid)
+        $this->withUserLock($uid, function () use ($request, $live, $grace, $disk, $prefix): void {
+            (clone $this->scopeLedger($request))
                 ->where('created_at', '<', $grace)
                 ->orderBy('blob')
                 ->chunkById(500, function ($rows) use ($live, $disk, $prefix): void {
@@ -103,7 +146,7 @@ abstract class BlobStoreController extends Controller
                 }, 'blob');
         });
 
-        return response()->json(['used' => $this->usedBytes($uid), 'quota' => $this->quotaBytes()]);
+        return response()->json(['used' => $this->usedBytesFor($request), 'quota' => $this->quotaBytes()]);
     }
 
     /** Store one uploaded (already encrypted) blob and return its id. */
@@ -113,7 +156,7 @@ abstract class BlobStoreController extends Controller
             'file' => ['required', 'file', 'max:'.($this->maxUploadMb() * 1024)],
         ]);
 
-        $uid = (int) $request->user()->id;
+        $uid = $this->ownerId($request);
         // Best-effort quota check (NOT under the per-user write lock): holding the
         // lock across the slow object-storage write serialised all concurrent
         // uploads and timed them out into 429s during a bulk upload. A minor
@@ -131,12 +174,11 @@ abstract class BlobStoreController extends Controller
         // Record the uploader + stored byte size: this is the permanent blob
         // ownership ledger (quota + access control + orphan reclaim).
         $model = $this->blobModel();
-        $model::create([
+        $model::create(array_merge($this->stampAttributes($request), [
             'blob' => $id,
-            'user_id' => $uid,
             'size' => (int) $request->file('file')->getSize(),
             'created_at' => $this->stampedAt(),
-        ]);
+        ]));
 
         return response()->json(['id' => $id], 201);
     }
@@ -157,7 +199,7 @@ abstract class BlobStoreController extends Controller
             // instead (10 000 parts) so multi-GB uploads are allowed.
             'size' => ['required', 'integer', 'min:1', 'max:'.(10000 * self::CHUNK_PART_SIZE)],
         ]);
-        abort_if($this->quotaExceeded((int) $request->user()->id, (int) $data['size']), 413, __('files.quota_exceeded'));
+        abort_if($this->quotaExceeded($this->chunkOwnerId($request), (int) $data['size']), 413, __('files.quota_exceeded'));
 
         $id = (string) Str::uuid();
         $key = $this->module().'/'.$id;
@@ -165,7 +207,9 @@ abstract class BlobStoreController extends Controller
 
         $token = (string) Str::uuid();
         Cache::put($this->chunkKey($token), [
-            'uploadId' => $res['UploadId'], 'key' => $key, 'id' => $id, 'user' => (int) $request->user()->id,
+            'uploadId' => $res['UploadId'], 'key' => $key, 'id' => $id,
+            'actor' => (int) $request->user()->id,
+            'owner' => $this->chunkOwnerId($request),
         ], now()->addHours(12));
 
         return response()->json(['token' => $token, 'id' => $id, 'partSize' => self::CHUNK_PART_SIZE]);
@@ -221,7 +265,7 @@ abstract class BlobStoreController extends Controller
         $model = $this->blobModel();
         $model::firstOrCreate(
             ['blob' => $s['id']],
-            ['user_id' => $s['user'], 'size' => $size, 'created_at' => $this->stampedAt()],
+            array_merge(['user_id' => $s['owner']], ['size' => $size, 'created_at' => $this->stampedAt()]),
         );
         Cache::forget($this->chunkKey($token));
 
@@ -236,7 +280,7 @@ abstract class BlobStoreController extends Controller
         // Tolerate an already-gone session (nothing to abort) so aborting is
         // always safe/idempotent and never a dead-end 404.
         $s = Cache::get($this->chunkKey($token));
-        if (is_array($s) && (int) ($s['user'] ?? 0) === (int) $request->user()->id) {
+        if (is_array($s) && (int) ($s['actor'] ?? 0) === (int) $request->user()->id) {
             try {
                 $this->s3()->abortMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId']]);
             } catch (\Throwable) {
@@ -263,11 +307,11 @@ abstract class BlobStoreController extends Controller
         return 'chunk-upload:'.$token;
     }
 
-    /** Load + authorise a chunk session (must belong to the current user). */
+    /** Load + authorise a chunk session (must belong to the acting user). */
     private function chunkSession(Request $request): array
     {
         $s = Cache::get($this->chunkKey((string) $request->input('token')));
-        abort_if(! is_array($s) || (int) ($s['user'] ?? 0) !== (int) $request->user()->id, 404);
+        abort_if(! is_array($s) || (int) ($s['actor'] ?? 0) !== (int) $request->user()->id, 404);
 
         return $s;
     }
@@ -310,13 +354,13 @@ abstract class BlobStoreController extends Controller
     }
 
     /** Stream a stored blob's ciphertext back to the browser (owner only). */
-    public function raw(string $blob): StreamedResponse
+    public function raw(Request $request, string $blob): StreamedResponse
     {
         abort_unless(Str::isUuid($blob), 404);
-        // Only serve bytes the current user owns in the blob ledger — otherwise
-        // any authenticated user could fetch any blob by guessing its UUID.
-        $model = $this->blobModel();
-        abort_unless($model::where('blob', $blob)->where('user_id', auth()->id())->exists(), 404);
+        $this->authorizeRaw($request, $blob);
+        // Only serve bytes the caller is authorized to see in the blob ledger —
+        // otherwise any authenticated user could fetch any blob by guessing its UUID.
+        abort_unless((clone $this->scopeLedger($request))->where('blob', $blob)->exists(), 404);
         $path = $this->module().'/'.$blob;
         abort_unless($this->disk()->exists($path), 404);
 
@@ -340,15 +384,15 @@ abstract class BlobStoreController extends Controller
      * overflow, rendition swap). Owner-scoped; unknown blob = already gone
      * (idempotent).
      */
-    public function deleteBlob(string $blob): JsonResponse
+    public function deleteBlob(Request $request, string $blob): JsonResponse
     {
         abort_unless(Str::isUuid($blob), 404);
+        $this->authorizeMutation($request);
 
         // Owner-scope the lookup and always answer identically (idempotent), so a
         // foreign or missing blob is indistinguishable — no 403-vs-200 ownership
         // oracle, mirroring raw()'s uniform-404 pattern.
-        $model = $this->blobModel();
-        $row = $model::where('blob', $blob)->where('user_id', auth()->id())->first();
+        $row = (clone $this->scopeLedger($request))->where('blob', $blob)->first();
         if ($row !== null) {
             $this->disk()->delete($this->module().'/'.$blob);
             $row->delete();
