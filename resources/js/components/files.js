@@ -1,5 +1,5 @@
 // Files module (nestable ZK file browser). Extracted from app.js.
-import { jsonHeaders, postForm, getJson } from '../shared/api';
+import { apiRequest, jsonHeaders, postForm, getJson } from '../shared/api';
 import { Vault, VaultShareCrypto } from '../vault';
 import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
 import { padBlob, padmeSize } from '../shared/padme';
@@ -69,6 +69,13 @@ export default (config = {}, labels = {}) => ({
     _folderVersion: {},      // vaultId → optimistic-lock version
     pendingFolderInvites: [], // [{vault_id, member_id, role, wrapped_vault_key}]
     activeShared: null,      // vaultId currently browsed, or null for personal
+
+    // ---- Shared-folder management state (mirrors passwords.js) ----
+    shareFolderDialog: { open: false, vaultId: null, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' },
+    managingFolderVaultId: null,       // vault id open in the folder-members panel
+    managingFolderVaultMembers: [],    // [{id, user_id, role, status, recipient_fingerprint, public_key}]
+    managingFolderVaultLoading: false,
+    rotatingFolderKeys: false,
 
     // Track an async file operation so the UI can show a "working" spinner badge
     // for every mutation (the user gets feedback even for a slow permanent delete).
@@ -1882,5 +1889,238 @@ export default (config = {}, labels = {}) => ({
             this.editorView = null;
         }
         this.viewer = { open: false, kind: 'none', src: '', row: null, saving: false, saved: false };
+    },
+
+    /* ---- Shared-folder create / share / accept / members / delete ---- */
+    /* Mirrors passwords.js createSharedVault / share dialog / acceptInvite /
+       openManageMembers / removeMember / deleteSharedVault / _deleteSharedVaultNow.
+       Folder-specific differences:
+         - POST /vaults sends kind:'folder'
+         - sealed manifest shape is {name, folders:[], files:[]} not {name, items:[]}
+         - re-seal on rotate uses sharedTree[vaultId] not sharedItems[vaultId]
+         - TOFU knownFingerprints lives in the personal manifest (window.LLStore.data) */
+
+    async createSharedFolder(name) {
+        const folderName = (name || '').trim();
+        if (! folderName) return;
+        try {
+            const vk = await VaultShareCrypto.newVaultKey();
+            const idk = await Vault.ensureIdentityKeys();
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub);
+            const { id } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped, kind: 'folder' });
+            // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
+            // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
+            const vkBytes = Uint8Array.from(atob(vk), (c) => c.charCodeAt(0));
+            const manifest = { name: folderName, folders: [], files: [] };
+            const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
+            const res = await apiRequest('PUT', '/vaults/' + id + '/store', { sealed_manifest: sealed, expected_version: 0 });
+            const version = (res && typeof res.version === 'number') ? res.version : 1;
+            this._folderKeys[id] = vkBytes;
+            this._folderVersion[id] = version;
+            this.sharedTree[id] = { folders: [], files: [] };
+            this.sharedFolders.push({ id, vaultId: id, name: folderName, role: 'manage', version });
+        } catch (e) {
+            window.llToast(labels.saveFailed || '');
+        }
+    },
+
+    openShareFolderDialog(vaultId) {
+        this.shareFolderDialog = { open: true, vaultId, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' };
+    },
+    closeShareFolderDialog() { this.shareFolderDialog = { ...this.shareFolderDialog, open: false }; },
+
+    async lookUpFolderRecipient() {
+        const d = this.shareFolderDialog; if (! d.vaultId || ! d.identifier.trim()) return;
+        d.lookingUp = true; d.resolved = null; d.fingerprintStatus = null; d.notice = '';
+        try {
+            const res = await fetch('/vaults/' + d.vaultId + '/resolve-recipient', {
+                method: 'POST',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ identifier: d.identifier.trim() }),
+            });
+            if (res.status === 422) { d.notice = labels.recipientNotFound || ''; return; }
+            if (! res.ok) { d.notice = labels.saveFailed || ''; return; }
+            const data = await res.json();
+            // Verify server fingerprint matches client-computed one.
+            const computed = await VaultShareCrypto.fingerprint(data.public_key);
+            if (computed !== data.fingerprint) {
+                d.notice = (labels.fingerprintChangedWarn || '') + ' (server/client mismatch)';
+                return;
+            }
+            d.resolved = data; // {user_id, public_key, fingerprint}
+            // TOFU check: look up stored fingerprint in personal manifest.
+            const store = window.LLStore.data;
+            store.knownFingerprints = store.knownFingerprints || {};
+            const stored = store.knownFingerprints[data.user_id];
+            if (! stored) {
+                d.fingerprintStatus = 'new'; // show fingerprint for out-of-band verification
+            } else if (stored === data.fingerprint) {
+                d.fingerprintStatus = 'verified';
+            } else {
+                d.fingerprintStatus = 'changed';
+                d.notice = labels.fingerprintChangedWarn || '';
+                d.resolved = null; // block share
+            }
+        } finally { d.lookingUp = false; }
+    },
+
+    async confirmShareFolder() {
+        const d = this.shareFolderDialog;
+        if (! d.resolved || d.fingerprintStatus === 'changed') return;
+        if (d.fingerprintStatus === 'new') {
+            // Store fingerprint in personal manifest on confirmation.
+            const store = window.LLStore.data;
+            store.knownFingerprints = store.knownFingerprints || {};
+            store.knownFingerprints[d.resolved.user_id] = d.resolved.fingerprint;
+            // Persist the updated personal manifest so the fingerprint is durably stored.
+            if (window.LLStore && typeof window.LLStore.flush === 'function') window.LLStore.flush();
+        }
+        d.sharing = true; d.notice = '';
+        try {
+            const vkBytes = this._folderKeys[d.vaultId];
+            if (! vkBytes) { d.notice = labels.saveFailed || ''; return; }
+            const vkB64 = btoa(String.fromCharCode(...new Uint8Array(vkBytes)));
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, d.resolved.public_key);
+            const res = await fetch('/vaults/' + d.vaultId + '/members', {
+                method: 'POST',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ user_id: d.resolved.user_id, role: this._clientToServerRole(d.role), wrapped_vault_key: wrapped, recipient_fingerprint: d.resolved.fingerprint }),
+            });
+            if (res.status === 422 || (res.status >= 300 && res.status < 500)) {
+                const body = await res.json().catch(() => ({}));
+                if (res.status === 422 && body && Object.keys(body).length) {
+                    d.notice = labels.alreadyMember || '';
+                } else {
+                    d.notice = labels.saveFailed || '';
+                }
+                return;
+            }
+            if (! res.ok) { d.notice = labels.saveFailed || ''; return; }
+            d.notice = labels.inviteSent || '';
+            d.resolved = null; d.identifier = '';
+        } finally { d.sharing = false; }
+    },
+
+    async acceptFolderInvite(inv) {
+        const id = await Vault.ensureIdentityKeys();
+        // Verify the wrapped key actually decrypts before accepting.
+        try {
+            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.pub, id.sk);
+        } catch (_e) {
+            window.llToast(labels.inviteInvalid || '');
+            return;
+        }
+        try {
+            await apiRequest('POST', '/vaults/' + inv.vault_id + '/members/' + inv.member_id + '/accept');
+            this.pendingFolderInvites = this.pendingFolderInvites.filter((p) => p.member_id !== inv.member_id);
+            await this._loadSharedFolders();
+        } catch (_e) {
+            window.llToast(labels.saveFailed || '');
+        }
+    },
+
+    // Open the manage-members panel for a shared folder: fetch current member list.
+    async openManageFolderMembers(vaultId) {
+        this.managingFolderVaultId = vaultId;
+        this.managingFolderVaultMembers = [];
+        this.managingFolderVaultLoading = true;
+        try {
+            const members = await apiRequest('GET', '/vaults/' + vaultId + '/members');
+            this.managingFolderVaultMembers = Array.isArray(members) ? members : [];
+        } catch (_e) {
+            window.llToast(labels.saveFailed || '');
+        } finally {
+            this.managingFolderVaultLoading = false;
+        }
+    },
+
+    // Change the role of an existing member (manager only).
+    async changeFolderMemberRole(memberId, newRole) {
+        const vaultId = this.managingFolderVaultId;
+        if (! vaultId) return;
+        try {
+            await fetch('/vaults/' + vaultId + '/members/' + memberId, {
+                method: 'PATCH',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ role: this._clientToServerRole(newRole) }),
+            });
+            this.managingFolderVaultMembers = this.managingFolderVaultMembers.map((m) =>
+                m.id === memberId ? { ...m, role: this._clientToServerRole(newRole) } : m,
+            );
+        } catch (_e) {
+            window.llToast(labels.saveFailed || '');
+        }
+    },
+
+    // Remove a member from a shared folder via atomic key rotation.
+    // Generates a new VK_folder, re-seals the tree for all remaining active members,
+    // and atomically replaces the sealed manifest + removes the revoked member.
+    async removeFolderMember(memberId, _memberUserId) {
+        if (! await this.$store.confirm.ask(labels.removeMemberConfirm || '')) return;
+        const vaultId = this.managingFolderVaultId;
+        if (! vaultId) return;
+        const vkBytes = this._folderKeys && this._folderKeys[vaultId];
+        if (! vkBytes) { window.llToast(labels.saveFailed || ''); return; }
+        this.rotatingFolderKeys = true;
+        try {
+            // Generate a new vault key for forward secrecy.
+            const newVkB64 = await VaultShareCrypto.newVaultKey();
+            const newVkBytes = Uint8Array.from(atob(newVkB64), (c) => c.charCodeAt(0));
+            // Remaining active members (exclude the one being removed).
+            const remaining = this.managingFolderVaultMembers.filter(
+                (m) => m.id !== memberId && m.status === 'active' && m.public_key,
+            );
+            // Re-wrap the new vault key for each remaining member.
+            const members = await Promise.all(remaining.map(async (m) => ({
+                user_id: m.user_id,
+                wrapped_vault_key: await VaultShareCrypto.wrapVaultKeyFor(newVkB64, m.public_key),
+            })));
+            // Re-seal the current folder tree under the new key.
+            const folder = this.sharedFolders.find((sf) => sf.vaultId === vaultId);
+            const tree = this.sharedTree[vaultId] || { folders: [], files: [] };
+            const manifest = { name: folder ? folder.name : '', folders: tree.folders || [], files: tree.files || [] };
+            const sealed = await VaultShareCrypto.sealVaultManifest(manifest, newVkBytes);
+            const expectedVersion = this._folderVersion[vaultId] ?? 0;
+            const res = await fetch('/vaults/' + vaultId + '/rotate', {
+                method: 'POST',
+                headers: jsonHeaders(),
+                body: JSON.stringify({ sealed_manifest: sealed, expected_version: expectedVersion, members, remove_member_id: memberId }),
+            });
+            if (res.status === 409) {
+                // Version conflict: reload folder state and let the caller retry.
+                await this._loadSharedFolders();
+                window.llToast(labels.saveConflict || '');
+                return;
+            }
+            if (! res.ok) { window.llToast(labels.saveFailed || ''); return; }
+            const { version } = await res.json();
+            // Update in-memory state with the new key and version.
+            this._folderKeys[vaultId] = newVkBytes;
+            this._folderVersion[vaultId] = version;
+            this.managingFolderVaultMembers = this.managingFolderVaultMembers.filter((m) => m.id !== memberId);
+            window.llToast(labels.memberRemoved || '');
+        } catch (_e) {
+            window.llToast(labels.saveFailed || '');
+        } finally {
+            this.rotatingFolderKeys = false;
+        }
+    },
+
+    // Delete a shared folder permanently (manager only), WITHOUT a confirm prompt —
+    // shared by the per-folder delete button and any reset path.
+    async _deleteSharedFolderNow(vaultId) {
+        await postForm('/vaults/' + vaultId, null, 'DELETE');
+        this.sharedFolders = this.sharedFolders.filter((sf) => sf.vaultId !== vaultId);
+        delete this.sharedTree[vaultId];
+        delete this._folderKeys[vaultId];
+        delete this._folderVersion[vaultId];
+        if (this.activeShared === vaultId) this.activeShared = null;
+        if (this.managingFolderVaultId === vaultId) this.managingFolderVaultId = null;
+    },
+
+    async deleteSharedFolder(vaultId) {
+        if (! await this.$store.confirm.ask(labels.deleteVaultConfirm || '')) return;
+        try { await this._deleteSharedFolderNow(vaultId); }
+        catch (_e) { window.llToast(labels.saveFailed || ''); }
     },
 });
