@@ -119,12 +119,12 @@
                   <span class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.folders') }}</span>
                   <button type="button" @click="addFolder()" title="{{ __('passwords.new_folder') }}" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
                 </div>
-                <button type="button" @click="filterFolder = ''; view = 'list'" :class="filterFolder === '' && view === 'list' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5/50'" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs">
+                <button type="button" @click="filterFolder = ''; view = 'list'" :class="filterFolder === '' && view === 'list' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs">
                   <x-icon name="squares-2x2" class="h-3.5 w-3.5 text-gray-400" /><span>{{ __('passwords.all_vaults') }}</span>
                 </button>
                 <template x-for="f in folders" :key="f.id">
                   <div class="group flex items-center gap-1 rounded-md pr-1"
-                       :class="(filterFolder === f.id && view === 'list') ? 'bg-accent/10 text-accent' : (_dragOver === f.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-accent/5/50')"
+                       :class="(filterFolder === f.id && view === 'list') ? 'bg-accent/10 text-accent' : (_dragOver === f.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-accent/5')"
                        @dragover.prevent="_dragOver = f.id"
                        @dragleave="_dragOver = null"
                        @drop.prevent="_dragOver = null; moveItems(_dragId ? [_dragId] : selectedIds, f.id)">
@@ -144,7 +144,7 @@
                 </div>
                 <template x-for="sv in sharedVaults" :key="sv.id">
                   <div class="group flex items-center gap-1 rounded-md pr-1"
-                       :class="(filterFolder === sv.id && view === 'list') ? 'bg-accent/10 text-accent' : (_dragOver === sv.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-accent/5/50')"
+                       :class="(filterFolder === sv.id && view === 'list') ? 'bg-accent/10 text-accent' : (_dragOver === sv.id ? 'ring-1 ring-inset ring-gray-400' : 'hover:bg-accent/5')"
                        @dragover="canEditVault(sv.id) ? ($event.preventDefault(), _dragOver = sv.id) : null"
                        @dragleave="_dragOver = null"
                        @drop.prevent="_dragOver = null; if (canEditVault(sv.id)) moveItems(_dragId ? [_dragId] : selectedIds, sv.id)">
@@ -183,17 +183,17 @@
                 <span class="mb-1 block px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{{ __('passwords.tags') }}</span>
                 <div class="flex flex-wrap gap-1">
                   <template x-for="t in allTags" :key="'t' + t">
-                    <button type="button" @click="filterTag = filterTag === t ? '' : t" :class="filterTag === t ? 'll-accent dark:bg-gray-100 dark:text-gray-900' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="rounded-full px-2 py-0.5 text-[11px]" x-text="'#' + t"></button>
+                    <button type="button" @click="filterTag = filterTag === t ? '' : t" :class="filterTag === t ? 'll-accent' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-accent/5'" class="rounded-full px-2 py-0.5 text-[11px]" x-text="'#' + t"></button>
                   </template>
                 </div>
               </div>
               {{-- Health + Trash --}}
               <div class="border-t border-gray-100 dark:border-gray-800 pt-2">
-                <button type="button" @click="view = view === 'health' ? 'list' : 'health'; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'health' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5/50'">
+                <button type="button" @click="view = view === 'health' ? 'list' : 'health'; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'health' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'">
                   <x-icon name="shield-check" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.health') }}</span>
                   <span x-show="healthCount" x-text="healthCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"></span>
                 </button>
-                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'trash' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5/50'">
+                <button type="button" @click="view = view === 'trash' ? 'list' : 'trash'; current = null; draft = null" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs" :class="view === 'trash' ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'">
                   <x-icon name="trash" class="h-3.5 w-3.5 text-gray-400" /><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
                   <span x-show="trashCount" x-text="trashCount" class="text-gray-400"></span>
                 </button>
@@ -273,7 +273,7 @@
               <div class="max-h-[70vh] overflow-y-auto">
                 <template x-if="! filtered.length"><p class="px-2 py-6 text-center text-sm text-gray-400">{{ __('passwords.empty') }}</p></template>
                 <template x-for="x in filtered" :key="x.id">
-                  <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-accent/10 text-accent' : 'hover:bg-accent/5/50'"
+                  <div class="group flex items-center gap-1.5 rounded-lg pl-1.5 pr-2" :class="(isSelected(x.id) || (current && current.id === x.id)) ? 'bg-accent/10 text-accent' : 'hover:bg-accent/5'"
                        draggable="true"
                        @dragstart="_dragId = selectedIds.includes(x.id) ? null : x.id"
                        @dragend="_dragId = null; _dragOver = null">
@@ -625,7 +625,7 @@
                   </button>
                   <ul x-show="historyOpen" x-cloak class="mt-1 space-y-1.5 border-l border-gray-100 pl-3 dark:border-gray-800">
                     <template x-for="(v, i) in (current.versions || [])" :key="i">
-                      <li class="rounded-lg px-2 py-1.5 hover:bg-accent/5/50">
+                      <li class="rounded-lg px-2 py-1.5 hover:bg-accent/5">
                         <div class="flex items-center justify-between gap-2">
                           <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400" x-text="fmtDate(v.at)"></span>
                           <button type="button" x-show="canEditCurrent()" @click="restoreVersion(v)" class="rounded-md px-2 py-0.5 text-[11px] font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">{{ __('passwords.version_restore') }}</button>
