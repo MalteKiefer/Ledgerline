@@ -39,6 +39,12 @@ final class BackupManager
         $run = $job->runs()->create(['status' => 'running', 'started_at' => Carbon::now()]);
         $workDir = storage_path('app/backup-tmp/'.Str::uuid()->toString());
         File::ensureDirectoryExists($workDir, 0700);
+        // Fail loud + actionable instead of a cryptic repeated mkdir warning when
+        // the storage/app volume is owned by the wrong uid (e.g. after a base-image
+        // change): the fix is to chown storage/app to the container's app user.
+        if (! is_dir($workDir) || ! is_writable($workDir)) {
+            throw new RuntimeException('Backup work directory is not writable: '.$workDir.'. Check ownership of storage/app (chown it to the app container user).');
+        }
 
         // Stop at the next checkpoint if the operator requested cancellation
         // (a fresh read, since the flag is set from another process).

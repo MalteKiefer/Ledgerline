@@ -85,6 +85,14 @@ return [
             // provider ever needs the stricter "when_supported".
             'request_checksum_calculation' => env('FILES_S3_CHECKSUM_CALCULATION', 'when_required'),
             'response_checksum_validation' => env('FILES_S3_CHECKSUM_VALIDATION', 'when_required'),
+            // B2 (and other S3-compatible providers) occasionally return transient
+            // 5xx "InternalError (internal incident)" on individual multipart parts.
+            // Standard retry mode adds exponential backoff + jitter and retries 5xx,
+            // so a large upload no longer fails because one part hiccuped.
+            'retries' => [
+                'mode' => env('FILES_S3_RETRY_MODE', 'standard'),
+                'max_attempts' => (int) env('FILES_S3_MAX_ATTEMPTS', 8),
+            ],
             'throw' => true,
         ],
 
