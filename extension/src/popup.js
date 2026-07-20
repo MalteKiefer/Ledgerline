@@ -38,7 +38,7 @@ async function activeTab() {
 }
 function hostOf(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
 
-const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server', passkey: 'Passkey' };
+const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server', passkey: 'Passkey', identity: 'Identity', secure_note: 'Secure note' };
 let totpTimer = null;
 function stopTotp() { if (totpTimer) { clearInterval(totpTimer); totpTimer = null; } }
 
@@ -216,6 +216,10 @@ async function renderMain() {
             if (it.number) rows.push(secret('Card number', it.number));
             if (it.expiry) rows.push(plain('Expiry', it.expiry));
             if (it.cvv) rows.push(secret('CVV', it.cvv));
+        } else if (it.type === 'identity') {
+            for (const [k, label] of [['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email'], ['phone', 'Phone'], ['company', 'Company'], ['street', 'Street'], ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country']]) {
+                if (it[k]) rows.push(plain(label, it[k]));
+            }
         } else {
             if (it.username) rows.push(plain('Username', it.username));
             if (it.password) rows.push(secret('Password', it.password));
