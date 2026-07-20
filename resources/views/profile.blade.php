@@ -4,7 +4,7 @@
         {{ __('pages.profile.subtitle') }}
     </p>
 
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-6 shadow-sm">
+    <div class="mt-6 ll-card">
         <div class="flex items-center gap-4">
             <x-user-avatar :user="$user" size="h-16 w-16" />
             <div class="min-w-0">
@@ -59,7 +59,7 @@
 
     {{-- Files encryption (zero-knowledge vault): change passphrase / reset via
          recovery code. The panel (included below) drives the modals. --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="mt-6 ll-card">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('vault.settings_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('vault.settings_hint') }}</p>
         <div class="mt-4 flex flex-wrap gap-3">
@@ -78,7 +78,7 @@
 
     {{-- Devices: one card for both the mobile app (QR) and the command-line client
          (copy/paste code). Both share the same approval flow + device cap. --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="devicePairing({ rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')), wipeConfirm: @js(__('account.devices_wipe_confirm')) })">
+    <div class="mt-6 ll-card" x-data="devicePairing({ rateLimited: @js(__('account.pair_rate_limited')), startFailed: @js(__('account.pair_start_failed')), wipeConfirm: @js(__('account.devices_wipe_confirm')) })">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.devices_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.devices_hint') }} {{ __('account.devices_limit_note', ['max' => $deviceMax]) }}</p>
 
@@ -118,7 +118,7 @@
                         <div x-show="status==='pending_approval'" class="mt-3">
                             <p class="text-gray-900 dark:text-gray-100">{{ __('account.devices_approve_q') }} „<span x-text="deviceName" class="font-medium"></span>"?</p>
                             <div class="mt-2 flex gap-2">
-                                <button type="button" x-on:click="approve()" class="min-h-11 rounded-md bg-gray-900 dark:bg-gray-100 px-3 text-sm font-medium text-white dark:text-gray-900">{{ __('account.devices_allow') }}</button>
+                                <button type="button" x-on:click="approve()" class="min-h-11 rounded-md ll-accent px-3 text-sm font-medium shadow-sm shadow-accent/30">{{ __('account.devices_allow') }}</button>
                                 <button type="button" x-on:click="reject()" class="min-h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_deny') }}</button>
                             </div>
                         </div>
@@ -161,7 +161,7 @@
     </div>
 
     {{-- Web sessions --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="mt-6 ll-card">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.security_heading') }}</h2>
 
         <div class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
@@ -197,14 +197,14 @@
     </div>
 
     {{-- Data export --}}
-    <div class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="mt-6 ll-card">
         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('account.export_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.export_hint') }}</p>
         <x-button :href="route('account.export')" icon="arrow-down-tray" class="mt-3">{{ __('account.export_button') }}</x-button>
     </div>
 
     {{-- Danger zone: delete account --}}
-    <div class="mt-6 rounded-lg border border-red-200 dark:border-red-900/50 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="{ del: false }">
+    <div class="mt-6 ll-card border-red-300 dark:border-red-800" x-data="{ del: false }">
         <h2 class="text-base font-semibold text-red-700 dark:text-red-300">{{ __('account.delete_heading') }}</h2>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('account.delete_hint') }}</p>
         <x-button variant="danger" icon="trash" class="mt-3" @click="del = true">{{ __('account.delete_button') }}</x-button>

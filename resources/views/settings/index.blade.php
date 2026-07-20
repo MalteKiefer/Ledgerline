@@ -31,8 +31,8 @@
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.personal_subheading') }}</p>
         <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
             @foreach ($personal as $card)
-                <a href="{{ $card['url'] }}" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:border-gray-300 sm:p-6">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ $card['title'] }}</h3>
+                <a href="{{ $card['url'] }}" class="ll-card group block transition hover:border-accent/60 hover:shadow-md">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100 group-hover:text-accent">{{ $card['title'] }}</h3>
                     <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ $card['desc'] }}</p>
                 </a>
             @endforeach

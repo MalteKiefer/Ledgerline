@@ -5,6 +5,40 @@
    when the setting is "system". */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* iOS design tokens (mirrors ledgerline-ios App/DesignSystem/Theme.swift):
+   indigo→violet accent. Exposed as Tailwind color utilities (bg-accent,
+   text-accent, ring-accent, from-accent, shadow-accent/30, …). */
+@theme {
+    --color-accent: #7066f5;
+    --color-accent-soft: #9e70fa;
+}
+
+/* Diagonal accent gradient for primary buttons / hero chips. */
+.ll-accent {
+    background-image: linear-gradient(135deg, var(--color-accent), var(--color-accent-soft));
+    color: #fff;
+}
+
+/* iOS-style card: rounded, hairline border, soft shadow, adaptive surface. */
+.ll-card {
+    border-radius: 1rem;
+    border: 1px solid rgb(0 0 0 / 0.06);
+    background: #fff;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.05);
+    padding: 1rem;
+}
+@media (min-width: 640px) {
+    .ll-card { padding: 1.5rem; }
+}
+.dark .ll-card {
+    background: #1c1c1e;
+    border-color: rgb(255 255 255 / 0.10);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+/* Accent tint on checkboxes/radios app-wide. */
+input[type='checkbox'], input[type='radio'] { accent-color: var(--color-accent); }
+
 /* Locally-bundled form-control base styles (no CDN). Gives inputs, selects and
    textareas consistent padding, borders and focus rings. */
 @plugin '@tailwindcss/forms';
