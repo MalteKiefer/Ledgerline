@@ -6,6 +6,7 @@ import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentit
 import * as pk from './passkey.js';
 import { hostOf, hostsMatch } from './hosts.js';
 import { IDENTITY_FIELDS } from './identity.js';
+import { listBookmarks, getBookmark, addBookmark, updateBookmark, trashBookmark, restoreBookmark, createFolder, renameFolder, deleteFolder } from './bookmarks.js';
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -235,6 +236,18 @@ async function mutateManifest(fn) {
         // 409: another device wrote in between — loop refetches and re-applies.
     }
     throw new Error('conflict');
+}
+
+// Read-only manifest fetch: derive the session VK, pull the sealed store, and
+// open it — without writing anything back. Used by bookmark read handlers.
+async function readManifest() {
+    const vkB64 = (await session.get('vk')).vk;
+    if (! vkB64) throw new Error('locked');
+    const { serverUrl, token } = await creds();
+    if (! serverUrl || ! token) throw new Error('unpaired');
+    const vk = await fromB64(vkB64);
+    const store = await api.getStore(serverUrl, token);
+    return store.ciphertext ? await openManifest(store.ciphertext, vk) : {};
 }
 
 // A new login record, mirroring the web item shape.
@@ -708,6 +721,46 @@ const handlers = {
             })).sort(byTitle),
         };
     },
+    // ── Bookmarks ──────────────────────────────────────────────────────────────
+    async 'bookmarks.list'() {
+        const m = await readManifest();
+        return listBookmarks(m);
+    },
+    async 'bookmarks.get'({ id }) {
+        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
+        const m = await readManifest();
+        return { bookmark: getBookmark(m, id) };
+    },
+    async 'bookmarks.create'({ bookmark }) {
+        return mutateManifest((m) => addBookmark(m, bookmark || {}));
+    },
+    async 'bookmarks.update'({ id, patch }) {
+        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
+        return mutateManifest((m) => updateBookmark(m, id, patch || {}));
+    },
+    async 'bookmarks.trash'({ id }) {
+        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
+        return mutateManifest((m) => trashBookmark(m, id, new Date().toISOString()));
+    },
+    async 'bookmarks.restore'({ id }) {
+        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
+        return mutateManifest((m) => restoreBookmark(m, id));
+    },
+    async 'bookmarkFolders.create'({ name, parentId }) {
+        if (typeof name !== 'string' || name.length > 120) throw new Error('bad input');
+        if (parentId != null && (typeof parentId !== 'string' || parentId.length > 64)) throw new Error('bad input');
+        return mutateManifest((m) => createFolder(m, { name, parentId: parentId ?? null }));
+    },
+    async 'bookmarkFolders.rename'({ id, name }) {
+        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
+        if (typeof name !== 'string' || name.length > 120) throw new Error('bad input');
+        return mutateManifest((m) => renameFolder(m, id, name));
+    },
+    async 'bookmarkFolders.delete'({ id }) {
+        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
+        return mutateManifest((m) => deleteFolder(m, id));
+    },
+    // ── Passwords/TOTP ─────────────────────────────────────────────────────────
     // Current TOTP code for a login id (secret stays in the worker).
     async totp({ id }) {
         const secrets = await ensureSecrets();
