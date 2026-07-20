@@ -748,6 +748,7 @@ const handlers = {
     },
     async 'bookmarkFolders.create'({ name, parentId }) {
         if (typeof name !== 'string' || name.length > 120) throw new Error('bad input');
+        if (parentId != null && (typeof parentId !== 'string' || parentId.length > 64)) throw new Error('bad input');
         return mutateManifest((m) => createFolder(m, { name, parentId: parentId ?? null }));
     },
     async 'bookmarkFolders.rename'({ id, name }) {
