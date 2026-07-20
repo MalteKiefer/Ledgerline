@@ -328,13 +328,10 @@ abstract class BlobStoreController extends Controller
         // in the browser — this is what lets a second gallery/files visit skip
         // re-downloading every thumbnail. `private` keeps it out of shared proxies;
         // the bytes are ciphertext regardless, so a local disk cache stays ZK-safe.
-        return $this->disk()->response($path, 'file', [
-            'Content-Type' => 'application/octet-stream',
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Security-Policy' => "default-src 'none'; sandbox",
-            'Cache-Control' => 'private, max-age=31536000, immutable',
-            'ETag' => '"'.$blob.'"',
-        ], 'attachment');
+        return BlobStore::immutableResponse(
+            $this->disk()->response($path, 'file', ['Content-Type' => 'application/octet-stream'], 'attachment'),
+            $blob,
+        );
     }
 
     /**

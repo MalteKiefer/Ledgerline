@@ -73,16 +73,16 @@ class VaultSchemaTest extends TestCase
         $member = User::factory()->create();
 
         $row = SharedVaultMember::create([
-            'vault_id'            => $vault->id,
-            'user_id'             => $member->id,
-            'role'                => 'read',
-            'wrapped_vault_key'   => 'ciphertext-placeholder',
+            'vault_id' => $vault->id,
+            'user_id' => $member->id,
+            'role' => 'viewer',
+            'wrapped_vault_key' => 'ciphertext-placeholder',
             'recipient_fingerprint' => 'fp-abc',
-            'status'              => 'pending',
+            'status' => 'pending',
         ]);
 
         $this->assertNotNull($row->id);
-        $this->assertSame('read', $row->role);
+        $this->assertSame('viewer', $row->role->value);
     }
 
     public function test_duplicate_vault_user_pair_raises_unique_violation(): void
@@ -92,21 +92,21 @@ class VaultSchemaTest extends TestCase
         $member = User::factory()->create();
 
         SharedVaultMember::create([
-            'vault_id'          => $vault->id,
-            'user_id'           => $member->id,
-            'role'              => 'read',
+            'vault_id' => $vault->id,
+            'user_id' => $member->id,
+            'role' => 'viewer',
             'wrapped_vault_key' => 'ct',
-            'status'            => 'pending',
+            'status' => 'pending',
         ]);
 
         $this->expectException(UniqueConstraintViolationException::class);
 
         SharedVaultMember::create([
-            'vault_id'          => $vault->id,
-            'user_id'           => $member->id,
-            'role'              => 'edit',
+            'vault_id' => $vault->id,
+            'user_id' => $member->id,
+            'role' => 'editor',
             'wrapped_vault_key' => 'ct2',
-            'status'            => 'pending',
+            'status' => 'pending',
         ]);
     }
 
@@ -120,9 +120,9 @@ class VaultSchemaTest extends TestCase
         $vault = SharedVault::create([]);
 
         SharedVaultStore::create([
-            'vault_id'        => $vault->id,
+            'vault_id' => $vault->id,
             'sealed_manifest' => 'encrypted-blob',
-            'version'         => 1,
+            'version' => 1,
         ]);
 
         $this->assertSame('encrypted-blob', $vault->fresh()->store?->sealed_manifest);
@@ -139,14 +139,14 @@ class VaultSchemaTest extends TestCase
         $member = User::factory()->create();
 
         SharedVaultMember::create([
-            'vault_id'          => $vault->id,
-            'user_id'           => $member->id,
-            'role'              => 'edit',
+            'vault_id' => $vault->id,
+            'user_id' => $member->id,
+            'role' => 'editor',
             'wrapped_vault_key' => 'ct',
-            'status'            => 'active',
+            'status' => 'active',
         ]);
         SharedVaultStore::create([
-            'vault_id'        => $vault->id,
+            'vault_id' => $vault->id,
             'sealed_manifest' => 'blob',
         ]);
 
@@ -164,9 +164,9 @@ class VaultSchemaTest extends TestCase
     public function test_users_table_has_x25519_columns(): void
     {
         $user = User::factory()->create([
-            'x25519_public_key'          => null,
-            'wrapped_x25519_secret_key'  => null,
-            'public_key_fingerprint'     => null,
+            'x25519_public_key' => null,
+            'wrapped_x25519_secret_key' => null,
+            'public_key_fingerprint' => null,
         ]);
 
         $fresh = $user->fresh();
@@ -180,9 +180,9 @@ class VaultSchemaTest extends TestCase
         $user = User::factory()->create();
 
         $user->forceFill([
-            'x25519_public_key'         => 'pubkey-hex',
+            'x25519_public_key' => 'pubkey-hex',
             'wrapped_x25519_secret_key' => 'wrapped-sk',
-            'public_key_fingerprint'    => 'fp-123',
+            'public_key_fingerprint' => 'fp-123',
         ])->save();
 
         $fresh = $user->fresh();
@@ -197,11 +197,11 @@ class VaultSchemaTest extends TestCase
         $vault = SharedVault::create([]);
 
         SharedVaultMember::create([
-            'vault_id'          => $vault->id,
-            'user_id'           => $owner->id,
-            'role'              => 'manage',
+            'vault_id' => $vault->id,
+            'user_id' => $owner->id,
+            'role' => 'manager',
             'wrapped_vault_key' => 'ct',
-            'status'            => 'active',
+            'status' => 'active',
         ]);
 
         $this->assertSame(1, $owner->vaultMemberships()->count());

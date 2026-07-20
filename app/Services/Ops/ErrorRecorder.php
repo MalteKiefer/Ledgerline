@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Ops;
 
 use App\Models\ErrorEvent;
+use App\Support\Redactor;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -138,13 +139,6 @@ class ErrorRecorder
     /** Strip obvious secrets a message/trace may echo (passwords, URIs, tokens). */
     private function redact(string $text): string
     {
-        $patterns = [
-            '/(password["\']?\s*[:=]\s*["\']?)[^"\'\s,&]+/i' => '$1***',
-            '/(secret|token|key|passphrase)(["\']?\s*[:=]\s*["\']?)[^"\'\s,&]+/i' => '$1$2***',
-            '/([a-z][a-z0-9+.\-]*:\/\/[^:\/\s@]+:)[^@\/\s]+@/i' => '$1***@',
-            '/(Bearer\s+)[A-Za-z0-9._\-]+/i' => '$1***',
-        ];
-
-        return (string) preg_replace(array_keys($patterns), array_values($patterns), $text);
+        return Redactor::redact($text);
     }
 }

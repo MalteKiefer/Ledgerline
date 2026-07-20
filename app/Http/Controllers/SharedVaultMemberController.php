@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\VaultRole;
 use App\Http\Requests\Vault\CreateMemberRequest;
 use App\Http\Requests\Vault\UpdateMemberRequest;
 use App\Models\SharedVault;
@@ -45,7 +46,7 @@ class SharedVaultMemberController extends Controller
                 'user_id' => $m->user_id,
                 'name' => $m->user?->name,
                 'email' => $m->user?->email,
-                'role' => $m->role,
+                'role' => $m->role instanceof VaultRole ? $m->role->value : $m->role,
                 'status' => $m->status,
                 'recipient_fingerprint' => $m->recipient_fingerprint,
                 'public_key' => $m->user?->x25519_public_key,
@@ -85,9 +86,7 @@ class SharedVaultMemberController extends Controller
     public function accept(Request $request, SharedVault $vault, SharedVaultMember $member): JsonResponse
     {
         // Cross-vault isolation: the member row must belong to this vault.
-        if ($member->vault_id !== $vault->id) {
-            abort(404);
-        }
+        $this->ensureMemberOfVault($member, $vault);
 
         // Only pending invitations may be accepted — a revoked/active member
         // cannot re-activate themselves via a stale accept URL.
@@ -111,9 +110,7 @@ class SharedVaultMemberController extends Controller
     public function update(UpdateMemberRequest $request, SharedVault $vault, SharedVaultMember $member): JsonResponse
     {
         // Cross-vault isolation.
-        if ($member->vault_id !== $vault->id) {
-            abort(404);
-        }
+        $this->ensureMemberOfVault($member, $vault);
 
         $member->role = $request->validated()['role'];
         $member->save();
@@ -132,12 +129,17 @@ class SharedVaultMemberController extends Controller
         $this->authorize('manage', $vault);
 
         // Cross-vault isolation.
-        if ($member->vault_id !== $vault->id) {
-            abort(404);
-        }
+        $this->ensureMemberOfVault($member, $vault);
 
         $member->delete();
 
         return response()->json(['ok' => true]);
+    }
+
+    private function ensureMemberOfVault(SharedVaultMember $member, SharedVault $vault): void
+    {
+        if ($member->vault_id !== $vault->id) {
+            abort(404);
+        }
     }
 }

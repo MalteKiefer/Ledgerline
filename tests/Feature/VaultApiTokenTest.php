@@ -61,12 +61,12 @@ class VaultApiTokenTest extends TestCase
         string $status = 'active',
     ): SharedVaultMember {
         return SharedVaultMember::create([
-            'vault_id'              => $vault->id,
-            'user_id'               => $user->id,
-            'role'                  => $role,
-            'wrapped_vault_key'     => 'WRAPPED',
+            'vault_id' => $vault->id,
+            'user_id' => $user->id,
+            'role' => $role,
+            'wrapped_vault_key' => 'WRAPPED',
             'recipient_fingerprint' => null,
-            'status'                => $status,
+            'status' => $status,
         ]);
     }
 
@@ -79,9 +79,9 @@ class VaultApiTokenTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this->putJson('/api/v1/vaults/keys', [
-            'public_key'         => 'x25519-pubkey-abc',
+            'public_key' => 'x25519-pubkey-abc',
             'wrapped_secret_key' => 'wrapped-sk-abc',
-            'fingerprint'        => 'fp-abc',
+            'fingerprint' => 'fp-abc',
         ], $this->bearer($user));
 
         $response->assertOk();
@@ -97,15 +97,15 @@ class VaultApiTokenTest extends TestCase
     {
         $user = User::factory()->create();
         $user->forceFill([
-            'x25519_public_key'         => 'original-key',
+            'x25519_public_key' => 'original-key',
             'wrapped_x25519_secret_key' => 'original-sk',
-            'public_key_fingerprint'    => 'original-fp',
+            'public_key_fingerprint' => 'original-fp',
         ])->save();
 
         $response = $this->putJson('/api/v1/vaults/keys', [
-            'public_key'         => 'different-key',
+            'public_key' => 'different-key',
             'wrapped_secret_key' => 'different-sk',
-            'fingerprint'        => 'different-fp',
+            'fingerprint' => 'different-fp',
         ], $this->bearer($user));
 
         $response->assertStatus(409);
@@ -134,7 +134,7 @@ class VaultApiTokenTest extends TestCase
             ->first();
 
         $this->assertNotNull($member);
-        $this->assertSame('manager', $member->role);
+        $this->assertSame('manager', $member->role->value);
         $this->assertSame('active', $member->status);
         $this->assertSame('WRAPPED-VK', $member->wrapped_vault_key);
     }
@@ -180,11 +180,11 @@ class VaultApiTokenTest extends TestCase
 
         SharedVaultStore::where('vault_id', $vault->id)->update([
             'sealed_manifest' => 'current-ciphertext',
-            'version'         => 5,
+            'version' => 5,
         ]);
 
         $response = $this->putJson("/api/v1/vaults/{$vault->id}/store", [
-            'sealed_manifest'  => 'stale-write',
+            'sealed_manifest' => 'stale-write',
             'expected_version' => 3, // stale
         ], $this->bearer($owner));
 
@@ -239,14 +239,14 @@ class VaultApiTokenTest extends TestCase
     {
         $manager = User::factory()->create();
         $invitee = User::factory()->create();
-        $vault   = $this->makeVault($manager);
+        $vault = $this->makeVault($manager);
         $this->addMember($vault, $manager, 'manager');
 
         // Step 1: manager creates a pending member.
         $createResponse = $this->postJson("/api/v1/vaults/{$vault->id}/members", [
-            'user_id'               => $invitee->id,
-            'role'                  => 'viewer',
-            'wrapped_vault_key'     => 'WRAPPED-FOR-INVITEE',
+            'user_id' => $invitee->id,
+            'role' => 'viewer',
+            'wrapped_vault_key' => 'WRAPPED-FOR-INVITEE',
             'recipient_fingerprint' => 'fp-invitee',
         ], $this->bearer($manager));
 
@@ -257,7 +257,7 @@ class VaultApiTokenTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame('pending', $membership->status);
-        $this->assertSame('viewer', $membership->role);
+        $this->assertSame('viewer', $membership->role->value);
 
         // Step 2: invitee accepts their invitation.
         $this->app['auth']->forgetGuards();

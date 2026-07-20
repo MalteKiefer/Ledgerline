@@ -114,13 +114,10 @@ class PublicShareController extends Controller
 
         // Ciphertext; the browser decrypts in memory. Force a script-less sandbox
         // and immutable caching (blobs are content-addressed and never mutate).
-        return $disk->response($path, 'file', [
-            'Content-Type' => 'application/octet-stream',
-            'X-Content-Type-Options' => 'nosniff',
-            'Content-Security-Policy' => "default-src 'none'; sandbox",
-            'Cache-Control' => 'private, max-age=31536000, immutable',
-            'ETag' => '"'.$ref.'"',
-        ], 'attachment');
+        return BlobStore::immutableResponse(
+            $disk->response($path, 'file', ['Content-Type' => 'application/octet-stream'], 'attachment'),
+            $ref,
+        );
     }
 
     private function resolve(string $token): ?PublicShare

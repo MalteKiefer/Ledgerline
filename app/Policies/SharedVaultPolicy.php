@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
+use App\Enums\VaultRole;
 use App\Models\SharedVault;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
@@ -31,7 +32,7 @@ class SharedVaultPolicy
      */
     public function view(User $user, SharedVault $vault): Response
     {
-        return $this->roleAtLeast($user, $vault, ['viewer', 'editor', 'manager'])
+        return $this->roleAtLeast($user, $vault, VaultRole::Viewer)
             ? Response::allow()
             : Response::denyAsNotFound();
     }
@@ -41,7 +42,7 @@ class SharedVaultPolicy
      */
     public function update(User $user, SharedVault $vault): Response
     {
-        return $this->roleAtLeast($user, $vault, ['editor', 'manager'])
+        return $this->roleAtLeast($user, $vault, VaultRole::Editor)
             ? Response::allow()
             : Response::denyAsNotFound();
     }
@@ -51,23 +52,30 @@ class SharedVaultPolicy
      */
     public function manage(User $user, SharedVault $vault): Response
     {
-        return $this->roleAtLeast($user, $vault, ['manager'])
+        return $this->roleAtLeast($user, $vault, VaultRole::Manager)
             ? Response::allow()
             : Response::denyAsNotFound();
     }
 
     /**
-     * Return true when the user holds an active membership with one of the
-     * given roles in the vault.
-     *
-     * @param  array<string>  $roles
+     * Return true when the user holds an active membership with at least the
+     * given minimum role in the vault.
      */
-    private function roleAtLeast(User $user, SharedVault $vault, array $roles): bool
+    private function roleAtLeast(User $user, SharedVault $vault, VaultRole $minimum): bool
     {
-        return $vault->members()
+        $member = $vault->members()
             ->where('user_id', $user->id)
             ->where('status', 'active')
-            ->whereIn('role', $roles)
-            ->exists();
+            ->first();
+
+        if ($member === null) {
+            return false;
+        }
+
+        $role = $member->role instanceof VaultRole
+            ? $member->role
+            : VaultRole::tryFrom((string) $member->role);
+
+        return $role !== null && $role->atLeast($minimum);
     }
 }

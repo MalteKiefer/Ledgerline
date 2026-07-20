@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Vault;
 
+use App\Enums\VaultRole;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
@@ -20,13 +22,6 @@ use Illuminate\Validation\Validator;
  */
 class UpdateMemberRequest extends FormRequest
 {
-    /** Role-rank table — higher number = more permissive. */
-    private const ROLE_RANK = [
-        'viewer' => 1,
-        'editor' => 2,
-        'manager' => 3,
-    ];
-
     public function authorize(): bool
     {
         /** @var SharedVault $vault */
@@ -39,7 +34,7 @@ class UpdateMemberRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'role' => ['required', 'string', 'in:viewer,editor,manager'],
+            'role' => ['required', 'string', Rule::in(VaultRole::values())],
         ];
     }
 
@@ -50,9 +45,10 @@ class UpdateMemberRequest extends FormRequest
     {
         $validator->after(function (Validator $v): void {
             $requested = $this->input('role');
+            $requestedRole = VaultRole::tryFrom((string) $requested);
 
-            if (! isset(self::ROLE_RANK[$requested])) {
-                // Already caught by the `in:` rule — bail early.
+            if ($requestedRole === null) {
+                // Already caught by the Rule::in rule — bail early.
                 return;
             }
 
@@ -75,10 +71,11 @@ class UpdateMemberRequest extends FormRequest
                 ->where('status', 'active')
                 ->first();
 
-            $actorRank = isset($actorMembership->role) ? (self::ROLE_RANK[$actorMembership->role] ?? 0) : 0;
-            $requestedRank = self::ROLE_RANK[$requested];
+            $actorRole = $actorMembership?->role instanceof VaultRole
+                ? $actorMembership->role
+                : VaultRole::tryFrom((string) ($actorMembership?->role ?? ''));
 
-            if ($requestedRank > $actorRank) {
+            if ($actorRole === null || ! $actorRole->atLeast($requestedRole)) {
                 $v->errors()->add('role', 'The selected role exceeds your own vault role.');
             }
         });

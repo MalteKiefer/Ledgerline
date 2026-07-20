@@ -27,9 +27,6 @@ use Illuminate\Support\Facades\DB;
  */
 class SharedVaultStoreController extends Controller
 {
-    /** Cap matches StoreController (personal vault manifest, not file bytes). */
-    private const MANIFEST_MAX_BYTES = 16_000_000;
-
     /**
      * Return the vault's current sealed manifest and version.
      *
@@ -44,7 +41,7 @@ class SharedVaultStoreController extends Controller
 
         return response()->json([
             'sealed_manifest' => $row?->sealed_manifest,
-            'version'         => (int) ($row?->version ?? 0),
+            'version' => (int) ($row?->version ?? 0),
         ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
@@ -61,7 +58,7 @@ class SharedVaultStoreController extends Controller
         $this->authorize('update', $vault);
 
         $data = $request->validate([
-            'sealed_manifest'  => ['required', 'string', 'max:'.self::MANIFEST_MAX_BYTES],
+            'sealed_manifest' => ['required', 'string', 'max:'.config('vault.manifest_max_bytes')],
             'expected_version' => ['required', 'integer', 'min:0'],
         ]);
 
@@ -76,8 +73,8 @@ class SharedVaultStoreController extends Controller
             if ($current !== (int) $data['expected_version']) {
                 // Version conflict — return current state so the client can merge.
                 return [
-                    'conflict'        => true,
-                    'version'         => $current,
+                    'conflict' => true,
+                    'version' => $current,
                     'sealed_manifest' => $row?->sealed_manifest,
                 ];
             }
@@ -86,7 +83,7 @@ class SharedVaultStoreController extends Controller
 
             SharedVaultStore::where('vault_id', $vault->id)->update([
                 'sealed_manifest' => $data['sealed_manifest'],
-                'version'         => $nextVersion,
+                'version' => $nextVersion,
             ]);
 
             return ['conflict' => false, 'version' => $nextVersion];
@@ -94,7 +91,7 @@ class SharedVaultStoreController extends Controller
 
         if ($result['conflict']) {
             return response()->json([
-                'version'         => $result['version'],
+                'version' => $result['version'],
                 'sealed_manifest' => $result['sealed_manifest'],
             ], 409);
         }
