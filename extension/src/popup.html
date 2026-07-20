@@ -123,6 +123,20 @@
     .empty { display: flex; height: 100%; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; text-align: center; padding: 0 16px; }
     .fc-fname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+    /* bookmarks: folder-browsing navigation */
+    .bm-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 1px; margin-bottom: 8px; }
+    .crumb { border: 0; background: transparent; color: var(--accent); cursor: pointer; padding: 2px 6px; border-radius: 8px; display: inline-flex; align-items: center; gap: 3px; font: inherit; font-size: 12px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .crumb:hover { background: var(--hover); }
+    .crumb:last-of-type { color: var(--text); font-weight: 600; }
+    .crumb-sep { color: var(--muted); display: inline-flex; }
+    .bmrow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 10px; transition: background .12s; }
+    .bmrow:hover { background: var(--hover); }
+    .bmrow .main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; padding: 0; }
+    .bmrow .rowacts { display: none; gap: 2px; flex: none; }
+    .bmrow:hover .rowacts { display: inline-flex; }
+    .bmrow:hover .chev { display: none; }
+    .bmrow .chev { color: var(--muted); flex: none; display: inline-flex; }
+
     /* generator */
     .prev { display: flex; align-items: center; gap: 4px; padding: 11px; border: 1px solid var(--border); border-radius: var(--r-field); background: var(--surface); }
     .prev .grow { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; word-break: break-all; }

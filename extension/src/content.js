@@ -91,7 +91,7 @@ function otpField() {
 async function notify(text) {
     const n = document.createElement('div');
     n.textContent = text;
-    n.style.cssText = 'position:fixed;z-index:2147483647;bottom:16px;right:16px;background:#111827;color:#fff;padding:8px 12px;border-radius:8px;font:13px system-ui,sans-serif;box-shadow:0 6px 20px #0004;';
+    n.style.cssText = 'position:fixed;z-index:2147483647;bottom:16px;right:16px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;padding:8px 12px;border-radius:10px;font:13px system-ui,sans-serif;box-shadow:0 6px 20px #0004;';
     document.body.append(n);
     setTimeout(() => n.remove(), 2500);
 }
@@ -256,7 +256,7 @@ function openGenPanel(field) {
     const cb = (k, label) => `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-k="${k}"${genOpts[k] ? ' checked' : ''}>${label}</label>`;
     const box = document.createElement('div');
     box.innerHTML = `
-      <div style="width:280px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:10px;box-shadow:0 8px 24px #0003;padding:12px;font:13px system-ui,sans-serif">
+      <div style="width:280px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:14px;box-shadow:0 8px 24px #0003;padding:12px;font:13px system-ui,sans-serif">
         <div style="display:flex;align-items:center;gap:6px">
           <span id="pw" style="flex:1;min-width:0;word-break:break-all;font-family:ui-monospace,monospace;font-size:13px;background:#0000000a;border-radius:6px;padding:7px 8px"></span>
           <button id="regen" title="Regenerate" style="border:0;background:transparent;cursor:pointer;font-size:15px;padding:4px">↻</button>
@@ -266,7 +266,7 @@ function openGenPanel(field) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;font-size:12px">
           ${cb('upper', 'A–Z')}${cb('lower', 'a–z')}${cb('digits', '0–9')}${cb('symbols', '!@#')}
         </div>
-        <button id="use" style="width:100%;margin-top:10px;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer">Fill password</button>
+        <button id="use" style="width:100%;margin-top:10px;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer">Fill password</button>
       </div>`;
     shadow.append(box);
     document.body.append(genHost);
@@ -316,14 +316,14 @@ function openPicker(anchor, logins, onPick = doFill) {
     host.style.left = (window.scrollX + r.left) + 'px';
     const shadow = host.attachShadow({ mode: 'closed' });
     const box = document.createElement('div');
-    box.style.cssText = 'min-width:220px;max-width:320px;background:#fff;color:#111;border:1px solid #0003;border-radius:10px;box-shadow:0 8px 24px #0003;overflow:hidden;font:13px system-ui,sans-serif;';
+    box.style.cssText = 'min-width:220px;max-width:320px;background:#fff;color:#111;border:1px solid #0003;border-radius:14px;box-shadow:0 8px 24px #0003;overflow:hidden;font:13px system-ui,sans-serif;';
     for (const lg of logins) {
         const item = document.createElement('button');
         item.style.cssText = 'display:flex;gap:8px;align-items:center;width:100%;padding:8px 10px;border:0;background:transparent;text-align:left;cursor:pointer;';
         item.onmouseenter = () => { item.style.background = '#0000000d'; };
         item.onmouseleave = () => { item.style.background = 'transparent'; };
         const av = document.createElement('span');
-        av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;';
+        av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;';
         av.textContent = (lg.title || lg.username || '?').charAt(0).toUpperCase();
         const txt = document.createElement('span');
         const t = document.createElement('div'); t.style.fontWeight = '500'; t.textContent = lg.title || lg.username;
@@ -360,7 +360,7 @@ function attachBadge(field, logins, onPick = doFill, fetchList = null) {
     const icon = document.createElement('div');
     icon.textContent = 'L';
     icon.title = 'Ledgerline — fill';
-    icon.style.cssText = 'position:absolute;z-index:2147483646;width:18px;height:18px;border-radius:5px;background:#111827;color:#fff;font:600 11px/18px system-ui,sans-serif;text-align:center;cursor:pointer;box-shadow:0 1px 3px #0004;';
+    icon.style.cssText = 'position:absolute;z-index:2147483646;width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font:600 11px/18px system-ui,sans-serif;text-align:center;cursor:pointer;box-shadow:0 1px 3px #0004;';
     icon.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); show(); });
     const place = () => {
         const r = field.getBoundingClientRect();
@@ -553,13 +553,13 @@ function promptSave(cred) {
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <div style="width:300px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;padding:14px;font:13px system-ui,sans-serif">
-        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Save this login to Ledgerline?</div>
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Save this login to Ledgerline?</div>
         <label style="display:block;font-size:11px;color:#6b7280;margin:10px 0 3px">Title</label>
-        <input id="t" style="width:100%;box-sizing:border-box;padding:7px;border:1px solid #d1d5db;border-radius:8px;font:inherit" value="${esc(host)}">
+        <input id="t" style="width:100%;box-sizing:border-box;padding:7px;border:1px solid #d1d5db;border-radius:10px;font:inherit" value="${esc(host)}">
         <div style="font-size:12px;color:#6b7280;margin-top:8px">${cred.username ? ('Username: ' + esc(cred.username)) : 'No username detected'}</div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button id="d" style="flex:1;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
-          <button id="s" style="flex:1;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit">Save</button>
+          <button id="d" style="flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
+          <button id="s" style="flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit">Save</button>
         </div>
       </div>`;
     shadow.append(wrap);
@@ -584,11 +584,11 @@ function promptUpdate(loginId, domain, username, newPassword) {
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <div style="width:300px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;padding:14px;font:13px system-ui,sans-serif">
-        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Update password for ${esc(domain)}?</div>
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Update password for ${esc(domain)}?</div>
         <div style="font-size:12px;color:#6b7280;margin-top:8px">${username ? esc(username) : 'No username'}</div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button id="d" style="flex:1;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
-          <button id="s" style="flex:1;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit">Update</button>
+          <button id="d" style="flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
+          <button id="s" style="flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit">Update</button>
         </div>
       </div>`;
     shadow.append(wrap);
@@ -676,11 +676,11 @@ function openPasskeyPickerFixed(candidates, rpId) {
             const actions = document.createElement('div');
             actions.style.cssText = 'display:flex;gap:8px;padding:10px 14px 14px;';
             const btnCancel = document.createElement('button');
-            btnCancel.style.cssText = 'flex:1;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit;';
+            btnCancel.style.cssText = 'flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit;';
             btnCancel.textContent = 'Abbrechen';
             btnCancel.onclick = () => finish({ cancel: true });
             const btnOk = document.createElement('button');
-            btnOk.style.cssText = 'flex:1;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit;';
+            btnOk.style.cssText = 'flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit;';
             btnOk.textContent = 'Anmelden';
             btnOk.onclick = () => finish({ credentialId: c.credentialId });
             actions.append(btnCancel, btnOk);
@@ -698,7 +698,7 @@ function openPasskeyPickerFixed(candidates, rpId) {
                 item.onmouseenter = () => { item.style.background = '#0000000d'; };
                 item.onmouseleave = () => { item.style.background = 'transparent'; };
                 const av = document.createElement('span');
-                av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;';
+                av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;';
                 av.textContent = (lg.title || '?').charAt(0).toUpperCase();
                 const txt = document.createElement('span');
                 const t = document.createElement('div'); t.style.fontWeight = '500'; t.textContent = lg.title;
@@ -753,7 +753,7 @@ function openPasskeySavePrompt(rpId, userName, logins) {
         const hdr = document.createElement('div');
         hdr.style.cssText = 'padding:14px 14px 8px;font-weight:600;border-bottom:1px solid #0000000d;display:flex;align-items:center;gap:8px;';
         const badge = document.createElement('span');
-        badge.style.cssText = 'width:20px;height:20px;border-radius:5px;background:#111827;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:none;';
+        badge.style.cssText = 'width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:none;';
         badge.textContent = 'L';
         const hdrText = document.createElement('span');
         hdrText.textContent = 'Passkey für ' + rpId + ' speichern?';
@@ -777,7 +777,7 @@ function openPasskeySavePrompt(rpId, userName, logins) {
                 btn.onmouseenter = () => { btn.style.background = '#0000000d'; };
                 btn.onmouseleave = () => { btn.style.background = 'transparent'; };
                 const av = document.createElement('span');
-                av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:#e5e7eb;color:#374151;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;font-size:12px;';
+                av.style.cssText = 'width:24px;height:24px;border-radius:6px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;font-size:12px;';
                 av.textContent = (lg.title || lg.username || '?').charAt(0).toUpperCase();
                 const txt = document.createElement('span');
                 const t = document.createElement('div'); t.style.fontWeight = '500'; t.textContent = lg.title || lg.username;
@@ -797,12 +797,12 @@ function openPasskeySavePrompt(rpId, userName, logins) {
         actions.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:10px 14px 14px;';
 
         const btnNew = document.createElement('button');
-        btnNew.style.cssText = 'width:100%;padding:8px;border:0;border-radius:8px;background:#111827;color:#fff;font-weight:600;cursor:pointer;font:inherit;';
+        btnNew.style.cssText = 'width:100%;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit;';
         btnNew.textContent = 'Neuer Passkey-Eintrag';
         btnNew.onclick = () => finish({ target: 'new' });
 
         const btnCancel = document.createElement('button');
-        btnCancel.style.cssText = 'width:100%;padding:8px;border:0;border-radius:8px;background:#0000000d;cursor:pointer;font:inherit;';
+        btnCancel.style.cssText = 'width:100%;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit;';
         btnCancel.textContent = 'Abbrechen';
         btnCancel.onclick = () => finish({ target: null });
 
