@@ -39,6 +39,15 @@
                 </a>
             @endforeach
         </div>
+        {{-- Danger zone: reset the password manager (client-side, opens in the manager) --}}
+        <a href="{{ route('passwords.index') }}?reset=1" class="group mt-3 ll-card flex items-center gap-3.5 !py-3.5 transition hover:border-red-300 dark:hover:border-red-800">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style="background:#ef4444"><x-icon name="exclamation-triangle" class="h-5 w-5" /></span>
+            <span class="min-w-0 flex-1">
+                <span class="block text-sm font-semibold text-red-600 dark:text-red-400">{{ __('passwords.reset') }}</span>
+                <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{{ __('settings.passwords_reset_desc') }}</span>
+            </span>
+            <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600 transition group-hover:text-red-500" />
+        </a>
     </section>
 
     {{-- Administration (workspace-wide) --}}

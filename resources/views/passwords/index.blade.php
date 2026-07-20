@@ -199,14 +199,6 @@
                   <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#6b7280"><x-icon name="trash" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('passwords.trash') }}</span>
                   <span x-show="trashCount" x-text="trashCount" class="text-gray-400"></span>
                 </button>
-                <button type="button" x-show="view === 'trash' && trashCount" @click="emptyTrash()" class="mt-1 w-full rounded-md px-2.5 py-1 text-left text-[11px] font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">{{ __('passwords.empty_trash') }}</button>
-              </div>
-
-              {{-- Danger zone: reset the whole password manager (personal only) --}}
-              <div class="border-t border-gray-100 dark:border-gray-800 pt-2">
-                <button type="button" @click="openReset()" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">
-                  <x-icon name="exclamation-triangle" class="h-3.5 w-3.5" /><span class="flex-1 text-left">{{ __('passwords.reset') }}</span>
-                </button>
               </div>
             </div>
           </aside>
@@ -227,6 +219,11 @@
               <div x-show="view === 'health'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400" x-text="healthCount ? (healthCount + ' {{ __('passwords.health_issues') }}') : '{{ __('passwords.health_ok') }}'"></span>
                 <button type="button" @click="checkBreaches()" :disabled="breachChecking" class="shrink-0 rounded-md ll-accent px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50" x-text="breachChecking ? '{{ __('passwords.checking') }}' : '{{ __('passwords.check_breaches') }}'"></button>
+              </div>
+              {{-- Trash view header: count + empty-trash --}}
+              <div x-show="view === 'trash'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
+                <span class="text-xs text-gray-500 dark:text-gray-400"><span x-text="trashCount"></span> {{ __('passwords.trash') }}</span>
+                <button type="button" x-show="trashCount" @click="emptyTrash()" class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"><x-icon name="trash" class="h-3.5 w-3.5" />{{ __('passwords.empty_trash') }}</button>
               </div>
               {{-- Read-only notice for shared vaults --}}
               <div x-show="isSharedVault(filterFolder) && sharedVaultRole(filterFolder) === 'read'" x-cloak class="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">

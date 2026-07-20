@@ -7,6 +7,7 @@ return [
     'index_title' => 'Settings',
     'personal_heading' => 'My settings',
     'personal_subheading' => 'Preferences that apply to your account only.',
+    'passwords_reset_desc' => 'Delete all passwords, passkeys and personal vaults and start fresh (opens in the password manager).',
     'admin_heading' => 'Administration',
     'admin_note' => 'These settings apply to the whole workspace and affect every user.',
     'files_limits_heading' => 'Global file limits',
