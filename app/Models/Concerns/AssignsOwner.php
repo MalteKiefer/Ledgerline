@@ -14,7 +14,10 @@ use Illuminate\Support\Facades\Auth;
  */
 trait AssignsOwner
 {
-    /** The column holding the owning user id (override per model, e.g. Photo). */
+    /**
+     * The column holding the owning user id. Returns 'user_id' by default;
+     * override in individual models when the column name differs.
+     */
     public function ownerColumn(): string
     {
         return 'user_id';
@@ -24,7 +27,7 @@ trait AssignsOwner
      * Strictly the given user's OWN rows, with the auth-gated read scope removed
      * (never merely-shared rows). The single, model-aware way to owner-scope a
      * query — replaces hand-written withoutGlobalScopes()->where('<column>', …)
-     * chains so the owner column (e.g. Photo's uploaded_by) is never hardcoded.
+     * chains so the owner column is never hardcoded across callers.
      */
     public function scopeOwnedBy(Builder $query, int|string|null $userId): Builder
     {

@@ -19,7 +19,7 @@ class ImageManagerFactory
         return new ImageManager($this->hasImagick() ? new ImagickDriver : new GdDriver);
     }
 
-    public function hasImagick(): bool
+    private function hasImagick(): bool
     {
         return extension_loaded('imagick');
     }
