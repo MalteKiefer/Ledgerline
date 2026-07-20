@@ -213,6 +213,16 @@ export default (config = {}, labels = {}) => ({
         this.refreshUsage();
     },
 
+    // Best-effort reclaim of blobs stored inside a shared folder vault.
+    // Shared blobs live at /vaults/{vaultId}/blobs/{blob}, not config.blobBase.
+    _sharedFreeBlobs(vaultId, blobs) {
+        const uniq = [...new Set((blobs || []).filter(Boolean))];
+        if (! uniq.length) return;
+        Promise.all(uniq.map((blob) => queueBlobDelete(`/vaults/${vaultId}/blobs/${blob}`, config.token)))
+            .then(() => this.refreshUsage());
+        this.refreshUsage();
+    },
+
     // Send the manifest's full live blob set so the server frees the rest of the
     // user's quota ledger. Debounced; runs on load (self-heals quota each visit).
     _reconcileTimer: null,
@@ -240,6 +250,59 @@ export default (config = {}, labels = {}) => ({
             });
             if (res.ok) this.usage = await res.json();
         } catch (e) { /* best effort */ }
+    },
+
+    // Reconcile blobs for a shared folder after a permanent delete.
+    // Mirrors _reconcileNow but targets /vaults/{vaultId}/blobs/reconcile.
+    async _sharedReconcileNow(vaultId) {
+        const tree = this.sharedTree[vaultId];
+        if (! tree) return;
+        const blobs = [];
+        for (const f of tree.files) {
+            if (f.blob) blobs.push(f.blob);
+            if (f.textRef) blobs.push(f.textRef);
+            if (f.embRef) blobs.push(f.embRef);
+            for (const v of f.versions ?? []) if (v.blob) blobs.push(v.blob);
+        }
+        try {
+            await fetch(`/vaults/${vaultId}/blobs/reconcile`, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
+                body: JSON.stringify({ blobs: [...new Set(blobs)] }),
+            });
+        } catch (_e) { /* best effort */ }
+    },
+
+    /* ---- Shared-context helpers ---- */
+
+    // True when the user is currently browsing a shared folder (not personal).
+    _isSharedContext() { return this.activeShared !== null; },
+
+    // True when the current context allows write operations.
+    // Personal context is always writable; shared context requires role ≥ edit.
+    _canEditActive() {
+        if (! this._isSharedContext()) return true;
+        const sf = this.sharedFolders.find((f) => f.vaultId === this.activeShared);
+        return sf ? sf.role === 'edit' || sf.role === 'manage' : false;
+    },
+
+    // True when the active shared folder allows management (invite/remove/delete).
+    _canManageActive() {
+        if (! this._isSharedContext()) return true;
+        const sf = this.sharedFolders.find((f) => f.vaultId === this.activeShared);
+        return sf ? sf.role === 'manage' : false;
+    },
+
+    // Active folder/file arrays: personal manifest or shared tree depending on context.
+    _activeFolders() {
+        return this._isSharedContext()
+            ? (this.sharedTree[this.activeShared]?.folders ?? [])
+            : this.manifest.folders;
+    },
+    _activeFiles() {
+        return this._isSharedContext()
+            ? (this.sharedTree[this.activeShared]?.files ?? [])
+            : this.manifest.files;
     },
 
     /* ---- Shared folders (ZK cross-user, mirrors passwords.js _loadSharedVaults / _saveVault) ----
@@ -364,11 +427,12 @@ export default (config = {}, labels = {}) => ({
     },
 
     // All descendant folder ids of the given folders (inclusive of the roots).
+    // Uses the active context's folder list (personal or shared).
     _folderClosure(folderIds) {
         const kill = new Set(folderIds);
         for (let grew = true; grew;) {
             grew = false;
-            for (const f of this.manifest.folders) {
+            for (const f of this._activeFolders()) {
                 if (! kill.has(f.id) && f.parent && kill.has(f.parent)) { kill.add(f.id); grew = true; }
             }
         }
@@ -390,26 +454,46 @@ export default (config = {}, labels = {}) => ({
     // Version history lives in the file's manifest row (versions[]) — no server
     // round-trip. Each entry keeps its own wrapped key so its blob decrypts.
     openVersions(row) {
-        const f = this.manifest.files.find((x) => x.id === row.id) || row;
+        // Shared files: look in the shared tree if the row carries sharedVaultId.
+        const files = row.sharedVaultId
+            ? (this.sharedTree[row.sharedVaultId]?.files ?? [])
+            : this.manifest.files;
+        const f = files.find((x) => x.id === row.id) || row;
         this.versions = {
             open: true, row, loading: false,
             list: (f.versions ?? []).map((v) => ({ ...v, created_at: v.created })),
         };
     },
     // Download a snapshot: fetch its ciphertext blob and decrypt with the
-    // version's own wrapped key.
+    // version's own wrapped key. Shared files use the vault blob URL + VK_folder.
     async downloadVersion(v) {
         try {
-            const res = await fetch(`${config.rawBase}/${v.blob}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            if (! res.ok) throw new Error('fetch failed');
-            saveBlobAs(window.Vault.decryptFile(await res.arrayBuffer(), v.encFileKey), v.name, v.mime);
+            const parentRow = this.versions.row;
+            let buf;
+            if (parentRow?.sharedVaultId) {
+                const vk = this._folderKeys[parentRow.sharedVaultId];
+                if (! vk) throw new Error('folder key not available');
+                const res = await fetch(`/vaults/${parentRow.sharedVaultId}/blobs/raw/${v.blob}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                if (! res.ok) throw new Error('fetch failed');
+                buf = await res.arrayBuffer();
+                saveBlobAs(window.Vault.decryptFileWith(buf, v.encFileKey, vk), v.name, v.mime);
+            } else {
+                const res = await fetch(`${config.rawBase}/${v.blob}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                if (! res.ok) throw new Error('fetch failed');
+                saveBlobAs(window.Vault.decryptFile(await res.arrayBuffer(), v.encFileKey), v.name, v.mime);
+            }
         } catch (e) { this.error = labels.downloadFailed; }
     },
     // Restore a version: snapshot the current blob as a new version, then point
     // the row at the restored blob + its wrapped key (kept decryptable), cap, save.
     async restoreVersion(v) {
         if (! await this.$store.confirm.ask(labels.restoreConfirm || '')) return;
-        const row = this.manifest.files.find((f) => f.id === this.versions.row.id);
+        const parentRow = this.versions.row;
+        const sharedVaultId = parentRow?.sharedVaultId ?? null;
+        const files = sharedVaultId
+            ? (this.sharedTree[sharedVaultId]?.files ?? [])
+            : this.manifest.files;
+        const row = files.find((f) => f.id === parentRow.id);
         if (! row) return;
         row.versions = row.versions ?? [];
         row.versions.unshift({ id: crypto.randomUUID(), blob: row.blob, encFileKey: row.encFileKey, size: row.size, mime: row.mime, name: row.name, created: new Date().toISOString() });
@@ -420,7 +504,11 @@ export default (config = {}, labels = {}) => ({
         this._spliceWhere(row.versions, (x) => x.id === v.id);
         this._trimVersions(row);
         this._logActivity(row, 'restored');
-        this.persist();
+        if (sharedVaultId) {
+            await this._saveFolder(sharedVaultId, { op: 'upsertFile', item: row });
+        } else {
+            this.persist();
+        }
         this.versions.open = false;
     },
 
@@ -437,10 +525,14 @@ export default (config = {}, labels = {}) => ({
     },
     // Mark a file as opened/accessed — drives the Recent / Quick-Access view.
     _touchOpened(id) {
-        const f = this.manifest.files.find((x) => x.id === id);
+        const f = this._activeFiles().find((x) => x.id === id);
         if (! f) return;
         f.openedAt = new Date().toISOString();
-        this.persist();
+        if (this._isSharedContext()) {
+            this._saveFolder(this.activeShared, { op: 'upsertFile', item: f }).catch(() => {});
+        } else {
+            this.persist();
+        }
     },
     // Human-facing label + relative time for an activity entry (rendered in the
     // info panel). The label map lives in `labels` (from the blade).
@@ -558,7 +650,7 @@ export default (config = {}, labels = {}) => ({
     get breadcrumb() {
         const chain = [];
         let cur = this.cwd;
-        const byId = new Map(this.manifest.folders.map((f) => [f.id, f]));
+        const byId = new Map(this._activeFolders().map((f) => [f.id, f]));
         while (cur != null && byId.has(cur)) {
             chain.unshift(byId.get(cur));
             cur = byId.get(cur).parent;
@@ -572,14 +664,14 @@ export default (config = {}, labels = {}) => ({
 
     get trashView() { return this.view === 'trash'; },
     // Count of items with a live public share link (for the sidebar badge).
-    get sharedCount() { return this.manifest.folders.filter((d) => d.share).length + this.manifest.files.filter((f) => f.share && ! f.trashed).length; },
+    get sharedCount() { return this._activeFolders().filter((d) => d.share).length + this._activeFiles().filter((f) => f.share && ! f.trashed).length; },
 
     get trashCount() {
-        return this.manifest.files.filter((f) => f.trashed).length;
+        return this._activeFiles().filter((f) => f.trashed).length;
     },
 
     get favCount() {
-        return this.manifest.files.filter((f) => f.favorite && ! f.trashed).length;
+        return this._activeFiles().filter((f) => f.favorite && ! f.trashed).length;
     },
 
     get rows() {
@@ -597,25 +689,28 @@ export default (config = {}, labels = {}) => ({
         // the module-scoped fileText index; warmed in the background on load).
         const search = (list) => q === '' ? list : list.filter((x) => x.name.toLowerCase().includes(q) || (fileText[x.id] || '').includes(q) || (sem && sem.has(x.id)));
 
+        const activeFiles = this._activeFiles();
+        const activeFolders = this._activeFolders();
+
         // Flat views (trash / favorites / recent): a tree-wide file list, not
         // folder-scoped.
         if (this.view === 'trash') {
-            return search(this.manifest.files.filter((f) => f.trashed)).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
+            return search(activeFiles.filter((f) => f.trashed)).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
         }
         if (this.view === 'favorites') {
-            return search(this.manifest.files.filter((f) => f.favorite && ! f.trashed)).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
+            return search(activeFiles.filter((f) => f.favorite && ! f.trashed)).map((f) => ({ ...f, kind: 'file' })).sort(cmp);
         }
         if (this.view === 'recent') {
             // Quick-Access: most-recently opened first, falling back to upload time
             // for files never opened. Only files touched at some point surface high.
-            return search(this.manifest.files.filter((f) => ! f.trashed))
+            return search(activeFiles.filter((f) => ! f.trashed))
                 .map((f) => ({ ...f, kind: 'file' }))
                 .sort((a, b) => new Date(b.openedAt || b.created || 0) - new Date(a.openedAt || a.created || 0)).slice(0, 100);
         }
         if (this.view === 'shared') {
             // Everything that currently has a public share link — folders first.
-            const folders = this.manifest.folders.filter((d) => d.share).map((d) => ({ ...d, kind: 'folder' }));
-            const files = this.manifest.files.filter((f) => f.share && ! f.trashed).map((f) => ({ ...f, kind: 'file' }));
+            const folders = activeFolders.filter((d) => d.share).map((d) => ({ ...d, kind: 'folder' }));
+            const files = activeFiles.filter((f) => f.share && ! f.trashed).map((f) => ({ ...f, kind: 'file' }));
             return search([...folders, ...files]).sort(cmp);
         }
 
@@ -632,10 +727,10 @@ export default (config = {}, labels = {}) => ({
             return scoped;
         };
 
-        const folders = inScope(this.manifest.folders.map((f) => ({ ...f, kind: 'folder' })));
+        const folders = inScope(activeFolders.map((f) => ({ ...f, kind: 'folder' })));
         // Hide trashed files (e.g. deleted over WebDAV): data() returns them with
         // a `trashed` timestamp so sync keeps their state, but they must not show.
-        const files = inScope(this.manifest.files.filter((f) => ! f.trashed).map((f) => ({ ...f, kind: 'file' })));
+        const files = inScope(activeFiles.filter((f) => ! f.trashed).map((f) => ({ ...f, kind: 'file' })));
 
         return [...folders.sort(cmp), ...files.sort(cmp)];
     },
@@ -643,7 +738,7 @@ export default (config = {}, labels = {}) => ({
     // Every tag used anywhere in the manifest, for suggestions.
     get allTags() {
         const set = new Set();
-        for (const x of [...this.manifest.folders, ...this.manifest.files]) {
+        for (const x of [...this._activeFolders(), ...this._activeFiles()]) {
             for (const t of x.tags ?? []) set.add(t);
         }
         return [...set].sort((a, b) => a.localeCompare(b));
@@ -680,20 +775,27 @@ export default (config = {}, labels = {}) => ({
     saveNote() {
         const row = this.infoRow;
         if (! row || row.kind !== 'file') return;
+        if (! this._canEditActive()) return;
         const note = this.infoNote.trim();
         if ((row.note || '') === note) return;
-        const f = this.manifest.files.find((x) => x.id === row.id);
-        if (f) f.note = note;
-        row.note = note;
-        this.persist();
+        if (row.sharedVaultId) {
+            const vaultId = row.sharedVaultId;
+            const f = (this.sharedTree[vaultId]?.files ?? []).find((x) => x.id === row.id);
+            if (f) { f.note = note; row.note = note; this._saveFolder(vaultId, { op: 'upsertFile', item: f }).catch(() => {}); }
+        } else {
+            const f = this.manifest.files.find((x) => x.id === row.id);
+            if (f) f.note = note;
+            row.note = note;
+            this.persist();
+        }
     },
 
     // Direct children of a folder (files + subfolders), counted client-side —
     // the count lives only in the decrypted manifest, never on the server.
     folderItemCount(row) {
         if (! row) return 0;
-        const files = this.manifest.files.filter((f) => (f.folder ?? null) === row.id).length;
-        const folders = this.manifest.folders.filter((f) => (f.parent ?? null) === row.id).length;
+        const files = this._activeFiles().filter((f) => (f.folder ?? null) === row.id).length;
+        const folders = this._activeFolders().filter((f) => (f.parent ?? null) === row.id).length;
         return files + folders;
     },
 
@@ -771,7 +873,7 @@ export default (config = {}, labels = {}) => ({
         if (! row) return root;
         const parentId = row.kind === 'folder' ? (row.parent ?? null) : (row.folder ?? null);
         if (parentId == null) return root;
-        const byId = new Map(this.manifest.folders.map((f) => [f.id, f]));
+        const byId = new Map(this._activeFolders().map((f) => [f.id, f]));
         const chain = [];
         let cur = parentId;
         while (cur != null && byId.has(cur)) {
@@ -786,8 +888,16 @@ export default (config = {}, labels = {}) => ({
     async mkdir(name) {
         name = (name || '').trim();
         if (! name) return;
-        this.manifest.folders.push({ id: crypto.randomUUID(), name, parent: this.cwd });
-        await this.persist().catch(() => this.load());
+        if (! this._canEditActive()) return;
+        const folder = { id: crypto.randomUUID(), name, parent: this.cwd };
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            (this.sharedTree[vaultId]?.folders ?? []).push(folder);
+            await this._saveFolder(vaultId, { op: 'upsertFolder', item: folder });
+        } else {
+            this.manifest.folders.push(folder);
+            await this.persist().catch(() => this.load());
+        }
     },
 
     startRename(row) {
@@ -800,12 +910,26 @@ export default (config = {}, labels = {}) => ({
         const name = this.renameValue.trim();
         this.renaming = null;
         if (! name || name === row.name) return;
-        const list = row.kind === 'folder' ? this.manifest.folders : this.manifest.files;
-        const item = list.find((x) => x.id === row.id);
-        if (item) {
-            if (row.kind !== 'folder') this._logActivity(item, 'renamed', name);
-            item.name = name;
-            await this.persist().catch(() => this.load());
+        if (! this._canEditActive()) return;
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            const tree = this.sharedTree[vaultId];
+            const list = row.kind === 'folder' ? (tree?.folders ?? []) : (tree?.files ?? []);
+            const item = list.find((x) => x.id === row.id);
+            if (item) {
+                if (row.kind !== 'folder') this._logActivity(item, 'renamed', name);
+                item.name = name;
+                const op = row.kind === 'folder' ? 'upsertFolder' : 'upsertFile';
+                await this._saveFolder(vaultId, { op, item });
+            }
+        } else {
+            const list = row.kind === 'folder' ? this.manifest.folders : this.manifest.files;
+            const item = list.find((x) => x.id === row.id);
+            if (item) {
+                if (row.kind !== 'folder') this._logActivity(item, 'renamed', name);
+                item.name = name;
+                await this.persist().catch(() => this.load());
+            }
         }
     },
 
@@ -820,19 +944,20 @@ export default (config = {}, labels = {}) => ({
     get selectionRefs() {
         return this.selected.map((key) => {
             const [kind, id] = key.split(':');
-            const list = kind === 'folder' ? this.manifest.folders : this.manifest.files;
+            const list = kind === 'folder' ? this._activeFolders() : this._activeFiles();
             const item = list.find((x) => x.id === id);
             return item ? { kind, id, name: item.name } : null;
         }).filter(Boolean);
     },
 
     // Expand a folder id to its whole subtree of folder ids.
+    // Uses the active context's folder list (personal or shared).
     subtree(id) {
         const set = new Set([id]);
         let grew = true;
         while (grew) {
             grew = false;
-            for (const f of this.manifest.folders) {
+            for (const f of this._activeFolders()) {
                 if (f.parent != null && set.has(f.parent) && ! set.has(f.id)) {
                     set.add(f.id);
                     grew = true;
@@ -856,14 +981,15 @@ export default (config = {}, labels = {}) => ({
                 for (const id of this.subtree(ref.id)) excluded.add(id);
             }
         }
-        const byId = new Map(this.manifest.folders.map((x) => [x.id, x]));
+        const folders = this._activeFolders();
+        const byId = new Map(folders.map((x) => [x.id, x]));
         const path = (f) => {
             const parts = [f.name];
             let cur = f.parent;
             while (cur != null && byId.has(cur)) { parts.unshift(byId.get(cur).name); cur = byId.get(cur).parent; }
             return parts.join(' / ');
         };
-        return this.manifest.folders
+        return folders
             .filter((f) => ! excluded.has(f.id))
             .map((f) => ({ id: f.id, label: path(f) }))
             .sort((a, b) => a.label.localeCompare(b.label));
@@ -874,29 +1000,51 @@ export default (config = {}, labels = {}) => ({
         this.moveOpen = false;
         this.moveRefs = [];
         if (! refs.length) return;
+        if (! this._canEditActive()) return;
         const target = this.moveTarget === '' ? null : this.moveTarget;
-        for (const ref of refs) {
-            if (ref.kind === 'folder') {
-                if (target !== null && this.subtree(ref.id).has(target)) continue; // never into own subtree
-                const f = this.manifest.folders.find((x) => x.id === ref.id);
-                if (f) f.parent = target;
-            } else {
-                const f = this.manifest.files.find((x) => x.id === ref.id);
-                if (f) { f.folder = target; this._logActivity(f, 'moved'); }
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            const tree = this.sharedTree[vaultId];
+            const movedItems = [];
+            for (const ref of refs) {
+                if (ref.kind === 'folder') {
+                    if (target !== null && this.subtree(ref.id).has(target)) continue;
+                    const f = (tree?.folders ?? []).find((x) => x.id === ref.id);
+                    if (f) { f.parent = target; movedItems.push({ op: 'upsertFolder', item: f }); }
+                } else {
+                    const f = (tree?.files ?? []).find((x) => x.id === ref.id);
+                    if (f) { f.folder = target; this._logActivity(f, 'moved'); movedItems.push({ op: 'upsertFile', item: f }); }
+                }
             }
+            this.selected = [];
+            // Save once with the last mutation; the full tree is always re-sealed.
+            if (movedItems.length) {
+                await this._saveFolder(vaultId, movedItems[movedItems.length - 1]);
+            }
+        } else {
+            for (const ref of refs) {
+                if (ref.kind === 'folder') {
+                    if (target !== null && this.subtree(ref.id).has(target)) continue; // never into own subtree
+                    const f = this.manifest.folders.find((x) => x.id === ref.id);
+                    if (f) f.parent = target;
+                } else {
+                    const f = this.manifest.files.find((x) => x.id === ref.id);
+                    if (f) { f.folder = target; this._logActivity(f, 'moved'); }
+                }
+            }
+            this.selected = [];
+            // If the move fails to save, re-sync from the server so the client never
+            // shows items in a folder they were not actually moved to (a later delete
+            // of the old folder would then look like data loss).
+            await this.persist().catch(() => this.load());
         }
-        this.selected = [];
-        // If the move fails to save, re-sync from the server so the client never
-        // shows items in a folder they were not actually moved to (a later delete
-        // of the old folder would then look like data loss).
-        await this.persist().catch(() => this.load());
     },
 
     /* ---- Drag & drop into folders ---- */
 
     // Parent folder of the current directory (null = root), for the ".." row.
     get parentFolderId() {
-        const f = this.manifest.folders.find((x) => x.id === this.cwd);
+        const f = this._activeFolders().find((x) => x.id === this.cwd);
         return f ? (f.parent ?? null) : null;
     },
 
@@ -915,14 +1063,29 @@ export default (config = {}, labels = {}) => ({
         const item = this.dragItem;
         this.dragItem = null;
         if (! item) return;
-        if (item.kind === 'folder') {
-            if (item.id === targetFolderId) return;
-            if (targetFolderId !== null && this.subtree(item.id).has(targetFolderId)) return; // no cycle
-            const f = this.manifest.folders.find((x) => x.id === item.id);
-            if (f && (f.parent ?? null) !== targetFolderId) { f.parent = targetFolderId; await this.persist().catch(() => this.load()); }
+        if (! this._canEditActive()) return;
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            const tree = this.sharedTree[vaultId];
+            if (item.kind === 'folder') {
+                if (item.id === targetFolderId) return;
+                if (targetFolderId !== null && this.subtree(item.id).has(targetFolderId)) return;
+                const f = (tree?.folders ?? []).find((x) => x.id === item.id);
+                if (f && (f.parent ?? null) !== targetFolderId) { f.parent = targetFolderId; await this._saveFolder(vaultId, { op: 'upsertFolder', item: f }); }
+            } else {
+                const f = (tree?.files ?? []).find((x) => x.id === item.id);
+                if (f && (f.folder ?? null) !== targetFolderId) { f.folder = targetFolderId; await this._saveFolder(vaultId, { op: 'upsertFile', item: f }); }
+            }
         } else {
-            const f = this.manifest.files.find((x) => x.id === item.id);
-            if (f && (f.folder ?? null) !== targetFolderId) { f.folder = targetFolderId; await this.persist().catch(() => this.load()); }
+            if (item.kind === 'folder') {
+                if (item.id === targetFolderId) return;
+                if (targetFolderId !== null && this.subtree(item.id).has(targetFolderId)) return; // no cycle
+                const f = this.manifest.folders.find((x) => x.id === item.id);
+                if (f && (f.parent ?? null) !== targetFolderId) { f.parent = targetFolderId; await this.persist().catch(() => this.load()); }
+            } else {
+                const f = this.manifest.files.find((x) => x.id === item.id);
+                if (f && (f.folder ?? null) !== targetFolderId) { f.folder = targetFolderId; await this.persist().catch(() => this.load()); }
+            }
         }
     },
 
@@ -937,12 +1100,25 @@ export default (config = {}, labels = {}) => ({
         this.tagsOpen = false;
         this.tagsRef = null;
         if (! ref) return;
+        if (! this._canEditActive()) return;
         const tags = [...new Set(this.tagsValue.split(',').map((t) => t.trim()).filter(Boolean))];
-        const list = ref.kind === 'folder' ? this.manifest.folders : this.manifest.files;
-        const item = list.find((x) => x.id === ref.id);
-        if (item) {
-            item.tags = tags;
-            await this.persist().catch(() => this.load());
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            const tree = this.sharedTree[vaultId];
+            const list = ref.kind === 'folder' ? (tree?.folders ?? []) : (tree?.files ?? []);
+            const item = list.find((x) => x.id === ref.id);
+            if (item) {
+                item.tags = tags;
+                const op = ref.kind === 'folder' ? 'upsertFolder' : 'upsertFile';
+                await this._saveFolder(vaultId, { op, item });
+            }
+        } else {
+            const list = ref.kind === 'folder' ? this.manifest.folders : this.manifest.files;
+            const item = list.find((x) => x.id === ref.id);
+            if (item) {
+                item.tags = tags;
+                await this.persist().catch(() => this.load());
+            }
         }
     },
 
@@ -959,90 +1135,195 @@ export default (config = {}, labels = {}) => ({
         this.deleteOpen = false;
         this.deleteRefs = [];
         if (! refs.length) return;
+        if (! this._canEditActive()) return;
         const fileIds = new Set(refs.filter((r) => r.kind === 'file').map((r) => r.id));
         const folderIds = refs.filter((r) => r.kind === 'folder').map((r) => r.id);
         const killFolders = this._folderClosure(folderIds);
-        // Directly-selected files + every file inside a deleted folder subtree.
-        const targets = this.manifest.files.filter((f) => fileIds.has(f.id) || killFolders.has(f.folder));
 
-        if (permanent) {
-            const blobs = [];
-            for (const f of targets) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); if (f.embRef) blobs.push(f.embRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
-            const kill = new Set(targets.map((f) => f.id));
-            this._spliceWhere(this.manifest.files, (f) => kill.has(f.id));
-            this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
-            this.persist();
-            this._freeBlobs(blobs);
-        } else {
-            const stamp = new Date().toISOString();
-            for (const f of targets) {
-                if (! f.trashed) { f.trashed = stamp; this._logActivity(f, 'trashed'); }
-                // The folder is gone from the tree, so detach to root — a restore
-                // then lands the file at the top level instead of nowhere.
-                if (killFolders.has(f.folder)) f.folder = null;
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            const tree = this.sharedTree[vaultId];
+            const activeFiles = tree?.files ?? [];
+            const activeFolders = tree?.folders ?? [];
+            // Directly-selected files + every file inside a deleted folder subtree.
+            const targets = activeFiles.filter((f) => fileIds.has(f.id) || killFolders.has(f.folder));
+
+            if (permanent) {
+                const blobs = [];
+                for (const f of targets) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); if (f.embRef) blobs.push(f.embRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
+                const kill = new Set(targets.map((f) => f.id));
+                this._spliceWhere(activeFiles, (f) => kill.has(f.id));
+                this._spliceWhere(activeFolders, (f) => killFolders.has(f.id));
+                // Persist the manifest first, then reclaim blobs + reconcile.
+                this._saveFolder(vaultId, { op: 'deleteFile', item: { id: '__batch__' } })
+                    .catch(() => {});
+                this._sharedFreeBlobs(vaultId, blobs);
+                this._sharedReconcileNow(vaultId).catch(() => {});
+            } else {
+                const stamp = new Date().toISOString();
+                for (const f of targets) {
+                    if (! f.trashed) { f.trashed = stamp; this._logActivity(f, 'trashed'); }
+                    if (killFolders.has(f.folder)) f.folder = null;
+                }
+                this._spliceWhere(activeFolders, (f) => killFolders.has(f.id));
+                // Use the last trashed file as the mutation marker (full tree is re-sealed).
+                const lastTarget = targets[targets.length - 1];
+                this._saveFolder(vaultId, lastTarget
+                    ? { op: 'upsertFile', item: lastTarget }
+                    : { op: 'deleteFolder', item: { id: [...killFolders][0] } })
+                    .catch(() => {});
             }
-            this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
-            this.persist();
+        } else {
+            // Directly-selected files + every file inside a deleted folder subtree.
+            const targets = this.manifest.files.filter((f) => fileIds.has(f.id) || killFolders.has(f.folder));
+
+            if (permanent) {
+                const blobs = [];
+                for (const f of targets) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); if (f.embRef) blobs.push(f.embRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
+                const kill = new Set(targets.map((f) => f.id));
+                this._spliceWhere(this.manifest.files, (f) => kill.has(f.id));
+                this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
+                this.persist();
+                this._freeBlobs(blobs);
+            } else {
+                const stamp = new Date().toISOString();
+                for (const f of targets) {
+                    if (! f.trashed) { f.trashed = stamp; this._logActivity(f, 'trashed'); }
+                    // The folder is gone from the tree, so detach to root — a restore
+                    // then lands the file at the top level instead of nowhere.
+                    if (killFolders.has(f.folder)) f.folder = null;
+                }
+                this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
+                this.persist();
+            }
         }
         this.selected = [];
     },
 
     // Move an item straight to the trash (used by drag-and-drop onto the trash).
     trashItem(ref) {
-        if (ref.kind === 'folder') {
-            const killFolders = this._folderClosure([ref.id]);
-            const stamp = new Date().toISOString();
-            for (const f of this.manifest.files) {
-                if (killFolders.has(f.folder)) { if (! f.trashed) f.trashed = stamp; f.folder = null; }
+        if (! this._canEditActive()) return;
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            const tree = this.sharedTree[vaultId];
+            let lastItem = null;
+            let lastOp = 'upsertFile';
+            if (ref.kind === 'folder') {
+                const killFolders = this._folderClosure([ref.id]);
+                const stamp = new Date().toISOString();
+                for (const f of (tree?.files ?? [])) {
+                    if (killFolders.has(f.folder)) { if (! f.trashed) f.trashed = stamp; f.folder = null; lastItem = f; }
+                }
+                this._spliceWhere(tree?.folders ?? [], (f) => killFolders.has(f.id));
+                lastOp = lastItem ? 'upsertFile' : 'deleteFolder';
+                if (! lastItem) lastItem = { id: ref.id };
+            } else {
+                const f = (tree?.files ?? []).find((x) => x.id === ref.id);
+                if (f && ! f.trashed) { f.trashed = new Date().toISOString(); this._logActivity(f, 'trashed'); lastItem = f; }
             }
-            this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
+            this.selected = [];
+            if (lastItem) this._saveFolder(vaultId, { op: lastOp, item: lastItem }).catch(() => {});
         } else {
-            const f = this.manifest.files.find((x) => x.id === ref.id);
-            if (f && ! f.trashed) { f.trashed = new Date().toISOString(); this._logActivity(f, 'trashed'); }
+            if (ref.kind === 'folder') {
+                const killFolders = this._folderClosure([ref.id]);
+                const stamp = new Date().toISOString();
+                for (const f of this.manifest.files) {
+                    if (killFolders.has(f.folder)) { if (! f.trashed) f.trashed = stamp; f.folder = null; }
+                }
+                this._spliceWhere(this.manifest.folders, (f) => killFolders.has(f.id));
+            } else {
+                const f = this.manifest.files.find((x) => x.id === ref.id);
+                if (f && ! f.trashed) { f.trashed = new Date().toISOString(); this._logActivity(f, 'trashed'); }
+            }
+            this.selected = [];
+            this.persist();
         }
-        this.selected = [];
-        this.persist();
     },
 
     // Restore a trashed file back into the browser (clear its flag).
     restore(row) {
-        const f = this.manifest.files.find((x) => x.id === row.id);
-        if (! f) return;
-        f.trashed = null;
-        this._logActivity(f, 'untrashed');
-        this.persist();
+        if (! this._canEditActive()) return;
+        if (row.sharedVaultId) {
+            const vaultId = row.sharedVaultId;
+            const f = (this.sharedTree[vaultId]?.files ?? []).find((x) => x.id === row.id);
+            if (! f) return;
+            f.trashed = null;
+            this._logActivity(f, 'untrashed');
+            this._saveFolder(vaultId, { op: 'upsertFile', item: f }).catch(() => {});
+        } else {
+            const f = this.manifest.files.find((x) => x.id === row.id);
+            if (! f) return;
+            f.trashed = null;
+            this._logActivity(f, 'untrashed');
+            this.persist();
+        }
     },
 
     // Permanently delete one trashed file + reclaim its blobs.
     async purge(row) {
         if (! await this.$store.confirm.ask(labels.purgeConfirm || '')) return;
-        const f = this.manifest.files.find((x) => x.id === row.id);
-        if (! f) return;
-        const blobs = [f.blob, ...(f.textRef ? [f.textRef] : []), ...(f.embRef ? [f.embRef] : []), ...(f.versions ?? []).map((v) => v.blob)];
-        this._spliceWhere(this.manifest.files, (x) => x.id === row.id);
-        this.persist();
-        this._freeBlobs(blobs);
+        if (! this._canEditActive()) return;
+        if (row.sharedVaultId) {
+            const vaultId = row.sharedVaultId;
+            const f = (this.sharedTree[vaultId]?.files ?? []).find((x) => x.id === row.id);
+            if (! f) return;
+            const blobs = [f.blob, ...(f.textRef ? [f.textRef] : []), ...(f.embRef ? [f.embRef] : []), ...(f.versions ?? []).map((v) => v.blob)];
+            this._spliceWhere(this.sharedTree[vaultId].files, (x) => x.id === row.id);
+            await this._saveFolder(vaultId, { op: 'deleteFile', item: { id: row.id } });
+            this._sharedFreeBlobs(vaultId, blobs);
+            this._sharedReconcileNow(vaultId).catch(() => {});
+        } else {
+            const f = this.manifest.files.find((x) => x.id === row.id);
+            if (! f) return;
+            const blobs = [f.blob, ...(f.textRef ? [f.textRef] : []), ...(f.embRef ? [f.embRef] : []), ...(f.versions ?? []).map((v) => v.blob)];
+            this._spliceWhere(this.manifest.files, (x) => x.id === row.id);
+            this.persist();
+            this._freeBlobs(blobs);
+        }
     },
 
     // Permanently delete every trashed file + reclaim their blobs.
     async emptyTrash() {
         if (! this.trashCount) return;
         if (! await this.$store.confirm.ask(labels.emptyTrashConfirm || '')) return;
-        const trashed = this.manifest.files.filter((f) => f.trashed);
-        const blobs = [];
-        for (const f of trashed) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); if (f.embRef) blobs.push(f.embRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
-        this._spliceWhere(this.manifest.files, (f) => f.trashed);
-        this.persist();
-        this._freeBlobs(blobs);
+        if (! this._canEditActive()) return;
+        if (this._isSharedContext()) {
+            const vaultId = this.activeShared;
+            const tree = this.sharedTree[vaultId];
+            const trashed = (tree?.files ?? []).filter((f) => f.trashed);
+            const blobs = [];
+            for (const f of trashed) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); if (f.embRef) blobs.push(f.embRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
+            this._spliceWhere(tree?.files ?? [], (f) => f.trashed);
+            await this._saveFolder(vaultId, { op: 'deleteFile', item: { id: '__batch_trash_empty__' } });
+            this._sharedFreeBlobs(vaultId, blobs);
+            this._sharedReconcileNow(vaultId).catch(() => {});
+        } else {
+            const trashed = this.manifest.files.filter((f) => f.trashed);
+            const blobs = [];
+            for (const f of trashed) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); if (f.embRef) blobs.push(f.embRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
+            this._spliceWhere(this.manifest.files, (f) => f.trashed);
+            this.persist();
+            this._freeBlobs(blobs);
+        }
     },
 
     // Toggle a file's favourite (a plain manifest flag).
     toggleFavorite(row) {
-        const f = this.manifest.files.find((x) => x.id === row.id);
-        if (! f) return;
-        f.favorite = ! f.favorite;
-        if (row) row.favorite = f.favorite;
-        this.persist();
+        if (! this._canEditActive()) return;
+        if (row.sharedVaultId) {
+            const vaultId = row.sharedVaultId;
+            const f = (this.sharedTree[vaultId]?.files ?? []).find((x) => x.id === row.id);
+            if (! f) return;
+            f.favorite = ! f.favorite;
+            if (row) row.favorite = f.favorite;
+            this._saveFolder(vaultId, { op: 'upsertFile', item: f }).catch(() => {});
+        } else {
+            const f = this.manifest.files.find((x) => x.id === row.id);
+            if (! f) return;
+            f.favorite = ! f.favorite;
+            if (row) row.favorite = f.favorite;
+            this.persist();
+        }
     },
 
     /* ---- Content operations ---- */
@@ -1084,9 +1365,24 @@ export default (config = {}, labels = {}) => ({
         // Drop OS/editor junk (e.g. .DS_Store, ._*, Thumbs.db) silently.
         items = (items || []).filter((it) => ! this.isJunkUpload(it.file?.name || it.path));
         if (! items.length) return;
+        // Role guard: viewers cannot upload.
+        if (! this._canEditActive()) return;
         // A fresh batch when nothing is in flight clears the finished tray.
         if (this.uploadBatches === 0) this.uploads = [];
         this.uploadBatches++;
+
+        // Shared-context: capture vaultId + key at batch start so they are stable
+        // for the whole upload even if activeShared changes mid-batch.
+        const sharedVaultId = this.activeShared;
+        const sharedVk = sharedVaultId ? this._folderKeys[sharedVaultId] : null;
+
+        // Target tree (folders list) for the dirCache / folderFor lookup.
+        const activeFolders = sharedVaultId
+            ? (this.sharedTree[sharedVaultId]?.folders ?? [])
+            : this.manifest.folders;
+        const activeFiles = sharedVaultId
+            ? (this.sharedTree[sharedVaultId]?.files ?? [])
+            : this.manifest.files;
 
         const dirCache = new Map(); // relative dir path -> folder id
         dirCache.set('', this.cwd);
@@ -1101,16 +1397,21 @@ export default (config = {}, labels = {}) => ({
                     parent = dirCache.get(acc);
                     continue;
                 }
-                const existing = this.manifest.folders.find((f) => (f.parent ?? null) === parent && f.name === seg);
+                const existing = activeFolders.find((f) => (f.parent ?? null) === parent && f.name === seg);
                 const id = existing ? existing.id : crypto.randomUUID();
                 if (! existing) {
-                    this.manifest.folders.push({ id, name: seg, parent });
+                    activeFolders.push({ id, name: seg, parent });
                 }
                 dirCache.set(acc, id);
                 parent = id;
             }
             return parent;
         };
+
+        // Upload URL: shared folders use their own blob endpoint.
+        const uploadUrl = sharedVaultId
+            ? `/vaults/${sharedVaultId}/blobs/upload`
+            : config.uploadUrl;
 
         // Show the whole batch immediately, then upload a few at a time. Concurrent
         // in-flight XHRs keep transferring even when the tab is backgrounded/frozen
@@ -1133,9 +1434,17 @@ export default (config = {}, labels = {}) => ({
                     // whole-in-memory path.
                     let id, encFileKey;
                     if (item.file.size > 64 * 1024 * 1024) {
-                        ({ id, encFileKey } = await this._uploadStreamEncrypted(item.file, entry));
+                        ({ id, encFileKey } = await this._uploadStreamEncrypted(item.file, entry, sharedVaultId, sharedVk));
                     } else {
-                        const enc = await window.Vault.encryptFile(item.file);
+                        // Shared path: encrypt under VK_folder via encryptContentWith.
+                        // Personal path: encrypt under the personal VK via encryptFile.
+                        let enc;
+                        if (sharedVk) {
+                            const bytes = new Uint8Array(await item.file.arrayBuffer());
+                            enc = window.Vault.encryptContentWith(bytes, { name: item.file.name, mime: item.file.type || 'application/octet-stream' }, sharedVk);
+                        } else {
+                            enc = await window.Vault.encryptFile(item.file);
+                        }
                         // Neutral filename — the real name is sealed inside encMeta and
                         // never sent to the server. Padmé-pad the ciphertext so the
                         // stored blob size (recorded in file_blobs.size, and thus in the
@@ -1144,7 +1453,7 @@ export default (config = {}, labels = {}) => ({
                         // trailing pad sits after the self-delimiting secretstream frames,
                         // so decryption ignores it (no download-side stripping needed).
                         const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-                        id = await this._uploadOne(cipher, entry);
+                        id = await this._uploadOne(cipher, entry, uploadUrl);
                         encFileKey = enc.encFileKey;
                     }
                     entry.state = 'done';
@@ -1160,16 +1469,26 @@ export default (config = {}, labels = {}) => ({
                         created: new Date().toISOString(),
                         versions: [],
                     };
-                    this.manifest.files.push(row);
-                    this._logActivity(row, 'created');
-                    // Auto-index text/PDF in the background. Images need OCR (slow)
-                    // and most uploads aren't documents, so those index only via
-                    // the explicit "Index contents" backfill.
-                    if (this._textCapable(row) && ! /^image\//.test(row.mime || '')) this._queueExtract(row);
-                    // Persist incrementally (debounced) so an interrupted bulk
-                    // upload doesn't strand every uploaded blob without a row —
-                    // the manifest is saved every ~2s instead of only at the end.
-                    this._schedulePersist();
+                    if (sharedVaultId) {
+                        // Shared upload: store in the shared tree and persist via _saveFolder.
+                        // Tag the row with sharedVaultId so download/open can find the key.
+                        row.sharedVaultId = sharedVaultId;
+                        activeFiles.push(row);
+                        this._logActivity(row, 'created');
+                        await this._saveFolder(sharedVaultId, { op: 'upsertFile', item: row });
+                    } else {
+                        // Personal upload: store in the personal manifest.
+                        this.manifest.files.push(row);
+                        this._logActivity(row, 'created');
+                        // Auto-index text/PDF in the background. Images need OCR (slow)
+                        // and most uploads aren't documents, so those index only via
+                        // the explicit "Index contents" backfill.
+                        if (this._textCapable(row) && ! /^image\//.test(row.mime || '')) this._queueExtract(row);
+                        // Persist incrementally (debounced) so an interrupted bulk
+                        // upload doesn't strand every uploaded blob without a row —
+                        // the manifest is saved every ~2s instead of only at the end.
+                        this._schedulePersist();
+                    }
                 } catch (e) {
                     entry.state = 'error';
                     entry.error = e && e.quota ? (labels.quotaExceeded || labels.uploadFailed)
@@ -1185,8 +1504,13 @@ export default (config = {}, labels = {}) => ({
         await Promise.all(Array.from({ length: lanes }, worker));
 
         this.uploadBatches--;
-        this.persist();
-        this.refreshUsage();
+        if (sharedVaultId) {
+            // Shared: no personal persist needed; refreshUsage via the shared endpoint.
+            this.refreshUsage();
+        } else {
+            this.persist();
+            this.refreshUsage();
+        }
         // Auto-dismiss the tray a few seconds after a clean finish (keep it open
         // when something errored so the user sees which file failed).
         if (this.uploadBatches === 0 && ! this.uploads.some((u) => u.state === 'error')) {
@@ -1417,13 +1741,14 @@ export default (config = {}, labels = {}) => ({
         } finally { this._warming = false; }
     },
 
-    _uploadOne(file, entry) {
+    // url defaults to the personal upload endpoint; shared uploads pass the vault-specific URL.
+    _uploadOne(file, entry, url = config.uploadUrl) {
         return new Promise((resolve, reject) => {
             const data = new FormData();
             data.append('_token', config.token);
             data.append('file', file, file.name);
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', config.uploadUrl);
+            xhr.open('POST', url);
             xhr.setRequestHeader('Accept', 'application/json');
             xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             entry.state = 'uploading';
@@ -1451,9 +1776,14 @@ export default (config = {}, labels = {}) => ({
     // stream the ciphertext straight into S3 multipart parts, so neither the
     // whole file nor the whole ciphertext is ever buffered. Returns the stored
     // blob id + the wrapped per-file key. Handles any size.
-    async _uploadStreamEncrypted(file, entry) {
+    // sharedVaultId / sharedVk: when set, encrypt under VK_folder and post to
+    // the vault-specific chunk endpoints; otherwise use personal config URLs.
+    async _uploadStreamEncrypted(file, entry, sharedVaultId = null, sharedVk = null) {
         entry.state = 'uploading';
-        const enc = window.Vault.newContentEncryptor();
+        // Shared path: encrypt under VK_folder; personal: under the personal VK.
+        const enc = sharedVk
+            ? window.Vault.newContentEncryptorWith(sharedVk)
+            : window.Vault.newContentEncryptor();
         const cipherSize = window.Vault.ciphertextSize(file.size);
         // Length-hiding: the stored/ledger size is the Padmé bucket, not the exact
         // ciphertext length, so a large file's plaintext size can't be read off
@@ -1461,7 +1791,19 @@ export default (config = {}, labels = {}) => ({
         // secretstream frames (past TAG_FINAL), so the decryptor never reads it —
         // exactly as padBlob() does on the buffered path.
         const paddedSize = padmeSize(cipherSize);
-        const init = await fetch(config.chunkInitUrl, {
+        const chunkInitUrl = sharedVaultId
+            ? `/vaults/${sharedVaultId}/blobs/upload/init`
+            : config.chunkInitUrl;
+        const chunkPartUrl = sharedVaultId
+            ? `/vaults/${sharedVaultId}/blobs/upload/part`
+            : config.chunkPartUrl;
+        const chunkCompleteUrl = sharedVaultId
+            ? `/vaults/${sharedVaultId}/blobs/upload/complete`
+            : config.chunkCompleteUrl;
+        const chunkAbortUrl = sharedVaultId
+            ? `/vaults/${sharedVaultId}/blobs/upload/abort`
+            : config.chunkAbortUrl;
+        const init = await fetch(chunkInitUrl, {
             method: 'POST',
             headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
             body: JSON.stringify({ name: 'blob.enc', size: paddedSize }),
@@ -1491,7 +1833,7 @@ export default (config = {}, labels = {}) => ({
         };
         const flush = async (bytes) => {
             partNum++;
-            const etag = await this._uploadPart(token, partNum, new Blob([bytes]), entry, sent, paddedSize);
+            const etag = await this._uploadPart(token, partNum, new Blob([bytes]), entry, sent, paddedSize, chunkPartUrl);
             parts.push({ part: partNum, etag });
             sent += bytes.length;
         };
@@ -1522,7 +1864,7 @@ export default (config = {}, labels = {}) => ({
             }
             if (bufLen > 0) { await flush(pull(bufLen)); } // final part (any size)
 
-            const comp = await fetch(config.chunkCompleteUrl, {
+            const comp = await fetch(chunkCompleteUrl, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
                 body: JSON.stringify({ token, parts }),
@@ -1531,7 +1873,7 @@ export default (config = {}, labels = {}) => ({
             entry.progress = 100;
             return { id: (await comp.json()).id, encFileKey: enc.sealKey() };
         } catch (e) {
-            fetch(config.chunkAbortUrl, {
+            fetch(chunkAbortUrl, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': config.token },
                 body: JSON.stringify({ token }),
@@ -1541,7 +1883,8 @@ export default (config = {}, labels = {}) => ({
     },
 
     // Upload one part via XHR, reporting overall byte progress into the tray.
-    _uploadPart(token, part, blob, entry, offsetStart, totalSize) {
+    // partUrl defaults to config.chunkPartUrl; shared uploads pass the vault URL.
+    _uploadPart(token, part, blob, entry, offsetStart, totalSize, partUrl = config.chunkPartUrl) {
         return new Promise((resolve, reject) => {
             const data = new FormData();
             data.append('_token', config.token);
@@ -1549,7 +1892,7 @@ export default (config = {}, labels = {}) => ({
             data.append('part', part);
             data.append('chunk', blob, 'chunk');
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', config.chunkPartUrl);
+            xhr.open('POST', partUrl);
             xhr.setRequestHeader('Accept', 'application/json');
             xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
             xhr.timeout = 600000;
@@ -1580,7 +1923,16 @@ export default (config = {}, labels = {}) => ({
     // Fetch a file's ciphertext and decrypt it in the browser back to plaintext
     // bytes. Central to download + preview, so decrypting here makes every
     // consumer zero-knowledge with no per-caller change.
-    fetchPlain(row) {
+    // Shared files carry row.sharedVaultId; they fetch from the vault blob route
+    // and decrypt under VK_folder via decryptFileWith instead of the personal VK.
+    async fetchPlain(row) {
+        if (row.sharedVaultId) {
+            const vk = this._folderKeys[row.sharedVaultId];
+            if (! vk) throw new Error('folder key not available');
+            const res = await fetch(`/vaults/${row.sharedVaultId}/blobs/raw/${row.blob}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (! res.ok) throw new Error('fetch failed');
+            return window.Vault.decryptFileWith(await res.arrayBuffer(), row.encFileKey, vk);
+        }
         return fetchDecrypt(config.rawBase, row.blob, row.encFileKey);
     },
 
@@ -1604,13 +1956,24 @@ export default (config = {}, labels = {}) => ({
     // Constant-memory download: decrypt the framed ciphertext incrementally and
     // write each plaintext chunk to a user-chosen file, so a multi-GB download
     // never buffers in RAM. Uses the File System Access API.
+    // Shared files: decrypt under VK_folder via beginDecryptWith; fetch from vault blob URL.
     async _downloadStreaming(row) {
         const handle = await window.showSaveFilePicker({ suggestedName: row.name || 'download' });
         const writable = await handle.createWritable();
         this.dl = { active: true, done: 0, total: row.size || 1 };
         try {
-            const dec = window.Vault.beginDecrypt(row.encFileKey);
-            const res = await fetch(`${config.rawBase}/${row.blob}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            let dec;
+            let rawUrl;
+            if (row.sharedVaultId) {
+                const vk = this._folderKeys[row.sharedVaultId];
+                if (! vk) throw new Error('folder key not available');
+                dec = window.Vault.beginDecryptWith(row.encFileKey, vk);
+                rawUrl = `/vaults/${row.sharedVaultId}/blobs/raw/${row.blob}`;
+            } else {
+                dec = window.Vault.beginDecrypt(row.encFileKey);
+                rawUrl = `${config.rawBase}/${row.blob}`;
+            }
+            const res = await fetch(rawUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             if (! res.ok) throw new Error('fetch failed');
             const reader = res.body.getReader();
 
@@ -1826,9 +2189,11 @@ export default (config = {}, labels = {}) => ({
 
     // Save the edited text: upload a NEW file blob, point the row at it, then
     // discard the old blob — an atomic swap from the manifest's viewpoint.
+    // Shared files: encrypt under VK_folder, upload to vault blob URL.
     async saveText() {
         const row = this.viewer.row;
         if (! this.editorView || ! row) return;
+        if (! this._canEditActive()) return;
         this.viewer.saving = true;
         this.viewer.saved = false;
         try {
@@ -1839,11 +2204,20 @@ export default (config = {}, labels = {}) => ({
             // (exactly like upload) and upload only the ciphertext. Uploading raw
             // bytes here would leak plaintext to the server AND leave the manifest
             // row's old wrapped key stale, making the file undecryptable.
-            const enc = window.Vault.encryptContent(bytes, { name: row.name, mime: row.mime || 'text/plain' });
+            let enc, uploadUrl;
+            if (row.sharedVaultId) {
+                const vk = this._folderKeys[row.sharedVaultId];
+                if (! vk) throw new Error('folder key not available');
+                enc = window.Vault.encryptContentWith(bytes, { name: row.name, mime: row.mime || 'text/plain' }, vk);
+                uploadUrl = `/vaults/${row.sharedVaultId}/blobs/upload`;
+            } else {
+                enc = window.Vault.encryptContent(bytes, { name: row.name, mime: row.mime || 'text/plain' });
+                uploadUrl = config.uploadUrl;
+            }
             const data = new FormData();
             data.append('_token', config.token);
             data.append('file', new File([enc.blob], 'blob.enc', { type: 'application/octet-stream' }));
-            const res = await fetch(config.uploadUrl, {
+            const res = await fetch(uploadUrl, {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: data,
@@ -1851,23 +2225,41 @@ export default (config = {}, labels = {}) => ({
             if (! res.ok) throw new Error('upload failed');
             const { id } = await res.json();
 
-            const entry = this.manifest.files.find((f) => f.id === row.id);
-            if (entry) {
-                // Snapshot the outgoing blob as a version (kept + decryptable via
-                // its own wrapped key) before pointing the row at the new blob,
-                // then cap the history — the overflow blobs are reclaimed.
-                const oldBlob = entry.blob;
-                if (oldBlob && oldBlob !== id) {
-                    entry.versions = entry.versions ?? [];
-                    entry.versions.unshift({ id: crypto.randomUUID(), blob: oldBlob, encFileKey: entry.encFileKey, size: entry.size, mime: entry.mime, name: entry.name, created: new Date().toISOString() });
-                    this._trimVersions(entry);
-                    this._logActivity(entry, 'version');
+            if (row.sharedVaultId) {
+                const vaultId = row.sharedVaultId;
+                const entry = (this.sharedTree[vaultId]?.files ?? []).find((f) => f.id === row.id);
+                if (entry) {
+                    const oldBlob = entry.blob;
+                    if (oldBlob && oldBlob !== id) {
+                        entry.versions = entry.versions ?? [];
+                        entry.versions.unshift({ id: crypto.randomUUID(), blob: oldBlob, encFileKey: entry.encFileKey, size: entry.size, mime: entry.mime, name: entry.name, created: new Date().toISOString() });
+                        this._trimVersions(entry);
+                        this._logActivity(entry, 'version');
+                    }
+                    entry.blob = id;
+                    entry.size = bytes.length;
+                    entry.encFileKey = enc.encFileKey;
+                    await this._saveFolder(vaultId, { op: 'upsertFile', item: entry });
                 }
-                entry.blob = id;
-                entry.size = bytes.length;
-                entry.encFileKey = enc.encFileKey; // the new blob's wrapped key
+            } else {
+                const entry = this.manifest.files.find((f) => f.id === row.id);
+                if (entry) {
+                    // Snapshot the outgoing blob as a version (kept + decryptable via
+                    // its own wrapped key) before pointing the row at the new blob,
+                    // then cap the history — the overflow blobs are reclaimed.
+                    const oldBlob = entry.blob;
+                    if (oldBlob && oldBlob !== id) {
+                        entry.versions = entry.versions ?? [];
+                        entry.versions.unshift({ id: crypto.randomUUID(), blob: oldBlob, encFileKey: entry.encFileKey, size: entry.size, mime: entry.mime, name: entry.name, created: new Date().toISOString() });
+                        this._trimVersions(entry);
+                        this._logActivity(entry, 'version');
+                    }
+                    entry.blob = id;
+                    entry.size = bytes.length;
+                    entry.encFileKey = enc.encFileKey; // the new blob's wrapped key
+                }
+                this.persist();
             }
-            this.persist();
 
             row.blob = id;
             row.size = bytes.length;
