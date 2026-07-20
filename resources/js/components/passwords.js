@@ -85,6 +85,11 @@ export default (config = {}, labels = {}) => ({
         this._autoSelect();
         // Keep the first matching entry selected as the state/filters change.
         this.$watch('state', (s) => { if (s === 'ready') { this._migrateVaults(); this._autoSelect(); this._loadSharedVaults(); } });
+        // Trusted-device auto-unlock: _initZk() may already have set state to
+        // 'ready' BEFORE the watcher above was registered, so the watch never
+        // fires and shared vaults would never load (shown right after create via
+        // the optimistic push, but gone on a hard refresh). Load them directly.
+        if (this.state === 'ready') this._loadSharedVaults();
         for (const p of ['query', 'filterType', 'filterTag', 'view']) this.$watch(p, () => this._autoSelect());
         this.$watch('filterFolder', () => { this.selectedIds = []; this._autoSelect(); });
         this.$watch('view', () => this.clearSelection());
