@@ -8,6 +8,23 @@ import { estimateStrength } from '../shared/strength';
 import { buildBitwardenJson, buildCsv, encryptExport } from '../shared/vault-export';
 import { saveBlobAs } from '../shared/dom';
 
+/**
+ * Canonical type registry — single source of truth for type keys and their
+ * field definitions. Exported for use in tests and derived computations.
+ * Each value: { icon: string, fields: [key, inputType][] }
+ */
+export const TYPES = {
+    login: { icon: 'user', fields: [['username', 'text'], ['password', 'password'], ['urls', 'urls'], ['totp', 'password'], ['note', 'textarea']] },
+    password: { icon: 'key', fields: [['password', 'password'], ['note', 'textarea']] },
+    card: { icon: 'credit-card', fields: [['cardholder', 'text'], ['number', 'text'], ['expiry', 'text'], ['cvv', 'password'], ['pin', 'password'], ['note', 'textarea']] },
+    wifi: { icon: 'wifi', fields: [['ssid', 'text'], ['password', 'password'], ['security', 'select'], ['hidden', 'checkbox'], ['note', 'textarea']] },
+    license: { icon: 'document', fields: [['product', 'text'], ['licensekey', 'textarea'], ['owner', 'text'], ['email', 'text'], ['note', 'textarea']] },
+    server: { icon: 'server', fields: [['host', 'text'], ['port', 'text'], ['username', 'text'], ['password', 'password'], ['note', 'textarea']] },
+    passkey: { icon: 'finger-print', fields: [['rpId', 'text'], ['userName', 'text'], ['userDisplayName', 'text'], ['note', 'textarea']] },
+    identity: { icon: 'identification', fields: [['firstName', 'text'], ['lastName', 'text'], ['email', 'text'], ['phone', 'text'], ['company', 'text'], ['street', 'text'], ['city', 'text'], ['state', 'text'], ['zip', 'text'], ['country', 'text'], ['note', 'textarea']] },
+    secure_note: { icon: 'document-text', fields: [['note', 'textarea']] },
+};
+
 export default (config = {}, labels = {}) => ({
     ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
 
@@ -52,17 +69,7 @@ export default (config = {}, labels = {}) => ({
     rotatingKeys: false,
 
     // Field metadata per type: [key, inputType]. Labels come from labels.fields.
-    types: {
-        login: { icon: 'user', fields: [['username', 'text'], ['password', 'password'], ['urls', 'urls'], ['totp', 'password'], ['note', 'textarea']] },
-        password: { icon: 'key', fields: [['password', 'password'], ['note', 'textarea']] },
-        card: { icon: 'credit-card', fields: [['cardholder', 'text'], ['number', 'text'], ['expiry', 'text'], ['cvv', 'password'], ['pin', 'password'], ['note', 'textarea']] },
-        wifi: { icon: 'wifi', fields: [['ssid', 'text'], ['password', 'password'], ['security', 'select'], ['hidden', 'checkbox'], ['note', 'textarea']] },
-        license: { icon: 'document', fields: [['product', 'text'], ['licensekey', 'textarea'], ['owner', 'text'], ['email', 'text'], ['note', 'textarea']] },
-        server: { icon: 'server', fields: [['host', 'text'], ['port', 'text'], ['username', 'text'], ['password', 'password'], ['note', 'textarea']] },
-        passkey: { icon: 'finger-print', fields: [['rpId', 'text'], ['userName', 'text'], ['userDisplayName', 'text'], ['note', 'textarea']] },
-        identity: { icon: 'identification', fields: [['firstName', 'text'], ['lastName', 'text'], ['email', 'text'], ['phone', 'text'], ['company', 'text'], ['street', 'text'], ['city', 'text'], ['state', 'text'], ['zip', 'text'], ['country', 'text'], ['note', 'textarea']] },
-        secure_note: { icon: 'document-text', fields: [['note', 'textarea']] },
-    },
+    types: TYPES,
     secretFields: ['password', 'totp', 'cvv', 'pin', 'licensekey', 'privateKey'],
     securityOptions: ['nopass', 'WEP', 'WPA', 'WPA2', 'WPA3', 'WPA2-Enterprise', 'WPA3-Enterprise'],
 
@@ -498,7 +505,7 @@ export default (config = {}, labels = {}) => ({
     _mut: 0,
     _reusedCache: null,
     _save() { this._mut++; window.LLStore.touch(); },
-    _pwTypes: ['login', 'password', 'server', 'wifi'],
+    get _pwTypes() { return Object.keys(TYPES).filter((t) => TYPES[t].fields.some(([k]) => k === 'password')); },
     _pw(x) { return (x && x.fields && x.fields.password) || ''; },
     get healthItems() { return this.liveItems.filter((x) => (this._pwTypes.includes(x.type) && this._pw(x)) || (x.type === 'card' && this._cardExpiring(x))); },
     // A card that is expired or expires within ~45 days.
