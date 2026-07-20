@@ -1,6 +1,10 @@
 <x-layouts.app :title="__('health.title')">
   <div x-data="health({
         deleteConfirm: @js(__('health.delete_confirm')),
+        metricLabels: {
+            weight: @js(__('health.metric_weight')), bp: @js(__('health.metric_bp')), pulse: @js(__('health.metric_pulse')),
+            spo2: @js(__('health.metric_spo2')), temp: @js(__('health.metric_temp')), glucose: @js(__('health.metric_glucose')),
+        },
      })">
 
     {{-- Zero-knowledge gate: health data decrypts with the vault key. --}}
@@ -45,7 +49,7 @@
                             <template x-if="m.icon === 'scale'"><svg class="h-4 w-4 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1.5M12 3c-1.2 0-2.4.6-3 1.5L3 16.5h18L15 4.5C14.4 3.6 13.2 3 12 3zm0 1.5L6 16.5m6-12l6 12M3 16.5h18v1.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-1.5z" /></svg></template>
                         </span>
                         <span class="flex-1 min-w-0">
-                            <span class="block truncate text-sm font-medium" x-text="m.labelKey.replace('health.', '').replace('_', ' ')"></span>
+                            <span class="block truncate text-sm font-medium" x-text="metricLabel(m.key)"></span>
                             <span class="block truncate text-xs" :class="selectedMetric === m.key ? 'text-accent/70' : 'text-gray-400 dark:text-gray-500'" x-text="latestFor(m.key) != null ? (latestFor(m.key) + ' ' + unitLabel(m.key)) : ''"></span>
                         </span>
                         {{-- Classification dot --}}
@@ -169,7 +173,7 @@
                 <div class="flex items-center justify-between">
                     <div>
                         <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100"
-                            x-text="metrics.find(m => m.key === selectedMetric)?.labelKey.replace('health.metric_', '').replace(/_/g, ' ')"></h2>
+                            x-text="metricLabel(selectedMetric)"></h2>
                         <p class="text-xs text-gray-400 dark:text-gray-500" x-text="unitLabel(selectedMetric)"></p>
                     </div>
                     <button type="button" @click="openAdd()"
@@ -286,7 +290,7 @@
                 <select x-model="_form.metric"
                     class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm focus:border-accent focus:ring-accent">
                     <template x-for="m in metrics" :key="m.key">
-                        <option :value="m.key" x-text="m.key"></option>
+                        <option :value="m.key" x-text="metricLabel(m.key)"></option>
                     </template>
                 </select>
               </div>

@@ -39,10 +39,15 @@ export default (labels = {}) => ({
     async init() {
         await this._initZk();
         if (this.state === 'ready') this._initProfile();
-        this.$watch('$store.vault.unlocked', (on) => {
-            if (on && this.state === 'ready') this._initProfile();
-        });
+        // Bind on the state transition to 'ready' (not vault.unlocked): _initZk's
+        // boot is async, so at the unlocked-tick state is still 'locked' and the
+        // bind would be skipped (profile edits would then be lost until reload).
+        this.$watch('state', (s) => { if (s === 'ready') this._initProfile(); });
     },
+
+    // Localized metric label (passed from Blade via @js since the factory's
+    // `labels` closure is not visible inside Blade x-for expressions).
+    metricLabel(key) { return (labels.metricLabels && labels.metricLabels[key]) || key; },
 
     // Ensure healthProfile exists on the store data and bind this.profile to it.
     // Mirrors how passwords.js handles folders with _migrateVaults.
