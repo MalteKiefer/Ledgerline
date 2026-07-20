@@ -1,23 +1,30 @@
 <x-layouts.app :title="__('pages.profile.title')">
-    <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('pages.profile.heading') }}</h1>
-    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-        {{ __('pages.profile.subtitle') }}
-    </p>
+    @php
+        $initials = collect(explode(' ', trim($user->name ?? '')))->take(2)->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->implode('');
+        $initials = $initials !== '' ? $initials : '•';
+    @endphp
+
+    {{-- iOS-style hero header: gradient avatar, name, email, host --}}
+    <div class="flex flex-col items-center pt-2 text-center">
+        @if ($user->avatar)
+            <img src="{{ route('profile.avatar') }}" alt="" class="h-20 w-20 rounded-full object-cover shadow-lg shadow-accent/30">
+        @else
+            <span class="flex h-20 w-20 items-center justify-center rounded-full ll-accent text-2xl font-semibold shadow-lg shadow-accent/30">{{ $initials }}</span>
+        @endif
+        <p class="mt-3 text-xl font-bold text-gray-900 dark:text-gray-100">{{ $user->name ?: '—' }}</p>
+        @if ($user->email)
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ $user->email }}</p>
+        @endif
+        <p class="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500"><x-icon name="lock-closed" class="h-3.5 w-3.5" />{{ request()->getHost() }}</p>
+        @if ($user->avatar_url)
+            <form method="POST" action="{{ route('profile.avatar.refresh') }}" class="mt-3">
+                @csrf
+                <button type="submit" class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-accent transition hover:bg-accent/10"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</button>
+            </form>
+        @endif
+    </div>
 
     <div class="mt-6 ll-card">
-        <div class="flex items-center gap-4">
-            <x-user-avatar :user="$user" size="h-16 w-16" />
-            <div class="min-w-0">
-                <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ $user->name }}</p>
-                <p class="text-sm text-gray-600 dark:text-gray-400 truncate">{{ $user->email }}</p>
-                @if ($user->avatar_url)
-                    <form method="POST" action="{{ route('profile.avatar.refresh') }}" class="mt-2">
-                        @csrf
-                        <button type="submit" class="min-h-11 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent"><span class="inline-flex items-center gap-1.5"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</span></button>
-                    </form>
-                @endif
-            </div>
-        </div>
 
         <dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 border-t border-gray-100 dark:border-gray-800 pt-6 sm:grid-cols-2">
             <div>
