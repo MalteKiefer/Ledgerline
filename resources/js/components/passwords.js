@@ -339,7 +339,19 @@ export default (config = {}, labels = {}) => ({
     async resetVault() {
         if (this.resetWorking || this.resetConfirmText !== (labels.resetConfirmWord || '')) return;
         this.resetWorking = true;
+        let failed = 0;
         try {
+            // Delete shared vaults the user MANAGES (full server-side cascade
+            // teardown = real revocation). Vaults shared WITH the user (member,
+            // role read/edit) are deliberately kept. Best-effort per vault.
+            const managed = this.sharedVaults.filter((sv) => sv.role === 'manage').map((sv) => sv.id);
+            for (const vid of managed) {
+                try { await this._deleteSharedVaultNow(vid); } catch (e) { failed++; }
+            }
+            // Wipe ALL personal password items (incl. standalone passkey items and
+            // logins with embedded passkeys) + personal vaults, then seed one fresh
+            // default vault. Only secrets/secretFolders are touched — other modules
+            // (notes/todos/bookmarks/files/contacts/invoices) are untouched.
             this.items.length = 0;              // same ref as LLStore.data.secrets → in-place clear
             this.folders.length = 0;            // same ref as LLStore.data.secretFolders
             const id = crypto.randomUUID();
@@ -348,7 +360,7 @@ export default (config = {}, labels = {}) => ({
             this.query = ''; this.filterType = ''; this.filterFolder = id;
             this._save();
             this._closeReset();
-            window.llToast(labels.resetDone || '');
+            window.llToast(failed ? (labels.resetPartial || labels.resetFailed || '') : (labels.resetDone || ''));
         } catch (e) { window.llToast(labels.resetFailed || ''); } finally { this.resetWorking = false; }
     },
     async deleteFolder(f) {
@@ -1403,19 +1415,20 @@ export default (config = {}, labels = {}) => ({
     },
 
     // Delete a shared vault permanently (manager only).
+    // Server DELETE + local cleanup, WITHOUT the confirm prompt — shared by the
+    // per-vault delete button and the manager-scoped reset.
+    async _deleteSharedVaultNow(vaultId) {
+        await postForm('/vaults/' + vaultId, null, 'DELETE');
+        this.sharedVaults = this.sharedVaults.filter((sv) => sv.id !== vaultId);
+        delete this.sharedItems[vaultId];
+        delete this._sharedKeys[vaultId];
+        delete this._sharedVersion[vaultId];
+        if (this.filterFolder === vaultId) this.filterFolder = '';
+        if (this.managingVaultId === vaultId) this.managingVaultId = null;
+    },
     async deleteSharedVault(vaultId) {
         if (! await this.$store.confirm.ask(labels.deleteVaultConfirm || '')) return;
-        try {
-            await postForm('/vaults/' + vaultId, null, 'DELETE');
-            // Remove from local state.
-            this.sharedVaults = this.sharedVaults.filter((sv) => sv.id !== vaultId);
-            delete this.sharedItems[vaultId];
-            delete this._sharedKeys[vaultId];
-            delete this._sharedVersion[vaultId];
-            if (this.filterFolder === vaultId) this.filterFolder = '';
-            if (this.managingVaultId === vaultId) this.managingVaultId = null;
-        } catch (e) {
-            window.llToast(labels.saveFailed || '');
-        }
+        try { await this._deleteSharedVaultNow(vaultId); }
+        catch (e) { window.llToast(labels.saveFailed || ''); }
     },
 });
