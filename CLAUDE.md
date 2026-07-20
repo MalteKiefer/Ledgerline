@@ -44,6 +44,7 @@ Detail-Historie in `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerlin
 - **Kommunikation:** knapp, technisch, deutsch, handlungsorientiert, keine Floskeln.
 - Jede Änderung = **eigenes getestetes Git-Flow-Release + Deploy** (nicht sammeln, außer User sagt es).
 - **Nach jeder Änderung CLAUDE.md aktualisieren** (siehe Box oben) — inkl. Security-/Design-Entscheidungen und JEDER Security-Aufweichung.
+- **VERBINDLICH: `openapi.yaml` (Repo-Root) ist die maßgebliche API-Referenz für Mobile-Apps und MUSS bei JEDER Änderung an der API im selben Release aktualisiert werden** — jede neue/geänderte/entfernte `/api/v1`-Route ODER Änderung an deren Funktionen/Methoden/Klassen (Request-Parameter, Response-Shape, Status-Codes, Auth/Abilities, Throttle, Controller-Signatur die von einem `/api/v1`-Endpunkt genutzt wird). Kein Drift: Route/Contract ändern ⇒ `openapi.yaml` im selben Commit anpassen. YAML ist kein Markdown (Repo-Regel „nur README/CLAUDE.md als Markdown" bleibt gewahrt).
 
 ## Feste Konventionen (nicht verletzen)
 - **Monochrome Icons** nur via `<x-icon name="...">` (heroicons-outline, `currentColor`). Kein emoji, keine Farbe. Toggle-States = outline vs `-solid`, nicht Farbe. Unbekannter Name → **leeres SVG (unsichtbar)**, nie Fehler → neue Icons als Pfad in `resources/views/components/icon.blade.php`. (In der Extension inline-SVG mit gleichem heroicons-Pfad, `currentColor`.)
