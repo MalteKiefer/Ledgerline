@@ -28,6 +28,10 @@ const PATHS = {
     qr: '<path d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z"/><path d="M6.75 6.75h.008v.008H6.75V6.75ZM6.75 16.5h.008v.008H6.75V16.5ZM16.5 6.75h.008v.008H16.5V6.75ZM13.5 13.5h.008v.008H13.5V13.5ZM13.5 19.5h.008v.008H13.5V19.5ZM19.5 13.5h.008v.008H19.5V13.5ZM19.5 19.5h.008v.008H19.5V19.5ZM16.5 16.5h.008v.008H16.5V16.5Z"/>',
     star: '<path d="M11.48 3.5a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/>',
     pencil: '<path d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/>',
+    bookmark: '<path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"/>',
+    clock: '<path d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>',
+    folder: '<path d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v8.25A2.25 2.25 0 0 0 4.5 16.5h15a2.25 2.25 0 0 0 2.25-2.25V9.75a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/>',
+    'folder-plus': '<path d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/>',
 };
 function icon(name, size = 18) {
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="${size}" height="${size}">${PATHS[name] || ''}</svg>`;
@@ -42,6 +46,9 @@ async function activeTab() {
 const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server', passkey: 'Passkey', identity: 'Identity', secure_note: 'Secure note' };
 let totpTimer = null;
 function stopTotp() { if (totpTimer) { clearInterval(totpTimer); totpTimer = null; } }
+
+// Active main view: 'passwords' | 'bookmarks'
+let mainView = 'passwords';
 
 async function render() {
     stopTotp();
@@ -113,11 +120,19 @@ function tfaMatch(it) {
 function supports2fa(it) { return ! (it && it.hasTotp) && ! ! tfaMatch(it); }
 
 async function renderMain() {
+    if (mainView === 'bookmarks') { return renderBookmarks(); }
     filterFolder = ''; filterTag = ''; selected = null; showAll = false;
     links.innerHTML = iconBtn('new', 'plus', 'New login') + iconBtn('gen', 'key', 'Generate password') + iconBtn('refresh', 'refresh', 'Refresh from server') + iconBtn('lock', 'lock', 'Lock');
     document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
     document.getElementById('gen').onclick = () => renderGen();
     app.innerHTML = '';
+    app.append(el(`<div class="seg" style="margin-bottom:10px">
+        <button id="sw-pw" class="on">Passwords</button>
+        <button id="sw-bm">Bookmarks</button>
+    </div>`));
+    document.getElementById('sw-pw').classList.toggle('on', true);
+    document.getElementById('sw-pw').onclick = () => { mainView = 'passwords'; renderMain(); };
+    document.getElementById('sw-bm').onclick = () => { mainView = 'bookmarks'; renderMain(); };
     app.append(el(`<div class="cols">
         <div class="list">
             <div class="top">
@@ -440,6 +455,375 @@ async function renderMain() {
     if (matches.length) { selected = matches[0]; showDetail(selected, tab); }
     else detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>';
     paint('');
+}
+
+// --- Bookmarks view ---
+async function renderBookmarks() {
+    stopTotp();
+    links.innerHTML = iconBtn('lock', 'lock', 'Lock');
+    document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
+    app.innerHTML = '';
+
+    // View switcher
+    app.append(el(`<div class="seg" style="margin-bottom:10px">
+        <button id="sw-pw">Passwords</button>
+        <button id="sw-bm" class="on">Bookmarks</button>
+    </div>`));
+    document.getElementById('sw-pw').onclick = () => { mainView = 'passwords'; renderMain(); };
+    document.getElementById('sw-bm').onclick = () => { mainView = 'bookmarks'; renderBookmarks(); };
+
+    // Toolbar: Save page + Folder+
+    app.append(el(`<div style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="primary" id="bm-save" style="flex:1;margin-top:0;padding:7px 10px;display:flex;align-items:center;justify-content:center;gap:5px">${icon('bookmark', 14)} Save page</button>
+        <button class="ic" id="bm-folder-new" title="New folder" style="width:auto;padding:0 10px;border:1px solid #d1d5db;border-radius:8px">${icon('folder-plus', 16)}</button>
+    </div>`));
+
+    // Search + filter row
+    app.append(el(`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+        <div class="search" style="position:relative">${icon('magnifier', 16)}<input id="bm-q" placeholder="Search bookmarks…" style="padding-left:30px"></div>
+        <div class="chips" id="bm-chips"></div>
+    </div>`));
+
+    // Folder dropdown
+    app.append(el(`<div style="margin-bottom:8px"><select id="bm-folder-filter"></select></div>`));
+
+    // Bookmark list
+    app.append(el(`<ul id="bm-list" style="list-style:none;margin:0;padding:0;overflow-y:auto;max-height:310px"></ul>`));
+
+    // Detail/edit panel (below list, shown inline)
+    app.append(el(`<div id="bm-detail"></div>`));
+
+    // Load data
+    let bmData = await send({ type: 'bookmarks.list' });
+    let bookmarks = bmData.bookmarks || [];
+    let folders = bmData.folders || [];
+
+    // Active filter state (bookmarks view-local)
+    let bmFilter = 'all'; // 'all' | 'favorites' | 'readlater'
+    let bmFolderFilter = '';
+    let bmQuery = '';
+    let bmSelected = null;
+
+    function folderDepth(id, visited = new Set()) {
+        if (!id || visited.has(id)) return 0;
+        visited.add(id);
+        const f = folders.find((x) => x.id === id);
+        if (!f || !f.parentId) return 0;
+        return 1 + folderDepth(f.parentId, visited);
+    }
+
+    function paintFolderFilter() {
+        const sel = document.getElementById('bm-folder-filter');
+        if (!sel) return;
+        sel.innerHTML = `<option value="">All folders</option>`
+            + folders.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((f) => {
+                const depth = folderDepth(f.id);
+                const indent = '    '.repeat(depth);
+                return `<option value="${esc(f.id)}"${bmFolderFilter === f.id ? ' selected' : ''}>${indent}${esc(f.name)}</option>`;
+            }).join('');
+        sel.onchange = () => { bmFolderFilter = sel.value; paintList(); };
+    }
+
+    function paintChips() {
+        const chips = document.getElementById('bm-chips');
+        if (!chips) return;
+        const defs = [
+            { id: 'all', label: 'All' },
+            { id: 'favorites', label: `${icon('star', 12)} Favorites` },
+            { id: 'readlater', label: `${icon('clock', 12)} Read later` },
+        ];
+        chips.innerHTML = '';
+        for (const d of defs) {
+            const c = el(`<button class="chip${bmFilter === d.id ? ' on' : ''}" style="display:inline-flex;align-items:center;gap:3px">${d.label}</button>`);
+            c.onclick = () => { bmFilter = d.id; paintChips(); paintList(); };
+            chips.append(c);
+        }
+    }
+
+    function filteredBookmarks() {
+        let items = bookmarks;
+        if (bmQuery) {
+            const q = bmQuery.toLowerCase();
+            items = items.filter((b) => (b.title || '').toLowerCase().includes(q) || (b.url || '').toLowerCase().includes(q) || (b.tags || []).some((t) => t.toLowerCase().includes(q)));
+        }
+        if (bmFilter === 'favorites') items = items.filter((b) => b.favorite);
+        else if (bmFilter === 'readlater') items = items.filter((b) => b.readLater);
+        if (bmFolderFilter) items = items.filter((b) => b.folderId === bmFolderFilter);
+        return items;
+    }
+
+    function paintList() {
+        const listEl = document.getElementById('bm-list');
+        if (!listEl) return;
+        const items = filteredBookmarks();
+        listEl.innerHTML = '';
+        if (!items.length) { listEl.append(el('<li class="muted">No bookmarks found</li>')); return; }
+        for (const bm of items) {
+            const folderName = bm.folderId ? (folders.find((f) => f.id === bm.folderId) || {}).name || '' : '';
+            const li = el(`<li><button class="row${bmSelected && bmSelected.id === bm.id ? ' on' : ''}">
+                <span class="av mono" style="font-size:11px">${icon('bookmark', 14)}</span>
+                <span class="grow">
+                    <div class="t">${esc(bm.title || bm.url || 'Untitled')}</div>
+                    <div class="u">${esc(bm.url || '')}</div>
+                </span>
+                ${bm.favorite ? `<span class="star">${icon('star', 13)}</span>` : ''}
+                ${bm.readLater ? `<span style="color:#6b7280">${icon('clock', 13)}</span>` : ''}
+                ${folderName ? `<span style="color:#9ca3af;font-size:10px">${icon('folder', 12)}</span>` : ''}
+            </button></li>`);
+            li.querySelector('button').onclick = () => { bmSelected = bm; paintList(); showBmDetail(bm); };
+            listEl.append(li);
+        }
+    }
+
+    function showBmDetail(bm) {
+        const detailEl = document.getElementById('bm-detail');
+        if (!detailEl) return;
+        renderBmDetail(bm, detailEl);
+    }
+
+    function renderBmDetail(bm, detailEl) {
+        const tagsVal = (bm.tags || []).join(', ');
+        const isSafeLink = /^https?:\/\//i.test(bm.url);
+        detailEl.innerHTML = '';
+        detailEl.append(el(`<div style="margin-top:10px;border-top:1px solid #0000001a;padding-top:10px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                <span class="grow" style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bm.title || 'Untitled')}</span>
+                <button class="ic" id="bm-edit" title="Edit">${icon('pencil', 16)}</button>
+                <button class="ic" id="bm-del" title="Move to trash">${icon('trash', 16)}</button>
+            </div>
+            ${bm.url ? `<div style="margin-bottom:6px;display:flex;align-items:center;gap:4px">
+                ${isSafeLink
+                    ? `<a class="fval" style="flex:1;color:inherit;text-decoration:underline;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" href="${esc(bm.url)}" target="_blank" rel="noopener noreferrer">${esc(bm.url)}</a><button class="ic" id="bm-open" title="Open in new tab" style="flex:none">${icon('open', 15)}</button>`
+                    : `<span style="flex:1;font-size:12px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bm.url)}</span><span style="font-size:11px;color:#dc2626;flex:none">unsafe URL</span>`
+                }
+            </div>` : ''}
+            ${bm.description ? `<div style="font-size:12px;color:#6b7280;margin-bottom:6px;white-space:pre-wrap">${esc(bm.description)}</div>` : ''}
+            ${(bm.tags || []).length ? `<div class="dtags" style="margin-bottom:6px">${bm.tags.map((t) => `<span class="tg">#${esc(t)}</span>`).join('')}</div>` : ''}
+            ${tagsVal || bm.folderId ? `<div style="display:flex;gap:8px;font-size:11px;color:#9ca3af">
+                ${bm.folderId ? `<span>${icon('folder', 11)} ${esc((folders.find((f) => f.id === bm.folderId) || {}).name || '')}</span>` : ''}
+                ${bm.favorite ? `<span>${icon('star', 11)} Favorite</span>` : ''}
+                ${bm.readLater ? `<span>${icon('clock', 11)} Read later</span>` : ''}
+            </div>` : ''}
+            <p class="err" id="bm-det-err"></p>
+        </div>`));
+        const openBtn = detailEl.querySelector('#bm-open');
+        if (openBtn) openBtn.onclick = () => chrome.tabs.create({ url: bm.url });
+        detailEl.querySelector('#bm-del').onclick = async () => {
+            if (!confirm('Move this bookmark to trash?')) return;
+            const btn = detailEl.querySelector('#bm-del');
+            btn.disabled = true;
+            const r = await send({ type: 'bookmarks.trash', id: bm.id });
+            if (r?.ok) {
+                bmSelected = null; detailEl.innerHTML = ''; bmData = await send({ type: 'bookmarks.list' }); bookmarks = bmData.bookmarks || []; folders = bmData.folders || []; paintFolderFilter(); paintList();
+            } else {
+                btn.disabled = false; const errEl = detailEl.querySelector('#bm-det-err'); if (errEl) errEl.textContent = 'Could not delete.';
+            }
+        };
+        detailEl.querySelector('#bm-edit').onclick = () => renderBmEdit(bm, detailEl);
+    }
+
+    function renderBmEdit(bm, detailEl) {
+        const folderOpts = `<option value="">No folder</option>` + folders.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((f) => {
+            const depth = folderDepth(f.id);
+            const indent = '    '.repeat(depth);
+            return `<option value="${esc(f.id)}"${bm.folderId === f.id ? ' selected' : ''}>${indent}${esc(f.name)}</option>`;
+        }).join('');
+        detailEl.innerHTML = '';
+        detailEl.append(el(`<div style="margin-top:10px;border-top:1px solid #0000001a;padding-top:10px">
+            <label class="fld">Title</label><input id="be-title" value="${esc(bm.title || '')}">
+            <label class="fld">URL</label><input id="be-url" value="${esc(bm.url || '')}">
+            <label class="fld">Description</label><textarea id="be-desc" rows="2" style="resize:vertical">${esc(bm.description || '')}</textarea>
+            <label class="fld">Tags (comma-separated)</label><input id="be-tags" value="${esc((bm.tags || []).join(', '))}">
+            <label class="fld">Folder</label><select id="be-folder">${folderOpts}</select>
+            <div class="opts" style="margin-top:8px">
+                <label><input type="checkbox" id="be-fav"${bm.favorite ? ' checked' : ''}> Favorite</label>
+                <label><input type="checkbox" id="be-rl"${bm.readLater ? ' checked' : ''}> Read later</label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="primary" id="be-save" style="flex:1;margin-top:0">Save</button>
+                <button id="be-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:transparent;color:inherit;cursor:pointer">Cancel</button>
+            </div>
+            <p class="err" id="be-err"></p>
+        </div>`));
+        const $ = (id) => document.getElementById(id);
+        $('be-cancel').onclick = () => renderBmDetail(bm, detailEl);
+        $('be-save').onclick = async () => {
+            $('be-save').disabled = true; $('be-save').textContent = 'Saving…';
+            const rawTags = $('be-tags').value.split(',').map((t) => t.trim()).filter(Boolean);
+            const patch = {
+                title: $('be-title').value.trim(),
+                url: $('be-url').value.trim(),
+                description: $('be-desc').value,
+                tags: rawTags,
+                folderId: $('be-folder').value || null,
+                favorite: $('be-fav').checked,
+                readLater: $('be-rl').checked,
+            };
+            const r = await send({ type: 'bookmarks.update', id: bm.id, patch });
+            if (r?.ok) {
+                bmData = await send({ type: 'bookmarks.list' }); bookmarks = bmData.bookmarks || []; folders = bmData.folders || [];
+                const fresh = bookmarks.find((x) => x.id === bm.id);
+                bmSelected = fresh || null;
+                paintFolderFilter(); paintList();
+                if (fresh) renderBmDetail(fresh, detailEl); else detailEl.innerHTML = '';
+            } else {
+                $('be-save').disabled = false; $('be-save').textContent = 'Save';
+                const errEl = $('be-err'); if (errEl) errEl.textContent = 'Could not save.';
+            }
+        };
+    }
+
+    // Save current page
+    async function renderSavePage() {
+        const tab = await activeTab();
+        const prefillTitle = tab ? (tab.title || '') : '';
+        const prefillUrl = tab ? (tab.url || '') : '';
+        const detailEl = document.getElementById('bm-detail');
+        if (!detailEl) return;
+        const folderOpts = `<option value="">No folder</option>` + folders.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((f) => {
+            const depth = folderDepth(f.id);
+            const indent = '    '.repeat(depth);
+            return `<option value="${esc(f.id)}">${indent}${esc(f.name)}</option>`;
+        }).join('');
+        detailEl.innerHTML = '';
+        detailEl.append(el(`<div style="margin-top:10px;border-top:1px solid #0000001a;padding-top:10px">
+            <div style="font-weight:600;margin-bottom:8px">${icon('bookmark', 14)} Save current page</div>
+            <label class="fld">Title</label><input id="sp-title" value="${esc(prefillTitle)}">
+            <label class="fld">URL</label><input id="sp-url" value="${esc(prefillUrl)}">
+            <label class="fld">Description</label><textarea id="sp-desc" rows="2" style="resize:vertical"></textarea>
+            <label class="fld">Tags (comma-separated)</label><input id="sp-tags">
+            <label class="fld">Folder</label><select id="sp-folder">${folderOpts}</select>
+            <div class="opts" style="margin-top:8px">
+                <label><input type="checkbox" id="sp-fav"> Favorite</label>
+                <label><input type="checkbox" id="sp-rl"> Read later</label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="primary" id="sp-save" style="flex:1;margin-top:0">Save bookmark</button>
+                <button id="sp-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:transparent;color:inherit;cursor:pointer">Cancel</button>
+            </div>
+            <p class="err" id="sp-err"></p>
+        </div>`));
+        const $ = (id) => document.getElementById(id);
+        $('sp-title').focus();
+        $('sp-cancel').onclick = () => { detailEl.innerHTML = ''; bmSelected = null; };
+        $('sp-save').onclick = async () => {
+            $('sp-save').disabled = true; $('sp-save').textContent = 'Saving…';
+            const rawTags = $('sp-tags').value.split(',').map((t) => t.trim()).filter(Boolean);
+            const bookmark = {
+                title: $('sp-title').value.trim(),
+                url: $('sp-url').value.trim(),
+                description: $('sp-desc').value,
+                tags: rawTags,
+                folderId: $('sp-folder').value || null,
+                favorite: $('sp-fav').checked,
+                readLater: $('sp-rl').checked,
+            };
+            const r = await send({ type: 'bookmarks.create', bookmark });
+            if (r?.id) {
+                bmData = await send({ type: 'bookmarks.list' }); bookmarks = bmData.bookmarks || []; folders = bmData.folders || [];
+                paintFolderFilter(); paintList();
+                const fresh = bookmarks.find((x) => x.id === r.id);
+                if (fresh) { bmSelected = fresh; renderBmDetail(fresh, detailEl); } else detailEl.innerHTML = '';
+            } else {
+                $('sp-save').disabled = false; $('sp-save').textContent = 'Save bookmark';
+                const errEl = $('sp-err'); if (errEl) errEl.textContent = 'Could not save.';
+            }
+        };
+    }
+
+    // Folder management
+    function renderFolderCreate() {
+        const detailEl = document.getElementById('bm-detail');
+        if (!detailEl) return;
+        const folderOpts = `<option value="">Root (no parent)</option>` + folders.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((f) => {
+            const depth = folderDepth(f.id);
+            const indent = '    '.repeat(depth);
+            return `<option value="${esc(f.id)}">${indent}${esc(f.name)}</option>`;
+        }).join('');
+        detailEl.innerHTML = '';
+        detailEl.append(el(`<div style="margin-top:10px;border-top:1px solid #0000001a;padding-top:10px">
+            <div style="font-weight:600;margin-bottom:8px">${icon('folder-plus', 14)} New folder</div>
+            <label class="fld">Folder name</label><input id="fc-name">
+            <label class="fld">Parent folder</label><select id="fc-parent">${folderOpts}</select>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="primary" id="fc-save" style="flex:1;margin-top:0">Create folder</button>
+                <button id="fc-cancel" style="flex:1;padding:9px;border:1px solid #d1d5db;border-radius:8px;background:transparent;color:inherit;cursor:pointer">Cancel</button>
+            </div>
+            <p class="err" id="fc-err"></p>
+            ${folders.length ? `<div style="margin-top:12px">
+                <div style="font-size:11px;color:#6b7280;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Existing folders</div>
+                <ul id="fc-list" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px"></ul>
+            </div>` : ''}
+        </div>`));
+        const $ = (id) => document.getElementById(id);
+        $('fc-name').focus();
+        $('fc-cancel').onclick = () => { detailEl.innerHTML = ''; };
+        $('fc-save').onclick = async () => {
+            const name = $('fc-name').value.trim();
+            if (!name) { const e = $('fc-err'); if (e) e.textContent = 'Name required.'; return; }
+            $('fc-save').disabled = true; $('fc-save').textContent = 'Creating…';
+            const parentId = $('fc-parent').value || null;
+            const r = await send({ type: 'bookmarkFolders.create', name, parentId });
+            if (r?.id) {
+                bmData = await send({ type: 'bookmarks.list' }); bookmarks = bmData.bookmarks || []; folders = bmData.folders || [];
+                paintFolderFilter(); paintList(); renderFolderCreate();
+            } else {
+                $('fc-save').disabled = false; $('fc-save').textContent = 'Create folder';
+                const e = $('fc-err'); if (e) e.textContent = 'Could not create folder.';
+            }
+        };
+        // Existing folders list with rename/delete
+        const fcList = document.getElementById('fc-list');
+        if (fcList) {
+            for (const f of folders.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))) {
+                const depth = folderDepth(f.id);
+                const indent = '  '.repeat(depth);
+                const li = el(`<li style="display:flex;align-items:center;gap:4px;padding:3px 0">
+                    <span style="flex:1;font-size:12px">${indent}${icon('folder', 13)} <span class="fc-fname">${esc(f.name)}</span></span>
+                    <button class="ic" data-rename="${esc(f.id)}" title="Rename">${icon('pencil', 14)}</button>
+                    <button class="ic" data-delfolder="${esc(f.id)}" title="Delete folder">${icon('trash', 14)}</button>
+                </li>`);
+                fcList.append(li);
+            }
+            fcList.querySelectorAll('[data-rename]').forEach((btn) => {
+                btn.onclick = () => {
+                    const id = btn.dataset.rename;
+                    const folder = folders.find((x) => x.id === id);
+                    if (!folder) return;
+                    const newName = prompt(`Rename folder "${folder.name}" to:`, folder.name);
+                    if (!newName || !newName.trim()) return;
+                    send({ type: 'bookmarkFolders.rename', id, name: newName.trim() }).then((r) => {
+                        if (r?.ok) { send({ type: 'bookmarks.list' }).then((d) => { bmData = d; bookmarks = d.bookmarks || []; folders = d.folders || []; paintFolderFilter(); paintList(); renderFolderCreate(); }); }
+                        else alert('Could not rename folder.');
+                    });
+                };
+            });
+            fcList.querySelectorAll('[data-delfolder]').forEach((btn) => {
+                btn.onclick = () => {
+                    const id = btn.dataset.delfolder;
+                    const folder = folders.find((x) => x.id === id);
+                    if (!folder) return;
+                    if (!confirm(`Delete folder "${folder.name}"? Bookmarks inside will be moved to root.`)) return;
+                    send({ type: 'bookmarkFolders.delete', id }).then((r) => {
+                        if (r?.ok) { send({ type: 'bookmarks.list' }).then((d) => { bmData = d; bookmarks = d.bookmarks || []; folders = d.folders || []; paintFolderFilter(); paintList(); renderFolderCreate(); }); }
+                        else alert('Could not delete folder.');
+                    });
+                };
+            });
+        }
+    }
+
+    // Wire up toolbar
+    document.getElementById('bm-save').onclick = () => renderSavePage();
+    document.getElementById('bm-folder-new').onclick = () => renderFolderCreate();
+
+    // Wire up search + filter
+    document.getElementById('bm-q').addEventListener('input', (e) => { bmQuery = e.target.value; paintList(); });
+
+    // Initial paint
+    paintChips();
+    paintFolderFilter();
+    paintList();
 }
 
 // --- Create a new login ---
