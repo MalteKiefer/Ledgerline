@@ -13,27 +13,45 @@
     --color-accent-soft: #9e70fa;
 }
 
-/* Diagonal accent gradient for primary buttons / hero chips. */
-.ll-accent {
-    background-image: linear-gradient(135deg, var(--color-accent), var(--color-accent-soft));
-    color: #fff;
-}
+/* In @layer components so Tailwind utilities (in @layer utilities) can override
+   any of these — hover:border-accent, !p-0, etc. win over the base card. */
+@layer components {
+    /* Diagonal accent gradient for primary buttons / hero chips. */
+    .ll-accent {
+        background-image: linear-gradient(135deg, var(--color-accent), var(--color-accent-soft));
+        color: #fff;
+    }
 
-/* iOS-style card: rounded, hairline border, soft shadow, adaptive surface. */
-.ll-card {
-    border-radius: 1rem;
-    border: 1px solid rgb(0 0 0 / 0.06);
-    background: #fff;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.05);
-    padding: 1rem;
-}
-@media (min-width: 640px) {
-    .ll-card { padding: 1.5rem; }
-}
-.dark .ll-card {
-    background: #1c1c1e;
-    border-color: rgb(255 255 255 / 0.10);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+    /* iOS-style card: rounded, hairline border, soft shadow, adaptive surface. */
+    .ll-card {
+        border-radius: 1rem;
+        border: 1px solid rgb(0 0 0 / 0.06);
+        background: #fff;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 0.05);
+        padding: 1rem;
+    }
+    @media (min-width: 640px) {
+        .ll-card { padding: 1.5rem; }
+    }
+    .dark .ll-card {
+        background: #1c1c1e;
+        border-color: rgb(255 255 255 / 0.10);
+        box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+    }
+
+    /* Tinted iOS icon chip: rounded-square tile, white glyph. Tint via --chip. */
+    .ll-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: none;
+        border-radius: 0.75rem;
+        color: #fff;
+        background: var(--chip, var(--color-accent));
+        box-shadow: 0 2px 6px rgb(0 0 0 / 0.18);
+    }
 }
 
 /* Accent tint on checkboxes/radios + accent focus on all text inputs app-wide. */
