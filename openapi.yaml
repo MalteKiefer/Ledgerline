@@ -1,0 +1,2536 @@
+openapi: 3.1.0
+info:
+  title: Ledgerline API
+  version: 1.504.34
+  description: >
+    Zero-knowledge personal cloud API for the Ledgerline mobile client.
+
+    **Zero-knowledge architecture:** all content payloads (ciphertext fields,
+    sealed manifests, blob bodies) are opaque to the server — the server stores
+    and returns ciphertext only and never reads or derives plaintext content.
+    The vault key and all decryption happen exclusively in the client.
+
+    **Authentication:** obtain a Sanctum bearer token via the device pairing
+    exchange (QR code scan + owner approval in the web UI), then include it as
+    `Authorization: Bearer <token>` on every request. All routes except the two
+    pairing endpoints require the `device` Sanctum ability.
+
+servers:
+  - url: /api/v1
+    description: Current stable API base path
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Device pairing exchange and session management
+  - name: Me/Device
+    description: Authenticated user info, avatar, and device heartbeat
+  - name: Store
+    description: Opaque zero-knowledge workspace manifest (notes/todos/bookmarks/files/passwords)
+  - name: Files
+    description: Personal encrypted file blobs and multipart upload pipeline
+  - name: SharedFolders
+    description: Member-scoped blob store for shared vault folders (blobs at shared-folders/{blob})
+  - name: Gallery
+    description: Gallery blobs, multipart upload, and ML processing pipeline
+  - name: Contacts
+    description: Encrypted contact blobs
+  - name: Passwords
+    description: Password-manager enrichment endpoints (favicon, HIBP, 2FA directory)
+  - name: Vaults
+    description: Shared password vault container management, ZK key wrapping, and membership lifecycle
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+      description: >
+        First-party Sanctum token with ability `device`. Obtained via the
+        pairing exchange. Include as `Authorization: Bearer <token>`.
+
+  schemas:
+    IdResponse:
+      type: object
+      description: Response containing the newly created resource id.
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: UUID of the new resource.
+          example: 018f4b2e-1234-7abc-9def-000000000001
+
+    OkResponse:
+      type: object
+      description: Acknowledgement response.
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    UsageResponse:
+      type: object
+      description: Current storage usage vs quota for the caller's scope.
+      required: [used, quota]
+      properties:
+        used:
+          type: integer
+          description: Bytes currently stored.
+          example: 104857600
+        quota:
+          type: integer
+          description: Maximum bytes allowed (null = unlimited).
+          nullable: true
+          example: 10737418240
+
+    StoreResponse:
+      type: object
+      description: Opaque sealed manifest + optimistic-concurrency version counter.
+      required: [version]
+      properties:
+        ciphertext:
+          type: string
+          nullable: true
+          description: >
+            Opaque sealed ciphertext (XChaCha20-Poly1305, Padme-padded). The server
+            never reads this value. Null on first access before any write.
+        version:
+          type: integer
+          description: Monotone version counter used for optimistic concurrency.
+          example: 42
+
+    SharedStoreResponse:
+      type: object
+      description: Sealed manifest for a shared vault, with optimistic-concurrency version.
+      required: [version]
+      properties:
+        sealed_manifest:
+          type: string
+          nullable: true
+          description: >
+            Opaque sealed ciphertext encrypted under the vault's VK_vault.
+            The server never reads this value. Null before the first write.
+        version:
+          type: integer
+          description: Monotone version counter for optimistic concurrency.
+          example: 7
+
+    VersionResponse:
+      type: object
+      description: New version counter returned after a successful store write.
+      required: [version]
+      properties:
+        version:
+          type: integer
+          description: Updated version counter.
+          example: 43
+
+    ConflictResponse:
+      type: object
+      description: >
+        409 Conflict — another client wrote the store concurrently. Contains
+        the current server state so the caller can re-read and re-apply its changes.
+      required: [version]
+      properties:
+        version:
+          type: integer
+          description: Current server-side version.
+          example: 43
+        ciphertext:
+          type: string
+          nullable: true
+          description: Current sealed ciphertext (personal store conflict).
+        sealed_manifest:
+          type: string
+          nullable: true
+          description: Current sealed manifest (shared vault store conflict).
+
+    TokenResponse:
+      type: object
+      description: Public share link token.
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: URL-safe token that identifies the share link.
+          example: a1b2c3d4e5f6
+
+    VaultResponse:
+      type: object
+      description: KDF parameters and wrapped vault key material for vault unlock.
+      required: [configured]
+      properties:
+        configured:
+          type: boolean
+          description: Whether the caller has set up a vault.
+        salt:
+          type: string
+          nullable: true
+          description: Argon2id salt (base64). Null when not configured.
+        kdf_ops:
+          type: integer
+          nullable: true
+          description: Argon2id opslimit parameter.
+          example: 4
+        kdf_mem:
+          type: integer
+          nullable: true
+          description: Argon2id memlimit parameter (bytes).
+          example: 268435456
+        wrapped_vault_key:
+          type: string
+          nullable: true
+          description: >
+            Opaque vault-key wrap ciphertext. Server never reads this value.
+        wrap_nonce:
+          type: string
+          nullable: true
+          description: Nonce used for the wrapped vault key (base64).
+        has_recovery:
+          type: boolean
+          nullable: true
+          description: Whether a recovery key wrap is present.
+        wrapped_vault_key_recovery:
+          type: string
+          nullable: true
+          description: >
+            Optional recovery-wrap of the vault key. Opaque ciphertext.
+
+paths:
+
+  # --------------------------------------------------------------------------
+  # Auth
+  # --------------------------------------------------------------------------
+
+  /auth/pair:
+    post:
+      tags: [Auth]
+      operationId: authPair
+      summary: Claim a pairing code (public)
+      description: >
+        The mobile app scans a QR code from the user's web profile and claims the
+        one-time code here. Moves the pairing to pending-approval status. No bearer
+        token required. Throttle: 30 req/min per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, device_name]
+              properties:
+                code:
+                  type: string
+                  description: One-time pairing code from the QR.
+                device_name:
+                  type: string
+                  maxLength: 60
+                  description: Human-readable device name shown in the web UI.
+      responses:
+        "200":
+          description: Code claimed; waiting for owner approval.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [pending]
+        "422":
+          description: Validation error or code not found / already consumed.
+        "429":
+          description: Rate limit exceeded.
+
+  /auth/pair/collect:
+    post:
+      tags: [Auth]
+      operationId: authCollect
+      summary: Poll for pairing approval (public)
+      description: >
+        Poll with the same code. Returns `status: pending` until the owner approves
+        the device in the web UI, then returns the Sanctum bearer token exactly once.
+        No bearer token required. Throttle: 30 req/min per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: The same one-time pairing code.
+      responses:
+        "200":
+          description: Pending or approved.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [pending]
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [approved]
+                      token:
+                        type: string
+                        description: Sanctum bearer token for subsequent API calls.
+                      user:
+                        type: object
+                        description: Basic user info payload.
+        "429":
+          description: Rate limit exceeded.
+
+  /auth/session:
+    delete:
+      tags: [Auth]
+      operationId: authDestroy
+      summary: Revoke the current bearer token
+      description: >
+        Deletes the Sanctum token authenticating this request (logout / remote wipe
+        acknowledgement). Throttle: none (uses general API throttle).
+      responses:
+        "200":
+          description: Token revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthenticated.
+
+  # --------------------------------------------------------------------------
+  # Me / Device
+  # --------------------------------------------------------------------------
+
+  /me:
+    get:
+      tags: [Me/Device]
+      operationId: meShow
+      summary: Authenticated user info and storage usage
+      description: >
+        Returns the authenticated user's profile, aggregate storage usage (files +
+        gallery bytes), and a `wipe` flag that signals the owner has requested a
+        remote wipe of this token. No throttle beyond the default API rate.
+      responses:
+        "200":
+          description: User payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    description: >
+                      User fields: id, name, email, locale, groups, has_avatar (bool).
+                  usage:
+                    type: object
+                    properties:
+                      files:
+                        type: integer
+                        description: Total file blob bytes.
+                      gallery:
+                        type: integer
+                        description: Total gallery blob bytes.
+                  wipe:
+                    type: boolean
+                    description: If true the client should erase local vault data and log out.
+        "401":
+          description: Unauthenticated.
+
+  /avatar:
+    get:
+      tags: [Me/Device]
+      operationId: avatarShow
+      summary: Stream the authenticated user's avatar
+      description: >
+        Streams the IdP-provided avatar image for the authenticated user. Not
+        zero-knowledge (IdP profile image, non-secret). Returns 404 if no avatar
+        is stored. Throttle: 120 req/min.
+      responses:
+        "200":
+          description: Avatar image bytes.
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: No avatar stored.
+        "429":
+          description: Rate limit exceeded.
+
+  /device/heartbeat:
+    post:
+      tags: [Me/Device]
+      operationId: deviceHeartbeat
+      summary: Record device sync activity
+      description: >
+        CLI/background clients call this to record that they are actively syncing.
+        Has no body; the server only records a timestamp on the token row.
+        Throttle: 120 req/min.
+      responses:
+        "200":
+          description: Heartbeat recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Vault (KDF material + wrapped vault key)
+  # --------------------------------------------------------------------------
+
+  /vault:
+    get:
+      tags: [Me/Device]
+      operationId: vaultShow
+      summary: Retrieve vault KDF parameters and wrapped vault key
+      description: >
+        Returns the Argon2id KDF parameters and the wrapped vault key so the
+        browser can derive the KEK from the passphrase and unwrap the vault key.
+        All returned values are opaque to the server. No throttle beyond default.
+      responses:
+        "200":
+          description: Vault configuration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultResponse"
+        "401":
+          description: Unauthenticated.
+
+  # --------------------------------------------------------------------------
+  # Store (personal workspace manifest)
+  # --------------------------------------------------------------------------
+
+  /store:
+    get:
+      tags: [Store]
+      operationId: storeShow
+      summary: Read the personal workspace manifest
+      description: >
+        Returns the current sealed ciphertext and version for the caller's personal
+        workspace manifest (notes, todos, bookmarks, files tree, passwords, etc.).
+        The server never reads the ciphertext. Cache-Control: no-store.
+        No per-route throttle beyond the default API rate.
+      responses:
+        "200":
+          description: Current sealed manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreResponse"
+        "401":
+          description: Unauthenticated.
+    put:
+      tags: [Store]
+      operationId: storeSave
+      summary: Write the personal workspace manifest
+      description: >
+        Optimistic-concurrency write. The caller sends the ciphertext and the
+        version it last read; if another client wrote in the meantime the server
+        returns 409 so the client can re-read, re-apply, and retry.
+        Throttle: 120 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ciphertext, version]
+              properties:
+                ciphertext:
+                  type: string
+                  description: >
+                    Opaque sealed manifest ciphertext. The server stores this
+                    without reading it.
+                version:
+                  type: integer
+                  minimum: 0
+                  description: Version the client last read (optimistic concurrency token).
+      responses:
+        "200":
+          description: Write successful; new version counter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+        "409":
+          description: Concurrent write conflict; re-read and retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [version_conflict]
+        "422":
+          description: Validation error.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Files (personal encrypted blobs)
+  # --------------------------------------------------------------------------
+
+  /files/usage:
+    get:
+      tags: [Files]
+      operationId: filesUsage
+      summary: Personal file storage usage
+      description: >
+        Returns bytes used vs quota for the caller's personal file blobs.
+        No per-route throttle beyond default.
+      responses:
+        "200":
+          description: Usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "401":
+          description: Unauthenticated.
+
+  /files/upload:
+    post:
+      tags: [Files]
+      operationId: filesUpload
+      summary: Upload a single encrypted file blob
+      description: >
+        Stores one opaque ciphertext blob (client-encrypted). Returns the new blob
+        UUID. Enforces per-user quota. Use multipart upload for files > ~100 MB.
+        Throttle: 1200 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: >
+                    Opaque ciphertext bytes (client-encrypted). The server stores
+                    without reading.
+      responses:
+        "201":
+          description: Blob stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "413":
+          description: Quota exceeded.
+        "422":
+          description: Validation error.
+        "429":
+          description: Rate limit exceeded.
+
+  /files/upload/init:
+    post:
+      tags: [Files]
+      operationId: filesUploadInit
+      summary: Initiate S3 multipart upload
+      description: >
+        Begins an S3 multipart upload session for a large file blob. Returns an
+        opaque session token and the blob UUID to use in subsequent part/complete
+        calls. Throttle: 600 req/min.
+      responses:
+        "200":
+          description: Session initialised.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: Opaque session token for subsequent part/complete/abort calls.
+                  id:
+                    type: string
+                    description: UUID that will be registered as the blob id on completion.
+        "413":
+          description: Quota would be exceeded.
+        "429":
+          description: Rate limit exceeded.
+
+  /files/upload/part:
+    post:
+      tags: [Files]
+      operationId: filesUploadPart
+      summary: Upload one part of a multipart upload
+      description: >
+        Uploads a single part (chunk) of an in-progress multipart upload session.
+        Requires the opaque session token from init. Throttle: 6000 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [token, chunk]
+              properties:
+                token:
+                  type: string
+                  description: Session token from the init call.
+                chunk:
+                  type: string
+                  format: binary
+                  description: Part bytes (minimum 5 MiB per part except the last).
+      responses:
+        "200":
+          description: Part accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  part:
+                    type: integer
+                    description: Part number that was recorded.
+        "429":
+          description: Rate limit exceeded.
+
+  /files/upload/complete:
+    post:
+      tags: [Files]
+      operationId: filesUploadComplete
+      summary: Complete a multipart upload and register the blob
+      description: >
+        Finalises the S3 multipart upload and registers the blob in the ownership
+        ledger. Returns the blob id (same as from init). Throttle: 600 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Session token from the init call.
+      responses:
+        "201":
+          description: Blob registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /files/upload/abort:
+    post:
+      tags: [Files]
+      operationId: filesUploadAbort
+      summary: Abort a multipart upload and clean up staged parts
+      description: >
+        Cancels an in-progress multipart upload and discards all uploaded parts.
+        Throttle: 600 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Session token from the init call.
+      responses:
+        "200":
+          description: Upload aborted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /files/raw/{blob}:
+    get:
+      tags: [Files]
+      operationId: filesRaw
+      summary: Stream a file blob (ciphertext)
+      description: >
+        Streams the raw ciphertext bytes for the given blob UUID. Owner-scoped;
+        foreign or missing blob returns 404 to avoid ownership oracle. Bytes are
+        served with immutable cache headers — the client decrypts in memory.
+        Throttle: 600 req/min.
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Blob UUID returned by the upload endpoint.
+      responses:
+        "200":
+          description: Blob ciphertext stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+                description: Opaque ciphertext bytes. Client decrypts with the vault key.
+        "404":
+          description: Blob not found or not owned by caller.
+        "429":
+          description: Rate limit exceeded.
+
+  /files/blob/{blob}:
+    delete:
+      tags: [Files]
+      operationId: filesBlobDestroy
+      summary: Delete a file blob
+      description: >
+        Deletes the blob bytes and its ledger row. Idempotent — a missing or
+        foreign blob answers the same as a successful delete (no ownership oracle).
+        Throttle: 3000 req/min.
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted (or already absent).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+        "429":
+          description: Rate limit exceeded.
+
+  /files/blobs/reconcile:
+    post:
+      tags: [Files]
+      operationId: filesReconcile
+      summary: Reclaim unreferenced file blobs
+      description: >
+        Client sends the set of blob UUIDs its sealed index still references. The
+        server deletes any of the caller's blobs NOT in that set that are older
+        than the orphan grace window (24 h). Returns updated usage. Throttle: 120 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 100000
+                  description: Full list of blob UUIDs the sealed index currently references.
+      responses:
+        "200":
+          description: Reconcile complete; updated usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /files/shares:
+    post:
+      tags: [Files]
+      operationId: filesSharesStore
+      summary: Create a public share link for a file or folder
+      description: >
+        Creates a public share link. The `kind` field determines whether a single
+        file or a folder subtree is shared. The `sealed_manifest` is an opaque
+        ciphertext blob containing the re-wrapped per-file keys encrypted under the
+        share link's fragment key — the server never reads it. Throttle: 60 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, sealed_manifest, blob_refs]
+              properties:
+                kind:
+                  type: string
+                  enum: [file, folder]
+                  description: Whether this share covers a single file or a folder tree.
+                sealed_manifest:
+                  type: string
+                  description: >
+                    Opaque sealed share manifest (per-file keys re-wrapped under the
+                    share fragment key). The server stores this without reading it.
+                blob_refs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: UUIDs of blobs included in the share (access-control list).
+                allow_download:
+                  type: boolean
+                  default: false
+                  description: Whether recipients may download the raw files.
+                expires_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Optional expiry timestamp. Null = no expiry.
+                password:
+                  type: string
+                  minLength: 4
+                  maxLength: 200
+                  nullable: true
+                  description: Optional password that recipients must enter to view the share.
+      responses:
+        "200":
+          description: Share link created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "422":
+          description: Validation error.
+        "429":
+          description: Rate limit exceeded.
+
+  /files/shares/{token}:
+    put:
+      tags: [Files]
+      operationId: filesSharesUpdate
+      summary: Update an existing public share link
+      description: >
+        Replaces the sealed manifest, blob refs, and access settings of an existing
+        share. Owner-scoped. Throttle: 60 req/min.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Share link token returned by the create endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sealed_manifest, blob_refs]
+              properties:
+                sealed_manifest:
+                  type: string
+                  description: Updated opaque sealed share manifest.
+                blob_refs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                allow_download:
+                  type: boolean
+                  default: false
+                expires_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                password:
+                  type: string
+                  minLength: 4
+                  maxLength: 200
+                  nullable: true
+                  description: New password (omit to keep existing; use clear_password to remove).
+                clear_password:
+                  type: boolean
+                  default: false
+                  description: If true, removes the current password protection.
+      responses:
+        "200":
+          description: Share updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "404":
+          description: Share not found or not owned by caller.
+        "422":
+          description: Validation error.
+        "429":
+          description: Rate limit exceeded.
+
+    delete:
+      tags: [Files]
+      operationId: filesSharesDestroy
+      summary: Delete a public share link
+      description: >
+        Permanently removes the share link. Owner-scoped. Throttle: 60 req/min.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Share link token.
+      responses:
+        "200":
+          description: Share deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Share not found or not owned by caller.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # SharedFolders (member-scoped blobs for shared vaults)
+  # --------------------------------------------------------------------------
+
+  /vaults/{vault}/blobs/usage:
+    get:
+      tags: [SharedFolders]
+      operationId: vaultBlobsUsage
+      summary: Shared folder blob storage usage
+      description: >
+        Returns bytes used vs quota for blobs in the shared folder vault. Quota is
+        attributed to the folder owner. Requires vault membership (viewer+).
+        No per-route throttle beyond default.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Shared vault UUID.
+      responses:
+        "200":
+          description: Usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "401":
+          description: Unauthenticated.
+        "404":
+          description: Vault not found or caller is not a member.
+
+  /vaults/{vault}/blobs/upload:
+    post:
+      tags: [SharedFolders]
+      operationId: vaultBlobsUpload
+      summary: Upload a blob to a shared folder vault
+      description: >
+        Stores one opaque ciphertext blob encrypted under the vault's VK_vault.
+        Requires editor+ membership. Quota is attributed to the vault owner.
+        Throttle: 1200 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Opaque ciphertext bytes (client-encrypted under VK_vault).
+      responses:
+        "201":
+          description: Blob stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "404":
+          description: Vault not found or insufficient membership role.
+        "413":
+          description: Quota exceeded.
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/blobs/upload/init:
+    post:
+      tags: [SharedFolders]
+      operationId: vaultBlobsUploadInit
+      summary: Initiate S3 multipart upload for a shared folder blob
+      description: >
+        Begins an S3 multipart upload session. Requires editor+ membership.
+        Throttle: 600 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session initialised.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  id:
+                    type: string
+        "404":
+          description: Vault not found or insufficient role.
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/blobs/upload/part:
+    post:
+      tags: [SharedFolders]
+      operationId: vaultBlobsUploadPart
+      summary: Upload one part of a shared folder multipart upload
+      description: >
+        Uploads a single part of an in-progress multipart upload. Throttle: 6000 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [token, chunk]
+              properties:
+                token:
+                  type: string
+                chunk:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Part accepted.
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/blobs/upload/complete:
+    post:
+      tags: [SharedFolders]
+      operationId: vaultBlobsUploadComplete
+      summary: Complete a shared folder multipart upload
+      description: >
+        Finalises the multipart upload and registers the blob. Throttle: 600 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "201":
+          description: Blob registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/blobs/upload/abort:
+    post:
+      tags: [SharedFolders]
+      operationId: vaultBlobsUploadAbort
+      summary: Abort a shared folder multipart upload
+      description: >
+        Cancels an in-progress multipart upload and discards staged parts.
+        Throttle: 600 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Aborted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/blobs/raw/{blob}:
+    get:
+      tags: [SharedFolders]
+      operationId: vaultBlobsRaw
+      summary: Stream a shared folder blob (ciphertext)
+      description: >
+        Streams the raw ciphertext bytes of a shared folder blob. Requires viewer+
+        membership. Served with immutable cache headers. Throttle: 600 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Blob ciphertext stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Vault or blob not found, or insufficient membership.
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/blobs/{blob}:
+    delete:
+      tags: [SharedFolders]
+      operationId: vaultBlobsDestroy
+      summary: Delete a shared folder blob
+      description: >
+        Deletes a blob from the shared folder. Requires editor+ membership.
+        Idempotent. Throttle: 3000 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+        "404":
+          description: Vault not found or insufficient role.
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/blobs/reconcile:
+    post:
+      tags: [SharedFolders]
+      operationId: vaultBlobsReconcile
+      summary: Reclaim unreferenced blobs from a shared folder vault
+      description: >
+        Same orphan-reclaim protocol as the personal files reconcile. Any member
+        may call this; serialised per vault owner. Throttle: 120 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 100000
+      responses:
+        "200":
+          description: Reconciled; updated usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "404":
+          description: Vault not found or not a member.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Gallery
+  # --------------------------------------------------------------------------
+
+  /gallery/store:
+    get:
+      tags: [Gallery]
+      operationId: galleryStoreShow
+      summary: Read the gallery sealed index
+      description: >
+        Returns the user's sealed gallery manifest (ciphertext + version).
+        Same optimistic-concurrency protocol as the workspace store.
+        No per-route throttle beyond default.
+      responses:
+        "200":
+          description: Sealed gallery manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreResponse"
+    put:
+      tags: [Gallery]
+      operationId: galleryStoreSave
+      summary: Write the gallery sealed index
+      description: >
+        Saves the sealed gallery manifest. Optimistic concurrency — see /store for
+        the protocol. Throttle: 120 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ciphertext, version]
+              properties:
+                ciphertext:
+                  type: string
+                  description: Opaque sealed gallery manifest ciphertext.
+                version:
+                  type: integer
+                  minimum: 0
+      responses:
+        "200":
+          description: Write successful.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+        "409":
+          description: Version conflict.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [version_conflict]
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/usage:
+    get:
+      tags: [Gallery]
+      operationId: galleryUsage
+      summary: Gallery blob storage usage
+      description: Returns bytes used vs quota for gallery blobs. No per-route throttle.
+      responses:
+        "200":
+          description: Usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+
+  /gallery/upload:
+    post:
+      tags: [Gallery]
+      operationId: galleryUpload
+      summary: Upload a gallery blob (ciphertext)
+      description: >
+        Stores one opaque ciphertext gallery blob. Created_at is snapped to the
+        hour to avoid upload-burst timing side-channel. Throttle: 1200 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Opaque ciphertext bytes.
+      responses:
+        "201":
+          description: Blob stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "413":
+          description: Quota exceeded.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/upload/init:
+    post:
+      tags: [Gallery]
+      operationId: galleryUploadInit
+      summary: Initiate S3 multipart upload for gallery
+      description: "Throttle: 600 req/min."
+      responses:
+        "200":
+          description: Session initialised.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  id:
+                    type: string
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/upload/part:
+    post:
+      tags: [Gallery]
+      operationId: galleryUploadPart
+      summary: Upload one part of a gallery multipart upload
+      description: "Throttle: 6000 req/min."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [token, chunk]
+              properties:
+                token:
+                  type: string
+                chunk:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Part accepted.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/upload/complete:
+    post:
+      tags: [Gallery]
+      operationId: galleryUploadComplete
+      summary: Complete a gallery multipart upload
+      description: "Throttle: 600 req/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "201":
+          description: Blob registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/upload/abort:
+    post:
+      tags: [Gallery]
+      operationId: galleryUploadAbort
+      summary: Abort a gallery multipart upload
+      description: "Throttle: 600 req/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Aborted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/raw/{blob}:
+    get:
+      tags: [Gallery]
+      operationId: galleryRaw
+      summary: Stream a gallery blob (ciphertext)
+      description: >
+        Owner-scoped; served with immutable cache headers. Throttle: 600 req/min.
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Blob ciphertext stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Blob not found or not owned by caller.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/blob/{blob}:
+    delete:
+      tags: [Gallery]
+      operationId: galleryBlobDestroy
+      summary: Delete a gallery blob
+      description: "Idempotent. Throttle: 3000 req/min."
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/blobs/reconcile:
+    post:
+      tags: [Gallery]
+      operationId: galleryReconcile
+      summary: Reclaim unreferenced gallery blobs
+      description: >
+        Same orphan-reclaim protocol as files/blobs/reconcile. Throttle: 120 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 100000
+      responses:
+        "200":
+          description: Reconciled; updated usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/process:
+    post:
+      tags: [Gallery]
+      operationId: galleryProcess
+      summary: Process a photo/video to derive thumbnails and metadata (transient plaintext)
+      description: >
+        **Accepted transient zero-knowledge window:** the browser decrypts the
+        original and POSTs plaintext bytes here. The server derives thumbnails,
+        EXIF, place, CLIP embedding, face crops and returns them; the plaintext is
+        discarded at request end — nothing is persisted. The client re-encrypts all
+        outputs before storing them as blobs. Throttle: 600 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Plaintext photo or video bytes (decrypted by the client).
+                ml:
+                  type: boolean
+                  default: true
+                  description: >
+                    If false, skip heavy ML (CLIP + face detection) — the client
+                    will call /gallery/analyze later.
+      responses:
+        "200":
+          description: Derived data to be re-encrypted and stored by the client.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  media_type:
+                    type: string
+                  width:
+                    type: integer
+                  height:
+                    type: integer
+                  duration:
+                    type: number
+                    nullable: true
+                  content_id:
+                    type: string
+                    nullable: true
+                  exif:
+                    type: object
+                    nullable: true
+                  place:
+                    type: string
+                    nullable: true
+                  embedding:
+                    type: string
+                    nullable: true
+                    description: Base64-encoded CLIP embedding.
+                  phash:
+                    type: string
+                    nullable: true
+                  faces:
+                    type: array
+                    items:
+                      type: object
+                  thumb:
+                    type: string
+                    nullable: true
+                    description: Base64-encoded JPEG thumbnail.
+                  medium:
+                    type: string
+                    nullable: true
+                    description: Base64-encoded medium rendition.
+                  motion:
+                    type: string
+                    nullable: true
+                    description: Base64-encoded motion photo clip.
+        "422":
+          description: Image too large or invalid.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/analyze:
+    post:
+      tags: [Gallery]
+      operationId: galleryAnalyze
+      summary: Deferred ML pass — CLIP embedding and face detection only
+      description: >
+        Accepts a medium rendition (plaintext, discarded after). Returns only CLIP
+        embedding + faces for deferred integration into the sealed metadata.
+        Same transient ZK window as /gallery/process. Throttle: 600 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: ML outputs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embedding:
+                    type: string
+                    nullable: true
+                  faces:
+                    type: array
+                    items:
+                      type: object
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/embed-text:
+    post:
+      tags: [Gallery]
+      operationId: galleryEmbedText
+      summary: Embed a text query in CLIP space for client-side semantic search
+      description: >
+        Returns a CLIP text embedding for the given query string so the client can
+        perform a vector similarity search in its sealed gallery index without the
+        server seeing the query text. The query is discarded after embedding.
+        Throttle: 300 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [q]
+              properties:
+                q:
+                  type: string
+                  maxLength: 1024
+                  description: Search query in natural language.
+      responses:
+        "200":
+          description: CLIP text embedding.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embedding:
+                    type: string
+                    description: Base64-encoded float32 vector.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/reverse:
+    get:
+      tags: [Gallery]
+      operationId: galleryReverse
+      summary: Reverse-geocode coordinates to a place name
+      description: >
+        Looks up a human-readable place name for the given latitude/longitude. The
+        query passes through the server only (client CSP forbids third-party calls)
+        and is not persisted. Throttle: 60 req/min.
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            minimum: -90
+            maximum: 90
+          description: Latitude in decimal degrees.
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            minimum: -180
+            maximum: 180
+          description: Longitude in decimal degrees.
+      responses:
+        "200":
+          description: Reverse-geocoded place.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  place:
+                    type: string
+                    nullable: true
+                  address:
+                    type: object
+                    nullable: true
+        "422":
+          description: Coordinates out of range.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Contacts
+  # --------------------------------------------------------------------------
+
+  /contacts/usage:
+    get:
+      tags: [Contacts]
+      operationId: contactsUsage
+      summary: Contact blob storage usage
+      description: Returns bytes used vs quota for contact blobs. No per-route throttle.
+      responses:
+        "200":
+          description: Usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+
+  /contacts/upload:
+    post:
+      tags: [Contacts]
+      operationId: contactsUpload
+      summary: Upload an encrypted contact blob
+      description: >
+        Stores one opaque encrypted contact blob. Throttle: 600 req/min.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Opaque ciphertext bytes.
+      responses:
+        "201":
+          description: Blob stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "413":
+          description: Quota exceeded.
+        "429":
+          description: Rate limit exceeded.
+
+  /contacts/raw/{blob}:
+    get:
+      tags: [Contacts]
+      operationId: contactsRaw
+      summary: Stream a contact blob (ciphertext)
+      description: "Owner-scoped. Throttle: 600 req/min."
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Blob ciphertext stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Not found or not owned by caller.
+        "429":
+          description: Rate limit exceeded.
+
+  /contacts/blob/{blob}:
+    delete:
+      tags: [Contacts]
+      operationId: contactsBlobDestroy
+      summary: Delete a contact blob
+      description: "Idempotent. Throttle: 3000 req/min."
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+        "429":
+          description: Rate limit exceeded.
+
+  /contacts/blobs/reconcile:
+    post:
+      tags: [Contacts]
+      operationId: contactsReconcile
+      summary: Reclaim unreferenced contact blobs
+      description: "Same orphan-reclaim protocol as files. Throttle: 120 req/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 100000
+      responses:
+        "200":
+          description: Reconciled; updated usage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Passwords (enrichment endpoints)
+  # --------------------------------------------------------------------------
+
+  /passwords/icon:
+    get:
+      tags: [Passwords]
+      operationId: passwordsIcon
+      summary: Fetch favicon/BIMI for a domain
+      description: >
+        Returns a data URI (base64-encoded image) for the best available icon for
+        the given domain (favicon → BIMI). The fetch goes through the server's SSRF
+        guard; the result is returned as a data URI. The domain is not persisted.
+        Throttle: 1200 req/min.
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Domain to look up (e.g. "github.com").
+      responses:
+        "200":
+          description: Icon data URI or null.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  icon:
+                    type: string
+                    nullable: true
+                    description: Data URI (e.g. "data:image/png;base64,...") or null if none found.
+        "429":
+          description: Rate limit exceeded.
+
+  /passwords/breach:
+    get:
+      tags: [Passwords]
+      operationId: passwordsBreach
+      summary: HIBP k-anonymity breach check
+      description: >
+        Proxies a Have I Been Pwned range query. The client sends only the first 5
+        hex characters of the SHA-1 hash of the password; the server forwards the
+        query to HIBP and returns the matching suffix/count lines. The full hash
+        never leaves the client. SHA-1 is used here solely because HIBP requires
+        it for the k-anonymity protocol. Throttle: 300 req/min.
+      parameters:
+        - name: prefix
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^[0-9A-Fa-f]{5}$"
+          description: First 5 hex chars of the SHA-1 hash (uppercase preferred).
+      responses:
+        "200":
+          description: "HIBP range response (suffix:count lines)."
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: HIBP range response text forwarded verbatim.
+        "429":
+          description: Rate limit exceeded.
+
+  /passwords/tfa-directory:
+    get:
+      tags: [Passwords]
+      operationId: passwordsTfaDirectory
+      summary: 2FA support directory
+      description: >
+        Returns the server-cached 2fa.directory dataset as a domain → documentation
+        URL map. Used by the client to show a "this site supports 2FA" hint on login
+        entries. Server caches the dataset for 24 hours. Throttle: 120 req/min.
+      responses:
+        "200":
+          description: Domain to 2FA documentation URL map.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                  description: Documentation URL (http/https only).
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Vaults (shared password vault management)
+  # --------------------------------------------------------------------------
+
+  /vaults/keys:
+    get:
+      tags: [Vaults]
+      operationId: vaultKeysShow
+      summary: Retrieve the caller's X25519 identity key material
+      description: >
+        Returns the caller's published X25519 public key, the wrapped secret key
+        (sealed under VK), and the fingerprint. Allows the client to recover the
+        secret key on a second device. Returns null fields if no key has been
+        published. Throttle: 60 req/min.
+      responses:
+        "200":
+          description: Identity key material.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  public_key:
+                    type: string
+                    nullable: true
+                    description: X25519 public key (base64). Not secret.
+                  wrapped_secret_key:
+                    type: string
+                    nullable: true
+                    description: >
+                      X25519 secret key wrapped under the caller's VK. Opaque ciphertext;
+                      the server never reads it.
+                  fingerprint:
+                    type: string
+                    nullable: true
+                    description: BLAKE2b-16 hex fingerprint of the public key.
+        "429":
+          description: Rate limit exceeded.
+
+    put:
+      tags: [Vaults]
+      operationId: vaultKeysStore
+      summary: Publish the caller's X25519 identity keypair
+      description: >
+        Write-once: publishes the X25519 public key, wrapped secret key, and
+        fingerprint. A re-publish of the same public key is idempotent. Attempting
+        to change the public key returns 409 (would orphan existing vault
+        invitations). No per-route throttle beyond default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [public_key, wrapped_secret_key, fingerprint]
+              properties:
+                public_key:
+                  type: string
+                  description: X25519 public key (base64).
+                wrapped_secret_key:
+                  type: string
+                  description: >
+                    X25519 secret key sealed under the caller's VK. Opaque to the server.
+                fingerprint:
+                  type: string
+                  description: BLAKE2b-16 hex fingerprint of the public key.
+      responses:
+        "200":
+          description: Published (or idempotent re-publish).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "409":
+          description: Different public key already stored (key conflict).
+
+  /vaults:
+    get:
+      tags: [Vaults]
+      operationId: vaultsIndex
+      summary: List the caller's shared vault memberships
+      description: >
+        Returns all vault memberships (all statuses: pending/active/revoked) for
+        the authenticated user, including the per-vault wrapped_vault_key so the
+        client can unlock each invited vault. No throttle beyond default.
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [password, folder]
+          description: Filter by vault kind. Omit to return all kinds.
+      responses:
+        "200":
+          description: List of vault membership objects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    vault_id:
+                      type: string
+                    role:
+                      type: string
+                      enum: [viewer, editor, manager]
+                    status:
+                      type: string
+                      enum: [pending, active, revoked]
+                    wrapped_vault_key:
+                      type: string
+                      description: >
+                        VK_vault wrapped under the member's X25519 public key.
+                        Opaque ciphertext; the server never reads VK_vault.
+                    vault:
+                      type: object
+                      description: Vault metadata (id, kind, owner_id).
+
+    post:
+      tags: [Vaults]
+      operationId: vaultsStore
+      summary: Create a new shared vault
+      description: >
+        Creates a shared vault, an empty sealed manifest store, and an active
+        manager membership for the caller in a single transaction. The
+        `wrapped_vault_key` is the caller's own VK_vault wrapped under their
+        X25519 public key — opaque to the server. `kind` defaults to `password`.
+        No throttle beyond default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [wrapped_vault_key]
+              properties:
+                wrapped_vault_key:
+                  type: string
+                  description: >
+                    VK_vault sealed under the owner's X25519 public key. Opaque
+                    ciphertext; the server never reads VK_vault.
+                kind:
+                  type: string
+                  enum: [password, folder]
+                  default: password
+                  description: Vault kind. Defaults to `password` for backward compatibility.
+      responses:
+        "201":
+          description: Vault created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdResponse"
+        "422":
+          description: Validation error.
+
+  /vaults/{vault}:
+    delete:
+      tags: [Vaults]
+      operationId: vaultsDestroy
+      summary: Delete a shared vault
+      description: >
+        Permanently deletes the vault, cascading to its sealed store and all
+        membership rows. Manager-gated. Throttle: 30 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Vault deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Vault not found or caller is not a manager.
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/store:
+    get:
+      tags: [Vaults]
+      operationId: vaultsStoreShow
+      summary: Read the shared vault's sealed manifest
+      description: >
+        Returns the sealed manifest and version for the shared vault. Requires
+        viewer+ membership. Cache-Control: no-store. No per-route throttle.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sealed vault manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedStoreResponse"
+        "404":
+          description: Vault not found or not a member.
+
+    put:
+      tags: [Vaults]
+      operationId: vaultsStoreSave
+      summary: Write the shared vault's sealed manifest
+      description: >
+        Saves the sealed vault manifest with optimistic concurrency. On conflict
+        the server returns 409 with the current version and sealed_manifest so the
+        client can re-read and re-apply. Requires editor+ membership.
+        Throttle: 600 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sealed_manifest, expected_version]
+              properties:
+                sealed_manifest:
+                  type: string
+                  description: >
+                    Updated opaque sealed manifest encrypted under VK_vault.
+                    The server stores this without reading it.
+                expected_version:
+                  type: integer
+                  minimum: 0
+                  description: Version the client last read (optimistic concurrency token).
+      responses:
+        "200":
+          description: Write successful.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+        "409":
+          description: Concurrent write conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictResponse"
+        "404":
+          description: Vault not found or insufficient role.
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/resolve-recipient:
+    post:
+      tags: [Vaults]
+      operationId: vaultsResolveRecipient
+      summary: Look up a user's X25519 public key for vault invitation
+      description: >
+        Manager-gated. Returns the X25519 public key and fingerprint of the
+        prospective invitee so the manager can wrap VK_vault for them. Returns a
+        uniform 422 for both "user not found" and "user has no key" to prevent
+        user enumeration. Throttle: 30 req/min per user.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier]
+              properties:
+                identifier:
+                  type: string
+                  description: Email address or username of the user to invite.
+      responses:
+        "200":
+          description: Recipient's public key data.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: integer
+                  public_key:
+                    type: string
+                    description: X25519 public key (base64). Safe to send to the manager.
+                  fingerprint:
+                    type: string
+                    description: BLAKE2b-16 hex fingerprint for TOFU verification.
+        "404":
+          description: Vault not found or caller is not a manager.
+        "422":
+          description: User not found, or user has no identity key published (uniform response).
+        "429":
+          description: Rate limit exceeded.
+
+  /vaults/{vault}/members:
+    get:
+      tags: [Vaults]
+      operationId: vaultsMembersIndex
+      summary: List vault members
+      description: >
+        Returns all members with their role, status, and X25519 public key.
+        Manager-gated. The wrapped_vault_key is intentionally excluded (per-recipient
+        ciphertext that only the inviting client needs). Throttle: 60 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    user_id:
+                      type: integer
+                    name:
+                      type: string
+                      nullable: true
+                    email:
+                      type: string
+                      nullable: true
+                    role:
+                      type: string
+                      enum: [viewer, editor, manager]
+                    status:
+                      type: string
+                      enum: [pending, active, revoked]
+                    recipient_fingerprint:
+                      type: string
+                      nullable: true
+                    public_key:
+                      type: string
+                      nullable: true
+        "404":
+          description: Vault not found or caller is not a manager.
+        "429":
+          description: Rate limit exceeded.
+
+    post:
+      tags: [Vaults]
+      operationId: vaultsMembersStore
+      summary: Invite a user to the vault
+      description: >
+        Creates a pending membership. The `wrapped_vault_key` is VK_vault sealed
+        with `crypto_box_seal` to the recipient's X25519 public key — opaque to
+        the server. Manager-gated. No per-route throttle.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, role, wrapped_vault_key]
+              properties:
+                user_id:
+                  type: integer
+                  description: ID of the user to invite.
+                role:
+                  type: string
+                  enum: [viewer, editor, manager]
+                  description: Role to assign. Cannot exceed the inviting manager's own role.
+                wrapped_vault_key:
+                  type: string
+                  description: >
+                    VK_vault sealed with crypto_box_seal to the recipient's X25519
+                    public key. Opaque ciphertext; the server never reads VK_vault.
+                recipient_fingerprint:
+                  type: string
+                  nullable: true
+                  description: TOFU fingerprint of the recipient's public key for audit.
+      responses:
+        "201":
+          description: Membership created (pending).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Vault not found or caller is not a manager.
+        "422":
+          description: Validation error.
+
+  /vaults/{vault}/members/{member}/accept:
+    post:
+      tags: [Vaults]
+      operationId: vaultsMembersAccept
+      summary: Accept a vault invitation
+      description: >
+        Transitions the caller's own pending membership to active. Only the invited
+        user may accept their own invitation. No per-route throttle.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: member
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Member row ID.
+      responses:
+        "200":
+          description: Membership activated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Membership not found or does not belong to the caller.
+        "422":
+          description: Membership is not in pending status.
+
+  /vaults/{vault}/members/{member}:
+    patch:
+      tags: [Vaults]
+      operationId: vaultsMembersUpdate
+      summary: Update a member's role
+      description: >
+        Changes the role of an existing active member. Manager-gated; a manager
+        cannot change their own role. No per-route throttle.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: member
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [viewer, editor, manager]
+      responses:
+        "200":
+          description: Role updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Vault or member not found, or insufficient permissions.
+        "422":
+          description: Cannot change own role or invalid role.
+
+    delete:
+      tags: [Vaults]
+      operationId: vaultsMembersDestroy
+      summary: Remove a member from the vault (triggers key rotation)
+      description: >
+        Removes a member. Manager-gated. The client must immediately follow this
+        call with POST /vaults/{vault}/rotate to cryptographically revoke access
+        (re-key the vault for remaining members). No per-route throttle.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: member
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Member removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Vault or member not found, or caller is not a manager.
+
+  /vaults/{vault}/rotate:
+    post:
+      tags: [Vaults]
+      operationId: vaultsRotate
+      summary: Re-key the vault (rotate VK_vault after member removal)
+      description: >
+        Atomically replaces the sealed manifest, bumps the version, and re-wraps
+        VK_vault for all remaining active members in a single DB transaction with
+        optimistic concurrency. This is the cryptographic revocation step that must
+        follow member removal. On version conflict the server returns 409 so the
+        client can re-read the current state and retry. Throttle: 30 req/min.
+      parameters:
+        - name: vault
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sealed_manifest, expected_version, members]
+              properties:
+                sealed_manifest:
+                  type: string
+                  description: >
+                    Re-sealed manifest encrypted under the fresh VK_vault. Opaque
+                    ciphertext; the server never reads it.
+                expected_version:
+                  type: integer
+                  minimum: 0
+                  description: Current version to guard against concurrent writes.
+                members:
+                  type: array
+                  description: >
+                    Updated wrapped_vault_key for each remaining active member,
+                    each sealed with crypto_box_seal to their X25519 public key.
+                  items:
+                    type: object
+                    required: [member_id, wrapped_vault_key]
+                    properties:
+                      member_id:
+                        type: string
+                        description: Member row ID.
+                      wrapped_vault_key:
+                        type: string
+                        description: >
+                          Fresh VK_vault wrapped under the member's X25519 public key.
+                          Opaque ciphertext.
+      responses:
+        "200":
+          description: Rotation complete; new version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+        "409":
+          description: Version conflict; re-read current state and retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictResponse"
+        "404":
+          description: Vault not found or caller is not a manager.
+        "429":
+          description: Rate limit exceeded.

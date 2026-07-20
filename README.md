@@ -190,6 +190,24 @@ Backups are zero-knowledge-aware and incremental.
 
 ---
 
+## API
+
+The mobile app authenticates via a **QR device pairing exchange**: scan the
+pairing QR from the web profile page (`POST /api/v1/auth/pair`), poll for
+owner approval (`POST /api/v1/auth/pair/collect`), and receive a Sanctum
+bearer token that is sent as `Authorization: Bearer <token>` on every
+subsequent request. All endpoints are under `/api/v1`.
+
+**Zero-knowledge:** every content payload — `ciphertext`, `sealed_manifest`,
+blob upload bodies, `wrapped_vault_key` — is opaque ciphertext that the server
+stores and returns without reading. Decryption happens exclusively in the
+client using the vault key that never leaves the browser.
+
+See [`openapi.yaml`](openapi.yaml) for the complete machine-readable API
+reference (OpenAPI 3.1, 59 paths / 67 operations).
+
+---
+
 ## Development workflow
 
 - **Git Flow.** `develop` is the working branch; every `main` commit is a tagged
