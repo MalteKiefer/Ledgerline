@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Backup\Sources;
 
 use App\Services\Backup\BackupArtifact;
+use App\Support\ArchiveName;
 use App\Support\BlobStore;
 use PharData;
 use RuntimeException;
@@ -34,17 +35,13 @@ abstract class DiskArchiveSource implements BackupSource
         foreach ($disk->allFiles($this->prefix()) as $file) {
             // Object keys come from the disk; refuse any that would escape the
             // staging directory (defence-in-depth against a crafted key).
-            $target = $staging.'/'.$file;
-            $real = $this->safeJoin($staging, $file);
-            if ($real === null) {
-                throw new RuntimeException('Unsafe object path in archive: '.$file);
-            }
-            $this->makeDir(dirname($target));
+            $real = ArchiveName::safe($staging, $file);
+            $this->makeDir(dirname($real));
             $read = $disk->readStream($file);
             if ($read === null) {
                 throw new RuntimeException('Could not read '.$file.' for backup.');
             }
-            $write = fopen($target, 'wb');
+            $write = fopen($real, 'wb');
             if ($write === false) {
                 fclose($read);
                 throw new RuntimeException('Could not stage '.$file.' for backup.');
@@ -85,15 +82,5 @@ abstract class DiskArchiveSource implements BackupSource
         if (! is_dir($dir) && ! mkdir($dir, 0700, true) && ! is_dir($dir)) {
             throw new RuntimeException('Could not create staging directory: '.$dir);
         }
-    }
-
-    /** Resolve $rel under $base, returning null if it would escape $base. */
-    private function safeJoin(string $base, string $rel): ?string
-    {
-        if (str_contains($rel, "\0") || preg_match('#(^|/)\.\.(/|$)#', $rel)) {
-            return null;
-        }
-
-        return $base.'/'.$rel;
     }
 }

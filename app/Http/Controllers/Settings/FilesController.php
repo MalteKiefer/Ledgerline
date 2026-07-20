@@ -7,7 +7,6 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
-use App\Models\AuditLog;
 use App\Models\UserSetting;
 use App\Providers\AppServiceProvider;
 use Illuminate\Contracts\View\View;
@@ -55,8 +54,6 @@ class FilesController extends Controller
             Cache::forget(AppServiceProvider::OVERRIDES_CACHE_KEY);
         }
 
-        AuditLog::record('settings.updated', null, ['group' => 'files']);
-
-        return $this->savedRedirect('settings.files.edit', 'settings.files_saved');
+        return $this->savedSettings('files', 'settings.files.edit', 'settings.files_saved');
     }
 }

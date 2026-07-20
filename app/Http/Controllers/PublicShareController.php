@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\FileBlob;
-use App\Models\GalleryBlob;
 use App\Models\PublicShare;
+use App\Support\BlobRegistry;
 use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -132,9 +131,9 @@ class PublicShareController extends Controller
     /** Where a share's opaque blobs live: [disk prefix, ownership-ledger model]. */
     private function blobSource(PublicShare $share): array
     {
-        return $share->kind === 'gallery_album'
-            ? ['gallery', GalleryBlob::class]
-            : ['files', FileBlob::class];
+        $module = $share->kind === 'gallery_album' ? 'gallery' : 'files';
+
+        return [BlobRegistry::prefix($module), BlobRegistry::model($module)];
     }
 
     private function unlocked(Request $request, PublicShare $share): bool

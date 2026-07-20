@@ -43,12 +43,7 @@ class MachineLearning
                 return null;
             }
 
-            $clip = $res->json('clip');
-            // immich returns the vector as a JSON-encoded string; older builds
-            // may return a real array. Handle both.
-            $vector = is_string($clip) ? json_decode($clip, true) : $clip;
-
-            return is_array($vector) && $vector !== [] ? array_map('floatval', $vector) : null;
+            return $this->decodeVector($res->json('clip'));
         } catch (Throwable) {
             return null;
         }
@@ -80,10 +75,7 @@ class MachineLearning
                 return null;
             }
 
-            $clip = $res->json('clip');
-            $vector = is_string($clip) ? json_decode($clip, true) : $clip;
-
-            return is_array($vector) && $vector !== [] ? array_map('floatval', $vector) : null;
+            return $this->decodeVector($res->json('clip'));
         } catch (Throwable) {
             return null;
         }
@@ -125,9 +117,8 @@ class MachineLearning
 
             foreach ((array) $res->json('facial-recognition', []) as $face) {
                 $box = $face['boundingBox'] ?? null;
-                $embedding = $face['embedding'] ?? null;
-                $embedding = is_string($embedding) ? json_decode($embedding, true) : $embedding;
-                if (! is_array($box) || ! is_array($embedding) || $embedding === []) {
+                $embedding = $this->decodeVector($face['embedding'] ?? null);
+                if (! is_array($box) || $embedding === null) {
                     continue;
                 }
 
@@ -140,7 +131,7 @@ class MachineLearning
                         (float) ($box['x2'] ?? 0) / $w,
                         (float) ($box['y2'] ?? 0) / $h,
                     ],
-                    'embedding' => array_map('floatval', $embedding),
+                    'embedding' => $embedding,
                 ];
             }
 
@@ -148,6 +139,20 @@ class MachineLearning
         } catch (Throwable) {
             return [];
         }
+    }
+
+    /**
+     * Decode an immich CLIP vector from a response value: older builds return a
+     * JSON-encoded string; newer builds return a real array. Returns null when
+     * the value is absent or empty.
+     *
+     * @return list<float>|null
+     */
+    private function decodeVector(mixed $value): ?array
+    {
+        $vector = is_string($value) ? json_decode($value, true) : $value;
+
+        return is_array($vector) && $vector !== [] ? array_map('floatval', $vector) : null;
     }
 
     public function faceEnabled(): bool

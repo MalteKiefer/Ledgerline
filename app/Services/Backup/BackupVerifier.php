@@ -6,6 +6,7 @@ namespace App\Services\Backup;
 
 use App\Models\BackupRun;
 use App\Support\Bytes;
+use App\Support\DiskTempFile;
 use Carbon\Carbon;
 use League\Flysystem\Filesystem;
 use RuntimeException;
@@ -68,28 +69,27 @@ final class BackupVerifier
             return ['ok' => false, 'message' => 'The archive is missing from its destination.'];
         }
 
-        $enc = tempnam(sys_get_temp_dir(), 'llvenc');
-        $dec = null;
+        $encHandle = DiskTempFile::create('llvenc');
+        $decHandle = null;
         try {
-            $this->download($fs, $run->filename, $enc);
-            $storedBytes = (int) (filesize($enc) ?: 0);
+            $this->download($fs, $run->filename, $encHandle->path());
+            $storedBytes = (int) (filesize($encHandle->path()) ?: 0);
 
             $encrypted = str_ends_with($run->filename, '.enc');
             if ($encrypted) {
                 if (($passphrase ?? '') === '') {
                     return ['ok' => false, 'message' => 'A passphrase is required to verify an encrypted archive.'];
                 }
-                $dec = tempnam(sys_get_temp_dir(), 'llvdec');
+                $decHandle = DiskTempFile::create('llvdec');
                 try {
-                    $this->cipher->decryptFile($enc, $dec, (string) $passphrase);
+                    $this->cipher->decryptFile($encHandle->path(), $decHandle->path(), (string) $passphrase);
                 } catch (Throwable $e) {
                     return ['ok' => false, 'message' => 'Decryption failed — wrong passphrase or the archive is corrupt. ('.$e->getMessage().')'];
                 }
-            } else {
-                $dec = $enc;
             }
 
-            $inner = $this->inspect($dec, (string) $run->filename);
+            $inspectPath = $decHandle !== null ? $decHandle->path() : $encHandle->path();
+            $inner = $this->inspect($inspectPath, (string) $run->filename);
 
             $parts = ['Downloaded '.Bytes::format($storedBytes).'.'];
             if ($encrypted) {
@@ -100,12 +100,8 @@ final class BackupVerifier
             return ['ok' => $inner['ok'], 'message' => implode(' ', $parts)];
         } catch (Throwable $e) {
             return ['ok' => false, 'message' => 'Verification error: '.$e->getMessage()];
-        } finally {
-            @unlink($enc);
-            if ($dec !== null && $dec !== $enc) {
-                @unlink($dec);
-            }
         }
+        // DiskTempFile destructors ($encHandle, $decHandle) clean up on scope exit.
     }
 
     /**

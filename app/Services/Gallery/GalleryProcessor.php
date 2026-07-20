@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Gallery;
 
 use App\Services\Files\ReverseGeocoder;
+use App\Support\DiskTempFile;
 use App\Support\ImageManagerFactory;
 use Intervention\Image\Encoders\JpegEncoder;
 use Throwable;
@@ -51,10 +52,10 @@ class GalleryProcessor
         $exif = $this->exif->read($path);
 
         // The image source for renditions + vision models: a video's poster
-        // frame, or the image itself. tempnam() also creates the extensionless
-        // base file, so both paths are tracked and discarded in the finally
-        // below — no decoded plaintext still may survive any exit path.
-        $posterBase = null;
+        // frame, or the image itself. DiskTempFile handles cleanup of both the
+        // extensionless base and the .jpg via withExtension() — no decoded
+        // plaintext survives any exit path.
+        $posterHandle = null;
         $posterTmp = null;
         $duration = null;
         $width = null;
@@ -68,75 +69,68 @@ class GalleryProcessor
         $phash = null;
         $place = [];
 
-        try {
-            if ($isVideo) {
-                $probe = $this->video->probe($path);
-                $duration = $probe['duration'] ?? null;
-                $width = $probe['width'] ?? null;
-                $height = $probe['height'] ?? null;
-                $posterBase = tempnam(sys_get_temp_dir(), 'gposter');
-                $posterTmp = $posterBase.'.jpg';
-                try {
-                    $this->video->poster($path, 0, $posterTmp);
-                } catch (Throwable) {
-                    $posterTmp = null;
-                }
-            }
-            $imageSource = $posterTmp ?? $path;
-
+        if ($isVideo) {
+            $probe = $this->video->probe($path);
+            $duration = $probe['duration'] ?? null;
+            $width = $probe['width'] ?? null;
+            $height = $probe['height'] ?? null;
+            // withExtension() renames the extensionless base → base.jpg and
+            // returns a new RAII handle; both files are covered on destruct.
+            $posterHandle = DiskTempFile::create('gposter')->withExtension('jpg');
+            $posterTmp = $posterHandle->path();
             try {
-                $manager = $this->images->make();
-                $img = $manager->decodePath($imageSource);
-                $width ??= $img->width();
-                $height ??= $img->height();
-                $thumb = (string) $img->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75));
-                $medium = (string) $manager->decodePath($imageSource)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82));
+                $this->video->poster($path, 0, $posterTmp);
             } catch (Throwable) {
-                // A non-decodable source (e.g. an unsupported codec with no poster)
-                // yields no renditions; the photo still stores its original + EXIF.
+                $posterTmp = null;
             }
+        }
+        $imageSource = $posterTmp ?? $path;
 
-            // Live Photo motion clip, if this image embeds one.
-            if (! $isVideo) {
-                try {
-                    $motionPath = $this->motion->extract($path);
-                    if (is_string($motionPath) && is_file($motionPath)) {
-                        $motionBytes = (string) file_get_contents($motionPath);
-                        @unlink($motionPath);
-                    }
-                } catch (Throwable) {
-                    $motionBytes = null;
+        try {
+            $manager = $this->images->make();
+            $img = $manager->decodePath($imageSource);
+            $width ??= $img->width();
+            $height ??= $img->height();
+            $thumb = (string) $img->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75));
+            $medium = (string) $manager->decodePath($imageSource)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82));
+        } catch (Throwable) {
+            // A non-decodable source (e.g. an unsupported codec with no poster)
+            // yields no renditions; the photo still stores its original + EXIF.
+        }
+
+        // Live Photo motion clip, if this image embeds one.
+        if (! $isVideo) {
+            try {
+                $motionPath = $this->motion->extract($path);
+                if (is_string($motionPath) && is_file($motionPath)) {
+                    $motionBytes = (string) file_get_contents($motionPath);
+                    @unlink($motionPath);
                 }
+            } catch (Throwable) {
+                $motionBytes = null;
             }
+        }
 
-            // Vision models (CLIP embedding + face detection) are the slow part —
-            // they call the ML sidecar. On a "fast" upload we skip them so the
-            // photo is visible immediately; a deferred pass runs analyze() later.
-            if ($withMl) {
-                [$embedding, $faces] = $this->analyzeSource($imageSource);
-            }
+        // Vision models (CLIP embedding + face detection) are the slow part —
+        // they call the ML sidecar. On a "fast" upload we skip them so the
+        // photo is visible immediately; a deferred pass runs analyze() later.
+        if ($withMl) {
+            [$embedding, $faces] = $this->analyzeSource($imageSource);
+        }
 
-            $phash = $this->phash->hash($imageSource);
+        $phash = $this->phash->hash($imageSource);
 
-            // Reverse-geocoding is OFF by default: with the public OSM endpoint it
-            // would send the photo's coordinates off the ZK boundary on every
-            // upload. Enable gallery.geocode_on_upload only with a self-hosted
-            // geocoder (or when the OSM egress is acceptable); the viewer's
-            // place-picker still resolves an address on demand either way.
-            if (config('gallery.geocode_on_upload', false)
-                && $exif['lat'] !== null && $exif['lon'] !== null) {
-                try {
-                    $place = $this->geo->lookupDetailed((float) $exif['lat'], (float) $exif['lon']);
-                } catch (Throwable) {
-                    $place = [];
-                }
-            }
-        } finally {
-            if ($posterBase !== null) {
-                @unlink($posterBase);
-            }
-            if ($posterTmp !== null) {
-                @unlink($posterTmp);
+        // Reverse-geocoding is OFF by default: with the public OSM endpoint it
+        // would send the photo's coordinates off the ZK boundary on every
+        // upload. Enable gallery.geocode_on_upload only with a self-hosted
+        // geocoder (or when the OSM egress is acceptable); the viewer's
+        // place-picker still resolves an address on demand either way.
+        if (config('gallery.geocode_on_upload', false)
+            && $exif['lat'] !== null && $exif['lon'] !== null) {
+            try {
+                $place = $this->geo->lookupDetailed((float) $exif['lat'], (float) $exif['lon']);
+            } catch (Throwable) {
+                $place = [];
             }
         }
 

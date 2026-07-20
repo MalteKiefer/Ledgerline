@@ -7,7 +7,6 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
-use App\Models\AuditLog;
 use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -79,9 +78,7 @@ class CompanyController extends Controller
 
         $settings->update($data);
 
-        AuditLog::record('settings.updated', null, ['group' => 'company']);
-
-        return $this->savedRedirect('settings.company.edit', 'settings.company_saved');
+        return $this->savedSettings('company', 'settings.company.edit', 'settings.company_saved');
     }
 
     /** Stream the stored company logo (used by the invoice view + print/PDF). */
