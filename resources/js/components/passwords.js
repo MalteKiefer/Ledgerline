@@ -124,7 +124,15 @@ export default (config = {}, labels = {}) => ({
         }
         // Health and Trash span every vault; the list view is scoped to filters.
         const global = this.view === 'trash';
-        const list = this.view === 'trash' ? this.items.filter((x) => x.trashed) : this.liveItems;
+        let list = this.view === 'trash' ? this.items.filter((x) => x.trashed) : this.liveItems;
+        // "All vaults" (no folder selected) in the list view spans BOTH the
+        // personal manifest AND every shared vault the user can read — otherwise
+        // items moved into / created in a shared Tresor (or a converted personal
+        // vault) would be invisible unless that vault is explicitly selected.
+        if (this.view === 'list' && this.filterFolder === '') {
+            const shared = Object.values(this.sharedItems || {}).flat().filter((x) => x && ! x.trashed);
+            list = list.concat(shared);
+        }
         return list
             .filter((x) => global || ! this.filterType || x.type === this.filterType)
             .filter((x) => global || this.filterFolder === '' || (this.filterFolder === '_none' ? ! x.folder : x.folder === this.filterFolder))
