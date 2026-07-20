@@ -16,19 +16,6 @@ use Throwable;
  */
 class ExifReader
 {
-    public function available(): bool
-    {
-        try {
-            $process = new Process([$this->binary(), '-ver']);
-            $process->setTimeout(20);
-            $process->run();
-
-            return $process->isSuccessful();
-        } catch (Throwable) {
-            return false;
-        }
-    }
-
     /**
      * Read one file's metadata into a normalised shape for the gallery processor.
      *
@@ -55,35 +42,6 @@ class ExifReader
             return $this->normalize($tags);
         } catch (Throwable) {
             return $empty;
-        }
-    }
-
-    /**
-     * Read only the Apple Live Photo ContentIdentifier — cheap enough to run on
-     * the JPEG fast path (which otherwise skips exiftool) so JPEG Live Photos
-     * pair too. Returns null when absent or exiftool is unavailable.
-     */
-    public function readContentId(string $path): ?string
-    {
-        try {
-            $process = new Process([$this->binary(), '-s3', '-ContentIdentifier', '-MakerNotes:ContentIdentifier', '-MediaGroupUUID', $path]);
-            $process->setTimeout(30);
-            $process->run();
-
-            if (! $process->isSuccessful()) {
-                return null;
-            }
-
-            foreach (preg_split('/\r?\n/', trim($process->getOutput())) ?: [] as $line) {
-                $line = trim($line);
-                if ($line !== '' && $line !== '-') {
-                    return $line;
-                }
-            }
-
-            return null;
-        } catch (Throwable) {
-            return null;
         }
     }
 

@@ -6,7 +6,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * The opaque sealed manifest for a shared password-Tresor. One row per vault;
@@ -22,9 +21,4 @@ class SharedVaultStore extends Model
     protected $primaryKey = 'vault_id';
 
     protected $keyType = 'string';
-
-    public function vault(): BelongsTo
-    {
-        return $this->belongsTo(SharedVault::class, 'vault_id');
-    }
 }

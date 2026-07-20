@@ -103,7 +103,7 @@
             // the inline autofill suggestion. If opts.signal aborts, we reject.
             if (opts.mediation === 'conditional') {
                 // F3: supersede any prior pending conditional requests (SPA re-registration).
-                for (const [oldId, cp] of conditionalPending) {
+                for (const [_oldId, cp] of conditionalPending) {
                     cp.reject(new DOMException('Superseded by new conditional request', 'AbortError'));
                 }
                 conditionalPending.clear();

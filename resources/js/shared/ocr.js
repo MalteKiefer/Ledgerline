@@ -3,7 +3,7 @@
 // CDN — the whole OCR runs in the browser, keeping the ZK boundary intact.
 let _ocrWorker = null, _ocrInit = null;
 
-export async function ocrWorker() {
+async function ocrWorker() {
     if (_ocrWorker) return _ocrWorker;
     if (! _ocrInit) {
         _ocrInit = (async () => {

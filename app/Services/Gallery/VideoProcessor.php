@@ -6,7 +6,6 @@ namespace App\Services\Gallery;
 
 use RuntimeException;
 use Symfony\Component\Process\Process;
-use Throwable;
 
 /**
  * Reads video metadata (ffprobe) and extracts a poster frame (ffmpeg). Binary
@@ -124,46 +123,6 @@ class VideoProcessor
         }
 
         throw new RuntimeException('ffmpeg could not extract a poster frame: '.($error ?? ''));
-    }
-
-    /**
-     * Remux a video to $destPath, copying all streams (no re-encode) and writing
-     * the given container metadata (e.g. creation_time, location, model).
-     *
-     * @param  array<string, string>  $metadata
-     */
-    public function writeMetadata(string $srcPath, string $destPath, array $metadata): void
-    {
-        $args = [$this->ffmpeg(), '-y', '-i', $srcPath, '-map', '0', '-c', 'copy'];
-        foreach ($metadata as $key => $value) {
-            $args[] = '-metadata';
-            $args[] = $key.'='.$value;
-        }
-        $args[] = $destPath;
-
-        $process = new Process($args);
-        $process->setTimeout(600);
-        $process->run();
-
-        if (! $process->isSuccessful() || ! is_file($destPath) || filesize($destPath) === 0) {
-            throw new RuntimeException('ffmpeg could not write video metadata: '.$process->getErrorOutput());
-        }
-    }
-
-    /**
-     * Whether ffmpeg appears to be available.
-     */
-    public function available(): bool
-    {
-        try {
-            $process = new Process([$this->ffmpeg(), '-version']);
-            $process->setTimeout(20);
-            $process->run();
-
-            return $process->isSuccessful();
-        } catch (Throwable) {
-            return false;
-        }
     }
 
     /**

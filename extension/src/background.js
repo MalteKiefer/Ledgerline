@@ -23,11 +23,6 @@ const session = {
 
 async function creds() { return local.get(['serverUrl', 'token']); }
 
-async function getVk() {
-    const { vk } = await session.get('vk');
-    return vk ? fromB64(vk) : null;
-}
-
 // Ensure SECRETS is loaded: fetch the sealed store, decrypt with the session VK.
 async function ensureSecrets() {
     if (SECRETS) return SECRETS;
