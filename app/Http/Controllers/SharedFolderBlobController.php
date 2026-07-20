@@ -69,7 +69,8 @@ class SharedFolderBlobController extends BlobStoreController
         return ['vault_id' => $vault->id, 'owner_id' => (int) $vault->owner_id];
     }
 
-    // Read/usage/reconcile scope: this vault's blobs (any active member ≥ viewer).
+    // Read/raw scope: this vault's blobs (any active member ≥ viewer).
+    // Reconcile requires editor+ (authorizeMutation is called first in the base).
     protected function scopeLedger(Request $request)
     {
         $vault = $this->vault($request, 'view');
@@ -88,8 +89,21 @@ class SharedFolderBlobController extends BlobStoreController
     }
 
     /**
+     * Reconcile lock key: the vault owner id, so all editors of the same folder
+     * share a lock and concurrent reconciles are serialized correctly. Two different
+     * editors would otherwise get different lock keys and race against each other.
+     */
+    protected function reconcileLockId(Request $request): int
+    {
+        // view ability: any active member may reach this; authorizeMutation (called
+        // before reconcileLockId in the base) already confirmed editor+.
+        return (int) $this->vault($request, 'view')->owner_id;
+    }
+
+    /**
      * Owner-attributed usage: the folder owner's personal file bytes PLUS all
      * shared-folder bytes they own, checked against the owner's files quota.
+     * Uses view ability so read-only members (viewers) can call usage().
      */
     protected function usedBytes(int $userId): int
     {
@@ -99,7 +113,10 @@ class SharedFolderBlobController extends BlobStoreController
 
     protected function usedBytesFor(Request $request): int
     {
-        return $this->usedBytes($this->ownerId($request));
+        // Resolve via view (not ownerId/update) so viewers can read the quota.
+        $ownerId = (int) $this->vault($request, 'view')->owner_id;
+
+        return $this->usedBytes($ownerId);
     }
 
     protected function quotaBytes(): int

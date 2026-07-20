@@ -94,6 +94,18 @@ abstract class BlobStoreController extends Controller
     protected function authorizeMutation(Request $request): void {}
 
     /**
+     * Lock id used to serialize concurrent reconcile calls. The default uses
+     * the acting user id, preserving personal-blob behavior exactly. Subclasses
+     * that attribute blobs to a shared owner (e.g. a vault owner) override this
+     * to return the owner id so all members of the same shared scope share the
+     * same lock key and concurrent reconciles are serialized correctly.
+     */
+    protected function reconcileLockId(Request $request): int
+    {
+        return (int) $request->user()->id;
+    }
+
+    /**
      * Extra key→value pairs to merge into the chunk session cache when a
      * multipart upload is initialised. Subclasses use this to thread context
      * (e.g. vault_id) that is needed at completion time without re-authorising
@@ -144,20 +156,22 @@ abstract class BlobStoreController extends Controller
      */
     public function reconcile(Request $request): JsonResponse
     {
+        $this->authorizeMutation($request);
+
         $data = $request->validate([
             'blobs' => ['present', 'array', 'max:100000'],
             'blobs.*' => ['uuid'],
         ]);
 
-        $uid = (int) $request->user()->id;
+        $lockId = $this->reconcileLockId($request);
         $live = array_flip($data['blobs']);
         $grace = Carbon::now()->subHours((int) config($this->module().'.blob_orphan_grace_hours', 24));
         $disk = $this->disk();
         $prefix = $this->module();
 
-        // Serialize against the user's uploads so a blob registered mid-reconcile
-        // isn't judged against a stale live set.
-        $this->withUserLock($uid, function () use ($request, $live, $grace, $disk, $prefix): void {
+        // Serialize against the ledger scope's lock so concurrent reconciles from
+        // different members of the same shared scope don't race against each other.
+        $this->withUserLock($lockId, function () use ($request, $live, $grace, $disk, $prefix): void {
             (clone $this->scopeLedger($request))
                 ->where('created_at', '<', $grace)
                 ->orderBy('blob')

@@ -131,4 +131,59 @@ class SharedFolderBlobTest extends TestCase
         $this->assertNotNull(SharedFolderBlob::find($live));
         $this->assertNull(SharedFolderBlob::find($orphan));
     }
+
+    public function test_viewer_cannot_reconcile(): void
+    {
+        $owner = User::factory()->create();
+        $viewer = User::factory()->create();
+        $vault = $this->folderVaultWith($owner, $viewer, 'viewer');
+
+        // Reconcile is destructive (editor+); viewer gets 404 (denyAsNotFound).
+        $this->actingAs($viewer)
+            ->postJson(route('vaults.blobs.reconcile', $vault), ['blobs' => []])
+            ->assertNotFound();
+    }
+
+    public function test_viewer_can_read_usage(): void
+    {
+        $owner = User::factory()->create();
+        $viewer = User::factory()->create();
+        $vault = $this->folderVaultWith($owner, $viewer, 'viewer');
+
+        // Usage is a read-only quota view; viewer must be allowed.
+        $response = $this->actingAs($viewer)
+            ->getJson(route('vaults.blobs.usage', $vault))
+            ->assertOk();
+
+        $this->assertArrayHasKey('used', $response->json());
+        $this->assertArrayHasKey('quota', $response->json());
+    }
+
+    public function test_editor_can_reconcile(): void
+    {
+        $owner = User::factory()->create();
+        $editor = User::factory()->create();
+        $vault = $this->folderVaultWith($owner, $editor, 'editor');
+        $disk = Storage::disk(config('files.disk'));
+
+        // One aged orphan blob (not referenced by any live set).
+        $orphan = (string) Str::uuid();
+        $disk->put('shared-folders/'.$orphan, 'x');
+        SharedFolderBlob::create([
+            'blob' => $orphan,
+            'vault_id' => $vault->id,
+            'owner_id' => $owner->id,
+            'size' => 10,
+            'created_at' => now()->subDays(3),
+        ]);
+
+        // Editor submits an empty live set → orphan is reaped.
+        $this->actingAs($editor)
+            ->postJson(route('vaults.blobs.reconcile', $vault), ['blobs' => []])
+            ->assertOk()
+            ->assertJsonStructure(['used', 'quota']);
+
+        $this->assertNull(SharedFolderBlob::find($orphan));
+        $disk->assertMissing('shared-folders/'.$orphan);
+    }
 }
