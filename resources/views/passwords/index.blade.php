@@ -790,8 +790,14 @@
                 <option value="generic">{{ __('passwords.fmt_generic') }}</option>
               </select>
             </label>
+            <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.import_target_vault') }}
+              <select x-model="importFolderId" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
+                <template x-for="f in folders" :key="'imp' + f.id"><option :value="f.id" x-text="f.name"></option></template>
+              </select>
+            </label>
+            <p class="mt-1 text-[11px] text-gray-400">{{ __('passwords.import_folder_note') }}</p>
             <div class="mt-4">
-              <input type="file" accept=".json,.csv,text/csv,application/json" @change="importFile($event)" :disabled="importing" class="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:rounded-md file:border-0 file:bg-gray-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white dark:file:bg-gray-100 dark:file:text-gray-900">
+              <input type="file" accept=".json,.csv,text/csv,application/json" @change="importFile($event)" :disabled="importing" class="block w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:rounded-md file:border-0 file:ll-accent file:px-3 file:py-2 file:text-sm file:font-medium">
             </div>
             <p x-show="importing" x-cloak class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ __('passwords.import_running') }}</p>
             <p x-show="importResult && importResult.ok" x-cloak class="mt-3 text-sm text-green-600 dark:text-green-400" x-text="@js(__('passwords.import_done', ['count' => '{n}'])).replace('{n}', importResult ? importResult.count : 0)"></p>
