@@ -65,6 +65,7 @@
         resetConfirmWord: @js(__('passwords.reset_confirm_word')),
         resetDone: @js(__('passwords.reset_done')),
         resetFailed: @js(__('passwords.reset_failed')),
+        resetPartial: @js(__('passwords.reset_partial')),
         defaultVaultName: @js(__('passwords.default_vault_name')),
      })" @keydown.window="_hotkey($event)">
 
