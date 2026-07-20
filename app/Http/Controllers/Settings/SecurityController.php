@@ -26,6 +26,7 @@ class SecurityController extends Controller
         return view('settings.security.edit', [
             'rememberDays' => $s->vault_remember_days ?: 7,
             'idleMinutes' => $s->vault_public_idle_minutes ?: 10,
+            'maxDevices' => $s->max_connected_devices ?: (int) config('devices.max', 3),
         ]);
     }
 
@@ -34,6 +35,7 @@ class SecurityController extends Controller
         $data = $request->validate([
             'vault_remember_days' => ['required', 'integer', 'min:1', 'max:365'],
             'vault_public_idle_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
+            'max_connected_devices' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
         AppSettings::current()->update($data);
