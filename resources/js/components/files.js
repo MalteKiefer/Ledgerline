@@ -366,6 +366,7 @@ export default (config = {}, labels = {}) => ({
     // On 409 the server body contains the current sealed manifest + version;
     // we re-apply the pending mutation and retry once before surfacing an error.
     // mutation = { op: 'upsertFile'|'deleteFile'|'upsertFolder'|'deleteFolder', item }
+    //          | { op: 'deleteFiles', ids: string[], folderIds?: string[] }
     async _saveFolder(vaultId, mutation) {
         const entry = this.sharedFolders.find((sf) => sf.vaultId === vaultId);
         const vkBytes = this._folderKeys && this._folderKeys[vaultId];
@@ -388,10 +389,12 @@ export default (config = {}, labels = {}) => ({
         }
         if (res.status === 409 && mutation) {
             // Server has a newer version — merge and retry once.
+            // Fix 2: use the server manifest's name so a concurrent rename is not overwritten.
             const data = await res.json();
             const serverManifest = await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes);
             let serverFolders = serverManifest.folders || [];
             let serverFiles = serverManifest.files || [];
+            const serverName = serverManifest.name ?? entry.name;
             if (mutation.op === 'upsertFolder') {
                 const idx = serverFolders.findIndex((f) => f.id === mutation.item.id);
                 if (idx >= 0) serverFolders[idx] = mutation.item; else serverFolders.push(mutation.item);
@@ -402,11 +405,17 @@ export default (config = {}, labels = {}) => ({
                 if (idx >= 0) serverFiles[idx] = mutation.item; else serverFiles.push(mutation.item);
             } else if (mutation.op === 'deleteFile') {
                 serverFiles = serverFiles.filter((f) => f.id !== mutation.item.id);
+            } else if (mutation.op === 'deleteFiles') {
+                // Fix 1: plural delete — remove exactly the specified file ids (and folder ids if present).
+                const fileIdSet = new Set(mutation.ids ?? []);
+                const folderIdSet = new Set(mutation.folderIds ?? []);
+                serverFiles = serverFiles.filter((f) => ! fileIdSet.has(f.id));
+                if (folderIdSet.size) serverFolders = serverFolders.filter((f) => ! folderIdSet.has(f.id));
             }
             this.sharedTree = { ...this.sharedTree, [vaultId]: { folders: serverFolders, files: serverFiles } };
             this._folderVersion[vaultId] = data.version;
             const sealed2 = await VaultShareCrypto.sealVaultManifest(
-                { name: entry.name, folders: serverFolders, files: serverFiles },
+                { name: serverName, folders: serverFolders, files: serverFiles },
                 vkBytes,
             );
             const res2 = await fetch('/vaults/' + vaultId + '/store', {
@@ -1154,8 +1163,10 @@ export default (config = {}, labels = {}) => ({
                 const kill = new Set(targets.map((f) => f.id));
                 this._spliceWhere(activeFiles, (f) => kill.has(f.id));
                 this._spliceWhere(activeFolders, (f) => killFolders.has(f.id));
-                // Persist the manifest first, then reclaim blobs + reconcile.
-                this._saveFolder(vaultId, { op: 'deleteFile', item: { id: '__batch__' } })
+                // Fix 1: pass the real deleted ids so 409 re-apply removes exactly the right entries.
+                const deletedFileIds = [...kill];
+                const deletedFolderIds = [...killFolders];
+                this._saveFolder(vaultId, { op: 'deleteFiles', ids: deletedFileIds, folderIds: deletedFolderIds })
                     .catch(() => {});
                 this._sharedFreeBlobs(vaultId, blobs);
                 this._sharedReconcileNow(vaultId).catch(() => {});
@@ -1293,8 +1304,10 @@ export default (config = {}, labels = {}) => ({
             const trashed = (tree?.files ?? []).filter((f) => f.trashed);
             const blobs = [];
             for (const f of trashed) { blobs.push(f.blob); if (f.textRef) blobs.push(f.textRef); if (f.embRef) blobs.push(f.embRef); for (const v of f.versions ?? []) blobs.push(v.blob); }
+            // Fix 1: collect real ids before splicing so 409 re-apply removes exactly these entries.
+            const trashedIds = trashed.map((f) => f.id);
             this._spliceWhere(tree?.files ?? [], (f) => f.trashed);
-            await this._saveFolder(vaultId, { op: 'deleteFile', item: { id: '__batch_trash_empty__' } });
+            await this._saveFolder(vaultId, { op: 'deleteFiles', ids: trashedIds });
             this._sharedFreeBlobs(vaultId, blobs);
             this._sharedReconcileNow(vaultId).catch(() => {});
         } else {
@@ -2431,11 +2444,8 @@ export default (config = {}, labels = {}) => ({
         const vaultId = this.managingFolderVaultId;
         if (! vaultId) return;
         try {
-            await fetch('/vaults/' + vaultId + '/members/' + memberId, {
-                method: 'PATCH',
-                headers: jsonHeaders(),
-                body: JSON.stringify({ role: this._clientToServerRole(newRole) }),
-            });
+            // Fix 3: use apiRequest for a single audited CSRF/header path, consistent with other member ops.
+            await apiRequest('PATCH', '/vaults/' + vaultId + '/members/' + memberId, { role: this._clientToServerRole(newRole) });
             this.managingFolderVaultMembers = this.managingFolderVaultMembers.map((m) =>
                 m.id === memberId ? { ...m, role: this._clientToServerRole(newRole) } : m,
             );
