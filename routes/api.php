@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryStoreController;
@@ -65,6 +66,12 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.upload.abort');
         Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('api.files.raw');
         Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.files.blob.destroy');
+
+        // File / folder public share links: create, update metadata, revoke.
+        // Mirrors web routes files.shares.{store|update|destroy} on the mobile API.
+        Route::post('/files/shares', [FileShareController::class, 'store'])->middleware('throttle:60,1')->name('api.files.shares.store');
+        Route::put('/files/shares/{token}', [FileShareController::class, 'update'])->middleware('throttle:60,1')->name('api.files.shares.update');
+        Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.files.shares.destroy');
 
         // Gallery: sealed index + opaque photo blobs + the stateless transform.
         Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('api.gallery.store.show');
