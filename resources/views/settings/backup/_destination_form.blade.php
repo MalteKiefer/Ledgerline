@@ -1,7 +1,7 @@
 @php
     $d = $destination ?? null;
     $cfg = $d?->config ?? [];
-    $input = 'mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm';
+    $input = 'mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm';
 @endphp
 <form method="POST" action="{{ $action }}"
     x-data="{
@@ -65,7 +65,7 @@
         <div><label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_endpoint') }}</label>
             <input type="text" name="endpoint" value="{{ old('endpoint', $cfg['endpoint'] ?? '') }}" class="{{ $input }}"></div>
         <label class="flex items-center gap-2 pt-6 text-sm text-gray-700 dark:text-gray-300">
-            <input type="checkbox" name="use_path_style" value="1" @checked(old('use_path_style', $cfg['use_path_style'] ?? false)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">
+            <input type="checkbox" name="use_path_style" value="1" @checked(old('use_path_style', $cfg['use_path_style'] ?? false)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
             {{ __('settings.backup_use_path_style') }}</label>
     </div>
     </template>
@@ -112,7 +112,7 @@
     </div>
 
     <div class="flex flex-wrap gap-2">
-        <button type="button" @click="testConn($event)" :disabled="testing" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
+        <button type="button" @click="testConn($event)" :disabled="testing" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent disabled:opacity-50">
             <span x-show="! testing">{{ __('settings.backup_test') }}</span>
             <span x-show="testing" x-cloak>…</span>
         </button>

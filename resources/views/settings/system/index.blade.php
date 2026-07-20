@@ -3,7 +3,7 @@
 
     <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
     {{-- Operational status --}}
-    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6 xl:col-span-2">
+    <div class="ll-card xl:col-span-2">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_status_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_status_desc') }}</p>
         <dl class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -88,7 +88,7 @@
     </div>
 
     {{-- In-app error log --}}
-    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="ll-card">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_errors_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_errors_desc') }}</p>
         @if ($errors->isEmpty())
@@ -110,7 +110,7 @@
                             @unless ($e->resolved_at)
                                 <form method="POST" action="{{ route('settings.system.errors.resolve', $e) }}" class="shrink-0">
                                     @csrf
-                                    <button type="submit" class="inline-flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><x-icon name="check" class="h-3.5 w-3.5" />{{ __('settings.system_error_resolve') }}</button>
+                                    <button type="submit" class="inline-flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:border-accent hover:text-accent"><x-icon name="check" class="h-3.5 w-3.5" />{{ __('settings.system_error_resolve') }}</button>
                                 </form>
                             @endunless
                         </div>
@@ -121,7 +121,7 @@
     </div>
 
     {{-- Append-only security audit log --}}
-    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="ll-card">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_audit_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_audit_desc') }}</p>
         @if ($audit->isEmpty())
@@ -142,7 +142,7 @@
         @endif
     </div>
 
-    <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+    <div class="ll-card">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_cron_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_cron_hint') }}</p>
         <div class="-mx-4 mt-3 overflow-x-auto px-4 sm:mx-0 sm:px-0">

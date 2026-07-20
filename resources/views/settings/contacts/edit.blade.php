@@ -14,7 +14,7 @@
         @csrf
         @method('PUT')
 
-        <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.contacts_birthday') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.contacts_alert_hint') }}</p>
             <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -27,7 +27,7 @@
             </div>
         </div>
 
-        <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6">
+        <div class="ll-card">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.contacts_anniversary') }}</h2>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.contacts_alert_hint') }}</p>
             <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">

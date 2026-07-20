@@ -28,10 +28,10 @@
     @endif
 
     {{-- Destinations --}}
-    <section class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="{ adding: false, editing: null }">
+    <section class="mt-6 ll-card" x-data="{ adding: false, editing: null }">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_destinations_heading') }}</h2>
-            <button type="button" @click="adding = ! adding" class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('settings.backup_add_destination') }}</button>
+            <button type="button" @click="adding = ! adding" class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('settings.backup_add_destination') }}</button>
         </div>
 
         <div x-show="adding" x-cloak class="mt-4 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
@@ -63,7 +63,7 @@
     </section>
 
     {{-- Jobs --}}
-    <section class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6" x-data="{ adding: false, editing: null }">
+    <section class="mt-6 ll-card" x-data="{ adding: false, editing: null }">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_jobs_heading') }}</h2>
             <button type="button" x-show="{{ $destinations->isNotEmpty() ? 'true' : 'false' }}" @click="adding = ! adding" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('settings.backup_add_job') }}</button>
@@ -100,7 +100,7 @@
                                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
                                 }).then(() => window.dispatchEvent(new CustomEvent('backup-ran')))
                                   .finally(() => setTimeout(() => queued = false, 2000))"
-                            class="rounded-md border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
+                            class="rounded-md border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent disabled:opacity-50">
                             <span x-show="! queued">{{ __('settings.backup_run_now') }}</span>
                             <span x-show="queued" x-cloak>{{ __('settings.backup_queued_short') }}</span>
                         </button>
@@ -165,7 +165,7 @@
     </section>
 
     {{-- Recent runs — live-updating (no page reload) --}}
-    <section class="mt-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm sm:p-6"
+    <section class="mt-6 ll-card"
         x-data="backupRuns({ runsUrl: '{{ route('settings.backup.runs') }}', downloadBase: '{{ route('settings.backup.runs.download', ['run' => '__id__']) }}', decryptBase: '{{ route('settings.backup.runs.decrypt', ['run' => '__id__']) }}', verifyBase: '{{ route('settings.backup.runs.verify', ['run' => '__id__']) }}', cancelBase: '{{ route('settings.backup.runs.cancel', ['run' => '__id__']) }}' })">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_runs_heading') }}</h2>
         @error('passphrase')<p class="mt-2 rounded-md bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">{{ $message }}</p>@enderror
@@ -179,9 +179,9 @@
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_decrypt') }}</h3>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ __('settings.backup_decrypt_hint') }}</p>
                     <input type="password" name="passphrase" required autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
-                        class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                        class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <div class="mt-4 flex justify-end gap-2">
-                        <button type="button" @click="decrypt.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.cancel') }}</button>
+                        <button type="button" @click="decrypt.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('common.cancel') }}</button>
                         <button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.backup_decrypt_download') }}</button>
                     </div>
                 </form>
@@ -201,7 +201,7 @@
                         <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ __('settings.backup_verify_step') }}</p>
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_verify_hint') }}</p>
                         <input x-show="restore.run && restore.run.needsPassphrase" type="password" x-model="verifyPass" autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
-                            class="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500">
+                            class="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <button type="button" @click="runVerify()" :disabled="verifyBusy" class="mt-2 inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50">
                             <x-icon name="shield" class="h-4 w-4" />
                             <span x-text="verifyBusy ? '{{ __('settings.backup_verifying') }}' : '{{ __('settings.backup_verify') }}'"></span>
@@ -220,7 +220,7 @@
                     </div>
 
                     <div class="mt-4 flex justify-end">
-                        <button type="button" @click="closeRestore()" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{{ __('common.close') }}</button>
+                        <button type="button" @click="closeRestore()" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('common.close') }}</button>
                     </div>
                 </div>
             </div>

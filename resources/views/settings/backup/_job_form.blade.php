@@ -1,6 +1,6 @@
 @php
     $j = $job ?? null;
-    $input = 'mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-gray-500 focus:ring-gray-500 sm:text-sm';
+    $input = 'mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 shadow-sm focus:border-accent focus:ring-accent sm:text-sm';
 @endphp
 <form method="POST" action="{{ $action }}"
     x-data="{
@@ -48,7 +48,7 @@
                     <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                         <input type="checkbox" name="notify_channels[]" value="{{ $ch }}" @checked(in_array($ch, $sel, true))
                             @if ($ch === 'desktop') @change="if ($event.target.checked && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission()" @endif
-                            class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">
+                            class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
                         {{ $label }}
                     </label>
                 @endforeach
@@ -57,10 +57,10 @@
     </div>
     <div class="flex flex-wrap items-start gap-6">
         <label x-show="isArchive" x-cloak class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input type="checkbox" name="encrypt" value="1" x-model="encrypt" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">
+            <input type="checkbox" name="encrypt" value="1" x-model="encrypt" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
             {{ __('settings.backup_encrypt') }}</label>
         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input type="checkbox" name="enabled" value="1" @checked(old('enabled', $j->enabled ?? true)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-gray-500">
+            <input type="checkbox" name="enabled" value="1" @checked(old('enabled', $j->enabled ?? true)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
             {{ __('settings.backup_enabled') }}</label>
         <div x-show="encrypt && isArchive" x-cloak class="min-w-[16rem]">
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('settings.backup_passphrase') }}</label>
