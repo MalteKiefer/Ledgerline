@@ -87,52 +87,52 @@
           <button type="button" @click="view = 'library'"
               :class="view === 'library' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="photo" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.library') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="photoCount()"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#7066f5"><x-icon name="photo" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.library') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="photoCount()"></span>
           </button>
           <button type="button" @click="view = 'memories'" x-show="memoryCount()" x-cloak
               :class="view === 'memories' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="sparkles" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.memories') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="memoryCount()"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#9e70fa"><x-icon name="sparkles" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.memories') }}</span><span class="text-xs tabular-nums text-gray-400" x-text="memoryCount()"></span>
           </button>
           <button type="button" @click="view = 'favorites'"
               :class="view === 'favorites' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="star" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.favorites') }}</span><span x-show="favoriteCount()" class="text-xs tabular-nums text-gray-400" x-text="favoriteCount()"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#d9a441"><x-icon name="star" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.favorites') }}</span><span x-show="favoriteCount()" class="text-xs tabular-nums text-gray-400" x-text="favoriteCount()"></span>
           </button>
           <button type="button" @click="view = 'map'"
               :class="view === 'map' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="map-pin" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.map') }}</span><span x-show="mapPhotos.length" class="text-xs tabular-nums text-gray-400" x-text="mapPhotos.length"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3fae9f"><x-icon name="map-pin" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.map') }}</span><span x-show="mapPhotos.length" class="text-xs tabular-nums text-gray-400" x-text="mapPhotos.length"></span>
           </button>
           <button type="button" @click="view = 'albums'"
               :class="view === 'albums' || view === 'album' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="folder" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.albums') }}</span><span x-show="albums.length" class="text-xs tabular-nums text-gray-400" x-text="albums.length"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3b9fd6"><x-icon name="folder" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.albums') }}</span><span x-show="albums.length" class="text-xs tabular-nums text-gray-400" x-text="albums.length"></span>
           </button>
           <button type="button" @click="view = 'people'"
               :class="view === 'people' || view === 'person' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="user" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.people') }}</span><span x-show="people.length" class="text-xs tabular-nums text-gray-400" x-text="people.length"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#59ad6b"><x-icon name="user" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.people') }}</span><span x-show="people.length" class="text-xs tabular-nums text-gray-400" x-text="people.length"></span>
           </button>
           <button type="button" @click="view = 'duplicates'"
               :class="view === 'duplicates' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="square-2-stack" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.duplicates') }}</span><span x-show="dupTotal" class="text-xs tabular-nums text-gray-400" x-text="dupTotal"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#e2915a"><x-icon name="square-2-stack" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.duplicates') }}</span><span x-show="dupTotal" class="text-xs tabular-nums text-gray-400" x-text="dupTotal"></span>
           </button>
           <button type="button" @click="view = 'jobs'"
               :class="view === 'jobs' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <span :class="_pipelineRunning ? 'animate-spin' : ''"><x-icon name="arrow-path" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.jobs') }}</span><span x-show="failedCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-xs font-medium tabular-nums text-amber-700 dark:text-amber-300" x-text="failedCount"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#6b7280"><span :class="_pipelineRunning ? 'animate-spin' : ''"><x-icon name="arrow-path" class="h-4 w-4" /></span></span><span class="flex-1 text-left">{{ __('gallery.jobs') }}</span><span x-show="failedCount" class="rounded-full bg-amber-100 dark:bg-amber-900/40 px-1.5 text-xs font-medium tabular-nums text-amber-700 dark:text-amber-300" x-text="failedCount"></span>
           </button>
           <button type="button" @click="view = 'archive'"
               :class="view === 'archive' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="archive-box" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.archive') }}</span><span x-show="archiveCount()" class="text-xs tabular-nums text-gray-400" x-text="archiveCount()"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#8b8f9a"><x-icon name="archive-box" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.archive') }}</span><span x-show="archiveCount()" class="text-xs tabular-nums text-gray-400" x-text="archiveCount()"></span>
           </button>
           <button type="button" @click="view = 'trash'"
               :class="view === 'trash' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <x-icon name="trash" class="h-4 w-4" /><span class="flex-1 text-left">{{ __('gallery.trash') }}</span><span x-show="trashCount()" class="text-xs tabular-nums text-gray-400" x-text="trashCount()"></span>
+            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#6b7280"><x-icon name="trash" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.trash') }}</span><span x-show="trashCount()" class="text-xs tabular-nums text-gray-400" x-text="trashCount()"></span>
           </button>
         </nav>
       </aside>
