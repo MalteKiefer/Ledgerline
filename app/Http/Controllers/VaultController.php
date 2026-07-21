@@ -55,7 +55,7 @@ class VaultController extends Controller
         }
 
         $vault = new Vault($this->rules($request, withRecovery: true));
-        $vault->user_id = (int) $request->user()->id; // stamped server-side, unfakeable
+        $vault->user_id = (int) $this->requireUser($request)->id; // stamped server-side, unfakeable
         $vault->save();
 
         return response()->json(['configured' => true], 201);

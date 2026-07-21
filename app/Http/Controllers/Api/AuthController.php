@@ -55,7 +55,7 @@ class AuthController extends Controller
     /** The authenticated user + storage usage (bearer). */
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->requireUser($request);
 
         return response()->json([
             'user' => $this->userPayload($user),
@@ -71,7 +71,7 @@ class AuthController extends Controller
     /** Whether the presented token has been flagged for a remote wipe. */
     private function wipeRequested(Request $request): bool
     {
-        $token = $request->user()->currentAccessToken();
+        $token = $this->requireUser($request)->currentAccessToken();
 
         return $token instanceof PersonalAccessToken && $token->wipe_requested_at !== null;
     }
@@ -88,7 +88,7 @@ class AuthController extends Controller
             'detail' => ['nullable', 'string', 'max:160'],
         ]);
 
-        $token = $request->user()->currentAccessToken();
+        $token = $this->requireUser($request)->currentAccessToken();
         if (! $token instanceof PersonalAccessToken) {
             return response()->json(['wipe' => false]);
         }
@@ -104,7 +104,7 @@ class AuthController extends Controller
     /** Revoke the presented bearer (log the device out). */
     public function destroy(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        $this->requireUser($request)->currentAccessToken()->delete();
 
         return response()->json(['ok' => true]);
     }

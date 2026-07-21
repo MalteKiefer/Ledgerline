@@ -17,9 +17,10 @@ class ProfileController extends Controller
 {
     public function __invoke(Request $request): View
     {
+        $user = $this->requireUser($request);
         $currentId = $request->session()->getId();
         $sessions = config('session.driver') === 'database'
-            ? DB::table('sessions')->where('user_id', $request->user()->id)
+            ? DB::table('sessions')->where('user_id', $user->id)
                 ->orderByDesc('last_activity')->get()
                 ->map(fn ($s): array => [
                     'id' => $s->id,
@@ -32,7 +33,7 @@ class ProfileController extends Controller
 
         // Paired devices are loaded + kept live client-side (GET /devices).
         return view('profile', [
-            'user' => $request->user(),
+            'user' => $user,
             'sessions' => $sessions,
             'deviceMax' => (int) config('devices.max', 3),
         ]);

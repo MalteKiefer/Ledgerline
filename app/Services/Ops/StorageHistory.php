@@ -63,7 +63,9 @@ class StorageHistory
         $first = $rows->first();
         $last = $rows->last();
         $deltaBytes = ($first && $last) ? ($last->total_bytes - $first->total_bytes) : 0;
-        $deltaDays = ($first && $last) ? (int) $first->captured_on->diffInDays($last->captured_on) : 0;
+        $deltaDays = ($first?->captured_on !== null && $last?->captured_on !== null)
+            ? (int) $first->captured_on->diffInDays($last->captured_on)
+            : 0;
 
         return [
             'points' => $points,

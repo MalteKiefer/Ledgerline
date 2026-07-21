@@ -7,6 +7,7 @@ namespace App\Http\Requests\Vault;
 use App\Enums\VaultRole;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -23,10 +24,16 @@ class CreateMemberRequest extends FormRequest
 {
     public function authorize(): bool
     {
+        $user = $this->user();
+
+        if ($user === null) {
+            return false;
+        }
+
         /** @var SharedVault $vault */
         $vault = $this->route('vault');
 
-        return $this->user()->can('manage', $vault);
+        return $user->can('manage', $vault);
     }
 
     /** @return array<string, mixed> */
@@ -66,8 +73,11 @@ class CreateMemberRequest extends FormRequest
             /** @var SharedVault $vault */
             $vault = $this->route('vault');
 
+            $user = $this->user();
+            abort_unless($user instanceof User, 403);
+
             $actorMembership = SharedVaultMember::where('vault_id', $vault->id)
-                ->where('user_id', $this->user()->id)
+                ->where('user_id', $user->id)
                 ->where('status', 'active')
                 ->first();
 

@@ -43,7 +43,7 @@ class FileController extends BlobStoreController
      *  only the per-user version cap + initial usage are handed to the view. */
     public function index(Request $request): View
     {
-        $uid = (int) $request->user()->id;
+        $uid = (int) $this->requireUser($request)->id;
 
         return view('files.index', [
             'maxVersions' => min(200, max(1, (int) UserSetting::for($uid)->file_max_versions)),

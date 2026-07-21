@@ -46,6 +46,8 @@ class DevicePairing extends Model
 
     public function isExpired(): bool
     {
-        return $this->expires_at->isPast();
+        // Fail-safe: a missing expiry is treated as already expired so a pairing
+        // session without a deadline can never be collected.
+        return $this->expires_at?->isPast() ?? true;
     }
 }

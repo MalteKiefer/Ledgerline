@@ -29,9 +29,11 @@ class PaperlessController extends Controller
 
     public function edit(Request $request): View
     {
+        $user = $this->requireUser($request);
+
         return view('settings.paperless.edit', [
-            'settings' => UserSetting::for($request->user()->id),
-            'counts' => $this->counts($request->user()->id),
+            'settings' => UserSetting::for($user->id),
+            'counts' => $this->counts($user->id),
         ]);
     }
 
@@ -46,7 +48,8 @@ class PaperlessController extends Controller
             'paperless_token' => __('settings.paperless_token'),
         ]);
 
-        $settings = UserSetting::for($request->user()->id);
+        $user = $this->requireUser($request);
+        $settings = UserSetting::for($user->id);
         // An empty token field keeps the stored one (so it need not be retyped).
         $validated = KeepBlankSecrets::preserve($validated, ['paperless_token']);
         $validated['paperless_enabled'] = $request->boolean('paperless_enabled');
@@ -58,7 +61,8 @@ class PaperlessController extends Controller
     /** Test the connection using the posted URL + token (falling back to stored). */
     public function test(Request $request): JsonResponse
     {
-        $settings = UserSetting::for($request->user()->id);
+        $user = $this->requireUser($request);
+        $settings = UserSetting::for($user->id);
         $url = trim((string) ($request->input('paperless_url') ?: $settings->paperless_url));
         $token = trim((string) ($request->input('paperless_token') ?: $settings->paperless_token));
 
@@ -94,13 +98,14 @@ class PaperlessController extends Controller
     /** Refresh the current user's cached terms now. */
     public function sync(Request $request, PaperlessSync $sync): JsonResponse
     {
+        $user = $this->requireUser($request);
         try {
-            $sync->run($request->user()->id);
+            $sync->run($user->id);
         } catch (\Throwable $e) {
             return response()->json(['ok' => false, 'detail' => $e->getMessage()]);
         }
 
-        return response()->json(['ok' => true, 'counts' => $this->counts($request->user()->id)]);
+        return response()->json(['ok' => true, 'counts' => $this->counts($user->id)]);
     }
 
     /** @return array{tag:int, document_type:int, correspondent:int} */

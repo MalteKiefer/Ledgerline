@@ -26,7 +26,8 @@ class ContactsController extends Controller
 
     public function edit(Request $request): View
     {
-        $s = UserSetting::for($request->user()->id);
+        $user = $this->requireUser($request);
+        $s = UserSetting::for($user->id);
 
         return view('settings.contacts.edit', [
             'channels' => self::CHANNELS,
@@ -44,7 +45,8 @@ class ContactsController extends Controller
             'anniversary.*' => [Rule::in(self::CHANNELS)],
         ]);
 
-        UserSetting::for($request->user()->id)->update([
+        $user = $this->requireUser($request);
+        UserSetting::for($user->id)->update([
             'contact_birthday_channels' => array_values(array_unique($data['birthday'] ?? [])),
             'contact_anniversary_channels' => array_values(array_unique($data['anniversary'] ?? [])),
         ]);

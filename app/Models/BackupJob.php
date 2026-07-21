@@ -109,7 +109,7 @@ class BackupJob extends Model
             'lastStatus' => $last?->status,
             'lastRun' => $last?->started_at,
             'lastDuration' => $lastOk?->durationSeconds(),
-            'avgDuration' => $durations->isNotEmpty() ? (int) round($durations->avg()) : null,
+            'avgDuration' => $durations->isNotEmpty() ? (int) round($durations->avg() ?? 0) : null,
             'lastBytes' => $lastOk?->bytes,
             'totalBytes' => (int) $ok->sum('bytes'),
             'nextRun' => $nextRun,

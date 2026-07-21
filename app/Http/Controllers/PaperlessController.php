@@ -22,7 +22,8 @@ class PaperlessController extends Controller
     /** Cached tags / document types / correspondents for the modal's pickers. */
     public function terms(Request $request): JsonResponse
     {
-        $settings = UserSetting::for($request->user()->id);
+        $user = $this->requireUser($request);
+        $settings = UserSetting::for($user->id);
         $enabled = (bool) $settings->paperless_enabled && PaperlessClient::fromUserSetting($settings) !== null;
 
         // Auto-scoped to the current user by OwnsUserData.
@@ -49,7 +50,8 @@ class PaperlessController extends Controller
             'name' => ['required', 'string', 'max:255'],
         ]);
 
-        $client = PaperlessClient::forUser($request->user()->id);
+        $user = $this->requireUser($request);
+        $client = PaperlessClient::forUser($user->id);
         if ($client === null) {
             return response()->json(['ok' => false, 'detail' => 'Paperless is not configured.'], 422);
         }
@@ -63,7 +65,7 @@ class PaperlessController extends Controller
         }
 
         PaperlessTerm::updateOrCreate(
-            ['user_id' => $request->user()->id, 'kind' => $data['kind'], 'paperless_id' => $term['paperless_id']],
+            ['user_id' => $user->id, 'kind' => $data['kind'], 'paperless_id' => $term['paperless_id']],
             ['name' => $term['name'], 'color' => $term['color']],
         );
 
@@ -83,7 +85,8 @@ class PaperlessController extends Controller
             'tags.*' => ['integer'],
         ]);
 
-        $client = PaperlessClient::forUser($request->user()->id);
+        $user = $this->requireUser($request);
+        $client = PaperlessClient::forUser($user->id);
         if ($client === null) {
             return response()->json(['ok' => false, 'detail' => 'Paperless is not configured.'], 422);
         }

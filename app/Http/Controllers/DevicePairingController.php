@@ -23,7 +23,8 @@ class DevicePairingController extends Controller
     /** Begin a pairing; return its id, a QR (the app scans it) and the expiry. */
     public function store(Request $request, Pairing $pairing): JsonResponse
     {
-        ['pairing' => $row, 'code' => $code] = $pairing->create($request->user());
+        $user = $this->requireUser($request);
+        ['pairing' => $row, 'code' => $code] = $pairing->create($user);
 
         // The QR carries only the short-lived one-time code plus this server's
         // base URL, as a deep link the app handles. The real token is never here.
@@ -33,7 +34,7 @@ class DevicePairingController extends Controller
         return response()->json([
             'id' => $row->id,
             'qr' => $qr,
-            'expires_at' => $row->expires_at->toIso8601String(),
+            'expires_at' => $row->expires_at?->toIso8601String(),
         ]);
     }
 
@@ -45,12 +46,13 @@ class DevicePairingController extends Controller
      */
     public function storeCli(Request $request, Pairing $pairing): JsonResponse
     {
-        ['pairing' => $row, 'code' => $code] = $pairing->create($request->user(), Pairing::CLI_TTL_SECONDS);
+        $user = $this->requireUser($request);
+        ['pairing' => $row, 'code' => $code] = $pairing->create($user, Pairing::CLI_TTL_SECONDS);
 
         return response()->json([
             'id' => $row->id,
             'code' => $code,
-            'expires_at' => $row->expires_at->toIso8601String(),
+            'expires_at' => $row->expires_at?->toIso8601String(),
         ]);
     }
 
@@ -93,8 +95,9 @@ class DevicePairingController extends Controller
         // The token making THIS request (so a client can refuse to revoke/wipe
         // itself). Null for session-auth callers (web). Resolved once, then
         // captured into the map closure (a bare closure would not see $request).
-        $currentKey = $request->user()->currentAccessToken()?->getKey();
-        $devices = $request->user()->tokens()
+        $user = $this->requireUser($request);
+        $currentKey = $user->currentAccessToken()?->getKey();
+        $devices = $user->tokens()
             ->orderByDesc('created_at')->get()
             ->map(function ($t) use ($currentKey): array {
                 // Custom (non-Sanctum) columns come back as strings; parse the
@@ -126,7 +129,7 @@ class DevicePairingController extends Controller
     /** Revoke a paired device (delete its Sanctum token). Owner-scoped. */
     public function revokeDevice(Request $request, string $tokenId): JsonResponse
     {
-        $request->user()->tokens()->whereKey($tokenId)->delete();
+        $this->requireUser($request)->tokens()->whereKey($tokenId)->delete();
 
         AuditLog::record('device.revoked', null, ['token_id' => $tokenId]);
 
@@ -140,7 +143,7 @@ class DevicePairingController extends Controller
      */
     public function wipeDevice(Request $request, string $tokenId): JsonResponse
     {
-        $request->user()->tokens()->whereKey($tokenId)->update(['wipe_requested_at' => now()]);
+        $this->requireUser($request)->tokens()->whereKey($tokenId)->update(['wipe_requested_at' => now()]);
 
         AuditLog::record('device.wipe_requested', null, ['token_id' => $tokenId]);
 
@@ -150,6 +153,6 @@ class DevicePairingController extends Controller
     /** A pairing belongs to exactly one user; anyone else gets a 404 (not a 403 — no existence leak). */
     private function authorizeOwner(Request $request, DevicePairing $devicePairing): void
     {
-        abort_if((int) $devicePairing->user_id !== (int) $request->user()->id, 404);
+        abort_if((int) $devicePairing->user_id !== (int) $this->requireUser($request)->id, 404);
     }
 }

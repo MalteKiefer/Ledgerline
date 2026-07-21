@@ -16,7 +16,7 @@ class NotificationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $userId = $request->user()->id;
+        $userId = $this->requireUser($request)->id;
 
         // Cheap change-signature from aggregates: newest id, unread count and the
         // latest change time (read_at bumps updated_at). If it matches the
@@ -52,7 +52,7 @@ class NotificationController extends Controller
 
     public function markRead(Request $request, AppNotification $notification): JsonResponse
     {
-        abort_unless($notification->user_id === $request->user()->id, 403);
+        abort_unless($notification->user_id === $this->requireUser($request)->id, 403);
         $notification->update(['read_at' => now()]);
 
         return response()->json(['ok' => true]);
@@ -60,7 +60,7 @@ class NotificationController extends Controller
 
     public function markAllRead(Request $request): JsonResponse
     {
-        AppNotification::where('user_id', $request->user()->id)
+        AppNotification::where('user_id', $this->requireUser($request)->id)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 
