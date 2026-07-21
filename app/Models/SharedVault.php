@@ -59,7 +59,11 @@ class SharedVault extends Model
         return $this->hasMany(SharedVaultMember::class, 'vault_id');
     }
 
-    /** The sealed manifest store for this vault (one-to-one). */
+    /**
+     * The sealed manifest store for this vault (one-to-one).
+     *
+     * @return HasOne<SharedVaultStore, $this>
+     */
     public function store(): HasOne
     {
         return $this->hasOne(SharedVaultStore::class, 'vault_id');

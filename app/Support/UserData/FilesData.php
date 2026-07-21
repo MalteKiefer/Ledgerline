@@ -24,6 +24,9 @@ final class FilesData implements UserDataContributor
         return 'files';
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function export(User $user): array
     {
         $blobs = FileBlob::query()

@@ -20,6 +20,9 @@ class SettingsData implements UserDataContributor
         return 'settings';
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function export(User $user): array
     {
         $setting = UserSetting::withoutGlobalScopes()

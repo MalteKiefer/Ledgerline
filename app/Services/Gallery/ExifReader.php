@@ -62,6 +62,7 @@ class ExifReader
         ];
     }
 
+    /** @param  array<string, mixed>  $tags */
     private function takenAt(array $tags): ?Carbon
     {
         $value = $this->first($tags, [
@@ -85,6 +86,7 @@ class ExifReader
         return null;
     }
 
+    /** @param  array<string, mixed>  $tags */
     private function camera(array $tags): ?string
     {
         $make = trim((string) ($this->first($tags, ['Make', 'EXIF:Make']) ?? ''));
@@ -97,6 +99,8 @@ class ExifReader
     /**
      * Apple's Live Photo pairing key: a MakerNote tag on the still and a
      * QuickTime tag on the movie. Used by the pairing job.
+     *
+     * @param  array<string, mixed>  $tags
      */
     private function contentId(array $tags): ?string
     {

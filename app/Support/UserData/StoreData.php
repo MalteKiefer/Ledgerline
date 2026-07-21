@@ -21,6 +21,9 @@ final class StoreData implements UserDataContributor
         return 'store';
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function export(User $user): array
     {
         return [

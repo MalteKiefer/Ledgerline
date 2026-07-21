@@ -83,7 +83,11 @@ class VerifyLatestBackup extends Command
         return null;
     }
 
-    /** Globally enabled notification channels. */
+    /**
+     * Globally enabled notification channels.
+     *
+     * @return list<string>
+     */
     private function channels(): array
     {
         $s = AppSettings::current();

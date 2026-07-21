@@ -17,9 +17,12 @@ use Illuminate\Http\Request;
  * BLOBS at "files/{blob}" plus the ownership ledger (file_blobs) for quota +
  * access control — all of which lives in the shared BlobStoreController. It
  * cannot read a blob's name, contents, or which manifest row references it.
+ *
+ * @extends BlobStoreController<FileBlob>
  */
 class FileController extends BlobStoreController
 {
+    /** @return class-string<FileBlob> */
     protected function blobModel(): string
     {
         return FileBlob::class;

@@ -31,6 +31,8 @@ class Pairing
      * Create a fresh pairing for the (web-authenticated) user; returns the row +
      * the raw code. The lifetime defaults to the app's QR window but callers may
      * pass a shorter one (e.g. the copy/paste CLI flow).
+     *
+     * @return array{pairing: DevicePairing, code: string}
      */
     public function create(User $user, ?int $ttlSeconds = null): array
     {
@@ -81,6 +83,8 @@ class Pairing
     /**
      * App polls with the code. Returns ['status' => 'pending'] until approved, then
      * mints + returns the Sanctum token EXACTLY ONCE and consumes the pairing.
+     *
+     * @return array{status: string, token?: string, user?: User}
      */
     public function collect(string $code, ?string $ip = null): array
     {

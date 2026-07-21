@@ -30,6 +30,9 @@ final class GalleryData implements UserDataContributor
         return 'gallery';
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function export(User $user): array
     {
         $blobs = GalleryBlob::query()

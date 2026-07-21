@@ -37,6 +37,7 @@ class ErrorRecorder
         TokenMismatchException::class,
     ];
 
+    /** @param  array<string, mixed>  $context */
     public function record(Throwable $e, array $context = []): void
     {
         if (self::$recording || ! $this->shouldRecord($e)) {
@@ -69,6 +70,7 @@ class ErrorRecorder
         return true;
     }
 
+    /** @param  array<string, mixed>  $context */
     private function store(Throwable $e, array $context): void
     {
         $message = $this->redact($e->getMessage());
@@ -111,7 +113,11 @@ class ErrorRecorder
         ]);
     }
 
-    /** Non-sensitive request context, when recording inside an HTTP request. */
+    /**
+     * Non-sensitive request context, when recording inside an HTTP request.
+     *
+     * @return array<string, mixed>
+     */
     private function requestContext(): array
     {
         if (! app()->bound('request') || app()->runningInConsole()) {

@@ -135,7 +135,11 @@ class PaperlessClient
         throw new RuntimeException("Creating {$kind} failed: HTTP ".$res->status().'.');
     }
 
-    /** Find a term by exact (case-insensitive) name, or null. */
+    /**
+     * Find a term by exact (case-insensitive) name, or null.
+     *
+     * @return array{paperless_id:int, name:string, color:?string}|null
+     */
     private function findByName(string $endpoint, string $name): ?array
     {
         $res = $this->http()->get("/api/{$endpoint}/", ['name__iexact' => $name]);
@@ -151,7 +155,10 @@ class PaperlessClient
         return null;
     }
 
-    /** @return array{paperless_id:int, name:string, color:?string} */
+    /**
+     * @param  array<string, mixed>  $r
+     * @return array{paperless_id:int, name:string, color:?string}
+     */
     private function shape(array $r, string $fallbackName): array
     {
         return [

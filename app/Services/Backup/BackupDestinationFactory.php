@@ -88,6 +88,9 @@ class BackupDestinationFactory
         $fs->createDirectory('');
     }
 
+    /**
+     * @param  array{region?: string, key?: string, secret?: string, endpoint?: string, use_path_style?: bool, bucket?: string, path?: string}  $c
+     */
     private function s3(array $c): AwsS3V3Adapter
     {
         $args = [
@@ -108,6 +111,9 @@ class BackupDestinationFactory
         return new AwsS3V3Adapter(new S3Client($args), $c['bucket'] ?? '', trim((string) ($c['path'] ?? ''), '/'));
     }
 
+    /**
+     * @param  array{path?: string, host_fingerprint?: string, host?: string, username?: string, password?: string, private_key?: string, port?: int|string}  $c
+     */
     private function sftp(array $c): SftpAdapter
     {
         // Root defaults to the login directory (empty), NOT '/': on many SFTP
@@ -135,6 +141,9 @@ class BackupDestinationFactory
         );
     }
 
+    /**
+     * @param  array{base_uri?: string, username?: string, password?: string, path?: string}  $c
+     */
     private function webdav(array $c): WebDAVAdapter
     {
         $this->assertHostAllowed((string) (parse_url((string) ($c['base_uri'] ?? ''), PHP_URL_HOST) ?: ''));
