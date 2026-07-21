@@ -54,10 +54,11 @@ class StorageHistory
             ->orderBy('captured_on')
             ->get();
 
+        /** @var list<array{date: string, total: int}> $points */
         $points = $rows->map(fn (StorageSnapshot $s): array => [
-            'date' => $s->captured_on->toDateString(),
+            'date' => $s->captured_on?->toDateString() ?? '',
             'total' => $s->total_bytes,
-        ])->all();
+        ])->values()->all();
 
         $first = $rows->first();
         $last = $rows->last();

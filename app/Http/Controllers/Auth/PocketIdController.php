@@ -216,7 +216,7 @@ class PocketIdController extends Controller
 
         $actorId = Auth::id();
         Auth::logout();
-        AuditLog::record('auth.logout', null, [], $actorId);
+        AuditLog::record('auth.logout', null, [], $actorId !== null ? (int) $actorId : null);
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 

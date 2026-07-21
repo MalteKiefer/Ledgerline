@@ -276,7 +276,7 @@ class SharedVaultController extends Controller
             return response()->json(['error' => 'members contains unknown or inactive user'], 422);
         }
 
-        return response()->json(['version' => $result['version']]);
+        return response()->json(['version' => $result['version'] ?? 0]);
     }
 
     /**

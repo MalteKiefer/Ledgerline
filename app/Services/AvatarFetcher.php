@@ -87,8 +87,8 @@ class AvatarFetcher
         $allowedHost = parse_url((string) config('services.pocketid.base_url'), PHP_URL_HOST);
 
         return in_array($scheme, ['http', 'https'], true)
-            && $host !== null
-            && $allowedHost !== null
+            && is_string($host)
+            && is_string($allowedHost)
             && strcasecmp($host, $allowedHost) === 0;
     }
 }

@@ -260,6 +260,12 @@ class BackupController extends Controller
             abort(404);
         }
         $out = fopen($enc, 'w');
+        if ($out === false) {
+            fclose($stream);
+            @unlink($enc);
+            @unlink($dec);
+            throw new \RuntimeException("Cannot open staging file for backup decryption: {$enc}.");
+        }
         stream_copy_to_stream($stream, $out);
         fclose($out);
         fclose($stream);

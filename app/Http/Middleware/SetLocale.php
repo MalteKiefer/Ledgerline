@@ -19,7 +19,7 @@ class SetLocale
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $supported = array_keys(config('locales.languages'));
+        $supported = array_map('strval', array_keys(config('locales.languages')));
 
         $browser = $this->fromBrowser($request, $supported);
         $locale = $request->user()?->locale

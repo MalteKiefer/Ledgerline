@@ -47,7 +47,7 @@ class User extends Authenticatable
     /** Whether the user belongs to the given OIDC group. */
     public function inGroup(string $group): bool
     {
-        return in_array($group, $this->groups ?? [], true);
+        return in_array($group, (array) ($this->groups ?? []), true);
     }
 
     /**

@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
  * sealed manifest and blob key material are all client-encrypted — this model
  * only carries the ciphertext and the coarse access controls.
  *
+ * @property int $user_id
  * @property list<string> $blob_refs
  * @property bool $allow_download
  * @property Carbon|null $expires_at

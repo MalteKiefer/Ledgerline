@@ -47,9 +47,11 @@ class SharedFolderBlobController extends BlobStoreController
         // auto-bind). A missing vault is treated as a policy denial — 404.
         $vault = $vaultId instanceof SharedVault
             ? $vaultId
-            : SharedVault::find($vaultId);
+            : SharedVault::find(is_string($vaultId) || is_int($vaultId) ? $vaultId : null);
 
-        abort_if($vault === null, 404);
+        if ($vault === null) {
+            abort(404);
+        }
         $this->authorize($ability, $vault); // denyAsNotFound → 404 for non-members
 
         return $vault;

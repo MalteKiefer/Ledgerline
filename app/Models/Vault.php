@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Auth;
  * A user's zero-knowledge encryption vault row. Stores only opaque ciphertext
  * and key-derivation parameters; never the passphrase or the vault key. One row
  * per user (user_id is stamped server-side, never mass-assigned).
+ *
+ * @property int $user_id
  */
 #[Fillable([
     'salt',
