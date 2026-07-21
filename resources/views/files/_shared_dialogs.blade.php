@@ -191,6 +191,21 @@
                                 </template>
                             </div>
 
+                            {{-- Owner-only: convert this shared folder back to a private folder (dissolves the vault). --}}
+                            <template x-if="sharedFolders.find(f => f.vaultId === unifiedShare.vaultId)?.owned">
+                                <div class="pt-2 border-t border-gray-100 dark:border-gray-800">
+                                    <button type="button"
+                                        @click="convertSharedToPersonal(unifiedShare.vaultId); closeUnifiedShare()"
+                                        class="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">
+                                        <x-icon name="lock-closed" class="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                                        <span class="min-w-0 flex-1 text-left">
+                                            <span class="block">{{ __('files.folder_to_private') }}</span>
+                                            <span class="block text-xs text-gray-400 dark:text-gray-500">{{ __('files.folder_to_private_hint') }}</span>
+                                        </span>
+                                    </button>
+                                </div>
+                            </template>
+
                             {{-- Footer: delete shared folder (manage only) + close --}}
                             <div class="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
                                 <button type="button"

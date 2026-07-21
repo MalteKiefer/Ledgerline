@@ -367,6 +367,7 @@ export default (config = {}, labels = {}) => ({
                         vaultId: m.vault_id,
                         name: manifest.name || '',
                         role: this._serverToClientRole(m.role),
+                        owned: m.owner === true, // caller is the vault owner (drives owner-only convert-to-private)
                         version: store.version || 0,
                     });
                 } catch (e) {
@@ -2453,6 +2454,63 @@ export default (config = {}, labels = {}) => ({
         this._freeBlobs(oldBlobs); // existing personal blob-free queue
 
         return vaultId;
+    },
+
+    // Reverse of convertFolderToShared: turn a shared folder the user OWNS back
+    // into a private folder. Pull each file's ciphertext out of the shared vault,
+    // re-wrap its per-file key under the personal VK (bytes unchanged), upload to
+    // the personal store, recreate the subtree under a new personal root folder
+    // (named after the shared folder), then DELETE the shared vault (revoking all
+    // members + freeing its blobs). Client-side only — the server never sees
+    // plaintext or a vault key. Owner-only (UI gates on `owned`). On any failure
+    // before the vault delete, the personal uploads are freed and the vault stays.
+    async convertSharedToPersonal(vaultId) {
+        const sf = this.sharedFolders.find((f) => f.vaultId === vaultId);
+        if (! sf || ! sf.owned) return; // owner-only
+        if (! await this.$store.confirm.ask(labels.toPrivateConfirm || '')) return;
+        const vk = this._folderKeys[vaultId];
+        const tree = this.sharedTree[vaultId];
+        if (! vk || ! tree) return;
+
+        // New personal root folder named after the shared folder; shared root
+        // folders (parent == null) re-parent to it, deeper folders keep their link.
+        const rootId = window.LLStore.newId();
+        const newRoot = { id: rootId, name: sf.name || '', parent: null };
+        const newFolders = (tree.folders || []).map((f) => ({ ...f, parent: f.parent == null ? rootId : f.parent }));
+
+        const uploaded = []; // personal blob ids, for rollback
+        const newFiles = [];
+        try {
+            for (const file of (tree.files || [])) {
+                const rawKey = window.Vault.unwrapContentKeyWith(file.encFileKey, vk); // unwrap under VK_folder
+                const encFileKey = window.Vault.sealContentKeyWith(rawKey, window.Vault.vk); // re-wrap under personal VK
+                const cipher = await fetchBlobBuffer('/vaults/' + vaultId + '/blobs/raw/' + file.blob); // shared ciphertext (unchanged)
+                const form = new FormData();
+                form.append('file', new Blob([cipher], { type: 'application/octet-stream' }), 'blob');
+                const up = await apiRequest('POST', config.uploadUrl, form);
+                uploaded.push(up.id);
+                newFiles.push({ ...file, blob: up.id, encFileKey, folder: file.folder ?? rootId });
+            }
+        } catch (e) {
+            try { this._freeBlobs(uploaded); } catch (_) {}
+            this.error = (e && e.message) || String(e);
+            return;
+        }
+
+        // Commit to the personal manifest.
+        window.LLStore.data.fileFolders = [...this.manifest.folders, newRoot, ...newFolders];
+        window.LLStore.data.files = [...this.manifest.files, ...newFiles];
+        this.manifest.folders = window.LLStore.data.fileFolders;
+        this.manifest.files = window.LLStore.data.files;
+        window.LLStore.touch();
+
+        // Delete the shared vault (cascades members + shared blobs) + clean local state.
+        try { await apiRequest('DELETE', '/vaults/' + vaultId); } catch (_) {}
+        this.sharedFolders = this.sharedFolders.filter((f) => f.vaultId !== vaultId);
+        delete this.sharedTree[vaultId];
+        delete this._folderKeys[vaultId];
+        delete this._folderVersion[vaultId];
+        if (this.activeShared === vaultId) { this.activeShared = null; this.cwd = rootId; }
     },
 
     openShareFolderDialog(vaultId) {
