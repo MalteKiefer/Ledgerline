@@ -6,7 +6,7 @@ nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**
 
 Module: **Dashboard, Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ
 + eingebettete Passkeys in `login`-Items), Kontakte, Rechnungen, Health, Backup, Paperless**.
-Version **v1.504.54** (live https://home.kiefer-networks.de, `/up`=200).
+Version **v1.504.55** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill + Bookmarks-CRUD
 + **WebAuthn-Authenticator** (Passkeys).
 
@@ -324,6 +324,7 @@ app.js **8085 → ~753 Z.** (nur noch Bootstrap, Stores confirm/nav/vault/paperl
 - **v1.504.51**: Deploy-Fix zu .50 — `docker-compose.yml` `build.args.PHP_BASE` (überschreibt den Dockerfile-ARG-Default) ebenfalls auf den PHP-8.5-Digest gezogen; .50 baute sonst weiter auf 8.4 (`composer install`-Fail). Dual-Pin in beiden Dateien dokumentiert.
 - **v1.504.52**: PHPStan Level 5 grün (89 latente Fehler root-cause behoben — @property-Casts, Relation-Generics, VaultRole-Vereinfachungen, StreamedResponse, Env::get, Socialite-Concrete-Guards) + **PHPStan blockierend in CI** (`security-scan.yml`) und im Release-Ritual. Eine dokumentierte Deviation: `nullsafe.neverNull` deaktiviert (larastan-Nullability-Fehleinschätzung, fängt keine Bugs; Guards bleiben).
 - **v1.504.54**: gitleaks-Config `.gitleaks.toml` — Triage der 1307 Roh-Treffer: allesamt `generic-api-key` auf generiertem PHPStan-Cache (History) + 2 Vitest-Fixtures, **kein echtes Secret**; diese Pfade eng allowlistet (extend default), CI-Job wieder grün.
+- **v1.504.55**: gitleaks-Allowlist-Regexes **verankert** (`^…$` + escaped dots) — unankert hätten Look-alikes (`crypto.test.js.bak`/`.jsx`, verschachtelte `storage/phpstan/`) den Scan umgehen können (Parser-Differential, Commit-Review-Fund). Look-alikes bleiben jetzt voll gescannt; „no leaks found" unverändert.
 - **v1.504.53**: Supply-Chain-Härtung — **gitleaks**-Secret-Scan (volle History) als blockierender CI-Job (digest-gepinnt); **ML-Image digest-gepinnt + auf latest v3.0.3** (war tag-only v2.7.5, verdeckt hinter `${ML_IMAGE_TAG:-…}` das Dependabot nicht parsen konnte → Wrapper entfernt, Env-Override raus, README angepasst). Jetzt ALLE Container-Images digest-gepinnt und Dependabot-sichtbar (Dockerfile-FROM + compose). **ML v2→v3 auf dem laufenden Sidecar erst bei explizitem `--profile ml up` aktiv.**
 
 ## MEMORY & CHECKS

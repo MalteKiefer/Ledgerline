@@ -15,13 +15,16 @@ useDefault = true
 
 [allowlist]
 description = "Generated caches and specific test fixtures carry dummy high-entropy values, not real secrets"
+# Patterns are anchored (^…$) and dots escaped so a look-alike path cannot slip
+# a secret past the scanner — e.g. crypto.test.js.bak, crypto.test.jsx, or a
+# stray storage/phpstan/ nested elsewhere in the tree all stay fully scanned.
 paths = [
     # PHPStan result cache: generated, serialized static-analysis data (now
     # git-ignored, but present across ~1300 historical commits). Never source.
-    '''storage/phpstan/''',
+    '''^storage/phpstan/.*$''',
     # Vitest crypto round-trip fixtures: a fabricated wrapped_vault_key / sealed
     # blobs used to exercise deriveVaultKey/openManifest. No live key material.
-    '''extension/src/__tests__/crypto\.test\.js''',
+    '''^extension/src/__tests__/crypto\.test\.js$''',
     # Password-utility unit test: a dummy `secret` constant for masking/diff logic.
-    '''resources/js/__tests__/passwords-util\.test\.js''',
+    '''^resources/js/__tests__/passwords-util\.test\.js$''',
 ]
