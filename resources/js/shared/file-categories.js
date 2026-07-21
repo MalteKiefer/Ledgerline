@@ -90,3 +90,52 @@ export function formatBytes(n) {
     const num = i === 0 ? String(Math.round(value)) : String(Math.round(value * 100) / 100);
     return `${num} ${units[i]}`;
 }
+
+// Per-category chip tint — verbatim from the iOS FileTypeStyle.swift palette so
+// web + iOS render identical colours. Folders use FOLDER_TINT.
+export const CATEGORY_TINT = {
+    PDF: '#e5544b', DOCUMENT: '#3b9fd6', SPREADSHEET: '#59ad6b', IMAGE: '#9e70fa',
+    VECTOR: '#8b5cf6', VIDEO: '#e5679e', ARCHIVE: '#d9a441', AUDIO: '#3fae9f',
+    EBOOK: '#e2915a', PRESENTATION: '#e07a4f', FONT: '#b07dd6', TEXT: '#64748b',
+    CODE: '#6b7280', DISK: '#6b7280', OTHER: '#6b7280',
+};
+
+export const FOLDER_TINT = '#3b9fd6';
+
+// Extension → specific label token (mirror of the iOS extLabel map). Absent →
+// fall back to the category token. Token resolves to lang key `filetype.<token>`.
+const EXT_LABEL = {
+    pdf: 'pdf',
+    doc: 'word', docx: 'word', odt: 'odt', rtf: 'rtf', pages: 'pages',
+    txt: 'text', text: 'text', log: 'text', rst: 'text',
+    md: 'markdown', markdown: 'markdown',
+    xls: 'excel', xlsx: 'excel', ods: 'ods', csv: 'csv', tsv: 'csv', numbers: 'numbers',
+    ppt: 'powerpoint', pptx: 'powerpoint', odp: 'odp', key: 'keynote',
+    epub: 'epub', mobi: 'mobi', azw3: 'mobi',
+    jpg: 'jpeg', jpeg: 'jpeg', png: 'png', gif: 'gif', webp: 'webp',
+    heic: 'heic', heif: 'heic', bmp: 'bmp', tif: 'tiff', tiff: 'tiff', ico: 'ico', svg: 'svg',
+    mp4: 'mp4', m4v: 'mp4', mov: 'quicktime', mkv: 'matroska', avi: 'avi', webm: 'webm',
+    mp3: 'mp3', wav: 'wav', flac: 'flac', aac: 'aac', m4a: 'm4a', ogg: 'ogg',
+    zip: 'zip', rar: 'rar', '7z': 'sevenzip', tar: 'tar', gz: 'gzip', tgz: 'gzip',
+    iso: 'iso', dmg: 'dmg',
+    js: 'javascript', mjs: 'javascript', ts: 'typescript', tsx: 'typescript',
+    py: 'python', php: 'php', html: 'html', htm: 'html', css: 'css',
+    json: 'json', xml: 'xml', swift: 'swift', java: 'java',
+    sh: 'shell', bash: 'shell', zsh: 'shell', sql: 'sql', yaml: 'yaml', yml: 'yaml',
+    ttf: 'font', otf: 'font', woff: 'webfont', woff2: 'webfont',
+};
+
+export { EXT_LABEL };
+
+// The chip tint for a file (folders handled by the caller with FOLDER_TINT).
+export function categoryTint(name, mime) {
+    return CATEGORY_TINT[fileCategory(name, mime)] || CATEGORY_TINT.OTHER;
+}
+
+// Lang key for the human-readable type label. Specific extension label wins;
+// otherwise the category token (lowercased).
+export function fileTypeLabel(name, mime) {
+    const byExt = EXT_LABEL[extOf(name)];
+    if (byExt) return `filetype.${byExt}`;
+    return `filetype.${fileCategory(name, mime).toLowerCase()}`;
+}
