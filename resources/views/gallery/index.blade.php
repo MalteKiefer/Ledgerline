@@ -57,12 +57,7 @@
       <x-slot:actions>
         <div class="flex items-center gap-1.5">
           <span x-show="state === 'ready'" x-cloak class="mr-1 text-xs tabular-nums text-gray-400 dark:text-gray-500" x-text="photoCount() + ' · ' + fmtBytes(usage.used)"></span>
-          <button type="button" @click="$store.vault.unlocked ? $store.vault.lock() : $dispatch('vault-panel')"
-              :title="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
-              class="min-h-11 min-w-11 inline-flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
-            <span x-show="$store.vault.unlocked"><x-icon name="lock-open" class="h-5 w-5" /></span>
-            <span x-show="! $store.vault.unlocked"><x-icon name="lock-closed" class="h-5 w-5" /></span>
-          </button>
+          {{-- Vault lock is controlled centrally from the top nav (system-wide), not per module. --}}
           <x-button x-show="state === 'ready'" x-cloak variant="primary" @click="$refs.picker.click()">
             <x-icon name="arrow-up-tray" class="mr-1.5 h-4 w-4" />{{ __('gallery.upload') }}
           </x-button>
