@@ -7,6 +7,12 @@ import { loadLeaflet } from '../shared/lazy-loaders';
 import { bootStore, bootGalleryStore } from '../shared/zk-module';
 import { formatDate } from '../shared/dom';
 import { contactNameParts, contactDisplayName, contactsSortPref } from '../shared/contact-utils';
+import { dec6 } from '../shared/canonical-json';
+import { fileSigFromBlob } from '../shared/file-sig';
+import {
+    pickDerivationPath, scaleDownSize, readJpegExif,
+    THUMB_WIDTH, MEDIUM_WIDTH, THUMB_QUALITY, MEDIUM_QUALITY,
+} from '../shared/gallery-derive';
 
 export default (config = {}, labels = {}) => {
 // Non-reactive caches. Decrypted CLIP/face embeddings are large float arrays;
@@ -288,6 +294,11 @@ return {
                         // Upload the paired .MOV as this still's motion clip.
                         const clip = motionFor.get(file);
                         if (clip) { const m = await uploadOne(clip, null); photo.motionRef = m.id; photo.motionKey = m.key; }
+                        // A11: derive thumb/medium/dims ON-DEVICE for browser-decodable
+                        // formats (canvas + WebP) so the full-resolution original never
+                        // leaves the browser. HEIC/HEIF + video defer to /process
+                        // (thumbPending) via the backlog. ML (CLIP/faces) always server.
+                        if (photo.media_type !== 'video') await this._deriveOnDevice(photo, file);
                         this.index.photos.unshift(photo);
                         entry.state = 'done'; entry.progress = 100;
                         this._save();
@@ -535,7 +546,7 @@ return {
             faces: [], width: d.width, height: d.height, duration: d.duration, content_id: d.content_id,
         };
         p.embModel = meta.embModel; // mirror on the index for cheap re-embed checks
-        if (d.thumb) { const r = await this._encStore(this._b64bytes(d.thumb), 'thumb.enc'); p.thumbRef = r.id; p.thumbKey = r.key; }
+        if (d.thumb) { const r = await this._encStore(this._b64bytes(d.thumb), 'thumb.enc'); p.thumbRef = r.id; p.thumbKey = r.key; p.thumbPending = false; }
         if (d.medium) { const r = await this._encStore(this._b64bytes(d.medium), 'medium.enc'); p.mediumRef = r.id; p.mediumKey = r.key; }
         if (d.motion) { const r = await this._encStore(this._b64bytes(d.motion), 'motion.enc'); p.motionRef = r.id; p.motionKey = r.key; }
         for (const f of (d.faces || [])) {
@@ -555,7 +566,10 @@ return {
         const entry = this.index.photos.find((x) => x.id === p.id);
         if (entry && entry.taken_at !== p.taken_at) { entry.taken_at = p.taken_at; this._save(); }
         p.width = d.width; p.height = d.height; p.duration = d.duration;
-        p.lat = d.exif?.lat ?? null; p.lng = d.exif?.lon ?? null;
+        // lat/lng are stored as fixed 6-dp decimal STRINGS (or null) — hot records
+        // carry no floats (§4.1/§5.2), so a float never corrupts the shard's
+        // canonical-JSON hash. Consumers parse back to Number where a number is needed.
+        p.lat = dec6(d.exif?.lat); p.lng = dec6(d.exif?.lon);
         p.geoChecked = true; // coords are now known (or known-absent) — map skip
         p.camera = d.exif?.camera ?? null;
         // Faces were skipped in this fast pass — leave hasFaces UNKNOWN (null), not
@@ -568,6 +582,119 @@ return {
         metaCache[p.id] = meta;
         // Prime the decrypted thumbnail so the grid updates live (reactive cache).
         this.thumbFor(p);
+    },
+
+    /**
+     * A11 (§8.1/§8.2/§8.3): derive a photo's thumb + medium renditions and its
+     * dimensions ON-DEVICE, so a browser-decodable original never leaves the
+     * browser for /process. Canvas + WebP mirror the server's THUMB_WIDTH/
+     * MEDIUM_WIDTH + quality so a browser-derived rendition is interchangeable
+     * with a server one. EXIF (capture date / GPS / camera) is recovered from the
+     * JPEG header on-device (no lib for other formats → left absent). CLIP + faces
+     * stay server-side (mlPending). Non-decodable formats (HEIC/HEIF) get
+     * thumbPending=true and defer to the /process backlog. Never throws — any
+     * failure falls back to the pending path so the photo is never lost.
+     */
+    async _deriveOnDevice(p, file) {
+        if (pickDerivationPath(p.mime, p.name) !== 'canvas') {
+            // Can't decode here (HEIC/HEIF) — defer thumb/medium/dims + EXIF + ML
+            // to the server /process backlog (it fills them all in one pass).
+            p.thumbPending = true;
+            return;
+        }
+        try {
+            const bmp = await this._decodeBitmap(file);
+            if (! bmp) { p.thumbPending = true; return; }
+            const sw = bmp.width, sh = bmp.height;
+            const thumb = await this._canvasWebp(bmp, THUMB_WIDTH, THUMB_QUALITY);
+            const medium = await this._canvasWebp(bmp, MEDIUM_WIDTH, MEDIUM_QUALITY);
+            if (typeof bmp.close === 'function') bmp.close();
+            if (! thumb || ! medium) { p.thumbPending = true; return; }
+            const tr = await this._encStore(thumb, 'thumb.enc');
+            const mr = await this._encStore(medium, 'medium.enc');
+            p.thumbRef = tr.id; p.thumbKey = tr.key;
+            p.mediumRef = mr.id; p.mediumKey = mr.key;
+            p.width = sw; p.height = sh;
+
+            // On-device EXIF (JPEG only) for the hot display fields. Fail-safe: any
+            // absent/unparseable value stays null and we simply defer to `created`.
+            let exif = { taken_at: null, lat: null, lon: null, camera: null };
+            if (/^image\/jpe?g$/i.test(p.mime) || /\.jpe?g$/i.test(p.name)) {
+                try { exif = readJpegExif(await file.arrayBuffer()); } catch (e) { /* keep nulls */ }
+            }
+            p.taken_at = exif.taken_at || p.created;
+            p.lat = dec6(exif.lat); p.lng = dec6(exif.lon);
+            // Coords are known (or known-absent) from the header → the map's
+            // meta-decrypt backfill can skip this photo.
+            p.geoChecked = true;
+            p.camera = exif.camera ?? null;
+
+            // Seal a meta blob so the viewer info panel + dedup + ML merge have a
+            // home (mirrors _processOne's shape). ML fills embedding/faces later.
+            const meta = {
+                exif: { taken_at: exif.taken_at, lat: exif.lat, lon: exif.lon, camera: exif.camera },
+                place: {}, embedding: null, phash: null, embModel: null,
+                faces: [], width: sw, height: sh, duration: null, content_id: null,
+            };
+            const metaBlob = await this._encStore(new TextEncoder().encode(JSON.stringify(meta)), 'meta.enc');
+            p.metaRef = metaBlob.id; p.metaKey = metaBlob.key;
+            metaCache[p.id] = meta;
+
+            // Renditions are present; only the vision pass is outstanding.
+            p.thumbPending = false;
+            p.hasFaces = null;    // unknown until the ML pass runs
+            p.faceCropRefs = [];
+            p.mlPending = true;   // CLIP + faces still run server-side (_analyzeOne)
+            this.thumbFor(p);     // prime the live grid thumbnail
+        } catch (e) {
+            // Anything unexpected → hand the photo to the server backlog untouched.
+            p.thumbPending = true;
+        }
+    },
+    // Decode an image File to a bitmap. Prefer createImageBitmap (off-main-thread,
+    // handles EXIF orientation via imageOrientation); fall back to an <img> + a
+    // decoded object URL for browsers/formats createImageBitmap rejects.
+    async _decodeBitmap(file) {
+        try {
+            if (typeof createImageBitmap === 'function') {
+                return await createImageBitmap(file, { imageOrientation: 'from-image' });
+            }
+        } catch (e) { /* fall through to <img> */ }
+        try {
+            const url = URL.createObjectURL(file);
+            try {
+                const img = new Image();
+                img.decoding = 'async';
+                await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+                if (typeof img.decode === 'function') { try { await img.decode(); } catch (e) { /* onload already fired */ } }
+                return img;
+            } finally { URL.revokeObjectURL(url); }
+        } catch (e) { return null; }
+    },
+    // Draw a decoded bitmap scaled down to `maxWidth` and encode as WebP. Uses
+    // OffscreenCanvas where available (no DOM), else a detached <canvas>. Returns
+    // the encoded bytes, or null if WebP encoding isn't supported / fails.
+    async _canvasWebp(bmp, maxWidth, quality) {
+        const sw = bmp.width || bmp.naturalWidth;
+        const sh = bmp.height || bmp.naturalHeight;
+        const { w, h } = scaleDownSize(sw, sh, maxWidth);
+        if (! w || ! h) return null;
+        let blob = null;
+        if (typeof OffscreenCanvas === 'function') {
+            const cv = new OffscreenCanvas(w, h);
+            cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+            blob = await cv.convertToBlob({ type: 'image/webp', quality });
+        } else {
+            const cv = document.createElement('canvas');
+            cv.width = w; cv.height = h;
+            cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+            blob = await new Promise((r) => cv.toBlob(r, 'image/webp', quality));
+        }
+        // A browser that silently ignored the WebP request (some old engines) hands
+        // back a PNG; that's still a valid, all-clients-decodable rendition, so keep
+        // it — the manifest stores only a ref and the bytes are self-describing.
+        if (! blob) return null;
+        return new Uint8Array(await blob.arrayBuffer());
     },
 
     /**
@@ -779,18 +906,7 @@ return {
     // Cheap exact-file signature: byte size + SHA-256 over the first and last
     // 1 MiB. Bounded memory (never buffers a whole video), and collisions for two
     // genuinely different files are astronomically unlikely.
-    async _fileSig(file) {
-        try {
-            const cap = 1024 * 1024;
-            const head = new Uint8Array(await file.slice(0, Math.min(cap, file.size)).arrayBuffer());
-            const tail = file.size > cap ? new Uint8Array(await file.slice(file.size - cap).arrayBuffer()) : new Uint8Array(0);
-            const buf = new Uint8Array(head.length + tail.length);
-            buf.set(head, 0); buf.set(tail, head.length);
-            const dig = await crypto.subtle.digest('SHA-256', buf);
-            const hex = [...new Uint8Array(dig)].map((x) => x.toString(16).padStart(2, '0')).join('');
-            return `${file.size}:${hex}`;
-        } catch (e) { return ''; }
-    },
+    _fileSig(file) { return fileSigFromBlob(file); },
 
     /* ---- Thumbnails (decrypted, cached) ---- */
     async thumbFor(p) {
@@ -852,7 +968,7 @@ return {
         this.viewer = { open: true, kind: 'loading', src: '', photo: p, meta: null, hasMotion: ! ! p.motionRef, motionOn: false, motionSrc: '', fit: 1 };
         // Decrypt the sealed metadata blob in parallel for the info panel.
         if (p.metaRef) this._loadViewerMeta(p);
-        else if (p.lat != null) this._renderMiniMap(p.lat, p.lng);
+        else if (p.lat != null) this._renderMiniMap(parseFloat(p.lat), parseFloat(p.lng));
         try {
             if (p.media_type === 'video') {
                 // Videos play the original clip; the sealed `medium` blob is only a
@@ -892,8 +1008,10 @@ return {
             const m = JSON.parse(new TextDecoder().decode(b));
             if (this.viewer.photo?.id !== p.id) return;
             this.viewer.meta = m;
-            const lat = m.exif?.lat ?? p.lat;
-            const lng = m.exif?.lon ?? p.lng;
+            // meta.exif carries raw numbers; p.lat/p.lng are dec-strings — coerce
+            // to Number for Leaflet either way.
+            const lat = m.exif?.lat ?? (p.lat != null ? parseFloat(p.lat) : null);
+            const lng = m.exif?.lon ?? (p.lng != null ? parseFloat(p.lng) : null);
             if (lat != null) this._renderMiniMap(lat, lng);
         } catch (e) { /* info panel just stays sparse */ }
     },
@@ -981,8 +1099,12 @@ return {
     // Single photo (viewer) location.
     openLocPicker(p) {
         if (! p) return;
-        this.loc = { open: true, bulk: false, target: p, lat: p.lat ?? null, lng: p.lng ?? null };
-        this._mountLocMap(p.lat ?? this.viewer.meta?.exif?.lat ?? 48.2082, p.lng ?? this.viewer.meta?.exif?.lon ?? 16.3738, p.lat != null);
+        // p.lat/p.lng are dec-strings on the record; the working `loc` + Leaflet
+        // need Numbers, so parse them here.
+        const plat = p.lat != null ? parseFloat(p.lat) : null;
+        const plng = p.lng != null ? parseFloat(p.lng) : null;
+        this.loc = { open: true, bulk: false, target: p, lat: plat, lng: plng };
+        this._mountLocMap(plat ?? this.viewer.meta?.exif?.lat ?? 48.2082, plng ?? this.viewer.meta?.exif?.lon ?? 16.3738, plat != null);
     },
     // Set one location on every selected photo.
     openBulkLocPicker() {
@@ -1011,14 +1133,17 @@ return {
     saveLoc() {
         if (this.loc.lat != null) {
             if (this.loc.bulk) {
-                this._eachSelected((p) => { p.lat = this.loc.lat; p.lng = this.loc.lng; });
+                const dlat = dec6(this.loc.lat); const dlng = dec6(this.loc.lng);
+                this._eachSelected((p) => { p.lat = dlat; p.lng = dlng; });
                 this.selected = [];
                 this._save();
             } else if (this.loc.target) {
                 const p = this.loc.target;
-                p.lat = this.loc.lat; p.lng = this.loc.lng;
-                if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = p.lat; this.viewer.meta.exif.lon = p.lng; }
-                this._renderMiniMap(p.lat, p.lng);
+                // Hot record stores dec-strings; the cold meta blob keeps raw
+                // numbers (never hashed for dirty-detection, §5.2).
+                p.lat = dec6(this.loc.lat); p.lng = dec6(this.loc.lng);
+                if (this.viewer.meta?.exif) { this.viewer.meta.exif.lat = this.loc.lat; this.viewer.meta.exif.lon = this.loc.lng; }
+                this._renderMiniMap(this.loc.lat, this.loc.lng);
                 this._save();
             }
         }
@@ -1249,7 +1374,7 @@ return {
                     const b = await fetchDecryptWorker('/gallery/raw', p.metaRef, p.metaKey);
                     const m = JSON.parse(new TextDecoder().decode(b));
                     if (m.exif && m.exif.lat != null) {
-                        p.lat = m.exif.lat; p.lng = m.exif.lon;
+                        p.lat = dec6(m.exif.lat); p.lng = dec6(m.exif.lon);
                         if (! p.camera && m.exif.camera) p.camera = m.exif.camera;
                     }
                 } catch (e) { /* skip */ }
@@ -1289,12 +1414,12 @@ return {
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(this._map);
             const cluster = L.markerClusterGroup ? L.markerClusterGroup({ animate: false }) : L.layerGroup();
             for (const p of this.mapPhotos) {
-                const m = L.marker([p.lat, p.lng]);
+                const m = L.marker([parseFloat(p.lat), parseFloat(p.lng)]);
                 m.on('click', () => this.openViewer(p));
                 cluster.addLayer(m);
             }
             this._map.addLayer(cluster);
-            if (this.mapPhotos.length) this._map.fitBounds(L.latLngBounds(this.mapPhotos.map((p) => [p.lat, p.lng])), { padding: [40, 40], maxZoom: 14, animate: false });
+            if (this.mapPhotos.length) this._map.fitBounds(L.latLngBounds(this.mapPhotos.map((p) => [parseFloat(p.lat), parseFloat(p.lng)])), { padding: [40, 40], maxZoom: 14, animate: false });
             setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 120);
         });
     },

@@ -1,4 +1,4 @@
-// Dashboard component — reads the decrypted workspace manifest and gallery store
+// Dashboard component — reads the decrypted per-module stores and gallery store
 // to populate widgets (todos, counters, recent notes, birthdays, health).
 // Gallery is best-effort: the widget degrades gracefully if unavailable.
 import { bootGalleryStore } from '../shared/zk-module';

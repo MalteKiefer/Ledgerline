@@ -17,6 +17,7 @@ use App\Models\FilesStore;
  */
 class FilesStoreController extends Controller
 {
+    /** @use SealedManifestStore<FilesStore> */
     use SealedManifestStore;
 
     protected function manifestModel(): string

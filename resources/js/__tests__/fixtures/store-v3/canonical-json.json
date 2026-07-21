@@ -42,11 +42,18 @@
     "expected": "{\"lat\":\"52.520008\",\"lng\":\"13.404954\"}"
   },
   {
-    "name": "unicode NFC + minimal escape",
+    "name": "unicode literal + minimal escape",
     "input": {
       "key": "a\"b\\cé"
     },
     "expected": "{\"key\":\"a\\\"b\\\\cé\"}"
+  },
+  {
+    "name": "no NFC normalization (decomposed survives verbatim)",
+    "input": {
+      "w": "café"
+    },
+    "expected": "{\"w\":\"café\"}"
   },
   {
     "name": "empty object/array",

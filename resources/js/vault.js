@@ -828,7 +828,8 @@ export const Vault = {
     },
 
     /**
-     * Seal the whole opaque workspace manifest into a {c,n} JSON string. The JSON
+     * Seal an opaque sealed-store object (a module store, files/gallery root, or
+     * share manifest) into a {suite,c,n} JSON string. The JSON
      * is padded with trailing whitespace to a Padmé bucket (leaks only
      * O(log log n) bits — a bounded ~12% overhead — instead of a fixed 4 KiB grid
      * whose relative leak grows with the manifest), with a 4 KiB floor so small

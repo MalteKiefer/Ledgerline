@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * The user's sealed gallery index (photo list + album + people structure) as a
  * single opaque ciphertext + optimistic-concurrency version. Separate from the
- * shared vault_store so gallery churn never re-seals notes/todos.
+ * per-module stores so gallery churn never re-seals notes/todos.
  */
 #[Fillable(['user_id', 'ciphertext', 'version'])]
 class GalleryStore extends Model

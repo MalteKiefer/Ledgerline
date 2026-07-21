@@ -2,6 +2,11 @@
 // so a passphrase derives the exact same vault key and the sealed manifest opens
 // identically. libsodium runs only here (in the background service worker).
 import _sodium from 'libsodium-wrappers-sumo';
+import { canonicalJSON } from './canonical-json.js';
+
+// Store v3 crypto-suite id (§6.1), mirrors vault.js SUITE. Every sealed manifest
+// carries it; an unknown suite fails closed (never guessed).
+const SUITE = 1;
 
 let sodium = null;
 async function ready() {
@@ -39,12 +44,17 @@ export async function deriveVaultKey(passphrase, vault) {
     return open(vault.wrapped_vault_key, vault.wrap_nonce, kek); // throws => wrong passphrase
 }
 
-/** Open a sealed workspace manifest (the /store ciphertext) with the VK.
+/** Open a sealed module store (a /store/<module> ciphertext) with the VK.
  *  Shared-vault stores are sealed identically (sealVaultManifest mirrors
  *  sealManifest), so the same opener works with a per-vault key. */
 export async function openManifest(ciphertext, vkBytes) {
     await ready();
-    const { c, n } = JSON.parse(ciphertext);
+    const { suite, c, n } = JSON.parse(ciphertext);
+    // Fail-closed on an unknown suite (never guess the crypto stack). A missing
+    // suite (undefined) stays acceptable for forward-safety, exactly like vault.js.
+    if (suite !== undefined && suite !== SUITE) {
+        throw new Error(`unknown sealed-manifest suite: ${suite}`);
+    }
     return JSON.parse(sodium.to_string(open(c, n, vkBytes)));
 }
 
@@ -75,17 +85,19 @@ function padme(n) {
 }
 
 /**
- * Seal the whole workspace manifest back into a {c,n} JSON string, identical to
- * vault.js sealManifest: Padmé-padded JSON (4 KiB floor), XChaCha20 secretbox.
+ * Seal a module store object back into a {suite,c,n} JSON string, identical
+ * to vault.js sealManifest: canonical JSON (§5.2) payload, Padmé-padded (4 KiB
+ * floor), XChaCha20 secretbox, suite-tagged envelope (§6.1).
  */
 export async function sealManifest(obj, vkBytes) {
     await ready();
-    let json = JSON.stringify(obj);
+    let json = canonicalJSON(obj);
     const target = Math.max(4096, padme(json.length + 1));
     json += ' '.repeat(target - json.length);
     const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
     const cipher = sodium.crypto_secretbox_easy(sodium.from_string(json), nonce, vkBytes);
     return JSON.stringify({
+        suite: SUITE,
         c: sodium.to_base64(cipher, sodium.base64_variants.ORIGINAL),
         n: sodium.to_base64(nonce, sodium.base64_variants.ORIGINAL),
     });

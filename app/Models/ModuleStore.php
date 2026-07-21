@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * One opaque sealed store per (user, module) — the per-module split of the old
- * monolith workspace manifest. The browser seals each module's collection with
+ * per-module split of the old monolith workspace manifest. The browser seals each module's collection with
  * the vault key; the server stores only ciphertext + an optimistic-concurrency
  * version. Composite (user_id, module) primary key.
  *

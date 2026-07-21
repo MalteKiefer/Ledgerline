@@ -71,4 +71,32 @@ class StoreTest extends TestCase
         // The stale write did not overwrite the stored manifest.
         $this->assertSame('x', ModuleStore::query()->where('user_id', $user->id)->where('module', 'notes')->value('ciphertext'));
     }
+
+    public function test_a_matching_etag_returns_304_and_a_write_invalidates_it(): void
+    {
+        $user = User::factory()->create();
+
+        // Even an empty module store emits a version-derived ETag.
+        $first = $this->actingAs($user)->getJson(route('module-store.show', 'notes'))->assertOk();
+        $etag = $first->headers->get('ETag');
+        $this->assertNotNull($etag);
+
+        // Re-GET with the matching If-None-Match → bodyless 304.
+        $revalidated = $this->actingAs($user)->getJson(route('module-store.show', 'notes'), ['If-None-Match' => $etag]);
+        $revalidated->assertStatus(304);
+        $this->assertSame('', $revalidated->getContent());
+
+        // A write bumps the version, so the ETag must change.
+        $this->actingAs($user)->putJson(route('module-store.save', 'notes'), ['ciphertext' => 'x', 'version' => 0])
+            ->assertOk();
+
+        $afterWrite = $this->actingAs($user)->getJson(route('module-store.show', 'notes'))->assertOk();
+        $newEtag = $afterWrite->headers->get('ETag');
+        $this->assertNotSame($etag, $newEtag);
+
+        // The stale ETag no longer matches → fresh 200 with the current ciphertext.
+        $this->actingAs($user)->getJson(route('module-store.show', 'notes'), ['If-None-Match' => $etag])
+            ->assertOk()
+            ->assertJson(['ciphertext' => 'x', 'version' => 1]);
+    }
 }
