@@ -32,6 +32,7 @@ class SystemController extends Controller
             ->map(function ($event): array {
                 $name = AppServiceProvider::cronName($event);
                 $last = Cache::get(AppServiceProvider::cronRunKey($name));
+                $last = is_array($last) ? $last : [];
 
                 return [
                     'name' => $name,

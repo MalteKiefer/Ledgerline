@@ -107,7 +107,8 @@ final class BackupManager
 
                 // Full list-and-prune reconcile only once per window; every other
                 // run is a fast delta of just the blobs added since the cursor.
-                $reconcileHours = max(0, (int) config('backup.reconcile_hours', 24));
+                $reconcileHoursCfg = config('backup.reconcile_hours', 24);
+                $reconcileHours = max(0, is_numeric($reconcileHoursCfg) ? (int) $reconcileHoursCfg : 24);
                 $needFull = $reconcileHours === 0
                     || $job->last_full_mirror_at === null
                     || $job->last_full_mirror_at->lt(Carbon::now()->subHours($reconcileHours));

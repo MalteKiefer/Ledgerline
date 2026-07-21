@@ -20,7 +20,11 @@ class PurgeUserAccount
     public function handle(User $user): void
     {
         DB::transaction(function () use ($user): void {
-            foreach (config('user_data.contributors', []) as $class) {
+            $contributors = config('user_data.contributors', []);
+            foreach (is_array($contributors) ? $contributors : [] as $class) {
+                if (! is_string($class)) {
+                    continue;
+                }
                 /** @var UserDataContributor $contributor */
                 $contributor = app($class);
                 $contributor->purge($user);

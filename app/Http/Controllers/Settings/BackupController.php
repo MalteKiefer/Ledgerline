@@ -436,8 +436,9 @@ class BackupController extends Controller
         }
         // A per-job passphrase is only required when there is no environment
         // passphrase (BACKUP_PASSPHRASE); the latter keeps the key out of the DB.
+        $envPassphrase = config('backup.passphrase', '');
         if ($requirePassphrase && $data['encrypt']
-            && ($data['passphrase'] ?? '') === '' && (string) config('backup.passphrase', '') === '') {
+            && ($data['passphrase'] ?? '') === '' && (is_string($envPassphrase) ? $envPassphrase : '') === '') {
             throw ValidationException::withMessages(['passphrase' => __('settings.backup_passphrase_required')]);
         }
 

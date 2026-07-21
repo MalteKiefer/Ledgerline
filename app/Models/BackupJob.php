@@ -56,7 +56,8 @@ class BackupJob extends Model
      */
     public function effectivePassphrase(): ?string
     {
-        $env = (string) config('backup.passphrase', '');
+        $env = config('backup.passphrase', '');
+        $env = is_string($env) ? $env : '';
 
         return $env !== '' ? $env : ($this->passphrase ?: null);
     }
@@ -97,6 +98,7 @@ class BackupJob extends Model
         try {
             // Match the scheduler: compute the next run in the app timezone.
             $tz = config('app.timezone');
+            $tz = is_string($tz) ? $tz : null;
             $nextRun = Carbon::instance(CronExpression::factory($this->cron)->getNextRunDate(now($tz), 0, false, $tz));
         } catch (\Throwable) {
         }
@@ -111,7 +113,7 @@ class BackupJob extends Model
             'lastDuration' => $lastOk?->durationSeconds(),
             'avgDuration' => $durations->isNotEmpty() ? (int) round($durations->avg() ?? 0) : null,
             'lastBytes' => $lastOk?->bytes,
-            'totalBytes' => (int) $ok->sum('bytes'),
+            'totalBytes' => (int) $ok->sum(fn (BackupRun $r): int => (int) $r->bytes),
             'nextRun' => $nextRun,
         ];
     }

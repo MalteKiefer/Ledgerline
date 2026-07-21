@@ -52,7 +52,7 @@ class AuditLog extends Model
                 'user_id' => $userId ?? Auth::id(),
                 'action' => $action,
                 'subject_type' => $subject?->getMorphClass(),
-                'subject_id' => $subject !== null ? (string) $subject->getKey() : null,
+                'subject_id' => is_scalar($subject?->getKey()) ? (string) $subject->getKey() : null,
                 'ip' => $request->ip(),
                 'user_agent' => mb_substr((string) $request->userAgent(), 0, 255) ?: null,
                 'meta' => $meta !== [] ? $meta : null,

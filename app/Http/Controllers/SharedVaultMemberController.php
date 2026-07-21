@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Enums\VaultRole;
 use App\Http\Requests\Vault\CreateMemberRequest;
 use App\Http\Requests\Vault\UpdateMemberRequest;
 use App\Models\SharedVault;
@@ -111,7 +112,8 @@ class SharedVaultMemberController extends Controller
         // Cross-vault isolation.
         $this->ensureMemberOfVault($member, $vault);
 
-        $member->role = $request->validated()['role'];
+        $role = $request->validated()['role'];
+        $member->role = VaultRole::from(is_string($role) ? $role : '');
         $member->save();
 
         return response()->json(['ok' => true]);

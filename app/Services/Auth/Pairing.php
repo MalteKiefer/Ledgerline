@@ -117,7 +117,8 @@ class Pairing
         // A consumed pairing always has its owning user; guard for the type system.
         abort_if($user === null, 410);
         // Admin-configurable cap (Security settings); null/0 falls back to config default.
-        $max = max(1, (int) (AppSettings::current()->max_connected_devices ?: config('devices.max', 3)));
+        $configuredMax = AppSettings::current()->max_connected_devices ?: config('devices.max', 3);
+        $max = max(1, is_numeric($configuredMax) ? (int) $configuredMax : 3);
         $existing = $user->tokens()->orderBy('id')->pluck('id');
         $overflow = $existing->count() - ($max - 1);
         if ($overflow > 0) {
@@ -139,10 +140,12 @@ class Pairing
     /** Drop expired and terminal rows. Returns the number deleted. */
     public function prune(): int
     {
-        return DevicePairing::query()
+        $deleted = DevicePairing::query()
             ->where('expires_at', '<', now())
             ->orWhereIn('status', [DevicePairing::CONSUMED, DevicePairing::REJECTED])
             ->delete();
+
+        return is_int($deleted) ? $deleted : 0;
     }
 
     private function require(string $code, string $expectedStatus): DevicePairing

@@ -22,26 +22,30 @@ class PruneDeviceTokens extends Command
 
     public function handle(): int
     {
-        $idleDays = (int) config('devices.idle_days', 0);
-        $graceMin = (int) config('devices.wipe_grace_minutes', 15);
+        $idleCfg = config('devices.idle_days', 0);
+        $idleDays = is_numeric($idleCfg) ? (int) $idleCfg : 0;
+        $graceCfg = config('devices.wipe_grace_minutes', 15);
+        $graceMin = is_numeric($graceCfg) ? (int) $graceCfg : 15;
 
         $idle = 0;
         if ($idleDays > 0) {
             // A token that was paired but never used has last_used_at = NULL — fall
             // back to created_at so a leaked, never-touched token still dies.
             $cutoff = now()->subDays($idleDays);
-            $idle = PersonalAccessToken::query()
+            $idleResult = PersonalAccessToken::query()
                 ->where(function ($q) use ($cutoff): void {
                     $q->where('last_used_at', '<', $cutoff)
                         ->orWhere(fn ($q2) => $q2->whereNull('last_used_at')->where('created_at', '<', $cutoff));
                 })
                 ->delete();
+            $idle = is_numeric($idleResult) ? (int) $idleResult : 0;
         }
 
-        $wiped = PersonalAccessToken::query()
+        $wipedResult = PersonalAccessToken::query()
             ->whereNotNull('wipe_requested_at')
             ->where('wipe_requested_at', '<', now()->subMinutes($graceMin))
             ->delete();
+        $wiped = is_numeric($wipedResult) ? (int) $wipedResult : 0;
 
         $this->info("Pruned {$idle} idle + {$wiped} wiped device token(s).");
 

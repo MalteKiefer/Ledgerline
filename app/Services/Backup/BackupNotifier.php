@@ -82,7 +82,14 @@ class BackupNotifier
     /** In-app bell notification — backups are workspace infra, so notify the admins. */
     private function desktop(BackupJob $job, bool $success, string $summary): void
     {
-        $admins = User::query()->get()->filter->managesGlobalSettings()->pluck('id');
+        $admins = User::query()->get()
+            ->filter->managesGlobalSettings()
+            ->map(function (User $u): int {
+                $id = $u->getKey();
+
+                return is_numeric($id) ? (int) $id : 0;
+            })
+            ->values();
         $success
             ? AppNotification::recordFor($admins, 'success', __('notifications.backup_ok', ['name' => $job->name]), $summary, 'backup')
             : AppNotification::recordFor($admins, 'error', __('notifications.backup_failed', ['name' => $job->name]), $summary, 'backup');

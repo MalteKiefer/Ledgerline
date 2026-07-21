@@ -20,7 +20,8 @@ class MetricsController extends Controller
 {
     public function index(Request $request, SystemStatus $status): Response
     {
-        $token = (string) config('ops.metrics_token');
+        $rawToken = config('ops.metrics_token');
+        $token = is_string($rawToken) ? $rawToken : '';
         abort_if($token === '', 404);
         abort_unless(hash_equals($token, $this->presentedToken($request)), 403);
 

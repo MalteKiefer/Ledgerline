@@ -26,8 +26,12 @@ class SyncPaperless extends Command
         $total = ['tag' => 0, 'document_type' => 0, 'correspondent' => 0];
 
         foreach ($userIds as $userId) {
+            if (! is_numeric($userId)) {
+                continue;
+            }
+            $userId = (int) $userId;
             try {
-                $counts = $sync->run((int) $userId);
+                $counts = $sync->run($userId);
             } catch (\Throwable $e) {
                 $this->error("Paperless sync failed for user {$userId}: ".$e->getMessage());
 

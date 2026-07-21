@@ -22,11 +22,12 @@ class SecurityController extends Controller
     public function edit(): View
     {
         $s = AppSettings::current();
+        $defaultMax = config('devices.max', 3);
 
         return view('settings.security.edit', [
             'rememberDays' => $s->vault_remember_days ?: 7,
             'idleMinutes' => $s->vault_public_idle_minutes ?: 10,
-            'maxDevices' => $s->max_connected_devices ?: (int) config('devices.max', 3),
+            'maxDevices' => $s->max_connected_devices ?: (is_numeric($defaultMax) ? (int) $defaultMax : 3),
         ]);
     }
 

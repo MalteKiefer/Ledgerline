@@ -18,7 +18,7 @@ class VideoProcessor
     /**
      * Probe a local video file for its dimensions, duration and a full dump.
      *
-     * @return array{width: ?int, height: ?int, duration: ?int, raw: ?array<string, mixed>}
+     * @return array{width: ?int, height: ?int, duration: ?int, raw: ?array<array-key, mixed>}
      */
     public function probe(string $localPath): array
     {
@@ -44,10 +44,15 @@ class VideoProcessor
 
         $out['raw'] = $data;
 
-        foreach ($data['streams'] ?? [] as $stream) {
-            if (($stream['codec_type'] ?? null) === 'video') {
-                $width = isset($stream['width']) ? (int) $stream['width'] : null;
-                $height = isset($stream['height']) ? (int) $stream['height'] : null;
+        $streams = $data['streams'] ?? [];
+        if (is_array($streams)) {
+            foreach ($streams as $stream) {
+                if (! is_array($stream) || ($stream['codec_type'] ?? null) !== 'video') {
+                    continue;
+                }
+
+                $width = isset($stream['width']) && is_numeric($stream['width']) ? (int) $stream['width'] : null;
+                $height = isset($stream['height']) && is_numeric($stream['height']) ? (int) $stream['height'] : null;
 
                 // A rotated (portrait) video encodes landscape dimensions; swap
                 // them so the stored size matches how it is displayed.
@@ -61,8 +66,10 @@ class VideoProcessor
             }
         }
 
-        if (isset($data['format']['duration'])) {
-            $out['duration'] = (int) round((float) $data['format']['duration']);
+        $format = $data['format'] ?? null;
+        $duration = is_array($format) ? ($format['duration'] ?? null) : null;
+        if (is_numeric($duration)) {
+            $out['duration'] = (int) round((float) $duration);
         }
 
         return $out;
@@ -72,20 +79,24 @@ class VideoProcessor
      * Whether a video stream is rotated a quarter turn (portrait), from either
      * the display-matrix side data or the legacy rotate tag.
      *
-     * @param  array<string, mixed>  $stream
+     * @param  array<array-key, mixed>  $stream
      */
     private function isSideways(array $stream): bool
     {
-        $rotation = $stream['tags']['rotate'] ?? null;
+        $tags = $stream['tags'] ?? null;
+        $rotation = is_array($tags) ? ($tags['rotate'] ?? null) : null;
 
-        foreach ($stream['side_data_list'] ?? [] as $side) {
-            if (isset($side['rotation'])) {
-                $rotation = $side['rotation'];
-                break;
+        $sideData = $stream['side_data_list'] ?? [];
+        if (is_array($sideData)) {
+            foreach ($sideData as $side) {
+                if (is_array($side) && isset($side['rotation'])) {
+                    $rotation = $side['rotation'];
+                    break;
+                }
             }
         }
 
-        return $rotation !== null && abs((int) $rotation) % 180 === 90;
+        return is_numeric($rotation) && abs((int) $rotation) % 180 === 90;
     }
 
     /**
@@ -128,7 +139,9 @@ class VideoProcessor
     {
         // Config/env only (like exiftool): the ffmpeg binary is executed by the
         // worker, so it must not be settable from the app UI/database.
-        return (string) config('gallery.ffmpeg_path', 'ffmpeg');
+        $path = config('gallery.ffmpeg_path', 'ffmpeg');
+
+        return is_string($path) && $path !== '' ? $path : 'ffmpeg';
     }
 
     private function ffmpeg(): string

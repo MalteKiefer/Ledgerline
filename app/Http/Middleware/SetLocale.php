@@ -19,16 +19,20 @@ class SetLocale
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $supported = array_map('strval', array_keys(config('locales.languages')));
+        $languages = config('locales.languages');
+        $supported = is_array($languages) ? array_map('strval', array_keys($languages)) : [];
+
+        $default = config('app.locale');
+        $default = is_string($default) ? $default : 'en';
 
         $browser = $this->fromBrowser($request, $supported);
         $locale = $request->user()?->locale
             ?? $request->session()->get('locale')
             ?? $browser
-            ?? config('app.locale');
+            ?? $default;
 
-        if (! in_array($locale, $supported, true)) {
-            $locale = config('app.locale');
+        if (! is_string($locale) || ! in_array($locale, $supported, true)) {
+            $locale = $default;
         }
 
         // Persist the detected browser language onto the user once, so background

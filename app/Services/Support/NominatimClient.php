@@ -26,7 +26,9 @@ class NominatimClient
 {
     private function base(): string
     {
-        return (string) config('gallery.geocoder_url', 'https://nominatim.openstreetmap.org');
+        $url = config('gallery.geocoder_url', 'https://nominatim.openstreetmap.org');
+
+        return is_string($url) && $url !== '' ? $url : 'https://nominatim.openstreetmap.org';
     }
 
     /**
@@ -65,7 +67,8 @@ class NominatimClient
      */
     private function throttle(): void
     {
-        $interval = (int) config('gallery.geocode_interval_ms', 1100);
+        $intervalCfg = config('gallery.geocode_interval_ms', 1100);
+        $interval = is_numeric($intervalCfg) ? (int) $intervalCfg : 1100;
         if ($interval <= 0) {
             return;
         }
@@ -75,7 +78,8 @@ class NominatimClient
         try {
             $lock->block(30);
 
-            $last = (float) Cache::get('geocode:nominatim:last', 0.0);
+            $lastRaw = Cache::get('geocode:nominatim:last', 0.0);
+            $last = is_numeric($lastRaw) ? (float) $lastRaw : 0.0;
             $waitMs = $interval - (int) ((microtime(true) - $last) * 1000);
             if ($waitMs > 0 && $waitMs <= $interval) {
                 usleep($waitMs * 1000);
@@ -86,7 +90,7 @@ class NominatimClient
             // Could not acquire the lock in time; proceed without spacing rather
             // than fail the whole lookup.
         } finally {
-            optional($lock)->release();
+            $lock->release();
         }
     }
 }

@@ -56,8 +56,9 @@ class SharedVaultStoreController extends Controller
     {
         $this->authorize('update', $vault);
 
+        $manifestMax = config('vault.manifest_max_bytes');
         $data = $request->validate([
-            'sealed_manifest' => ['required', 'string', 'max:'.config('vault.manifest_max_bytes')],
+            'sealed_manifest' => ['required', 'string', 'max:'.(is_numeric($manifestMax) ? (int) $manifestMax : 0)],
             'expected_version' => ['required', 'integer', 'min:0'],
         ]);
 

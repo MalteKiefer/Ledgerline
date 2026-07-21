@@ -28,7 +28,8 @@ class DevicePairingController extends Controller
 
         // The QR carries only the short-lived one-time code plus this server's
         // base URL, as a deep link the app handles. The real token is never here.
-        $payload = 'ledgerline://pair?url='.rawurlencode((string) config('app.url')).'&code='.rawurlencode($code);
+        $appUrl = config('app.url');
+        $payload = 'ledgerline://pair?url='.rawurlencode(is_string($appUrl) ? $appUrl : '').'&code='.rawurlencode($code);
         $qr = (new SvgWriter)->write(new QrCode($payload))->getDataUri();
 
         return response()->json([

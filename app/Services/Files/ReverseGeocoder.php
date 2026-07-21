@@ -42,8 +42,8 @@ class ReverseGeocoder
         [$lat, $lon] = $this->snapToGrid($lat, $lon);
 
         // In-boundary first; only fall through to OSM when Photon has no match.
-        $photonUrl = (string) config('gallery.photon_url', '');
-        if ($photonUrl !== '') {
+        $photonUrl = config('gallery.photon_url', '');
+        if (is_string($photonUrl) && $photonUrl !== '') {
             $viaPhoton = $this->viaPhoton($photonUrl, $lat, $lon);
             if ($viaPhoton['display'] !== null) {
                 return $viaPhoton;
@@ -70,9 +70,12 @@ class ReverseGeocoder
             return ['display' => null, 'address' => []];
         }
 
+        $displayName = $json['display_name'] ?? null;
+        $address = $json['address'] ?? null;
+
         return [
-            'display' => ($json['display_name'] ?? null) ?: null,
-            'address' => array_map('strval', $json['address'] ?? []),
+            'display' => (is_string($displayName) && $displayName !== '') ? $displayName : null,
+            'address' => is_array($address) ? $this->stringifyMap($address) : [],
         ];
     }
 
@@ -111,19 +114,23 @@ class ReverseGeocoder
      * Build a single display line from Photon's structured GeoJSON properties
      * (it has no display_name field), or null if there is nothing usable.
      *
-     * @param  array<string, mixed>  $p
+     * @param  array<mixed>  $p
      */
     private function photonDisplay(array $p): ?string
     {
-        $street = $p['street'] ?? $p['name'] ?? '';
-        $line1 = trim($street.' '.($p['housenumber'] ?? ''));
-        $city = $p['city'] ?? $p['town'] ?? $p['village'] ?? $p['district'] ?? $p['county'] ?? '';
+        $street = $this->str($p['street'] ?? null) ?: $this->str($p['name'] ?? null);
+        $line1 = trim($street.' '.$this->str($p['housenumber'] ?? null));
+        $city = $this->str($p['city'] ?? null)
+            ?: $this->str($p['town'] ?? null)
+            ?: $this->str($p['village'] ?? null)
+            ?: $this->str($p['district'] ?? null)
+            ?: $this->str($p['county'] ?? null);
 
         $parts = array_values(array_filter([
             $line1,
-            trim(($p['postcode'] ?? '').' '.$city),
-            (string) ($p['state'] ?? ''),
-            (string) ($p['country'] ?? ''),
+            trim($this->str($p['postcode'] ?? null).' '.$city),
+            $this->str($p['state'] ?? null),
+            $this->str($p['country'] ?? null),
         ], static fn (string $s): bool => $s !== ''));
 
         $display = implode(', ', $parts);
@@ -135,22 +142,61 @@ class ReverseGeocoder
      * Map Photon properties to the same Nominatim-style address keys the client
      * already understands.
      *
-     * @param  array<string, mixed>  $p
+     * @param  array<mixed>  $p
      * @return array<string, string>
      */
     private function photonAddress(array $p): array
     {
-        $city = $p['city'] ?? $p['town'] ?? $p['village'] ?? $p['district'] ?? null;
+        $city = $this->str($p['city'] ?? null)
+            ?: $this->str($p['town'] ?? null)
+            ?: $this->str($p['village'] ?? null)
+            ?: $this->str($p['district'] ?? null);
+        $countryCode = $this->str($p['countrycode'] ?? null);
 
-        return array_map('strval', array_filter([
-            'road' => $p['street'] ?? null,
-            'house_number' => $p['housenumber'] ?? null,
+        return array_filter([
+            'road' => $this->str($p['street'] ?? null),
+            'house_number' => $this->str($p['housenumber'] ?? null),
             'city' => $city,
-            'state' => $p['state'] ?? null,
-            'postcode' => $p['postcode'] ?? null,
-            'country' => $p['country'] ?? null,
-            'country_code' => isset($p['countrycode']) ? strtolower((string) $p['countrycode']) : null,
-        ], static fn ($v): bool => $v !== null && $v !== ''));
+            'state' => $this->str($p['state'] ?? null),
+            'postcode' => $this->str($p['postcode'] ?? null),
+            'country' => $this->str($p['country'] ?? null),
+            'country_code' => strtolower($countryCode),
+        ], static fn (string $v): bool => $v !== '');
+    }
+
+    /**
+     * Coerce a decoded-JSON value to a trimmed string, treating anything that
+     * is not a string or number (arrays, null, bool) as empty — the same
+     * graceful degradation the previous "(string) (… ?? '')" casts provided.
+     */
+    private function str(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        return '';
+    }
+
+    /**
+     * Stringify all values of a decoded-JSON map, dropping non-scalar values
+     * (mirrors the previous array_map('strval', …) over Nominatim's address).
+     *
+     * @param  array<mixed>  $map
+     * @return array<string, string>
+     */
+    private function stringifyMap(array $map): array
+    {
+        $out = [];
+        foreach ($map as $key => $value) {
+            $out[(string) $key] = $this->str($value);
+        }
+
+        return $out;
     }
 
     /**
@@ -162,11 +208,15 @@ class ReverseGeocoder
     private function snapToGrid(float $lat, float $lon): array
     {
         try {
-            $km = (float) (AppSettings::current()->gallery_geocode_grid_km
-                ?? config('gallery.geocode_grid_km', 0.5));
+            $configured = AppSettings::current()->gallery_geocode_grid_km
+                ?? config('gallery.geocode_grid_km', 0.5);
         } catch (Throwable) {
-            $km = (float) config('gallery.geocode_grid_km', 0.5);
+            $configured = config('gallery.geocode_grid_km', 0.5);
         }
+
+        // A non-numeric value casts to 0.0 (the old (float) semantics), which the
+        // guard below treats as "no snapping" — degrade rather than throw.
+        $km = is_numeric($configured) ? (float) $configured : 0.0;
 
         if ($km <= 0) {
             return [$lat, $lon];

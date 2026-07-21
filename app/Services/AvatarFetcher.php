@@ -84,7 +84,8 @@ class AvatarFetcher
     {
         $scheme = parse_url($url, PHP_URL_SCHEME);
         $host = parse_url($url, PHP_URL_HOST);
-        $allowedHost = parse_url((string) config('services.pocketid.base_url'), PHP_URL_HOST);
+        $baseUrl = config('services.pocketid.base_url');
+        $allowedHost = is_string($baseUrl) ? parse_url($baseUrl, PHP_URL_HOST) : null;
 
         return in_array($scheme, ['http', 'https'], true)
             && is_string($host)

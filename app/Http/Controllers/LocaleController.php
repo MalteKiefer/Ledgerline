@@ -16,7 +16,8 @@ class LocaleController extends Controller
 {
     public function update(Request $request): RedirectResponse|JsonResponse
     {
-        $supported = array_keys(config('locales.languages'));
+        $languages = config('locales.languages');
+        $supported = array_keys(is_array($languages) ? $languages : []);
 
         $validated = $request->validate([
             'locale' => ['required', 'string', 'in:'.implode(',', $supported)],

@@ -37,8 +37,9 @@ class TwoFactorDirectoryController extends Controller
                 if (! $res->ok()) {
                     return [];
                 }
+                $payload = $res->json();
 
-                return $this->parse($res->json() ?? []);
+                return $this->parse(is_array($payload) ? $payload : []);
             } catch (Throwable) {
                 return [];
             }
