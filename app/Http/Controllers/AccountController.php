@@ -40,7 +40,13 @@ class AccountController extends Controller
         $zip = new \ZipArchive;
         $zip->open($tmp, \ZipArchive::OVERWRITE);
         foreach ($sections as $key => $data) {
-            $zip->addFromString($key.'.json', json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($json === false) {
+                $zip->close();
+                @unlink($tmp);
+                throw new \RuntimeException("Failed to encode export section {$key}: ".json_last_error_msg());
+            }
+            $zip->addFromString($key.'.json', $json);
         }
         $zip->close();
 

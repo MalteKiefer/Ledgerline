@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
  *
  * The driver config (bucket/keys or host/credentials) is stored as an encrypted
  * JSON blob — usable in the clear at runtime, unreadable in a database dump.
+ *
+ * @property array<string, mixed>|null $config
  */
 #[Fillable(['name', 'driver', 'config'])]
 class BackupDestination extends Model

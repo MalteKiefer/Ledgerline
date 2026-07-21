@@ -32,7 +32,7 @@ class SharedVaultStore extends Model
      *   - on success:  ['conflict' => false, 'version' => N]
      *   - on conflict: ['conflict' => true,  'version' => N, 'sealed_manifest' => '...']
      *
-     * @return array{conflict: bool, version: int, sealed_manifest?: string|null}
+     * @return array{conflict: false, version: int}|array{conflict: true, version: int, sealed_manifest: string|null}
      */
     public static function tryWrite(string|int $vaultId, string $sealedManifest, int $expectedVersion): array
     {

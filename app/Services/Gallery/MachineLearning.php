@@ -152,7 +152,11 @@ class MachineLearning
     {
         $vector = is_string($value) ? json_decode($value, true) : $value;
 
-        return is_array($vector) && $vector !== [] ? array_map('floatval', $vector) : null;
+        if (! is_array($vector) || $vector === []) {
+            return null;
+        }
+
+        return array_map('floatval', array_values($vector));
     }
 
     public function faceEnabled(): bool

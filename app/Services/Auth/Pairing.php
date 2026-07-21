@@ -84,7 +84,7 @@ class Pairing
      * App polls with the code. Returns ['status' => 'pending'] until approved, then
      * mints + returns the Sanctum token EXACTLY ONCE and consumes the pairing.
      *
-     * @return array{status: string, token?: string, user?: User}
+     * @return array{status: 'pending'}|array{status: 'approved', token: string, user: User}
      */
     public function collect(string $code, ?string $ip = null): array
     {
@@ -114,6 +114,8 @@ class Pairing
         // Enforce the device cap (revoke the oldest tokens so this new one keeps
         // the user at the configured maximum), then mint once.
         $user = $pairing->user;
+        // A consumed pairing always has its owning user; guard for the type system.
+        abort_if($user === null, 410);
         // Admin-configurable cap (Security settings); null/0 falls back to config default.
         $max = max(1, (int) (AppSettings::current()->max_connected_devices ?: config('devices.max', 3)));
         $existing = $user->tokens()->orderBy('id')->pluck('id');
@@ -131,7 +133,7 @@ class Pairing
         }
         $pairing->forceFill(['token_id' => $token->accessToken->getKey()])->save();
 
-        return ['status' => 'approved', 'token' => $token->plainTextToken, 'user' => $pairing->user];
+        return ['status' => 'approved', 'token' => $token->plainTextToken, 'user' => $user];
     }
 
     /** Drop expired and terminal rows. Returns the number deleted. */

@@ -38,7 +38,7 @@ class SharedVault extends Model
             }
 
             if ($vault->owner_id === null && Auth::check()) {
-                $vault->owner_id = Auth::id();
+                $vault->owner_id = (int) Auth::id();
             }
 
             // kind is server-assigned only (never from request input); default to

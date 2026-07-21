@@ -75,8 +75,8 @@ final class ArchiveCipher
             $magic = fread($in, strlen(self::MAGIC_V2));
             if ($magic === self::MAGIC_V2) {
                 // KDF params are stored in the header (raisable without a break).
-                $ops = unpack('N', (string) fread($in, 4))[1];
-                $mem = unpack('N', (string) fread($in, 4))[1];
+                $ops = $this->readU32($in);
+                $mem = $this->readU32($in);
             } elseif ($magic === self::MAGIC_V1) {
                 // Legacy archives derived with the MODERATE preset.
                 $ops = SODIUM_CRYPTO_PWHASH_OPSLIMIT_MODERATE;
@@ -84,8 +84,8 @@ final class ArchiveCipher
             } else {
                 throw new RuntimeException('Not a Ledgerline backup archive.');
             }
-            $salt = fread($in, SODIUM_CRYPTO_PWHASH_SALTBYTES);
-            $header = fread($in, SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_HEADERBYTES);
+            $salt = $this->readExactly($in, SODIUM_CRYPTO_PWHASH_SALTBYTES, 'salt');
+            $header = $this->readExactly($in, SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_HEADERBYTES, 'stream header');
             $key = $this->deriveKey($passphrase, $salt, $ops, $mem);
             $state = sodium_crypto_secretstream_xchacha20poly1305_init_pull($header, $key);
 
@@ -98,7 +98,11 @@ final class ArchiveCipher
                 if (strlen($lenRaw) !== 4) {
                     throw new RuntimeException('Truncated archive (chunk length).');
                 }
-                $len = unpack('N', $lenRaw)[1];
+                $unpacked = unpack('N', $lenRaw);
+                if ($unpacked === false) {
+                    throw new RuntimeException('Corrupt archive (chunk length).');
+                }
+                $len = $unpacked[1];
                 $cipher = fread($in, $len);
                 if ($cipher === false || strlen($cipher) !== $len) {
                     throw new RuntimeException('Truncated archive (chunk body).');
@@ -160,6 +164,41 @@ final class ArchiveCipher
         if ($written === false || $written !== $expected) {
             throw new RuntimeException('Short write while encrypting/decrypting the archive.');
         }
+    }
+
+    /**
+     * Read exactly $length bytes or throw: a short read means the archive was
+     * truncated/corrupt, which must fail loudly before any crypto touches it.
+     *
+     * @param  resource  $in
+     */
+    private function readExactly($in, int $length, string $what): string
+    {
+        if ($length < 1) {
+            throw new RuntimeException("Invalid read length for {$what}.");
+        }
+        $data = fread($in, $length);
+        if ($data === false || strlen($data) !== $length) {
+            throw new RuntimeException("Truncated archive ({$what}).");
+        }
+
+        return $data;
+    }
+
+    /**
+     * Read a big-endian u32 or throw on a truncated/corrupt header.
+     *
+     * @param  resource  $in
+     */
+    private function readU32($in): int
+    {
+        $raw = $this->readExactly($in, 4, 'KDF parameter');
+        $unpacked = unpack('N', $raw);
+        if ($unpacked === false) {
+            throw new RuntimeException('Corrupt archive (KDF parameter).');
+        }
+
+        return $unpacked[1];
     }
 
     /** @return resource */
