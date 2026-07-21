@@ -333,7 +333,7 @@ export default (config = {}, labels = {}) => ({
     },
 
     async _loadSharedFolders() {
-        if (! this.$store.vault.unlocked()) return;
+        if (! this.$store.vault.unlocked) return;
         try {
             const ids = await Vault.ensureIdentityKeys();
             const rows = await getJson('/vaults?kind=folder').catch(() => []);
