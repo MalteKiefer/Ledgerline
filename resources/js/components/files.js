@@ -4,11 +4,14 @@ import { Vault, VaultShareCrypto } from '../vault';
 import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
 import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
-import { fileCategory, CATEGORY_ICON, formatBytes } from '../shared/file-categories';
+import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
 import { normVec as _normVec, dotVec as _dotVec } from '../shared/vector-math';
 import { ocrImage } from '../shared/ocr';
 import { loadCodeMirror, cmModule } from '../shared/lazy-loaders';
 import { bootStore } from '../shared/zk-module';
+
+// Heroicon path for the folder chip glyph (24-outline folder).
+const FOLDER_ICON_PATH = 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z';
 
 // Files-only module state (fulltext + CLIP-embedding search caches + reconcile dedupe).
 const fileText = {};
@@ -783,6 +786,19 @@ export default (config = {}, labels = {}) => ({
     // Small type icon path for a file row.
     fileIconPath(row) {
         return CATEGORY_ICON[this.fileCat(row)] ?? CATEGORY_ICON.OTHER;
+    },
+
+    // iOS tinted-chip tint for a row (folder tint for folders, category tint for files).
+    rowTint(row) { return row.kind === 'folder' ? FOLDER_TINT : categoryTint(row.name, row.mime || ''); },
+
+    // Heroicon path for a row's chip glyph (folder glyph for folders, category glyph for files).
+    rowIconPath(row) { return row.kind === 'folder' ? FOLDER_ICON_PATH : (CATEGORY_ICON[fileCategory(row.name, row.mime || '')] || CATEGORY_ICON.OTHER); },
+
+    // Localized specific type label for a file row (via the Blade-passed map).
+    rowLabel(row) {
+        if (row.kind === 'folder') return labels.folderLabel || 'Folder';
+        const tok = fileTypeLabel(row.name, row.mime || '').replace('filetype.', '');
+        return (labels.filetypeLabels && labels.filetypeLabels[tok]) || (labels.filetypeLabels && labels.filetypeLabels.other) || '';
     },
 
     fmtSize: formatBytes,
