@@ -2,13 +2,15 @@
 // to populate widgets (todos, counters, recent notes, birthdays, health).
 // Gallery is best-effort: the widget degrades gracefully if unavailable.
 import { bootStore, bootGalleryStore } from '../shared/zk-module';
-import { sortTodos, upcomingBirthdays } from '../shared/dashboard-utils';
+import { sortTodos, upcomingBirthdays, yearsAgoPhotos } from '../shared/dashboard-utils';
 import { getJson } from '../shared/api';
 import {
     METRICS, metric,
     kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl,
 } from '../shared/health-metrics';
 import { loadUplot } from '../shared/uplot-loader';
+import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
+import { formatBytes } from '../shared/file-categories';
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | ready
@@ -17,14 +19,20 @@ export default (config = {}, labels = {}) => ({
     usage: { files: null, gallery: null },
     quickAdd: { metric: 'weight', v: '', v2: '' },
     _sparkInst: null,
+    _thumbCache: {}, // photoId -> objectURL
+    _thumbPending: {}, // photoId -> in-flight promise
 
     async init() {
         await this._boot();
         this.$watch('$store.vault.unlocked', async (on) => {
             if (on && this.state !== 'ready') await this._boot();
-            if (! on) this.state = 'locked';
+            if (! on) { this.state = 'locked'; this._revokeThumbCache(); }
         });
         this.$watch('_mut', () => this.renderSpark());
+    },
+
+    destroy() {
+        this._revokeThumbCache();
     },
 
     async _boot() {
@@ -34,6 +42,14 @@ export default (config = {}, labels = {}) => ({
         try { this.galleryReady = await bootGalleryStore(this.$store); } catch (_e) { this.galleryReady = false; }
         this._loadUsage();
         this.$nextTick(() => this.renderSpark());
+    },
+
+    _revokeThumbCache() {
+        for (const url of Object.values(this._thumbCache)) {
+            try { URL.revokeObjectURL(url); } catch (_e) { /* ignore */ }
+        }
+        this._thumbCache = {};
+        this._thumbPending = {};
     },
 
     get _s() { return window.LLStore?.data ?? null; },
@@ -208,5 +224,76 @@ export default (config = {}, labels = {}) => ({
     async _loadUsage() {
         try { this.usage.files = await getJson('/files/usage'); } catch (_e) { /* widget shows — */ }
         try { this.usage.gallery = await getJson('/gallery/usage'); } catch (_e) { /* — */ }
+    },
+
+    // --- On This Day widget ---
+    // Groups past-year photos whose month+day match today, sorted nearest first.
+    get onThisDay() {
+        return this._g ? yearsAgoPhotos(this._g.photos ?? [], new Date().toISOString().slice(0, 10)) : [];
+    },
+
+    // Decrypt and cache a photo thumbnail. Reuses the same decrypt path as gallery.js
+    // (thumbLane + fetchDecryptWorker, photo.thumbRef + photo.thumbKey).
+    // Capped at 12 total decrypts; returns '' when photo has no thumb or cap is reached.
+    async thumbUrl(photo) {
+        if (! photo?.thumbRef) return '';
+        if (this._thumbCache[photo.id]) return this._thumbCache[photo.id];
+        if (this._thumbPending[photo.id]) return this._thumbPending[photo.id];
+        // Cap total: once 12 object URLs are cached, stop decrypting more.
+        if (Object.keys(this._thumbCache).length >= 12) return '';
+        const job = thumbLane(async () => {
+            const bytes = await fetchDecryptWorker(config.rawBase, photo.thumbRef, photo.thumbKey);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            this._thumbCache[photo.id] = url;
+            return url;
+        }).catch(() => '').finally(() => { delete this._thumbPending[photo.id]; });
+        this._thumbPending[photo.id] = job;
+        return job;
+    },
+
+    // --- Storage widget ---
+    // Exposes the usage data loaded by _loadUsage() in a form suitable for
+    // the storage bars. Returns { used, quota } for each store, or null while loading.
+    // formatBytes is imported for use in Blade via a window-exposed helper.
+    _fmtBytes(n) {
+        return n == null ? '—' : formatBytes(n);
+    },
+
+    // --- Password Health widget ---
+    // Cheap subset: reused passwords, expiring cards, logins without TOTP.
+    // No HIBP, no zxcvbn.
+    get pwHealth() {
+        const secrets = this._s?.secrets ?? [];
+        // Reused: count passwords appearing more than once across all items.
+        const pw = {};
+        for (const s of secrets) {
+            const val = s.fields?.password;
+            if (val) pw[val] = (pw[val] || 0) + 1;
+        }
+        const reused = Object.values(pw).filter((n) => n > 1).reduce((a, n) => a + n, 0);
+
+        // Expiring/expired cards: expiry within 45 days or already past.
+        const soon = Date.now() + 45 * 86400000;
+        let cards = 0;
+        for (const s of secrets) {
+            if (s.type !== 'card') continue;
+            const exp = this._cardExpiry(s);
+            if (exp && exp.getTime() <= soon) cards++;
+        }
+
+        // Logins without a TOTP field.
+        const no2fa = secrets.filter((s) => s.type === 'login' && ! s.fields?.totp).length;
+
+        return { reused, cards, no2fa };
+    },
+
+    // Parse card expiry from fields.expiry (format "MM/YY" or "MM/YYYY").
+    // Returns a Date for the first day after the expiry month, or null if unparseable.
+    _cardExpiry(s) {
+        const m = String(s.fields?.expiry ?? '').match(/(\d{1,2})\D+(\d{2,4})/);
+        if (! m) return null;
+        const mm = +m[1]; let yr = +m[2]; if (yr < 100) yr += 2000;
+        if (mm < 1 || mm > 12) return null;
+        return new Date(yr, mm, 1); // first day after the expiry month
     },
 });

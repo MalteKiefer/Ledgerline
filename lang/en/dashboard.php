@@ -36,4 +36,20 @@ return [
     'health_empty'  => 'No health data recorded yet',
     'quick_add'     => 'Quick add',
     'add'           => 'Add',
+
+    'on_this_day_title'    => 'On this day',
+    'on_this_day_empty'    => 'No photos from this day in previous years',
+    'on_this_day_years_ago' => ':count years ago',
+
+    'storage_title'   => 'Storage',
+    'storage_files'   => 'Files',
+    'storage_gallery' => 'Gallery',
+    'storage_of'      => ':used of :quota',
+    'storage_used'    => ':used used',
+
+    'pw_health_title'          => 'Password health',
+    'pw_health_reused'         => ':n reused passwords',
+    'pw_health_expiring_cards' => ':n expiring cards',
+    'pw_health_no_twofa'       => ':n logins without 2FA',
+    'pw_health_all_good'       => 'All good',
 ];

@@ -1,5 +1,5 @@
 <x-layouts.app :title="__('messages.nav.dashboard')">
-<div x-data="dashboard({}, {})">
+<div x-data="dashboard({ rawBase: '{{ url('/gallery/raw') }}' }, {})">
 
     {{-- Zero-knowledge gate --}}
     @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
@@ -330,7 +330,182 @@
                     </div>
                 </div>
 
-                {{-- Task 5: on-this-day / gallery widget --}}
+                {{-- ── On This Day widget ── --}}
+                <template x-if="galleryReady">
+                    <div class="ll-card flex flex-col">
+                        <div class="flex items-center justify-between mb-3">
+                            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                {{ __('dashboard.on_this_day_title') }}
+                            </h2>
+                            <a href="{{ route('gallery.index') }}"
+                                class="text-xs font-medium text-accent hover:underline">
+                                {{ __('dashboard.open') }}
+                            </a>
+                        </div>
+
+                        <template x-if="onThisDay.length === 0">
+                            <div class="flex flex-1 flex-col items-center justify-center py-6 text-center">
+                                <span class="flex h-10 w-10 items-center justify-center rounded-xl text-white mb-2"
+                                    style="background:#9e70fa">
+                                    <x-icon name="photo" class="h-5 w-5" />
+                                </span>
+                                <p class="text-sm text-gray-400 dark:text-gray-500">
+                                    {{ __('dashboard.on_this_day_empty') }}
+                                </p>
+                            </div>
+                        </template>
+
+                        <template x-if="onThisDay.length > 0">
+                            <div class="space-y-3">
+                                <template x-for="group in onThisDay" :key="group.yearsAgo">
+                                    <div>
+                                        <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2"
+                                            x-text="@js(__('dashboard.on_this_day_years_ago')).replace(':count', group.yearsAgo)"></p>
+                                        <div class="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                                            <template x-for="photo in group.photos.slice(0, 12)" :key="photo.id">
+                                                <a href="{{ route('gallery.index') }}"
+                                                    class="shrink-0 block rounded-xl overflow-hidden bg-gray-100 dark:bg-white/5"
+                                                    style="width:72px;height:72px">
+                                                    <img
+                                                        x-init="thumbUrl(photo).then(u => { if (u) $el.src = u; })"
+                                                        :alt="''"
+                                                        class="h-full w-full object-cover"
+                                                        style="display:block" />
+                                                </a>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                {{-- ── Storage widget ── --}}
+                <div class="ll-card flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {{ __('dashboard.storage_title') }}
+                        </h2>
+                    </div>
+
+                    <div class="space-y-4">
+                        {{-- Files storage --}}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                    {{ __('dashboard.storage_files') }}
+                                </span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
+                                    <template x-if="usage.files === null">
+                                        <span>—</span>
+                                    </template>
+                                    <template x-if="usage.files !== null && usage.files.quota > 0">
+                                        <span x-text="@js(__('dashboard.storage_of'))
+                                            .replace(':used', _fmtBytes(usage.files.used))
+                                            .replace(':quota', _fmtBytes(usage.files.quota))"></span>
+                                    </template>
+                                    <template x-if="usage.files !== null && !(usage.files.quota > 0)">
+                                        <span x-text="@js(__('dashboard.storage_used'))
+                                            .replace(':used', _fmtBytes(usage.files.used))"></span>
+                                    </template>
+                                </span>
+                            </div>
+                            <template x-if="usage.files !== null && usage.files.quota > 0">
+                                <div class="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden">
+                                    <div class="h-full rounded-full ll-accent transition-all"
+                                        :style="'width:' + Math.min(100, Math.round(usage.files.used / usage.files.quota * 100)) + '%'"></div>
+                                </div>
+                            </template>
+                        </div>
+
+                        {{-- Gallery storage --}}
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                    {{ __('dashboard.storage_gallery') }}
+                                </span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
+                                    <template x-if="usage.gallery === null">
+                                        <span>—</span>
+                                    </template>
+                                    <template x-if="usage.gallery !== null && usage.gallery.quota > 0">
+                                        <span x-text="@js(__('dashboard.storage_of'))
+                                            .replace(':used', _fmtBytes(usage.gallery.used))
+                                            .replace(':quota', _fmtBytes(usage.gallery.quota))"></span>
+                                    </template>
+                                    <template x-if="usage.gallery !== null && !(usage.gallery.quota > 0)">
+                                        <span x-text="@js(__('dashboard.storage_used'))
+                                            .replace(':used', _fmtBytes(usage.gallery.used))"></span>
+                                    </template>
+                                </span>
+                            </div>
+                            <template x-if="usage.gallery !== null && usage.gallery.quota > 0">
+                                <div class="h-1.5 w-full rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden">
+                                    <div class="h-full rounded-full ll-accent transition-all"
+                                        :style="'width:' + Math.min(100, Math.round(usage.gallery.used / usage.gallery.quota * 100)) + '%'"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- ── Password Health widget ── --}}
+                <div class="ll-card flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {{ __('dashboard.pw_health_title') }}
+                        </h2>
+                        <a href="{{ route('passwords.index') }}"
+                            class="text-xs font-medium text-accent hover:underline">
+                            {{ __('dashboard.open') }}
+                        </a>
+                    </div>
+
+                    <template x-if="pwHealth.reused === 0 && pwHealth.cards === 0 && pwHealth.no2fa === 0">
+                        <div class="flex flex-1 flex-col items-center justify-center py-6 text-center">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-xl text-white mb-2"
+                                style="background:#59ad6b">
+                                <x-icon name="shield-check" class="h-5 w-5" />
+                            </span>
+                            <p class="text-sm text-gray-400 dark:text-gray-500">
+                                {{ __('dashboard.pw_health_all_good') }}
+                            </p>
+                        </div>
+                    </template>
+
+                    <template x-if="pwHealth.reused > 0 || pwHealth.cards > 0 || pwHealth.no2fa > 0">
+                        <ul class="!p-0 -mx-4 divide-y divide-black/[0.06] dark:divide-white/10">
+                            <template x-if="pwHealth.reused > 0">
+                                <li class="flex items-center gap-3 px-4 py-2.5">
+                                    <span class="ll-chip h-8 w-8 shrink-0 rounded-lg" style="--chip:#e2915a">
+                                        <x-icon name="arrow-path" class="h-4 w-4" />
+                                    </span>
+                                    <span class="flex-1 text-sm text-gray-800 dark:text-gray-200"
+                                        x-text="@js(__('dashboard.pw_health_reused')).replace(':n', pwHealth.reused)"></span>
+                                </li>
+                            </template>
+                            <template x-if="pwHealth.cards > 0">
+                                <li class="flex items-center gap-3 px-4 py-2.5">
+                                    <span class="ll-chip h-8 w-8 shrink-0 rounded-lg" style="--chip:#3b9fd6">
+                                        <x-icon name="credit-card" class="h-4 w-4" />
+                                    </span>
+                                    <span class="flex-1 text-sm text-gray-800 dark:text-gray-200"
+                                        x-text="@js(__('dashboard.pw_health_expiring_cards')).replace(':n', pwHealth.cards)"></span>
+                                </li>
+                            </template>
+                            <template x-if="pwHealth.no2fa > 0">
+                                <li class="flex items-center gap-3 px-4 py-2.5">
+                                    <span class="ll-chip h-8 w-8 shrink-0 rounded-lg" style="--chip:#d9a441">
+                                        <x-icon name="shield-exclamation" class="h-4 w-4" />
+                                    </span>
+                                    <span class="flex-1 text-sm text-gray-800 dark:text-gray-200"
+                                        x-text="@js(__('dashboard.pw_health_no_twofa')).replace(':n', pwHealth.no2fa)"></span>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
 
             </div>
         </div>

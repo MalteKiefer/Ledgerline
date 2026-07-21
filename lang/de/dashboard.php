@@ -36,4 +36,20 @@ return [
     'health_empty'  => 'Noch keine Gesundheitsdaten erfasst',
     'quick_add'     => 'Schnell hinzufügen',
     'add'           => 'Hinzufügen',
+
+    'on_this_day_title'     => 'Erinnerungen',
+    'on_this_day_empty'     => 'Keine Fotos von diesem Tag in früheren Jahren',
+    'on_this_day_years_ago' => 'Vor :count Jahren',
+
+    'storage_title'   => 'Speicher',
+    'storage_files'   => 'Dateien',
+    'storage_gallery' => 'Galerie',
+    'storage_of'      => ':used von :quota',
+    'storage_used'    => ':used belegt',
+
+    'pw_health_title'          => 'Passwort-Gesundheit',
+    'pw_health_reused'         => ':n wiederverwendete Passwörter',
+    'pw_health_expiring_cards' => ':n ablaufende Karten',
+    'pw_health_no_twofa'       => ':n Logins ohne 2FA',
+    'pw_health_all_good'       => 'Alles gut',
 ];
