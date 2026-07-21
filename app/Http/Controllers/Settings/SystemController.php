@@ -35,7 +35,7 @@ class SystemController extends Controller
 
                 return [
                     'name' => $name,
-                    'expression' => (string) ($event->expression ?? ''),
+                    'expression' => (string) $event->expression,
                     'lastAt' => $last['at'] ?? null,
                     'lastOk' => $last['ok'] ?? null,
                 ];

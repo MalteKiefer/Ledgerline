@@ -6,7 +6,7 @@ namespace App\Support;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Single entry point for the unencrypted blob disk that backs files, photos,
@@ -33,9 +33,9 @@ final class BlobStore
      *   ETag:                     "$etag"
      */
     public static function immutableResponse(
-        Response $r,
+        StreamedResponse $r,
         string $etag,
-    ): Response {
+    ): StreamedResponse {
         $r->headers->set('Content-Type', 'application/octet-stream');
         $r->headers->set('X-Content-Type-Options', 'nosniff');
         $r->headers->set('Content-Security-Policy', "default-src 'none'; sandbox");

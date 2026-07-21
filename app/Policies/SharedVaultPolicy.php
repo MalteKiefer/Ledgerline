@@ -72,10 +72,7 @@ class SharedVaultPolicy
             return false;
         }
 
-        $role = $member->role instanceof VaultRole
-            ? $member->role
-            : VaultRole::tryFrom((string) $member->role);
-
-        return $role !== null && $role->atLeast($minimum);
+        // role is cast to the VaultRole enum, so it is always a valid case here.
+        return $member->role->atLeast($minimum);
     }
 }

@@ -53,8 +53,8 @@ class AuditLog extends Model
                 'action' => $action,
                 'subject_type' => $subject?->getMorphClass(),
                 'subject_id' => $subject !== null ? (string) $subject->getKey() : null,
-                'ip' => $request?->ip(),
-                'user_agent' => mb_substr((string) $request?->userAgent(), 0, 255) ?: null,
+                'ip' => $request->ip(),
+                'user_agent' => mb_substr((string) $request->userAgent(), 0, 255) ?: null,
                 'meta' => $meta !== [] ? $meta : null,
                 'created_at' => now(),
             ]);

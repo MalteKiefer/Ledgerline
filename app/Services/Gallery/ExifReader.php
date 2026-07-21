@@ -79,7 +79,7 @@ class ExifReader
         if (preg_match('/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/', $value, $m)) {
             $parsed = Carbon::createFromFormat('Y:m:d H:i:s', "{$m[1]}:{$m[2]}:{$m[3]} {$m[4]}:{$m[5]}:{$m[6]}");
 
-            return $parsed !== false ? $parsed : null;
+            return $parsed instanceof Carbon ? $parsed : null;
         }
 
         return null;

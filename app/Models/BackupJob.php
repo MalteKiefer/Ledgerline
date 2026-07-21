@@ -4,16 +4,21 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use Carbon\Carbon;
 use Cron\CronExpression;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * One scheduled backup task: a source, a destination, a cron schedule, how many
  * versions to keep, optional archive encryption and a notification channel.
+ *
+ * @property Carbon|null $last_run_at
+ * @property Carbon|null $mirror_cursor
+ * @property Carbon|null $last_full_mirror_at
+ * @property list<string>|null $notify_channels
  */
 #[Fillable([
     'name', 'source', 'mode', 'backup_destination_id', 'cron', 'retention',
@@ -73,9 +78,9 @@ class BackupJob extends Model
      * duration, last/total stored size, last run age and next scheduled run.
      *
      * @return array{runs:int, ok:int, failed:int, successRate:?int,
-     *     lastStatus:?string, lastRun:?\Illuminate\Support\Carbon,
+     *     lastStatus:?string, lastRun:?Carbon,
      *     lastDuration:?int, avgDuration:?int, lastBytes:?int, totalBytes:int,
-     *     nextRun:?\Illuminate\Support\Carbon}
+     *     nextRun:?Carbon}
      */
     public function statistics(): array
     {

@@ -31,9 +31,9 @@ trait AssignsOwner
      */
     public function scopeOwnedBy(Builder $query, int|string|null $userId): Builder
     {
-        $model = $query->getModel();
-
-        return $query->withoutGlobalScopes()->where($model->getTable().'.'.$model->ownerColumn(), $userId);
+        // $this is the concrete model the trait is mixed into, so getTable() and
+        // ownerColumn() resolve without going through the generic Builder model.
+        return $query->withoutGlobalScopes()->where($this->getTable().'.'.$this->ownerColumn(), $userId);
     }
 
     protected static function bootAssignsOwner(): void

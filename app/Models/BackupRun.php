@@ -7,9 +7,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * One execution of a backup job — its status, timing, size and any error.
+ *
+ * @property Carbon|null $started_at
+ * @property Carbon|null $finished_at
+ * @property Carbon|null $verified_at
+ * @property int|null $bytes
  */
 #[Fillable([
     'backup_job_id', 'status', 'cancel_requested', 'started_at', 'finished_at', 'bytes', 'filename', 'message', 'log',

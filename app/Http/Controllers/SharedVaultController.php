@@ -105,7 +105,7 @@ class SharedVaultController extends Controller
                 'id' => $m->id,
                 'vault_id' => $m->vault_id,
                 'kind' => $m->vault?->kind ?? 'password',
-                'role' => $m->role instanceof VaultRole ? $m->role->value : $m->role,
+                'role' => $m->role->value,
                 'status' => $m->status,
                 // Whether the caller is the vault's owner (not just an invited manager).
                 // Drives owner-only actions like converting a shared folder back to private.

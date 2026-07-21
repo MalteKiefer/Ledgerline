@@ -55,6 +55,7 @@ class User extends Authenticatable
      * as owner). Includes pending, active and revoked rows so callers can filter
      * by status themselves.
      */
+    /** @return HasMany<SharedVaultMember, $this> */
     public function vaultMemberships(): HasMany
     {
         return $this->hasMany(SharedVaultMember::class);

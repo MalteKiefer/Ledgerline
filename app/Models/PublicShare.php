@@ -6,6 +6,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * A public, unauthenticated share link for a gallery album.
@@ -14,6 +15,11 @@ use Illuminate\Database\Eloquent\Model;
  * public routes can resolve a link by token without an authenticated user. The
  * sealed manifest and blob key material are all client-encrypted — this model
  * only carries the ciphertext and the coarse access controls.
+ *
+ * @property list<string> $blob_refs
+ * @property bool $allow_download
+ * @property Carbon|null $expires_at
+ * @property Carbon|null $last_viewed_at
  */
 #[Fillable(['token', 'user_id', 'kind', 'sealed_manifest', 'blob_refs', 'password_hash', 'allow_download', 'expires_at'])]
 class PublicShare extends Model

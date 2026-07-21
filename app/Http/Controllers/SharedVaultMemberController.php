@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Enums\VaultRole;
 use App\Http\Requests\Vault\CreateMemberRequest;
 use App\Http\Requests\Vault\UpdateMemberRequest;
 use App\Models\SharedVault;
@@ -46,7 +45,7 @@ class SharedVaultMemberController extends Controller
                 'user_id' => $m->user_id,
                 'name' => $m->user?->name,
                 'email' => $m->user?->email,
-                'role' => $m->role instanceof VaultRole ? $m->role->value : $m->role,
+                'role' => $m->role->value,
                 'status' => $m->status,
                 'recipient_fingerprint' => $m->recipient_fingerprint,
                 'public_key' => $m->user?->x25519_public_key,

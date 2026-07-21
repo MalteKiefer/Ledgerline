@@ -8,6 +8,7 @@ use App\Models\BackupRun;
 use App\Support\Bytes;
 use App\Support\DiskTempFile;
 use Carbon\Carbon;
+use League\Flysystem\FileAttributes;
 use League\Flysystem\Filesystem;
 use RuntimeException;
 use Throwable;
@@ -193,7 +194,7 @@ final class BackupVerifier
         $count = 0;
         $bytes = 0;
         foreach ($fs->listContents(rtrim($prefix, '/'), true) as $item) {
-            if ($item->isFile()) {
+            if ($item instanceof FileAttributes) {
                 $count++;
                 $bytes += (int) ($item->fileSize() ?? 0);
             }
