@@ -39,7 +39,7 @@ class SharedVaultMemberController extends Controller
         $this->authorize('manage', $vault);
 
         $members = $vault->members()
-            ->with('user:id,name,email,x25519_public_key')
+            ->with('user:id,name,email,x25519_public_key,mlkem_public_key')
             ->get()
             ->map(fn (SharedVaultMember $m) => [
                 'id' => $m->id,
@@ -50,6 +50,8 @@ class SharedVaultMemberController extends Controller
                 'status' => $m->status,
                 'recipient_fingerprint' => $m->recipient_fingerprint,
                 'public_key' => $m->user?->x25519_public_key,
+                // Store v3 (§6.3): needed to re-wrap VK_vault to each member on rotate.
+                'mlkem_public_key' => $m->user?->mlkem_public_key,
             ]);
 
         return response()->json($members);

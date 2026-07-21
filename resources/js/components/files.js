@@ -110,7 +110,7 @@ export default (config = {}, labels = {}) => ({
         await this.load();
         this.$watch('$store.vault.unlocked', (on) => {
             if (on && this.state !== 'ready') this.load();
-            if (! on) { this.state = 'locked'; window.LLStore.reset(); }
+            if (! on) { this.state = 'locked'; window.LLFilesStore.reset(); }
         });
         // Shared folders: watch state transitions to 'ready' (e.g. manual unlock).
         // Also call directly when Trusted-Device auto-unlock sets state before the
@@ -178,14 +178,25 @@ export default (config = {}, labels = {}) => ({
     // blob — no per-row decrypt — so the UI works on it directly and every mutation
     // edits these arrays in place, then a debounced sealed save persists the whole
     // workspace. Mutations must splice in place, never reassign the arrays, so the
-    // reference into window.LLStore.data stays intact (see _spliceWhere).
+    // reference into window.LLFilesStore.data stays intact (see _spliceWhere).
+    //
+    // Store v3: Files owns its own sharded store (window.LLFilesStore), NOT the
+    // per-module store. bootStore() (shared/zk-module) boots a MODULE store, so
+    // it can't be used here — this local gate waits for the vault then lazily
+    // loads the files store.
+    async _bootFilesStore() {
+        while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+        if (! this.$store.vault.unlocked) return false;
+        if (! window.LLFilesStore.loaded) await window.LLFilesStore.load();
+        return true;
+    },
     async load() {
         this.state = 'boot';
         try {
-            if (! await bootStore(this.$store)) { this.state = 'locked'; return; }
+            if (! await this._bootFilesStore()) { this.state = 'locked'; return; }
         } catch (e) { this.state = 'error'; return; }
-        this.manifest.folders = window.LLStore.data.fileFolders;
-        this.manifest.files = window.LLStore.data.files;
+        this.manifest.folders = window.LLFilesStore.data.fileFolders;
+        this.manifest.files = window.LLFilesStore.data.files;
         this.state = 'ready';
         this.refreshUsage();
         // Tell the server which blobs the manifest still references so it can
@@ -204,7 +215,7 @@ export default (config = {}, labels = {}) => ({
     },
 
     // Remove matching elements from an array IN PLACE, so the shared reference
-    // into window.LLStore.data (which the sealed save reads) is never detached.
+    // into window.LLFilesStore.data (which the sealed save reads) is never detached.
     _spliceWhere(arr, pred) {
         for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) arr.splice(i, 1);
     },
@@ -347,7 +358,7 @@ export default (config = {}, labels = {}) => ({
                 if (m.status === 'pending') continue;
                 if (m.status !== 'active') continue;
                 try {
-                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, ids.pub, ids.sk);
+                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, ids.sk, ids.mlkemDk);
                     // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
                     // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
                     const vk = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
@@ -394,7 +405,7 @@ export default (config = {}, labels = {}) => ({
         const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
         const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._folderVersion[vaultId] });
         let res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
-        // On 429, honour Retry-After and retry once (mirrors personal LLStore.flush behaviour).
+        // On 429, honour Retry-After and retry once (mirrors LLFilesStore.flush behaviour).
         if (res.status === 429) {
             const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
             await new Promise((r) => setTimeout(r, (isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000));
@@ -659,16 +670,16 @@ export default (config = {}, labels = {}) => ({
     },
     async copyShareLink() { if (! this.share.link) return; try { await navigator.clipboard.writeText(this.share.link); window.llToast(labels.shareCopied || ''); } catch (e) { /* clipboard blocked */ } },
 
-    // Persist the whole workspace: schedule a debounced, sealed save of the shared
-    // opaque store (the file arrays are live references into it). LLStore coalesces
-    // rapid edits and handles optimistic-concurrency + retry itself.
+    // Persist the whole workspace: schedule a debounced, sealed save of the files
+    // opaque store (the file arrays are live references into it). LLFilesStore
+    // coalesces rapid edits and handles optimistic-concurrency + retry itself.
     persist() {
-        if (this.state === 'ready') window.LLStore.touch();
+        if (this.state === 'ready') window.LLFilesStore.touch();
         return Promise.resolve();
     },
-    // Kept as thin aliases so existing call sites don't need to change: LLStore
-    // already debounces, and there is no stale whole-tree PUT to cancel anymore
-    // (every save seals the current shared state).
+    // Kept as thin aliases so existing call sites don't need to change:
+    // LLFilesStore already debounces, and there is no stale whole-tree PUT to
+    // cancel anymore (every save seals the current files state).
     _schedulePersist() { this.persist(); },
     _cancelPendingPersist() {},
 
@@ -866,13 +877,14 @@ export default (config = {}, labels = {}) => ({
     // leaves the vault) and schedules a sealed save.
     async migrateAddNote(note) {
         try {
-            if (! await bootStore(this.$store)) return false;
-            window.LLStore.data.notes.unshift({
-                id: window.LLStore.newId(),
+            if (! await bootStore(this.$store, 'notes')) return false;
+            if (! window.LLModuleStore.notes.loaded) await window.LLModuleStore.notes.load();
+            window.LLModuleStore.notes.data.notes.unshift({
+                id: window.LLModuleStore.notes.newId(),
                 title: note.title || '', content: note.content || '',
                 tags: [], pinned: false, trashed: false, updated: new Date().toISOString(),
             });
-            window.LLStore.touch();
+            window.LLModuleStore.notes.touch();
             return true;
         } catch (e) {
             return false;
@@ -1724,7 +1736,7 @@ export default (config = {}, labels = {}) => ({
         try {
             delete f.textRef; delete f.textKey; f.textSkip = false; delete fileText[f.id];
             const ok = await this._extractInto(f);
-            window.LLStore.touch();
+            window.LLFilesStore.touch();
             window.llToast?.(ok ? (labels.extractOne || 'File indexed for search.') : (labels.extractEmptyOne || 'No readable text found in this file.'));
         } catch (e) {
             window.llToast?.(labels.extractFailedOne || 'Could not index this file.');
@@ -1744,9 +1756,9 @@ export default (config = {}, labels = {}) => ({
             for (const f of todo) {
                 try { await this._extractInto(f); } catch (e) { /* leave for a later run */ }
                 this.extractProgress = { done: this.extractProgress.done + 1, total: todo.length };
-                if (++since >= 5) { since = 0; window.LLStore.touch(); }
+                if (++since >= 5) { since = 0; window.LLFilesStore.touch(); }
             }
-            window.LLStore.touch();
+            window.LLFilesStore.touch();
             window.llToast?.(labels.extractDone || 'Content indexing complete.');
         } finally { this._extracting = false; this.extractProgress = null; }
     },
@@ -1761,7 +1773,7 @@ export default (config = {}, labels = {}) => ({
             while ((this._extractQ || []).length) {
                 const f = this._extractQ.shift();
                 if (! f || f.trashed || f.textRef || f.textSkip || ! this._textCapable(f)) continue;
-                try { if (await this._extractInto(f)) window.LLStore.touch(); } catch (e) { /* skip */ }
+                try { if (await this._extractInto(f)) window.LLFilesStore.touch(); } catch (e) { /* skip */ }
             }
         } finally { this._extractQDraining = false; }
     },
@@ -2369,7 +2381,7 @@ export default (config = {}, labels = {}) => ({
          - POST /vaults sends kind:'folder'
          - sealed manifest shape is {name, folders:[], files:[]} not {name, items:[]}
          - re-seal on rotate uses sharedTree[vaultId] not sharedItems[vaultId]
-         - TOFU knownFingerprints lives in the personal manifest (window.LLStore.data) */
+         - TOFU knownFingerprints lives in the sharing store (window.LLModuleStore.sharing.data) */
 
     async createSharedFolder(name) {
         const folderName = (name || '').trim();
@@ -2377,7 +2389,7 @@ export default (config = {}, labels = {}) => ({
         try {
             const vk = await VaultShareCrypto.newVaultKey();
             const idk = await Vault.ensureIdentityKeys();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub, idk.mlkemEk);
             const { id } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped, kind: 'folder' });
             // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
             // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
@@ -2408,7 +2420,7 @@ export default (config = {}, labels = {}) => ({
         // 1. New vault + VK_folder.
         const vkB64 = await VaultShareCrypto.newVaultKey();
         const idk = await Vault.ensureIdentityKeys();
-        const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, idk.pub);
+        const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, idk.pub, idk.mlkemEk);
         const { id: vaultId } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped, kind: 'folder' });
         const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
 
@@ -2446,11 +2458,11 @@ export default (config = {}, labels = {}) => ({
         // 4. Remove the migrated subtree from the personal manifest + free old blobs (only after success).
         const keepFolderIds = new Set(subFolders.map((f) => f.id));
         const oldBlobs = subFiles.flatMap((f) => [f.blob, f.textRef, f.embRef, ...(f.versions ?? []).map((v) => v.blob)].filter(Boolean));
-        window.LLStore.data.fileFolders = this.manifest.folders.filter((f) => ! keepFolderIds.has(f.id));
-        window.LLStore.data.files = this.manifest.files.filter((f) => ! keepFolderIds.has(f.folder ?? null));
-        this.manifest.folders = window.LLStore.data.fileFolders;
-        this.manifest.files = window.LLStore.data.files;
-        window.LLStore.touch();
+        window.LLFilesStore.data.fileFolders = this.manifest.folders.filter((f) => ! keepFolderIds.has(f.id));
+        window.LLFilesStore.data.files = this.manifest.files.filter((f) => ! keepFolderIds.has(f.folder ?? null));
+        this.manifest.folders = window.LLFilesStore.data.fileFolders;
+        this.manifest.files = window.LLFilesStore.data.files;
+        window.LLFilesStore.touch();
         this._freeBlobs(oldBlobs); // existing personal blob-free queue
 
         return vaultId;
@@ -2474,7 +2486,7 @@ export default (config = {}, labels = {}) => ({
 
         // New personal root folder named after the shared folder; shared root
         // folders (parent == null) re-parent to it, deeper folders keep their link.
-        const rootId = window.LLStore.newId();
+        const rootId = window.LLFilesStore.newId();
         const newRoot = { id: rootId, name: sf.name || '', parent: null };
         const newFolders = (tree.folders || []).map((f) => ({ ...f, parent: f.parent == null ? rootId : f.parent }));
 
@@ -2498,11 +2510,11 @@ export default (config = {}, labels = {}) => ({
         }
 
         // Commit to the personal manifest.
-        window.LLStore.data.fileFolders = [...this.manifest.folders, newRoot, ...newFolders];
-        window.LLStore.data.files = [...this.manifest.files, ...newFiles];
-        this.manifest.folders = window.LLStore.data.fileFolders;
-        this.manifest.files = window.LLStore.data.files;
-        window.LLStore.touch();
+        window.LLFilesStore.data.fileFolders = [...this.manifest.folders, newRoot, ...newFolders];
+        window.LLFilesStore.data.files = [...this.manifest.files, ...newFiles];
+        this.manifest.folders = window.LLFilesStore.data.fileFolders;
+        this.manifest.files = window.LLFilesStore.data.files;
+        window.LLFilesStore.touch();
 
         // Delete the shared vault (cascades members + shared blobs) + clean local state.
         try { await apiRequest('DELETE', '/vaults/' + vaultId); } catch (_) {}
@@ -2577,8 +2589,9 @@ export default (config = {}, labels = {}) => ({
                 return;
             }
             d.resolved = data; // {user_id, public_key, fingerprint}
-            // TOFU check: look up stored fingerprint in personal manifest.
-            const store = window.LLStore.data;
+            // TOFU check: look up stored fingerprint in the sharing store.
+            if (! window.LLModuleStore.sharing.loaded) await window.LLModuleStore.sharing.load();
+            const store = window.LLModuleStore.sharing.data;
             store.knownFingerprints = store.knownFingerprints || {};
             const stored = store.knownFingerprints[data.user_id];
             if (! stored) {
@@ -2597,19 +2610,20 @@ export default (config = {}, labels = {}) => ({
         const d = this.shareFolderDialog;
         if (! d.resolved || d.fingerprintStatus === 'changed') return;
         if (d.fingerprintStatus === 'new') {
-            // Store fingerprint in personal manifest on confirmation.
-            const store = window.LLStore.data;
+            // Store fingerprint in the sharing store on confirmation.
+            if (! window.LLModuleStore.sharing.loaded) await window.LLModuleStore.sharing.load();
+            const store = window.LLModuleStore.sharing.data;
             store.knownFingerprints = store.knownFingerprints || {};
             store.knownFingerprints[d.resolved.user_id] = d.resolved.fingerprint;
-            // Persist the updated personal manifest so the fingerprint is durably stored.
-            if (window.LLStore && typeof window.LLStore.flush === 'function') window.LLStore.flush();
+            // Persist the updated sharing store so the fingerprint is durably stored.
+            window.LLModuleStore.sharing.touch();
         }
         d.sharing = true; d.notice = '';
         try {
             const vkBytes = this._folderKeys[d.vaultId];
             if (! vkBytes) { d.notice = labels.saveFailed || ''; return; }
             const vkB64 = btoa(String.fromCharCode(...new Uint8Array(vkBytes)));
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, d.resolved.public_key);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, d.resolved.public_key, d.resolved.mlkem_public_key);
             const res = await fetch('/vaults/' + d.vaultId + '/members', {
                 method: 'POST',
                 headers: jsonHeaders(),
@@ -2634,7 +2648,7 @@ export default (config = {}, labels = {}) => ({
         const id = await Vault.ensureIdentityKeys();
         // Verify the wrapped key actually decrypts before accepting.
         try {
-            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.pub, id.sk);
+            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.sk, id.mlkemDk);
         } catch (_e) {
             window.llToast(labels.inviteInvalid || '');
             return;
@@ -2699,7 +2713,7 @@ export default (config = {}, labels = {}) => ({
             // Re-wrap the new vault key for each remaining member.
             const members = await Promise.all(remaining.map(async (m) => ({
                 user_id: m.user_id,
-                wrapped_vault_key: await VaultShareCrypto.wrapVaultKeyFor(newVkB64, m.public_key),
+                wrapped_vault_key: await VaultShareCrypto.wrapVaultKeyFor(newVkB64, m.public_key, m.mlkem_public_key),
             })));
             // Re-seal the current folder tree under the new key.
             const folder = this.sharedFolders.find((sf) => sf.vaultId === vaultId);

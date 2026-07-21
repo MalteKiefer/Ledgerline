@@ -1,7 +1,7 @@
 // Dashboard component — reads the decrypted workspace manifest and gallery store
 // to populate widgets (todos, counters, recent notes, birthdays, health).
 // Gallery is best-effort: the widget degrades gracefully if unavailable.
-import { bootStore, bootGalleryStore } from '../shared/zk-module';
+import { bootGalleryStore } from '../shared/zk-module';
 import { sortTodos, upcomingBirthdays, yearsAgoPhotos } from '../shared/dashboard-utils';
 import { contactDisplayName } from '../shared/contact-utils';
 import { getJson } from '../shared/api';
@@ -37,8 +37,17 @@ export default (config = {}, labels = {}) => ({
     },
 
     async _boot() {
-        // Workspace store is required; gallery is best-effort (photo widget degrades).
-        if (! await bootStore(this.$store)) { this.state = 'locked'; return; }
+        // Multi-module dashboard: wait for the vault, then load every per-module
+        // store the widgets read (each is its own sealed manifest). Gallery + files
+        // are best-effort (their widgets degrade gracefully if unavailable).
+        const vault = this.$store.vault;
+        while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+        if (! vault.unlocked) { this.state = 'locked'; return; }
+
+        await Promise.all(['notes', 'todos', 'contacts', 'passwords', 'health', 'bookmarks', 'invoices']
+            .map((m) => (window.LLModuleStore[m].loaded ? null : window.LLModuleStore[m].load())));
+        if (! window.LLFilesStore.loaded) await window.LLFilesStore.load();
+
         this.state = 'ready';
         try { this.galleryReady = await bootGalleryStore(this.$store); } catch (_e) { this.galleryReady = false; }
         this._loadUsage();
@@ -53,46 +62,51 @@ export default (config = {}, labels = {}) => ({
         this._thumbPending = {};
     },
 
-    get _s() { return window.LLStore?.data ?? null; },
+    // Per-module data getters (store v3 split — each module owns its sealed store).
+    get _notes() { return window.LLModuleStore.notes?.data ?? null; },
+    get _todos() { return window.LLModuleStore.todos?.data ?? null; },
+    get _contacts() { return window.LLModuleStore.contacts?.data ?? null; },
+    get _passwords() { return window.LLModuleStore.passwords?.data ?? null; },
+    get _health() { return window.LLModuleStore.health?.data ?? null; },
+    get _files() { return window.LLFilesStore?.data ?? null; },
     get _g() { return this.galleryReady ? (window.LLGalleryStore?.data ?? null) : null; },
 
     // --- Todos widget ---
     get todos() {
         void this._mut;
-        return this._s ? sortTodos(this._s.todos ?? [], new Date().toISOString().slice(0, 10)).slice(0, 6) : [];
+        return this._todos ? sortTodos(this._todos.todos ?? [], new Date().toISOString().slice(0, 10)).slice(0, 6) : [];
     },
 
     completeTodo(id) {
-        const t = (this._s?.todos ?? []).find((x) => x.id === id);
-        if (t) { t.done = true; window.LLStore.touch(); this._mut++; }
+        const t = (this._todos?.todos ?? []).find((x) => x.id === id);
+        if (t) { t.done = true; window.LLModuleStore.todos.touch(); this._mut++; }
     },
 
     // --- Counter tiles ---
     get counts() {
-        void this._mut; // recompute after a manifest mutation (LLStore.data is not Alpine-reactive)
-        const s = this._s ?? {};
+        void this._mut; // recompute after a manifest mutation (store .data is not Alpine-reactive)
         return {
-            notes: (s.notes ?? []).filter((n) => ! n.trashed).length,
-            passwords: (s.secrets ?? []).length,
-            contacts: (s.contacts ?? []).length,
-            bookmarks: (s.bookmarks ?? []).length,
-            invoices: (s.invoices ?? []).length,
-            files: (s.files ?? []).filter((f) => ! f.trashed).length,
+            notes: (this._notes?.notes ?? []).filter((n) => ! n.trashed).length,
+            passwords: (this._passwords?.secrets ?? []).length,
+            contacts: (this._contacts?.contacts ?? []).length,
+            bookmarks: (window.LLModuleStore.bookmarks?.data?.bookmarks ?? []).length,
+            invoices: (window.LLModuleStore.invoices?.data?.invoices ?? []).length,
+            files: (this._files?.files ?? []).filter((f) => ! f.trashed).length,
         };
     },
 
     // --- Recent notes ---
     get recentNotes() {
         void this._mut;
-        return (this._s?.notes ?? []).filter((n) => ! n.trashed)
+        return (this._notes?.notes ?? []).filter((n) => ! n.trashed)
             .slice().sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? '')).slice(0, 5);
     },
 
     // --- Birthdays widget ---
     get birthdays() {
         void this._mut;
-        if (! this._s) return [];
-        const contacts = this._s.contacts ?? [];
+        if (! this._contacts) return [];
+        const contacts = this._contacts.contacts ?? [];
         const byId = new Map(contacts.map((c) => [c.id, c]));
         return upcomingBirthdays(contacts, new Date().toISOString().slice(0, 10), 30)
             // Resolve the real display name (form contacts have first/last, not displayName/fn).
@@ -100,11 +114,11 @@ export default (config = {}, labels = {}) => ({
     },
 
     // --- Health widget ---
-    get healthProfile() { return this._s?.healthProfile ?? null; },
+    get healthProfile() { return this._health?.healthProfile ?? null; },
 
     get healthLatest() {
         void this._mut;
-        const entries = this._s?.healthEntries ?? [];
+        const entries = this._health?.healthEntries ?? [];
         return METRICS.map((m) => {
             const last = entries
                 .filter((e) => e.metric === m.key)
@@ -161,15 +175,15 @@ export default (config = {}, labels = {}) => ({
         if (! Number.isFinite(v)) return;
         const canon = this._toCanonical(m, v);
         const v2 = m === 'bp' ? (parseFloat(this.quickAdd.v2) || null) : null;
-        (this._s.healthEntries ||= []).push({
-            id: window.LLStore.newId(),
+        (this._health.healthEntries ||= []).push({
+            id: window.LLModuleStore.health.newId(),
             ts: new Date().toISOString(),
             metric: m,
             v: canon,
             v2,
             note: '',
         });
-        window.LLStore.touch();
+        window.LLModuleStore.health.touch();
         this._mut++;
         this.quickAdd.v = '';
         this.quickAdd.v2 = '';
@@ -181,7 +195,7 @@ export default (config = {}, labels = {}) => ({
         if (! container) return;
 
         // Collect last 30 weight entries, ascending by ts.
-        const entries = (this._s?.healthEntries ?? [])
+        const entries = (this._health?.healthEntries ?? [])
             .filter((e) => e.metric === 'weight')
             .sort((a, b) => (a.ts ?? '').localeCompare(b.ts ?? ''))
             .slice(-30);
@@ -274,7 +288,7 @@ export default (config = {}, labels = {}) => ({
     // No HIBP, no zxcvbn.
     get pwHealth() {
         void this._mut;
-        const secrets = this._s?.secrets ?? [];
+        const secrets = this._passwords?.secrets ?? [];
         // Reused: count passwords appearing more than once across all items.
         const pw = {};
         for (const s of secrets) {

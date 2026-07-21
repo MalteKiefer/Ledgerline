@@ -27,4 +27,9 @@ paths = [
     '''^extension/src/__tests__/crypto\.test\.js$''',
     # Password-utility unit test: a dummy `secret` constant for masking/diff logic.
     '''^resources/js/__tests__/passwords-util\.test\.js$''',
+    # Store v3 §17 conformance fixtures + test: deterministic canonical-JSON vectors
+    # and the ML-KEM-768 FIPS-203 KAT (public seeds/hashes/shared-secret), plus the
+    # test that consumes them. Standard known-answer vectors, not live secrets.
+    '''^resources/js/__tests__/fixtures/store-v3/.*$''',
+    '''^resources/js/__tests__/store-v3-conformance\.test\.js$''',
 ]

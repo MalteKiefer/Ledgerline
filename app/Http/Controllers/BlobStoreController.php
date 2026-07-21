@@ -507,6 +507,67 @@ abstract class BlobStoreController extends Controller
     }
 
     /**
+     * Batch raw fetch (Store v3 §10.4/A4): stream many owned ciphertext blobs in a
+     * single response so a cold shard/thumbnail load at 18k needs one round-trip
+     * instead of hundreds. Owner-scoped exactly like raw() — only blobs present in
+     * the caller's ledger are emitted; unknown/foreign/missing ids are silently
+     * skipped (404-hiding, the client tolerates gaps and falls back to raw()).
+     *
+     * Wire format (self-describing, streamable): for each returned blob, in request
+     * order, a frame `[u32le idLen][id utf8][u32le dataLen][ciphertext]`. The bytes
+     * are the same framed secretstream ciphertext raw() serves. Never any plaintext.
+     */
+    public function rawBatch(Request $request): StreamedResponse
+    {
+        $data = $request->validate([
+            'blobs' => ['required', 'array', 'max:512'],
+            'blobs.*' => ['required', 'string', 'uuid'],
+        ]);
+
+        // Only ids that are BOTH owned (in the ledger) AND present on disk, keeping
+        // the caller's request order for deterministic client-side splitting.
+        /** @var list<string> $requested */
+        $requested = array_values(array_unique($data['blobs']));
+        $owned = (clone $this->scopeLedger($request))
+            ->whereIn('blob', $requested)
+            ->pluck('blob')
+            ->all();
+        $ownedSet = array_flip(array_values(array_filter($owned, 'is_string')));
+
+        $disk = $this->disk();
+        $prefix = $this->module();
+        $ids = array_values(array_filter($requested, static fn (string $b): bool => isset($ownedSet[$b])));
+
+        return response()->stream(function () use ($ids, $disk, $prefix): void {
+            $out = fopen('php://output', 'wb');
+            if ($out === false) {
+                return;
+            }
+            foreach ($ids as $blob) {
+                $path = $prefix.'/'.$blob;
+                if (! $disk->exists($path)) {
+                    continue;
+                }
+                $stream = $disk->readStream($path);
+                if ($stream === false || $stream === null) {
+                    continue;
+                }
+                $size = (int) $disk->size($path);
+                fwrite($out, pack('V', strlen($blob)).$blob.pack('V', $size));
+                stream_copy_to_stream($stream, $out);
+                fclose($stream);
+                flush();
+            }
+            fclose($out);
+        }, 200, [
+            'Content-Type' => 'application/octet-stream',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+            'Cache-Control' => 'private, no-store',
+        ]);
+    }
+
+    /**
      * Delete an owned blob's bytes + ledger row. The client calls this when its
      * sealed index stops referencing the blob (permanent delete, version-cap
      * overflow, rendition swap). Owner-scoped; unknown blob = already gone

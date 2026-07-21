@@ -27,9 +27,11 @@ class UserKeyApiTest extends TestCase
         $user = $this->signIn();
 
         $response = $this->putJson(route('user.keys.store'), [
-            'public_key'         => 'pubkey-abc',
+            'public_key' => 'pubkey-abc',
             'wrapped_secret_key' => 'wrapped-sk-abc',
-            'fingerprint'        => 'fp-abc',
+            'fingerprint' => 'fp-abc',
+            'mlkem_public_key' => 'mlkem-ek-abc',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem-abc',
         ]);
 
         $response->assertOk();
@@ -38,6 +40,8 @@ class UserKeyApiTest extends TestCase
         $this->assertSame('pubkey-abc', $fresh->x25519_public_key);
         $this->assertSame('wrapped-sk-abc', $fresh->wrapped_x25519_secret_key);
         $this->assertSame('fp-abc', $fresh->public_key_fingerprint);
+        $this->assertSame('mlkem-ek-abc', $fresh->mlkem_public_key);
+        $this->assertSame('wrapped-mlkem-abc', $fresh->wrapped_mlkem_secret_key);
     }
 
     public function test_republishing_same_public_key_is_idempotent(): void
@@ -45,15 +49,17 @@ class UserKeyApiTest extends TestCase
         $user = $this->signIn();
 
         $user->forceFill([
-            'x25519_public_key'         => 'pubkey-abc',
+            'x25519_public_key' => 'pubkey-abc',
             'wrapped_x25519_secret_key' => 'wrapped-sk-abc',
-            'public_key_fingerprint'    => 'fp-abc',
+            'public_key_fingerprint' => 'fp-abc',
         ])->save();
 
         $response = $this->putJson(route('user.keys.store'), [
-            'public_key'         => 'pubkey-abc',
+            'public_key' => 'pubkey-abc',
             'wrapped_secret_key' => 'wrapped-sk-abc-new',  // wrapped key may differ on re-wrap
-            'fingerprint'        => 'fp-abc',
+            'fingerprint' => 'fp-abc',
+            'mlkem_public_key' => 'mlkem-ek-abc',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem-abc',
         ]);
 
         // Same public_key → idempotent OK.
@@ -65,15 +71,17 @@ class UserKeyApiTest extends TestCase
         $user = $this->signIn();
 
         $user->forceFill([
-            'x25519_public_key'         => 'pubkey-original',
+            'x25519_public_key' => 'pubkey-original',
             'wrapped_x25519_secret_key' => 'wrapped-sk',
-            'public_key_fingerprint'    => 'fp-original',
+            'public_key_fingerprint' => 'fp-original',
         ])->save();
 
         $response = $this->putJson(route('user.keys.store'), [
-            'public_key'         => 'pubkey-different',
+            'public_key' => 'pubkey-different',
             'wrapped_secret_key' => 'wrapped-sk-different',
-            'fingerprint'        => 'fp-different',
+            'fingerprint' => 'fp-different',
+            'mlkem_public_key' => 'mlkem-ek-different',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem-different',
         ]);
 
         $response->assertStatus(409);
@@ -89,9 +97,9 @@ class UserKeyApiTest extends TestCase
         // than returning 401 — this is the standard Laravel web middleware
         // behaviour even when the request has Accept: application/json.
         $response = $this->putJson(route('user.keys.store'), [
-            'public_key'         => 'pubkey-abc',
+            'public_key' => 'pubkey-abc',
             'wrapped_secret_key' => 'wrapped-sk-abc',
-            'fingerprint'        => 'fp-abc',
+            'fingerprint' => 'fp-abc',
         ]);
 
         // 302 redirect to login page.
@@ -118,18 +126,18 @@ class UserKeyApiTest extends TestCase
     {
         $user = $this->signIn();
         $user->forceFill([
-            'x25519_public_key'         => 'pubkey-user1',
+            'x25519_public_key' => 'pubkey-user1',
             'wrapped_x25519_secret_key' => 'wrapped-sk-user1',
-            'public_key_fingerprint'    => 'fp-user1',
+            'public_key_fingerprint' => 'fp-user1',
         ])->save();
 
         $response = $this->getJson(route('user.keys.show'));
 
         $response->assertOk()
             ->assertJson([
-                'public_key'         => 'pubkey-user1',
+                'public_key' => 'pubkey-user1',
                 'wrapped_secret_key' => 'wrapped-sk-user1',
-                'fingerprint'        => 'fp-user1',
+                'fingerprint' => 'fp-user1',
             ]);
     }
 
@@ -138,17 +146,17 @@ class UserKeyApiTest extends TestCase
         // Second user has published keys.
         $other = User::factory()->create();
         $other->forceFill([
-            'x25519_public_key'         => 'pubkey-other',
+            'x25519_public_key' => 'pubkey-other',
             'wrapped_x25519_secret_key' => 'wrapped-sk-other',
-            'public_key_fingerprint'    => 'fp-other',
+            'public_key_fingerprint' => 'fp-other',
         ])->save();
 
         // First user has their own keys.
         $user = $this->signIn();
         $user->forceFill([
-            'x25519_public_key'         => 'pubkey-user1',
+            'x25519_public_key' => 'pubkey-user1',
             'wrapped_x25519_secret_key' => 'wrapped-sk-user1',
-            'public_key_fingerprint'    => 'fp-user1',
+            'public_key_fingerprint' => 'fp-user1',
         ])->save();
 
         $response = $this->getJson(route('user.keys.show'));
@@ -157,9 +165,9 @@ class UserKeyApiTest extends TestCase
 
         // Own keys are returned.
         $response->assertJson([
-            'public_key'         => 'pubkey-user1',
+            'public_key' => 'pubkey-user1',
             'wrapped_secret_key' => 'wrapped-sk-user1',
-            'fingerprint'        => 'fp-user1',
+            'fingerprint' => 'fp-user1',
         ]);
 
         // Other user's key material must not appear anywhere in the response.
@@ -174,9 +182,9 @@ class UserKeyApiTest extends TestCase
         // Second user has keys — must never bleed through to a different user.
         $other = User::factory()->create();
         $other->forceFill([
-            'x25519_public_key'         => 'pubkey-other',
+            'x25519_public_key' => 'pubkey-other',
             'wrapped_x25519_secret_key' => 'wrapped-sk-other',
-            'public_key_fingerprint'    => 'fp-other',
+            'public_key_fingerprint' => 'fp-other',
         ])->save();
 
         // Authenticated user has no published identity.
@@ -186,9 +194,9 @@ class UserKeyApiTest extends TestCase
 
         $response->assertOk()
             ->assertJson([
-                'public_key'         => null,
+                'public_key' => null,
                 'wrapped_secret_key' => null,
-                'fingerprint'        => null,
+                'fingerprint' => null,
             ]);
 
         // Other user's key material must not appear.

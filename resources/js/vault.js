@@ -9,6 +9,14 @@
  * passphrase, recovery code and vault key never leave this module.
  */
 
+import { canonicalJSON } from './shared/canonical-json.js';
+
+// Store v3 crypto-suite id (§6.1). Every sealed manifest carries it; an unknown
+// suite fails closed (never guessed). The post-quantum hybrid KEM (pq-kem.js) is
+// dynamically imported only where identity/sharing needs it, so ML-KEM stays out
+// of the startup bundle.
+const SUITE = 1;
+
 let sodium = null;
 const CACHE_KEY = 'vault.vk';
 const CACHE_EXPIRES = 'vault.vk.expires';
@@ -282,13 +290,16 @@ export const VaultShareCrypto = {
     async ready() { await ready(); },
 
     /**
-     * Generate a fresh x25519 identity keypair.
-     * Returns { pub: base64, sk: Uint8Array } — sk is raw bytes kept in memory only.
+     * Generate a fresh hybrid identity (Store v3 §6.3): an X25519 keypair plus an
+     * ML-KEM-768 keypair. Returns { pub: base64, sk: Uint8Array, mlkemEk: base64,
+     * mlkemDk: Uint8Array } — secret keys are raw bytes kept in memory only.
      */
     async newIdentity() {
         await ready();
+        const { mlkemKeypair } = await import('./shared/pq-kem.js');
         const kp = sodium.crypto_box_keypair();
-        return { pub: b64(kp.publicKey), sk: kp.privateKey };
+        const { ek, dk } = await mlkemKeypair();
+        return { pub: b64(kp.publicKey), sk: kp.privateKey, mlkemEk: ek, mlkemDk: dk };
     },
 
     /** Fresh 32-byte vault key, base64. */
@@ -298,26 +309,32 @@ export const VaultShareCrypto = {
     },
 
     /**
-     * Seal a vault key for a recipient using anonymous sealed-box (crypto_box_seal).
-     * The sender needs only the recipient's public key; the recipient unwraps with
-     * their keypair. Returns base64 ciphertext.
+     * Wrap a vault key to a recipient using the Store v3 post-quantum hybrid KEM
+     * (§6.3): X25519 + ML-KEM-768, combined via HKDF-SHA256. The sender needs the
+     * recipient's X25519 public key AND ML-KEM encapsulation key (from
+     * resolve-recipient). Returns the JSON-stringified envelope {suite,epk,kem_ct,c,n}
+     * — an opaque string the server stores in wrapped_vault_key.
+     *
+     * `context` domain-separates the wrap (e.g. the vault id) and must match on unwrap.
      */
-    async wrapVaultKeyFor(vkB64, recipientPubB64) {
+    async wrapVaultKeyFor(vkB64, recipientPubB64, recipientMlkemEk, context = '') {
         await ready();
-        return b64(sodium.crypto_box_seal(unb64(vkB64), unb64(recipientPubB64)));
+        const { hybridWrap } = await import('./shared/pq-kem.js');
+        const env = await hybridWrap(unb64(vkB64), recipientPubB64, recipientMlkemEk, context);
+        return JSON.stringify(env);
     },
 
     /**
-     * Unseal a vault key wrapped with crypto_box_seal.
-     * Requires both the recipient's public key and raw private key (Uint8Array).
-     * Returns the vault key as base64.
+     * Unwrap a hybrid-KEM vault-key envelope with the recipient's own secret
+     * identity keys. `ownSkBytes` is the raw X25519 secret key; `ownMlkemDk` the raw
+     * ML-KEM-768 secret key (both from ensureIdentityKeys). Returns the vault key
+     * as base64. Fail-closed on unknown suite or authentication failure.
      */
-    async unwrapVaultKey(wrappedB64, ownPubB64, ownSkBytes) {
+    async unwrapVaultKey(wrappedStr, ownSkBytes, ownMlkemDk, context = '') {
         await ready();
-        const out = sodium.crypto_box_seal_open(unb64(wrappedB64), unb64(ownPubB64), ownSkBytes);
-        if (out === false) {
-            throw new Error('unwrap failed: wrong keypair or corrupted ciphertext');
-        }
+        const { hybridUnwrap } = await import('./shared/pq-kem.js');
+        const env = JSON.parse(wrappedStr);
+        const out = await hybridUnwrap(env, b64(ownSkBytes), ownMlkemDk, context);
         return b64(out);
     },
 
@@ -337,20 +354,24 @@ export const VaultShareCrypto = {
      */
     async sealVaultManifest(obj, vkBytes) {
         await ready();
-        let json = JSON.stringify(obj);
+        // Store v3 (§6.1/§5.2): canonical JSON + suite envelope, Padmé-padded.
+        let json = canonicalJSON(obj);
         const target = Math.max(4096, padme(json.length + 1));
         json += ' '.repeat(target - json.length);
         const m = seal(sodium.from_string(json), vkBytes);
-        return JSON.stringify({ c: m.cipher, n: m.nonce });
+        return JSON.stringify({ suite: SUITE, c: m.cipher, n: m.nonce });
     },
 
     /**
      * Open a sealed vault manifest string back into an object.
-     * Mirrors Vault.openManifest but accepts any key bytes.
+     * Mirrors Vault.openManifest but accepts any key bytes. Fail-closed on suite.
      */
     async openVaultManifest(str, vkBytes) {
         await ready();
-        const { c, n } = JSON.parse(str);
+        const { suite, c, n } = JSON.parse(str);
+        if (suite !== undefined && suite !== SUITE) {
+            throw new Error(`unknown sealed-manifest suite: ${suite}`);
+        }
         return JSON.parse(sodium.to_string(open(c, n, vkBytes)));
     },
 };
@@ -618,16 +639,22 @@ export const Vault = {
         if (data.public_key && data.wrapped_secret_key) {
             // Verify the server-returned public key matches the stored fingerprint.
             // A malicious server substituting a different public_key would cause
-            // future crypto_box_seal_open on incoming invites to fail (DoS only,
-            // no plaintext exposure), but we detect and reject it here explicitly.
+            // future unwraps on incoming invites to fail (DoS only, no plaintext
+            // exposure), but we detect and reject it here explicitly.
             const computedFp = await VaultShareCrypto.fingerprint(data.public_key);
             if (computedFp !== data.fingerprint) {
                 throw new Error('identity key fingerprint mismatch');
             }
-            // Parse the wrapped secret key JSON {c, n} stored by a previous device.
+            // Store v3 (§6.3): the ML-KEM half must be present too — a v3 identity
+            // always publishes both. Recover both secret keys via VK-unwrap.
+            if (! data.mlkem_public_key || ! data.wrapped_mlkem_secret_key) {
+                throw new Error('identity key state inconsistent (missing ML-KEM material)');
+            }
             const wrapped = JSON.parse(data.wrapped_secret_key);
             const sk = open(wrapped.c, wrapped.n, this.vk);
-            this._idKeys = { pub: data.public_key, sk };
+            const wrappedMl = JSON.parse(data.wrapped_mlkem_secret_key);
+            const mlkemDk = open(wrappedMl.c, wrappedMl.n, this.vk);
+            this._idKeys = { pub: data.public_key, sk, mlkemEk: data.mlkem_public_key, mlkemDk };
             return this._idKeys;
         }
 
@@ -636,9 +663,14 @@ export const Vault = {
             throw new Error('identity key state inconsistent');
         }
 
-        // 3. No existing keypair — generate, wrap under VK, and publish.
+        // 3. No existing keypair — generate a hybrid identity (x25519 + ML-KEM-768),
+        //    wrap both secret keys under VK, and publish. pq-kem is imported here so
+        //    ML-KEM stays out of the startup bundle.
+        const { mlkemKeypair } = await import('./shared/pq-kem.js');
         const kp = sodium.crypto_box_keypair();
+        const { ek: mlkemEk, dk: mlkemDk } = await mlkemKeypair();
         const wrapped = seal(kp.privateKey, this.vk);
+        const wrappedMl = seal(mlkemDk, this.vk);
         const pub = b64(kp.publicKey);
         const fingerprint = await VaultShareCrypto.fingerprint(pub);
 
@@ -654,6 +686,8 @@ export const Vault = {
                 public_key: pub,
                 wrapped_secret_key: JSON.stringify({ c: wrapped.cipher, n: wrapped.nonce }),
                 fingerprint,
+                mlkem_public_key: mlkemEk,
+                wrapped_mlkem_secret_key: JSON.stringify({ c: wrappedMl.cipher, n: wrappedMl.nonce }),
             }),
         });
 
@@ -661,7 +695,7 @@ export const Vault = {
             throw new Error('identity key publish failed');
         }
 
-        this._idKeys = { pub, sk: kp.privateKey };
+        this._idKeys = { pub, sk: kp.privateKey, mlkemEk, mlkemDk };
         return this._idKeys;
     },
 
@@ -801,19 +835,26 @@ export const Vault = {
      * manifests don't reveal fine-grained sizes. JSON.parse ignores the padding.
      */
     sealManifest(obj) {
-        let json = JSON.stringify(obj);
+        // Store v3 (§6.1/§5.2): canonical JSON payload, suite-tagged envelope. The
+        // canonical bytes are padded with trailing spaces to a Padmé bucket (JSON
+        // parse ignores them); the whole thing is secretbox-sealed under VK.
+        let json = canonicalJSON(obj);
         const target = Math.max(4096, this._padme(json.length + 1));
         json += ' '.repeat(target - json.length);
         const m = seal(sodium.from_string(json), this.vk);
-        return JSON.stringify({ c: m.cipher, n: m.nonce });
+        return JSON.stringify({ suite: SUITE, c: m.cipher, n: m.nonce });
     },
 
     /** Padmé (Nikitin et al.): round n up so at most O(log log n) size bits leak. */
     _padme(n) { return padme(n); },
 
-    /** Open a sealed manifest string back into the workspace object. */
+    /** Open a sealed manifest string back into the workspace object. Fail-closed on
+     *  an unknown suite (never guess the crypto stack). */
     openManifest(enc) {
-        const { c, n } = JSON.parse(enc);
+        const { suite, c, n } = JSON.parse(enc);
+        if (suite !== undefined && suite !== SUITE) {
+            throw new Error(`unknown sealed-manifest suite: ${suite}`);
+        }
         return JSON.parse(sodium.to_string(open(c, n, this.vk)));
     },
 

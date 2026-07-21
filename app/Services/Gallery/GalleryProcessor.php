@@ -7,7 +7,7 @@ namespace App\Services\Gallery;
 use App\Services\Files\ReverseGeocoder;
 use App\Support\DiskTempFile;
 use App\Support\ImageManagerFactory;
-use Intervention\Image\Encoders\JpegEncoder;
+use Intervention\Image\Encoders\WebpEncoder;
 use Throwable;
 
 /**
@@ -91,8 +91,10 @@ class GalleryProcessor
             $img = $manager->decodePath($imageSource);
             $width ??= $img->width();
             $height ??= $img->height();
-            $thumb = (string) $img->scaleDown(width: self::THUMB_WIDTH)->encode(new JpegEncoder(quality: 75));
-            $medium = (string) $manager->decodePath($imageSource)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new JpegEncoder(quality: 82));
+            // Store v3 (§8.3): server emits WebP renditions (~25-35% smaller than
+            // JPEG at 18k); every client decodes both WebP and JPEG.
+            $thumb = (string) $img->scaleDown(width: self::THUMB_WIDTH)->encode(new WebpEncoder(quality: 75));
+            $medium = (string) $manager->decodePath($imageSource)->scaleDown(width: self::MEDIUM_WIDTH)->encode(new WebpEncoder(quality: 82));
         } catch (Throwable) {
             // A non-decodable source (e.g. an unsupported codec with no poster)
             // yields no renditions; the photo still stores its original + EXIF.

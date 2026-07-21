@@ -40,7 +40,7 @@ async function ensureSecrets() {
     let cipher = '';
     let personalReachable = true;
     try {
-        const store = await api.getStore(serverUrl, token);
+        const store = await api.getStore(serverUrl, token, "passwords");
         cipher = store.ciphertext || '';
         if (cipher) await local.set({ storeCipher: cipher });
     } catch (e) {
@@ -212,7 +212,7 @@ async function tfaEntries() {
 // Fetch the sealed manifest, apply a mutation, re-seal with the session VK and
 // write back with optimistic concurrency — retrying on a version conflict. The
 // single write path for create / trash / update from the extension.
-async function mutateManifest(fn) {
+async function mutateManifest(module, fn) {
     const vkB64 = (await session.get('vk')).vk;
     if (! vkB64) throw new Error('locked');
     const { serverUrl, token } = await creds();
@@ -220,16 +220,18 @@ async function mutateManifest(fn) {
     const vk = await fromB64(vkB64);
 
     for (let attempt = 0; attempt < 4; attempt++) {
-        const store = await api.getStore(serverUrl, token); // { ciphertext, version }
+        const store = await api.getStore(serverUrl, token, module); // { ciphertext, version }
         const manifest = store.ciphertext ? await openManifest(store.ciphertext, vk) : {};
-        if (! Array.isArray(manifest.secrets)) manifest.secrets = [];
+        if (module === 'passwords' && ! Array.isArray(manifest.secrets)) manifest.secrets = [];
         const result = fn(manifest);
         const ciphertext = await sealManifest(manifest, vk);
-        const res = await api.saveStore(serverUrl, token, ciphertext, store.version || 0);
+        const res = await api.saveStore(serverUrl, token, module, ciphertext, store.version || 0);
         if (res.ok) {
-            await local.set({ storeCipher: ciphertext });
-            SECRETS = manifest.secrets.filter((s) => ! s.trashed);
-            FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
+            if (module === 'passwords') {
+                await local.set({ storeCipher: ciphertext });
+                SECRETS = (manifest.secrets || []).filter((s) => ! s.trashed);
+                FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
+            }
             return result ?? { ok: true };
         }
         if (res.status !== 409) throw new Error('save failed');
@@ -238,15 +240,15 @@ async function mutateManifest(fn) {
     throw new Error('conflict');
 }
 
-// Read-only manifest fetch: derive the session VK, pull the sealed store, and
+// Read-only module-store fetch: derive the session VK, pull the sealed store, and
 // open it — without writing anything back. Used by bookmark read handlers.
-async function readManifest() {
+async function readManifest(module) {
     const vkB64 = (await session.get('vk')).vk;
     if (! vkB64) throw new Error('locked');
     const { serverUrl, token } = await creds();
     if (! serverUrl || ! token) throw new Error('unpaired');
     const vk = await fromB64(vkB64);
-    const store = await api.getStore(serverUrl, token);
+    const store = await api.getStore(serverUrl, token, module);
     return store.ciphertext ? await openManifest(store.ciphertext, vk) : {};
 }
 
@@ -261,7 +263,7 @@ function createLogin(rec) {
         fields: { username: rec.username || '', password: rec.password || '', urls: (rec.url ? [rec.url] : []).filter(Boolean), totp: '', note: '' },
         created: now, updated: now, versions: [],
     };
-    return mutateManifest((m) => {
+    return mutateManifest("passwords", (m) => {
         item.folder = (m.secretFolders && m.secretFolders[0] && m.secretFolders[0].id) || null; // default to the first vault
         m.secrets.unshift(item);
         return { id: item.id };
@@ -368,7 +370,7 @@ const handlers = {
     // (public data, not sensitive) so we hint where a login could add a code.
     async tfa() { return { entries: await tfaEntries() }; },
     async createLogin({ login }) { return createLogin(login || {}); },
-    async trashItem({ id }) { return mutateManifest((m) => { const s = m.secrets.find((x) => x.id === id); if (s) s.trashed = new Date().toISOString(); }); },
+    async trashItem({ id }) { return mutateManifest("passwords", (m) => { const s = m.secrets.find((x) => x.id === id); if (s) s.trashed = new Date().toISOString(); }); },
     // All stored identity items, for the content-script identity-autofill picker.
     async identities() {
         const secrets = await ensureSecrets();
@@ -473,7 +475,7 @@ const handlers = {
             // login that slipped through), abort the entire ceremony so no orphaned
             // credential is ever handed to the RP.
             let attachFailed = false;
-            await mutateManifest((m) => {
+            await mutateManifest("passwords", (m) => {
                 const loginItem = m.secrets.find((x) => x.id === saveRes.target);
                 if (! loginItem) { attachFailed = true; return; }
                 if (! Array.isArray(loginItem.fields.passkeys)) loginItem.fields.passkeys = [];
@@ -485,7 +487,7 @@ const handlers = {
             }
         } else {
             // Create a standalone passkey item.
-            await mutateManifest((m) => {
+            await mutateManifest("passwords", (m) => {
                 const item = {
                     id: crypto.randomUUID(),
                     type: 'passkey',
@@ -684,7 +686,7 @@ const handlers = {
     },
 
     async updateItem({ id, patch }) {
-        return mutateManifest((m) => {
+        return mutateManifest("passwords", (m) => {
             const s = m.secrets.find((x) => x.id === id);
             if (s) {
                 s.versions = s.versions ?? [];
@@ -698,7 +700,7 @@ const handlers = {
     // Remove a single passkey from a login by credentialId, operating on the
     // stored (unstripped) passkeys array so private keys are never lost.
     async removePasskey({ id, credentialId }) {
-        return mutateManifest((m) => {
+        return mutateManifest("passwords", (m) => {
             const s = m.secrets.find((x) => x.id === id);
             if (s && Array.isArray(s.fields?.passkeys)) {
                 s.fields.passkeys = s.fields.passkeys.filter((p) => p.credentialId !== credentialId);
@@ -723,42 +725,42 @@ const handlers = {
     },
     // ── Bookmarks ──────────────────────────────────────────────────────────────
     async 'bookmarks.list'() {
-        const m = await readManifest();
+        const m = await readManifest("bookmarks");
         return listBookmarks(m);
     },
     async 'bookmarks.get'({ id }) {
         if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        const m = await readManifest();
+        const m = await readManifest("bookmarks");
         return { bookmark: getBookmark(m, id) };
     },
     async 'bookmarks.create'({ bookmark }) {
-        return mutateManifest((m) => addBookmark(m, bookmark || {}));
+        return mutateManifest("bookmarks", (m) => addBookmark(m, bookmark || {}));
     },
     async 'bookmarks.update'({ id, patch }) {
         if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest((m) => updateBookmark(m, id, patch || {}));
+        return mutateManifest("bookmarks", (m) => updateBookmark(m, id, patch || {}));
     },
     async 'bookmarks.trash'({ id }) {
         if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest((m) => trashBookmark(m, id, new Date().toISOString()));
+        return mutateManifest("bookmarks", (m) => trashBookmark(m, id, new Date().toISOString()));
     },
     async 'bookmarks.restore'({ id }) {
         if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest((m) => restoreBookmark(m, id));
+        return mutateManifest("bookmarks", (m) => restoreBookmark(m, id));
     },
     async 'bookmarkFolders.create'({ name, parentId }) {
         if (typeof name !== 'string' || name.length > 120) throw new Error('bad input');
         if (parentId != null && (typeof parentId !== 'string' || parentId.length > 64)) throw new Error('bad input');
-        return mutateManifest((m) => createFolder(m, { name, parentId: parentId ?? null }));
+        return mutateManifest("bookmarks", (m) => createFolder(m, { name, parentId: parentId ?? null }));
     },
     async 'bookmarkFolders.rename'({ id, name }) {
         if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
         if (typeof name !== 'string' || name.length > 120) throw new Error('bad input');
-        return mutateManifest((m) => renameFolder(m, id, name));
+        return mutateManifest("bookmarks", (m) => renameFolder(m, id, name));
     },
     async 'bookmarkFolders.delete'({ id }) {
         if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest((m) => deleteFolder(m, id));
+        return mutateManifest("bookmarks", (m) => deleteFolder(m, id));
     },
     // ── Passwords/TOTP ─────────────────────────────────────────────────────────
     // Current TOTP code for a login id (secret stays in the worker).

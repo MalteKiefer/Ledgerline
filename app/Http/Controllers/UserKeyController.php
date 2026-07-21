@@ -31,6 +31,9 @@ class UserKeyController extends Controller
             'public_key' => $user->x25519_public_key,
             'wrapped_secret_key' => $user->wrapped_x25519_secret_key,
             'fingerprint' => $user->public_key_fingerprint,
+            // Store v3 (§6.3): post-quantum ML-KEM-768 identity material.
+            'mlkem_public_key' => $user->mlkem_public_key,
+            'wrapped_mlkem_secret_key' => $user->wrapped_mlkem_secret_key,
         ]);
     }
 
@@ -46,6 +49,10 @@ class UserKeyController extends Controller
             'public_key' => ['required', 'string'],
             'wrapped_secret_key' => ['required', 'string'],
             'fingerprint' => ['required', 'string'],
+            // ML-KEM-768 identity (Store v3 §6.3), published with the X25519 pair
+            // so every recipient can be wrapped to the hybrid KEM.
+            'mlkem_public_key' => ['required', 'string'],
+            'wrapped_mlkem_secret_key' => ['required', 'string'],
         ]);
 
         $user = $this->requireUser($request);
@@ -64,6 +71,8 @@ class UserKeyController extends Controller
             'x25519_public_key' => $data['public_key'],
             'wrapped_x25519_secret_key' => $data['wrapped_secret_key'],
             'public_key_fingerprint' => $data['fingerprint'],
+            'mlkem_public_key' => $data['mlkem_public_key'],
+            'wrapped_mlkem_secret_key' => $data['wrapped_mlkem_secret_key'],
         ])->save();
 
         return response()->json(['ok' => true]);

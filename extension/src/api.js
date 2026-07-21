@@ -36,17 +36,20 @@ export async function getVault(base, token) {
     return res.json();
 }
 
-/** The sealed workspace manifest ({ ciphertext, version }). */
-export async function getStore(base, token) {
-    const res = await call(base, '/store', { token });
+/**
+ * The sealed store for one module ({ ciphertext, version }). Store v3 per-module
+ * split: each module (passwords/bookmarks/sharing/…) has its own sealed row.
+ */
+export async function getStore(base, token, module) {
+    const res = await call(base, '/store/' + encodeURIComponent(module), { token });
     if (res.status === 401) throw new Error('unauthorized');
     if (! res.ok) throw new Error('store fetch failed');
     return res.json();
 }
 
-/** Write the sealed manifest back with optimistic concurrency (409 on conflict). */
-export async function saveStore(base, token, ciphertext, version) {
-    return call(base, '/store', { method: 'PUT', token, body: { ciphertext, version } });
+/** Write one module's sealed store back with optimistic concurrency (409 on conflict). */
+export async function saveStore(base, token, module, ciphertext, version) {
+    return call(base, '/store/' + encodeURIComponent(module), { method: 'PUT', token, body: { ciphertext, version } });
 }
 
 /** 2fa.directory hint map, proxied by the user's own server (SSRF-guarded,

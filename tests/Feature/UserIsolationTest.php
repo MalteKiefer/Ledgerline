@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\FileBlob;
+use App\Models\ModuleStore;
 use App\Models\User;
-use App\Models\VaultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -22,17 +22,17 @@ class UserIsolationTest extends TestCase
         $alice = User::factory()->create();
         $bob = User::factory()->create();
 
-        // Alice seals her whole workspace (notes live here now) in her manifest.
+        // Alice seals her notes module in her own per-module store.
         $this->actingAs($alice)
-            ->putJson(route('store.save'), ['ciphertext' => 'alice-sealed-blob', 'version' => 0])
+            ->putJson(route('module-store.save', 'notes'), ['ciphertext' => 'alice-sealed-blob', 'version' => 0])
             ->assertOk();
-        $this->actingAs($alice)->getJson(route('store.show'))
+        $this->actingAs($alice)->getJson(route('module-store.show', 'notes'))
             ->assertOk()->assertJson(['ciphertext' => 'alice-sealed-blob', 'version' => 1]);
 
         // Bob has his own empty manifest and never sees Alice's ciphertext.
-        $this->actingAs($bob)->getJson(route('store.show'))
+        $this->actingAs($bob)->getJson(route('module-store.show', 'notes'))
             ->assertOk()->assertJson(['ciphertext' => null, 'version' => 0]);
-        $this->assertSame($alice->id, VaultStore::query()->where('ciphertext', 'alice-sealed-blob')->value('user_id'));
+        $this->assertSame($alice->id, ModuleStore::query()->where('ciphertext', 'alice-sealed-blob')->value('user_id'));
     }
 
     public function test_files_are_private_and_raw_download_is_owner_only(): void

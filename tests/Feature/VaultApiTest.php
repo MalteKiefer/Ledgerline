@@ -311,6 +311,8 @@ class VaultApiTest extends TestCase
             'x25519_public_key' => 'alice-pubkey',
             'wrapped_x25519_secret_key' => 'wrapped-sk',
             'public_key_fingerprint' => 'alice-fp',
+            'mlkem_public_key' => 'alice-mlkem-ek',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem',
         ])->save();
 
         $response = $this->postJson(route('vaults.resolveRecipient', $vault), [
@@ -322,6 +324,7 @@ class VaultApiTest extends TestCase
             'user_id' => $target->id,
             'public_key' => 'alice-pubkey',
             'fingerprint' => 'alice-fp',
+            'mlkem_public_key' => 'alice-mlkem-ek',
         ]);
     }
 
@@ -336,6 +339,8 @@ class VaultApiTest extends TestCase
             'x25519_public_key' => 'target-pubkey',
             'wrapped_x25519_secret_key' => 'wrapped-sk',
             'public_key_fingerprint' => 'target-fp',
+            'mlkem_public_key' => 'target-mlkem-ek',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem',
         ])->save();
 
         $response = $this->postJson(route('vaults.resolveRecipient', $vault), [
