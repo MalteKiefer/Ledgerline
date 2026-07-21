@@ -17,7 +17,9 @@ x-app-image: &app-image
     # fail otherwise. Host-net build uses the host's working resolver.
     network: host
     args:
-      PHP_BASE: serversideup/php:8.4-fpm-nginx-alpine@sha256:49ae73887fbb65c92312c61eb4612808d823485f0510eb27afc61e1bd2ee2390
+      # Keep this digest in lockstep with the ARG PHP_BASE default in Dockerfile —
+      # this build arg overrides that default, so a PHP bump must change BOTH.
+      PHP_BASE: serversideup/php:8.5-fpm-nginx-alpine@sha256:1854d81da23fc5c174a26bf039bc7724aeccec5743524717bbc6c10c1c927ac2
   env_file: .env
   environment:
     # This host has no route to the EC2 instance-metadata IP (169.254.169.254),

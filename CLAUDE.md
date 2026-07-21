@@ -6,7 +6,7 @@ nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**
 
 Module: **Dashboard, Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ
 + eingebettete Passkeys in `login`-Items), Kontakte, Rechnungen, Health, Backup, Paperless**.
-Version **v1.504.50** (live https://home.kiefer-networks.de, `/up`=200).
+Version **v1.504.51** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill + Bookmarks-CRUD
 + **WebAuthn-Authenticator** (Passkeys).
 
@@ -152,7 +152,7 @@ ZK Passwort-Autofill + Bookmarks-CRUD + **WebAuthn-Authenticator (Passkeys)**. N
 Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier eintragen (Datum + Begründung + Kompensation), im selben Commit.** Letzter Voll-Audit: 2026-07-18 (0 CVEs, keine ausnutzbare Lücke; Risk-Posture LOW); seither fortgeschrieben bis v1.504.50 (2026-07-21). <!-- banned-token-ok: audit log, not code -->
 
 **PHP 8.5 + PHPUnit 13 + Dep-Currency (2026-07-21, v1.504.50) — Verschärfung, keine Aufweichung:**
-- **PHP 8.4 → 8.5** (latest stable): App-Base-Image `serversideup/php:8.5-fpm-nginx-alpine` **frisch digest-gepinnt** (`@sha256:1854d81d…`), CI `setup-php` auf 8.5, composer-`require` `php` `^8.4`→`^8.5` (Floor erzwingt latest, kein EOL-Rückfall). Voller Testlauf (441 grün) auf lokalem PHP 8.5 vor dem Bump. **PHP-8.5-Deprecation behoben (Spec „deprecation notice = defect"):** die drei `imagedestroy()`-Aufrufe (`Services/Gallery/PerceptualHash.php` ×2 + `tests/Unit/PerceptualHashTest.php`) entfernt — seit PHP 8.0 ohnehin no-op (GdImage ist GC-verwaltet), seit 8.5 deprecated; Verhalten byte-identisch (kein funktionaler Effekt). Testlauf danach: **0 Deprecations**.
+- **PHP 8.4 → 8.5** (latest stable): App-Base-Image `serversideup/php:8.5-fpm-nginx-alpine` **frisch digest-gepinnt** (`@sha256:1854d81d…`), CI `setup-php` auf 8.5, composer-`require` `php` `^8.4`→`^8.5` (Floor erzwingt latest, kein EOL-Rückfall). Voller Testlauf (441 grün) auf lokalem PHP 8.5 vor dem Bump. **Dual-Pin-Fallstrick (v1.504.51):** `PHP_BASE` ist an ZWEI Stellen gepinnt — `Dockerfile` (ARG-Default) UND `docker-compose.yml` (`build.args.PHP_BASE`). Der compose-build-arg **überschreibt** den Dockerfile-Default, d. h. nur den Dockerfile zu ändern baute weiter 8.4 (Deploy v1.504.50 schlug an `composer install` fehl: „php 8.5 required, 8.4.23 given"). **Beide Stellen müssen bei jedem PHP-Bump synchron geändert werden** (Kommentar in beiden Dateien). **PHP-8.5-Deprecation behoben (Spec „deprecation notice = defect"):** die drei `imagedestroy()`-Aufrufe (`Services/Gallery/PerceptualHash.php` ×2 + `tests/Unit/PerceptualHashTest.php`) entfernt — seit PHP 8.0 ohnehin no-op (GdImage ist GC-verwaltet), seit 8.5 deprecated; Verhalten byte-identisch (kein funktionaler Effekt). Testlauf danach: **0 Deprecations**.
 - **PHPUnit 12 → 13** (dev-only, major): löst konfliktfrei mit Laravel 13.20 auf, komplette Suite grün, kein Prod-/Runtime-Impact (Test-Stack). **marked 18.0.6→18.0.7 / concurrently 9.2.3→9.2.4** (Patch, prod-bundled bzw. build-dev). `composer audit` + `npm audit --omit=dev` weiterhin 0. Alle Änderungen currency-getrieben (Spec §0/§24), keine Kontroll-Aufweichung.
 
 **Guzzle 7.15.0→7.15.1 (2026-07-21, v1.504.49) — Verschärfung, keine Aufweichung:**
@@ -316,6 +316,7 @@ app.js **8085 → ~753 Z.** (nur noch Bootstrap, Stores confirm/nav/vault/paperl
 - **v1.504.46**: **Nav-Reihenfolge + ZK-Dashboard** — primary = Dashboard/Dateien/Galerie/Passwörter, Rest ins „Mehr". Neues client-seitiges Dashboard (`dashboard`-Component + `shared/dashboard-utils.js`, Vitest) mit Widgets Todos, Geburtstage, Health+Quick-Add+Sparkline, Fotos „heute vor X Jahren", Speicher, Zähler, Passwort-Health-Kurzstatus, letzte Notizen — alles client-seitig aus den entschlüsselten Manifesten (ZK, kein neuer Endpunkt); Gallery persistiert `taken_at` ins sealed Manifest. **v1.504.47/.48:** Dashboard-Deep-Links — Foto-Klick öffnet Gallery-Viewer (`?photo=`), Notiz-Klick öffnet Notes (`?note=`, „Ohne Titel"-Fallback).
 - **v1.504.49**: Security-Patch — Guzzle 7.15.0→7.15.1 (3 medium-Advisories behoben, `composer.lock` only); CI-Security-Scan wieder grün.
 - **v1.504.50**: Dependency-Currency — **PHP 8.4→8.5** (App-Image digest-gepinnt, CI, composer-Floor `^8.5`; `imagedestroy()`-Deprecation entfernt → 0 Deprecations), **PHPUnit 12→13** (dev, major, Suite grün), marked/concurrently Patch-Bumps. `composer audit`+`npm audit` 0.
+- **v1.504.51**: Deploy-Fix zu .50 — `docker-compose.yml` `build.args.PHP_BASE` (überschreibt den Dockerfile-ARG-Default) ebenfalls auf den PHP-8.5-Digest gezogen; .50 baute sonst weiter auf 8.4 (`composer install`-Fail). Dual-Pin in beiden Dateien dokumentiert.
 
 ## MEMORY & CHECKS
 - Memory: `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerline/memory/` (Index `MEMORY.md`).
