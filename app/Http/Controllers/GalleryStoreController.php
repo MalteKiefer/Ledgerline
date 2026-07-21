@@ -19,6 +19,7 @@ use App\Models\GalleryStore;
  */
 class GalleryStoreController extends Controller
 {
+    /** @use SealedManifestStore<GalleryStore> */
     use SealedManifestStore;
 
     protected function manifestModel(): string

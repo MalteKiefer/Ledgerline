@@ -1,13 +1,9 @@
 import Alpine from 'alpinejs';
 import intersect from '@alpinejs/intersect';
 import { Vault, ShareCrypto } from './vault';
-import { csrfToken, jsonHeaders, getJson } from './shared/api';
-import { newId as _newId } from './shared/sealed-store';
+import { csrfToken, getJson } from './shared/api';
 import { buildModuleStores } from './shared/module-store';
-import { fetchDecryptWorker, queueBlobDelete } from './shared/blob-io';
-import { padBlob } from './shared/padme';
-import { bucketize, shardHash, recommendedShardBits } from './shared/shard';
-import { canonicalJSON } from './shared/canonical-json';
+import { makeShardedStore } from './shared/sharded-store';
 import contacts from './components/contacts';
 import health from './components/health';
 import passwords from './components/passwords';
@@ -48,395 +44,42 @@ window.Vault = Vault;
 window.ShareCrypto = ShareCrypto;
 
 /**
- * The opaque zero-knowledge store client. The whole workspace (notes, bookmarks,
- * todos, and their structure/flags) lives in ONE sealed manifest; the server only
- * stores/returns ciphertext + a version. This singleton loads + decrypts it once,
- * holds it in memory, and saves (debounced, sealed, optimistic version) on change.
- * File content bytes stay as separate opaque blobs (a later phase folds files in).
+ * Per-module opaque zero-knowledge store registry (Store v3 split). Each module
+ * (notes/todos/bookmarks/contacts/invoices/passwords/health/sharing) has its OWN
+ * sealed row at /store/<module>, so a write to one never re-seals the others; the
+ * server only stores/returns ciphertext + a version. Each store loads + decrypts
+ * once, holds it in memory, and saves (debounced, sealed, optimistic version) on
+ * change. Files + gallery have their own sharded stores (below); binary content
+ * stays as separate opaque blobs.
  */
 window.LLModuleStore = buildModuleStores();
 
-// Wait for the vault, then load the opaque manifest once (shared across the
-// notes/bookmarks/todos components). Returns true when the manifest is ready,
-// false while the vault is still locked.
-
 // Separate sealed store for the gallery index (photos/albums/people), kept apart
-// from the shared workspace manifest so gallery churn never re-seals notes/todos.
-//
-// Store v3 (spec §4.1/§5.1): the small sealed root is a pointer table; photo
-// records live in CONTENT-ADDRESSED, id-BUCKETED shard blobs (bucket derived from
-// the record id, not its array position → no cascade, cross-client stable), and
-// albums/people live in their own collection blobs. A save re-seals only the
-// buckets whose canonical-JSON hash changed, plus the tiny root. No v1/v2 paths.
-
-
-window.LLGalleryStore = {
-    data: null,
-    version: 0,
-    ready: false,
-    loaded: false,
-    _timer: null,
-    _chain: null,
-    _onError: null,
-    _shardBits: 0,
-    _shards: [], // [{ ref, key, hash, count, bucket }] descriptors from the last load/save
-    _albumsDesc: null, // { ref, key, hash } for the albums collection blob
-    _peopleDesc: null, // { ref, key, hash } for the people collection blob
-
-    _blank() {
-        return { v: 3, photos: [], albums: [], people: [] };
-    },
-
-    // Every live blob ref the gallery reconcile MUST keep alive (§11): the record
-    // shards AND the albums/people collection blobs. A missing class here = data
-    // loss on the next orphan sweep.
-    shardRefs() {
-        const refs = this._shards.map((s) => s.ref).filter(Boolean);
-        if (this._albumsDesc?.ref) refs.push(this._albumsDesc.ref);
-        if (this._peopleDesc?.ref) refs.push(this._peopleDesc.ref);
-        return refs;
-    },
-
-    // Load a content-addressed collection blob (albums/people) → array (or []).
-    async _loadCollection(ref, key) {
-        if (! ref) return [];
-        const b = await fetchDecryptWorker('/gallery/raw', ref, key);
-        const arr = JSON.parse(new TextDecoder().decode(b));
-        return Array.isArray(arr) ? arr : [];
-    },
-
-    // Seal a collection array into its own content-addressed blob, reusing the
-    // previous blob when the canonical bytes are unchanged; frees a replaced blob.
-    async _buildCollection(arr, prev) {
-        if (! arr.length) {
-            if (prev?.ref) queueBlobDelete('/gallery/blob/' + prev.ref, csrfToken());
-            return null;
-        }
-        const hash = await shardHash(arr);
-        if (prev && prev.hash === hash && prev.ref) return prev;
-        const sealed = await this._sealBlob(new TextEncoder().encode(canonicalJSON(arr)));
-        if (prev?.ref) queueBlobDelete('/gallery/blob/' + prev.ref, csrfToken());
-        return { ref: sealed.ref, key: sealed.key, hash };
-    },
-
-    // Seal raw bytes into a padded, content-addressed gallery blob → { ref, key }.
-    async _sealBlob(bytes) {
-        const enc = window.Vault.encryptContent(bytes, { name: 'shard.enc', mime: 'application/octet-stream' });
-        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-        const fd = new FormData();
-        fd.append('_token', csrfToken());
-        fd.append('file', cipher, cipher.name);
-        const res = await fetch('/gallery/upload', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
-        if (! res.ok) throw new Error('shard upload failed');
-        return { ref: (await res.json()).id, key: enc.encFileKey };
-    },
-
-    newId() { return _newId(); },
-
-    async load() {
-        const d = await getJson('/gallery/store');
-        this.version = d.version ?? 0;
-        this._shards = [];
-        this._albumsDesc = null;
-        this._peopleDesc = null;
-        this._shardBits = 0;
-        const root = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
-
-        // v3 only (clean slate — no v1/v2 read paths). Anything else = fresh library.
-        if (root.v === 3 && Array.isArray(root.shards)) {
-            this._shardBits = root.shardBits ?? 0;
-            // Load + decrypt every record shard in parallel (immutable blob cache
-            // makes repeats instant). A failed shard THROWS (fails the whole load)
-            // rather than dropping records — a partial in-memory set could be saved
-            // and would free the "missing" shard, losing data for good.
-            const parts = await Promise.all(root.shards.map((s) => fetchDecryptWorker('/gallery/raw', s.ref, s.key)
-                .then((b) => JSON.parse(new TextDecoder().decode(b)))));
-            const photos = [];
-            for (const arr of parts) if (Array.isArray(arr)) photos.push(...arr);
-            const albums = await this._loadCollection(root.albumsRef, root.albumsKey);
-            const people = await this._loadCollection(root.peopleRef, root.peopleKey);
-            this.data = { v: 3, photos, albums, people };
-            this._shards = root.shards.map((s) => ({ ...s }));
-            this._albumsDesc = root.albumsRef ? { ref: root.albumsRef, key: root.albumsKey, hash: root.albumsHash } : null;
-            this._peopleDesc = root.peopleRef ? { ref: root.peopleRef, key: root.peopleKey, hash: root.peopleHash } : null;
-        } else {
-            this.data = this._blank();
-        }
-
-        this.loaded = true;
-        this.ready = true;
-        return this.data;
-    },
-
-    reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; this._shards = []; this._albumsDesc = null; this._peopleDesc = null; this._shardBits = 0; clearTimeout(this._timer); },
-
-    touch() {
-        clearTimeout(this._timer);
-        this._timer = setTimeout(() => this.flush(), 800);
-    },
-
-    // Serialised, awaitable, COALESCING save. Callers can `await flush()` and be
-    // sure the CURRENT data was persisted. While a save is in flight, extra
-    // flush() calls collapse into a single queued save (each _doFlush always
-    // seals the latest in-memory data), so a burst of edits — a bulk/motion
-    // delete cascading many shard re-seals plus the background ML/pairing passes
-    // all flushing — no longer queues dozens of racing PUTs that fight over the
-    // version counter and exhaust the 409 retry budget.
-    flush() {
-        if (! this.loaded) return Promise.resolve();
-        if (this._queued) return this._chain; // a save is already scheduled after the running one
-        this._queued = true;
-        this._chain = (this._chain || Promise.resolve())
-            .catch(() => {})
-            .then(() => { this._queued = false; return this._doFlush(); })
-            .catch(() => {});
-        return this._chain;
-    },
-
-    // Split photos into shards, (re-)seal only the ones whose contents changed,
-    // free shards that vanished, and return the small root manifest. Index-based
-    // shards stay stable for the common cases (append new / edit in place); only
-    // a mid-array purge cascades, which is rare.
-    async _buildRoot() {
-        const photos = this.data.photos || [];
-        // Grow buckets to keep the mean shard small; a bits change re-buckets the
-        // whole set (one-time, free under clean slate).
-        const shardBits = recommendedShardBits(photos.length);
-        const rebucket = shardBits !== this._shardBits;
-        const buckets = bucketize(photos, shardBits); // Map<bucket, id-sorted records>
-        const prevByBucket = new Map(this._shards.map((s) => [s.bucket, s]));
-
-        const descriptors = [];
-        for (const [bucket, records] of buckets) {
-            const hash = await shardHash(records);
-            const prev = rebucket ? null : prevByBucket.get(bucket);
-            if (prev && prev.hash === hash && prev.ref) {
-                descriptors.push({ ...prev, count: records.length }); // unchanged → reuse blob
-            } else {
-                const sealed = await this._sealBlob(new TextEncoder().encode(canonicalJSON(records)));
-                descriptors.push({ ref: sealed.ref, key: sealed.key, hash, count: records.length, bucket });
-            }
-        }
-        // Free shard blobs no longer referenced (shrunk/re-bucketed/changed).
-        const live = new Set(descriptors.map((d) => d.ref));
-        for (const old of this._shards) if (old.ref && ! live.has(old.ref)) queueBlobDelete('/gallery/blob/' + old.ref, csrfToken());
-        this._shards = descriptors;
-        this._shardBits = shardBits;
-
-        // Albums + people as their own content-addressed collection blobs.
-        this._albumsDesc = await this._buildCollection(this.data.albums || [], this._albumsDesc);
-        this._peopleDesc = await this._buildCollection(this.data.people || [], this._peopleDesc);
-
-        const root = {
-            v: 3,
-            shardBits,
-            shards: descriptors.map(({ ref, key, hash, count, bucket }) => ({ ref, key, hash, count, bucket })),
-            caps: {},
-        };
-        if (this._albumsDesc) { root.albumsRef = this._albumsDesc.ref; root.albumsKey = this._albumsDesc.key; root.albumsHash = this._albumsDesc.hash; }
-        if (this._peopleDesc) { root.peopleRef = this._peopleDesc.ref; root.peopleKey = this._peopleDesc.key; root.peopleHash = this._peopleDesc.hash; }
-        return root;
-    },
-
-    async _doFlush(retry = 0) {
-        if (! this.loaded || ! this.data) return;
-        try {
-            const root = await this._buildRoot();
-            const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(root), version: this.version });
-            const res = await fetch('/gallery/store', { method: 'PUT', headers: jsonHeaders(), body });
-            if (res.status === 409) {
-                // Another writer (e.g. the background ML pass, or a second tab)
-                // advanced the version. Adopt it and re-seal our data (this tab holds
-                // the authoritative in-memory copy). Back off a touch so a burst of
-                // concurrent flushes doesn't livelock.
-                const cur = await fetch('/gallery/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
-                this.version = cur.version ?? this.version;
-                if (retry < 8) { await new Promise((r) => setTimeout(r, Math.min(120 * 2 ** retry, 2000))); return this._doFlush(retry + 1); }
-                throw new Error('gallery store save conflict');
-            } else if (res.status === 429 && retry < 8) {
-                // Rate limited (e.g. a bulk empty-trash saturated the window). Back
-                // off and retry rather than dropping the save — otherwise a
-                // destructive edit like clearing the trash is silently lost and the
-                // now-deleted blobs 404 on the next load.
-                const ra = parseInt(res.headers.get('Retry-After') || '', 10);
-                await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(500 * 2 ** retry, 8000)));
-                return this._doFlush(retry + 1);
-            } else if (res.ok) {
-                this.version = (await res.json()).version ?? this.version + 1;
-            } else {
-                throw new Error('gallery store save failed');
-            }
-        } catch (e) {
-            if (this._onError) this._onError();
-            throw e;
-        }
-    },
-};
+// from the module stores so gallery churn never re-seals notes/todos.
+// Store v3 (spec §4.1/§5.1): a small sealed pointer-table root + content-addressed
+// id-bucketed photo shards + albums/people collection blobs. Same sharded engine
+// as Files (shared/sharded-store.js) — see there for the full mechanics.
+window.LLGalleryStore = makeShardedStore({
+    prefix: '/gallery',
+    recordKey: 'photos',
+    collections: [
+        { key: 'albums', rootRef: 'albumsRef', rootKey: 'albumsKey', rootHash: 'albumsHash' },
+        { key: 'people', rootRef: 'peopleRef', rootKey: 'peopleKey', rootHash: 'peopleHash' },
+    ],
+});
 
 // Files sharded store (Store v3 §4.2/A10b): Files graduates out of the monolith
 // into its own sharded sealed store, identical engine to the gallery — root
 // pointer table + content-addressed id-bucketed record shards + a fileFolders
 // collection blob. File CONTENT stays as separate opaque blobs (the files ledger).
-window.LLFilesStore = {
-    data: null,
-    version: 0,
-    ready: false,
-    loaded: false,
-    _timer: null,
-    _chain: null,
-    _queued: false,
-    _onError: null,
-    _shardBits: 0,
-    _shards: [],
-    _foldersDesc: null,
+window.LLFilesStore = makeShardedStore({
+    prefix: '/files',
+    recordKey: 'files',
+    collections: [
+        { key: 'fileFolders', rootRef: 'foldersRef', rootKey: 'foldersKey', rootHash: 'foldersHash' },
+    ],
+});
 
-    _blank() { return { v: 3, files: [], fileFolders: [] }; },
-
-    // Live blob refs the files reconcile MUST keep: record shards + the folders blob.
-    shardRefs() {
-        const refs = this._shards.map((s) => s.ref).filter(Boolean);
-        if (this._foldersDesc?.ref) refs.push(this._foldersDesc.ref);
-        return refs;
-    },
-
-    async _sealBlob(bytes) {
-        const enc = window.Vault.encryptContent(bytes, { name: 'shard.enc', mime: 'application/octet-stream' });
-        const cipher = new File([await padBlob(enc.blob)], 'blob.enc', { type: 'application/octet-stream' });
-        const fd = new FormData();
-        fd.append('_token', csrfToken());
-        fd.append('file', cipher, cipher.name);
-        const res = await fetch('/files/upload', { method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
-        if (! res.ok) throw new Error('files shard upload failed');
-        return { ref: (await res.json()).id, key: enc.encFileKey };
-    },
-
-    async _loadCollection(ref, key) {
-        if (! ref) return [];
-        const b = await fetchDecryptWorker('/files/raw', ref, key);
-        const arr = JSON.parse(new TextDecoder().decode(b));
-        return Array.isArray(arr) ? arr : [];
-    },
-
-    async _buildCollection(arr, prev) {
-        if (! arr.length) {
-            if (prev?.ref) queueBlobDelete('/files/blob/' + prev.ref, csrfToken());
-            return null;
-        }
-        const hash = await shardHash(arr);
-        if (prev && prev.hash === hash && prev.ref) return prev;
-        const sealed = await this._sealBlob(new TextEncoder().encode(canonicalJSON(arr)));
-        if (prev?.ref) queueBlobDelete('/files/blob/' + prev.ref, csrfToken());
-        return { ref: sealed.ref, key: sealed.key, hash };
-    },
-
-    newId() { return _newId(); },
-
-    async load() {
-        const d = await getJson('/files/store');
-        this.version = d.version ?? 0;
-        this._shards = [];
-        this._foldersDesc = null;
-        this._shardBits = 0;
-        const root = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
-
-        if (root.v === 3 && Array.isArray(root.shards)) {
-            this._shardBits = root.shardBits ?? 0;
-            const parts = await Promise.all(root.shards.map((s) => fetchDecryptWorker('/files/raw', s.ref, s.key)
-                .then((b) => JSON.parse(new TextDecoder().decode(b)))));
-            const files = [];
-            for (const arr of parts) if (Array.isArray(arr)) files.push(...arr);
-            const fileFolders = await this._loadCollection(root.foldersRef, root.foldersKey);
-            this.data = { v: 3, files, fileFolders };
-            this._shards = root.shards.map((s) => ({ ...s }));
-            this._foldersDesc = root.foldersRef ? { ref: root.foldersRef, key: root.foldersKey, hash: root.foldersHash } : null;
-        } else {
-            this.data = this._blank();
-        }
-
-        this.loaded = true;
-        this.ready = true;
-        return this.data;
-    },
-
-    reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; this._shards = []; this._foldersDesc = null; this._shardBits = 0; clearTimeout(this._timer); },
-
-    touch() {
-        clearTimeout(this._timer);
-        this._timer = setTimeout(() => this.flush(), 800);
-    },
-
-    flush() {
-        if (! this.loaded) return Promise.resolve();
-        if (this._queued) return this._chain;
-        this._queued = true;
-        this._chain = (this._chain || Promise.resolve())
-            .catch(() => {})
-            .then(() => { this._queued = false; return this._doFlush(); })
-            .catch(() => {});
-        return this._chain;
-    },
-
-    async _buildRoot() {
-        const files = this.data.files || [];
-        const shardBits = recommendedShardBits(files.length);
-        const rebucket = shardBits !== this._shardBits;
-        const buckets = bucketize(files, shardBits);
-        const prevByBucket = new Map(this._shards.map((s) => [s.bucket, s]));
-
-        const descriptors = [];
-        for (const [bucket, records] of buckets) {
-            const hash = await shardHash(records);
-            const prev = rebucket ? null : prevByBucket.get(bucket);
-            if (prev && prev.hash === hash && prev.ref) {
-                descriptors.push({ ...prev, count: records.length });
-            } else {
-                const sealed = await this._sealBlob(new TextEncoder().encode(canonicalJSON(records)));
-                descriptors.push({ ref: sealed.ref, key: sealed.key, hash, count: records.length, bucket });
-            }
-        }
-        const live = new Set(descriptors.map((d) => d.ref));
-        for (const old of this._shards) if (old.ref && ! live.has(old.ref)) queueBlobDelete('/files/blob/' + old.ref, csrfToken());
-        this._shards = descriptors;
-        this._shardBits = shardBits;
-
-        this._foldersDesc = await this._buildCollection(this.data.fileFolders || [], this._foldersDesc);
-
-        const root = {
-            v: 3,
-            shardBits,
-            shards: descriptors.map(({ ref, key, hash, count, bucket }) => ({ ref, key, hash, count, bucket })),
-            caps: {},
-        };
-        if (this._foldersDesc) { root.foldersRef = this._foldersDesc.ref; root.foldersKey = this._foldersDesc.key; root.foldersHash = this._foldersDesc.hash; }
-        return root;
-    },
-
-    async _doFlush(retry = 0) {
-        if (! this.loaded || ! this.data) return;
-        try {
-            const root = await this._buildRoot();
-            const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(root), version: this.version });
-            const res = await fetch('/files/store', { method: 'PUT', headers: jsonHeaders(), body });
-            if (res.status === 409) {
-                const cur = await fetch('/files/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
-                this.version = cur.version ?? this.version;
-                if (retry < 8) { await new Promise((r) => setTimeout(r, Math.min(120 * 2 ** retry, 2000))); return this._doFlush(retry + 1); }
-                throw new Error('files store save conflict');
-            } else if (res.status === 429 && retry < 8) {
-                const ra = parseInt(res.headers.get('Retry-After') || '', 10);
-                await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(500 * 2 ** retry, 8000)));
-                return this._doFlush(retry + 1);
-            } else if (res.ok) {
-                this.version = (await res.json()).version ?? this.version + 1;
-            } else {
-                throw new Error('files store save failed');
-            }
-        } catch (e) {
-            if (this._onError) this._onError();
-            throw e;
-        }
-    },
-};
 
 // Wait for the vault, then load the sealed gallery index once.
 // App-wide confirm modal store (replaces native window.confirm everywhere).
@@ -789,13 +432,15 @@ window.Alpine = Alpine;
  * reminders — any reminder would only ever be client-side.
  */
 /**
- * Shared lifecycle for the zero-knowledge manifest modules (notes, bookmarks,
- * to-dos). They all point local arrays at window.LLStore.data.* once the vault
- * is unlocked, mutate them in place, and schedule a debounced sealed save; on
- * lock they clear those arrays and reset the store. Each component spreads
- * this and supplies its module-specific bits.
+ * Shared lifecycle for the per-module zero-knowledge stores (notes, bookmarks,
+ * to-dos, …). Each component points local arrays at its own
+ * window.LLModuleStore.<module>.data.* once the vault is unlocked, mutates them
+ * in place, and schedules a debounced sealed save; on lock it clears those
+ * arrays and resets the store. Each component spreads this and supplies its
+ * module-specific bits.
  *
- * cfg.map: { <LLStore.data key>: '<component property>' } — the collections to
+ * cfg.store: the module key backing this component (e.g. 'todos').
+ * cfg.map: { <store data key>: '<component property>' } — the collections to
  *          wire (e.g. { todos: 'tasks', todoLists: 'lists' }).
  * cfg.onLock(self): optional extra reset (e.g. notes clears currentId).
  */
@@ -852,8 +497,8 @@ Alpine.data('bookmarks', bookmarks);
 
 /**
  * Password manager ("passwords"). Zero-knowledge like the other opaque-store
- * modules: every secret lives as a record in the sealed manifest (LLStore.data
- * .secrets), unlocked with the vault key. Six item types (login, password,
+ * modules: every secret lives as a record in the sealed passwords store
+ * (LLModuleStore.passwords.data.secrets), unlocked with the vault key. Six item types (login, password,
  * card, wifi, license, server); per-item version history on every field change;
  * client-side TOTP, password generator, Wi-Fi QR, and copy-with-auto-clear.
  */

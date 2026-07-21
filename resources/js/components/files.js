@@ -262,6 +262,10 @@ export default (config = {}, labels = {}) => ({
             if (f.embRef) blobs.push(f.embRef);  // image CLIP-embedding blob
             for (const v of f.versions ?? []) if (v.blob) blobs.push(v.blob);
         }
+        // The record shards + fileFolders collection blob hold the files index
+        // itself — keep them too, or the sweep would orphan the whole index (§11:
+        // reconcile live-set MUST cover every ref class — a missing ref = data loss).
+        for (const ref of window.LLFilesStore.shardRefs()) blobs.push(ref);
         try {
             const res = await fetch(config.reconcileUrl, {
                 method: 'POST',
