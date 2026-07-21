@@ -25,7 +25,7 @@ class UserKeyController extends Controller
      */
     public function show(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->requireUser($request);
 
         return response()->json([
             'public_key' => $user->x25519_public_key,
@@ -48,7 +48,7 @@ class UserKeyController extends Controller
             'fingerprint' => ['required', 'string'],
         ]);
 
-        $user = $request->user();
+        $user = $this->requireUser($request);
 
         // Write-once guard: if the user already has a different public key stored,
         // reject. This prevents silent key rotation that would break all pending

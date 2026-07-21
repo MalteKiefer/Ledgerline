@@ -35,12 +35,13 @@ trait ManagesPublicShares
 
     protected function createShare(Request $request, string $kind): JsonResponse
     {
+        $user = $this->requireUser($request);
         $data = $request->validate($this->shareRules());
 
         $token = $this->uniqueShareToken();
         $share = new PublicShare;
         $share->token = $token;
-        $share->user_id = (int) $request->user()->id;
+        $share->user_id = (int) $user->id;
         $share->kind = $kind;
         $share->sealed_manifest = $data['sealed_manifest'];
         $share->blob_refs = array_values(array_unique($data['blob_refs']));
@@ -54,7 +55,7 @@ trait ManagesPublicShares
 
     protected function updateShareRecord(Request $request, string $token): JsonResponse
     {
-        $share = $this->ownedShare($token);
+        $share = $this->ownedShare($request, $token);
         $data = $request->validate($this->shareRules() + ['clear_password' => ['boolean']]);
 
         $share->sealed_manifest = $data['sealed_manifest'];
@@ -73,16 +74,18 @@ trait ManagesPublicShares
 
     protected function destroyShareRecord(Request $request, string $token): JsonResponse
     {
-        $this->ownedShare($token)->delete();
+        $this->ownedShare($request, $token)->delete();
 
         return response()->json(['ok' => true]);
     }
 
-    private function ownedShare(string $token): PublicShare
+    private function ownedShare(Request $request, string $token): PublicShare
     {
+        $user = $this->requireUser($request);
+
         return PublicShare::query()
             ->where('token', $token)
-            ->where('user_id', (int) request()->user()->id)
+            ->where('user_id', (int) $user->id)
             ->firstOrFail();
     }
 

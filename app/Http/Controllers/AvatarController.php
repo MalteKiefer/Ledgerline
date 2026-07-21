@@ -25,7 +25,7 @@ class AvatarController extends Controller
      */
     public function __invoke(Request $request): StreamedResponse
     {
-        $path = $request->user()->avatar;
+        $path = $this->requireUser($request)->avatar;
         $disk = BlobStore::disk();
 
         abort_if(! is_string($path) || $path === '' || ! $disk->exists($path), 404);
@@ -47,7 +47,8 @@ class AvatarController extends Controller
      */
     public function refresh(Request $request, AvatarFetcher $avatars): RedirectResponse|JsonResponse
     {
-        $ok = $avatars->fetch($request->user(), $request->user()->avatar_url);
+        $user = $this->requireUser($request);
+        $ok = $avatars->fetch($user, $user->avatar_url);
 
         if ($request->expectsJson()) {
             return response()->json(['refreshed' => $ok]);

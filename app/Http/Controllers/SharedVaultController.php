@@ -73,7 +73,7 @@ class SharedVaultController extends Controller
 
             SharedVaultMember::create([
                 'vault_id' => $vault->id,
-                'user_id' => $request->user()->id,
+                'user_id' => $this->requireUser($request)->id,
                 'role' => VaultRole::Manager->value,
                 'status' => 'active',
                 'wrapped_vault_key' => $data['wrapped_vault_key'],
@@ -96,7 +96,7 @@ class SharedVaultController extends Controller
     {
         $kind = $request->query('kind');
 
-        $memberships = $request->user()
+        $memberships = $this->requireUser($request)
             ->vaultMemberships()
             ->with('vault')
             ->get()
@@ -109,7 +109,7 @@ class SharedVaultController extends Controller
                 'status' => $m->status,
                 // Whether the caller is the vault's owner (not just an invited manager).
                 // Drives owner-only actions like converting a shared folder back to private.
-                'owner' => $m->vault?->owner_id === $request->user()->id,
+                'owner' => $m->vault?->owner_id === $this->requireUser($request)->id,
                 'wrapped_vault_key' => $m->wrapped_vault_key,
             ])
             ->values();
@@ -176,7 +176,7 @@ class SharedVaultController extends Controller
         ]);
 
         // Inject authenticated user id so the transaction closure can perform the self-remove guard.
-        $data['_auth_user_id'] = $request->user()->id;
+        $data['_auth_user_id'] = $this->requireUser($request)->id;
 
         $result = DB::transaction(function () use ($vault, $data): array {
             /** @var SharedVaultStore|null $row */

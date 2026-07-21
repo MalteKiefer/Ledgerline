@@ -28,7 +28,7 @@ class ContactNotifyController extends Controller
             'body' => ['required', 'string', 'max:500'],
         ]);
 
-        $user = $request->user();
+        $user = $this->requireUser($request);
         $s = UserSetting::for($user->id);
         $allowed = (array) ($data['kind'] === 'birthday'
             ? $s->contact_birthday_channels

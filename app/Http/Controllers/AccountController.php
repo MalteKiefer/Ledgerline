@@ -23,7 +23,7 @@ class AccountController extends Controller
     /** Stream a zip of the user's data (one JSON file per module). Data only, no blobs. */
     public function export(Request $request): StreamedResponse
     {
-        $user = $request->user();
+        $user = $this->requireUser($request);
         $sections = [];
         foreach (config('user_data.contributors', []) as $class) {
             /** @var UserDataContributor $contributor */
@@ -61,11 +61,12 @@ class AccountController extends Controller
     /** Revoke another active session (not the current one). */
     public function revokeSession(Request $request, string $id): RedirectResponse|JsonResponse
     {
+        $user = $this->requireUser($request);
         // Exclude the caller's own web session (if any — a token API request has none).
         $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
         DB::table('sessions')
             ->where('id', $id)
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $user->id)
             ->when($currentSessionId !== null, fn ($q) => $q->where('id', '!=', $currentSessionId))
             ->delete();
 
@@ -77,7 +78,7 @@ class AccountController extends Controller
     /** Permanently delete the account and all owned data. */
     public function destroy(Request $request, PurgeUserAccount $purge): RedirectResponse|JsonResponse
     {
-        $user = $request->user();
+        $user = $this->requireUser($request);
         $request->validate([
             'confirmation' => ['required', 'string', 'in:'.$user->email],
         ], ['confirmation.in' => __('account.delete_confirm_mismatch')]);

@@ -26,8 +26,9 @@ trait SealedManifestStore
     /** Return the current user's sealed manifest + version (empty on first use). */
     public function show(Request $request): JsonResponse
     {
+        $user = $this->requireUser($request);
         $model = $this->manifestModel();
-        $row = $model::query()->where('user_id', $request->user()->id)->first();
+        $row = $model::query()->where('user_id', $user->id)->first();
 
         // Never let a proxy/browser cache the sealed manifest (defence-in-depth:
         // keep the ciphertext off shared caches entirely).
@@ -49,7 +50,7 @@ trait SealedManifestStore
             'version' => ['required', 'integer', 'min:0'],
         ]);
 
-        $uid = (int) $request->user()->id;
+        $uid = (int) $this->requireUser($request)->id;
         $model = $this->manifestModel();
 
         $next = DB::transaction(function () use ($uid, $data, $model): ?int {

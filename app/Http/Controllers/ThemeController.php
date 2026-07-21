@@ -18,7 +18,7 @@ class ThemeController extends Controller
             'theme' => ['required', 'string', 'in:light,dark,system'],
         ]);
 
-        UserSetting::for($request->user()->id)->update(['theme' => $validated['theme']]);
+        UserSetting::for($this->requireUser($request)->id)->update(['theme' => $validated['theme']]);
 
         // API clients (Sanctum) get JSON; the web form gets a redirect back.
         return $request->expectsJson()

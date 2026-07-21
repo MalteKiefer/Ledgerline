@@ -26,10 +26,11 @@ class FilesController extends Controller
 
     public function edit(Request $request): View
     {
+        $user = $this->requireUser($request);
         $admin = Gate::allows('manage-global-settings');
 
         return view('settings.files.edit', [
-            'maxVersions' => UserSetting::for($request->user()->id)->file_max_versions ?? 10,
+            'maxVersions' => UserSetting::for($user->id)->file_max_versions ?? 10,
             'isAdmin' => $admin,
             'limits' => $admin ? AppSettings::current() : null,
         ]);
@@ -40,7 +41,8 @@ class FilesController extends Controller
         $data = $request->validate([
             'file_max_versions' => ['required', 'integer', 'min:1', 'max:200'],
         ]);
-        UserSetting::for($request->user()->id)->update(['file_max_versions' => $data['file_max_versions']]);
+        $user = $this->requireUser($request);
+        UserSetting::for($user->id)->update(['file_max_versions' => $data['file_max_versions']]);
 
         // Global limits are admin-only; a null value clears the override so the
         // config/env default applies again.

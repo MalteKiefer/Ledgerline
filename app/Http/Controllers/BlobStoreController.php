@@ -74,7 +74,9 @@ abstract class BlobStoreController extends Controller
     /** Id stamped on new ledger rows and used for quota. Default: the caller. */
     protected function ownerId(Request $request): int
     {
-        return (int) $request->user()->id;
+        $user = $this->requireUser($request);
+
+        return (int) $user->id;
     }
 
     /**
@@ -84,12 +86,13 @@ abstract class BlobStoreController extends Controller
      */
     protected function scopeLedger(Request $request): Builder
     {
+        $user = $this->requireUser($request);
         $model = $this->blobModel();
 
         /** @var Builder<TModel> $query */
         $query = $model::query();
 
-        return $query->where('user_id', (int) $request->user()->id);
+        return $query->where('user_id', (int) $user->id);
     }
 
     /**
@@ -99,13 +102,17 @@ abstract class BlobStoreController extends Controller
      */
     protected function stampAttributes(Request $request): array
     {
-        return ['user_id' => (int) $request->user()->id];
+        $user = $this->requireUser($request);
+
+        return ['user_id' => (int) $user->id];
     }
 
     /** Owner id recorded in a chunk session's ledger row. Default: the caller. */
     protected function chunkOwnerId(Request $request): int
     {
-        return (int) $request->user()->id;
+        $user = $this->requireUser($request);
+
+        return (int) $user->id;
     }
 
     /** Hook for subclasses that need extra authorization on raw reads (default: none). */
@@ -123,7 +130,9 @@ abstract class BlobStoreController extends Controller
      */
     protected function reconcileLockId(Request $request): int
     {
-        return (int) $request->user()->id;
+        $user = $this->requireUser($request);
+
+        return (int) $user->id;
     }
 
     /**
@@ -262,6 +271,7 @@ abstract class BlobStoreController extends Controller
             // instead (10 000 parts) so multi-GB uploads are allowed.
             'size' => ['required', 'integer', 'min:1', 'max:'.(10000 * self::CHUNK_PART_SIZE)],
         ]);
+        $user = $this->requireUser($request);
         abort_if($this->quotaExceeded($this->chunkOwnerId($request), (int) $data['size']), 413, __('files.quota_exceeded'));
 
         $id = (string) Str::uuid();
@@ -271,7 +281,7 @@ abstract class BlobStoreController extends Controller
         $token = (string) Str::uuid();
         Cache::put($this->chunkKey($token), array_merge([
             'uploadId' => $res['UploadId'], 'key' => $key, 'id' => $id,
-            'actor' => (int) $request->user()->id,
+            'actor' => (int) $user->id,
             'owner' => $this->chunkOwnerId($request),
         ], $this->chunkSessionExtra($request)), now()->addHours(12));
 
@@ -344,8 +354,9 @@ abstract class BlobStoreController extends Controller
         $token = (string) $request->input('token');
         // Tolerate an already-gone session (nothing to abort) so aborting is
         // always safe/idempotent and never a dead-end 404.
+        $user = $this->requireUser($request);
         $s = Cache::get($this->chunkKey($token));
-        if (is_array($s) && (int) ($s['actor'] ?? 0) === (int) $request->user()->id) {
+        if (is_array($s) && (int) ($s['actor'] ?? 0) === (int) $user->id) {
             try {
                 $this->s3()->abortMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId']]);
             } catch (\Throwable) {
@@ -384,8 +395,9 @@ abstract class BlobStoreController extends Controller
      */
     private function chunkSession(Request $request): array
     {
+        $user = $this->requireUser($request);
         $s = Cache::get($this->chunkKey((string) $request->input('token')));
-        abort_if(! is_array($s) || (int) ($s['actor'] ?? 0) !== (int) $request->user()->id, 404);
+        abort_if(! is_array($s) || (int) ($s['actor'] ?? 0) !== (int) $user->id, 404);
 
         return $s;
     }

@@ -7,6 +7,7 @@ namespace App\Http\Requests\Vault;
 use App\Enums\VaultRole;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -24,10 +25,16 @@ class UpdateMemberRequest extends FormRequest
 {
     public function authorize(): bool
     {
+        $user = $this->user();
+
+        if ($user === null) {
+            return false;
+        }
+
         /** @var SharedVault $vault */
         $vault = $this->route('vault');
 
-        return $this->user()->can('manage', $vault);
+        return $user->can('manage', $vault);
     }
 
     /** @return array<string, mixed> */
@@ -55,11 +62,14 @@ class UpdateMemberRequest extends FormRequest
             /** @var SharedVault $vault */
             $vault = $this->route('vault');
 
+            $user = $this->user();
+            abort_unless($user instanceof User, 403);
+
             /** @var SharedVaultMember $targetMember */
             $targetMember = $this->route('member');
 
             // Guard: block self-targeting.
-            if ((int) $targetMember->user_id === (int) $this->user()->id) {
+            if ((int) $targetMember->user_id === (int) $user->id) {
                 $v->errors()->add('role', 'You cannot change your own vault membership role.');
 
                 return;
@@ -67,7 +77,7 @@ class UpdateMemberRequest extends FormRequest
 
             // Guard: requested rank must not exceed actor's own rank.
             $actorMembership = SharedVaultMember::where('vault_id', $vault->id)
-                ->where('user_id', $this->user()->id)
+                ->where('user_id', $user->id)
                 ->where('status', 'active')
                 ->first();
 
