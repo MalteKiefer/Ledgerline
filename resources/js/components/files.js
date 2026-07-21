@@ -48,6 +48,8 @@ export default (config = {}, labels = {}) => ({
     activeTag: '',
     view: 'files', // files | favorites | recent | trash
     newFolderName: '',
+    newFolderModal: false,
+    newFolderShared: false,
     infoOpen: false,
     infoRow: null,
     infoNote: '',
@@ -333,7 +335,7 @@ export default (config = {}, labels = {}) => ({
     },
 
     async _loadSharedFolders() {
-        if (! this.$store.vault.unlocked()) return;
+        if (! this.$store.vault.unlocked) return;
         try {
             const ids = await Vault.ensureIdentityKeys();
             const rows = await getJson('/vaults?kind=folder').catch(() => []);
@@ -906,6 +908,32 @@ export default (config = {}, labels = {}) => ({
             cur = byId.get(cur).parent;
         }
         return [root, ...chain].join(' / ');
+    },
+
+    /* ---- New folder modal ---- */
+
+    openNewFolder() {
+        this.newFolderName = '';
+        this.newFolderShared = false;
+        this.newFolderModal = true;
+        this.$nextTick(() => { this.$refs.newFolderInput?.focus(); });
+    },
+
+    async submitNewFolder() {
+        const n = this.newFolderName.trim();
+        if (! n) return;
+        try {
+            if (this.newFolderShared && ! this._isSharedContext()) {
+                await this.createSharedFolder(n);
+            } else {
+                await this.mkdir(n);
+            }
+            // Close only on success so a failure keeps the entered name + surfaces the error.
+            this.newFolderModal = false;
+            this.newFolderName = '';
+        } catch (e) {
+            this.error = (e && e.message) ? e.message : String(e);
+        }
     },
 
     /* ---- Structure operations ---- */

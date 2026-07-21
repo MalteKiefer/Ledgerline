@@ -33,6 +33,14 @@
             <a href="{{ route('settings') }}" @click="$store.nav.closeAll()" class="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">
                 <x-icon name="ellipsis" class="h-5 w-5 text-gray-400 dark:text-gray-500" />{{ __('messages.menu.settings') }}
             </a>
+            {{-- Vault lock toggle (system-wide; mobile parity for the desktop nav lock). --}}
+            <button type="button"
+                @click="$store.vault.unlocked ? $store.vault.lock() : $dispatch('vault-panel'); $store.nav.closeAll()"
+                class="flex w-full min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">
+                <span x-show="$store.vault.unlocked"><x-icon name="lock-open" class="h-5 w-5 text-gray-400 dark:text-gray-500" /></span>
+                <span x-show="! $store.vault.unlocked"><x-icon name="lock-closed" class="h-5 w-5 text-gray-400 dark:text-gray-500" /></span>
+                <span x-text="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"></span>
+            </button>
         </div>
 
         @php $llTheme = \App\Models\UserSetting::for((int) auth()->id())->theme ?? 'system'; @endphp

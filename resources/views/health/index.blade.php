@@ -76,37 +76,35 @@
       {{-- ===== MAIN VIEW ===== --}}
       <div x-show="view === 'main'" class="flex h-[calc(100dvh-11rem)] gap-4 md:h-[calc(100vh-10rem)]">
 
-        {{-- Metric nav sidebar --}}
-        <aside class="hidden md:flex w-60 shrink-0 flex-col ll-card !p-0 overflow-hidden">
+        {{-- Metric nav sidebar — icon-only rail on desktop --}}
+        <aside class="hidden md:flex w-16 shrink-0 flex-col items-center ll-card !p-0 overflow-hidden">
             {{-- Metric rows --}}
-            <div class="min-h-0 flex-1 overflow-y-auto py-1">
+            <div class="min-h-0 w-full flex-1 overflow-y-auto py-1">
                 <template x-for="m in metrics" :key="m.key">
                     <button type="button"
                         @click="selectedMetric = m.key"
-                        class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/5"
+                        :title="metricLabel(m.key) + (latestFor(m.key) != null ? ' — ' + latestFor(m.key) + ' ' + unitLabel(m.key) : '')"
+                        :aria-label="metricLabel(m.key) + (latestFor(m.key) != null ? ' — ' + latestFor(m.key) + ' ' + unitLabel(m.key) : '')"
+                        class="relative flex w-full items-center justify-center py-2.5 transition-colors hover:bg-accent/5"
                         :class="selectedMetric === m.key ? 'bg-accent/10 text-accent' : 'text-gray-700 dark:text-gray-300'">
                         {{-- Tinted chip with metric icon --}}
-                        <span class="ll-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                        <span class="ll-chip relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                               :style="'background:' + tintHex(m.tint)">
                             {{-- icon rendered per tint name; x-icon name must be static in blade --}}
                             <template x-if="m.icon === 'heart'"><svg class="h-4 w-4 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg></template>
                             <template x-if="m.icon === 'beaker'"><svg class="h-4 w-4 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 2.25v7.5L18 15.75H6L9.75 9.75V2.25M10.5 2.25h3M3.75 21h16.5" /></svg></template>
                             <template x-if="m.icon === 'thermometer'"><svg class="h-4 w-4 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m0 6a3 3 0 100-6 3 3 0 000 6zm0-9V3m0 6a3 3 0 013 3m-6 0a3 3 0 013-3" /></svg></template>
                             <template x-if="m.icon === 'scale'"><svg class="h-4 w-4 text-white shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1.5M12 3c-1.2 0-2.4.6-3 1.5L3 16.5h18L15 4.5C14.4 3.6 13.2 3 12 3zm0 1.5L6 16.5m6-12l6 12M3 16.5h18v1.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-1.5z" /></svg></template>
+                            {{-- Classification dot: absolute top-right of the chip --}}
+                            <template x-if="latestFor(m.key) != null">
+                                <span class="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-1 ring-white dark:ring-[#1c1c1e]"
+                                      :class="{
+                                          'bg-green-500': classifyLatest(m.key) === 'ok',
+                                          'bg-amber-400': classifyLatest(m.key) === 'amber',
+                                          'bg-red-500':   classifyLatest(m.key) === 'red',
+                                      }"></span>
+                            </template>
                         </span>
-                        <span class="flex-1 min-w-0">
-                            <span class="block truncate text-sm font-medium" x-text="metricLabel(m.key)"></span>
-                            <span class="block truncate text-xs" :class="selectedMetric === m.key ? 'text-accent/70' : 'text-gray-400 dark:text-gray-500'" x-text="latestFor(m.key) != null ? (latestFor(m.key) + ' ' + unitLabel(m.key)) : ''"></span>
-                        </span>
-                        {{-- Classification dot --}}
-                        <template x-if="latestFor(m.key) != null">
-                            <span class="h-2 w-2 shrink-0 rounded-full"
-                                  :class="{
-                                      'bg-green-500': classifyLatest(m.key) === 'ok',
-                                      'bg-amber-400': classifyLatest(m.key) === 'amber',
-                                      'bg-red-500':   classifyLatest(m.key) === 'red',
-                                  }"></span>
-                        </template>
                     </button>
                 </template>
 
@@ -115,12 +113,13 @@
                 {{-- Master data row --}}
                 <button type="button"
                     @click="selectedMetric = '_master'"
-                    class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-accent/5"
+                    title="{{ __('health.master_data') }}"
+                    aria-label="{{ __('health.master_data') }}"
+                    class="flex w-full items-center justify-center py-2.5 transition-colors hover:bg-accent/5"
                     :class="selectedMetric === '_master' ? 'bg-accent/10 text-accent' : 'text-gray-700 dark:text-gray-300'">
                     <span class="ll-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-400 dark:bg-gray-600">
                         <x-icon name="user" class="h-4 w-4 text-white" />
                     </span>
-                    <span class="text-sm font-medium">{{ __('health.master_data') }}</span>
                 </button>
             </div>
         </aside>
