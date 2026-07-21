@@ -39,6 +39,8 @@ return [
         'avatar_provided' => 'Provided by Pocket-ID, stored on your object storage',
         'avatar_none' => 'None',
         'refresh_avatar' => 'Refresh avatar',
+        'health_title' => 'Health',
+        'health_desc' => 'Track weight, blood pressure, pulse and more — charts and a doctor-ready export, end-to-end encrypted.',
         'account_created' => 'Account created',
     ],
 ];
