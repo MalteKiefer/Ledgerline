@@ -122,7 +122,7 @@
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <nav class="text-sm text-gray-500 dark:text-gray-400" x-show="view === 'files'">
-                    <button type="button" @click="cwd = null" class="hover:underline">{{ __('files.all_files') }}</button>
+                    <button type="button" @click="cwd = null; activeShared = null" class="hover:underline">{{ __('files.all_files') }}</button>
                     <template x-for="crumb in breadcrumb" :key="crumb.id">
                         <span>
                             <span aria-hidden="true">/</span>
@@ -208,6 +208,20 @@
 
         <p x-show="error" x-cloak class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800" x-text="error"></p>
 
+        {{-- Pending shared-folder invite banner (personal root only) --}}
+        <template x-if="pendingFolderInvites.length && activeShared === null">
+            <div class="mb-3 ll-card !p-3 space-y-2">
+                <p class="text-xs font-semibold text-gray-500 dark:text-gray-400">{{ __('files.folder_pending_invites') }}</p>
+                <template x-for="inv in pendingFolderInvites" :key="inv.member_id">
+                    <div class="flex items-center gap-2">
+                        <span class="ll-chip flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white" style="background:#e2915a"><x-icon name="envelope" class="h-4 w-4" /></span>
+                        <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300" x-text="inv.name || '{{ __('files.folder_pending_invite') }}'"></span>
+                        <button type="button" @click="acceptFolderInvite(inv)" class="shrink-0 rounded-lg ll-accent px-2.5 py-1 text-xs font-medium">{{ __('files.folder_accept') }}</button>
+                    </div>
+                </template>
+            </div>
+        </template>
+
         {{-- Browser --}}
         <div class="mt-4 ll-card !p-0 overflow-hidden">
             <template x-if="rows.length === 0">
@@ -223,7 +237,7 @@
                             @dragover.prevent="row.kind === 'folder' && dragItem && $event.currentTarget.classList.add('ring-2','ring-gray-400')"
                             @dragleave="$event.currentTarget.classList.remove('ring-2','ring-gray-400')"
                             @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-gray-400'); if (row.kind === 'folder' && dragItem) { dropInto(row.id); dragItem = null; }">
-                            <button type="button" @click="row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
+                            <button type="button" @click="row.kind === 'folder' ? (row.shared ? selectSharedFolder(row.vaultId) : (view = 'files', cwd = row.id)) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
                                 {{-- No server thumbnails under zero-knowledge (the bytes are
                                      ciphertext the server can't decode) — show a tinted iOS chip. --}}
                                 <span class="relative flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm" :style="'background:' + rowTint(row)">
@@ -302,7 +316,7 @@
                             @dragstart.stop="onDragStart($event, row)" @dragend="onDragEnd()"
                             @dragover="if (row.kind === 'folder' && dragItem && !(dragItem.kind === 'folder' && dragItem.id === row.id)) $event.preventDefault()"
                             @drop.prevent="row.kind === 'folder' && dropInto(row.id)"
-                            @click="if (renaming !== row.id) { row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row) }">
+                            @click="if (renaming !== row.id) { row.kind === 'folder' ? (row.shared ? selectSharedFolder(row.vaultId) : (view = 'files', cwd = row.id)) : openFile(row) }">
                             <td class="px-4 py-3" @click.stop><input type="checkbox" :value="rowKey(row)" x-model="selected" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent"></td>
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                                 <span class="flex min-w-0 items-center gap-2.5" x-show="renaming !== row.id">

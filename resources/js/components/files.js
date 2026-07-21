@@ -762,7 +762,16 @@ export default (config = {}, labels = {}) => ({
         // a `trashed` timestamp so sync keeps their state, but they must not show.
         const files = inScope(activeFiles.filter((f) => ! f.trashed).map((f) => ({ ...f, kind: 'file' })));
 
-        return [...folders.sort(cmp), ...files.sort(cmp)];
+        const sorted = [...folders.sort(cmp), ...files.sort(cmp)];
+        // At personal root (no search/tag), surface the user's shared folders as
+        // folder rows with a people badge; clicking enters the shared context.
+        if (this.activeShared === null && this.cwd === null && q === '' && tag === '') {
+            const sharedRows = this.sharedFolders.map((f) => ({
+                kind: 'folder', shared: true, vaultId: f.vaultId, id: f.vaultId, name: f.name, role: f.role,
+            })).sort(cmp);
+            return [...sharedRows, ...sorted];
+        }
+        return sorted;
     },
 
     // Every tag used anywhere in the manifest, for suggestions.
