@@ -49,6 +49,7 @@ export default (labels = {}) => ({
 
     // Editor form fields (populated on open)
     _form: { metric: 'weight', v: '', v2: '', ts: '', note: '' },
+    _chartAbort: null, // AbortController for chart event listeners
 
     async init() {
         await this._initZk();
@@ -114,9 +115,13 @@ export default (labels = {}) => ({
     },
 
     /**
-     * Destroy the current uPlot instance if any.
+     * Destroy the current uPlot instance and abort any attached chart listeners.
      */
     _destroyChart() {
+        if (this._chartAbort) {
+            this._chartAbort.abort();
+            this._chartAbort = null;
+        }
         if (this._chartInst) {
             try { this._chartInst.destroy(); } catch (_e) { /* ignore */ }
             this._chartInst = null;
@@ -154,13 +159,40 @@ export default (labels = {}) => ({
 
         this._chartInst = inst;
 
-        // Double-click resets zoom
+        // One AbortController per render — aborted by _destroyChart() before next render.
+        this._chartAbort = new AbortController();
+        const { signal } = this._chartAbort;
         const xs = rangeData.map((e) => Math.floor(new Date(e.ts).getTime() / 1000));
+
+        // Double-click resets zoom to full data range.
         container.addEventListener('dblclick', () => {
             if (this._chartInst) {
                 this._chartInst.setScale('x', { min: xs[0], max: xs[xs.length - 1] });
             }
-        }, { once: false });
+        }, { signal });
+
+        // Wheel zoom around cursor position (~10 % per tick, clamped to data bounds).
+        container.addEventListener('wheel', (ev) => {
+            if (!this._chartInst) return;
+            ev.preventDefault();
+            const u = this._chartInst;
+            const scaleX = u.scales.x;
+            const curMin = scaleX.min;
+            const curMax = scaleX.max;
+            const span   = curMax - curMin;
+            const factor = ev.deltaY < 0 ? 0.9 : 1.1;
+            // Fraction of width where the cursor sits (0..1).
+            const rect = container.getBoundingClientRect();
+            const frac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+            const pivot = curMin + frac * span;
+            let newMin = pivot - frac * span * factor;
+            let newMax = pivot + (1 - frac) * span * factor;
+            // Clamp to data bounds.
+            if (newMin < xs[0]) newMin = xs[0];
+            if (newMax > xs[xs.length - 1]) newMax = xs[xs.length - 1];
+            if (newMax - newMin < 60) return; // min 1-minute window
+            u.setScale('x', { min: newMin, max: newMax });
+        }, { signal, passive: false });
     },
 
     // --- CSV export ---
@@ -237,11 +269,18 @@ export default (labels = {}) => ({
         const axisColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
         const bgColor   = isDark ? '#1c1c1e' : '#ffffff';
 
+        // temp BANDS are stored in °C; convert to display unit so band positions
+        // align with the y-values that _buildChart plots via _displaySingle().
+        const tempInDisplayUnit = (c) => (this.profile.units?.temp === 'f' ? cToF(c) : c);
         const BANDS = {
             bp:    null,
             pulse: { amber: [0, 60], ok: [60, 100], amberHigh: [100, 300] },
             spo2:  { red: [0, 92], amber: [92, 95], ok: [95, 101] },
-            temp:  { ok: [0, 38], amber: [38, 39], red: [39, 50] },
+            temp:  {
+                ok:    [tempInDisplayUnit(0),  tempInDisplayUnit(38)],
+                amber: [tempInDisplayUnit(38), tempInDisplayUnit(39)],
+                red:   [tempInDisplayUnit(39), tempInDisplayUnit(50)],
+            },
         };
 
         const drawBands = (u) => {
@@ -376,15 +415,10 @@ export default (labels = {}) => ({
         }
     },
 
-    // reference note per metric for the report table
+    // reference note per metric for the report table — uses localized strings
+    // passed in via the Blade labels.referenceNotes object.
     _referenceNote(key) {
-        const refs = {
-            bp:    'Sys ≤120 / Dia ≤80 ok; ≥140 / ≥90 high',
-            pulse: '60–100 bpm ok',
-            spo2:  '≥95% ok; 92–94% low; <92% critical',
-            temp:  '<38°C ok; 38–38.9°C elevated; ≥39°C fever',
-        };
-        return refs[key] || '';
+        return (labels.referenceNotes && labels.referenceNotes[key]) || '';
     },
 
     // --- Getters ---

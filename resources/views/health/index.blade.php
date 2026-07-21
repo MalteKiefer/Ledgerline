@@ -42,6 +42,12 @@
             weight: @js(__('health.metric_weight')), bp: @js(__('health.metric_bp')), pulse: @js(__('health.metric_pulse')),
             spo2: @js(__('health.metric_spo2')), temp: @js(__('health.metric_temp')), glucose: @js(__('health.metric_glucose')),
         },
+        referenceNotes: {
+            bp:    @js(__('health.report_reference_bp')),
+            pulse: @js(__('health.report_reference_pulse')),
+            spo2:  @js(__('health.report_reference_spo2')),
+            temp:  @js(__('health.report_reference_temp')),
+        },
      })">
 
     {{-- Zero-knowledge gate: health data decrypts with the vault key. --}}
@@ -280,9 +286,8 @@
                         </template>
                     </div>
 
-                    {{-- Chart mount point --}}
+                    {{-- Chart mount point — renderChart() is driven by $watch in init(), not x-effect --}}
                     <div x-ref="chart"
-                         x-effect="renderChart()"
                          class="w-full overflow-hidden rounded-xl"
                          style="min-height:0">
                     </div>
@@ -404,6 +409,11 @@
             </p>
         </div>
 
+        {{-- No-data fallback: shown when no metric has any entries --}}
+        <template x-if="metrics.every(m => entriesFor(m.key).length === 0)">
+            <p class="text-center text-sm text-gray-400 dark:text-gray-500 py-10">{{ __('health.report_no_entries') }}</p>
+        </template>
+
         {{-- Per-metric blocks --}}
         <template x-for="m in metrics" :key="m.key">
             <div x-show="entriesFor(m.key).length > 0" class="ll-card space-y-4 break-inside-avoid">
@@ -411,10 +421,10 @@
                 <div class="flex items-center gap-2">
                     <span class="ll-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                           :style="'background:' + tintHex(m.tint)">
-                        <template x-if="m.icon === 'heart'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg></template>
-                        <template x-if="m.icon === 'beaker'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 2.25v7.5L18 15.75H6L9.75 9.75V2.25M10.5 2.25h3M3.75 21h16.5" /></svg></template>
-                        <template x-if="m.icon === 'thermometer'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m0 6a3 3 0 100-6 3 3 0 000 6zm0-9V3m0 6a3 3 0 013 3m-6 0a3 3 0 013-3" /></svg></template>
-                        <template x-if="m.icon === 'scale'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1.5M12 3c-1.2 0-2.4.6-3 1.5L3 16.5h18L15 4.5C14.4 3.6 13.2 3 12 3zm0 1.5L6 16.5m6-12l6 12M3 16.5h18v1.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-1.5z" /></svg></template>
+                        <template x-if="m.icon === 'heart'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg></template>
+                        <template x-if="m.icon === 'beaker'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 2.25v7.5L18 15.75H6L9.75 9.75V2.25M10.5 2.25h3M3.75 21h16.5" /></svg></template>
+                        <template x-if="m.icon === 'thermometer'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m0 6a3 3 0 100-6 3 3 0 000 6zm0-9V3m0 6a3 3 0 013 3m-6 0a3 3 0 013-3" /></svg></template>
+                        <template x-if="m.icon === 'scale'"><svg class="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1.5M12 3c-1.2 0-2.4.6-3 1.5L3 16.5h18L15 4.5C14.4 3.6 13.2 3 12 3zm0 1.5L6 16.5m6-12l6 12M3 16.5h18v1.5a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-1.5z" /></svg></template>
                     </span>
                     <div>
                         <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100" x-text="metricLabel(m.key)"></h3>
