@@ -1,14 +1,18 @@
 // Files module (nestable ZK file browser). Extracted from app.js.
 import { apiRequest, jsonHeaders, postForm, getJson } from '../shared/api';
 import { Vault, VaultShareCrypto } from '../vault';
-import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
+import { fetchDecrypt, fetchBlobBuffer, queueBlobDelete } from '../shared/blob-io';
+import { collectSubtree } from './files-subtree';
 import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
-import { fileCategory, CATEGORY_ICON, formatBytes } from '../shared/file-categories';
+import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
 import { normVec as _normVec, dotVec as _dotVec } from '../shared/vector-math';
 import { ocrImage } from '../shared/ocr';
 import { loadCodeMirror, cmModule } from '../shared/lazy-loaders';
 import { bootStore } from '../shared/zk-module';
+
+// Heroicon path for the folder chip glyph (24-outline folder).
+const FOLDER_ICON_PATH = 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z';
 
 // Files-only module state (fulltext + CLIP-embedding search caches + reconcile dedupe).
 const fileText = {};
@@ -78,6 +82,9 @@ export default (config = {}, labels = {}) => ({
     managingFolderVaultMembers: [],    // [{id, user_id, role, status, recipient_fingerprint, public_key}]
     managingFolderVaultLoading: false,
     rotatingFolderKeys: false,
+
+    // ---- Unified share dialog (People + Link, single entry point) ----
+    unifiedShare: { open: false, row: null, isFolder: false, vaultId: null, tab: 'people' },
 
     // Track an async file operation so the UI can show a "working" spinner badge
     // for every mutation (the user gets feedback even for a slow permanent delete).
@@ -280,14 +287,6 @@ export default (config = {}, labels = {}) => ({
     // Enter a shared folder vault context: set activeShared, reset cwd and view.
     selectSharedFolder(vaultId) {
         this.activeShared = vaultId;
-        this.cwd = null;
-        this.view = 'files';
-        this.selected = [];
-    },
-
-    // Return to the personal files context.
-    exitSharedFolder() {
-        this.activeShared = null;
         this.cwd = null;
         this.view = 'files';
         this.selected = [];
@@ -759,7 +758,16 @@ export default (config = {}, labels = {}) => ({
         // a `trashed` timestamp so sync keeps their state, but they must not show.
         const files = inScope(activeFiles.filter((f) => ! f.trashed).map((f) => ({ ...f, kind: 'file' })));
 
-        return [...folders.sort(cmp), ...files.sort(cmp)];
+        const sorted = [...folders.sort(cmp), ...files.sort(cmp)];
+        // At personal root (no search/tag), surface the user's shared folders as
+        // folder rows with a people badge; clicking enters the shared context.
+        if (this.activeShared === null && this.cwd === null && q === '' && tag === '') {
+            const sharedRows = this.sharedFolders.map((f) => ({
+                kind: 'folder', shared: true, vaultId: f.vaultId, id: f.vaultId, name: f.name, role: f.role,
+            })).sort(cmp);
+            return [...sharedRows, ...sorted];
+        }
+        return sorted;
     },
 
     // Every tag used anywhere in the manifest, for suggestions.
@@ -783,6 +791,19 @@ export default (config = {}, labels = {}) => ({
     // Small type icon path for a file row.
     fileIconPath(row) {
         return CATEGORY_ICON[this.fileCat(row)] ?? CATEGORY_ICON.OTHER;
+    },
+
+    // iOS tinted-chip tint for a row (folder tint for folders, category tint for files).
+    rowTint(row) { return row.kind === 'folder' ? FOLDER_TINT : categoryTint(row.name, row.mime || ''); },
+
+    // Heroicon path for a row's chip glyph (folder glyph for folders, category glyph for files).
+    rowIconPath(row) { return row.kind === 'folder' ? FOLDER_ICON_PATH : (CATEGORY_ICON[fileCategory(row.name, row.mime || '')] || CATEGORY_ICON.OTHER); },
+
+    // Localized specific type label for a file row (via the Blade-passed map).
+    rowLabel(row) {
+        if (row.kind === 'folder') return labels.folderLabel || 'Folder';
+        const tok = fileTypeLabel(row.name, row.mime || '').replace('filetype.', '');
+        return (labels.filetypeLabels && labels.filetypeLabels[tok]) || (labels.filetypeLabels && labels.filetypeLabels.other) || '';
     },
 
     fmtSize: formatBytes,
@@ -2373,10 +2394,111 @@ export default (config = {}, labels = {}) => ({
         }
     },
 
+    // Convert a PERSONAL folder in place into a shared folder: create the vault,
+    // migrate the subtree's blobs (re-wrap each per-file key under VK_folder, the
+    // ciphertext bytes are unchanged), seal the shared manifest, then free the
+    // personal blobs. Client-side only — the server never sees plaintext/VK_folder.
+    // Returns the new vaultId. On failure, aborts and leaves the personal folder intact.
+    async convertFolderToShared(folderId) {
+        const root = this.manifest.folders.find((f) => f.id === folderId);
+        if (! root) throw new Error('folder not found');
+        const { folders: subFolders, files: subFiles } = collectSubtree(this.manifest.folders, this.manifest.files, folderId);
+
+        // 1. New vault + VK_folder.
+        const vkB64 = await VaultShareCrypto.newVaultKey();
+        const idk = await Vault.ensureIdentityKeys();
+        const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, idk.pub);
+        const { id: vaultId } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped, kind: 'folder' });
+        const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
+
+        const uploadedBlobs = []; // shared blob ids, for rollback on failure
+        try {
+            // 2. Migrate each file blob: fetch ciphertext, re-wrap key under VK_folder, re-upload.
+            // Ciphertext bytes are identical to the personal blob — only the key wrapping changes.
+            const newFiles = [];
+            for (const file of subFiles) {
+                const rawKey = window.Vault.unwrapContentKey(file.encFileKey); // unwrap under personal VK
+                const encFileKey = window.Vault.sealContentKeyWith(rawKey, vkBytes); // re-wrap under VK_folder
+                const cipher = await fetchBlobBuffer(`${config.rawBase}/${file.blob}`); // raw ciphertext (unchanged)
+                const form = new FormData();
+                form.append('file', new Blob([cipher], { type: 'application/octet-stream' }), 'blob');
+                const up = await apiRequest('POST', '/vaults/' + vaultId + '/blobs/upload', form);
+                uploadedBlobs.push(up.id);
+                newFiles.push({ ...file, blob: up.id, encFileKey, textRef: undefined, embRef: undefined, versions: [] });
+            }
+
+            // 3. Seal + PUT the shared manifest at version 0.
+            const manifest = { name: root.name, folders: subFolders, files: newFiles };
+            const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
+            const res = await apiRequest('PUT', '/vaults/' + vaultId + '/store', { sealed_manifest: sealed, expected_version: 0 });
+            this._folderKeys[vaultId] = vkBytes;
+            this._folderVersion[vaultId] = (res && typeof res.version === 'number') ? res.version : 1;
+            this.sharedTree[vaultId] = { folders: subFolders, files: newFiles };
+            this.sharedFolders.push({ id: vaultId, vaultId, name: root.name, role: 'manage', version: this._folderVersion[vaultId] });
+        } catch (e) {
+            // Rollback: delete uploaded shared blobs + the vault; personal folder stays intact.
+            for (const b of uploadedBlobs) { try { await apiRequest('DELETE', '/vaults/' + vaultId + '/blobs/' + b); } catch (_) {} }
+            try { await apiRequest('DELETE', '/vaults/' + vaultId); } catch (_) {}
+            throw e;
+        }
+
+        // 4. Remove the migrated subtree from the personal manifest + free old blobs (only after success).
+        const keepFolderIds = new Set(subFolders.map((f) => f.id));
+        const oldBlobs = subFiles.flatMap((f) => [f.blob, f.textRef, f.embRef, ...(f.versions ?? []).map((v) => v.blob)].filter(Boolean));
+        window.LLStore.data.fileFolders = this.manifest.folders.filter((f) => ! keepFolderIds.has(f.id));
+        window.LLStore.data.files = this.manifest.files.filter((f) => ! keepFolderIds.has(f.folder ?? null));
+        this.manifest.folders = window.LLStore.data.fileFolders;
+        this.manifest.files = window.LLStore.data.files;
+        window.LLStore.touch();
+        this._freeBlobs(oldBlobs); // existing personal blob-free queue
+
+        return vaultId;
+    },
+
     openShareFolderDialog(vaultId) {
         this.shareFolderDialog = { open: true, vaultId, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' };
     },
     closeShareFolderDialog() { this.shareFolderDialog = { ...this.shareFolderDialog, open: false }; },
+
+    // ---- Unified share dialog methods ----
+    openUnifiedShare(row) {
+        const isFolder = row.kind === 'folder';
+        // A shared-folder row already has a vaultId; a personal folder converts on first invite.
+        const vaultId = (isFolder && row.vaultId) ? row.vaultId : null;
+        // For a shared folder (has vaultId) default to People; for files default to Link.
+        // Personal (not-yet-shared) folders also default to People (shows the enable button).
+        const tab = (isFolder && vaultId) ? 'people' : (isFolder ? 'people' : 'link');
+        this.unifiedShare = { open: true, row, isFolder, vaultId, tab };
+        // Populate share state for the Link tab without triggering the old standalone dialog.
+        this.openShare(row);
+        this.share.open = false; // unified dialog owns the UI; old standalone dialog must not open
+        if (vaultId) this.openManageFolderMembers(vaultId); // load members for the People tab
+        // Reset the invite sub-state for a clean dialog.
+        this.shareFolderDialog = { open: false, vaultId, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' };
+    },
+    closeUnifiedShare() {
+        this.unifiedShare = { ...this.unifiedShare, open: false };
+        this.closeShare();
+    },
+    // Step 1 for a personal (not-yet-shared) folder: confirm + convert, then reveal the invite form.
+    async enableSharing() {
+        if (! await this.$store.confirm.ask(labels.convertConfirm || '')) return;
+        let vaultId;
+        try { vaultId = await this.convertFolderToShared(this.unifiedShare.row.id); }
+        catch (e) { this.error = (e && e.message) || String(e); return; }
+        this.unifiedShare.vaultId = vaultId;
+        this.shareFolderDialog.vaultId = vaultId;
+        this.activeShared = null; // stay at root; the folder now appears as shared
+        this.openManageFolderMembers(vaultId);
+    },
+    // Invite handler for the People tab (only called once vaultId is set).
+    async unifiedInvite() {
+        const vaultId = this.unifiedShare.vaultId;
+        if (! vaultId) return; // enableSharing() must run first
+        // Use the existing invite flow: shareFolderDialog already has the vaultId.
+        this.shareFolderDialog.vaultId = vaultId;
+        await this.confirmShareFolder();
+    },
 
     async lookUpFolderRecipient() {
         const d = this.shareFolderDialog; if (! d.vaultId || ! d.identifier.trim()) return;

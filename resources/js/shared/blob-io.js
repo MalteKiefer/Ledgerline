@@ -6,7 +6,7 @@
 let _blobActive = 0;
 const _blobWaiters = [];
 const BLOB_CONCURRENCY = 6;
-async function fetchBlobBuffer(url) {
+export async function fetchBlobBuffer(url) {
     if (_blobActive >= BLOB_CONCURRENCY) await new Promise((r) => _blobWaiters.push(r));
     _blobActive++;
     try {

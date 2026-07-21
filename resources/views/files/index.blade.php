@@ -21,6 +21,8 @@
         shareBase: '{{ url('/s') }}',
         token: '{{ csrf_token() }}',
      }, {
+        folderLabel: @js(__('files.folder')),
+        filetypeLabels: @js(collect(trans('filetype'))->all()),
         uploadUnreadable: @js(__('files.upload_unreadable')),
         paperlessDecryptWarn: @js(__('files.paperless_decrypt_warn')),
         types: @js($typeLabels),
@@ -43,6 +45,7 @@
         shareError: @js(__('files.share_error')),
         shareEmpty: @js(__('files.share_empty')),
         shareCopied: @js(__('files.share_copied')),
+        convertConfirm: @js(__('files.convert_confirm')),
         activity: {
             created: @js(__('files.act_created')),
             renamed: @js(__('files.act_renamed')),
@@ -120,7 +123,7 @@
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <nav class="text-sm text-gray-500 dark:text-gray-400" x-show="view === 'files'">
-                    <button type="button" @click="cwd = null" class="hover:underline">{{ __('files.all_files') }}</button>
+                    <button type="button" @click="cwd = null; activeShared = null" class="hover:underline">{{ __('files.all_files') }}</button>
                     <template x-for="crumb in breadcrumb" :key="crumb.id">
                         <span>
                             <span aria-hidden="true">/</span>
@@ -148,22 +151,7 @@
                         <x-icon name="folder-plus" class="h-5 w-5" />
                     </button>
                 </template>
-                {{-- Shared-folder management buttons (manage only) --}}
-                <template x-if="_isSharedContext() && _canManageActive()">
-                    <div class="flex items-center gap-1">
-                        <button type="button" @click="openShareFolderDialog(activeShared)"
-                            title="{{ __('files.folder_share') }}"
-                            class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-accent/5">
-                            <x-icon name="user-plus" class="h-5 w-5" />
-                        </button>
-                        <button type="button" @click="openManageFolderMembers(activeShared)"
-                            title="{{ __('files.folder_members') }}"
-                            class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-accent/5">
-                            <x-icon name="users" class="h-5 w-5" />
-                        </button>
-                    </div>
-                </template>
-                <template x-if="trashView && trashCount > 0">
+<template x-if="trashView && trashCount > 0">
                     <button type="button" @click="emptyTrash()" class="inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
                         <x-icon name="trash" class="h-4 w-4" />{{ __('files.empty_trash') }}
                     </button>
@@ -206,6 +194,20 @@
 
         <p x-show="error" x-cloak class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800" x-text="error"></p>
 
+        {{-- Pending shared-folder invite banner (personal root only) --}}
+        <template x-if="pendingFolderInvites.length && activeShared === null">
+            <div class="mb-3 ll-card !p-3 space-y-2">
+                <p class="text-xs font-semibold text-gray-500 dark:text-gray-400">{{ __('files.folder_pending_invites') }}</p>
+                <template x-for="inv in pendingFolderInvites" :key="inv.member_id">
+                    <div class="flex items-center gap-2">
+                        <span class="ll-chip flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white" style="background:#e2915a"><x-icon name="envelope" class="h-4 w-4" /></span>
+                        <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300" x-text="inv.name || '{{ __('files.folder_pending_invite') }}'"></span>
+                        <button type="button" @click="acceptFolderInvite(inv)" class="shrink-0 rounded-lg ll-accent px-2.5 py-1 text-xs font-medium">{{ __('files.folder_accept') }}</button>
+                    </div>
+                </template>
+            </div>
+        </template>
+
         {{-- Browser --}}
         <div class="mt-4 ll-card !p-0 overflow-hidden">
             <template x-if="rows.length === 0">
@@ -221,16 +223,17 @@
                             @dragover.prevent="row.kind === 'folder' && dragItem && $event.currentTarget.classList.add('ring-2','ring-gray-400')"
                             @dragleave="$event.currentTarget.classList.remove('ring-2','ring-gray-400')"
                             @drop.prevent="$event.currentTarget.classList.remove('ring-2','ring-gray-400'); if (row.kind === 'folder' && dragItem) { dropInto(row.id); dragItem = null; }">
-                            <button type="button" @click="row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
+                            <button type="button" @click="row.kind === 'folder' ? (row.shared ? selectSharedFolder(row.vaultId) : (view = 'files', cwd = row.id)) : openFile(row)" class="flex aspect-square items-center justify-center bg-gray-50 dark:bg-gray-800">
                                 {{-- No server thumbnails under zero-knowledge (the bytes are
-                                     ciphertext the server can't decode) — show a type icon. --}}
-                                <span class="text-gray-400 dark:text-gray-500">
-                                    <template x-if="row.kind === 'folder'"><span><x-icon name="folder" class="h-10 w-10" /></span></template>
-                                    <template x-if="row.kind !== 'folder' && isImage(row)"><span><x-icon name="photo" class="h-10 w-10" /></span></template>
-                                    <template x-if="row.kind !== 'folder' && ! isImage(row)"><span><x-icon name="document-text" class="h-10 w-10" /></span></template>
+                                     ciphertext the server can't decode) — show a tinted iOS chip. --}}
+                                <span class="relative flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm" :style="'background:' + rowTint(row)">
+                                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="rowIconPath(row)" /></svg>
+                                    {{-- People badge on shared-folder rows --}}
+                                    <span x-show="row.shared" x-cloak class="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white dark:bg-[#1c1c1e] text-accent shadow"><x-icon name="user-group" class="h-2.5 w-2.5" /></span>
                                 </span>
                             </button>
-                            <div class="flex items-center gap-1 px-2 py-1.5">
+                            <div class="flex flex-col gap-0 px-2 py-1.5">
+                                <div class="flex items-center gap-1">
                                 <button type="button" x-show="row.kind === 'file'" @click="toggleFavorite(row)" class="shrink-0" :class="row.favorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600 hover:text-gray-500'" :aria-label="row.favorite ? @js(__('files.unfavorite')) : @js(__('files.favorite'))">
                                     <span x-show="row.favorite"><x-icon name="star-solid" class="h-3.5 w-3.5" /></span>
                                     <span x-show="! row.favorite"><x-icon name="star" class="h-3.5 w-3.5" /></span>
@@ -245,6 +248,8 @@
                                         </div>
                                     </template>
                                 </div>
+                                </div>
+                                <span class="truncate text-[10px] text-gray-400 dark:text-gray-500" x-text="rowLabel(row)"></span>
                             </div>
                         </div>
                     </template>
@@ -297,12 +302,15 @@
                             @dragstart.stop="onDragStart($event, row)" @dragend="onDragEnd()"
                             @dragover="if (row.kind === 'folder' && dragItem && !(dragItem.kind === 'folder' && dragItem.id === row.id)) $event.preventDefault()"
                             @drop.prevent="row.kind === 'folder' && dropInto(row.id)"
-                            @click="if (renaming !== row.id) { row.kind === 'folder' ? (view = 'files', cwd = row.id) : openFile(row) }">
+                            @click="if (renaming !== row.id) { row.kind === 'folder' ? (row.shared ? selectSharedFolder(row.vaultId) : (view = 'files', cwd = row.id)) : openFile(row) }">
                             <td class="px-4 py-3" @click.stop><input type="checkbox" :value="rowKey(row)" x-model="selected" class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent"></td>
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                                <span class="flex min-w-0 items-center gap-2" x-show="renaming !== row.id">
-                                    <svg x-show="row.kind === 'folder'" class="h-5 w-5 shrink-0 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
-                                    <svg x-show="row.kind === 'file'" class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" :d="fileIconPath(row)" /></svg>
+                                <span class="flex min-w-0 items-center gap-2.5" x-show="renaming !== row.id">
+                                    <span class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" :style="'background:' + rowTint(row)">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" :d="rowIconPath(row)" /></svg>
+                                        {{-- People badge on shared-folder rows --}}
+                                        <span x-show="row.shared" x-cloak class="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white dark:bg-[#1c1c1e] text-accent shadow"><x-icon name="user-group" class="h-2.5 w-2.5" /></span>
+                                    </span>
                                     <span class="truncate" x-text="row.name"></span>
                                     <span x-show="row.share" x-cloak title="{{ __('files.shared_badge') }}" class="inline-flex shrink-0 items-center text-gray-400 dark:text-gray-500"><x-icon name="share" class="h-3.5 w-3.5" /></span>
                                 </span>
@@ -313,7 +321,7 @@
                                     <button type="button" @click="renaming = null" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" /></button>
                                 </form>
                             </td>
-                            <td class="hidden px-4 py-3 text-gray-600 dark:text-gray-400 sm:table-cell" x-text="row.kind === 'folder' ? @js(__('files.folder')) : typeLabel(row)"></td>
+                            <td class="hidden px-4 py-3 text-gray-600 dark:text-gray-400 sm:table-cell" x-text="rowLabel(row)"></td>
                             <td class="hidden px-4 py-3 text-right text-gray-600 dark:text-gray-400 sm:table-cell" x-text="row.kind === 'folder' ? '—' : fmtSize(row.size)"></td>
                             <td class="hidden px-4 py-3 md:table-cell" @click.stop>
                                 <div class="flex flex-wrap gap-1">
@@ -338,8 +346,6 @@
                                     <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
                                     <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
-                                    {{-- Public share link: personal context only (not available inside shared folders) --}}
-                                    <button type="button" x-show="(view === 'files' || view === 'shared') && ! _isSharedContext()" @click="openShare(row)" :title="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" :aria-label="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-accent/5" :class="row.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"><x-icon name="share" class="h-4 w-4" /></button>
                                     <div class="relative inline-block text-left">
                                         <button type="button" @click="toggleMenu($event)" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
                                         {{-- Teleported to the body so the table's overflow-x-auto wrapper cannot

@@ -134,10 +134,7 @@ return [
     'share_err_wrong_password' => 'Wrong password.',
 
     // Shared folders (ZK cross-user vault sharing for files)
-    'shared_folders' => 'Shared folders',
-    'shared_folders_empty' => 'No shared folders yet.',
     'shared_folder_new' => 'New shared folder',
-    'folder_share' => 'Invite member',
     'folder_recipient' => 'Email or OIDC subject',
     'folder_role_label' => 'Role',
     'folder_role_read' => 'Read',
@@ -155,7 +152,6 @@ return [
     'folder_fingerprint_changed' => 'Warning: the stored fingerprint for this recipient has changed. This may indicate a key compromise. Share aborted.',
     'folder_created' => 'Shared folder created.',
     'folder_shared' => 'Invitation sent.',
-    'folder_exit' => 'Back to all files',
     'folder_look_up' => 'Look up',
     'folder_recipient_not_found' => 'Recipient not found or has no identity key registered.',
     'folder_fingerprint_label' => 'Key fingerprint',
@@ -167,4 +163,11 @@ return [
     'folder_rotating_keys' => 'Rotating keys…',
     'folder_remove_member_confirm' => 'Remove this member? The folder key will be rotated — they will lose access immediately.',
     'folder_delete_confirm' => 'Permanently delete this shared folder and revoke access for all members?',
+
+    // Unified share dialog (Task 5)
+    'share_people' => 'Invite people',
+    'share_link' => 'Public link',
+    'share_convert_hint' => 'Inviting people turns this folder into a shared folder.',
+    'convert_confirm' => 'Share this folder with others? Its contents will be moved into a shared folder — this may take a moment for large folders.',
+    'share_enable' => 'Enable sharing',
 ];
