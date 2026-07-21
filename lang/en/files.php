@@ -167,4 +167,10 @@ return [
     'folder_rotating_keys' => 'Rotating keys…',
     'folder_remove_member_confirm' => 'Remove this member? The folder key will be rotated — they will lose access immediately.',
     'folder_delete_confirm' => 'Permanently delete this shared folder and revoke access for all members?',
+
+    // Unified share dialog (Task 5)
+    'share_people' => 'Invite people',
+    'share_link' => 'Public link',
+    'share_convert_hint' => 'Inviting people turns this folder into a shared folder.',
+    'convert_confirm' => 'Share this folder with others? Its contents will be moved into a shared folder — this may take a moment for large folders.',
 ];

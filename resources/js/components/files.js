@@ -83,6 +83,9 @@ export default (config = {}, labels = {}) => ({
     managingFolderVaultLoading: false,
     rotatingFolderKeys: false,
 
+    // ---- Unified share dialog (People + Link, single entry point) ----
+    unifiedShare: { open: false, row: null, isFolder: false, vaultId: null, tab: 'people' },
+
     // Track an async file operation so the UI can show a "working" spinner badge
     // for every mutation (the user gets feedback even for a slow permanent delete).
     _track(p) {
@@ -2464,6 +2467,41 @@ export default (config = {}, labels = {}) => ({
         this.shareFolderDialog = { open: true, vaultId, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' };
     },
     closeShareFolderDialog() { this.shareFolderDialog = { ...this.shareFolderDialog, open: false }; },
+
+    // ---- Unified share dialog methods ----
+    openUnifiedShare(row) {
+        const isFolder = row.kind === 'folder';
+        // A shared-folder row already has a vaultId; a personal folder converts on first invite.
+        const vaultId = (isFolder && row.shared) ? row.vaultId : null;
+        this.unifiedShare = { open: true, row, isFolder, vaultId, tab: isFolder ? 'people' : 'link' };
+        // Populate share state for the Link tab without triggering the old standalone dialog.
+        this.openShare(row);
+        this.share.open = false; // unified dialog owns the UI; old standalone dialog must not open
+        if (vaultId) this.openManageFolderMembers(vaultId); // load members for the People tab
+        // Reset the invite sub-state for a clean dialog.
+        this.shareFolderDialog = { open: false, vaultId, identifier: '', role: 'read', lookingUp: false, resolved: null, fingerprintStatus: null, sharing: false, notice: '' };
+    },
+    closeUnifiedShare() {
+        this.unifiedShare = { ...this.unifiedShare, open: false };
+        this.closeShare();
+    },
+    // Invite handler for the People tab: convert-on-first-invite for a personal folder.
+    async unifiedInvite() {
+        let vaultId = this.unifiedShare.vaultId;
+        if (! vaultId) {
+            if (! await this.$store.confirm.ask(labels.convertConfirm || '')) return;
+            try { vaultId = await this.convertFolderToShared(this.unifiedShare.row.id); }
+            catch (e) { this.error = (e && e.message) || String(e); return; }
+            this.unifiedShare.vaultId = vaultId;
+            this.shareFolderDialog.vaultId = vaultId;
+            this.activeShared = null; // stay at root; the folder now appears as shared
+            // Load the members list for the freshly created vault.
+            this.openManageFolderMembers(vaultId);
+        }
+        // Use the existing invite flow: shareFolderDialog now has the vaultId.
+        this.shareFolderDialog.vaultId = vaultId;
+        await this.confirmShareFolder();
+    },
 
     async lookUpFolderRecipient() {
         const d = this.shareFolderDialog; if (! d.vaultId || ! d.identifier.trim()) return;

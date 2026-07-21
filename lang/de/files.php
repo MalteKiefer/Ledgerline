@@ -167,4 +167,10 @@ return [
     'folder_rotating_keys' => 'Schlüssel werden rotiert…',
     'folder_remove_member_confirm' => 'Dieses Mitglied entfernen? Der Ordnerschlüssel wird rotiert — der Zugriff wird sofort entzogen.',
     'folder_delete_confirm' => 'Diesen geteilten Ordner endgültig löschen und den Zugriff für alle Mitglieder widerrufen?',
+
+    // Einheitlicher Teilen-Dialog (Task 5)
+    'share_people' => 'Personen einladen',
+    'share_link' => 'Öffentlicher Link',
+    'share_convert_hint' => 'Beim Einladen wird dieser Ordner zu einem geteilten Ordner.',
+    'convert_confirm' => 'Diesen Ordner mit anderen teilen? Der Inhalt wird in einen geteilten Ordner verschoben — bei großen Ordnern kann das einen Moment dauern.',
 ];

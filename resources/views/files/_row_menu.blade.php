@@ -8,8 +8,8 @@
 @php $c = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-accent/5'; @endphp
 <button type="button" x-show="row.kind === 'file'" @click="download(row); menu = false" class="{{ $c }}"><x-icon name="arrow-down-tray" />{{ __('files.download') }}</button>
 <button type="button" @click="openInfo(row); menu = false" class="{{ $c }}"><x-icon name="info" />{{ __('files.info') }}</button>
-{{-- Public share link: personal context only --}}
-<button type="button" x-show="(view === 'files' || view === 'shared') && ! _isSharedContext()" @click="openShare(row); menu = false" class="{{ $c }}"><x-icon name="share" /><span x-text="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'"></span></button>
+{{-- Unified share (people + public link): personal context only --}}
+<button type="button" x-show="(view === 'files' || view === 'shared') && ! _isSharedContext()" @click="openUnifiedShare(row); menu = false" class="{{ $c }}"><x-icon name="share" />{{ __('files.share') }}</button>
 {{-- Write actions: hidden for read-only shared-folder members --}}
 <button type="button" x-show="_canEditActive()" @click="startRename(row); menu = false" class="{{ $c }}"><x-icon name="pencil" />{{ __('files.rename') }}</button>
 <button type="button" x-show="_canEditActive()" @click="openMove(row); menu = false" class="{{ $c }}"><x-icon name="arrows-right-left" />{{ __('files.move') }}</button>

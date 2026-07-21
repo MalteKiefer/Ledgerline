@@ -45,6 +45,7 @@
         shareError: @js(__('files.share_error')),
         shareEmpty: @js(__('files.share_empty')),
         shareCopied: @js(__('files.share_copied')),
+        convertConfirm: @js(__('files.convert_confirm')),
         activity: {
             created: @js(__('files.act_created')),
             renamed: @js(__('files.act_renamed')),
@@ -150,22 +151,7 @@
                         <x-icon name="folder-plus" class="h-5 w-5" />
                     </button>
                 </template>
-                {{-- Shared-folder management buttons (manage only) --}}
-                <template x-if="_isSharedContext() && _canManageActive()">
-                    <div class="flex items-center gap-1">
-                        <button type="button" @click="openShareFolderDialog(activeShared)"
-                            title="{{ __('files.folder_share') }}"
-                            class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-accent/5">
-                            <x-icon name="user-plus" class="h-5 w-5" />
-                        </button>
-                        <button type="button" @click="openManageFolderMembers(activeShared)"
-                            title="{{ __('files.folder_members') }}"
-                            class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-accent/5">
-                            <x-icon name="users" class="h-5 w-5" />
-                        </button>
-                    </div>
-                </template>
-                <template x-if="trashView && trashCount > 0">
+<template x-if="trashView && trashCount > 0">
                     <button type="button" @click="emptyTrash()" class="inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
                         <x-icon name="trash" class="h-4 w-4" />{{ __('files.empty_trash') }}
                     </button>
@@ -360,8 +346,6 @@
                                     <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
                                     <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
                                     <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
-                                    {{-- Public share link: personal context only (not available inside shared folders) --}}
-                                    <button type="button" x-show="(view === 'files' || view === 'shared') && ! _isSharedContext()" @click="openShare(row)" :title="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" :aria-label="row.share ? '{{ __('files.share_manage') }}' : '{{ __('files.share') }}'" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 hover:bg-accent/5" :class="row.share ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"><x-icon name="share" class="h-4 w-4" /></button>
                                     <div class="relative inline-block text-left">
                                         <button type="button" @click="toggleMenu($event)" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
                                         {{-- Teleported to the body so the table's overflow-x-auto wrapper cannot
