@@ -53,14 +53,17 @@ export default (labels = {}) => ({
 
     async init() {
         await this._initZk();
-        if (this.state === 'ready') this._initProfile();
+        if (this.state === 'ready') { this._initProfile(); this.$nextTick(() => this.renderChart()); }
         // Bind on the state transition to 'ready' (not vault.unlocked): _initZk's
         // boot is async, so at the unlocked-tick state is still 'locked' and the
         // bind would be skipped (profile edits would then be lost until reload).
-        this.$watch('state', (s) => { if (s === 'ready') this._initProfile(); });
+        // $nextTick so the x-if="state==='ready'" subtree (chart ref) is mounted.
+        this.$watch('state', (s) => { if (s === 'ready') { this._initProfile(); this.$nextTick(() => this.renderChart()); } });
 
         // Re-render the chart whenever the selected metric, range, or entry
         // list changes (Alpine reactivity — _mut increments on every _save()).
+        // Watchers don't fire for initial values, so the first render is the
+        // explicit renderChart() on the ready transition above.
         this.$watch('selectedMetric', () => this.renderChart());
         this.$watch('chartRange', () => this.renderChart());
         this.$watch('_mut', () => this.renderChart());
