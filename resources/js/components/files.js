@@ -922,13 +922,18 @@ export default (config = {}, labels = {}) => ({
     async submitNewFolder() {
         const n = this.newFolderName.trim();
         if (! n) return;
-        if (this.newFolderShared && ! this._isSharedContext()) {
-            await this.createSharedFolder(n);
-        } else {
-            await this.mkdir(n);
+        try {
+            if (this.newFolderShared && ! this._isSharedContext()) {
+                await this.createSharedFolder(n);
+            } else {
+                await this.mkdir(n);
+            }
+            // Close only on success so a failure keeps the entered name + surfaces the error.
+            this.newFolderModal = false;
+            this.newFolderName = '';
+        } catch (e) {
+            this.error = (e && e.message) ? e.message : String(e);
         }
-        this.newFolderModal = false;
-        this.newFolderName = '';
     },
 
     /* ---- Structure operations ---- */
