@@ -1,0 +1,27 @@
+# gitleaks configuration for Ledgerline.
+#
+# We keep gitleaks' full default ruleset and only carve out paths that are
+# known to hold HIGH-ENTROPY, NON-SECRET data so the generic-api-key rule stops
+# firing on them. Everything else (app/, config/, routes/, resources/js
+# non-test, extension/src non-test, .env* — which are git-ignored anyway) stays
+# fully scanned, so a real credential committed anywhere still fails CI.
+#
+# Rationale for each entry is inline. Adding a new allowlist path is a reviewed
+# decision: it must be provably generated output or a test fixture, never a real
+# secret store.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated caches and specific test fixtures carry dummy high-entropy values, not real secrets"
+paths = [
+    # PHPStan result cache: generated, serialized static-analysis data (now
+    # git-ignored, but present across ~1300 historical commits). Never source.
+    '''storage/phpstan/''',
+    # Vitest crypto round-trip fixtures: a fabricated wrapped_vault_key / sealed
+    # blobs used to exercise deriveVaultKey/openManifest. No live key material.
+    '''extension/src/__tests__/crypto\.test\.js''',
+    # Password-utility unit test: a dummy `secret` constant for masking/diff logic.
+    '''resources/js/__tests__/passwords-util\.test\.js''',
+]
