@@ -22,9 +22,12 @@ use Carbon\Carbon;
  * lengths and the per-photo upload burst are blurred — but the blob COUNT itself
  * is still visible, from which photo count and rough per-photo face count remain
  * inferable. No content, name or location leaks.
+ *
+ * @extends BlobStoreController<GalleryBlob>
  */
 class GalleryBlobController extends BlobStoreController
 {
+    /** @return class-string<GalleryBlob> */
     protected function blobModel(): string
     {
         return GalleryBlob::class;

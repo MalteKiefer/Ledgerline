@@ -8,6 +8,10 @@ use App\Support\BlobStore;
 use Aws\S3\S3Client;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -25,10 +29,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * reconcile, orphan-safe raw stream and owner-scoped delete — is identical across
  * the two modules; a concrete subclass only supplies its ledger model and module
  * name (and, for the gallery, the hour-snapped created_at stamp).
+ *
+ * @template TModel of \Illuminate\Database\Eloquent\Model
  */
 abstract class BlobStoreController extends Controller
 {
-    /** Fully-qualified ownership-ledger model (FileBlob / GalleryBlob). */
+    /**
+     * Fully-qualified ownership-ledger model (FileBlob / GalleryBlob).
+     *
+     * @return class-string<TModel>
+     */
     abstract protected function blobModel(): string;
 
     /** Module slug — the disk prefix, config namespace and lock-key stem. */
@@ -50,7 +60,7 @@ abstract class BlobStoreController extends Controller
         return now();
     }
 
-    protected function disk()
+    protected function disk(): Filesystem
     {
         return BlobStore::disk();
     }
@@ -67,15 +77,26 @@ abstract class BlobStoreController extends Controller
         return (int) $request->user()->id;
     }
 
-    /** Base ledger query the access/usage/reconcile paths are scoped through. */
-    protected function scopeLedger(Request $request)
+    /**
+     * Base ledger query the access/usage/reconcile paths are scoped through.
+     *
+     * @return Builder<TModel>
+     */
+    protected function scopeLedger(Request $request): Builder
     {
         $model = $this->blobModel();
 
-        return $model::where('user_id', (int) $request->user()->id);
+        /** @var Builder<TModel> $query */
+        $query = $model::query();
+
+        return $query->where('user_id', (int) $request->user()->id);
     }
 
-    /** Columns (besides blob/size/created_at) written when registering a blob. */
+    /**
+     * Columns (besides blob/size/created_at) written when registering a blob.
+     *
+     * @return array<string, mixed>
+     */
     protected function stampAttributes(Request $request): array
     {
         return ['user_id' => (int) $request->user()->id];
@@ -175,12 +196,14 @@ abstract class BlobStoreController extends Controller
             (clone $this->scopeLedger($request))
                 ->where('created_at', '<', $grace)
                 ->orderBy('blob')
-                ->chunkById(500, function ($rows) use ($live, $disk, $prefix): void {
+                ->chunkById(500, function (Collection $rows) use ($live, $disk, $prefix): void {
                     foreach ($rows as $row) {
-                        if (isset($live[$row->blob])) {
+                        // The blob id is the row's primary key ($primaryKey = 'blob').
+                        $blob = (string) $row->getKey();
+                        if (isset($live[$blob])) {
                             continue;
                         }
-                        $disk->delete($prefix.'/'.$row->blob);
+                        $disk->delete($prefix.'/'.$blob);
                         $row->delete();
                     }
                 }, 'blob');
@@ -290,8 +313,10 @@ abstract class BlobStoreController extends Controller
         $token = (string) $request->input('token');
         $s = $this->chunkSession($request);
 
-        $parts = collect($request->input('parts'))
-            ->map(fn ($p) => ['PartNumber' => (int) $p['part'], 'ETag' => $p['etag']])
+        /** @var array<int, array{part: int|string, etag: string}> $inputParts */
+        $inputParts = $request->input('parts');
+        $parts = collect($inputParts)
+            ->map(fn (array $p): array => ['PartNumber' => (int) $p['part'], 'ETag' => $p['etag']])
             ->sortBy('PartNumber')->values()->all();
 
         $this->s3()->completeMultipartUpload([
@@ -334,7 +359,12 @@ abstract class BlobStoreController extends Controller
 
     private function s3(): S3Client
     {
-        return $this->disk()->getClient();
+        // The blob disk is always an S3-compatible adapter (files/gallery/shared
+        // folders all use S3/B2); narrow so the multipart client is well-typed.
+        $disk = $this->disk();
+        abort_unless($disk instanceof AwsS3V3Adapter, 500);
+
+        return $disk->getClient();
     }
 
     private function bucket(): string
@@ -347,7 +377,11 @@ abstract class BlobStoreController extends Controller
         return 'chunk-upload:'.$token;
     }
 
-    /** Load + authorise a chunk session (must belong to the acting user). */
+    /**
+     * Load + authorise a chunk session (must belong to the acting user).
+     *
+     * @return array<string, mixed>
+     */
     private function chunkSession(Request $request): array
     {
         $s = Cache::get($this->chunkKey((string) $request->input('token')));
@@ -381,6 +415,11 @@ abstract class BlobStoreController extends Controller
      * Serialize a user's storage-mutating operation so concurrent uploads and a
      * reconcile can't each read a stale ledger baseline and collectively
      * overshoot the quota or reap a just-referenced blob.
+     *
+     * @template T
+     *
+     * @param  \Closure(): T  $fn
+     * @return T
      */
     private function withUserLock(int $userId, \Closure $fn)
     {

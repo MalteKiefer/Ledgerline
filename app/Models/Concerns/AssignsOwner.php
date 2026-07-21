@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -28,6 +29,9 @@ trait AssignsOwner
      * (never merely-shared rows). The single, model-aware way to owner-scope a
      * query — replaces hand-written withoutGlobalScopes()->where('<column>', …)
      * chains so the owner column is never hardcoded across callers.
+     *
+     * @param  Builder<Model>  $query
+     * @return Builder<Model>
      */
     public function scopeOwnedBy(Builder $query, int|string|null $userId): Builder
     {

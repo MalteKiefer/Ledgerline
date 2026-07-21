@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Database\Factories\DevicePairingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,6 +20,7 @@ use Illuminate\Support\Carbon;
 #[Fillable(['user_id', 'code_hash', 'device_name', 'status', 'token_id', 'expires_at'])]
 class DevicePairing extends Model
 {
+    /** @use HasFactory<DevicePairingFactory> */
     use HasFactory;
 
     public const PENDING_SCAN = 'pending_scan';       // created, waiting for the app to scan

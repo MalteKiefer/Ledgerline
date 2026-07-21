@@ -128,7 +128,11 @@ class PublicShareController extends Controller
         return PublicShare::where('token', $token)->first();
     }
 
-    /** Where a share's opaque blobs live: [disk prefix, ownership-ledger model]. */
+    /**
+     * Where a share's opaque blobs live: [disk prefix, ownership-ledger model].
+     *
+     * @return array{string, class-string}
+     */
     private function blobSource(PublicShare $share): array
     {
         $module = $share->kind === 'gallery_album' ? 'gallery' : 'files';

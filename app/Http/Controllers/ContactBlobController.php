@@ -14,9 +14,12 @@ use Carbon\Carbon;
  * OPAQUE avatar CONTENT BLOBS at "contacts/{blob}" plus the ownership ledger
  * (contact_blobs) for quota + access control — all of which lives in the shared
  * BlobStoreController (owner-scoped raw/delete, immutable ciphertext caching).
+ *
+ * @extends BlobStoreController<ContactBlob>
  */
 class ContactBlobController extends BlobStoreController
 {
+    /** @return class-string<ContactBlob> */
     protected function blobModel(): string
     {
         return ContactBlob::class;

@@ -16,7 +16,11 @@ interface UserDataContributor
     /** Machine key for the export section, e.g. "notes". */
     public function key(): string;
 
-    /** A JSON-serializable snapshot of the user's data in this module. */
+    /**
+     * A JSON-serializable snapshot of the user's data in this module.
+     *
+     * @return array<string, mixed>
+     */
     public function export(User $user): array;
 
     /**

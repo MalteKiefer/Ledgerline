@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\FileBlob;
 use App\Models\SharedFolderBlob;
 use App\Models\SharedVault;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 /**
@@ -16,9 +17,12 @@ use Illuminate\Http\Request;
  * update (editor+). Quota is attributed to the folder owner (owner_id) and
  * enforced against the owner's personal files quota. Zero-knowledge: bytes are
  * client ciphertext encrypted under the folder vault key.
+ *
+ * @extends BlobStoreController<SharedFolderBlob>
  */
 class SharedFolderBlobController extends BlobStoreController
 {
+    /** @return class-string<SharedFolderBlob> */
     protected function blobModel(): string
     {
         return SharedFolderBlob::class;
@@ -62,6 +66,7 @@ class SharedFolderBlobController extends BlobStoreController
         return (int) $this->vault($request, 'update')->owner_id;
     }
 
+    /** @return array<string, mixed> */
     protected function stampAttributes(Request $request): array
     {
         $vault = $this->vault($request, 'update');
@@ -71,11 +76,12 @@ class SharedFolderBlobController extends BlobStoreController
 
     // Read/raw scope: this vault's blobs (any active member ≥ viewer).
     // Reconcile requires editor+ (authorizeMutation is called first in the base).
-    protected function scopeLedger(Request $request)
+    /** @return Builder<SharedFolderBlob> */
+    protected function scopeLedger(Request $request): Builder
     {
         $vault = $this->vault($request, 'view');
 
-        return SharedFolderBlob::where('vault_id', $vault->id);
+        return SharedFolderBlob::query()->where('vault_id', $vault->id);
     }
 
     protected function authorizeRaw(Request $request, string $blob): void

@@ -70,7 +70,11 @@ class AlertErrors extends Command
         return self::SUCCESS;
     }
 
-    /** Globally enabled notification channels for ops alerts. */
+    /**
+     * Globally enabled notification channels for ops alerts.
+     *
+     * @return list<string>
+     */
     private function channels(): array
     {
         $s = AppSettings::current();

@@ -20,6 +20,7 @@ use Illuminate\Support\Str;
  */
 trait ManagesPublicShares
 {
+    /** @return array<string, mixed> */
     protected function shareRules(): array
     {
         return [

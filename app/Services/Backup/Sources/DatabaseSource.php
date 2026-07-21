@@ -54,6 +54,9 @@ final class DatabaseSource implements BackupSource
         return new BackupArtifact($path, 'sql.gz');
     }
 
+    /**
+     * @param  array{database?: string}  $config
+     */
     private function dumpSqlite(array $config, string $workDir): BackupArtifact
     {
         $db = $config['database'] ?? '';
@@ -88,6 +91,9 @@ final class DatabaseSource implements BackupSource
         return new BackupArtifact($path, 'sqlite.gz');
     }
 
+    /**
+     * @param  array{host?: string, port?: int|string, database: string, username?: string, password?: string}  $c
+     */
     private function mysql(array $c): MySql
     {
         return MySql::create()
@@ -98,6 +104,9 @@ final class DatabaseSource implements BackupSource
             ->setPassword((string) ($c['password'] ?? ''));
     }
 
+    /**
+     * @param  array{host?: string, port?: int|string, database: string, username?: string, password?: string}  $c
+     */
     private function postgres(array $c): PostgreSql
     {
         return PostgreSql::create()

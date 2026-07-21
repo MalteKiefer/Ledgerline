@@ -324,6 +324,7 @@ class BackupController extends Controller
             ->update(['status' => 'failed', 'finished_at' => $now, 'message' => 'Interrupted (no progress).']);
     }
 
+    /** @return array{name: string, driver: string, config: array<string, mixed>} */
     private function validateDestination(Request $request, ?BackupDestination $existing = null): array
     {
         $validated = $request->validate([
@@ -370,7 +371,11 @@ class BackupController extends Controller
         return ['name' => $validated['name'], 'driver' => $validated['driver'], 'config' => $config];
     }
 
-    /** Confirm a destination is reachable/writable, else block the save. */
+    /**
+     * Confirm a destination is reachable/writable, else block the save.
+     *
+     * @param  array<string, mixed>  $config
+     */
     private function assertReachable(string $driver, array $config): void
     {
         try {
@@ -390,6 +395,7 @@ class BackupController extends Controller
         return $id ? BackupDestination::find($id) : null;
     }
 
+    /** @return array<string, mixed> */
     private function validateJob(Request $request, bool $requirePassphrase): array
     {
         $data = $request->validate([

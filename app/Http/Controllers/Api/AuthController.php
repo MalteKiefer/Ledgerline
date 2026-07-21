@@ -109,6 +109,7 @@ class AuthController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** @return array<string, mixed> */
     private function userPayload(User $user): array
     {
         return [

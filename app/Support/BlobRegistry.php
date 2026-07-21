@@ -32,7 +32,11 @@ final class BlobRegistry
             ?? throw new \InvalidArgumentException("Unknown blob module: {$module}");
     }
 
-    /** All registered module keys. */
+    /**
+     * All registered module keys.
+     *
+     * @return list<string>
+     */
     public static function modules(): array
     {
         return array_keys(self::MAP);

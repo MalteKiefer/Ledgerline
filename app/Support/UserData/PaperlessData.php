@@ -22,6 +22,9 @@ class PaperlessData implements UserDataContributor
         return 'paperless';
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function export(User $user): array
     {
         $setting = UserSetting::withoutGlobalScopes()
