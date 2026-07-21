@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AvatarFetcher;
 use App\Support\BlobStore;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -44,9 +45,13 @@ class AvatarController extends Controller
     /**
      * Re-download the avatar from its stored Pocket-ID source URL.
      */
-    public function refresh(Request $request, AvatarFetcher $avatars): RedirectResponse
+    public function refresh(Request $request, AvatarFetcher $avatars): RedirectResponse|JsonResponse
     {
         $ok = $avatars->fetch($request->user(), $request->user()->avatar_url);
+
+        if ($request->expectsJson()) {
+            return response()->json(['refreshed' => $ok]);
+        }
 
         return back()->with('status', __($ok ? 'flash.avatar_refreshed' : 'flash.avatar_refresh_failed'));
     }

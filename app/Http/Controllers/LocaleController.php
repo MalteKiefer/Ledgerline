@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -13,7 +14,7 @@ use Illuminate\Http\Request;
  */
 class LocaleController extends Controller
 {
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request): RedirectResponse|JsonResponse
     {
         $supported = array_keys(config('locales.languages'));
 
@@ -21,9 +22,14 @@ class LocaleController extends Controller
             'locale' => ['required', 'string', 'in:'.implode(',', $supported)],
         ]);
 
-        $request->session()->put('locale', $validated['locale']);
+        // Session is web-only; a token API request has none.
+        if ($request->hasSession()) {
+            $request->session()->put('locale', $validated['locale']);
+        }
         $request->user()?->forceFill(['locale' => $validated['locale']])->save();
 
-        return back();
+        return $request->expectsJson()
+            ? response()->json(['ok' => true, 'locale' => $validated['locale']])
+            : back();
     }
 }

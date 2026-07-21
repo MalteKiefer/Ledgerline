@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Actions\PurgeUserAccount;
 use App\Models\AuditLog;
 use App\Support\UserData\UserDataContributor;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -52,19 +53,23 @@ class AccountController extends Controller
     }
 
     /** Revoke another active session (not the current one). */
-    public function revokeSession(Request $request, string $id): RedirectResponse
+    public function revokeSession(Request $request, string $id): RedirectResponse|JsonResponse
     {
+        // Exclude the caller's own web session (if any — a token API request has none).
+        $currentSessionId = $request->hasSession() ? $request->session()->getId() : null;
         DB::table('sessions')
             ->where('id', $id)
             ->where('user_id', $request->user()->id)
-            ->where('id', '!=', $request->session()->getId())
+            ->when($currentSessionId !== null, fn ($q) => $q->where('id', '!=', $currentSessionId))
             ->delete();
 
-        return back()->with('status', __('account.session_revoked'));
+        return $request->expectsJson()
+            ? response()->json(['ok' => true])
+            : back()->with('status', __('account.session_revoked'));
     }
 
     /** Permanently delete the account and all owned data. */
-    public function destroy(Request $request, PurgeUserAccount $purge): RedirectResponse
+    public function destroy(Request $request, PurgeUserAccount $purge): RedirectResponse|JsonResponse
     {
         $user = $request->user();
         $request->validate([
@@ -78,6 +83,13 @@ class AccountController extends Controller
         $purge->handle($user);
 
         AuditLog::record('account.deleted', $deletedUser, [], $deletedUserId);
+
+        // Token API request (no web session): revoke the presented token and answer JSON.
+        if ($request->expectsJson() || ! $request->hasSession()) {
+            $user->currentAccessToken()?->delete();
+
+            return response()->json(['deleted' => true]);
+        }
 
         Auth::logout();
         $request->session()->invalidate();
