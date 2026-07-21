@@ -54,6 +54,14 @@ tags:
     description: Password-manager enrichment endpoints (favicon, HIBP, 2FA directory)
   - name: Vaults
     description: Shared password vault container management, ZK key wrapping, and membership lifecycle
+  - name: Devices
+    description: Connected device listing, revocation, and remote-wipe management
+  - name: Notifications
+    description: In-app notification bell — list recent items, mark read
+  - name: Account
+    description: GDPR data export, account deletion, and session revocation
+  - name: Preferences
+    description: User preferences — avatar refresh, locale, and colour-scheme
 
 components:
   securitySchemes:
@@ -393,16 +401,42 @@ paths:
       operationId: deviceHeartbeat
       summary: Record device sync activity
       description: >
-        CLI/background clients call this to record that they are actively syncing.
-        Has no body; the server only records a timestamp on the token row.
+        CLI/background clients call this to record whether they are currently syncing.
+        Returns the remote-wipe flag so any heartbeat also delivers the kill switch.
         Throttle: 120 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [idle, syncing]
+                  description: Current sync state of the client.
+                detail:
+                  type: string
+                  maxLength: 160
+                  nullable: true
+                  description: Optional human-readable detail string shown in the devices list.
       responses:
         "200":
           description: Heartbeat recorded.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OkResponse"
+                type: object
+                required: [wipe]
+                properties:
+                  wipe:
+                    type: boolean
+                    description: >
+                      If true the owner has requested a remote wipe of this token.
+                      The client should erase local vault data and log out.
+        "422":
+          description: Validation error (state not in allowed enum).
         "429":
           description: Rate limit exceeded.
 
@@ -1941,19 +1975,27 @@ paths:
       operationId: passwordsTfaDirectory
       summary: 2FA support directory
       description: >
-        Returns the server-cached 2fa.directory dataset as a domain → documentation
-        URL map. Used by the client to show a "this site supports 2FA" hint on login
-        entries. Server caches the dataset for 24 hours. Throttle: 120 req/min.
+        Returns the server-cached 2fa.directory dataset wrapped in an `entries` key.
+        The value is a domain → documentation URL map. Used by the client to show a
+        "this site supports 2FA" hint on login entries. Server caches the dataset for
+        24 hours. Throttle: 120 req/min.
       responses:
         "200":
-          description: Domain to 2FA documentation URL map.
+          description: Domain to 2FA documentation URL map, wrapped in an entries object.
           content:
             application/json:
               schema:
                 type: object
-                additionalProperties:
-                  type: string
-                  description: Documentation URL (http/https only).
+                required: [entries]
+                properties:
+                  entries:
+                    type: object
+                    description: >
+                      Map of domain → documentation URL (http/https only, empty string
+                      when no doc URL is known). Keys are lower-cased domain names.
+                    additionalProperties:
+                      type: string
+                      description: Documentation URL (http/https only) or empty string.
         "429":
           description: Rate limit exceeded.
 
@@ -2157,12 +2199,8 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
-          description: Vault deleted.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OkResponse"
+        "204":
+          description: Vault deleted. No response body.
         "404":
           description: Vault not found or caller is not a manager.
         "429":
@@ -2253,7 +2291,7 @@ paths:
         Manager-gated. Returns the X25519 public key and fingerprint of the
         prospective invitee so the manager can wrap VK_vault for them. Returns a
         uniform 422 for both "user not found" and "user has no key" to prevent
-        user enumeration. Throttle: 30 req/min per user.
+        user enumeration. Throttle: named `pubkey-lookup` (30 req/min per user).
       parameters:
         - name: vault
           in: path
@@ -2529,7 +2567,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [sealed_manifest, expected_version, members]
+              required: [sealed_manifest, expected_version, members, remove_member_id]
               properties:
                 sealed_manifest:
                   type: string
@@ -2540,18 +2578,24 @@ paths:
                   type: integer
                   minimum: 0
                   description: Current version to guard against concurrent writes.
+                remove_member_id:
+                  type: integer
+                  description: >
+                    ID of the SharedVaultMember row to remove. Must belong to this
+                    vault. The caller (manager) cannot remove themselves.
                 members:
                   type: array
                   description: >
-                    Updated wrapped_vault_key for each remaining active member,
-                    each sealed with crypto_box_seal to their X25519 public key.
+                    Updated wrapped_vault_key for each REMAINING active member
+                    (the removed member must NOT appear here), each sealed with
+                    crypto_box_seal to their X25519 public key.
                   items:
                     type: object
-                    required: [member_id, wrapped_vault_key]
+                    required: [user_id, wrapped_vault_key]
                     properties:
-                      member_id:
-                        type: string
-                        description: Member row ID.
+                      user_id:
+                        type: integer
+                        description: User ID of the remaining member.
                       wrapped_vault_key:
                         type: string
                         description: >
@@ -2572,5 +2616,679 @@ paths:
                 $ref: "#/components/schemas/ConflictResponse"
         "404":
           description: Vault not found or caller is not a manager.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Devices
+  # --------------------------------------------------------------------------
+
+  /devices:
+    get:
+      tags: [Devices]
+      operationId: devicesIndex
+      summary: List the caller's connected devices
+      description: >
+        Returns all Sanctum tokens (connected devices) for the authenticated user,
+        newest first. Includes live sync state, last-used time, and whether a remote
+        wipe has been requested. No per-route throttle beyond default.
+      responses:
+        "200":
+          description: List of connected devices.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [devices]
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          description: Sanctum token ID.
+                        name:
+                          type: string
+                          description: Human-readable device name.
+                        meta:
+                          type: string
+                          description: >
+                            Formatted string combining IP address and last-used time
+                            (e.g. "192.168.1.1 · last used 3 hours ago").
+                        syncing:
+                          type: boolean
+                          description: >
+                            True when the device reported syncing state within the last
+                            3 minutes.
+                        syncDetail:
+                          type: string
+                          nullable: true
+                          description: Short detail string from the last heartbeat (syncing only).
+                        syncSeen:
+                          type: string
+                          nullable: true
+                          description: Human-readable time since the last heartbeat was received.
+                        wipeRequested:
+                          type: boolean
+                          description: True when the owner has flagged this device for remote wipe.
+        "401":
+          description: Unauthenticated.
+
+  /devices/{token}:
+    delete:
+      tags: [Devices]
+      operationId: devicesRevoke
+      summary: Revoke a paired device
+      description: >
+        Deletes the Sanctum token for the given device, immediately revoking its
+        access. Owner-scoped (can only revoke own tokens). Throttle: 20 req/min.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sanctum token ID of the device to revoke.
+      responses:
+        "200":
+          description: Device revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthenticated.
+        "429":
+          description: Rate limit exceeded.
+
+  /devices/{token}/wipe:
+    post:
+      tags: [Devices]
+      operationId: devicesWipe
+      summary: Request a remote wipe for a device
+      description: >
+        Flags the device's Sanctum token with a wipe request. The token remains
+        valid so the device can fetch the flag on its next heartbeat and self-erase.
+        Owner-scoped. Throttle: 20 req/min.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sanctum token ID of the device to wipe.
+      responses:
+        "200":
+          description: Wipe flag set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthenticated.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Notifications
+  # --------------------------------------------------------------------------
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: notificationsIndex
+      summary: List recent notifications
+      description: >
+        Returns up to 30 recent in-app notifications for the authenticated user,
+        with an unread count. Supports ETag-based conditional requests — if the
+        client sends If-None-Match matching the current ETag the server returns
+        304 Not Modified with no body, skipping the row fetch entirely.
+        No per-route throttle beyond default.
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+          description: ETag value from a previous response. Returns 304 if unchanged.
+      responses:
+        "200":
+          description: Notification list with unread count.
+          headers:
+            ETag:
+              description: >
+                Opaque change-signature derived from the newest id, total count,
+                latest update time, and unread count. Send back as If-None-Match.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unread, items]
+                properties:
+                  unread:
+                    type: integer
+                    description: Count of unread notifications.
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        level:
+                          type: string
+                          description: Severity level (e.g. info, warning, error).
+                        category:
+                          type: string
+                          nullable: true
+                        title:
+                          type: string
+                        body:
+                          type: string
+                          nullable: true
+                        read:
+                          type: boolean
+                        at:
+                          type: string
+                          format: date-time
+                          nullable: true
+        "304":
+          description: Not Modified — ETag matched, no payload.
+        "401":
+          description: Unauthenticated.
+
+  /notifications/{notification}/read:
+    post:
+      tags: [Notifications]
+      operationId: notificationsMarkRead
+      summary: Mark a single notification as read
+      description: >
+        Sets read_at to now for the given notification. Owner-scoped (403 if the
+        notification belongs to another user). No per-route throttle.
+      parameters:
+        - name: notification
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Notification ID.
+      responses:
+        "200":
+          description: Marked as read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "403":
+          description: Notification does not belong to the caller.
+        "404":
+          description: Notification not found.
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: notificationsMarkAllRead
+      summary: Mark all notifications as read
+      description: >
+        Sets read_at to now on all unread notifications for the authenticated
+        user. Idempotent. No per-route throttle.
+      responses:
+        "200":
+          description: All notifications marked as read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthenticated.
+
+  # --------------------------------------------------------------------------
+  # Gallery (additional: geocode + share management)
+  # --------------------------------------------------------------------------
+
+  /gallery/geocode:
+    get:
+      tags: [Gallery]
+      operationId: galleryGeocode
+      summary: Forward-geocode a place query to coordinates
+      description: >
+        Looks up candidate coordinates for a free-text place query using Nominatim.
+        The query passes through the server only (client CSP forbids third-party
+        calls) and is not persisted. Returns up to 6 results. Throttle: 60 req/min.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 256
+          description: Free-text place query (e.g. "Berlin, Germany").
+      responses:
+        "200":
+          description: Geocoding results.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        display:
+                          type: string
+                          description: Human-readable place name.
+                        lat:
+                          type: number
+                          description: Latitude in decimal degrees.
+                        lng:
+                          type: number
+                          description: Longitude in decimal degrees.
+        "422":
+          description: Missing or invalid query parameter.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/shares:
+    post:
+      tags: [Gallery]
+      operationId: gallerySharesStore
+      summary: Create a public share link for a gallery album
+      description: >
+        Creates a public gallery-album share link. The sealed_manifest is an
+        opaque ciphertext blob containing the re-wrapped per-blob keys encrypted
+        under the share link's fragment key — the server never reads it.
+        Throttle: 60 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sealed_manifest, blob_refs]
+              properties:
+                sealed_manifest:
+                  type: string
+                  description: >
+                    Opaque sealed share manifest (per-blob keys re-wrapped under the
+                    share fragment key). The server stores this without reading it.
+                blob_refs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: UUIDs of gallery blobs included in the share.
+                allow_download:
+                  type: boolean
+                  default: false
+                  description: Whether recipients may download the raw blobs.
+                expires_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Optional expiry timestamp. Null = no expiry.
+                password:
+                  type: string
+                  minLength: 4
+                  maxLength: 200
+                  nullable: true
+                  description: Optional password that recipients must enter to view the share.
+      responses:
+        "200":
+          description: Share link created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "422":
+          description: Validation error.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/shares/{token}:
+    put:
+      tags: [Gallery]
+      operationId: gallerySharesUpdate
+      summary: Update an existing gallery share link
+      description: >
+        Replaces the sealed manifest, blob refs, and access settings of an existing
+        gallery share. Owner-scoped. Throttle: 60 req/min.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Share link token returned by the create endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sealed_manifest, blob_refs]
+              properties:
+                sealed_manifest:
+                  type: string
+                  description: Updated opaque sealed share manifest.
+                blob_refs:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                allow_download:
+                  type: boolean
+                  default: false
+                expires_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                password:
+                  type: string
+                  minLength: 4
+                  maxLength: 200
+                  nullable: true
+                  description: New password (omit to keep existing; use clear_password to remove).
+                clear_password:
+                  type: boolean
+                  default: false
+                  description: If true, removes the current password protection.
+      responses:
+        "200":
+          description: Share updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "404":
+          description: Share not found or not owned by caller.
+        "422":
+          description: Validation error.
+        "429":
+          description: Rate limit exceeded.
+
+    delete:
+      tags: [Gallery]
+      operationId: gallerySharesDestroy
+      summary: Delete a gallery share link
+      description: >
+        Permanently removes the gallery share link. Owner-scoped. Throttle: 60 req/min.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Share link token.
+      responses:
+        "200":
+          description: Share deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Share not found or not owned by caller.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Account
+  # --------------------------------------------------------------------------
+
+  /account/export:
+    get:
+      tags: [Account]
+      operationId: accountExport
+      summary: GDPR data export (streamed zip)
+      description: >
+        Streams a zip file containing the user's data as JSON files (one per module:
+        notes, todos, bookmarks, passwords meta, account info, etc.). Data only — no
+        blob bytes. The zip is generated on the fly and not stored server-side.
+        Throttle: 6 req/min.
+      responses:
+        "200":
+          description: Zip archive streamed to the client.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+                description: >
+                  ledgerline-export-{timestamp}.zip containing one JSON file per
+                  data module.
+        "401":
+          description: Unauthenticated.
+        "429":
+          description: Rate limit exceeded.
+
+  /account:
+    delete:
+      tags: [Account]
+      operationId: accountDestroy
+      summary: Permanently delete the account (GDPR erasure)
+      description: >
+        Permanently purges the account and all owned data (crypto-shred: vault key
+        is discarded, all blobs deleted, all records deleted). The presented bearer
+        token is revoked after deletion. Requires the user's email as a confirmation
+        string to prevent accidental deletion. No per-route throttle.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation]
+              properties:
+                confirmation:
+                  type: string
+                  description: >
+                    Must equal the authenticated user's email address exactly.
+                    Returns 422 on mismatch.
+      responses:
+        "200":
+          description: Account deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted]
+                properties:
+                  deleted:
+                    type: boolean
+                    example: true
+        "422":
+          description: Confirmation string does not match the user's email.
+        "401":
+          description: Unauthenticated.
+
+  /account/sessions/{id}:
+    delete:
+      tags: [Account]
+      operationId: accountSessionsRevoke
+      summary: Revoke another active web session
+      description: >
+        Deletes the given web session row for the authenticated user. Cannot revoke
+        the caller's own current session. Idempotent (missing or already-deleted
+        session is a no-op). No per-route throttle.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID to revoke.
+      responses:
+        "200":
+          description: Session revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "401":
+          description: Unauthenticated.
+
+  # --------------------------------------------------------------------------
+  # Preferences
+  # --------------------------------------------------------------------------
+
+  /profile/avatar/refresh:
+    post:
+      tags: [Preferences]
+      operationId: profileAvatarRefresh
+      summary: Re-download the avatar from Pocket-ID
+      description: >
+        Re-fetches the user's avatar from its stored Pocket-ID source URL and
+        updates the server-side copy. Returns whether the refresh succeeded.
+        Throttle: 6 req/min.
+      responses:
+        "200":
+          description: Refresh attempted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [refreshed]
+                properties:
+                  refreshed:
+                    type: boolean
+                    description: True if the avatar was successfully re-downloaded.
+        "401":
+          description: Unauthenticated.
+        "429":
+          description: Rate limit exceeded.
+
+  /locale:
+    post:
+      tags: [Preferences]
+      operationId: localeUpdate
+      summary: Update the UI language
+      description: >
+        Persists the chosen locale on the user's profile and (for web requests) in
+        the session. The locale must be one of the values configured in
+        config/locales.php. No per-route throttle beyond default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locale]
+              properties:
+                locale:
+                  type: string
+                  description: BCP 47 locale code (e.g. "en", "de"). Must be in the supported list.
+      responses:
+        "200":
+          description: Locale updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, locale]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  locale:
+                    type: string
+                    description: The locale that was set.
+        "422":
+          description: Unsupported locale value.
+        "401":
+          description: Unauthenticated.
+
+  /theme:
+    post:
+      tags: [Preferences]
+      operationId: themeUpdate
+      summary: Update the colour scheme preference
+      description: >
+        Persists the user's chosen colour scheme. No per-route throttle beyond default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [theme]
+              properties:
+                theme:
+                  type: string
+                  enum: [light, dark, system]
+                  description: Colour scheme preference.
+      responses:
+        "200":
+          description: Theme updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, theme]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  theme:
+                    type: string
+                    enum: [light, dark, system]
+        "422":
+          description: Invalid theme value.
+        "401":
+          description: Unauthenticated.
+
+  /contacts/notify:
+    post:
+      tags: [Contacts]
+      operationId: contactsNotify
+      summary: Relay a contact birthday or anniversary notification
+      description: >
+        The client (which holds the decrypted contacts data) detects a due
+        birthday or anniversary and posts a ready-made notification message here.
+        The server intersects the requested channels with the user's saved
+        preferences for that kind and forwards to the enabled channels (desktop,
+        ntfy, mail, webhook). The message is never stored. Throttle: 60 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, title, body]
+              properties:
+                kind:
+                  type: string
+                  enum: [birthday, anniversary]
+                  description: Type of contact event.
+                title:
+                  type: string
+                  maxLength: 200
+                  description: Notification title.
+                body:
+                  type: string
+                  maxLength: 500
+                  description: Notification body text.
+      responses:
+        "200":
+          description: Notification relayed (or skipped if no channels enabled).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent]
+                properties:
+                  sent:
+                    type: boolean
+                    description: >
+                      True if the message was dispatched to at least one channel.
+                      False if the user has no channels enabled for this kind.
+        "422":
+          description: Validation error.
         "429":
           description: Rate limit exceeded.

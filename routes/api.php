@@ -2,14 +2,20 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
+use App\Http\Controllers\ContactNotifyController;
+use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
+use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
+use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
 use App\Http\Controllers\SharedFolderBlobController;
@@ -17,6 +23,7 @@ use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
 use App\Http\Controllers\SharedVaultStoreController;
 use App\Http\Controllers\StoreController;
+use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TwoFactorDirectoryController;
 use App\Http\Controllers\UserKeyController;
 use App\Http\Controllers\VaultController;
@@ -93,6 +100,12 @@ Route::prefix('v1')->group(function (): void {
         // Reverse-geocode a photo coordinate to a place name (viewer display). Self-hosted
         // Photon first (ZK), snap-to-grid before egress, never cached server-side.
         Route::get('/gallery/reverse', [GalleryProcessController::class, 'reverse'])->middleware('throttle:60,1')->name('api.gallery.reverse');
+        // Forward geocode: address/place search for photo location tagging (reverse is above).
+        Route::get('/gallery/geocode', [GalleryProcessController::class, 'geocode'])->middleware('throttle:60,1')->name('api.gallery.geocode');
+        // Album public share links (parity with files.shares): create, update metadata, revoke.
+        Route::post('/gallery/shares', [GalleryShareController::class, 'store'])->middleware('throttle:60,1')->name('api.gallery.shares.store');
+        Route::put('/gallery/shares/{token}', [GalleryShareController::class, 'update'])->middleware('throttle:60,1')->name('api.gallery.shares.update');
+        Route::delete('/gallery/shares/{token}', [GalleryShareController::class, 'destroy'])->middleware('throttle:60,1')->name('api.gallery.shares.destroy');
 
         // Contacts: the records themselves live in the workspace manifest above
         // (GET/PUT /store). These are only the optional avatar content blobs, so
@@ -103,6 +116,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/contacts/upload', [ContactBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.contacts.upload');
         Route::get('/contacts/raw/{blob}', [ContactBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.contacts.raw');
         Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.contacts.blob.destroy');
+        // Relay a contact reminder (birthday/anniversary) to the user's own channels.
+        Route::post('/contacts/notify', [ContactNotifyController::class, 'send'])->middleware('throttle:60,1')->name('api.contacts.notify');
 
         // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
         // k-anonymity), and 2fa.directory dataset. Same controllers as the web
@@ -110,6 +125,30 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/passwords/icon', [PasswordIconController::class, 'fetch'])->middleware('throttle:1200,1')->name('api.passwords.icon');
         Route::get('/passwords/breach', [PasswordBreachController::class, 'range'])->middleware('throttle:300,1')->name('api.passwords.breach');
         Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('api.passwords.tfa');
+
+        // Connected devices: list, revoke a device's token, request a remote wipe of a
+        // lost device (the wipe flag is delivered on that device's next heartbeat).
+        // Same guard-agnostic controller as the web routes.
+        Route::get('/devices', [DevicePairingController::class, 'devices'])->name('api.devices.index');
+        Route::delete('/devices/{token}', [DevicePairingController::class, 'revokeDevice'])->middleware('throttle:20,1')->name('api.devices.revoke');
+        Route::post('/devices/{token}/wipe', [DevicePairingController::class, 'wipeDevice'])->middleware('throttle:20,1')->name('api.devices.wipe');
+
+        // Notification centre: list (ETag/304), mark one read, mark all read.
+        Route::get('/notifications', [NotificationController::class, 'index'])->name('api.notifications.index');
+        Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('api.notifications.read');
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('api.notifications.read-all');
+
+        // Account: GDPR data export (streamed), account deletion (crypto-shred), and
+        // revoking a browser session. The redirect-based web controllers answer with
+        // JSON here via expectsJson().
+        Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('api.account.export');
+        Route::delete('/account', [AccountController::class, 'destroy'])->name('api.account.destroy');
+        Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('api.account.sessions.revoke');
+
+        // Profile avatar refresh from the IdP + persisted locale/theme preference.
+        Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->middleware('throttle:6,1')->name('api.profile.avatar.refresh');
+        Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
+        Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
 
         // Shared vault-sharing: identity keys, vault containers, sealed manifest
         // stores, and membership management. Same controllers as the web routes —
