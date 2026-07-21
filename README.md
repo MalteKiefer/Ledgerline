@@ -119,7 +119,6 @@ php artisan serve
 | `AWS_EC2_METADATA_DISABLED` | `true` — always pass explicit S3 keys; skip the IMDS probe. |
 | `TRUSTED_PROXIES` | The private ranges the host reverse-proxy uses (e.g. `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`). **Never `*`** — that lets a remote client forge `X-Forwarded-For`. |
 | `ML_ENABLED` / `ML_URL` / `FACE_ENABLED` / `ML_FACE_MODEL` | Machine-learning sidecar (optional). `ML_URL` defaults to `http://ml:3003`. |
-| `ML_IMAGE_TAG` | Pinned immich ML image tag (default a concrete version, not `:release`). |
 | `SANCTUM_EXPIRATION` | Absolute device-token lifetime in minutes (default 180 days). |
 | `DEVICE_IDLE_DAYS` | Revoke a device token unused this many days (default 90; 0 disables). |
 | `DEVICE_WIPE_GRACE_MINUTES` | Grace before a remotely-wiped token is hard-revoked (default 15). |

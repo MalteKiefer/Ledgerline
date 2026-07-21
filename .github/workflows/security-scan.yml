@@ -44,6 +44,20 @@ jobs:
           npm ci
           npm audit --omit=dev || true
 
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history so a secret committed in any past commit is caught.
+          fetch-depth: 0
+
+      - name: gitleaks (secret scan, blocking)
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854 \
+            detect --source=/repo --redact --no-banner
+
   trivy:
     runs-on: ubuntu-latest
     steps:

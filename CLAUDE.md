@@ -6,7 +6,7 @@ nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**
 
 Module: **Dashboard, Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ
 + eingebettete Passkeys in `login`-Items), Kontakte, Rechnungen, Health, Backup, Paperless**.
-Version **v1.504.52** (live https://home.kiefer-networks.de, `/up`=200).
+Version **v1.504.53** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill + Bookmarks-CRUD
 + **WebAuthn-Authenticator** (Passkeys).
 
@@ -250,14 +250,13 @@ Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier ei
 
 **Header/CSP-Fixwerte:** X-Content-Type-Options nosniff, X-Frame-Options DENY + `frame-ancestors 'none'`, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (ungenutzte Features aus), HSTS `max-age=63072000; includeSubDomains; preload` (nur bei TLS), **COOP `same-origin`**, `security.txt` unter `public/.well-known/`. Blob/Untrusted: `default-src 'none'; sandbox`. TLS 1.3 + HSTS via Caddy auf HOST.
 
-**Infra-Härtung:** Docker Alpine-Base, Images per Digest gepinnt (App PHP 8.5, Node 22, db/valkey/photon). Non-root, `no-new-privileges`, `cap_drop:[ALL]` (App/db/valkey/photon) bzw. Drop `NET_RAW` (ml). Resource-Limits auf app/worker/scheduler/ml/photon. App-Port `127.0.0.1`. ImageMagick `policy.xml`. `AWS_EC2_METADATA_DISABLED=true`. `TRUSTED_PROXIES` private Ranges, nie `*`. Kein OCR/PDF-Toolchain im Container (extern Paperless).
+**Infra-Härtung:** Docker Alpine-Base, **ALLE Images per Digest gepinnt** (App PHP 8.5, Node 22, db/valkey/photon **und ml** `immich-machine-learning:v3.0.3@sha256:d76fe88b…`). ML ist jetzt **plain-pinned ohne `${ML_IMAGE_TAG:-…}`-Wrapper**, damit Dependabot es parst/bumpt (der Wrapper war für Dependabot unsichtbar — Ursache, dass ML auf v2.7.5 veraltete während immich bei v3.0.3 stand). Env-Override `ML_IMAGE_TAG` entfernt (single-tenant; Tag direkt in compose ändern). Non-root, `no-new-privileges`, `cap_drop:[ALL]` (App/db/valkey/photon) bzw. Drop `NET_RAW` (ml). Resource-Limits auf app/worker/scheduler/ml/photon. App-Port `127.0.0.1`. ImageMagick `policy.xml`. `AWS_EC2_METADATA_DISABLED=true`. `TRUSTED_PROXIES` private Ranges, nie `*`. Kein OCR/PDF-Toolchain im Container (extern Paperless).
 
-**CI/Supply-Chain:** `.github/workflows/security-scan.yml` (composer audit, npm audit, Trivy fs→SARIF, SPDX-SBOM); `.github/dependabot.yml` (composer, npm root+extension, github-actions, docker, wöchentlich). **Ein roter Security-Scan-Job ist ein Release-Blocker** — auch bei transitiven Deps ohne Direkt-Eintrag in `composer.json`/`package.json` (Fix via `composer update <paket> --with-all-dependencies`, danach `composer audit` + `npm audit --omit=dev` auf 0 verifizieren; s. v1.504.49).
+**CI/Supply-Chain:** `.github/workflows/security-scan.yml` (composer audit, **PHPStan Level 5**, npm audit, **gitleaks** Secret-Scan über die volle Git-History via digest-gepinntem `gitleaks:v8.28.0@sha256:cdbb7c95…`, Trivy fs→SARIF, SPDX-SBOM); `.github/dependabot.yml` (composer, npm root+extension, github-actions, **docker — scannt Dockerfile-`FROM` UND `docker-compose.yml`; deshalb müssen compose-Images plain `image: repo:tag@sha256` sein, kein `${VAR:-default}`-Wrapper**, wöchentlich). **Ein roter Security-Scan-Job ist ein Release-Blocker** — auch bei transitiven Deps ohne Direkt-Eintrag in `composer.json`/`package.json` (Fix via `composer update <paket> --with-all-dependencies`, danach `composer audit` + `npm audit --omit=dev` auf 0 verifizieren; s. v1.504.49).
 
 **OFFENE SECURITY-PUNKTE (mit Zielsetzung, seit 2026-07-18):**
-- **Commit-Signing** (`git config commit.gpgsign`) — History ist sauber, keine Rotation nötig; Signing dennoch offen.
-- **gitleaks pre-commit + CI-Step** — noch nicht eingerichtet.
-- **ML-Image Digest-Pin:** `${ML_IMAGE_TAG}` ist der einzige tag-gepinnte (nicht digest-gepinnte) Service; optionaler Profile-Service, daher niedrigere Priorität — bleibt aber ein Abweichler von der Dependency-Policy.
+- **Commit-Signing** (`git config commit.gpgsign`) — History ist sauber, keine Rotation nötig; Signing dennoch offen (braucht den GPG-Key des Users).
+- **gitleaks pre-commit** — der CI-Step ist eingerichtet (v1.504.53); ein lokaler pre-commit-Hook fehlt noch.
 - **PHPStan Level 5 → max:** aktueller CI-Gate ist Level 5 (0 Fehler). Spec §24 verlangt max — Hochziehen ist ein separater, größerer Schritt (voraussichtlich viele weitere Findings auf ZK-/Krypto-Code). Regel `nullsafe.neverNull` bleibt dabei deaktiviert (larastan-Nullability-Fehleinschätzung, s. Register).
 - **Rector** ist nicht installiert (Spec §9 nennt einen Rector-Dry-Run); bewusst noch offen — Pint + PHPStan decken Format/Statik ab.
 
@@ -324,6 +323,7 @@ app.js **8085 → ~753 Z.** (nur noch Bootstrap, Stores confirm/nav/vault/paperl
 - **v1.504.50**: Dependency-Currency — **PHP 8.4→8.5** (App-Image digest-gepinnt, CI, composer-Floor `^8.5`; `imagedestroy()`-Deprecation entfernt → 0 Deprecations), **PHPUnit 12→13** (dev, major, Suite grün), marked/concurrently Patch-Bumps. `composer audit`+`npm audit` 0.
 - **v1.504.51**: Deploy-Fix zu .50 — `docker-compose.yml` `build.args.PHP_BASE` (überschreibt den Dockerfile-ARG-Default) ebenfalls auf den PHP-8.5-Digest gezogen; .50 baute sonst weiter auf 8.4 (`composer install`-Fail). Dual-Pin in beiden Dateien dokumentiert.
 - **v1.504.52**: PHPStan Level 5 grün (89 latente Fehler root-cause behoben — @property-Casts, Relation-Generics, VaultRole-Vereinfachungen, StreamedResponse, Env::get, Socialite-Concrete-Guards) + **PHPStan blockierend in CI** (`security-scan.yml`) und im Release-Ritual. Eine dokumentierte Deviation: `nullsafe.neverNull` deaktiviert (larastan-Nullability-Fehleinschätzung, fängt keine Bugs; Guards bleiben).
+- **v1.504.53**: Supply-Chain-Härtung — **gitleaks**-Secret-Scan (volle History) als blockierender CI-Job (digest-gepinnt); **ML-Image digest-gepinnt + auf latest v3.0.3** (war tag-only v2.7.5, verdeckt hinter `${ML_IMAGE_TAG:-…}` das Dependabot nicht parsen konnte → Wrapper entfernt, Env-Override raus, README angepasst). Jetzt ALLE Container-Images digest-gepinnt und Dependabot-sichtbar (Dockerfile-FROM + compose). **ML v2→v3 auf dem laufenden Sidecar erst bei explizitem `--profile ml up` aktiv.**
 
 ## MEMORY & CHECKS
 - Memory: `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerline/memory/` (Index `MEMORY.md`).

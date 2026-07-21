@@ -204,7 +204,10 @@ services:
   # downloaded on first use into the ml-cache volume. Enable with:
   #   docker compose --profile ml up -d
   ml:
-    image: ghcr.io/immich-app/immich-machine-learning:${ML_IMAGE_TAG:-v2.7.5}
+    # Plain digest-pinned (no ${VAR:-default} wrapper) so Dependabot's docker
+    # ecosystem can parse and bump it like the other services; tag + digest move
+    # together on every bump.
+    image: ghcr.io/immich-app/immich-machine-learning:v3.0.3@sha256:d76fe88b69282c09a97eac4f82dafa82cfd77bce274bc742591cde974f87dacb
     profiles: ["ml"]
     environment:
       MACHINE_LEARNING_WORKERS: "1"
