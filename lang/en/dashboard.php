@@ -25,4 +25,15 @@ return [
 
     'open'          => 'Open',
     'unlock_prompt' => 'Unlock vault to see your dashboard',
+
+    'birthdays_title' => 'Upcoming birthdays',
+    'birthdays_empty' => 'No birthdays or anniversaries in the next 30 days',
+    'in_days'         => 'in :n days',
+    'today'           => 'Today',
+    'turning'         => 'turns :n',
+
+    'health_title'  => 'Health',
+    'health_empty'  => 'No health data recorded yet',
+    'quick_add'     => 'Quick add',
+    'add'           => 'Add',
 ];

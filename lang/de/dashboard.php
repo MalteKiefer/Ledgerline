@@ -25,4 +25,15 @@ return [
 
     'open'          => 'Öffnen',
     'unlock_prompt' => 'Tresor entsperren, um das Dashboard zu sehen',
+
+    'birthdays_title' => 'Bevorstehende Geburtstage',
+    'birthdays_empty' => 'Keine Geburtstage oder Jahrestage in den nächsten 30 Tagen',
+    'in_days'         => 'in :n Tagen',
+    'today'           => 'Heute',
+    'turning'         => 'wird :n',
+
+    'health_title'  => 'Gesundheit',
+    'health_empty'  => 'Noch keine Gesundheitsdaten erfasst',
+    'quick_add'     => 'Schnell hinzufügen',
+    'add'           => 'Hinzufügen',
 ];
