@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 return [
     'nav' => [
+        'dashboard' => 'Dashboard',
         'notes' => 'Notes',
         'bookmarks' => 'Bookmarks',
         'passwords' => 'Passwords',
