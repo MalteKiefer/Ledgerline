@@ -90,9 +90,13 @@ class DevicePairingController extends Controller
     /** The caller's paired devices (Sanctum tokens), newest first — for the live list. */
     public function devices(Request $request): JsonResponse
     {
+        // The token making THIS request (so a client can refuse to revoke/wipe
+        // itself). Null for session-auth callers (web). Resolved once, then
+        // captured into the map closure (a bare closure would not see $request).
+        $currentKey = $request->user()->currentAccessToken()?->getKey();
         $devices = $request->user()->tokens()
             ->orderByDesc('created_at')->get()
-            ->map(function ($t): array {
+            ->map(function ($t) use ($currentKey): array {
                 // Custom (non-Sanctum) columns come back as strings; parse the
                 // heartbeat time. A client counts as actively syncing only if it
                 // reported so recently (a stale "syncing" is treated as idle).
@@ -101,6 +105,7 @@ class DevicePairingController extends Controller
 
                 return [
                     'id' => $t->id,
+                    'current' => $t->getKey() === $currentKey,
                     'name' => $t->name ?: __('account.sessions_unknown'),
                     'meta' => trim(implode(' · ', array_filter([
                         $t->ip,
