@@ -90,24 +90,6 @@
         </template>
     </div>
 
-    {{-- Create new shared folder --}}
-    <form class="flex items-center gap-1"
-        @submit.prevent="let n = $el.querySelector('input').value.trim(); if (n) { createSharedFolder(n); $el.querySelector('input').value = ''; }">
-        <input type="text" required placeholder="{{ __('files.shared_folder_new') }}"
-            class="w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
-        <button type="submit" :title="'{{ __('files.shared_folder_new') }}'" :aria-label="'{{ __('files.shared_folder_new') }}'"
-            class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="folder-plus" class="h-5 w-5" /></button>
-    </form>
-</div>
-
-{{-- New folder (creates in the current folder) --}}
-<div x-show="view === 'files'" class="border-t border-gray-100 dark:border-gray-800 pt-3">
-    <form class="flex items-center gap-1" @submit.prevent="mkdir(newFolderName); newFolderName = ''">
-        <input type="text" x-model="newFolderName" required placeholder="{{ __('files.new_folder') }}"
-            class="w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
-        <button type="submit" title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
-            class="shrink-0 rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-700 dark:text-gray-300 hover:bg-accent/5"><x-icon name="folder-plus" class="h-5 w-5" /></button>
-    </form>
 </div>
 
 {{-- Storage usage: show the bar + "used of total" when a quota is set,

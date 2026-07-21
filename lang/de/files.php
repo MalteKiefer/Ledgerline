@@ -78,6 +78,8 @@ return [
     'move_here' => 'Hierhin verschieben',
     'move_title' => 'In Ordner verschieben',
     'new_folder' => 'Neuer Ordner',
+    'new_folder_shared' => 'Geteilter Ordner',
+    'new_folder_shared_hint' => 'Einen Ordner anlegen, den du mit anderen Nutzern teilen kannst.',
     'rename' => 'Umbenennen',
     'root_folder' => 'Dateien (Stamm)',
     'save' => 'Speichern',

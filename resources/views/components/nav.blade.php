@@ -68,6 +68,16 @@
                 <x-notification-panel />
             </div>
 
+            {{-- Vault lock toggle (system-wide): unlocked = click to lock; locked = click to open vault panel --}}
+            <button type="button"
+                @click="$store.vault.unlocked ? $store.vault.lock() : $dispatch('vault-panel')"
+                :title="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
+                :aria-label="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
+                class="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-600 dark:text-gray-400 hover:bg-accent/5">
+                <span x-show="$store.vault.unlocked"><x-icon name="lock-open" class="h-5 w-5" /></span>
+                <span x-show="! $store.vault.unlocked"><x-icon name="lock-closed" class="h-5 w-5" /></span>
+            </button>
+
             <div class="relative" x-data="{ open: false }">
                 <button type="button" @click="open = ! open" @keydown.escape="open = false"
                     class="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5">

@@ -48,6 +48,8 @@ export default (config = {}, labels = {}) => ({
     activeTag: '',
     view: 'files', // files | favorites | recent | trash
     newFolderName: '',
+    newFolderModal: false,
+    newFolderShared: false,
     infoOpen: false,
     infoRow: null,
     infoNote: '',
@@ -906,6 +908,27 @@ export default (config = {}, labels = {}) => ({
             cur = byId.get(cur).parent;
         }
         return [root, ...chain].join(' / ');
+    },
+
+    /* ---- New folder modal ---- */
+
+    openNewFolder() {
+        this.newFolderName = '';
+        this.newFolderShared = false;
+        this.newFolderModal = true;
+        this.$nextTick(() => { this.$refs.newFolderInput?.focus(); });
+    },
+
+    async submitNewFolder() {
+        const n = this.newFolderName.trim();
+        if (! n) return;
+        if (this.newFolderShared && ! this._isSharedContext()) {
+            await this.createSharedFolder(n);
+        } else {
+            await this.mkdir(n);
+        }
+        this.newFolderModal = false;
+        this.newFolderName = '';
     },
 
     /* ---- Structure operations ---- */

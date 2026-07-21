@@ -78,6 +78,8 @@ return [
     'move_here' => 'Move here',
     'move_title' => 'Move to folder',
     'new_folder' => 'New folder',
+    'new_folder_shared' => 'Shared folder',
+    'new_folder_shared_hint' => 'Create a folder you can share with other users.',
     'rename' => 'Rename',
     'root_folder' => 'Files (root)',
     'save' => 'Save',

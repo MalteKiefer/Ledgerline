@@ -140,6 +140,14 @@
                         <input type="file" multiple class="hidden" @change="upload($event.target.files); $event.target.value = ''">
                     </label>
                 </template>
+                <template x-if="view === 'files' && _canEditActive()">
+                    {{-- New folder: opens modal instead of inline sidebar form --}}
+                    <button type="button" @click="openNewFolder()"
+                        title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
+                        class="ll-accent rounded-xl p-2">
+                        <x-icon name="folder-plus" class="h-5 w-5" />
+                    </button>
+                </template>
                 {{-- Shared-folder management buttons (manage only) --}}
                 <template x-if="_isSharedContext() && _canManageActive()">
                     <div class="flex items-center gap-1">
@@ -155,16 +163,6 @@
                         </button>
                     </div>
                 </template>
-                {{-- Vault lock toggle: unlocked padlock = click to lock now;
-                     closed padlock = click to unlock. Sits next to Upload. --}}
-                <button type="button"
-                    @click="$store.vault.unlocked ? $store.vault.lock() : $dispatch('vault-panel')"
-                    :title="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
-                    :aria-label="$store.vault.unlocked ? @js(__('vault.unlocked')) : @js(__('vault.unlock'))"
-                    class="rounded-md border border-gray-300 dark:border-gray-700 p-2 text-gray-600 dark:text-gray-400 hover:bg-accent/5">
-                    <span x-show="$store.vault.unlocked"><x-icon name="lock-open" class="h-5 w-5" /></span>
-                    <span x-show="! $store.vault.unlocked"><x-icon name="lock-closed" class="h-5 w-5" /></span>
-                </button>
                 <template x-if="trashView && trashCount > 0">
                     <button type="button" @click="emptyTrash()" class="inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
                         <x-icon name="trash" class="h-4 w-4" />{{ __('files.empty_trash') }}
@@ -698,6 +696,46 @@
                     <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('common.cancel') }}</button>
                     <button type="button" @click="applyDelete(true)" class="rounded-md border border-red-300 dark:border-red-800 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">{{ __('files.delete_forever') }}</button>
                     <button type="button" @click="applyDelete(false)" class="ll-accent rounded-xl px-4 py-2 text-sm font-medium">{{ __('files.move_to_trash') }}</button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {{-- New folder modal --}}
+    <template x-teleport="body">
+        <div x-show="newFolderModal" x-cloak class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
+             role="dialog" aria-modal="true" @keydown.escape.window="newFolderModal = false">
+            <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="newFolderModal = false"></div>
+            <div class="relative w-full max-w-sm rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl space-y-4">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.new_folder') }}</h3>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('files.col_name') }}</label>
+                    <input type="text" x-model="newFolderName" x-ref="newFolderInput"
+                        @keydown.enter.prevent="submitNewFolder()"
+                        placeholder="{{ __('files.new_folder') }}"
+                        class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                </div>
+                <template x-if="! _isSharedContext()">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" x-model="newFolderShared"
+                            class="mt-0.5 rounded border-gray-300 dark:border-gray-700 focus:ring-accent"
+                            style="accent-color: var(--color-accent)">
+                        <span>
+                            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('files.new_folder_shared') }}</span>
+                            <span class="block text-xs text-gray-400 dark:text-gray-500">{{ __('files.new_folder_shared_hint') }}</span>
+                        </span>
+                    </label>
+                </template>
+                <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" @click="newFolderModal = false"
+                        class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        {{ __('common.cancel') }}
+                    </button>
+                    <button type="button" @click="submitNewFolder()"
+                        :disabled="! newFolderName.trim()"
+                        class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105 disabled:opacity-50">
+                        {{ __('files.new_folder') }}
+                    </button>
                 </div>
             </div>
         </div>
