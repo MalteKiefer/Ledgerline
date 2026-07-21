@@ -6,7 +6,7 @@ nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**
 
 Module: **Dashboard, Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ
 + eingebettete Passkeys in `login`-Items), Kontakte, Rechnungen, Health, Backup, Paperless**.
-Version **v1.504.49** (live https://home.kiefer-networks.de, `/up`=200).
+Version **v1.504.50** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill + Bookmarks-CRUD
 + **WebAuthn-Authenticator** (Passkeys).
 
@@ -33,12 +33,12 @@ Detail-Historie in `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerlin
 ---
 
 ## Stack
-- Laravel 13 / PHP 8.4 (`declare(strict_types=1)`), PostgreSQL 17 **pgvector** (prod) / sqlite (tests), Valkey 8 (predis, kein phpredis).
+- Laravel 13 / PHP 8.5 (`declare(strict_types=1)`), PostgreSQL 17 **pgvector** (prod) / sqlite (tests), Valkey 8 (predis, kein phpredis).
 - Frontend: **Alpine.js modularisiert (Vite-gebündelt)** — `resources/js/app.js` (~753 Z., Bootstrap + Store-/Komponenten-Registrierungen) + `resources/js/shared/*` (Utilities) + `resources/js/components/*` (ein Modul pro Alpine.data-Komponente) + Blade + Tailwind 4 + Vite 8. Kein externes CDN. **Konvention „Alpine in EINER Datei" ist aufgehoben** (Refactor abgeschlossen, s. REFACTORING).
 - **Client-Crypto** `resources/js/vault.js`: Passphrase --Argon2id(ops=4/mem=256MiB)--> KEK --unwrap--> Vault Key (VK). Sealing via libsodium-wrappers-sumo (XChaCha20-Poly1305 secretbox). Wrap der VK auf Trusted-Device via AES-256-GCM (WebCrypto, non-extractable, in IndexedDB). Entschlüsselung schwerer Blobs im Worker-Pool `resources/js/decrypt.worker.js`.
 - Auth: Pocket-ID OIDC (Socialite `pocketid`, **PKCE + state**), Match auf stabiler `sub`. Keine App-Passwörter. `groups`-Claim → Admin-Gate (fail-closed bei Multi-User ohne Gruppe).
 - Sanctum 4 Bearer-Tokens für Mobile/CLI/Extension-API (`/api/v1`). sabre/dav v4 NUR für Files-over-WebDAV + WebDAV-Backup-Ziel (kein CalDAV/CardDAV). Bilder: intervention/image v4 + imagick. ML: immich-machine-learning Sidecar (profile-gated, optional).
-- **Dependency-Policy:** immer neueste stabile Version, per exakter Version + Digest gepinnt (Docker-Images), keine Alt-Majors aus Bequemlichkeit. CI (Dependabot + Trivy) hält das nach. Stand: PHP 8.4, Node 22 LTS, Laravel 13.20, guzzle 7.15.1, pdfjs-dist 6.x, dompurify 3.4.12, vite 8.1.5, uplot (exakt gepinnt). **Transitive Deps zählen mit** — ein rot gewordener `composer audit`/`npm audit` wird als eigener Patch-Release behoben, nicht ausgesessen (s. v1.504.49).
+- **Dependency-Policy:** immer neueste stabile Version, per exakter Version + Digest gepinnt (Docker-Images), keine Alt-Majors aus Bequemlichkeit. CI (Dependabot + Trivy) hält das nach. Stand: PHP 8.5, Node 22 LTS, Laravel 13.20, PHPUnit 13.2, guzzle 7.15.1, pdfjs-dist 6.x, dompurify 3.4.12, vite 8.1.5, marked 18.0.7, uplot (exakt gepinnt). **Transitive Deps zählen mit** — ein rot gewordener `composer audit`/`npm audit` wird als eigener Patch-Release behoben, nicht ausgesessen (s. v1.504.49).
 
 ---
 
@@ -149,7 +149,11 @@ ZK Passwort-Autofill + Bookmarks-CRUD + **WebAuthn-Authenticator (Passkeys)**. N
 ---
 
 ## SECURITY-ENTSCHEIDUNGEN, AUSNAHMEN & DESIGN-RATIONALE (Audit-Protokoll — VERBINDLICH fortzuschreiben)
-Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier eintragen (Datum + Begründung + Kompensation), im selben Commit.** Letzter Voll-Audit: 2026-07-18 (0 CVEs, keine ausnutzbare Lücke; Risk-Posture LOW); seither fortgeschrieben bis v1.504.49 (2026-07-21). <!-- banned-token-ok: audit log, not code -->
+Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier eintragen (Datum + Begründung + Kompensation), im selben Commit.** Letzter Voll-Audit: 2026-07-18 (0 CVEs, keine ausnutzbare Lücke; Risk-Posture LOW); seither fortgeschrieben bis v1.504.50 (2026-07-21). <!-- banned-token-ok: audit log, not code -->
+
+**PHP 8.5 + PHPUnit 13 + Dep-Currency (2026-07-21, v1.504.50) — Verschärfung, keine Aufweichung:**
+- **PHP 8.4 → 8.5** (latest stable): App-Base-Image `serversideup/php:8.5-fpm-nginx-alpine` **frisch digest-gepinnt** (`@sha256:1854d81d…`), CI `setup-php` auf 8.5, composer-`require` `php` `^8.4`→`^8.5` (Floor erzwingt latest, kein EOL-Rückfall). Voller Testlauf (441 grün) auf lokalem PHP 8.5 vor dem Bump. **PHP-8.5-Deprecation behoben (Spec „deprecation notice = defect"):** die drei `imagedestroy()`-Aufrufe (`Services/Gallery/PerceptualHash.php` ×2 + `tests/Unit/PerceptualHashTest.php`) entfernt — seit PHP 8.0 ohnehin no-op (GdImage ist GC-verwaltet), seit 8.5 deprecated; Verhalten byte-identisch (kein funktionaler Effekt). Testlauf danach: **0 Deprecations**.
+- **PHPUnit 12 → 13** (dev-only, major): löst konfliktfrei mit Laravel 13.20 auf, komplette Suite grün, kein Prod-/Runtime-Impact (Test-Stack). **marked 18.0.6→18.0.7 / concurrently 9.2.3→9.2.4** (Patch, prod-bundled bzw. build-dev). `composer audit` + `npm audit --omit=dev` weiterhin 0. Alle Änderungen currency-getrieben (Spec §0/§24), keine Kontroll-Aufweichung.
 
 **Guzzle 7.15.0→7.15.1 (2026-07-21, v1.504.49) — Verschärfung, keine Aufweichung:**
 - Transitive Dep (kein Direkt-Eintrag in `composer.json`); `composer update guzzlehttp/guzzle --with-all-dependencies` behebt drei medium-Advisories (GHSA-h95v-h523-3mw8 URI-Fragmente im Referer-Header bei Redirects, GHSA-wm3w-8rrp-j577 Host-only-Cookie-Scope nicht erhalten, GHSA-f283-ghqc-fg79 unbegrenzte Response-Cookies DoS). `composer audit` + `npm audit --omit=dev` danach 0 Findings — behebt den seit dem 2026-07-20-Advisory dauerhaft roten Security-Scan-CI-Job. Nur `composer.lock` geändert (kein weiteres Paket bewegt).
@@ -242,7 +246,7 @@ Register aller bewussten Sicherheits-Trade-offs. **Jede neue Aufweichung hier ei
 
 **Header/CSP-Fixwerte:** X-Content-Type-Options nosniff, X-Frame-Options DENY + `frame-ancestors 'none'`, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (ungenutzte Features aus), HSTS `max-age=63072000; includeSubDomains; preload` (nur bei TLS), **COOP `same-origin`**, `security.txt` unter `public/.well-known/`. Blob/Untrusted: `default-src 'none'; sandbox`. TLS 1.3 + HSTS via Caddy auf HOST.
 
-**Infra-Härtung:** Docker Alpine-Base, Images per Digest gepinnt (App PHP 8.4, Node 22, db/valkey/photon). Non-root, `no-new-privileges`, `cap_drop:[ALL]` (App/db/valkey/photon) bzw. Drop `NET_RAW` (ml). Resource-Limits auf app/worker/scheduler/ml/photon. App-Port `127.0.0.1`. ImageMagick `policy.xml`. `AWS_EC2_METADATA_DISABLED=true`. `TRUSTED_PROXIES` private Ranges, nie `*`. Kein OCR/PDF-Toolchain im Container (extern Paperless).
+**Infra-Härtung:** Docker Alpine-Base, Images per Digest gepinnt (App PHP 8.5, Node 22, db/valkey/photon). Non-root, `no-new-privileges`, `cap_drop:[ALL]` (App/db/valkey/photon) bzw. Drop `NET_RAW` (ml). Resource-Limits auf app/worker/scheduler/ml/photon. App-Port `127.0.0.1`. ImageMagick `policy.xml`. `AWS_EC2_METADATA_DISABLED=true`. `TRUSTED_PROXIES` private Ranges, nie `*`. Kein OCR/PDF-Toolchain im Container (extern Paperless).
 
 **CI/Supply-Chain:** `.github/workflows/security-scan.yml` (composer audit, npm audit, Trivy fs→SARIF, SPDX-SBOM); `.github/dependabot.yml` (composer, npm root+extension, github-actions, docker, wöchentlich). **Ein roter Security-Scan-Job ist ein Release-Blocker** — auch bei transitiven Deps ohne Direkt-Eintrag in `composer.json`/`package.json` (Fix via `composer update <paket> --with-all-dependencies`, danach `composer audit` + `npm audit --omit=dev` auf 0 verifizieren; s. v1.504.49).
 
@@ -311,6 +315,7 @@ app.js **8085 → ~753 Z.** (nur noch Bootstrap, Stores confirm/nav/vault/paperl
 - **v1.504.45**: Health-Minors — BP-Statistik (avg/min/max) zeigt sys+dia; Arzt-Report-Chart nutzt volle Historie statt Live-Zeitraum.
 - **v1.504.46**: **Nav-Reihenfolge + ZK-Dashboard** — primary = Dashboard/Dateien/Galerie/Passwörter, Rest ins „Mehr". Neues client-seitiges Dashboard (`dashboard`-Component + `shared/dashboard-utils.js`, Vitest) mit Widgets Todos, Geburtstage, Health+Quick-Add+Sparkline, Fotos „heute vor X Jahren", Speicher, Zähler, Passwort-Health-Kurzstatus, letzte Notizen — alles client-seitig aus den entschlüsselten Manifesten (ZK, kein neuer Endpunkt); Gallery persistiert `taken_at` ins sealed Manifest. **v1.504.47/.48:** Dashboard-Deep-Links — Foto-Klick öffnet Gallery-Viewer (`?photo=`), Notiz-Klick öffnet Notes (`?note=`, „Ohne Titel"-Fallback).
 - **v1.504.49**: Security-Patch — Guzzle 7.15.0→7.15.1 (3 medium-Advisories behoben, `composer.lock` only); CI-Security-Scan wieder grün.
+- **v1.504.50**: Dependency-Currency — **PHP 8.4→8.5** (App-Image digest-gepinnt, CI, composer-Floor `^8.5`; `imagedestroy()`-Deprecation entfernt → 0 Deprecations), **PHPUnit 12→13** (dev, major, Suite grün), marked/concurrently Patch-Bumps. `composer audit`+`npm audit` 0.
 
 ## MEMORY & CHECKS
 - Memory: `~/.claude/projects/-Users-malte-kiefer-Entwicklung-ledgerline/memory/` (Index `MEMORY.md`).
