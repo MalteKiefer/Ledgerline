@@ -28,7 +28,15 @@ tags:
   - name: Me/Device
     description: Authenticated user info, avatar, and device heartbeat
   - name: Store
-    description: Opaque zero-knowledge workspace manifest (notes/todos/bookmarks/files/passwords)
+    description: >
+      Opaque zero-knowledge workspace manifest — the single sealed store that holds
+      ALL of the user's records for notes, todos, bookmarks, contacts, invoices,
+      health, the files tree, and passwords. These modules have NO per-record REST
+      endpoints (that would break zero-knowledge); their full CRUD is: read the
+      manifest (GET /store), mutate the relevant key in the decrypted object
+      client-side, and write it back (PUT /store) with optimistic concurrency.
+      Only binary blobs (contact avatars, file/gallery bytes) have their own
+      endpoints; the records that reference them live here.
   - name: Files
     description: Personal encrypted file blobs and multipart upload pipeline
   - name: SharedFolders
@@ -36,7 +44,12 @@ tags:
   - name: Gallery
     description: Gallery blobs, multipart upload, and ML processing pipeline
   - name: Contacts
-    description: Encrypted contact blobs
+    description: >
+      Optional encrypted contact avatar blobs. The contact RECORDS themselves
+      (names, vCard fields, etc.) live in the sealed workspace manifest (see Store,
+      GET/PUT /store) — these endpoints only hold the optional avatar image bytes a
+      contact record references. Notes and todos are manifest-only (no blobs, no
+      dedicated endpoints).
   - name: Passwords
     description: Password-manager enrichment endpoints (favicon, HIBP, 2FA directory)
   - name: Vaults
@@ -427,7 +440,10 @@ paths:
       summary: Read the personal workspace manifest
       description: >
         Returns the current sealed ciphertext and version for the caller's personal
-        workspace manifest (notes, todos, bookmarks, files tree, passwords, etc.).
+        workspace manifest, which holds all records for notes, todos, bookmarks,
+        contacts, invoices, health, the files tree and passwords. Mobile CRUD for
+        every one of those modules is: GET /store → decrypt+mutate the module's key
+        client-side → PUT /store. There is no per-record endpoint (zero-knowledge).
         The server never reads the ciphertext. Cache-Control: no-store.
         No per-route throttle beyond the default API rate.
       responses:
