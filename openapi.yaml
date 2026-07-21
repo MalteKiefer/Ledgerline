@@ -2649,6 +2649,12 @@ paths:
                         id:
                           type: integer
                           description: Sanctum token ID.
+                        current:
+                          type: boolean
+                          description: >
+                            True for the token making this request, so a client can
+                            refuse to revoke or wipe itself. Always false for
+                            session-auth (web) callers.
                         name:
                           type: string
                           description: Human-readable device name.

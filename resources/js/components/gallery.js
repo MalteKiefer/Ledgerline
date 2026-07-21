@@ -66,8 +66,16 @@ return {
         this.renderLimit = this._renderStep; // start with a small render window
         this.state = 'ready';
         // Deep link from a linked contact (?person=<id>) → open that person.
-        const pid = new URLSearchParams(location.search).get('person');
+        const params = new URLSearchParams(location.search);
+        const pid = params.get('person');
         if (pid && (this.index.people || []).some((pp) => pp.id === pid)) { this.activePerson = pid; this.view = 'person'; }
+        // Deep link to a single photo (?photo=<id>, e.g. from the dashboard
+        // "on this day" widget) → open it directly in the viewer.
+        const photoId = params.get('photo');
+        if (photoId) {
+            const target = (this.index.photos || []).find((pp) => pp.id === photoId);
+            if (target) this.openViewer(target);
+        }
         this.refreshUsage();
         // Process pending uploads (its finally pairs Live Photos); also run a pair
         // pass for the backfill case where nothing is pending but split Live Photos
