@@ -363,7 +363,7 @@
                                             x-text="@js(__('dashboard.on_this_day_years_ago')).replace(':count', group.yearsAgo)"></p>
                                         <div class="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                                             <template x-for="photo in group.photos.slice(0, 12)" :key="photo.id">
-                                                <a href="{{ route('gallery.index') }}"
+                                                <a :href="'{{ route('gallery.index') }}?photo=' + encodeURIComponent(photo.id)"
                                                     class="shrink-0 block rounded-xl overflow-hidden bg-gray-100 dark:bg-white/5"
                                                     style="width:72px;height:72px">
                                                     <img
