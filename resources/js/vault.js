@@ -741,6 +741,16 @@ export const Vault = {
     unwrapContentKeyWith(encFileKey, vk) { const w = JSON.parse(encFileKey); return open(w.c, w.n, vk); },
 
     /**
+     * Seal a raw per-file key (Uint8Array) under an EXPLICIT vault key (vk).
+     * Returns a JSON string {c,n} — the same format produced by encryptContentWith
+     * and consumed by unwrapContentKeyWith / decryptFileWith. Used to re-wrap an
+     * existing per-file key under a different vault key (e.g. VK_folder on
+     * personal-to-shared folder conversion). Ciphertext bytes are unchanged; only
+     * the key wrapping changes.
+     */
+    sealContentKeyWith(rawKey, vk) { const w = seal(rawKey, vk); return JSON.stringify({ c: w.cipher, n: w.nonce }); },
+
+    /**
      * Begin a streaming decryption under an EXPLICIT vault key (vk).
      * Generalises beginDecrypt for shared folders.
      */

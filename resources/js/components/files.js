@@ -1,7 +1,8 @@
 // Files module (nestable ZK file browser). Extracted from app.js.
 import { apiRequest, jsonHeaders, postForm, getJson } from '../shared/api';
 import { Vault, VaultShareCrypto } from '../vault';
-import { fetchDecrypt, queueBlobDelete } from '../shared/blob-io';
+import { fetchDecrypt, fetchBlobBuffer, queueBlobDelete } from '../shared/blob-io';
+import { collectSubtree } from './files-subtree';
 import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
@@ -2396,6 +2397,67 @@ export default (config = {}, labels = {}) => ({
         } catch (e) {
             window.llToast(labels.saveFailed || '');
         }
+    },
+
+    // Convert a PERSONAL folder in place into a shared folder: create the vault,
+    // migrate the subtree's blobs (re-wrap each per-file key under VK_folder, the
+    // ciphertext bytes are unchanged), seal the shared manifest, then free the
+    // personal blobs. Client-side only — the server never sees plaintext/VK_folder.
+    // Returns the new vaultId. On failure, aborts and leaves the personal folder intact.
+    async convertFolderToShared(folderId) {
+        const root = this.manifest.folders.find((f) => f.id === folderId);
+        if (! root) throw new Error('folder not found');
+        const { folders: subFolders, files: subFiles } = collectSubtree(this.manifest.folders, this.manifest.files, folderId);
+
+        // 1. New vault + VK_folder.
+        const vkB64 = await VaultShareCrypto.newVaultKey();
+        const idk = await Vault.ensureIdentityKeys();
+        const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, idk.pub);
+        const { id: vaultId } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped, kind: 'folder' });
+        const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
+
+        const uploadedBlobs = []; // shared blob ids, for rollback on failure
+        try {
+            // 2. Migrate each file blob: fetch ciphertext, re-wrap key under VK_folder, re-upload.
+            // Ciphertext bytes are identical to the personal blob — only the key wrapping changes.
+            const newFiles = [];
+            for (const file of subFiles) {
+                const rawKey = window.Vault.unwrapContentKey(file.encFileKey); // unwrap under personal VK
+                const encFileKey = window.Vault.sealContentKeyWith(rawKey, vkBytes); // re-wrap under VK_folder
+                const cipher = await fetchBlobBuffer(`${config.rawBase}/${file.blob}`); // raw ciphertext (unchanged)
+                const form = new FormData();
+                form.append('file', new Blob([cipher], { type: 'application/octet-stream' }), 'blob');
+                const up = await apiRequest('POST', '/vaults/' + vaultId + '/blobs/upload', form);
+                uploadedBlobs.push(up.id);
+                newFiles.push({ ...file, blob: up.id, encFileKey, textRef: undefined, embRef: undefined, versions: [] });
+            }
+
+            // 3. Seal + PUT the shared manifest at version 0.
+            const manifest = { name: root.name, folders: subFolders, files: newFiles };
+            const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
+            const res = await apiRequest('PUT', '/vaults/' + vaultId + '/store', { sealed_manifest: sealed, expected_version: 0 });
+            this._folderKeys[vaultId] = vkBytes;
+            this._folderVersion[vaultId] = (res && typeof res.version === 'number') ? res.version : 1;
+            this.sharedTree[vaultId] = { folders: subFolders, files: newFiles };
+            this.sharedFolders.push({ id: vaultId, vaultId, name: root.name, role: 'manage', version: this._folderVersion[vaultId] });
+        } catch (e) {
+            // Rollback: delete uploaded shared blobs + the vault; personal folder stays intact.
+            for (const b of uploadedBlobs) { try { await apiRequest('DELETE', '/vaults/' + vaultId + '/blobs/' + b); } catch (_) {} }
+            try { await apiRequest('DELETE', '/vaults/' + vaultId); } catch (_) {}
+            throw e;
+        }
+
+        // 4. Remove the migrated subtree from the personal manifest + free old blobs (only after success).
+        const keepFolderIds = new Set(subFolders.map((f) => f.id));
+        const oldBlobs = subFiles.flatMap((f) => [f.blob, f.textRef, f.embRef].filter(Boolean));
+        window.LLStore.data.fileFolders = this.manifest.folders.filter((f) => ! keepFolderIds.has(f.id));
+        window.LLStore.data.files = this.manifest.files.filter((f) => ! keepFolderIds.has(f.folder ?? null));
+        this.manifest.folders = window.LLStore.data.fileFolders;
+        this.manifest.files = window.LLStore.data.files;
+        window.LLStore.touch();
+        this._freeBlobs(oldBlobs); // existing personal blob-free queue
+
+        return vaultId;
     },
 
     openShareFolderDialog(vaultId) {
