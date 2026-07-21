@@ -59,22 +59,27 @@
         </template>
 
         <template x-for="f in sharedFolders" :key="f.vaultId">
-            <button type="button" @click="selectSharedFolder(f.vaultId); $store.nav.closeAll && $store.nav.closeAll()"
-                :class="activeShared === f.vaultId ? 'bg-accent/10 text-accent' : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5'"
-                class="group flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium text-left">
-                <span class="ll-chip flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3b9fd6">
-                    <x-icon name="folder" class="h-4 w-4" />
-                </span>
-                <span class="min-w-0 flex-1 truncate" x-text="f.name"></span>
-                <span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-                      :class="f.role === 'manage' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : (f.role === 'edit' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')"
-                      x-text="f.role === 'manage' ? '{{ __('files.folder_role_manage') }}' : (f.role === 'edit' ? '{{ __('files.folder_role_edit') }}' : '{{ __('files.folder_role_read') }}')"></span>
+            {{-- Single root <div>: the select button and the manage buttons are SIBLINGS,
+                 never nested (nested <button>s are invalid HTML and the parser would split
+                 them, tripping Alpine's single-root x-for check). --}}
+            <div class="group flex w-full items-center gap-1 pr-2"
+                 :class="activeShared === f.vaultId ? 'bg-accent/10 text-accent' : 'text-gray-700 dark:text-gray-300 hover:bg-accent/5'">
+                <button type="button" @click="selectSharedFolder(f.vaultId); $store.nav.closeAll && $store.nav.closeAll()"
+                    class="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-sm font-medium text-left">
+                    <span class="ll-chip flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3b9fd6">
+                        <x-icon name="folder" class="h-4 w-4" />
+                    </span>
+                    <span class="min-w-0 flex-1 truncate" x-text="f.name"></span>
+                    <span class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                          :class="f.role === 'manage' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' : (f.role === 'edit' ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')"
+                          x-text="f.role === 'manage' ? '{{ __('files.folder_role_manage') }}' : (f.role === 'edit' ? '{{ __('files.folder_role_edit') }}' : '{{ __('files.folder_role_read') }}')"></span>
+                </button>
                 {{-- Share / members buttons (manage only, desktop hover) --}}
-                <span x-show="f.role === 'manage'" class="flex items-center gap-1 md:hidden md:group-hover:flex" @click.stop>
+                <span x-show="f.role === 'manage'" class="flex shrink-0 items-center gap-1 md:hidden md:group-hover:flex">
                     <button type="button" @click.stop="openShareFolderDialog(f.vaultId)" :title="'{{ __('files.folder_share') }}'" class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="user-plus" class="h-3.5 w-3.5" /></button>
                     <button type="button" @click.stop="openManageFolderMembers(f.vaultId)" :title="'{{ __('files.folder_members') }}'" class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><x-icon name="users" class="h-3.5 w-3.5" /></button>
                 </span>
-            </button>
+            </div>
         </template>
 
         {{-- Pending invites --}}
