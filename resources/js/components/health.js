@@ -5,6 +5,7 @@ import {
     METRICS, metric, computeAge, computeBmi, classify,
     kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl,
 } from '../shared/health-metrics';
+import { loadUplot } from '../shared/uplot-loader';
 
 const DEFAULT_PROFILE = () => ({
     birthdate: '',
@@ -19,19 +20,23 @@ export default (labels = {}) => ({
         map: { healthEntries: 'entries' },
         onLock: (self) => {
             self.selectedMetric = 'weight';
+            self.chartRange = '90d';
             self.profile = DEFAULT_PROFILE();
             self.editorOpen = false;
             self.editing = null;
+            self._destroyChart();
         },
     }),
 
     entries: [],
     profile: DEFAULT_PROFILE(),
     selectedMetric: 'weight',
+    chartRange: '90d', // 7d | 30d | 90d | 1y | all
     editorOpen: false,
     editing: null, // null = new, object = existing (copy being edited)
     _mut: 0,
     metrics: METRICS,
+    _chartInst: null, // current uPlot instance
 
     // Editor form fields (populated on open)
     _form: { metric: 'weight', v: '', v2: '', ts: '', note: '' },
@@ -43,6 +48,12 @@ export default (labels = {}) => ({
         // boot is async, so at the unlocked-tick state is still 'locked' and the
         // bind would be skipped (profile edits would then be lost until reload).
         this.$watch('state', (s) => { if (s === 'ready') this._initProfile(); });
+
+        // Re-render the chart whenever the selected metric, range, or entry
+        // list changes (Alpine reactivity — _mut increments on every _save()).
+        this.$watch('selectedMetric', () => this.renderChart());
+        this.$watch('chartRange', () => this.renderChart());
+        this.$watch('_mut', () => this.renderChart());
     },
 
     // Localized metric label (passed from Blade via @js since the factory's
@@ -68,6 +79,214 @@ export default (labels = {}) => ({
     _save() { this._mut++; window.LLStore.touch(); },
 
     saveProfile() { this._save(); },
+
+    // --- Chart ---
+
+    /**
+     * Return entries for a metric key filtered to the active chartRange window,
+     * sorted ascending by ts (oldest first — uPlot needs ascending x).
+     *
+     * @param {string} key
+     * @returns {Array<{ts:string,v:number,v2:number|null}>}
+     */
+    entriesInRange(key) {
+        const all = this.entriesFor(key); // descending from entriesFor
+        if (!all.length) return [];
+
+        let cutoff = null;
+        if (this.chartRange !== 'all') {
+            const days = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 }[this.chartRange] ?? 90;
+            cutoff = Date.now() - days * 86400 * 1000;
+        }
+
+        const filtered = cutoff ? all.filter((e) => new Date(e.ts).getTime() >= cutoff) : all;
+        // Return ascending (oldest first) for uPlot
+        return filtered.slice().reverse();
+    },
+
+    /**
+     * Destroy the current uPlot instance if any.
+     */
+    _destroyChart() {
+        if (this._chartInst) {
+            try { this._chartInst.destroy(); } catch (_e) { /* ignore */ }
+            this._chartInst = null;
+        }
+    },
+
+    /**
+     * Mount or refresh the uPlot chart in $refs.chart.
+     * Called reactively via $watch on selectedMetric / chartRange / _mut.
+     */
+    async renderChart() {
+        // Only render metric detail views, not master data.
+        if (this.selectedMetric === '_master') { this._destroyChart(); return; }
+
+        const container = this.$refs && this.$refs.chart;
+        if (!container) return;
+
+        const rangeData = this.entriesInRange(this.selectedMetric);
+
+        // Empty state: destroy existing chart and bail out.
+        if (!rangeData.length) {
+            this._destroyChart();
+            return;
+        }
+
+        const isDark = document.documentElement.classList.contains('dark');
+        const m = metric(this.selectedMetric);
+        const tint = this.tintHex(m ? m.tint : 'sky');
+        const isBp = this.selectedMetric === 'bp';
+
+        // Build x (timestamps in seconds) and y series arrays.
+        const xs = rangeData.map((e) => Math.floor(new Date(e.ts).getTime() / 1000));
+        const ys = rangeData.map((e) => this._displaySingle(this.selectedMetric, e.v));
+        const ys2 = isBp ? rangeData.map((e) => (e.v2 != null ? e.v2 : null)) : null;
+
+        const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+        const axisColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+        const bgColor   = isDark ? '#1c1c1e' : '#ffffff';
+
+        // Reference band thresholds per metric (canonical units).
+        // weight and glucose have no hard bands per spec.
+        const BANDS = {
+            bp:    null, // handled per-series below
+            pulse: { amber: [0, 60], ok: [60, 100], amberHigh: [100, 300] },
+            spo2:  { red: [0, 92], amber: [92, 95], ok: [95, 101] },
+            temp:  { ok: [0, 38], amber: [38, 39], red: [39, 50] },
+        };
+
+        const drawBands = (u) => {
+            const key = this.selectedMetric;
+            const ctx  = u.ctx;
+            const xl   = u.bbox.left;
+            const xr   = xl + u.bbox.width;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(xl, u.bbox.top, u.bbox.width, u.bbox.height);
+            ctx.clip();
+
+            const fillBand = (yLow, yHigh, color) => {
+                const py1 = Math.round(u.valToPos(yHigh, 'y', true));
+                const py2 = Math.round(u.valToPos(yLow,  'y', true));
+                ctx.fillStyle = color;
+                ctx.fillRect(xl, py1, xr - xl, py2 - py1);
+            };
+
+            if (key === 'bp') {
+                // Systolic bands (series 1 = sys = v)
+                fillBand(0, 120,  isDark ? 'rgba(34,197,94,0.07)'   : 'rgba(34,197,94,0.06)');
+                fillBand(120, 140, isDark ? 'rgba(251,191,36,0.12)'  : 'rgba(251,191,36,0.10)');
+                fillBand(140, 300, isDark ? 'rgba(239,68,68,0.12)'   : 'rgba(239,68,68,0.10)');
+            } else if (key === 'weight') {
+                const goalKg = this.profile.weightGoalKg;
+                if (goalKg) {
+                    const goalDisplay = this._displaySingle('weight', goalKg);
+                    const py = Math.round(u.valToPos(goalDisplay, 'y', true));
+                    ctx.strokeStyle = isDark ? 'rgba(112,102,245,0.6)' : 'rgba(112,102,245,0.5)';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([6, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(xl, py);
+                    ctx.lineTo(xr, py);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            } else if (BANDS[key]) {
+                const b = BANDS[key];
+                if (b.red)       fillBand(...b.red,       isDark ? 'rgba(239,68,68,0.12)'   : 'rgba(239,68,68,0.10)');
+                if (b.amber)     fillBand(...b.amber,     isDark ? 'rgba(251,191,36,0.12)'  : 'rgba(251,191,36,0.10)');
+                if (b.amberHigh) fillBand(...b.amberHigh, isDark ? 'rgba(251,191,36,0.12)'  : 'rgba(251,191,36,0.10)');
+                if (b.ok)        fillBand(...b.ok,        isDark ? 'rgba(34,197,94,0.07)'   : 'rgba(34,197,94,0.06)');
+            }
+
+            ctx.restore();
+        };
+
+        const series = [
+            {}, // x-axis placeholder
+            {
+                label: isBp ? 'Sys' : (m ? m.unit : ''),
+                stroke: tint,
+                width: 2,
+                spanGaps: false,
+            },
+        ];
+
+        if (isBp) {
+            series.push({
+                label: 'Dia',
+                stroke: isDark ? '#f87171' : '#ef4444',
+                width: 2,
+                spanGaps: false,
+            });
+        }
+
+        const data = isBp ? [xs, ys, ys2] : [xs, ys];
+
+        // Destroy previous instance before creating a new one.
+        this._destroyChart();
+
+        const UPlot = await loadUplot();
+
+        // Container might have been removed while awaiting (metric change, lock).
+        const mountEl = this.$refs && this.$refs.chart;
+        if (!mountEl) return;
+
+        const opts = {
+            width:  mountEl.clientWidth  || 600,
+            height: 220,
+            cursor: {
+                drag: { x: true, y: false, uni: 50 },
+            },
+            scales: { x: { time: true }, y: {} },
+            axes: [
+                {
+                    stroke: axisColor,
+                    grid:   { stroke: gridColor, width: 1 },
+                    ticks:  { stroke: gridColor, width: 1 },
+                },
+                {
+                    stroke:     axisColor,
+                    grid:       { stroke: gridColor, width: 1 },
+                    ticks:      { stroke: gridColor, width: 1 },
+                    values:     (_u, vals) => vals.map((v) => (v == null ? '' : v)),
+                    labelFont:  '11px system-ui',
+                    font:       '11px system-ui',
+                },
+            ],
+            series,
+            hooks: {
+                drawAxes: [drawBands],
+                setSize: [
+                    (u) => {
+                        const w = mountEl.clientWidth;
+                        if (w && Math.abs(w - u.width) > 4) u.setSize({ width: w, height: 220 });
+                    },
+                ],
+            },
+        };
+
+        // Patch background fill
+        opts.plugins = [{
+            hooks: {
+                init: (u) => {
+                    u.over.style.background = bgColor;
+                    u.under.style.background = bgColor;
+                },
+            },
+        }];
+
+        this._chartInst = new UPlot(opts, data, mountEl);
+
+        // Double-click resets zoom
+        mountEl.addEventListener('dblclick', () => {
+            if (this._chartInst) {
+                this._chartInst.setScale('x', { min: xs[0], max: xs[xs.length - 1] });
+            }
+        }, { once: false });
+    },
 
     // --- Getters ---
 

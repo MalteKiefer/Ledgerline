@@ -34,6 +34,7 @@ return [
     'save_failed' => 'Speichern fehlgeschlagen. Bitte erneut versuchen.',
     'delete_confirm' => 'Diese Messung löschen?',
     'no_entries' => 'Noch keine Messungen.',
+    'no_entries_range' => 'Keine Messungen in diesem Zeitraum.',
     'latest' => 'Aktuell',
     'avg' => 'Ø',
     'min' => 'Min',

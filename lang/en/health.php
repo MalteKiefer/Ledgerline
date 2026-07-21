@@ -34,6 +34,7 @@ return [
     'save_failed' => 'Could not save. Please try again.',
     'delete_confirm' => 'Delete this measurement?',
     'no_entries' => 'No measurements yet.',
+    'no_entries_range' => 'No measurements in this time range.',
     'latest' => 'Latest',
     'avg' => 'Avg',
     'min' => 'Min',

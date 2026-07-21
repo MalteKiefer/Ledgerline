@@ -211,10 +211,35 @@
                     </template>
                 </div>
 
-                {{-- Chart placeholder (Task 3 adds the real chart) --}}
-                <div id="health-chart-placeholder"
-                     class="hidden h-40 w-full items-center justify-center rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-sm text-gray-400 dark:text-gray-500">
-                    <!-- chart goes here (Task 3) -->
+                {{-- Range chips + chart --}}
+                <div class="space-y-2">
+                    {{-- Range selector --}}
+                    <div class="flex flex-wrap gap-1.5">
+                        <template x-for="r in ['7d','30d','90d','1y','all']" :key="r">
+                            <button type="button"
+                                @click="chartRange = r"
+                                class="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
+                                :class="chartRange === r
+                                    ? 'bg-accent/10 text-accent'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-accent'"
+                                x-text="r">
+                            </button>
+                        </template>
+                    </div>
+
+                    {{-- Chart mount point --}}
+                    <div x-ref="chart"
+                         x-effect="renderChart()"
+                         class="w-full overflow-hidden rounded-xl"
+                         style="min-height:0">
+                    </div>
+
+                    {{-- Empty state when no entries in range --}}
+                    <template x-if="entriesInRange(selectedMetric).length === 0 && entriesFor(selectedMetric).length > 0">
+                        <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-700 text-sm text-gray-400 dark:text-gray-500">
+                            {{ __('health.no_entries_range') }}
+                        </div>
+                    </template>
                 </div>
 
                 {{-- Entries table --}}
