@@ -134,10 +134,7 @@ return [
     'share_err_wrong_password' => 'Falsches Passwort.',
 
     // Geteilte Ordner (ZK Cross-User Vault Sharing für Dateien)
-    'shared_folders' => 'Geteilte Ordner',
-    'shared_folders_empty' => 'Noch keine geteilten Ordner.',
     'shared_folder_new' => 'Neuer geteilter Ordner',
-    'folder_share' => 'Mitglied einladen',
     'folder_recipient' => 'E-Mail oder OIDC-Subject',
     'folder_role_label' => 'Rolle',
     'folder_role_read' => 'Lesen',
@@ -155,7 +152,6 @@ return [
     'folder_fingerprint_changed' => 'Warnung: Der gespeicherte Fingerabdruck für diesen Empfänger hat sich geändert. Dies könnte auf eine Schlüssel-Kompromittierung hinweisen. Teilen abgebrochen.',
     'folder_created' => 'Geteilter Ordner erstellt.',
     'folder_shared' => 'Einladung gesendet.',
-    'folder_exit' => 'Zurück zu allen Dateien',
     'folder_look_up' => 'Suchen',
     'folder_recipient_not_found' => 'Empfänger nicht gefunden oder kein Identitätsschlüssel registriert.',
     'folder_fingerprint_label' => 'Schlüssel-Fingerabdruck',
@@ -173,4 +169,5 @@ return [
     'share_link' => 'Öffentlicher Link',
     'share_convert_hint' => 'Beim Einladen wird dieser Ordner zu einem geteilten Ordner.',
     'convert_confirm' => 'Diesen Ordner mit anderen teilen? Der Inhalt wird in einen geteilten Ordner verschoben — bei großen Ordnern kann das einen Moment dauern.',
+    'share_enable' => 'Teilen aktivieren',
 ];

@@ -240,8 +240,6 @@
                                 </button>
                                 <span class="min-w-0 flex-1 truncate text-xs text-gray-700 dark:text-gray-300" :title="row.name" x-text="row.name"></span>
                                 <span x-show="row.share" x-cloak title="{{ __('files.shared_badge') }}" class="shrink-0 text-gray-400 dark:text-gray-500"><x-icon name="share" class="h-3.5 w-3.5" /></span>
-                                </div>
-                                <span class="truncate text-[10px] text-gray-400 dark:text-gray-500" x-text="rowLabel(row)"></span>
                                 <div class="relative shrink-0" x-data="{ menu: false, menuStyle: '', toggleMenu(e) { this.menu = ! this.menu; if (! this.menu) return; const r = e.currentTarget.getBoundingClientRect(); const left = Math.max(8, r.right - 176); this.menuStyle = `top: ${r.bottom + 4}px; left: ${left}px;`; this.$nextTick(() => { const h = this.$refs.menu?.offsetHeight ?? 0; if (r.bottom + 4 + h > window.innerHeight - 8 && r.top - h - 4 > 8) this.menuStyle = `top: ${r.top - h - 4}px; left: ${left}px;`; }); } }">
                                     <button type="button" @click="toggleMenu($event)" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" :aria-label="@js(__('files.actions'))"><x-icon name="ellipsis" class="h-4 w-4" /></button>
                                     <template x-teleport="body">
@@ -250,6 +248,8 @@
                                         </div>
                                     </template>
                                 </div>
+                                </div>
+                                <span class="truncate text-[10px] text-gray-400 dark:text-gray-500" x-text="rowLabel(row)"></span>
                             </div>
                         </div>
                     </template>

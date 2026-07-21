@@ -292,14 +292,6 @@ export default (config = {}, labels = {}) => ({
         this.selected = [];
     },
 
-    // Return to the personal files context.
-    exitSharedFolder() {
-        this.activeShared = null;
-        this.cwd = null;
-        this.view = 'files';
-        this.selected = [];
-    },
-
     // True when the user is currently browsing a shared folder (not personal).
     _isSharedContext() { return this.activeShared !== null; },
 
@@ -2452,7 +2444,7 @@ export default (config = {}, labels = {}) => ({
 
         // 4. Remove the migrated subtree from the personal manifest + free old blobs (only after success).
         const keepFolderIds = new Set(subFolders.map((f) => f.id));
-        const oldBlobs = subFiles.flatMap((f) => [f.blob, f.textRef, f.embRef].filter(Boolean));
+        const oldBlobs = subFiles.flatMap((f) => [f.blob, f.textRef, f.embRef, ...(f.versions ?? []).map((v) => v.blob)].filter(Boolean));
         window.LLStore.data.fileFolders = this.manifest.folders.filter((f) => ! keepFolderIds.has(f.id));
         window.LLStore.data.files = this.manifest.files.filter((f) => ! keepFolderIds.has(f.folder ?? null));
         this.manifest.folders = window.LLStore.data.fileFolders;
@@ -2472,8 +2464,11 @@ export default (config = {}, labels = {}) => ({
     openUnifiedShare(row) {
         const isFolder = row.kind === 'folder';
         // A shared-folder row already has a vaultId; a personal folder converts on first invite.
-        const vaultId = (isFolder && row.shared) ? row.vaultId : null;
-        this.unifiedShare = { open: true, row, isFolder, vaultId, tab: isFolder ? 'people' : 'link' };
+        const vaultId = (isFolder && row.vaultId) ? row.vaultId : null;
+        // For a shared folder (has vaultId) default to People; for files default to Link.
+        // Personal (not-yet-shared) folders also default to People (shows the enable button).
+        const tab = (isFolder && vaultId) ? 'people' : (isFolder ? 'people' : 'link');
+        this.unifiedShare = { open: true, row, isFolder, vaultId, tab };
         // Populate share state for the Link tab without triggering the old standalone dialog.
         this.openShare(row);
         this.share.open = false; // unified dialog owns the UI; old standalone dialog must not open
@@ -2485,20 +2480,22 @@ export default (config = {}, labels = {}) => ({
         this.unifiedShare = { ...this.unifiedShare, open: false };
         this.closeShare();
     },
-    // Invite handler for the People tab: convert-on-first-invite for a personal folder.
+    // Step 1 for a personal (not-yet-shared) folder: confirm + convert, then reveal the invite form.
+    async enableSharing() {
+        if (! await this.$store.confirm.ask(labels.convertConfirm || '')) return;
+        let vaultId;
+        try { vaultId = await this.convertFolderToShared(this.unifiedShare.row.id); }
+        catch (e) { this.error = (e && e.message) || String(e); return; }
+        this.unifiedShare.vaultId = vaultId;
+        this.shareFolderDialog.vaultId = vaultId;
+        this.activeShared = null; // stay at root; the folder now appears as shared
+        this.openManageFolderMembers(vaultId);
+    },
+    // Invite handler for the People tab (only called once vaultId is set).
     async unifiedInvite() {
-        let vaultId = this.unifiedShare.vaultId;
-        if (! vaultId) {
-            if (! await this.$store.confirm.ask(labels.convertConfirm || '')) return;
-            try { vaultId = await this.convertFolderToShared(this.unifiedShare.row.id); }
-            catch (e) { this.error = (e && e.message) || String(e); return; }
-            this.unifiedShare.vaultId = vaultId;
-            this.shareFolderDialog.vaultId = vaultId;
-            this.activeShared = null; // stay at root; the folder now appears as shared
-            // Load the members list for the freshly created vault.
-            this.openManageFolderMembers(vaultId);
-        }
-        // Use the existing invite flow: shareFolderDialog now has the vaultId.
+        const vaultId = this.unifiedShare.vaultId;
+        if (! vaultId) return; // enableSharing() must run first
+        // Use the existing invite flow: shareFolderDialog already has the vaultId.
         this.shareFolderDialog.vaultId = vaultId;
         await this.confirmShareFolder();
     },
