@@ -24,6 +24,16 @@
         @endif
     </div>
 
+    {{-- Health module lives in its own ZK area; the profile only links to it (master data + tracking + doctor export). --}}
+    <a href="{{ route('health.index') }}" class="group mt-6 ll-card flex items-center gap-3.5 !py-3.5 transition hover:border-accent">
+        <span class="ll-chip" style="--chip: #ef4444"><x-icon name="heart" class="h-5 w-5" /></span>
+        <span class="min-w-0 flex-1">
+            <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('pages.profile.health_title') }}</span>
+            <span class="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{{ __('pages.profile.health_desc') }}</span>
+        </span>
+        <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600 transition group-hover:text-accent" />
+    </a>
+
     <div class="mt-6 ll-card">
 
         <dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 border-t border-gray-100 dark:border-gray-800 pt-6 sm:grid-cols-2">

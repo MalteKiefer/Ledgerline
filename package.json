@@ -42,6 +42,7 @@
         "marked-highlight": "^2.2.4",
         "pdfjs-dist": "^6.1.200",
         "qrcode": "^1.5.4",
-        "tesseract.js": "^7.0.0"
+        "tesseract.js": "^7.0.0",
+        "uplot": "1.6.32"
     }
 }

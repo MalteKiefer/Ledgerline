@@ -149,6 +149,30 @@ export function classify(key, v, v2) {
 // CSV export
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// CSV cell escaping
+// ---------------------------------------------------------------------------
+
+/**
+ * RFC 4180 CSV cell escaper.
+ * Wraps the field in double-quotes when it contains a comma, double-quote,
+ * or newline. Internal double-quotes are escaped by doubling them.
+ *
+ * @param {string} field
+ * @returns {string}
+ */
+export function csvCell(field) {
+    const s = String(field ?? '');
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+        return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+}
+
+// ---------------------------------------------------------------------------
+// CSV export
+// ---------------------------------------------------------------------------
+
 /**
  * Build display-ready rows for one metric, sorted by ts ascending.
  *
