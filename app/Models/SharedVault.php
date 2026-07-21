@@ -17,6 +17,10 @@ use Illuminate\Support\Str;
  *
  * owner_id is stamped on creation from the authenticated user; it is NOT
  * mass-assignable (not in $fillable) so it cannot be spoofed via request input.
+ *
+ * @property string $id
+ * @property string $kind
+ * @property int|null $owner_id
  */
 class SharedVault extends Model
 {
@@ -45,7 +49,11 @@ class SharedVault extends Model
         });
     }
 
-    /** All membership rows for this vault. */
+    /**
+     * All membership rows for this vault.
+     *
+     * @return HasMany<SharedVaultMember, $this>
+     */
     public function members(): HasMany
     {
         return $this->hasMany(SharedVaultMember::class, 'vault_id');

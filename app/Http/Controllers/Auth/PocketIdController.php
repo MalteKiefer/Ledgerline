@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\AbstractProvider;
+use Laravel\Socialite\Two\User as SocialiteUser;
 use Throwable;
 
 /**
@@ -37,9 +39,12 @@ class PocketIdController extends Controller
         // cookie (mirrors the vault's own public-computer control).
         $request->session()->put('oidc_public_computer', $request->boolean('public'));
 
-        return Socialite::driver('pocketid')
-            ->scopes(['openid', 'profile', 'email', 'groups'])
-            ->redirect();
+        // pocketid is an OAuth2 driver, so the resolved provider is the concrete
+        // Two\AbstractProvider (which exposes scopes() and an Illuminate redirect).
+        $driver = Socialite::driver('pocketid');
+        abort_unless($driver instanceof AbstractProvider, 500);
+
+        return $driver->scopes(['openid', 'profile', 'email', 'groups'])->redirect();
     }
 
     /**
@@ -53,6 +58,15 @@ class PocketIdController extends Controller
             // Covers invalid/expired state, denied consent or token errors.
             AuditLog::record('auth.login_failed', null, ['reason' => 'token_or_state'], null);
 
+            return redirect()
+                ->route('login')
+                ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);
+        }
+
+        // pocketid is an OAuth2 driver, so the resolved user is always the concrete
+        // Two\User (which exposes getRaw()); guard defensively rather than trust the
+        // narrower Contracts\User interface.
+        if (! $oidcUser instanceof SocialiteUser) {
             return redirect()
                 ->route('login')
                 ->withErrors(['pocketid' => 'Authentication failed. Please try again.']);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use Illuminate\Support\Env;
+
 /**
  * Read a secret from a mounted file when a `<KEY>_FILE` variable points at one
  * (the Docker-secret convention), else fall back to the plain `<KEY>` env var.
@@ -17,7 +19,7 @@ final class Secret
 {
     public static function get(string $key, mixed $default = null): mixed
     {
-        $file = env($key.'_FILE');
+        $file = Env::get($key.'_FILE');
         if (is_string($file) && $file !== '' && is_readable($file)) {
             $value = file_get_contents($file);
             if ($value !== false) {
@@ -27,6 +29,6 @@ final class Secret
             }
         }
 
-        return env($key, $default);
+        return Env::get($key, $default);
     }
 }

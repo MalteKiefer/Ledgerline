@@ -13,8 +13,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A membership row linking a user to a shared password-Tresor. The
  * wrapped_vault_key column holds the vault key sealed to the recipient's
  * x25519 public key — the server can route this ciphertext but cannot read the
- * vault key. role and status are plain strings (no enum constraint in the DB so
- * the application layer stays in control of valid values).
+ * vault key. status is a plain string; role is cast to the VaultRole enum (no
+ * DB-level constraint, so the application layer stays in control of valid values).
+ *
+ * @property VaultRole $role
  */
 #[Fillable([
     'vault_id',
@@ -34,11 +36,13 @@ class SharedVaultMember extends Model
         ];
     }
 
+    /** @return BelongsTo<SharedVault, $this> */
     public function vault(): BelongsTo
     {
         return $this->belongsTo(SharedVault::class, 'vault_id');
     }
 
+    /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

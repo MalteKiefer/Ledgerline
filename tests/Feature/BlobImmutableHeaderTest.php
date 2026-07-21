@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Support\BlobStore;
-use Illuminate\Http\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Tests\TestCase;
 
 final class BlobImmutableHeaderTest extends TestCase
 {
     public function test_immutable_response_sets_exact_headers(): void
     {
-        $base = new Response('body', 200);
+        $base = new StreamedResponse(fn () => print ('body'), 200);
         $result = BlobStore::immutableResponse($base, 'test-etag-value');
 
         $this->assertSame('application/octet-stream', $result->headers->get('Content-Type'));
@@ -24,7 +24,7 @@ final class BlobImmutableHeaderTest extends TestCase
 
     public function test_immutable_response_returns_same_response_instance(): void
     {
-        $base = new Response('', 200);
+        $base = new StreamedResponse(fn () => null, 200);
         $result = BlobStore::immutableResponse($base, 'x');
         $this->assertSame($base, $result);
     }

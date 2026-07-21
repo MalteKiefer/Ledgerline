@@ -5,3 +5,15 @@ parameters:
     paths:
         - app
     tmpDir: storage/phpstan
+    # Third-party PHPDoc (Sanctum's currentAccessToken(), Socialite contracts) over-
+    # promises non-null / concrete types that are nullable or looser at runtime; do
+    # not treat those PHPDoc types as certain, so our defensive null-guards stand.
+    treatPhpDocTypesAsCertain: false
+    # nullsafe.neverNull only flags "?-> where -> would do" — it catches no bug, it
+    # penalises defensive null-guards. Larastan optimistically types ->first()/->find()/
+    # DB::selectOne()/$request->user() as non-null, yet those are genuinely null at
+    # runtime (a first-login user has no manifest row; a guest on the login page has no
+    # user; a share token can miss). Removing the guards would crash those paths, so we
+    # keep them and disable this style-only rule rather than weaken runtime safety.
+    ignoreErrors:
+        - identifier: nullsafe.neverNull

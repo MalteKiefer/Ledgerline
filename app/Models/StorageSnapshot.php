@@ -7,10 +7,13 @@ namespace App\Models;
 use App\Services\Ops\StorageHistory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * One day's storage usage per module. Written daily by ops:snapshot-storage
  * (and on demand by {@see StorageHistory}); read for the System page trend.
+ *
+ * @property Carbon|null $captured_on
  */
 #[Fillable([
     'captured_on', 'files_bytes', 'gallery_bytes', 'database_bytes', 'total_bytes',
