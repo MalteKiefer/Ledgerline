@@ -22,6 +22,7 @@ import backupRuns from './components/backup-runs';
 import devicePairing from './components/device-pairing';
 import paperlessSettings from './components/paperless-settings';
 import notificationBell from './components/notification-bell';
+import dashboard from './components/dashboard';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -711,6 +712,7 @@ Alpine.data('bookmarks', bookmarks);
  * client-side TOTP, password generator, Wi-Fi QR, and copy-with-auto-clear.
  */
 Alpine.data('passwords', passwords);
+Alpine.data('dashboard', dashboard);
 
 Alpine.start();
 

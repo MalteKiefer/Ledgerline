@@ -542,6 +542,10 @@ return {
         // 5. Promote display fields onto the index entry (sealed, so client-only):
         // date/dims + GPS (for the map) + camera (for fast metadata search).
         p.taken_at = d.exif?.taken_at || p.created;
+        // Persist the resolved capture date onto the sealed manifest entry so the
+        // dashboard's "on this day" widget can read it without re-decrypting meta.
+        const entry = this.index.photos.find((x) => x.id === p.id);
+        if (entry && entry.taken_at !== p.taken_at) { entry.taken_at = p.taken_at; this._save(); }
         p.width = d.width; p.height = d.height; p.duration = d.duration;
         p.lat = d.exif?.lat ?? null; p.lng = d.exif?.lon ?? null;
         p.geoChecked = true; // coords are now known (or known-absent) — map skip
