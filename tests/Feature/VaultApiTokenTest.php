@@ -82,6 +82,8 @@ class VaultApiTokenTest extends TestCase
             'public_key' => 'x25519-pubkey-abc',
             'wrapped_secret_key' => 'wrapped-sk-abc',
             'fingerprint' => 'fp-abc',
+            'mlkem_public_key' => 'mlkem-ek-abc',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem-abc',
         ], $this->bearer($user));
 
         $response->assertOk();
@@ -91,6 +93,8 @@ class VaultApiTokenTest extends TestCase
         $this->assertSame('x25519-pubkey-abc', $user->x25519_public_key);
         $this->assertSame('wrapped-sk-abc', $user->wrapped_x25519_secret_key);
         $this->assertSame('fp-abc', $user->public_key_fingerprint);
+        $this->assertSame('mlkem-ek-abc', $user->mlkem_public_key);
+        $this->assertSame('wrapped-mlkem-abc', $user->wrapped_mlkem_secret_key);
     }
 
     public function test_publish_keys_conflicts_when_different_key_already_stored(): void
@@ -106,6 +110,8 @@ class VaultApiTokenTest extends TestCase
             'public_key' => 'different-key',
             'wrapped_secret_key' => 'different-sk',
             'fingerprint' => 'different-fp',
+            'mlkem_public_key' => 'mlkem-ek-different',
+            'wrapped_mlkem_secret_key' => 'wrapped-mlkem-different',
         ], $this->bearer($user));
 
         $response->assertStatus(409);

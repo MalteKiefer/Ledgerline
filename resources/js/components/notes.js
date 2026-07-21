@@ -3,7 +3,7 @@ import { zkModule } from '../shared/zk-module';
 import { loadMarkdown } from '../shared/markdown';
 
 export default (labels = {}) => ({
-    ...zkModule({ map: { notes: 'notes' }, onLock: (self) => { self.currentId = null; } }),
+    ...zkModule({ store: 'notes', map: { notes: 'notes' }, onLock: (self) => { self.currentId = null; } }),
     notes: [],
     currentId: null,
     view: 'active', // active | trash
@@ -45,7 +45,7 @@ export default (labels = {}) => ({
     },
 
     newNote() {
-        const note = { id: window.LLStore.newId(), title: '', content: '', tags: [], pinned: false, trashed: false, updated: new Date().toISOString() };
+        const note = { id: window.LLModuleStore.notes.newId(), title: '', content: '', tags: [], pinned: false, trashed: false, updated: new Date().toISOString() };
         this.notes.unshift(note);
         this._save();
         this.open(note);

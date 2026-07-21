@@ -30,7 +30,7 @@ export const TYPES = {
 };
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
+    ...zkModule({ store: 'passwords', map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
 
     items: [],
     folders: [],
@@ -166,8 +166,8 @@ export default (config = {}, labels = {}) => ({
        sharing (read / edit / manage) can be layered on later. Runs once, gated
        by a durable flag in the sealed manifest. */
     _migrateVaults() {
-        if (this.state !== 'ready' || ! window.LLStore.data) return;
-        const store = window.LLStore.data;
+        if (this.state !== 'ready' || ! window.LLModuleStore.passwords.data) return;
+        const store = window.LLModuleStore.passwords.data;
         // Every vault gets a role (owner = manage) so the UI can gate actions.
         for (const v of this.folders) if (! v.role) v.role = 'manage';
         if (store.pwVaultMigrated) return;
@@ -225,7 +225,7 @@ export default (config = {}, labels = {}) => ({
                 .map((m) => ({ vault_id: m.vault_id, member_id: m.id, role: m.role, wrapped_vault_key: m.wrapped_vault_key }));
             for (const m of active) {
                 try {
-                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.pub, id.sk);
+                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.sk, id.mlkemDk);
                     // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
                     // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
                     const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
@@ -268,7 +268,7 @@ export default (config = {}, labels = {}) => ({
         const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
         const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._sharedVersion[vaultId] });
         let res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
-        // On 429, honour Retry-After and retry once (mirrors personal LLStore.flush behaviour).
+        // On 429, honour Retry-After and retry once (mirrors personal module-store flush behaviour).
         if (res.status === 429) {
             const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
             await this._sleep((isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000);
@@ -367,8 +367,8 @@ export default (config = {}, labels = {}) => ({
             // logins with embedded passkeys) + personal vaults, then seed one fresh
             // default vault. Only secrets/secretFolders are touched — other modules
             // (notes/todos/bookmarks/files/contacts/invoices) are untouched.
-            this.items.length = 0;              // same ref as LLStore.data.secrets → in-place clear
-            this.folders.length = 0;            // same ref as LLStore.data.secretFolders
+            this.items.length = 0;              // same ref as LLModuleStore.passwords.data.secrets → in-place clear
+            this.folders.length = 0;            // same ref as LLModuleStore.passwords.data.secretFolders
             const id = crypto.randomUUID();
             this.folders.push({ id, name: labels.defaultVaultName || 'Privat', role: 'manage' });
             this.current = null; this.draft = null; this.view = 'list'; this.selectedIds = [];
@@ -568,7 +568,7 @@ export default (config = {}, labels = {}) => ({
     breachChecking: false,
     _mut: 0,
     _reusedCache: null,
-    _save() { this._mut++; window.LLStore.touch(); },
+    _save() { this._mut++; window.LLModuleStore.passwords.touch(); },
     get _pwTypes() { return Object.keys(TYPES).filter((t) => TYPES[t].fields.some(([k]) => k === 'password')); },
     _pw(x) { return (x && x.fields && x.fields.password) || ''; },
     get healthItems() { return this.liveItems.filter((x) => (this._pwTypes.includes(x.type) && this._pw(x)) || (x.type === 'card' && this._cardExpiring(x))); },
@@ -1160,8 +1160,8 @@ export default (config = {}, labels = {}) => ({
                 return;
             }
             d.resolved = data; // {user_id, public_key, fingerprint}
-            // TOFU check: look up stored fingerprint in personal manifest.
-            const store = window.LLStore.data;
+            // TOFU check: look up stored fingerprint in the shared sharing manifest.
+            const store = window.LLModuleStore.sharing.data;
             store.knownFingerprints = store.knownFingerprints || {};
             const stored = store.knownFingerprints[data.user_id];
             if (! stored) {
@@ -1179,18 +1179,18 @@ export default (config = {}, labels = {}) => ({
         const d = this.shareDialog;
         if (! d.resolved || d.fingerprintStatus === 'changed') return;
         if (d.fingerprintStatus === 'new') {
-            // Store fingerprint in personal manifest on confirmation.
-            const store = window.LLStore.data;
+            // Store fingerprint in the shared sharing manifest on confirmation.
+            const store = window.LLModuleStore.sharing.data;
             store.knownFingerprints = store.knownFingerprints || {};
             store.knownFingerprints[d.resolved.user_id] = d.resolved.fingerprint;
-            this._save();
+            window.LLModuleStore.sharing.touch();
         }
         d.sharing = true; d.notice = '';
         try {
             const vkBytes = this._sharedKeys[d.vaultId];
             if (! vkBytes) { d.notice = labels.saveFailed || ''; return; }
             const vkB64 = btoa(String.fromCharCode(...new Uint8Array(vkBytes)));
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, d.resolved.public_key);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, d.resolved.public_key, d.resolved.mlkem_public_key);
             const res = await fetch('/vaults/' + d.vaultId + '/members', {
                 method: 'POST',
                 headers: jsonHeaders(),
@@ -1214,7 +1214,7 @@ export default (config = {}, labels = {}) => ({
         const id = await Vault.ensureIdentityKeys();
         // Verify the wrapped key actually decrypts before accepting.
         try {
-            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.pub, id.sk);
+            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.sk, id.mlkemDk);
         } catch (e) {
             window.llToast(labels.inviteInvalid || '');
             return;
@@ -1233,7 +1233,7 @@ export default (config = {}, labels = {}) => ({
         try {
             const vk = await VaultShareCrypto.newVaultKey();
             const idk = await Vault.ensureIdentityKeys();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, idk.pub, idk.mlkemEk);
             const { id } = await apiRequest('POST', '/vaults', { wrapped_vault_key: wrapped });
             const vkBytes = Uint8Array.from(atob(vk), (c) => c.charCodeAt(0));
             const manifest = { name, items: [] };
@@ -1411,7 +1411,7 @@ export default (config = {}, labels = {}) => ({
             // Re-wrap the new vault key for each remaining member.
             const members = await Promise.all(remaining.map(async (m) => ({
                 user_id: m.user_id,
-                wrapped_vault_key: await VaultShareCrypto.wrapVaultKeyFor(newVkB64, m.public_key),
+                wrapped_vault_key: await VaultShareCrypto.wrapVaultKeyFor(newVkB64, m.public_key, m.mlkem_public_key),
             })));
             // Seal the current manifest under the new key.
             const vault = this.sharedVaults.find((sv) => sv.id === vaultId);

@@ -2,7 +2,7 @@
 import { zkModule } from '../shared/zk-module';
 
 export default (labels = {}) => ({
-    ...zkModule({ map: { todos: 'tasks', todoLists: 'lists' } }),
+    ...zkModule({ store: 'todos', map: { todos: 'tasks', todoLists: 'lists' } }),
     lists: [],
     tasks: [],
     view: 'all', // all | marked | trash | a list id
@@ -17,7 +17,7 @@ export default (labels = {}) => ({
     addList() {
         const name = this.newListName.trim();
         if (! name) return;
-        this.lists.push({ id: window.LLStore.newId(), name });
+        this.lists.push({ id: window.LLModuleStore.todos.newId(), name });
         this.lists.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         this.newListName = '';
         this._save();
@@ -88,7 +88,7 @@ export default (labels = {}) => ({
             }
         } else {
             this.tasks.unshift({
-                id: window.LLStore.newId(), title: e.title.trim(), description: e.description || '', url,
+                id: window.LLModuleStore.todos.newId(), title: e.title.trim(), description: e.description || '', url,
                 tags: e.tags, priority: e.priority, marked: !! e.marked, due: e.due || '',
                 done: false, listId: e.listId ?? null, trashed: false,
             });

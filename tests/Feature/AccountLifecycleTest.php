@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Actions\PurgeUserAccount;
+use App\Models\ModuleStore;
 use App\Models\User;
-use App\Models\VaultStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -14,12 +14,14 @@ class AccountLifecycleTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function ownedStore(User $user, string $ciphertext): VaultStore
+    private function ownedStore(User $user, string $ciphertext): ModuleStore
     {
-        // The user's whole sealed workspace (notes live here now) is one row in
-        // vault_store, keyed by user_id — exported as ciphertext, purged on erase.
-        return VaultStore::query()->create([
+        // Store v3 splits the workspace into one sealed row per module. The notes
+        // module row is keyed by (user_id, module) — exported as ciphertext by
+        // StoreData, purged on erase.
+        return ModuleStore::query()->create([
             'user_id' => $user->id,
+            'module' => 'notes',
             'ciphertext' => $ciphertext,
             'version' => 1,
         ]);
@@ -55,8 +57,8 @@ class AccountLifecycleTest extends TestCase
         app(PurgeUserAccount::class)->handle($user);
 
         $this->assertNull(User::find($user->id));
-        $this->assertNull(VaultStore::query()->find($user->id));
-        $this->assertNotNull(VaultStore::query()->find($otherUser->id));
+        $this->assertNull(ModuleStore::query()->where('user_id', $user->id)->first());
+        $this->assertNotNull(ModuleStore::query()->where('user_id', $otherUser->id)->first());
         $this->assertNotNull(User::find($otherUser->id));
     }
 }

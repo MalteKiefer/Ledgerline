@@ -3,7 +3,7 @@ import { zkModule, bootStore } from '../shared/zk-module';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
+    ...zkModule({ store: 'invoices', map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -36,7 +36,7 @@ export default (config = {}, labels = {}) => ({
     newInvoice() {
         const issue = this._today();
         const inv = {
-            id: window.LLStore.newId(),
+            id: window.LLModuleStore.invoices.newId(),
             number: null,
             status: 'draft',
             issueDate: issue,
@@ -173,7 +173,7 @@ export default (config = {}, labels = {}) => ({
     async openCustomerPicker() {
         this.customerPicker = true;
         this.custQuery = '';
-        try { if (await bootStore(this.$store)) this._custContacts = (window.LLStore.data.contacts || []).filter((c) => ! c.trashed); }
+        try { if (await bootStore(this.$store, 'contacts')) this._custContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed); }
         catch (e) { /* leave empty */ }
     },
     closeCustomerPicker() { this.customerPicker = false; },
@@ -226,8 +226,8 @@ export default (config = {}, labels = {}) => ({
         // raises the floor — so an owner who already issued invoices elsewhere
         // this year can resume at, say, 42.
         const floor = parseInt(this.company.next_number, 10) || 1;
-        const seq = Math.max((window.LLStore.data.invoiceSeq || 0) + 1, floor);
-        window.LLStore.data.invoiceSeq = seq;
+        const seq = Math.max((window.LLModuleStore.invoices.data.invoiceSeq || 0) + 1, floor);
+        window.LLModuleStore.invoices.data.invoiceSeq = seq;
         return this._formatNumber(this.company.number_format, seq, issueDate);
     },
     finalize(inv) {

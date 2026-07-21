@@ -29,14 +29,16 @@ tags:
     description: Authenticated user info, avatar, and device heartbeat
   - name: Store
     description: >
-      Opaque zero-knowledge workspace manifest — the single sealed store that holds
-      ALL of the user's records for notes, todos, bookmarks, contacts, invoices,
-      health, the files tree, and passwords. These modules have NO per-record REST
-      endpoints (that would break zero-knowledge); their full CRUD is: read the
-      manifest (GET /store), mutate the relevant key in the decrypted object
-      client-side, and write it back (PUT /store) with optimistic concurrency.
-      Only binary blobs (contact avatars, file/gallery bytes) have their own
-      endpoints; the records that reference them live here.
+      Opaque zero-knowledge per-module sealed stores (Store v3 split). Each module
+      (notes, todos, bookmarks, contacts, invoices, passwords, health, sharing) owns
+      its OWN sealed row, so a write to one module never re-seals the others. These
+      modules have NO per-record REST endpoints (that would break zero-knowledge);
+      their full CRUD is: read the module store (GET /store/{module}), mutate the
+      decrypted object client-side, and write it back (PUT /store/{module}) with
+      optimistic concurrency. The files tree has its own sharded sealed store
+      (GET/PUT /files/store, tag Files). Only binary blobs (contact avatars,
+      file/gallery bytes) have their own endpoints; the records that reference them
+      live in these stores.
   - name: Files
     description: Personal encrypted file blobs and multipart upload pipeline
   - name: SharedFolders
@@ -46,10 +48,10 @@ tags:
   - name: Contacts
     description: >
       Optional encrypted contact avatar blobs. The contact RECORDS themselves
-      (names, vCard fields, etc.) live in the sealed workspace manifest (see Store,
-      GET/PUT /store) — these endpoints only hold the optional avatar image bytes a
-      contact record references. Notes and todos are manifest-only (no blobs, no
-      dedicated endpoints).
+      (names, vCard fields, etc.) live in the sealed contacts module store (see
+      Store, GET/PUT /store/contacts) — these endpoints only hold the optional
+      avatar image bytes a contact record references. Notes and todos are
+      store-only (no blobs, no dedicated endpoints).
   - name: Passwords
     description: Password-manager enrichment endpoints (favicon, HIBP, 2FA directory)
   - name: Vaults
@@ -467,37 +469,51 @@ paths:
   # Store (personal workspace manifest)
   # --------------------------------------------------------------------------
 
-  /store:
+  /store/{module}:
+    parameters:
+      - name: module
+        in: path
+        required: true
+        description: >
+          Module key. One of: notes, todos, bookmarks, contacts, invoices,
+          passwords, health, sharing. Any other value is a 404.
+        schema:
+          type: string
+          enum: [notes, todos, bookmarks, contacts, invoices, passwords, health, sharing]
     get:
       tags: [Store]
-      operationId: storeShow
-      summary: Read the personal workspace manifest
+      operationId: moduleStoreShow
+      summary: Read one module's sealed store
       description: >
-        Returns the current sealed ciphertext and version for the caller's personal
-        workspace manifest, which holds all records for notes, todos, bookmarks,
-        contacts, invoices, health, the files tree and passwords. Mobile CRUD for
-        every one of those modules is: GET /store → decrypt+mutate the module's key
-        client-side → PUT /store. There is no per-record endpoint (zero-knowledge).
-        The server never reads the ciphertext. Cache-Control: no-store.
-        No per-route throttle beyond the default API rate.
+        Store v3 per-module split: every module owns its OWN opaque sealed row, so
+        a write to one module never re-seals the others. Returns the current sealed
+        ciphertext and version for {module}. Mobile CRUD for a module is:
+        GET /store/{module} → decrypt+mutate the object client-side →
+        PUT /store/{module}. There is no per-record endpoint (zero-knowledge).
+        The server never reads the ciphertext. A weak ETag (W/"{uid}-{module}-{ver}")
+        supports 304. No per-route throttle beyond the default API rate.
       responses:
         "200":
-          description: Current sealed manifest.
+          description: Current sealed module store.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/StoreResponse"
+        "304":
+          description: Not modified (ETag matched If-None-Match).
         "401":
           description: Unauthenticated.
+        "404":
+          description: Unknown module key.
     put:
       tags: [Store]
-      operationId: storeSave
-      summary: Write the personal workspace manifest
+      operationId: moduleStoreSave
+      summary: Write one module's sealed store
       description: >
-        Optimistic-concurrency write. The caller sends the ciphertext and the
-        version it last read; if another client wrote in the meantime the server
-        returns 409 so the client can re-read, re-apply, and retry.
-        Throttle: 120 req/min.
+        Optimistic-concurrency write for a single module. The caller sends the
+        ciphertext and the version it last read; if another client wrote in the
+        meantime the server returns 409 so the client can re-read, re-apply, retry.
+        Throttle: 240 req/min.
       requestBody:
         required: true
         content:
@@ -509,8 +525,80 @@ paths:
                 ciphertext:
                   type: string
                   description: >
-                    Opaque sealed manifest ciphertext. The server stores this
+                    Opaque sealed module ciphertext. The server stores this
                     without reading it.
+                version:
+                  type: integer
+                  minimum: 0
+                  description: Version the client last read (optimistic concurrency token).
+      responses:
+        "200":
+          description: Write successful; new version counter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+        "409":
+          description: Concurrent write conflict; re-read and retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [version_conflict]
+        "404":
+          description: Unknown module key.
+        "422":
+          description: Validation error.
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Files (personal encrypted blobs)
+  # --------------------------------------------------------------------------
+
+  /files/store:
+    get:
+      tags: [Files]
+      operationId: filesStoreShow
+      summary: Read the sealed files index
+      description: >
+        Store v3 (§4.2): Files has its OWN sharded sealed store, out of the
+        monolith. The root is a small pointer table; the file/folder records live
+        in content-addressed, id-bucketed shard blobs (see /files/raw + the Store
+        model). Returns the current sealed root ciphertext + version. ETag/304 as
+        for the other sealed stores. The server never reads the ciphertext.
+      responses:
+        "200":
+          description: Current sealed files index root.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreResponse"
+        "304":
+          description: Not modified (ETag matched If-None-Match).
+        "401":
+          description: Unauthenticated.
+    put:
+      tags: [Files]
+      operationId: filesStoreSave
+      summary: Write the sealed files index
+      description: >
+        Optimistic-concurrency write of the files index root. Same 409 protocol as
+        the other sealed stores. Throttle: 120 req/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ciphertext, version]
+              properties:
+                ciphertext:
+                  type: string
+                  description: Opaque sealed files-index root ciphertext.
                 version:
                   type: integer
                   minimum: 0
@@ -536,10 +624,6 @@ paths:
           description: Validation error.
         "429":
           description: Rate limit exceeded.
-
-  # --------------------------------------------------------------------------
-  # Files (personal encrypted blobs)
-  # --------------------------------------------------------------------------
 
   /files/usage:
     get:
@@ -748,6 +832,44 @@ paths:
                 description: Opaque ciphertext bytes. Client decrypts with the vault key.
         "404":
           description: Blob not found or not owned by caller.
+        "429":
+          description: Rate limit exceeded.
+
+  /files/raw-batch:
+    post:
+      tags: [Files]
+      operationId: filesRawBatch
+      summary: Stream many file blobs in one response (Store v3 §10.4)
+      description: >
+        Owner-scoped batch fetch (mirror of gallery/raw-batch) to cut round-trips on
+        a cold sharded-files load. Returns the concatenated framed ciphertext of the
+        requested blobs; only owned+present ids are emitted, others silently skipped.
+        Wire format per blob in request order: `[u32le idLen][id utf8][u32le dataLen][ciphertext]`.
+        Max 512 ids. Throttle: 600 req/min. Never returns plaintext.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  maxItems: 512
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "200":
+          description: Concatenated framed blob ciphertext.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "422":
+          description: Invalid or oversized blobs array.
         "429":
           description: Rate limit exceeded.
 
@@ -1293,14 +1415,32 @@ paths:
       description: >
         Returns the user's sealed gallery manifest (ciphertext + version).
         Same optimistic-concurrency protocol as the workspace store.
+        Store v3 (§10.4): responds with a weak, version-derived `ETag`
+        (`W/"{userId}-{version}"`); send it back as `If-None-Match` to get a
+        bodyless 304 when the sealed root is unchanged (avoids re-transferring a
+        large root on repeat opens). `Cache-Control: private, must-revalidate`.
         No per-route throttle beyond default.
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Weak ETag from a prior read; a match yields 304.
       responses:
         "200":
           description: Sealed gallery manifest.
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Weak version-derived ETag.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/StoreResponse"
+        "304":
+          description: Sealed root unchanged since the supplied ETag (no body).
     put:
       tags: [Gallery]
       operationId: galleryStoreSave
@@ -1510,6 +1650,45 @@ paths:
                 format: binary
         "404":
           description: Blob not found or not owned by caller.
+        "429":
+          description: Rate limit exceeded.
+
+  /gallery/raw-batch:
+    post:
+      tags: [Gallery]
+      operationId: galleryRawBatch
+      summary: Stream many gallery blobs in one response (Store v3 §10.4)
+      description: >
+        Owner-scoped batch fetch to cut round-trips on a cold shard/thumbnail load.
+        Returns the concatenated framed ciphertext of the requested blobs (only
+        those owned AND present are emitted; unknown/foreign/missing ids are
+        silently skipped — 404-hiding). Wire format, per returned blob in request
+        order: `[u32le idLen][id utf8][u32le dataLen][ciphertext]`. Max 512 ids.
+        Throttle: 600 req/min. Never returns plaintext.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  maxItems: 512
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "200":
+          description: Concatenated framed blob ciphertext.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "422":
+          description: Invalid or oversized blobs array.
         "429":
           description: Rate limit exceeded.
 
@@ -2035,6 +2214,19 @@ paths:
                     type: string
                     nullable: true
                     description: BLAKE2b-16 hex fingerprint of the public key.
+                  mlkem_public_key:
+                    type: string
+                    nullable: true
+                    description: >
+                      Store v3 (§6.3): ML-KEM-768 (FIPS 203) encapsulation key
+                      (base64). Not secret. Published alongside the X25519 key so
+                      cross-user wraps are post-quantum hybrid.
+                  wrapped_mlkem_secret_key:
+                    type: string
+                    nullable: true
+                    description: >
+                      ML-KEM-768 decapsulation key sealed under the caller's VK.
+                      Opaque ciphertext; the server never reads it.
         "429":
           description: Rate limit exceeded.
 
@@ -2053,7 +2245,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [public_key, wrapped_secret_key, fingerprint]
+              required: [public_key, wrapped_secret_key, fingerprint, mlkem_public_key, wrapped_mlkem_secret_key]
               properties:
                 public_key:
                   type: string
@@ -2065,6 +2257,14 @@ paths:
                 fingerprint:
                   type: string
                   description: BLAKE2b-16 hex fingerprint of the public key.
+                mlkem_public_key:
+                  type: string
+                  description: >
+                    Store v3 (§6.3): ML-KEM-768 (FIPS 203) encapsulation key (base64).
+                    Required from v3 clients; published with the X25519 key.
+                wrapped_mlkem_secret_key:
+                  type: string
+                  description: ML-KEM-768 decapsulation key sealed under the caller's VK. Opaque.
       responses:
         "200":
           description: Published (or idempotent re-publish).
@@ -2093,10 +2293,10 @@ paths:
         re-encrypt). Private → shared: create a vault (POST /vaults kind=folder),
         for each file re-wrap its per-file key under the new folder key and
         re-upload the unchanged ciphertext via POST /vaults/{vault}/blobs/upload,
-        PUT /vaults/{vault}/store, then drop the files from the personal store
-        (PUT /store). Shared → private (owner only): the reverse — fetch each blob
-        via GET /vaults/{vault}/blobs/raw/{blob}, re-wrap under the personal vault
-        key, re-upload via POST /files/upload, add to PUT /store, then
+        PUT /vaults/{vault}/store, then drop the files from the personal files index
+        (PUT /files/store). Shared → private (owner only): the reverse — fetch each
+        blob via GET /vaults/{vault}/blobs/raw/{blob}, re-wrap under the personal
+        vault key, re-upload via POST /files/upload, add to PUT /files/store, then
         DELETE /vaults/{vault} (revokes all members + frees the shared blobs).
       parameters:
         - name: kind
@@ -2326,10 +2526,18 @@ paths:
                   fingerprint:
                     type: string
                     description: BLAKE2b-16 hex fingerprint for TOFU verification.
+                  mlkem_public_key:
+                    type: string
+                    description: >
+                      Store v3 (§6.3): recipient's ML-KEM-768 encapsulation key (base64),
+                      needed to build the hybrid wrap. A recipient without ML-KEM material
+                      resolves as "no key" (422).
         "404":
           description: Vault not found or caller is not a manager.
         "422":
-          description: User not found, or user has no identity key published (uniform response).
+          description: >
+            User not found, or user has no full identity key published (both X25519
+            and ML-KEM required; uniform response for enumeration resistance).
         "429":
           description: Rate limit exceeded.
 

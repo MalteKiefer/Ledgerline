@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Concerns;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Shared show/save for an opaque zero-knowledge manifest store — one sealed
@@ -17,25 +18,42 @@ use Illuminate\Support\Facades\DB;
  */
 trait SealedManifestStore
 {
-    /** Fully-qualified per-user manifest model (VaultStore / GalleryStore). */
+    /** Fully-qualified per-user manifest model (GalleryStore / FilesStore). */
     abstract protected function manifestModel(): string;
 
     /** Upper bound on the sealed ciphertext (manifest metadata, not file bytes). */
     abstract protected function manifestMaxBytes(): int;
 
-    /** Return the current user's sealed manifest + version (empty on first use). */
-    public function show(Request $request): JsonResponse
+    /**
+     * Return the current user's sealed manifest + version (empty on first use).
+     *
+     * Store v3 (§10.4/A4): a weak, version-derived ETag lets the client send
+     * `If-None-Match` and get a bodyless 304 when the root is unchanged — avoiding
+     * re-transferring a large sealed root on repeat opens. The ciphertext is
+     * opaque, so revalidation caching is ZK-safe; `private, must-revalidate` keeps
+     * it off shared caches while still allowing the 304 round-trip.
+     */
+    public function show(Request $request): Response
     {
         $user = $this->requireUser($request);
         $model = $this->manifestModel();
         $row = $model::query()->where('user_id', $user->id)->first();
 
-        // Never let a proxy/browser cache the sealed manifest (defence-in-depth:
-        // keep the ciphertext off shared caches entirely).
+        $version = (int) ($row?->version ?? 0);
+        $etag = sprintf('W/"%d-%d"', (int) $user->id, $version);
+
+        if (trim((string) $request->header('If-None-Match')) === $etag) {
+            return response('', 304)
+                ->header('ETag', $etag)
+                ->header('Cache-Control', 'private, must-revalidate');
+        }
+
         return response()->json([
             'ciphertext' => $row?->ciphertext,
-            'version' => (int) ($row?->version ?? 0),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+            'version' => $version,
+        ])
+            ->header('ETag', $etag)
+            ->header('Cache-Control', 'private, must-revalidate');
     }
 
     /**

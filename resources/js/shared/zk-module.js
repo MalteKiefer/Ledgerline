@@ -1,13 +1,17 @@
-// Shared zero-knowledge module scaffolding. bootStore waits for the vault to be
-// ready + unlocked and lazily loads the sealed workspace manifest; zkModule() is
-// the mixin every opaque-store module (notes/todos/bookmarks/passwords/invoices)
-// spreads in for its lock/unlock lifecycle, mapped store arrays and tag/trash
-// helpers. Both lean on the window-global LLStore.
+// Shared zero-knowledge module scaffolding. Store v3 per-module split: each
+// module (notes/todos/bookmarks/contacts/invoices/passwords/health) owns its own
+// sealed store at window.LLModuleStore[<module>], so a mutation in one never
+// re-seals the others. zkModule() is the mixin every opaque-store module spreads
+// in for its lock/unlock lifecycle, mapped store arrays and tag/trash helpers;
+// cfg.store names which per-module store backs it.
 
-export async function bootStore(store) {
+// Boot a specific per-module store: wait for the vault, then lazily load it.
+export async function bootStore(store, moduleName) {
     while (! store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
     if (! store.vault.unlocked) return false;
-    if (! window.LLStore.loaded) await window.LLStore.load();
+    const ms = window.LLModuleStore[moduleName];
+    if (! ms) throw new Error('unknown module store: ' + moduleName);
+    if (! ms.loaded) await ms.load();
     return true;
 }
 
@@ -20,6 +24,7 @@ export async function bootGalleryStore(store) {
 }
 
 export function zkModule(cfg) {
+    const moduleName = cfg.store;
     return {
         state: 'boot',
         query: '',
@@ -27,14 +32,18 @@ export function zkModule(cfg) {
         error: '',
         tagsValue: '',
 
-        // Persist the manifest (debounced, sealed) after a mutation.
-        _save() { window.LLStore.touch(); },
+        // The per-module sealed store backing this component.
+        _store() { return window.LLModuleStore[moduleName]; },
 
-        // Point the mapped component properties at the (already-decrypted) store
-        // arrays; false while the vault is still locked.
+        // Persist this module's manifest (debounced, sealed) after a mutation.
+        _save() { this._store().touch(); },
+
+        // Point the mapped component properties at the (already-decrypted) module
+        // store arrays; false while the vault is still locked.
         async _bootAssign() {
-            if (! await bootStore(this.$store)) { this.state = 'locked'; return false; }
-            for (const [key, prop] of Object.entries(cfg.map)) this[prop] = window.LLStore.data[key];
+            if (! await bootStore(this.$store, moduleName)) { this.state = 'locked'; return false; }
+            const data = this._store().data;
+            for (const [key, prop] of Object.entries(cfg.map)) this[prop] = data[key];
             this.state = 'ready';
             return true;
         },
@@ -47,7 +56,7 @@ export function zkModule(cfg) {
                     this.state = 'locked';
                     for (const prop of Object.values(cfg.map)) this[prop] = [];
                     if (cfg.onLock) cfg.onLock(this);
-                    window.LLStore.reset();
+                    this._store().reset();
                 }
             });
         },

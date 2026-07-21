@@ -205,7 +205,7 @@ const VCard = {
 let _contactsReconAt = 0;
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ map: { contacts: 'contacts' }, onLock: (self) => { self.currentId = null; self._revokeAvatars(); } }),
+    ...zkModule({ store: 'contacts', map: { contacts: 'contacts' }, onLock: (self) => { self.currentId = null; self._revokeAvatars(); } }),
     contacts: [],
     currentId: null,
     editing: false, // detail pane opens read-only; edit via a button
@@ -368,10 +368,10 @@ export default (config = {}, labels = {}) => ({
         ].filter(Boolean);
     },
 
-    _newUid() { return 'urn:uuid:' + window.LLStore.newId(); },
+    _newUid() { return 'urn:uuid:' + window.LLModuleStore.contacts.newId(); },
     newContact() {
         const c = {
-            id: window.LLStore.newId(), uid: this._newUid(),
+            id: window.LLModuleStore.contacts.newId(), uid: this._newUid(),
             fn: '', first: '', last: '', middle: '', prefix: '', suffix: '', nickname: '',
             org: '', department: '', title: '', role: '', vatId: '',
             emails: [], phones: [], impp: [], addresses: [], urls: [],
@@ -489,7 +489,7 @@ export default (config = {}, labels = {}) => ({
     filePicker: false,
     _fileThumbs: {},
     fileImages() {
-        return (window.LLStore?.data?.files || []).filter((f) => ! f.trashed && (f.mime || '').startsWith('image/') && f.blob);
+        return (window.LLFilesStore?.data?.files || []).filter((f) => ! f.trashed && (f.mime || '').startsWith('image/') && f.blob);
     },
     openFilePicker() { this.avatarMenu = false; this.filePicker = true; },
     closeFilePicker() { this.filePicker = false; },
@@ -659,7 +659,7 @@ export default (config = {}, labels = {}) => ({
             for (const { c: parsed, photo } of cards) {
                 if (parsed.uid && known.has(parsed.uid)) continue; // dedupe by UID
                 const c = {
-                    id: window.LLStore.newId(), uid: parsed.uid || this._newUid(),
+                    id: window.LLModuleStore.contacts.newId(), uid: parsed.uid || this._newUid(),
                     fn: parsed.fn, first: parsed.first, last: parsed.last, middle: parsed.middle, prefix: parsed.prefix, suffix: parsed.suffix, nickname: parsed.nickname,
                     org: parsed.org, department: parsed.department, title: parsed.title, role: parsed.role,
                     emails: parsed.emails, phones: parsed.phones, impp: parsed.impp, addresses: parsed.addresses, urls: parsed.urls,

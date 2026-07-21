@@ -139,6 +139,9 @@ class SharedVaultController extends Controller
                 ->orWhere('oidc_sub', $data['identifier']);
         })
             ->whereNotNull('x25519_public_key')
+            // Store v3 (§6.3): a recipient must also have published ML-KEM material
+            // so the sender can build the hybrid wrap; otherwise treat as no key.
+            ->whereNotNull('mlkem_public_key')
             ->first();
 
         if ($recipient === null) {
@@ -149,6 +152,8 @@ class SharedVaultController extends Controller
             'user_id' => $recipient->id,
             'public_key' => $recipient->x25519_public_key,
             'fingerprint' => $recipient->public_key_fingerprint,
+            // ML-KEM-768 encapsulation key — needed to wrap VK_vault to this recipient.
+            'mlkem_public_key' => $recipient->mlkem_public_key,
         ]);
     }
 

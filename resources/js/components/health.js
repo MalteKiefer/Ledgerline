@@ -19,6 +19,7 @@ const DEFAULT_PROFILE = () => ({
 
 export default (labels = {}) => ({
     ...zkModule({
+        store: 'health',
         map: { healthEntries: 'entries' },
         onLock: (self) => {
             self.selectedMetric = 'weight';
@@ -76,20 +77,20 @@ export default (labels = {}) => ({
     // Ensure healthProfile exists on the store data and bind this.profile to it.
     // Mirrors how passwords.js handles folders with _migrateVaults.
     _initProfile() {
-        if (! window.LLStore.data) return;
-        if (! window.LLStore.data.healthProfile || typeof window.LLStore.data.healthProfile !== 'object') {
-            window.LLStore.data.healthProfile = DEFAULT_PROFILE();
+        if (! window.LLModuleStore.health.data) return;
+        if (! window.LLModuleStore.health.data.healthProfile || typeof window.LLModuleStore.health.data.healthProfile !== 'object') {
+            window.LLModuleStore.health.data.healthProfile = DEFAULT_PROFILE();
         }
         // Ensure nested units object exists (forward-compat for older manifests).
-        if (! window.LLStore.data.healthProfile.units) {
-            window.LLStore.data.healthProfile.units = { weight: 'kg', glucose: 'mgdl', temp: 'c' };
+        if (! window.LLModuleStore.health.data.healthProfile.units) {
+            window.LLModuleStore.health.data.healthProfile.units = { weight: 'kg', glucose: 'mgdl', temp: 'c' };
         }
-        // Bind this.profile to the same reference so mutations are reflected in LLStore.data.
-        this.profile = window.LLStore.data.healthProfile;
+        // Bind this.profile to the same reference so mutations are reflected in the store data.
+        this.profile = window.LLModuleStore.health.data.healthProfile;
     },
 
     // Override zkModule._save to track mutations (mirrors passwords.js).
-    _save() { this._mut++; window.LLStore.touch(); },
+    _save() { this._mut++; window.LLModuleStore.health.touch(); },
 
     saveProfile() { this._save(); },
 
@@ -584,7 +585,7 @@ export default (labels = {}) => ({
         }
 
         if (this.editing) {
-            // Update in place (same reference, array is bound to LLStore.data).
+            // Update in place (same reference, array is bound to the store data).
             const idx = this.entries.findIndex((e) => e.id === this.editing.id);
             if (idx >= 0) {
                 this.entries[idx] = { ...this.entries[idx], v: canonV, v2: canonV2, ts, note: this._form.note };

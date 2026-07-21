@@ -6,18 +6,22 @@ describe('VaultShareCrypto', () => {
         it('recovers the vault key after wrap→unwrap with the same keypair', async () => {
             const id = await VaultShareCrypto.newIdentity();
             const vk = await VaultShareCrypto.newVaultKey();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, id.pub);
-            const recovered = await VaultShareCrypto.unwrapVaultKey(wrapped, id.pub, id.sk);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, id.pub, id.mlkemEk, 'test');
+            const recovered = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
             expect(recovered).toBe(vk);
         });
 
         it('produces a wrapped ciphertext distinct from the plaintext key', async () => {
             const id = await VaultShareCrypto.newIdentity();
             const vk = await VaultShareCrypto.newVaultKey();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, id.pub);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, id.pub, id.mlkemEk, 'test');
             expect(wrapped).not.toBe(vk);
-            // Wrapped form is longer (adds seal overhead)
-            expect(atob(wrapped).length).toBeGreaterThan(atob(vk).length);
+            // v3 hybrid envelope: a suite-tagged JSON string {suite,epk,kem_ct,c,n},
+            // far larger than the raw key and carrying the ML-KEM ciphertext.
+            const env = JSON.parse(wrapped);
+            expect(env.suite).toBe(1);
+            expect(env.kem_ct.length).toBeGreaterThan(0);
+            expect(wrapped.length).toBeGreaterThan(vk.length);
         });
     });
 
@@ -61,9 +65,9 @@ describe('VaultShareCrypto', () => {
             const owner = await VaultShareCrypto.newIdentity();
             const attacker = await VaultShareCrypto.newIdentity();
             const vk = await VaultShareCrypto.newVaultKey();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, owner.pub);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, owner.pub, owner.mlkemEk, 'test');
             await expect(
-                VaultShareCrypto.unwrapVaultKey(wrapped, attacker.pub, attacker.sk),
+                VaultShareCrypto.unwrapVaultKey(wrapped, attacker.sk, attacker.mlkemDk, 'test'),
             ).rejects.toThrow();
         });
     });
@@ -73,8 +77,8 @@ describe('VaultShareCrypto', () => {
             const id = await VaultShareCrypto.newIdentity();
             // Derive a raw key bytes: unwrap a freshly wrapped key to get Uint8Array
             const vkB64 = await VaultShareCrypto.newVaultKey();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub);
-            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.pub, id.sk);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub, id.mlkemEk, 'test');
+            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
             // Convert base64 vault key to raw bytes for sealVaultManifest
             // We need raw bytes — use atob + Uint8Array
             const vkBytes = Uint8Array.from(atob(recoveredB64), (c) => c.charCodeAt(0));
@@ -88,8 +92,8 @@ describe('VaultShareCrypto', () => {
         it('applies the 4096-byte Padmé floor: two small objects seal to the same bucket length', async () => {
             const id = await VaultShareCrypto.newIdentity();
             const vkB64 = await VaultShareCrypto.newVaultKey();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub);
-            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.pub, id.sk);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub, id.mlkemEk, 'test');
+            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
             const vkBytes = Uint8Array.from(atob(recoveredB64), (c) => c.charCodeAt(0));
 
             const small1 = { a: 1 };
@@ -106,8 +110,8 @@ describe('VaultShareCrypto', () => {
         it('the sealed ciphertext is at least 4096 bytes of plaintext', async () => {
             const id = await VaultShareCrypto.newIdentity();
             const vkB64 = await VaultShareCrypto.newVaultKey();
-            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub);
-            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.pub, id.sk);
+            const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub, id.mlkemEk, 'test');
+            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
             const vkBytes = Uint8Array.from(atob(recoveredB64), (c) => c.charCodeAt(0));
 
             const sealed = await VaultShareCrypto.sealVaultManifest({ tiny: true }, vkBytes);

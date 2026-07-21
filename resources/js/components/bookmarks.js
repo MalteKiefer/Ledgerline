@@ -61,7 +61,7 @@ const FOLDER_ICONS = {
 };
 
 export default (labels = {}) => ({
-    ...zkModule({ map: { bookmarks: 'bookmarks', bookmarkFolders: 'folders' } }),
+    ...zkModule({ store: 'bookmarks', map: { bookmarks: 'bookmarks', bookmarkFolders: 'folders' } }),
     folders: [],
     bookmarks: [],
     view: 'all', // all | favorites | readlater | trash | a folder id
@@ -93,7 +93,7 @@ export default (labels = {}) => ({
             const f = this.folders.find((x) => x.id === e.id);
             if (f) { f.name = name; f.color = e.color || ''; f.icon = e.icon || ''; }
         } else {
-            this.folders.push({ id: window.LLStore.newId(), name, parentId: e.parentId ?? null, color: e.color || '', icon: e.icon || '' });
+            this.folders.push({ id: window.LLModuleStore.bookmarks.newId(), name, parentId: e.parentId ?? null, color: e.color || '', icon: e.icon || '' });
         }
         this._save();
         this.folderEditor.open = false;
@@ -202,7 +202,7 @@ export default (labels = {}) => ({
             const b = this.bookmarks.find((x) => x.id === e.id);
             if (b) { b.url = url; b.title = title; b.description = description; b.tags = tags; b.folderId = folderId; b.favorite = favorite; b.readLater = readLater; }
         } else {
-            this.bookmarks.unshift({ id: window.LLStore.newId(), url, title, description, tags, folderId, favorite, readLater, read: false, trashed: false });
+            this.bookmarks.unshift({ id: window.LLModuleStore.bookmarks.newId(), url, title, description, tags, folderId, favorite, readLater, read: false, trashed: false });
         }
         this._save();
         this.closeEditor();

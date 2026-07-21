@@ -11,6 +11,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileShareController;
+use App\Http\Controllers\FilesStoreController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MetricsController;
+use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordBreachController;
@@ -37,7 +39,6 @@ use App\Http\Controllers\SharedFolderBlobController;
 use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
 use App\Http\Controllers\SharedVaultStoreController;
-use App\Http\Controllers\StoreController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TwoFactorDirectoryController;
 use App\Http\Controllers\UserKeyController;
@@ -172,6 +173,9 @@ Route::middleware('auth')->group(function (): void {
     // the opaque content blobs below (store/stream ciphertext + a quota ledger).
     Route::get('/files', [FileController::class, 'index'])->name('files.index');
     Route::get('/files/usage', [FileController::class, 'usage'])->name('files.usage');
+    // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
+    Route::get('/files/store', [FilesStoreController::class, 'show'])->name('files.store.show');
+    Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware('throttle:600,1')->name('files.store.save');
     // Reclaim blobs the (sealed) manifest no longer references — the client sends
     // its live blob set; owner-scoped, grace-gated pruning of the quota ledger.
     Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('files.blobs.reconcile');
@@ -186,6 +190,7 @@ Route::middleware('auth')->group(function (): void {
     // Encrypted bytes stream back verbatim; the browser decrypts them. Version
     // history is manifest-side, so a version download is just a raw blob fetch.
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:3000,1')->name('files.raw');
+    Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
     // Generous limit: emptying a large trash frees hundreds of blobs at once, and
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');
@@ -198,10 +203,9 @@ Route::middleware('auth')->group(function (): void {
     Route::put('/files/shares/{token}', [FileShareController::class, 'update'])->middleware('throttle:60,1')->name('files.shares.update');
     Route::delete('/files/shares/{token}', [FileShareController::class, 'destroy'])->middleware('throttle:60,1')->name('files.shares.destroy');
 
-    // Notes: plain DB rows, driven client-side over a JSON API (no reloads).
-    // Opaque zero-knowledge store: the whole workspace as one sealed manifest.
-    Route::get('/store', [StoreController::class, 'show'])->name('store.show');
-    Route::put('/store', [StoreController::class, 'save'])->middleware('throttle:600,1')->name('store.save');
+    // Per-module sealed stores (Store v3 split): one opaque row per module.
+    Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->name('module-store.show');
+    Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:1200,1')->name('module-store.save');
 
     // Opaque zero-knowledge gallery index (photo/album/people structure sealed).
     Route::get('/gallery/store', [GalleryStoreController::class, 'show'])->name('gallery.store.show');
@@ -229,6 +233,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('gallery.upload.complete');
     Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('gallery.upload.abort');
     Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('gallery.raw');
+    Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('gallery.raw-batch');
     // Generous limit: emptying a large trash frees hundreds of blobs at once, and
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
     Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('gallery.blob.destroy');

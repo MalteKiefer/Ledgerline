@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
 /**
  * Zero-knowledge file store. The whole directory tree — folder/file names, the
  * hierarchy, tags, notes, favourites, trash flags and version history — lives
- * inside the user's sealed manifest (the opaque store, see StoreController); the
+ * inside the user's sealed files index (the opaque store, see FilesStoreController); the
  * server never sees any of it. This controller only handles the OPAQUE CONTENT
  * BLOBS at "files/{blob}" plus the ownership ledger (file_blobs) for quota +
  * access control — all of which lives in the shared BlobStoreController. It

@@ -10,11 +10,13 @@ use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DevicePairingController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileShareController;
+use App\Http\Controllers\FilesStoreController;
 use App\Http\Controllers\GalleryBlobController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
@@ -22,7 +24,6 @@ use App\Http\Controllers\SharedFolderBlobController;
 use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
 use App\Http\Controllers\SharedVaultStoreController;
-use App\Http\Controllers\StoreController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\TwoFactorDirectoryController;
 use App\Http\Controllers\UserKeyController;
@@ -59,12 +60,15 @@ Route::prefix('v1')->group(function (): void {
         // Zero-knowledge vault: KDF params + wrapped keys (unlock).
         Route::get('/vault', [VaultController::class, 'show'])->name('api.vault.show');
 
-        // Opaque workspace store: file tree + notes/bookmarks/todos, one sealed manifest.
-        Route::get('/store', [StoreController::class, 'show'])->name('api.store.show');
-        Route::put('/store', [StoreController::class, 'save'])->middleware('throttle:120,1')->name('api.store.save');
+        // Per-module sealed stores (Store v3 split): one opaque row per module.
+        Route::get('/store/{module}', [ModuleStoreController::class, 'show'])->whereAlpha('module')->name('api.module-store.show');
+        Route::put('/store/{module}', [ModuleStoreController::class, 'save'])->whereAlpha('module')->middleware('throttle:240,1')->name('api.module-store.save');
 
         // Files: opaque content blobs + quota ledger.
         Route::get('/files/usage', [FileController::class, 'usage'])->name('api.files.usage');
+        // Store v3 (§4.2/A10b): sealed files index (own sharded store, out of the monolith).
+        Route::get('/files/store', [FilesStoreController::class, 'show'])->name('api.files.store.show');
+        Route::put('/files/store', [FilesStoreController::class, 'save'])->middleware('throttle:120,1')->name('api.files.store.save');
         Route::post('/files/blobs/reconcile', [FileController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.files.reconcile');
         Route::post('/files/upload', [FileController::class, 'upload'])->middleware('throttle:1200,1')->name('api.files.upload');
         Route::post('/files/upload/init', [FileController::class, 'chunkInit'])->middleware('throttle:600,1')->name('api.files.upload.init');
@@ -72,6 +76,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/files/upload/complete', [FileController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.files.upload.complete');
         Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.upload.abort');
         Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('api.files.raw');
+        Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.files.raw-batch');
         Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.files.blob.destroy');
 
         // File / folder public share links: create, update metadata, revoke.
@@ -91,6 +96,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/gallery/upload/complete', [GalleryBlobController::class, 'chunkComplete'])->middleware('throttle:600,1')->name('api.gallery.upload.complete');
         Route::post('/gallery/upload/abort', [GalleryBlobController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.gallery.upload.abort');
         Route::get('/gallery/raw/{blob}', [GalleryBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.gallery.raw');
+        Route::post('/gallery/raw-batch', [GalleryBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.gallery.raw-batch');
         Route::delete('/gallery/blob/{blob}', [GalleryBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.gallery.blob.destroy');
         Route::post('/gallery/process', [GalleryProcessController::class, 'process'])->middleware('throttle:600,1')->name('api.gallery.process');
         // Deferred vision pass: client POSTs a photo's medium rendition (plaintext, discarded

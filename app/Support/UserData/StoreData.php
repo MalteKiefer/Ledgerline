@@ -4,15 +4,17 @@ declare(strict_types=1);
 
 namespace App\Support\UserData;
 
+use App\Models\FilesStore;
+use App\Models\ModuleStore;
 use App\Models\User;
-use App\Models\VaultStore;
 
 /**
- * Per-user data contributor for the zero-knowledge store. The user's entire
- * workspace (notes, and any other module folded into the manifest) lives as a
- * single sealed blob in vault_store, one row per user. The server only ever
- * holds ciphertext, so the export is the ciphertext itself — decryptable solely
- * with the user's own passphrase. That is the correct, complete ZK export.
+ * Per-user data contributor for the zero-knowledge sealed stores. Store v3 splits
+ * the workspace into one opaque sealed row per module (notes/todos/bookmarks/
+ * contacts/invoices/passwords/health/sharing in module_stores) plus the sharded
+ * files index root (files_store). The server only ever holds ciphertext, so the
+ * export is the ciphertext itself — decryptable solely with the user's own vault
+ * key. Content blobs (files/gallery) are exported/erased by FilesData/GalleryData.
  */
 final class StoreData implements UserDataContributor
 {
@@ -26,13 +28,20 @@ final class StoreData implements UserDataContributor
      */
     public function export(User $user): array
     {
+        $modules = ModuleStore::query()
+            ->where('user_id', $user->id)
+            ->pluck('ciphertext', 'module')
+            ->all();
+
         return [
-            'ciphertext' => VaultStore::query()->where('user_id', $user->id)->value('ciphertext'),
+            'modules' => $modules,
+            'files_index' => FilesStore::query()->where('user_id', $user->id)->value('ciphertext'),
         ];
     }
 
     public function purge(User $user): void
     {
-        VaultStore::query()->where('user_id', $user->id)->delete();
+        ModuleStore::query()->where('user_id', $user->id)->delete();
+        FilesStore::query()->where('user_id', $user->id)->delete();
     }
 }

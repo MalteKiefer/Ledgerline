@@ -1597,9 +1597,9 @@ return {
     async _loadPeopleContacts() {
         if (! (this.index.people || []).some((pp) => pp.contactId)) return;
         try {
-            if (await bootStore(this.$store)) {
+            if (await bootStore(this.$store, 'contacts')) {
                 const map = {};
-                for (const c of (window.LLStore.data?.contacts || [])) if (! c.trashed) map[c.id] = c;
+                for (const c of (window.LLModuleStore.contacts.data?.contacts || [])) if (! c.trashed) map[c.id] = c;
                 this._peopleContacts = map;
                 this._mut++; // invalidate the people memo so the new labels/order apply
             }
@@ -2136,8 +2136,8 @@ return {
         this.linkLoading = true;
         this.linkQuery = '';
         try {
-            if (! await bootStore(this.$store)) return;
-            this._linkContacts = (window.LLStore.data.contacts || []).filter((c) => ! c.trashed);
+            if (! await bootStore(this.$store, 'contacts')) return;
+            this._linkContacts = (window.LLModuleStore.contacts.data.contacts || []).filter((c) => ! c.trashed);
             this.linkPicker = true;
         } finally { this.linkLoading = false; }
     },
@@ -2174,7 +2174,7 @@ return {
         contact.personName = p.name || ''; // snapshot so the contact page shows it
         contact.updated = new Date().toISOString();
         this._save();
-        window.LLStore.touch(); // persist the /store side too
+        window.LLModuleStore.contacts.touch(); // persist the contacts store side too
         this.linkPicker = false;
         // Second step: let the user pick which of the person's photos becomes the
         // contact avatar (and crop it). Skippable if the person has no photos.
@@ -2223,7 +2223,7 @@ return {
             // Refresh the person snapshot so the gallery renders the new avatar.
             const p = (this.index.people || []).find((pp) => pp.id === contact.personId);
             if (p) { p.contactAvatarRef = ref; p.contactAvatarKey = enc.encFileKey; this._save(); }
-            window.LLStore.touch();
+            window.LLModuleStore.contacts.touch();
             if (old) { try { await fetch(`/contacts/blob/${old}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': config.token, 'X-Requested-With': 'XMLHttpRequest' } }); } catch (e) { /* orphan sweep handles it */ } }
         } catch (e) { /* best effort */ }
     },
@@ -2234,9 +2234,9 @@ return {
         p.contactId = null; p.contactName = null; p.contactFirst = null; p.contactLast = null; p.contactAvatarRef = null; p.contactAvatarKey = null;
         this._save();
         try {
-            if (await bootStore(this.$store)) {
-                const c = (window.LLStore.data?.contacts || []).find((x) => x.id === cid);
-                if (c && c.personId === p.id) { c.personId = null; c.personName = null; window.LLStore.touch(); }
+            if (await bootStore(this.$store, 'contacts')) {
+                const c = (window.LLModuleStore.contacts.data?.contacts || []).find((x) => x.id === cid);
+                if (c && c.personId === p.id) { c.personId = null; c.personName = null; window.LLModuleStore.contacts.touch(); }
             }
         } catch (e) { /* best effort */ }
     },
