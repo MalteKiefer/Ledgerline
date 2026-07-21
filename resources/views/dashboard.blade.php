@@ -1,53 +1,212 @@
-<x-layouts.app :title="__('pages.dashboard.title')">
-    <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ __('pages.dashboard.heading') }}</h1>
-    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">{{ __('pages.dashboard.subtitle') }}</p>
+<x-layouts.app :title="__('messages.nav.dashboard')">
+<div x-data="dashboard({}, {})">
 
-    <a href="{{ route('gallery.index') }}" class="mt-6 flex items-center justify-between ll-card hover:shadow-md hover:border-accent/20 transition-shadow">
-        <div>
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.gallery') }}</dt>
-            <dd class="mt-2 text-base text-gray-900 dark:text-gray-100">{{ __('pages.dashboard.gallery_ready') }}</dd>
+    {{-- Zero-knowledge gate --}}
+    @include('vault._panel', ['serverConfigured' => \App\Models\Vault::current() !== null])
+
+    <template x-if="state === 'locked'">
+        <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
+            <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
+            <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
+               x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
+            <button type="button" @click="$dispatch('vault-panel')"
+                class="mt-5 inline-flex min-h-11 items-center gap-1.5 ll-accent rounded-xl px-4 py-2 text-sm font-medium">
+                <x-icon name="lock-open" class="h-4 w-4" />
+                <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
+            </button>
         </div>
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style="background:#d16ba5">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-            </svg>
-        </span>
-    </a>
+    </template>
 
-    <a href="{{ route('files.index') }}" class="mt-4 flex items-center justify-between ll-card hover:shadow-md hover:border-accent/20 transition-shadow">
+    <template x-if="state === 'ready'">
         <div>
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.files') }}</dt>
-            <dd class="mt-2 text-base text-gray-900 dark:text-gray-100">{{ __('pages.dashboard.vault_ready') }}</dd>
-        </div>
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style="background:#3b9fd6">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-        </span>
-    </a>
+            {{-- Header --}}
+            <div class="mb-6">
+                <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                    {{ __('dashboard.greeting', ['name' => auth()->user()->name]) }}
+                </h1>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ now()->isoFormat('dddd, D. MMMM YYYY') }}
+                </p>
+            </div>
 
-    <a href="{{ route('notes.index') }}" class="mt-4 flex items-center justify-between ll-card hover:shadow-md hover:border-accent/20 transition-shadow">
-        <div>
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.notes') }}</dt>
-            <dd class="mt-2 text-base text-gray-900 dark:text-gray-100">{{ __('pages.dashboard.notes_ready') }}</dd>
-        </div>
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style="background:#3fae9f">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-            </svg>
-        </span>
-    </a>
+            {{-- Widget grid --}}
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
 
-    <a href="{{ route('bookmarks.index') }}" class="mt-4 flex items-center justify-between ll-card hover:shadow-md hover:border-accent/20 transition-shadow">
-        <div>
-            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ __('pages.dashboard.bookmarks') }}</dt>
-            <dd class="mt-2 text-base text-gray-900 dark:text-gray-100">{{ __('pages.dashboard.bookmarks_ready') }}</dd>
-        </div>
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" style="background:#d9a441">
-            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
-            </svg>
-        </span>
-    </a>
+                {{-- ── Todos widget ── --}}
+                <div class="ll-card flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {{ __('dashboard.todos_title') }}
+                        </h2>
+                        <a href="{{ route('todos.index') }}"
+                            class="text-xs font-medium text-accent hover:underline">
+                            {{ __('dashboard.todos_open') }}
+                        </a>
+                    </div>
 
+                    <template x-if="todos.length === 0">
+                        <div class="flex flex-1 flex-col items-center justify-center py-6 text-center">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-xl text-white mb-2"
+                                style="background:#7066f5">
+                                <x-icon name="todos" class="h-5 w-5" />
+                            </span>
+                            <p class="text-sm text-gray-400 dark:text-gray-500">
+                                {{ __('dashboard.todos_empty') }}
+                            </p>
+                        </div>
+                    </template>
+
+                    <template x-if="todos.length > 0">
+                        <ul class="divide-y divide-black/[0.06] dark:divide-white/10 -mx-4 px-0">
+                            <template x-for="t in todos" :key="t.id">
+                                <li class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors group">
+                                    <input type="checkbox"
+                                        :checked="t.done"
+                                        @change="completeTodo(t.id)"
+                                        class="h-4 w-4 shrink-0 rounded border-gray-300 dark:border-gray-600 cursor-pointer"
+                                        style="accent-color:#7066f5" />
+                                    <span class="flex-1 min-w-0 text-sm text-gray-800 dark:text-gray-200 truncate"
+                                        x-text="t.title || ''"></span>
+                                    <template x-if="t.due">
+                                        <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                                            :class="t.due < new Date().toISOString().slice(0,10)
+                                                ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                                                : 'bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-400'"
+                                            x-text="t.due < new Date().toISOString().slice(0,10)
+                                                ? @js(__('dashboard.due_overdue'))
+                                                : t.due.slice(5).replace('-','/')"></span>
+                                    </template>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+
+                {{-- ── Counter tiles ── --}}
+                <div class="ll-card">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {{ __('dashboard.counts_title') }}
+                        </h2>
+                    </div>
+                    <ul class="!p-0 -mx-4 divide-y divide-black/[0.06] dark:divide-white/10">
+                        <li>
+                            <a href="{{ route('notes.index') }}"
+                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
+                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#3fae9f">
+                                    <x-icon name="pencil" class="h-4 w-4" />
+                                </span>
+                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.notes_module') }}</span>
+                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.notes"></span>
+                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('passwords.index') }}"
+                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
+                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#7066f5">
+                                    <x-icon name="key" class="h-4 w-4" />
+                                </span>
+                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.passwords_module') }}</span>
+                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.passwords"></span>
+                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('contacts.index') }}"
+                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
+                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#3b9fd6">
+                                    <x-icon name="contacts" class="h-4 w-4" />
+                                </span>
+                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.contacts_module') }}</span>
+                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.contacts"></span>
+                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('bookmarks.index') }}"
+                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
+                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#d9a441">
+                                    <x-icon name="bookmark" class="h-4 w-4" />
+                                </span>
+                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.bookmarks_module') }}</span>
+                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.bookmarks"></span>
+                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('invoices.index') }}"
+                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
+                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#e2915a">
+                                    <x-icon name="document-text" class="h-4 w-4" />
+                                </span>
+                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.invoices_module') }}</span>
+                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.invoices"></span>
+                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('files.index') }}"
+                                class="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/5 transition-colors">
+                                <span class="ll-chip h-8 w-8 rounded-lg" style="--chip:#6b7280">
+                                    <x-icon name="files" class="h-4 w-4" />
+                                </span>
+                                <span class="flex-1 text-sm text-gray-800 dark:text-gray-200">{{ __('dashboard.files_module') }}</span>
+                                <span class="text-sm font-semibold text-gray-500 dark:text-gray-400" x-text="counts.files"></span>
+                                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400" />
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
+                {{-- ── Recent notes ── --}}
+                <div class="ll-card flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {{ __('dashboard.notes_title') }}
+                        </h2>
+                        <a href="{{ route('notes.index') }}"
+                            class="text-xs font-medium text-accent hover:underline">
+                            {{ __('dashboard.notes_open') }}
+                        </a>
+                    </div>
+
+                    <template x-if="recentNotes.length === 0">
+                        <div class="flex flex-1 flex-col items-center justify-center py-6 text-center">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-xl text-white mb-2"
+                                style="background:#3fae9f">
+                                <x-icon name="pencil" class="h-5 w-5" />
+                            </span>
+                            <p class="text-sm text-gray-400 dark:text-gray-500">
+                                {{ __('dashboard.notes_empty') }}
+                            </p>
+                        </div>
+                    </template>
+
+                    <template x-if="recentNotes.length > 0">
+                        <ul class="divide-y divide-black/[0.06] dark:divide-white/10 -mx-4 px-0">
+                            <template x-for="n in recentNotes" :key="n.id">
+                                <li>
+                                    <a href="{{ route('notes.index') }}"
+                                        class="flex flex-col gap-0.5 px-4 py-2.5 hover:bg-accent/5 transition-colors">
+                                        <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate"
+                                            x-text="n.title || @js(__('dashboard.notes_empty'))"></span>
+                                        <span class="text-xs text-gray-400 dark:text-gray-500"
+                                            x-text="n.updated ? n.updated.slice(0,10) : ''"></span>
+                                    </a>
+                                </li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+
+                {{-- ── Placeholder slots for Task-4 / Task-5 widgets ── --}}
+                {{-- Task 4: birthdays & anniversaries widget --}}
+                {{-- Task 5: health / on-this-day / gallery widget --}}
+
+            </div>
+        </div>
+    </template>
+
+</div>
 </x-layouts.app>
