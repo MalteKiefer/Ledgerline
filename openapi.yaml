@@ -2025,7 +2025,21 @@ paths:
       description: >
         Returns all vault memberships (all statuses: pending/active/revoked) for
         the authenticated user, including the per-vault wrapped_vault_key so the
-        client can unlock each invited vault. No throttle beyond default.
+        client can unlock each invited vault. Each row carries `kind`
+        (password|folder) and `owner` (true when the caller created the vault, not
+        just an invited manager). No throttle beyond default.
+
+
+        Converting a folder between private and shared is a CLIENT-COMPOSED flow —
+        there is no dedicated server endpoint (zero-knowledge: the server cannot
+        re-encrypt). Private → shared: create a vault (POST /vaults kind=folder),
+        for each file re-wrap its per-file key under the new folder key and
+        re-upload the unchanged ciphertext via POST /vaults/{vault}/blobs/upload,
+        PUT /vaults/{vault}/store, then drop the files from the personal store
+        (PUT /store). Shared → private (owner only): the reverse — fetch each blob
+        via GET /vaults/{vault}/blobs/raw/{blob}, re-wrap under the personal vault
+        key, re-upload via POST /files/upload, add to PUT /store, then
+        DELETE /vaults/{vault} (revokes all members + frees the shared blobs).
       parameters:
         - name: kind
           in: query
@@ -2054,6 +2068,16 @@ paths:
                     status:
                       type: string
                       enum: [pending, active, revoked]
+                    kind:
+                      type: string
+                      enum: [password, folder]
+                      description: Vault kind (password vault or shared folder).
+                    owner:
+                      type: boolean
+                      description: >
+                        True when the caller owns this vault (created it), not just an
+                        invited manager. Gates owner-only actions such as converting a
+                        shared folder back to a private folder.
                     wrapped_vault_key:
                       type: string
                       description: >

@@ -46,6 +46,7 @@
         shareEmpty: @js(__('files.share_empty')),
         shareCopied: @js(__('files.share_copied')),
         convertConfirm: @js(__('files.convert_confirm')),
+        toPrivateConfirm: @js(__('files.folder_to_private_confirm')),
         activity: {
             created: @js(__('files.act_created')),
             renamed: @js(__('files.act_renamed')),
