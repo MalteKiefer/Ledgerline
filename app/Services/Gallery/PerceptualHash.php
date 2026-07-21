@@ -75,7 +75,6 @@ class PerceptualHash
             }
             $small = imagecreatetruecolor(9, 8);
             imagecopyresampled($small, $src, 0, 0, 0, 0, 9, 8, imagesx($src), imagesy($src));
-            imagedestroy($src);
 
             $grid = [];
             for ($y = 0; $y < 8; $y++) {
@@ -88,7 +87,6 @@ class PerceptualHash
                     $grid[] = (int) round(0.299 * $r + 0.587 * $g + 0.114 * $b);
                 }
             }
-            imagedestroy($small);
 
             return $grid;
         } catch (Throwable) {

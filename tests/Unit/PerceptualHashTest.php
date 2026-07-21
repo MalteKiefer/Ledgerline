@@ -15,7 +15,6 @@ class PerceptualHashTest extends TestCase
         $paint($img);
         $path = tempnam(sys_get_temp_dir(), 'ph').'.jpg';
         imagejpeg($img, $path);
-        imagedestroy($img);
 
         return $path;
     }
