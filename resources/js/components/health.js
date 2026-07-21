@@ -102,13 +102,13 @@ export default (labels = {}) => ({
      * @param {string} key
      * @returns {Array<{ts:string,v:number,v2:number|null}>}
      */
-    entriesInRange(key) {
+    entriesInRange(key, range = this.chartRange) {
         const all = this.entriesFor(key); // descending from entriesFor
         if (!all.length) return [];
 
         let cutoff = null;
-        if (this.chartRange !== 'all') {
-            const days = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 }[this.chartRange] ?? 90;
+        if (range !== 'all') {
+            const days = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 }[range] ?? 90;
             cutoff = Date.now() - days * 86400 * 1000;
         }
 
@@ -408,7 +408,8 @@ export default (labels = {}) => ({
     async renderReport() {
         this._destroyReportCharts();
         for (const m of METRICS) {
-            const data = this.entriesInRange(m.key);
+            // A doctor report always charts the FULL history, not the live view's range.
+            const data = this.entriesInRange(m.key, 'all');
             if (!data.length) continue;
             // Find the container element for this metric's chart.
             const el = this.$el && this.$el.querySelector('[data-report-chart="' + m.key + '"]');
@@ -459,22 +460,33 @@ export default (labels = {}) => ({
     avgFor(key) {
         const list = this.entriesFor(key);
         if (! list.length) return null;
-        const avg = list.reduce((s, e) => s + e.v, 0) / list.length;
-        return this._displaySingle(key, avg);
+        // Blood pressure aggregates BOTH series (systolic / diastolic).
+        if (key === 'bp') {
+            const mean = (xs) => Math.round(xs.reduce((s, x) => s + x, 0) / xs.length);
+            const dia = list.map((e) => e.v2).filter((x) => x != null);
+            return this._displayValue(key, mean(list.map((e) => e.v)), dia.length ? mean(dia) : null);
+        }
+        return this._displaySingle(key, list.reduce((s, e) => s + e.v, 0) / list.length);
     },
 
     minFor(key) {
         const list = this.entriesFor(key);
         if (! list.length) return null;
-        const min = Math.min(...list.map((e) => e.v));
-        return this._displaySingle(key, min);
+        if (key === 'bp') {
+            const dia = list.map((e) => e.v2).filter((x) => x != null);
+            return this._displayValue(key, Math.min(...list.map((e) => e.v)), dia.length ? Math.min(...dia) : null);
+        }
+        return this._displaySingle(key, Math.min(...list.map((e) => e.v)));
     },
 
     maxFor(key) {
         const list = this.entriesFor(key);
         if (! list.length) return null;
-        const max = Math.max(...list.map((e) => e.v));
-        return this._displaySingle(key, max);
+        if (key === 'bp') {
+            const dia = list.map((e) => e.v2).filter((x) => x != null);
+            return this._displayValue(key, Math.max(...list.map((e) => e.v)), dia.length ? Math.max(...dia) : null);
+        }
+        return this._displaySingle(key, Math.max(...list.map((e) => e.v)));
     },
 
     // Convert a canonical value pair to a display string for the current units.
