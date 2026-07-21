@@ -26,7 +26,7 @@ class GalleryProcessController extends Controller
     public function process(Request $request, GalleryProcessor $processor): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'max:'.((int) config('gallery.max_upload_mb', 512) * 1024)],
+            'file' => ['required', 'file', 'max:'.($this->maxUploadMb() * 1024)],
         ]);
 
         $upload = $request->file('file');
@@ -77,7 +77,7 @@ class GalleryProcessController extends Controller
     public function analyze(Request $request, GalleryProcessor $processor): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'max:'.((int) config('gallery.max_upload_mb', 512) * 1024)],
+            'file' => ['required', 'file', 'max:'.($this->maxUploadMb() * 1024)],
         ]);
 
         $upload = $request->file('file');
@@ -105,9 +105,18 @@ class GalleryProcessController extends Controller
      * common bomb formats (JPEG/PNG/GIF/WEBP/BMP); HEIC/AVIF return nothing here
      * and fall back to the ImageMagick area policy as the backstop.
      */
+    /** Max upload size in MB from config, guarded against non-numeric values. */
+    private function maxUploadMb(): int
+    {
+        $max = config('gallery.max_upload_mb', 512);
+
+        return is_numeric($max) ? (int) $max : 512;
+    }
+
     private function guardPixelBudget(string $path): void
     {
-        $cap = (int) config('gallery.max_megapixels', 120);
+        $capRaw = config('gallery.max_megapixels', 120);
+        $cap = is_numeric($capRaw) ? (int) $capRaw : 120;
         if ($cap <= 0) {
             return;
         }
@@ -144,11 +153,18 @@ class GalleryProcessController extends Controller
         ]);
 
         $results = collect(is_array($json) ? $json : [])
-            ->map(fn ($r): array => [
-                'display' => (string) ($r['display_name'] ?? ''),
-                'lat' => isset($r['lat']) ? (float) $r['lat'] : null,
-                'lng' => isset($r['lon']) ? (float) $r['lon'] : null,
-            ])
+            ->map(function ($r): array {
+                $r = is_array($r) ? $r : [];
+                $display = $r['display_name'] ?? '';
+                $lat = $r['lat'] ?? null;
+                $lon = $r['lon'] ?? null;
+
+                return [
+                    'display' => is_scalar($display) ? (string) $display : '',
+                    'lat' => is_numeric($lat) ? (float) $lat : null,
+                    'lng' => is_numeric($lon) ? (float) $lon : null,
+                ];
+            })
             ->filter(fn (array $r): bool => $r['display'] !== '' && $r['lat'] !== null && $r['lng'] !== null)
             ->values()
             ->all();

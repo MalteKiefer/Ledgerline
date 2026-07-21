@@ -26,8 +26,12 @@ final class DatabaseSource implements BackupSource
     public function build(string $workDir): BackupArtifact
     {
         $connection = config('database.default');
+        $connection = is_string($connection) ? $connection : '';
         $config = config("database.connections.{$connection}");
-        $driver = $config['driver'] ?? '';
+        if (! is_array($config)) {
+            throw new RuntimeException("No database connection configured for backup: {$connection}");
+        }
+        $driver = is_string($config['driver'] ?? null) ? $config['driver'] : '';
 
         return match ($driver) {
             'sqlite' => $this->dumpSqlite($config, $workDir),
@@ -55,7 +59,7 @@ final class DatabaseSource implements BackupSource
     }
 
     /**
-     * @param  array{database?: string}  $config
+     * @param  array<string, mixed>  $config
      */
     private function dumpSqlite(array $config, string $workDir): BackupArtifact
     {
@@ -92,28 +96,54 @@ final class DatabaseSource implements BackupSource
     }
 
     /**
-     * @param  array{host?: string, port?: int|string, database: string, username?: string, password?: string}  $c
+     * @param  array<string, mixed>  $c
      */
     private function mysql(array $c): MySql
     {
         return MySql::create()
-            ->setHost($c['host'] ?? '127.0.0.1')
-            ->setPort((int) ($c['port'] ?? 3306))
-            ->setDbName($c['database'])
-            ->setUserName((string) ($c['username'] ?? ''))
-            ->setPassword((string) ($c['password'] ?? ''));
+            ->setHost($this->str($c, 'host', '127.0.0.1'))
+            ->setPort($this->int($c, 'port', 3306))
+            ->setDbName($this->str($c, 'database', ''))
+            ->setUserName($this->str($c, 'username', ''))
+            ->setPassword($this->str($c, 'password', ''));
     }
 
     /**
-     * @param  array{host?: string, port?: int|string, database: string, username?: string, password?: string}  $c
+     * @param  array<string, mixed>  $c
      */
     private function postgres(array $c): PostgreSql
     {
         return PostgreSql::create()
-            ->setHost($c['host'] ?? '127.0.0.1')
-            ->setPort((int) ($c['port'] ?? 5432))
-            ->setDbName($c['database'])
-            ->setUserName((string) ($c['username'] ?? ''))
-            ->setPassword((string) ($c['password'] ?? ''));
+            ->setHost($this->str($c, 'host', '127.0.0.1'))
+            ->setPort($this->int($c, 'port', 5432))
+            ->setDbName($this->str($c, 'database', ''))
+            ->setUserName($this->str($c, 'username', ''))
+            ->setPassword($this->str($c, 'password', ''));
+    }
+
+    /**
+     * Narrow a mixed connection-config value to a string, falling back to the
+     * given default when the key is absent or non-string.
+     *
+     * @param  array<string, mixed>  $c
+     */
+    private function str(array $c, string $key, string $default): string
+    {
+        $v = $c[$key] ?? null;
+
+        return is_string($v) ? $v : $default;
+    }
+
+    /**
+     * Narrow a mixed connection-config value to an int, accepting numeric
+     * strings (config ports are commonly strings), else the given default.
+     *
+     * @param  array<string, mixed>  $c
+     */
+    private function int(array $c, string $key, int $default): int
+    {
+        $v = $c[$key] ?? null;
+
+        return is_numeric($v) ? (int) $v : $default;
     }
 }

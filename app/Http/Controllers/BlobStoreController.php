@@ -47,7 +47,20 @@ abstract class BlobStoreController extends Controller
     /** Whole-upload body cap (MiB). Gallery caps tighter than files. */
     protected function maxUploadMb(): int
     {
-        return (int) config($this->module().'.max_upload_mb', 512);
+        return $this->configInt($this->module().'.max_upload_mb', 512);
+    }
+
+    /**
+     * Read a config value as an int, tolerating scalar/numeric-string values
+     * (env-sourced config often arrives as a string). Narrows the `mixed` config
+     * value before casting; identical result to `(int) config(...)` for scalars,
+     * falls back to the default for non-scalar (null/array) values.
+     */
+    private function configInt(string $key, int $default): int
+    {
+        $value = config($key, $default);
+
+        return is_scalar($value) ? (int) $value : $default;
     }
 
     /**
@@ -195,7 +208,7 @@ abstract class BlobStoreController extends Controller
 
         $lockId = $this->reconcileLockId($request);
         $live = array_flip($data['blobs']);
-        $grace = Carbon::now()->subHours((int) config($this->module().'.blob_orphan_grace_hours', 24));
+        $grace = Carbon::now()->subHours($this->configInt($this->module().'.blob_orphan_grace_hours', 24));
         $disk = $this->disk();
         $prefix = $this->module();
 
@@ -207,9 +220,11 @@ abstract class BlobStoreController extends Controller
                 ->orderBy('blob')
                 ->chunkById(500, function (Collection $rows) use ($live, $disk, $prefix): void {
                     foreach ($rows as $row) {
-                        // The blob id is the row's primary key ($primaryKey = 'blob').
-                        $blob = (string) $row->getKey();
-                        if (isset($live[$blob])) {
+                        // The blob id is the row's primary key ($primaryKey = 'blob'),
+                        // a UUID string; narrow the mixed key before use as a string.
+                        $key = $row->getKey();
+                        $blob = is_scalar($key) ? (string) $key : '';
+                        if ($blob === '' || isset($live[$blob])) {
                             continue;
                         }
                         $disk->delete($prefix.'/'.$blob);
@@ -297,13 +312,14 @@ abstract class BlobStoreController extends Controller
             'chunk' => ['required', 'file', 'max:'.((int) (self::CHUNK_PART_SIZE / 1024) + 1024)],
         ]);
         $s = $this->chunkSession($request);
+        $part = $request->integer('part');
         $res = $this->s3()->uploadPart([
             'Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId'],
-            'PartNumber' => (int) $request->input('part'),
+            'PartNumber' => $part,
             'Body' => fopen($request->file('chunk')->getRealPath(), 'r'),
         ]);
 
-        return response()->json(['part' => (int) $request->input('part'), 'etag' => $res['ETag']]);
+        return response()->json(['part' => $part, 'etag' => $res['ETag']]);
     }
 
     /** Finish the upload and register the blob (same contract as upload()). */
@@ -320,7 +336,7 @@ abstract class BlobStoreController extends Controller
         // multi-GB file with no retry/abort path. Both completeMultipartUpload
         // (idempotent for identical parts) and firstOrCreate dedupe a replayed
         // completion, so leaving the session in place is safe.
-        $token = (string) $request->input('token');
+        $token = $request->string('token')->toString();
         $s = $this->chunkSession($request);
 
         /** @var array<int, array{part: int|string, etag: string}> $inputParts */
@@ -336,7 +352,8 @@ abstract class BlobStoreController extends Controller
         // Authoritative size of the ASSEMBLED object (never the client's declared
         // size, which would let a caller understate a large upload to beat the
         // quota). One HEAD per completed multipart upload — rare (>64 MB files).
-        $size = (int) ($this->s3()->headObject(['Bucket' => $this->bucket(), 'Key' => $s['key']])['ContentLength'] ?? 0);
+        $contentLength = $this->s3()->headObject(['Bucket' => $this->bucket(), 'Key' => $s['key']])['ContentLength'] ?? 0;
+        $size = is_scalar($contentLength) ? (int) $contentLength : 0;
         $model = $this->blobModel();
         $model::firstOrCreate(
             ['blob' => $s['id']],
@@ -351,12 +368,13 @@ abstract class BlobStoreController extends Controller
     public function chunkAbort(Request $request): JsonResponse
     {
         $request->validate(['token' => ['required', 'string']]);
-        $token = (string) $request->input('token');
+        $token = $request->string('token')->toString();
         // Tolerate an already-gone session (nothing to abort) so aborting is
         // always safe/idempotent and never a dead-end 404.
         $user = $this->requireUser($request);
         $s = Cache::get($this->chunkKey($token));
-        if (is_array($s) && (int) ($s['actor'] ?? 0) === (int) $user->id) {
+        $actor = is_array($s) ? ($s['actor'] ?? 0) : null;
+        if (is_array($s) && is_scalar($actor) && (int) $actor === (int) $user->id) {
             try {
                 $this->s3()->abortMultipartUpload(['Bucket' => $this->bucket(), 'Key' => $s['key'], 'UploadId' => $s['uploadId']]);
             } catch (\Throwable) {
@@ -380,7 +398,11 @@ abstract class BlobStoreController extends Controller
 
     private function bucket(): string
     {
-        return (string) config('filesystems.disks.'.config('files.disk').'.bucket');
+        $disk = config('files.disk');
+        $diskName = is_scalar($disk) ? (string) $disk : '';
+        $bucket = config('filesystems.disks.'.$diskName.'.bucket');
+
+        return is_scalar($bucket) ? (string) $bucket : '';
     }
 
     private function chunkKey(string $token): string
@@ -396,10 +418,20 @@ abstract class BlobStoreController extends Controller
     private function chunkSession(Request $request): array
     {
         $user = $this->requireUser($request);
-        $s = Cache::get($this->chunkKey((string) $request->input('token')));
-        abort_if(! is_array($s) || (int) ($s['actor'] ?? 0) !== (int) $user->id, 404);
+        $s = Cache::get($this->chunkKey($request->string('token')->toString()));
+        abort_unless(is_array($s), 404);
+        $actor = $s['actor'] ?? 0;
+        abort_if(! is_scalar($actor) || (int) $actor !== (int) $user->id, 404);
 
-        return $s;
+        // The session was stored (chunkInit) as a string-keyed array; re-key on the
+        // string cast so the mixed-keyed cache read matches the declared shape
+        // without an inline type override. Values are preserved verbatim.
+        $session = [];
+        foreach ($s as $k => $v) {
+            $session[(string) $k] = $v;
+        }
+
+        return $session;
     }
 
     /** Bytes the user currently occupies (every blob in their ledger). */
@@ -413,7 +445,7 @@ abstract class BlobStoreController extends Controller
     /** Per-user quota in bytes (0 / null = unlimited). */
     protected function quotaBytes(): int
     {
-        return (int) config($this->module().'.quota_mb', 0) * 1024 * 1024;
+        return $this->configInt($this->module().'.quota_mb', 0) * 1024 * 1024;
     }
 
     private function quotaExceeded(int $userId, int $incoming): bool

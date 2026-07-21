@@ -36,7 +36,9 @@ class FileController extends BlobStoreController
     /** Files allow larger whole-uploads than the gallery. */
     protected function maxUploadMb(): int
     {
-        return (int) config('files.max_upload_mb', 2048);
+        $max = config('files.max_upload_mb', 2048);
+
+        return is_numeric($max) ? (int) $max : 2048;
     }
 
     /** The file browser shell. All data flows through the opaque store client-side;

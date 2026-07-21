@@ -23,9 +23,12 @@ trait ManagesPublicShares
     /** @return array<string, mixed> */
     protected function shareRules(): array
     {
+        $maxManifest = config('gallery.share_max_manifest_bytes');
+        $maxBlobs = config('gallery.share_max_blobs');
+
         return [
-            'sealed_manifest' => ['required', 'string', 'max:'.(int) config('gallery.share_max_manifest_bytes')],
-            'blob_refs' => ['required', 'array', 'max:'.(int) config('gallery.share_max_blobs')],
+            'sealed_manifest' => ['required', 'string', 'max:'.(is_numeric($maxManifest) ? (int) $maxManifest : 0)],
+            'blob_refs' => ['required', 'array', 'max:'.(is_numeric($maxBlobs) ? (int) $maxBlobs : 0)],
             'blob_refs.*' => ['string', 'uuid'],
             'allow_download' => ['boolean'],
             'expires_at' => ['nullable', 'date', 'after:now'],

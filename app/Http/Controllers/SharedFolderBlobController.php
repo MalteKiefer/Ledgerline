@@ -35,7 +35,9 @@ class SharedFolderBlobController extends BlobStoreController
 
     protected function maxUploadMb(): int
     {
-        return (int) config('shared-folders.max_upload_mb', 2048);
+        $max = config('shared-folders.max_upload_mb', 2048);
+
+        return is_numeric($max) ? (int) $max : 2048;
     }
 
     /** The vault from the bound route, gated for the required ability. */
@@ -130,7 +132,9 @@ class SharedFolderBlobController extends BlobStoreController
     protected function quotaBytes(): int
     {
         // Attributed to the owner's personal files quota.
-        return (int) config('files.quota_mb', 0) * 1024 * 1024;
+        $quotaMb = config('files.quota_mb', 0);
+
+        return (is_numeric($quotaMb) ? (int) $quotaMb : 0) * 1024 * 1024;
     }
 
     /**

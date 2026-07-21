@@ -43,8 +43,10 @@ class SystemStatus
         $lastBackup = BackupRun::where('status', 'success')->max('finished_at');
         $lastVerified = BackupRun::whereNotNull('verified_at')->orderByDesc('verified_at')->first();
 
+        $appVersion = config('app.version');
+
         return [
-            'version' => (string) config('app.version'),
+            'version' => is_scalar($appVersion) ? (string) $appVersion : '',
             'queue' => [
                 'pending' => $this->tableCount('jobs'),
                 'failed' => $this->tableCount('failed_jobs'),
@@ -58,12 +60,12 @@ class SystemStatus
             'errors' => [
                 'unresolved' => ErrorEvent::whereNull('resolved_at')->count(),
                 'total' => (int) ErrorEvent::sum('count'),
-                'lastAt' => $lastError ? CarbonImmutable::parse($lastError)->toIso8601String() : null,
+                'lastAt' => $this->toIso($lastError),
             ],
             'backup' => [
-                'lastSuccessAt' => $lastBackup ? CarbonImmutable::parse($lastBackup)->toIso8601String() : null,
+                'lastSuccessAt' => $this->toIso($lastBackup),
                 'lastVerifyStatus' => $lastVerified?->verify_status,
-                'lastVerifyAt' => $lastVerified?->verified_at ? CarbonImmutable::parse($lastVerified->verified_at)->toIso8601String() : null,
+                'lastVerifyAt' => $this->toIso($lastVerified?->verified_at),
             ],
             'scheduler' => [
                 'lastRunAt' => $this->schedulerLastRun(),
@@ -89,19 +91,46 @@ class SystemStatus
     {
         try {
             $connection = config('database.default');
+            $connection = is_string($connection) ? $connection : '';
             $driver = config("database.connections.{$connection}.driver");
 
             return match ($driver) {
-                'pgsql' => (int) DB::selectOne('select pg_database_size(current_database()) as size')?->size,
-                'mysql', 'mariadb' => (int) (DB::selectOne(
+                'pgsql' => $this->sizeOf(DB::selectOne('select pg_database_size(current_database()) as size')),
+                'mysql', 'mariadb' => $this->sizeOf(DB::selectOne(
                     'select sum(data_length + index_length) as size from information_schema.tables where table_schema = database()'
-                )?->size ?? 0),
-                'sqlite' => (int) (@filesize((string) config("database.connections.{$connection}.database")) ?: 0),
+                )),
+                'sqlite' => (function () use ($connection): int {
+                    $dbPath = config("database.connections.{$connection}.database");
+
+                    return is_string($dbPath) ? (int) (@filesize($dbPath) ?: 0) : 0;
+                })(),
                 default => 0,
             };
         } catch (Throwable) {
             return 0;
         }
+    }
+
+    /** Read the numeric `size` column from a selectOne() row, defaulting to 0. */
+    private function sizeOf(mixed $row): int
+    {
+        $size = is_object($row) ? ($row->size ?? null) : null;
+
+        return is_numeric($size) ? (int) $size : 0;
+    }
+
+    /** Parse a mixed DB timestamp value to an ISO-8601 string, or null. */
+    private function toIso(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (! is_string($value) && ! is_int($value) && ! $value instanceof \DateTimeInterface) {
+            return null;
+        }
+
+        return CarbonImmutable::parse($value)->toIso8601String();
     }
 
     /** Latest recorded run across all scheduled maintenance tasks. */
@@ -112,13 +141,13 @@ class SystemStatus
             foreach (app(Schedule::class)->events() as $event) {
                 $name = AppServiceProvider::cronName($event);
                 $run = Cache::get(AppServiceProvider::cronRunKey($name));
-                $at = $run['at'] ?? null;
-                if ($at !== null && ($latest === null || $at > $latest)) {
+                $at = is_array($run) ? ($run['at'] ?? null) : null;
+                if (is_string($at) && ($latest === null || $at > $latest)) {
                     $latest = $at;
                 }
             }
 
-            return $latest ? CarbonImmutable::parse($latest)->toIso8601String() : null;
+            return $latest !== null ? CarbonImmutable::parse($latest)->toIso8601String() : null;
         } catch (Throwable) {
             return null;
         }

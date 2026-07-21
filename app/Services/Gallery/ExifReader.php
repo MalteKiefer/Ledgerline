@@ -19,7 +19,7 @@ class ExifReader
     /**
      * Read one file's metadata into a normalised shape for the gallery processor.
      *
-     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, content_id: ?string, raw: ?array<string, mixed>}
+     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, content_id: ?string, raw: ?array<array-key, mixed>}
      */
     public function read(string $path): array
     {
@@ -48,7 +48,7 @@ class ExifReader
      * can be unit-tested with a fixture, no binary required.
      *
      * @param  array<string, mixed>  $tags
-     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, content_id: ?string, raw: ?array<string, mixed>}
+     * @return array{taken_at: ?Carbon, lat: ?float, lon: ?float, camera: ?string, content_id: ?string, raw: ?array<array-key, mixed>}
      */
     public function normalize(array $tags): array
     {
@@ -89,8 +89,10 @@ class ExifReader
     /** @param  array<string, mixed>  $tags */
     private function camera(array $tags): ?string
     {
-        $make = trim((string) ($this->first($tags, ['Make', 'EXIF:Make']) ?? ''));
-        $model = trim((string) ($this->first($tags, ['Model', 'EXIF:Model']) ?? ''));
+        $makeVal = $this->first($tags, ['Make', 'EXIF:Make']);
+        $modelVal = $this->first($tags, ['Model', 'EXIF:Model']);
+        $make = trim(is_scalar($makeVal) ? (string) $makeVal : '');
+        $model = trim(is_scalar($modelVal) ? (string) $modelVal : '');
         $camera = trim($make.' '.$model);
 
         return $camera !== '' ? $camera : null;
@@ -147,8 +149,8 @@ class ExifReader
     /**
      * Keep only JSON-safe, UTF-8 values (drop binary blobs like embedded images).
      *
-     * @param  array<string, mixed>  $tags
-     * @return array<string, mixed>
+     * @param  array<array-key, mixed>  $tags
+     * @return array<array-key, mixed>
      */
     private function clean(array $tags): array
     {
@@ -170,6 +172,8 @@ class ExifReader
 
     private function binary(): string
     {
-        return (string) config('gallery.exiftool_path', 'exiftool');
+        $path = config('gallery.exiftool_path', 'exiftool');
+
+        return is_string($path) && $path !== '' ? $path : 'exiftool';
     }
 }

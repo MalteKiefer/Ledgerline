@@ -37,7 +37,8 @@ abstract class SweepOrphanBlobs extends Command
     public function handle(): int
     {
         $disk = BlobStore::disk();
-        $cutoff = Carbon::now()->subHours((int) config($this->configNs().'.blob_orphan_grace_hours', 24));
+        $grace = config($this->configNs().'.blob_orphan_grace_hours', 24);
+        $cutoff = Carbon::now()->subHours(is_numeric($grace) ? (int) $grace : 24);
 
         // Every blob with an ownership record is legitimately referenced (or a
         // fresh upload); only disk bytes with no record at all are candidates.

@@ -32,7 +32,7 @@ class MachineLearning
             return null;
         }
 
-        $entries = json_encode(['clip' => ['visual' => ['modelName' => (string) config('gallery.ml_clip_model')]]], JSON_THROW_ON_ERROR);
+        $entries = json_encode(['clip' => ['visual' => ['modelName' => $this->clipModel()]]], JSON_THROW_ON_ERROR);
 
         try {
             $res = $this->client(120)
@@ -63,7 +63,7 @@ class MachineLearning
             return null;
         }
 
-        $entries = json_encode(['clip' => ['textual' => ['modelName' => (string) config('gallery.ml_clip_model')]]], JSON_THROW_ON_ERROR);
+        $entries = json_encode(['clip' => ['textual' => ['modelName' => $this->clipModel()]]], JSON_THROW_ON_ERROR);
 
         try {
             $res = $this->client(60)->asMultipart()->post($this->base().'/predict', [
@@ -93,8 +93,10 @@ class MachineLearning
             return [];
         }
 
-        $model = (string) config('gallery.face_model', 'buffalo_l');
-        $minScore = (float) config('gallery.face_min_score', 0.7);
+        $modelCfg = config('gallery.face_model', 'buffalo_l');
+        $model = is_string($modelCfg) && $modelCfg !== '' ? $modelCfg : 'buffalo_l';
+        $minScoreCfg = config('gallery.face_min_score', 0.7);
+        $minScore = is_numeric($minScoreCfg) ? (float) $minScoreCfg : 0.7;
         $entries = json_encode([
             'facial-recognition' => [
                 'recognition' => ['modelName' => $model],
@@ -111,11 +113,16 @@ class MachineLearning
                 return [];
             }
 
-            $w = max(1, (int) $res->json('imageWidth', 1));
-            $h = max(1, (int) $res->json('imageHeight', 1));
+            $wRaw = $res->json('imageWidth', 1);
+            $hRaw = $res->json('imageHeight', 1);
+            $w = max(1, is_numeric($wRaw) ? (int) $wRaw : 1);
+            $h = max(1, is_numeric($hRaw) ? (int) $hRaw : 1);
             $faces = [];
 
             foreach ((array) $res->json('facial-recognition', []) as $face) {
+                if (! is_array($face)) {
+                    continue;
+                }
                 $box = $face['boundingBox'] ?? null;
                 $embedding = $this->decodeVector($face['embedding'] ?? null);
                 if (! is_array($box) || $embedding === null) {
@@ -123,13 +130,13 @@ class MachineLearning
                 }
 
                 $faces[] = [
-                    'score' => (float) ($face['score'] ?? 0),
+                    'score' => $this->floatOf($face['score'] ?? 0),
                     // Normalise pixel coordinates to 0..1.
                     'box' => [
-                        (float) ($box['x1'] ?? 0) / $w,
-                        (float) ($box['y1'] ?? 0) / $h,
-                        (float) ($box['x2'] ?? 0) / $w,
-                        (float) ($box['y2'] ?? 0) / $h,
+                        $this->floatOf($box['x1'] ?? 0) / $w,
+                        $this->floatOf($box['y1'] ?? 0) / $h,
+                        $this->floatOf($box['x2'] ?? 0) / $w,
+                        $this->floatOf($box['y2'] ?? 0) / $h,
                     ],
                     'embedding' => $embedding,
                 ];
@@ -156,7 +163,20 @@ class MachineLearning
             return null;
         }
 
-        return array_map('floatval', array_values($vector));
+        return array_map(fn (mixed $v): float => $this->floatOf($v), array_values($vector));
+    }
+
+    /** Narrow a mixed value (config/JSON) to float, defaulting to 0.0. */
+    private function floatOf(mixed $value): float
+    {
+        return is_numeric($value) ? (float) $value : 0.0;
+    }
+
+    private function clipModel(): string
+    {
+        $model = config('gallery.ml_clip_model');
+
+        return is_string($model) ? $model : '';
     }
 
     public function faceEnabled(): bool
@@ -166,7 +186,9 @@ class MachineLearning
 
     private function base(): string
     {
-        return rtrim((string) config('gallery.ml_url'), '/');
+        $url = config('gallery.ml_url');
+
+        return rtrim(is_string($url) ? $url : '', '/');
     }
 
     /**

@@ -80,7 +80,7 @@ class BackupDestinationFactory
             return;
         }
         // No path configured means the login/base directory, which already exists.
-        if (trim((string) ($config['path'] ?? ''), '/') === '') {
+        if (trim(is_string($config['path'] ?? null) ? $config['path'] : '', '/') === '') {
             return;
         }
         // The empty path resolves to the root prefix; the adapter mkdir's the
@@ -89,7 +89,7 @@ class BackupDestinationFactory
     }
 
     /**
-     * @param  array{region?: string, key?: string, secret?: string, endpoint?: string, use_path_style?: bool, bucket?: string, path?: string}  $c
+     * @param  array<string, mixed>  $c
      */
     private function s3(array $c): AwsS3V3Adapter
     {
@@ -103,38 +103,44 @@ class BackupDestinationFactory
         ];
         // B2 (and other S3-compatible stores) need a custom endpoint + path-style.
         if (! empty($c['endpoint'])) {
-            $this->assertHostAllowed((string) (parse_url((string) $c['endpoint'], PHP_URL_HOST) ?: ''));
+            $endpoint = is_string($c['endpoint']) ? $c['endpoint'] : '';
+            $this->assertHostAllowed((string) (parse_url($endpoint, PHP_URL_HOST) ?: ''));
             $args['endpoint'] = $c['endpoint'];
             $args['use_path_style_endpoint'] = (bool) ($c['use_path_style'] ?? true);
         }
 
-        return new AwsS3V3Adapter(new S3Client($args), $c['bucket'] ?? '', trim((string) ($c['path'] ?? ''), '/'));
+        return new AwsS3V3Adapter(new S3Client($args), is_string($c['bucket'] ?? null) ? $c['bucket'] : '', trim(is_string($c['path'] ?? null) ? $c['path'] : '', '/'));
     }
 
     /**
-     * @param  array{path?: string, host_fingerprint?: string, host?: string, username?: string, password?: string, private_key?: string, port?: int|string}  $c
+     * @param  array<string, mixed>  $c
      */
     private function sftp(array $c): SftpAdapter
     {
         // Root defaults to the login directory (empty), NOT '/': on many SFTP
         // hosts (e.g. Hetzner Storage Box) the absolute server root is not
         // writable, but the home dir is. A configured path is used as-is.
-        $root = trim((string) ($c['path'] ?? ''));
+        $root = trim(is_string($c['path'] ?? null) ? $c['path'] : '');
 
         // Pin the server's host key when a fingerprint is configured, so a
         // MITM / DNS-spoof of the SFTP host cannot capture the credentials and
         // backup. Without a fingerprint the connection is trust-on-first-use.
-        $fingerprint = trim((string) ($c['host_fingerprint'] ?? ''));
+        $fingerprint = trim(is_string($c['host_fingerprint'] ?? null) ? $c['host_fingerprint'] : '');
 
-        $this->assertHostAllowed((string) ($c['host'] ?? ''));
+        $host = is_string($c['host'] ?? null) ? $c['host'] : '';
+        $username = is_string($c['username'] ?? null) ? $c['username'] : '';
+        $password = is_string($c['password'] ?? null) ? $c['password'] : '';
+        $privateKey = is_string($c['private_key'] ?? null) ? $c['private_key'] : '';
+
+        $this->assertHostAllowed($host);
 
         return new SftpAdapter(
             new SftpConnectionProvider(
-                host: $c['host'] ?? '',
-                username: $c['username'] ?? '',
-                password: ($c['password'] ?? '') !== '' ? $c['password'] : null,
-                privateKey: ($c['private_key'] ?? '') !== '' ? $c['private_key'] : null,
-                port: (int) ($c['port'] ?? 22),
+                host: $host,
+                username: $username,
+                password: $password !== '' ? $password : null,
+                privateKey: $privateKey !== '' ? $privateKey : null,
+                port: is_numeric($c['port'] ?? null) ? (int) $c['port'] : 22,
                 hostFingerprint: $fingerprint !== '' ? $fingerprint : null,
             ),
             $root,
@@ -142,19 +148,20 @@ class BackupDestinationFactory
     }
 
     /**
-     * @param  array{base_uri?: string, username?: string, password?: string, path?: string}  $c
+     * @param  array<string, mixed>  $c
      */
     private function webdav(array $c): WebDAVAdapter
     {
-        $this->assertHostAllowed((string) (parse_url((string) ($c['base_uri'] ?? ''), PHP_URL_HOST) ?: ''));
+        $baseUri = is_string($c['base_uri'] ?? null) ? $c['base_uri'] : '';
+        $this->assertHostAllowed((string) (parse_url($baseUri, PHP_URL_HOST) ?: ''));
 
         $client = new WebDavClient([
-            'baseUri' => $c['base_uri'] ?? '',
-            'userName' => $c['username'] ?? '',
-            'password' => $c['password'] ?? '',
+            'baseUri' => $baseUri,
+            'userName' => is_string($c['username'] ?? null) ? $c['username'] : '',
+            'password' => is_string($c['password'] ?? null) ? $c['password'] : '',
         ]);
 
-        return new WebDAVAdapter($client, trim((string) ($c['path'] ?? ''), '/'));
+        return new WebDAVAdapter($client, trim(is_string($c['path'] ?? null) ? $c['path'] : '', '/'));
     }
 
     /**

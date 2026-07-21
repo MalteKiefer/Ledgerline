@@ -25,7 +25,11 @@ class AccountController extends Controller
     {
         $user = $this->requireUser($request);
         $sections = [];
-        foreach (config('user_data.contributors', []) as $class) {
+        $contributors = config('user_data.contributors', []);
+        foreach (is_array($contributors) ? $contributors : [] as $class) {
+            if (! is_string($class)) {
+                continue;
+            }
             /** @var UserDataContributor $contributor */
             $contributor = app($class);
             $sections[$contributor->key()] = $contributor->export($user);

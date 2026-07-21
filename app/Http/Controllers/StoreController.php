@@ -25,6 +25,8 @@ class StoreController extends Controller
     /** Cap generously — this is the metadata manifest, not file bytes. */
     protected function manifestMaxBytes(): int
     {
-        return (int) config('vault.manifest_max_bytes');
+        $max = config('vault.manifest_max_bytes');
+
+        return is_numeric($max) ? (int) $max : 0;
     }
 }

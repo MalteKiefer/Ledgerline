@@ -30,8 +30,10 @@ class UpdateTokenIp
             // Remote wipe → real revocation once the self-erase grace has passed.
             // wipe_requested_at is an app-added column Sanctum doesn't cast, so
             // parse it explicitly.
+            $graceMinutes = config('devices.wipe_grace_minutes', 15);
+            $graceMinutes = is_numeric($graceMinutes) ? (int) $graceMinutes : 15;
             if ($token->wipe_requested_at !== null
-                && Carbon::parse($token->wipe_requested_at)->lte(now()->subMinutes((int) config('devices.wipe_grace_minutes', 15)))) {
+                && Carbon::parse($token->wipe_requested_at)->lte(now()->subMinutes($graceMinutes))) {
                 $token->delete();
                 abort(401, 'Device wiped.');
             }

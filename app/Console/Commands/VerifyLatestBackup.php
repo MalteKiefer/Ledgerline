@@ -66,13 +66,14 @@ class VerifyLatestBackup extends Command
     /** A staleness message when the newest successful backup is too old, else null. */
     private function stalenessMessage(): ?string
     {
-        $hours = (int) config('ops.backup_stale_hours', 48);
+        $staleHours = config('ops.backup_stale_hours', 48);
+        $hours = is_numeric($staleHours) ? (int) $staleHours : 48;
         if ($hours <= 0) {
             return null;
         }
 
         $last = BackupRun::where('status', 'success')->max('finished_at');
-        if ($last === null) {
+        if (! is_string($last) && ! $last instanceof \DateTimeInterface) {
             return __('settings.backup_verify_none');
         }
         $at = Carbon::parse($last);

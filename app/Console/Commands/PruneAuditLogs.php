@@ -20,14 +20,16 @@ class PruneAuditLogs extends Command
 
     public function handle(): int
     {
-        $days = (int) config('ops.audit_retention_days', 365);
+        $retention = config('ops.audit_retention_days', 365);
+        $days = is_numeric($retention) ? (int) $retention : 365;
         if ($days <= 0) {
             $this->info('Audit retention disabled (keep forever).');
 
             return self::SUCCESS;
         }
 
-        $deleted = AuditLog::where('created_at', '<', Carbon::now()->subDays($days))->delete();
+        $result = AuditLog::where('created_at', '<', Carbon::now()->subDays($days))->delete();
+        $deleted = is_numeric($result) ? (int) $result : 0;
         $this->info($deleted.' audit entr'.($deleted === 1 ? 'y' : 'ies').' pruned.');
 
         return self::SUCCESS;

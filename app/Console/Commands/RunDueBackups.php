@@ -24,7 +24,8 @@ class RunDueBackups extends Command
         $dispatched = 0;
         // Evaluate cron against the app timezone so "0 3 * * *" means 03:00 local,
         // not 03:00 in the server's default timezone.
-        $now = now(config('app.timezone'));
+        $tz = config('app.timezone');
+        $now = now(is_string($tz) ? $tz : null);
         foreach (BackupJob::where('enabled', true)->get() as $job) {
             try {
                 if (CronExpression::factory($job->cron)->isDue($now)) {

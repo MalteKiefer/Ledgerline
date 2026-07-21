@@ -70,7 +70,7 @@ class User extends Authenticatable
     {
         $adminGroup = config('services.pocketid.admin_group');
 
-        if (filled($adminGroup)) {
+        if (is_scalar($adminGroup) && filled($adminGroup)) {
             return $this->inGroup((string) $adminGroup);
         }
 

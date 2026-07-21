@@ -63,8 +63,10 @@ class PaperlessController extends Controller
     {
         $user = $this->requireUser($request);
         $settings = UserSetting::for($user->id);
-        $url = trim((string) ($request->input('paperless_url') ?: $settings->paperless_url));
-        $token = trim((string) ($request->input('paperless_token') ?: $settings->paperless_token));
+        $rawUrl = $request->input('paperless_url') ?: $settings->paperless_url;
+        $rawToken = $request->input('paperless_token') ?: $settings->paperless_token;
+        $url = trim(is_string($rawUrl) ? $rawUrl : '');
+        $token = trim(is_string($rawToken) ? $rawToken : '');
 
         if ($url === '' || $token === '') {
             return response()->json(['ok' => false, 'detail' => __('settings.paperless_test_missing')]);
@@ -116,10 +118,14 @@ class PaperlessController extends Controller
             ->groupBy('kind')
             ->pluck('c', 'kind');
 
+        $count = static function (mixed $value): int {
+            return is_numeric($value) ? (int) $value : 0;
+        };
+
         return [
-            'tag' => (int) ($by['tag'] ?? 0),
-            'document_type' => (int) ($by['document_type'] ?? 0),
-            'correspondent' => (int) ($by['correspondent'] ?? 0),
+            'tag' => $count($by['tag'] ?? 0),
+            'document_type' => $count($by['document_type'] ?? 0),
+            'correspondent' => $count($by['correspondent'] ?? 0),
         ];
     }
 }

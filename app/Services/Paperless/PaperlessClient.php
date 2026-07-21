@@ -75,7 +75,9 @@ class PaperlessClient
             throw new RuntimeException("Reading {$endpoint} failed: HTTP ".$res->status().'.');
         }
 
-        return (int) ($res->json('count') ?? 0);
+        $count = $res->json('count');
+
+        return is_numeric($count) ? (int) $count : 0;
     }
 
     /**
@@ -94,15 +96,16 @@ class PaperlessClient
                 throw new RuntimeException("Listing {$endpoint} failed: HTTP ".$res->status().'.');
             }
             $body = $res->json();
-            foreach ($body['results'] ?? [] as $r) {
-                $out[] = [
-                    'paperless_id' => (int) $r['id'],
-                    'name' => (string) ($r['name'] ?? ''),
-                    'color' => $r['color'] ?? $r['colour'] ?? null,
-                ];
+            $results = is_array($body) ? ($body['results'] ?? []) : [];
+            if (is_array($results)) {
+                foreach ($results as $r) {
+                    if (is_array($r)) {
+                        $out[] = $this->shape($r, '');
+                    }
+                }
             }
             $page++;
-        } while (! empty($body['next']));
+        } while (is_array($body) && ! empty($body['next']));
 
         return $out;
     }
@@ -120,7 +123,9 @@ class PaperlessClient
         $res = $this->http()->post("/api/{$endpoint}/", ['name' => $name]);
 
         if ($res->successful()) {
-            return $this->shape($res->json(), $name);
+            $body = $res->json();
+
+            return $this->shape(is_array($body) ? $body : [], $name);
         }
 
         // A 400 is usually "already exists" — reuse the existing term so the
@@ -146,9 +151,16 @@ class PaperlessClient
         if (! $res->successful()) {
             return null;
         }
-        foreach ($res->json('results') ?? [] as $r) {
-            if (strcasecmp((string) ($r['name'] ?? ''), $name) === 0) {
-                return $this->shape($r, $name);
+        $results = $res->json('results') ?? [];
+        if (is_array($results)) {
+            foreach ($results as $r) {
+                if (! is_array($r)) {
+                    continue;
+                }
+                $rName = $r['name'] ?? '';
+                if (strcasecmp(is_scalar($rName) ? (string) $rName : '', $name) === 0) {
+                    return $this->shape($r, $name);
+                }
             }
         }
 
@@ -156,15 +168,19 @@ class PaperlessClient
     }
 
     /**
-     * @param  array<string, mixed>  $r
+     * @param  array<array-key, mixed>  $r
      * @return array{paperless_id:int, name:string, color:?string}
      */
     private function shape(array $r, string $fallbackName): array
     {
+        $id = $r['id'] ?? null;
+        $name = $r['name'] ?? $fallbackName;
+        $color = $r['color'] ?? $r['colour'] ?? null;
+
         return [
-            'paperless_id' => (int) $r['id'],
-            'name' => (string) ($r['name'] ?? $fallbackName),
-            'color' => $r['color'] ?? $r['colour'] ?? null,
+            'paperless_id' => is_numeric($id) ? (int) $id : 0,
+            'name' => is_scalar($name) ? (string) $name : $fallbackName,
+            'color' => is_string($color) ? $color : null,
         ];
     }
 
@@ -202,7 +218,9 @@ class PaperlessClient
         }
 
         // The endpoint returns the task UUID as a JSON string.
-        return trim((string) $res->json(), '"');
+        $body = $res->json();
+
+        return trim(is_scalar($body) ? (string) $body : '', '"');
     }
 
     private function http(): PendingRequest

@@ -166,8 +166,9 @@ class SharedVaultController extends Controller
     {
         $this->authorize('manage', $vault);
 
+        $manifestMax = config('vault.manifest_max_bytes');
         $data = $request->validate([
-            'sealed_manifest' => ['required', 'string', 'max:'.config('vault.manifest_max_bytes')],
+            'sealed_manifest' => ['required', 'string', 'max:'.(is_numeric($manifestMax) ? (int) $manifestMax : 0)],
             'expected_version' => ['required', 'integer', 'min:0'],
             'members' => ['required', 'array'],
             'members.*.user_id' => ['required', 'integer'],
@@ -219,7 +220,7 @@ class SharedVaultController extends Controller
             $activeUserIds = SharedVaultMember::where('vault_id', $vault->id)
                 ->where('status', 'active')
                 ->pluck('user_id')
-                ->map(fn ($id) => (int) $id)
+                ->map(fn ($id): int => is_numeric($id) ? (int) $id : 0)
                 ->all();
 
             foreach ($data['members'] as $entry) {

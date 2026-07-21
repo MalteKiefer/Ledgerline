@@ -93,7 +93,7 @@ class PocketIdController extends Controller
         // Group memberships from the OIDC `groups` claim (used to gate the
         // non-personal, workspace-wide settings). Refreshed on every sign-in.
         $groups = array_values(array_filter(array_map(
-            'strval',
+            static fn (mixed $g): string => is_scalar($g) ? (string) $g : '',
             is_array($raw['groups'] ?? null) ? $raw['groups'] : [],
         )));
 

@@ -31,11 +31,13 @@ class ProfileController extends Controller
                 ])->all()
             : [];
 
+        $deviceMax = config('devices.max', 3);
+
         // Paired devices are loaded + kept live client-side (GET /devices).
         return view('profile', [
             'user' => $user,
             'sessions' => $sessions,
-            'deviceMax' => (int) config('devices.max', 3),
+            'deviceMax' => is_numeric($deviceMax) ? (int) $deviceMax : 3,
         ]);
     }
 }

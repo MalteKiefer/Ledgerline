@@ -63,7 +63,7 @@ class CreateMemberRequest extends FormRequest
     {
         $validator->after(function (Validator $v): void {
             $requested = $this->input('role');
-            $requestedRole = VaultRole::tryFrom((string) $requested);
+            $requestedRole = is_string($requested) ? VaultRole::tryFrom($requested) : null;
 
             if ($requestedRole === null) {
                 // Already caught by the Rule::in rule — bail early.

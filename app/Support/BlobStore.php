@@ -18,7 +18,9 @@ final class BlobStore
 {
     public static function disk(): Filesystem
     {
-        return Storage::disk(config('files.disk'));
+        $disk = config('files.disk');
+
+        return Storage::disk(is_string($disk) ? $disk : null);
     }
 
     /**

@@ -20,7 +20,7 @@ class FileShareController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $kind = (string) $request->input('kind');
+        $kind = $request->string('kind')->toString();
         abort_unless(in_array($kind, ['file', 'folder'], true), 422);
 
         return $this->createShare($request, $kind);
