@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { METRICS, metric, computeAge, computeBmi, kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl, classify, csvRows } from '../shared/health-metrics.js';
+import { METRICS, metric, computeAge, computeBmi, kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl, classify, csvRows, csvCell } from '../shared/health-metrics.js';
 
 describe('registry', () => {
   it('has the six metrics, bp is dual', () => {
@@ -42,6 +42,31 @@ describe('classify', () => {
   it('pulse band', () => { expect(classify('pulse', 70)).toBe('ok'); expect(classify('pulse', 110)).toBe('amber'); });
   it('temp band', () => { expect(classify('temp', 37)).toBe('ok'); expect(classify('temp', 38.4)).toBe('amber'); expect(classify('temp', 39.2)).toBe('red'); });
   it('weight/glucose always ok', () => { expect(classify('weight', 200)).toBe('ok'); expect(classify('glucose', 400)).toBe('ok'); });
+});
+
+describe('csvCell', () => {
+  it('returns plain string unchanged', () => {
+    expect(csvCell('hello')).toBe('hello');
+    expect(csvCell('2026-01-01')).toBe('2026-01-01');
+    expect(csvCell('80')).toBe('80');
+  });
+  it('wraps field containing comma in double-quotes', () => {
+    expect(csvCell('hello, world')).toBe('"hello, world"');
+  });
+  it('wraps field containing double-quote and escapes internal quotes', () => {
+    expect(csvCell('say "hi"')).toBe('"say ""hi"""');
+  });
+  it('wraps field containing newline', () => {
+    expect(csvCell('line1\nline2')).toBe('"line1\nline2"');
+    expect(csvCell('line1\r\nline2')).toBe('"line1\r\nline2"');
+  });
+  it('coerces null/undefined to empty string (no quotes needed)', () => {
+    expect(csvCell(null)).toBe('');
+    expect(csvCell(undefined)).toBe('');
+  });
+  it('handles empty string', () => {
+    expect(csvCell('')).toBe('');
+  });
 });
 
 describe('csvRows', () => {

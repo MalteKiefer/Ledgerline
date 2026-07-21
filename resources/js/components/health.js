@@ -4,8 +4,10 @@ import { zkModule } from '../shared/zk-module';
 import {
     METRICS, metric, computeAge, computeBmi, classify,
     kgToLb, lbToKg, cToF, fToC, mgdlToMmoll, mmollToMgdl,
+    csvRows, csvCell,
 } from '../shared/health-metrics';
 import { loadUplot } from '../shared/uplot-loader';
+import { saveBlobAs } from '../shared/dom';
 
 const DEFAULT_PROFILE = () => ({
     birthdate: '',
@@ -24,7 +26,9 @@ export default (labels = {}) => ({
             self.profile = DEFAULT_PROFILE();
             self.editorOpen = false;
             self.editing = null;
+            self.view = 'main';
             self._destroyChart();
+            self._destroyReportCharts();
         },
     }),
 
@@ -37,6 +41,11 @@ export default (labels = {}) => ({
     _mut: 0,
     metrics: METRICS,
     _chartInst: null, // current uPlot instance
+    // report mode
+    view: 'main', // 'main' | 'report'
+    reportGeneratedAt: '',
+    _reportChartInsts: [], // uPlot instances mounted in the report view
+    userName: labels.userName || '',
 
     // Editor form fields (populated on open)
     _form: { metric: 'weight', v: '', v2: '', ts: '', note: '' },
@@ -117,10 +126,14 @@ export default (labels = {}) => ({
     /**
      * Mount or refresh the uPlot chart in $refs.chart.
      * Called reactively via $watch on selectedMetric / chartRange / _mut.
+     * Delegates chart construction to _buildChart().
      */
     async renderChart() {
-        // Only render metric detail views, not master data.
-        if (this.selectedMetric === '_master') { this._destroyChart(); return; }
+        // Only render metric detail views, not master data or report view.
+        if (this.selectedMetric === '_master' || this.view === 'report') {
+            this._destroyChart();
+            return;
+        }
 
         const container = this.$refs && this.$refs.chart;
         if (!container) return;
@@ -133,34 +146,108 @@ export default (labels = {}) => ({
             return;
         }
 
-        const isDark = document.documentElement.classList.contains('dark');
-        const m = metric(this.selectedMetric);
-        const tint = this.tintHex(m ? m.tint : 'sky');
-        const isBp = this.selectedMetric === 'bp';
+        // Destroy previous instance before creating a new one.
+        this._destroyChart();
 
-        // Build x (timestamps in seconds) and y series arrays.
+        const inst = await this._buildChart(container, this.selectedMetric, rangeData);
+        if (!inst) return;
+
+        this._chartInst = inst;
+
+        // Double-click resets zoom
         const xs = rangeData.map((e) => Math.floor(new Date(e.ts).getTime() / 1000));
-        const ys = rangeData.map((e) => this._displaySingle(this.selectedMetric, e.v));
+        container.addEventListener('dblclick', () => {
+            if (this._chartInst) {
+                this._chartInst.setScale('x', { min: xs[0], max: xs[xs.length - 1] });
+            }
+        }, { once: false });
+    },
+
+    // --- CSV export ---
+
+    /**
+     * Export all entries for `key` as a CSV file download.
+     * Uses RFC 4180 escaping via csvCell.
+     *
+     * @param {string} key
+     */
+    exportCsv(key) {
+        const rows = csvRows(this.entries, key, this.profile.units);
+        const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+        saveBlobAs(new Blob([csv], { type: 'text/csv' }), 'health-' + key + '.csv');
+    },
+
+    // --- Report mode ---
+
+    /**
+     * Enter report/print view.
+     * Destroys the main chart instance first (only one uPlot allowed per container),
+     * then triggers async rendering of per-metric charts.
+     */
+    enterReport() {
+        this._destroyChart();
+        this._destroyReportCharts();
+        this.reportGeneratedAt = new Date().toISOString();
+        this.view = 'report';
+        // Defer chart rendering until Alpine has rendered the report DOM.
+        this.$nextTick(() => this.renderReport());
+    },
+
+    /**
+     * Exit report view and return to normal metric view.
+     */
+    exitReport() {
+        this._destroyReportCharts();
+        this.view = 'main';
+    },
+
+    /**
+     * Destroy all report-view uPlot instances.
+     */
+    _destroyReportCharts() {
+        for (const inst of this._reportChartInsts) {
+            try { inst.destroy(); } catch (_e) { /* ignore */ }
+        }
+        this._reportChartInsts = [];
+    },
+
+    /**
+     * Render a uPlot chart into a given DOM element for a specific metric.
+     * Extracted from renderChart() to share the option-building logic without
+     * duplication. Returns the uPlot instance (or null if no data / no UPlot).
+     *
+     * @param {HTMLElement} el
+     * @param {string} key
+     * @param {Array} rangeData  ascending entries
+     * @returns {Promise<object|null>}
+     */
+    async _buildChart(el, key, rangeData) {
+        if (!el || !rangeData.length) return null;
+
+        const isDark = document.documentElement.classList.contains('dark');
+        const m = metric(key);
+        const tint = this.tintHex(m ? m.tint : 'sky');
+        const isBp = key === 'bp';
+
+        const xs  = rangeData.map((e) => Math.floor(new Date(e.ts).getTime() / 1000));
+        const ys  = rangeData.map((e) => this._displaySingle(key, e.v));
         const ys2 = isBp ? rangeData.map((e) => (e.v2 != null ? e.v2 : null)) : null;
 
         const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
         const axisColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
         const bgColor   = isDark ? '#1c1c1e' : '#ffffff';
 
-        // Reference band thresholds per metric (canonical units).
-        // weight and glucose have no hard bands per spec.
         const BANDS = {
-            bp:    null, // handled per-series below
+            bp:    null,
             pulse: { amber: [0, 60], ok: [60, 100], amberHigh: [100, 300] },
             spo2:  { red: [0, 92], amber: [92, 95], ok: [95, 101] },
             temp:  { ok: [0, 38], amber: [38, 39], red: [39, 50] },
         };
 
         const drawBands = (u) => {
-            const key = this.selectedMetric;
-            const ctx  = u.ctx;
-            const xl   = u.bbox.left;
-            const xr   = xl + u.bbox.width;
+            const ctx = u.ctx;
+            const xl  = u.bbox.left;
+            const xr  = xl + u.bbox.width;
 
             ctx.save();
             ctx.beginPath();
@@ -175,10 +262,9 @@ export default (labels = {}) => ({
             };
 
             if (key === 'bp') {
-                // Systolic bands (series 1 = sys = v)
-                fillBand(0, 120,  isDark ? 'rgba(34,197,94,0.07)'   : 'rgba(34,197,94,0.06)');
-                fillBand(120, 140, isDark ? 'rgba(251,191,36,0.12)'  : 'rgba(251,191,36,0.10)');
-                fillBand(140, 300, isDark ? 'rgba(239,68,68,0.12)'   : 'rgba(239,68,68,0.10)');
+                fillBand(0, 120,  isDark ? 'rgba(34,197,94,0.07)'  : 'rgba(34,197,94,0.06)');
+                fillBand(120, 140, isDark ? 'rgba(251,191,36,0.12)' : 'rgba(251,191,36,0.10)');
+                fillBand(140, 300, isDark ? 'rgba(239,68,68,0.12)'  : 'rgba(239,68,68,0.10)');
             } else if (key === 'weight') {
                 const goalKg = this.profile.weightGoalKg;
                 if (goalKg) {
@@ -195,17 +281,17 @@ export default (labels = {}) => ({
                 }
             } else if (BANDS[key]) {
                 const b = BANDS[key];
-                if (b.red)       fillBand(...b.red,       isDark ? 'rgba(239,68,68,0.12)'   : 'rgba(239,68,68,0.10)');
-                if (b.amber)     fillBand(...b.amber,     isDark ? 'rgba(251,191,36,0.12)'  : 'rgba(251,191,36,0.10)');
-                if (b.amberHigh) fillBand(...b.amberHigh, isDark ? 'rgba(251,191,36,0.12)'  : 'rgba(251,191,36,0.10)');
-                if (b.ok)        fillBand(...b.ok,        isDark ? 'rgba(34,197,94,0.07)'   : 'rgba(34,197,94,0.06)');
+                if (b.red)       fillBand(...b.red,       isDark ? 'rgba(239,68,68,0.12)'  : 'rgba(239,68,68,0.10)');
+                if (b.amber)     fillBand(...b.amber,     isDark ? 'rgba(251,191,36,0.12)' : 'rgba(251,191,36,0.10)');
+                if (b.amberHigh) fillBand(...b.amberHigh, isDark ? 'rgba(251,191,36,0.12)' : 'rgba(251,191,36,0.10)');
+                if (b.ok)        fillBand(...b.ok,        isDark ? 'rgba(34,197,94,0.07)'  : 'rgba(34,197,94,0.06)');
             }
 
             ctx.restore();
         };
 
         const series = [
-            {}, // x-axis placeholder
+            {},
             {
                 label: isBp ? 'Sys' : (m ? m.unit : ''),
                 stroke: tint,
@@ -213,7 +299,6 @@ export default (labels = {}) => ({
                 spanGaps: false,
             },
         ];
-
         if (isBp) {
             series.push({
                 label: 'Dia',
@@ -225,35 +310,29 @@ export default (labels = {}) => ({
 
         const data = isBp ? [xs, ys, ys2] : [xs, ys];
 
-        // Destroy previous instance before creating a new one.
-        this._destroyChart();
-
         const UPlot = await loadUplot();
 
-        // Container might have been removed while awaiting (metric change, lock).
-        const mountEl = this.$refs && this.$refs.chart;
-        if (!mountEl) return;
+        // Guard: element might have been removed while awaiting the lazy chunk.
+        if (!el.isConnected) return null;
 
         const opts = {
-            width:  mountEl.clientWidth  || 600,
-            height: 220,
-            cursor: {
-                drag: { x: true, y: false, uni: 50 },
-            },
+            width:  el.clientWidth || 600,
+            height: 200,
+            cursor: { drag: { x: true, y: false, uni: 50 } },
             scales: { x: { time: true }, y: {} },
             axes: [
                 {
                     stroke: axisColor,
-                    grid:   { stroke: gridColor, width: 1 },
-                    ticks:  { stroke: gridColor, width: 1 },
+                    grid:  { stroke: gridColor, width: 1 },
+                    ticks: { stroke: gridColor, width: 1 },
                 },
                 {
-                    stroke:     axisColor,
-                    grid:       { stroke: gridColor, width: 1 },
-                    ticks:      { stroke: gridColor, width: 1 },
-                    values:     (_u, vals) => vals.map((v) => (v == null ? '' : v)),
-                    labelFont:  '11px system-ui',
-                    font:       '11px system-ui',
+                    stroke:    axisColor,
+                    grid:      { stroke: gridColor, width: 1 },
+                    ticks:     { stroke: gridColor, width: 1 },
+                    values:    (_u, vals) => vals.map((v) => (v == null ? '' : v)),
+                    labelFont: '11px system-ui',
+                    font:      '11px system-ui',
                 },
             ],
             series,
@@ -261,31 +340,51 @@ export default (labels = {}) => ({
                 drawAxes: [drawBands],
                 setSize: [
                     (u) => {
-                        const w = mountEl.clientWidth;
-                        if (w && Math.abs(w - u.width) > 4) u.setSize({ width: w, height: 220 });
+                        const w = el.clientWidth;
+                        if (w && Math.abs(w - u.width) > 4) u.setSize({ width: w, height: 200 });
                     },
                 ],
             },
+            plugins: [{
+                hooks: {
+                    init: (u) => {
+                        u.over.style.background = bgColor;
+                        u.under.style.background = bgColor;
+                    },
+                },
+            }],
         };
 
-        // Patch background fill
-        opts.plugins = [{
-            hooks: {
-                init: (u) => {
-                    u.over.style.background = bgColor;
-                    u.under.style.background = bgColor;
-                },
-            },
-        }];
+        return new UPlot(opts, data, el);
+    },
 
-        this._chartInst = new UPlot(opts, data, mountEl);
+    /**
+     * Mount uPlot charts for all metrics that have entries in the report view.
+     * Each metric block has a [data-report-chart="<key>"] attribute in the blade template.
+     * We use querySelector rather than $refs because x-ref is static (not reactive).
+     */
+    async renderReport() {
+        this._destroyReportCharts();
+        for (const m of METRICS) {
+            const data = this.entriesInRange(m.key);
+            if (!data.length) continue;
+            // Find the container element for this metric's chart.
+            const el = this.$el && this.$el.querySelector('[data-report-chart="' + m.key + '"]');
+            if (!el) continue;
+            const inst = await this._buildChart(el, m.key, data);
+            if (inst) this._reportChartInsts.push(inst);
+        }
+    },
 
-        // Double-click resets zoom
-        mountEl.addEventListener('dblclick', () => {
-            if (this._chartInst) {
-                this._chartInst.setScale('x', { min: xs[0], max: xs[xs.length - 1] });
-            }
-        }, { once: false });
+    // reference note per metric for the report table
+    _referenceNote(key) {
+        const refs = {
+            bp:    'Sys ≤120 / Dia ≤80 ok; ≥140 / ≥90 high',
+            pulse: '60–100 bpm ok',
+            spo2:  '≥95% ok; 92–94% low; <92% critical',
+            temp:  '<38°C ok; 38–38.9°C elevated; ≥39°C fever',
+        };
+        return refs[key] || '';
     },
 
     // --- Getters ---
