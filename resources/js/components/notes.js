@@ -10,7 +10,15 @@ export default (labels = {}) => ({
     previewHtml: '',
     previewTimer: null,
 
-    async init() { await this._initZk(); },
+    async init() {
+        await this._initZk();
+        // Deep link (?note=<id>, e.g. from the dashboard "recent notes" widget) → open it.
+        const nid = new URLSearchParams(location.search).get('note');
+        if (nid) {
+            const it = this.notes.find((n) => n.id === nid);
+            if (it) { this.view = it.trashed ? 'trash' : 'active'; this.open(it); }
+        }
+    },
 
     get allTags() { return this._tagsOf(this.notes); },
     get trashCount() { return this._trashCount(this.notes); },

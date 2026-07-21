@@ -187,10 +187,10 @@
                         <ul class="divide-y divide-black/[0.06] dark:divide-white/10 -mx-4 px-0">
                             <template x-for="n in recentNotes" :key="n.id">
                                 <li>
-                                    <a href="{{ route('notes.index') }}"
+                                    <a :href="'{{ route('notes.index') }}?note=' + encodeURIComponent(n.id)"
                                         class="flex flex-col gap-0.5 px-4 py-2.5 hover:bg-accent/5 transition-colors">
                                         <span class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate"
-                                            x-text="n.title || @js(__('dashboard.notes_empty'))"></span>
+                                            x-text="n.title || @js(__('notes.untitled'))"></span>
                                         <span class="text-xs text-gray-400 dark:text-gray-500"
                                             x-text="n.updated ? n.updated.slice(0,10) : ''"></span>
                                     </a>
