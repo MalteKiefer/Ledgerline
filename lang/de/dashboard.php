@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 return [
     'greeting'      => 'Hallo, :name',
-    'today'         => 'Heute',
 
     'todos_title'   => 'Offene Aufgaben',
     'todos_empty'   => 'Keine offenen Aufgaben',
