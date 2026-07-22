@@ -19,16 +19,32 @@ import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
+import { buildPlannedTrack, hasElevation, downsampleProfile } from '../shared/explore-detail';
 
 // Distinct, deterministic polyline colours cycled per track (iOS-ish accents).
 const TRACK_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f', '#9e70fa', '#ef4444'];
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | ready | error
-    view: 'media', // media | tracks
+    view: 'media', // media | tracks | detail
     error: '',
     busy: false,
     importing: false,
+
+    // Client-side search over the decrypted data (never leaves the browser).
+    trackQuery: '',
+    mediaQuery: '',
+
+    // Inline rename editor: the track id being renamed, plus the working name.
+    renamingId: null,
+    renameValue: '',
+
+    // Tour-planning (hand-drawn route) mode.
+    planning: false,
+    planPoints: [],       // ordered [lat, lng] waypoints while drawing
+    _planLayer: null,     // Leaflet polyline of the growing route
+    _planMarkers: [],     // small vertex markers
+    _planClick: null,     // bound map click handler (removed on exit)
 
     // Store-bound collections (aliased to the sealed store's own objects so
     // mutations persist through touch()). `_mut` is bumped on every save so
@@ -65,7 +81,11 @@ export default (config = {}, labels = {}) => ({
             if (! on) this._onLock();
         });
         // Re-render map contents when the view flips or the data mutates.
-        this.$watch('view', () => this._renderView());
+        this.$watch('view', () => {
+            if (this.view !== 'tracks' && this.planning) this._exitPlan();
+            this._renderView();
+            if (this.view === 'detail') { this.$nextTick(() => { this.fitToData(); this.renderElevation(); }); }
+        });
         this.$watch('_mut', () => this._renderView());
         this.$watch('selectedTrackId', () => { this._renderView(); this.$nextTick(() => this.renderElevation()); });
     },
@@ -97,6 +117,10 @@ export default (config = {}, labels = {}) => ({
         this.tracks = [];
         this.couplings = {};
         this.photos = [];
+        this.trackQuery = '';
+        this.mediaQuery = '';
+        this.renamingId = null;
+        this._exitPlan();
         this._revokeThumbs();
         this._destroyChart();
         this._destroyMap();
@@ -163,14 +187,17 @@ export default (config = {}, labels = {}) => ({
         if (! this._map || ! this._mapReady) return;
         this._clearTrackLayers();
         this._clearMarkers();
-        if (this.view === 'tracks') this._drawTracks();
+        if (this.view === 'tracks' || this.view === 'detail') this._drawTracks();
         else this._drawMediaPins();
     },
 
     _drawTracks() {
         const L = this._L;
         if (! L) return;
+        // In the detail view only the selected track is drawn.
+        const detail = this.view === 'detail';
         this.tracks.forEach((track, i) => {
+            if (detail && track.id !== this.selectedTrackId) return;
             const latlngs = (track.points || []).map((p) => [p.lat, p.lng]);
             if (latlngs.length < 2) return;
             const color = TRACK_COLORS[i % TRACK_COLORS.length];
@@ -215,7 +242,10 @@ export default (config = {}, labels = {}) => ({
         const L = this._L;
         if (! this._map || ! this._mapReady || ! L) return;
         const pts = [];
-        if (this.view === 'tracks') {
+        if (this.view === 'detail') {
+            const t = this.selectedTrack;
+            if (t) for (const p of (t.points || [])) pts.push([p.lat, p.lng]);
+        } else if (this.view === 'tracks') {
             for (const t of this.tracks) for (const p of (t.points || [])) pts.push([p.lat, p.lng]);
         } else {
             for (const m of this.placedMedia) pts.push([m._lat, m._lng]);
@@ -247,6 +277,23 @@ export default (config = {}, labels = {}) => ({
         return out;
     },
     placedCount() { return this.placedMedia.length; },
+
+    // Placed media filtered by the client-side filename search (case-insensitive).
+    get filteredMedia() {
+        void this._mut;
+        const q = this.mediaQuery.trim().toLowerCase();
+        const all = this.placedMedia;
+        if (! q) return all;
+        return all.filter((m) => String(m.name || m.id || '').toLowerCase().includes(q));
+    },
+
+    // Tracks filtered by the client-side name search (case-insensitive substring).
+    get filteredTracks() {
+        void this._mut;
+        const q = this.trackQuery.trim().toLowerCase();
+        if (! q) return this.tracks;
+        return this.tracks.filter((t) => String(t.name || '').toLowerCase().includes(q));
+    },
 
     /* --------------------------------------------------------------- Import */
 
@@ -416,15 +463,131 @@ export default (config = {}, labels = {}) => ({
 
     get selectedTrack() { void this._mut; return this.tracks.find((t) => t.id === this.selectedTrackId) || null; },
 
+    // Open the full-detail panel for a track (dedicated view + fitted map).
+    openDetail(id) {
+        this.selectedTrackId = id;
+        this.renamingId = null;
+        this.view = 'detail';
+    },
+
+    // Return to the tracks list from the detail view.
+    backToList() {
+        this.view = 'tracks';
+        this.renamingId = null;
+    },
+
     async deleteTrack(track) {
         if (! await this.$store.confirm.ask(labels.deleteTrackConfirm || 'Delete this track?')) return;
         const idx = this.tracks.findIndex((t) => t.id === track.id);
         if (idx < 0) return;
         // Drop couplings that pointed at this track.
         for (const [mid, c] of Object.entries(this.couplings)) if (c.trackId === track.id) delete this.couplings[mid];
+        // Best-effort cleanup of the sealed raw-track blob (orphan sweep is the
+        // backstop; a failed delete just leaves an orphan the sweep collects).
+        if (track.rawBlobId) {
+            try {
+                await fetch(`${config.deleteUrl || '/explore/blob'}/${encodeURIComponent(track.rawBlobId)}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': config.token, 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
+                });
+            } catch (e) { /* orphan sweep handles it */ }
+        }
         this.tracks.splice(idx, 1);
-        if (this.selectedTrackId === track.id) this.selectedTrackId = null;
+        if (this.selectedTrackId === track.id) { this.selectedTrackId = null; if (this.view === 'detail') this.view = 'tracks'; }
         this._save();
+    },
+
+    /* --------------------------------------------------------- Rename / note */
+
+    startRename(track) {
+        this.renamingId = track.id;
+        this.renameValue = track.name || '';
+        this.$nextTick(() => { try { this.$refs.renameInput?.focus(); this.$refs.renameInput?.select(); } catch (e) { /* ignore */ } });
+    },
+    cancelRename() { this.renamingId = null; this.renameValue = ''; },
+    saveRename(track) {
+        const name = String(this.renameValue || '').trim();
+        if (name) { track.name = name; this._save(); }
+        this.renamingId = null;
+        this.renameValue = '';
+    },
+
+    // Free-text note on a track (debounced-persisted through the store touch()).
+    saveNote(track, value) {
+        const note = String(value ?? '').trim();
+        if (note) track.note = note; else delete track.note;
+        this._save();
+    },
+
+    /* --------------------------------------------------------- Tour planning */
+
+    togglePlan() { this.planning ? this._exitPlan() : this._enterPlan(); },
+
+    _enterPlan() {
+        if (! this._map || ! this._mapReady || ! this._L) return;
+        this.view = 'tracks';
+        this.selectedTrackId = null;
+        this.planning = true;
+        this.planPoints = [];
+        this._planClick = (e) => this._addWaypoint(e.latlng.lat, e.latlng.lng);
+        this._map.on('click', this._planClick);
+    },
+
+    _exitPlan() {
+        this.planning = false;
+        this.planPoints = [];
+        if (this._map && this._planClick) { try { this._map.off('click', this._planClick); } catch (e) { /* ignore */ } }
+        this._planClick = null;
+        if (this._planLayer) { try { this._planLayer.remove(); } catch (e) { /* ignore */ } this._planLayer = null; }
+        for (const m of this._planMarkers) { try { m.remove(); } catch (e) { /* ignore */ } }
+        this._planMarkers = [];
+    },
+
+    cancelPlan() { this._exitPlan(); },
+
+    _addWaypoint(lat, lng) {
+        this.planPoints.push([lat, lng]);
+        this._drawPlan();
+    },
+
+    undoWaypoint() {
+        this.planPoints.pop();
+        this._drawPlan();
+    },
+
+    _drawPlan() {
+        const L = this._L;
+        if (! this._map || ! L) return;
+        if (this._planLayer) { try { this._planLayer.remove(); } catch (e) { /* ignore */ } this._planLayer = null; }
+        for (const m of this._planMarkers) { try { m.remove(); } catch (e) { /* ignore */ } }
+        this._planMarkers = [];
+        if (this.planPoints.length >= 2) {
+            try {
+                this._planLayer = L.polyline(this.planPoints, { color: '#7066f5', weight: 4, dashArray: '6 6', opacity: 0.9 }).addTo(this._map);
+            } catch (e) { /* ignore */ }
+        }
+        for (const [lat, lng] of this.planPoints) {
+            try {
+                this._planMarkers.push(L.circleMarker([lat, lng], { radius: 4, color: '#fff', weight: 2, fillColor: '#7066f5', fillOpacity: 1 }).addTo(this._map));
+            } catch (e) { /* ignore */ }
+        }
+    },
+
+    async savePlan() {
+        if (this.planPoints.length < 2) return;
+        const name = await this.$store.confirm.prompt('', { placeholder: labels.routeName || '', ok: labels.save || '' });
+        if (name === null) return; // cancelled
+        const track = buildPlannedTrack(
+            this.planPoints,
+            String(name || '').trim() || labels.plannedRoute || 'Route',
+            window.LLModuleStore.explore.newId(),
+            new Date().toISOString(),
+        );
+        if (! track) return;
+        this.tracks.push(track);
+        this._exitPlan();
+        this._save();
+        this.selectedTrackId = track.id;
     },
 
     trackColor(track) {
@@ -445,6 +608,11 @@ export default (config = {}, labels = {}) => ({
     },
     fmtSpeed(mps) { return ((mps || 0) * 3.6).toFixed(1) + ' ' + (labels.unitKmh || 'km/h'); },
     fmtEle(m) { return m == null ? '—' : Math.round(m) + ' ' + (labels.unitM || 'm'); },
+    fmtDateTime(iso) {
+        if (! iso) return '—';
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+    },
 
     /* ------------------------------------------------------ Elevation chart */
 
@@ -453,41 +621,82 @@ export default (config = {}, labels = {}) => ({
         if (this._chart) { try { this._chart.destroy(); } catch (e) { /* ignore */ } this._chart = null; }
     },
 
+    // True when the selected track has a usable elevation profile.
+    get hasElevationProfile() {
+        void this._mut;
+        const t = this.selectedTrack;
+        return !! t && hasElevation((t.stats && t.stats.elevationProfile) || []);
+    },
+
+    // The selected track's coupled photos, chronologically ordered (by capture
+    // time, falling back to filename). Used by the detail-view thumbnail strip.
+    get coupledPhotos() {
+        void this._mut;
+        const t = this.selectedTrack;
+        if (! t) return [];
+        const out = [];
+        for (const p of this.photos) {
+            const c = this.couplings[p.id];
+            if (c && c.trackId === t.id) out.push(p);
+        }
+        const ts = (p) => {
+            const v = p.taken_at ? Date.parse(p.taken_at) : (p.created ? Date.parse(p.created) : NaN);
+            return Number.isFinite(v) ? v : Infinity;
+        };
+        out.sort((a, b) => (ts(a) - ts(b)) || String(a.name || '').localeCompare(String(b.name || '')));
+        return out;
+    },
+
     // Render an elevation-over-distance profile for the selected track; hovering
-    // the chart drops a marker at the corresponding position on the map.
+    // the chart moves a circle marker to the matching point on the map. The
+    // x-axis is distance in km, the y-axis elevation in m; the profile is
+    // downsampled for a clean line, and the sample→track-point index map keeps
+    // the hover marker accurate. Planned/GPS-only tracks (no elevation) skip the
+    // chart — the blade shows a "no elevation" state instead.
     async renderElevation() {
         this._destroyChart();
         const track = this.selectedTrack;
         const el = this.$refs.elevation;
         if (! el || ! track) return;
         const profile = (track.stats && track.stats.elevationProfile) || [];
-        const usable = profile.filter((pt) => pt.eleM != null);
-        if (usable.length < 2) return;
+        if (! hasElevation(profile)) return;
 
-        const xs = profile.map((pt) => pt.distM / 1000); // km
-        const ys = profile.map((pt) => (pt.eleM == null ? null : pt.eleM));
+        const { xs, ys, idx } = downsampleProfile(profile, 400);
+        if (xs.length < 2) return;
 
         const UPlot = await loadUplot();
         if (! el.isConnected) return;
         const isDark = document.documentElement.classList.contains('dark');
         const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
         const axis = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+        const km = labels.unitKm || 'km';
+        const m = labels.unitM || 'm';
 
         const opts = {
             width: el.clientWidth || 600,
-            height: 160,
-            cursor: { drag: { x: false, y: false } },
+            height: 220,
+            cursor: { drag: { x: false, y: false }, points: { size: 7 } },
             scales: { x: { time: false }, y: {} },
             axes: [
-                { stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, values: (_u, vals) => vals.map((v) => v.toFixed(1)) },
-                { stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 } },
+                {
+                    stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 },
+                    values: (_u, vals) => vals.map((v) => v.toFixed(1) + ' ' + km),
+                },
+                {
+                    stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, size: 52,
+                    values: (_u, vals) => vals.map((v) => Math.round(v) + ' ' + m),
+                },
             ],
-            series: [{}, { label: labels.elevation || 'Elevation', stroke: '#7066f5', fill: 'rgba(112,102,245,0.12)', width: 2, spanGaps: true }],
+            series: [
+                { label: km },
+                { label: labels.elevation || 'Elevation', stroke: '#7066f5', fill: 'rgba(112,102,245,0.15)', width: 2, spanGaps: true, value: (_u, v) => (v == null ? '—' : Math.round(v) + ' ' + m) },
+            ],
             hooks: {
                 setCursor: [(u) => {
-                    const idx = u.cursor.idx;
-                    if (idx == null) { this._hideHover(); return; }
-                    const pt = track.points && track.points[idx];
+                    const ci = u.cursor.idx;
+                    if (ci == null) { this._hideHover(); return; }
+                    const pointIdx = idx[ci];
+                    const pt = track.points && track.points[pointIdx];
                     if (pt) this._showHover(pt.lat, pt.lng);
                 }],
             },
