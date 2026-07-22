@@ -94,11 +94,6 @@
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
             <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#d9a441"><x-icon name="star" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.favorites') }}</span><span x-show="favoriteCount()" class="text-xs tabular-nums text-gray-400" x-text="favoriteCount()"></span>
           </button>
-          <button type="button" @click="view = 'map'"
-              :class="view === 'map' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
-              class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
-            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style="background:#3fae9f"><x-icon name="map-pin" class="h-4 w-4" /></span><span class="flex-1 text-left">{{ __('gallery.map') }}</span><span x-show="mapPhotos.length" class="text-xs tabular-nums text-gray-400" x-text="mapPhotos.length"></span>
-          </button>
           <button type="button" @click="view = 'albums'"
               :class="view === 'albums' || view === 'album' ? 'bg-accent/10 font-medium text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/5'"
               class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm">
@@ -172,7 +167,6 @@
           <button type="button" @click="view = 'albums'; clearSelection()" :class="view === 'albums' || view === 'album' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.albums') }}</button>
           <button type="button" @click="view = 'people'; clearSelection()" :class="view === 'people' || view === 'person' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.people') }}</button>
           <button type="button" @click="view = 'duplicates'; clearSelection()" :class="view === 'duplicates' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.duplicates') }}</button>
-          <button type="button" @click="view = 'map'; clearSelection()" :class="view === 'map' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.map') }}</button>
           <button type="button" @click="view = 'archive'; clearSelection()" :class="view === 'archive' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.archive') }}</button>
           <button type="button" @click="view = 'trash'; clearSelection()" :class="view === 'trash' ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600'" class="shrink-0 rounded-lg px-3 py-1.5 text-sm">{{ __('gallery.trash') }} <span x-show="trashCount()" x-text="'('+trashCount()+')'"></span></button>
         </div>
@@ -400,16 +394,6 @@
               </div>
             </template>
           </div>
-        </div>
-
-        {{-- MAP --}}
-        <div x-show="view === 'map'">
-          <div x-show="geoProgress.total && geoProgress.done < geoProgress.total" x-cloak class="mb-3 flex items-center gap-3 rounded-lg border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] px-4 py-2 text-sm text-gray-600 dark:text-gray-300">
-            <svg class="h-4 w-4 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
-            <span>{{ __('gallery.map_loading') }} <span class="tabular-nums" x-text="geoProgress.done + ' / ' + geoProgress.total"></span></span>
-          </div>
-          <template x-if="! mapPhotos.length && ! (geoProgress.total && geoProgress.done < geoProgress.total)"><p class="mt-10 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.no_results') }}</p></template>
-          <div x-ref="map" x-show="mapPhotos.length" class="h-[70vh] w-full overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800"></div>
         </div>
 
         {{-- ALBUMS (list) --}}

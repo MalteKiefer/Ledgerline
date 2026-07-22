@@ -8,6 +8,7 @@ use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DevicePairingController;
+use App\Http\Controllers\ExploreBlobController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\FilesStoreController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordBreachController;
@@ -124,6 +126,19 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/contacts/blob/{blob}', [ContactBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.contacts.blob.destroy');
         // Relay a contact reminder (birthday/anniversary) to the user's own channels.
         Route::post('/contacts/notify', [ContactNotifyController::class, 'send'])->middleware('throttle:60,1')->name('api.contacts.notify');
+
+        // Explore (map/GPS): records live in the opaque `explore` module store
+        // (GET/PUT /store/explore); these are only the optional raw track blobs.
+        Route::get('/explore/usage', [ExploreBlobController::class, 'usage'])->name('api.explore.usage');
+        Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.explore.reconcile');
+        Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.explore.upload');
+        Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.explore.raw');
+        Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.explore.blob.destroy');
+
+        // Same-origin map relay (style.json + single-tile proxy) for the Explore
+        // viewer; SSRF-guarded, coordinate never logged, 404 when upstream unset.
+        Route::get('/maps/style', [MapController::class, 'style'])->middleware('throttle:120,1')->name('api.maps.style');
+        Route::get('/maps/tiles/{z}/{x}/{y}', [MapController::class, 'tile'])->where(['z' => '[0-9]+', 'x' => '[0-9]+', 'y' => '[0-9]+'])->middleware('throttle:600,1')->name('api.maps.tile');
 
         // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
         // k-anonymity), and 2fa.directory dataset. Same controllers as the web
