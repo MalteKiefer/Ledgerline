@@ -67,8 +67,9 @@ export async function unwrapIdentitySecret(wrappedJson, vkBytes) {
     return open(c, n, vkBytes);
 }
 
-/** Recover our ML-KEM-768 identity secret key (Store v3 hybrid identity): stored
- *  as a VK-sealed {c,n} JSON blob (vault.js ensureIdentityKeys). Returns raw dk bytes. */
+/** Recover our ML-KEM-768 identity SEED (Store v3 hybrid identity): stored as a
+ *  VK-sealed {c,n} JSON blob (vault.js ensureIdentityKeys). Returns the raw 64-byte
+ *  FIPS-203 seed; the dk is regenerated from it via keygen(seed) at unwrap time. */
 export async function unwrapMlkemSecret(wrappedJson, vkBytes) {
     await ready();
     const { c, n } = JSON.parse(wrappedJson);
@@ -77,12 +78,12 @@ export async function unwrapMlkemSecret(wrappedJson, vkBytes) {
 
 /** Recover a per-vault key hybrid-wrapped to our identity (Store v3, §6.3).
  *  The web app wraps VK_vault to {suite,epk,kem_ct,c,n} via X25519+ML-KEM-768;
- *  we unwrap with our X25519 sk + ML-KEM dk. Context matches the web (default '').
- *  Throws (fail-closed) on unknown suite / wrong keys. Returns raw VK_vault bytes. */
-export async function unwrapVaultKey(wrappedStr, ownSkBytes, ownMlkemDk, context = '') {
+ *  we unwrap with our X25519 sk + ML-KEM 64-byte seed (dk regenerated from seed).
+ *  Context matches the web (default ''). Fail-closed on unknown suite / wrong keys. */
+export async function unwrapVaultKey(wrappedStr, ownSkBytes, ownMlkemSeed, context = '') {
     await ready();
     const env = typeof wrappedStr === 'string' ? JSON.parse(wrappedStr) : wrappedStr;
-    return hybridUnwrap(env, sodium.to_base64(ownSkBytes, sodium.base64_variants.ORIGINAL), ownMlkemDk, context);
+    return hybridUnwrap(env, sodium.to_base64(ownSkBytes, sodium.base64_variants.ORIGINAL), ownMlkemSeed, context);
 }
 
 /** Padmé (Nikitin et al.) — mirrors vault.js so manifests we write match. */

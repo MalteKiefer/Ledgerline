@@ -225,7 +225,7 @@ export default (config = {}, labels = {}) => ({
                 .map((m) => ({ vault_id: m.vault_id, member_id: m.id, role: m.role, wrapped_vault_key: m.wrapped_vault_key }));
             for (const m of active) {
                 try {
-                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.sk, id.mlkemDk);
+                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, id.sk, id.mlkemSeed);
                     // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
                     // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
                     const vkBytes = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
@@ -1214,7 +1214,7 @@ export default (config = {}, labels = {}) => ({
         const id = await Vault.ensureIdentityKeys();
         // Verify the wrapped key actually decrypts before accepting.
         try {
-            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.sk, id.mlkemDk);
+            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.sk, id.mlkemSeed);
         } catch (e) {
             window.llToast(labels.inviteInvalid || '');
             return;

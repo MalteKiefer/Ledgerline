@@ -2240,8 +2240,12 @@ paths:
                     type: string
                     nullable: true
                     description: >
-                      ML-KEM-768 decapsulation key sealed under the caller's VK.
-                      Opaque ciphertext; the server never reads it.
+                      ML-KEM-768 identity secret sealed under the caller's VK. By
+                      convention this is the 64-byte FIPS-203 SEED (not the expanded
+                      decapsulation key) — the portable canonical secret from which
+                      every client (noble keygen(seed) / CryptoKit
+                      seedRepresentation) reproduces the identical keypair. Opaque
+                      ciphertext; the server never reads it.
         "429":
           description: Rate limit exceeded.
 

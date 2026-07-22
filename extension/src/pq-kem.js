@@ -36,20 +36,23 @@ function deriveWrapKey(ssEc, ssPq, context) {
 /**
  * Hybrid-unwrap an envelope with the recipient's secret identity keys.
  *
- * @param {object} envelope        { suite, epk, kem_ct, c, n } (all base64)
- * @param {string} ownX25519Sk     recipient x25519 secret key, base64
- * @param {Uint8Array} ownMlkemDk  recipient ML-KEM-768 secret key, raw bytes
- * @param {string} [context]       must match the wrap context
+ * @param {object} envelope         { suite, epk, kem_ct, c, n } (all base64)
+ * @param {string} ownX25519Sk      recipient x25519 secret key, base64
+ * @param {Uint8Array} ownMlkemSeed recipient ML-KEM-768 64-byte seed, raw bytes
+ * @param {string} [context]        must match the wrap context
  * @returns {Promise<Uint8Array>} the recovered payload
  * @throws on unknown suite or authentication failure (fail-closed)
  */
-export async function hybridUnwrap(envelope, ownX25519Sk, ownMlkemDk, context = '') {
+export async function hybridUnwrap(envelope, ownX25519Sk, ownMlkemSeed, context = '') {
     await ready();
     if (! envelope || envelope.suite !== 1) {
         throw new Error('hybridUnwrap: unknown or missing suite');
     }
 
-    const ssPq = ml_kem768.decapsulate(unb64(envelope.kem_ct), ownMlkemDk);
+    // Regenerate the ML-KEM secret key deterministically from the stored seed
+    // (FIPS-203 keygen(seed) — the seed is the portable canonical secret).
+    const { secretKey: dk } = ml_kem768.keygen(ownMlkemSeed);
+    const ssPq = ml_kem768.decapsulate(unb64(envelope.kem_ct), dk);
     const ssEc = sodium.crypto_scalarmult(unb64(ownX25519Sk), unb64(envelope.epk));
 
     const wrapKey = deriveWrapKey(ssEc, ssPq, context);

@@ -45,15 +45,19 @@ function deriveWrapKey(ssEc, ssPq, context) {
 }
 
 /**
- * Generate an ML-KEM-768 identity keypair.
- * @returns {Promise<{ek: string, dk: Uint8Array}>} ek base64 (public, non-secret);
- *          dk raw bytes (secret — caller seals it under VK).
+ * Generate an ML-KEM-768 identity keypair from a fresh 64-byte FIPS-203 seed.
+ * The SEED (not the expanded dk) is the canonical, cross-client-portable secret:
+ * noble `ml_kem768.keygen(seed)` and CryptoKit `PrivateKey(seedRepresentation:)`
+ * reproduce the identical keypair from it. The caller seals `seed` under VK.
+ * @returns {Promise<{ek: string, seed: Uint8Array}>} ek base64 (public, non-secret);
+ *          seed 64 raw bytes (secret — caller seals it under VK).
  */
 export async function mlkemKeypair() {
     await ready();
-    const kp = ml_kem768.keygen();
+    const seed = sodium.randombytes_buf(64);
+    const kp = ml_kem768.keygen(seed);
 
-    return { ek: b64(kp.publicKey), dk: kp.secretKey };
+    return { ek: b64(kp.publicKey), seed };
 }
 
 /**
@@ -93,18 +97,21 @@ export async function hybridWrap(payload, recipientX25519Pub, recipientMlkemEk, 
  *
  * @param {object} envelope            { suite, epk, kem_ct, c, n }
  * @param {string} ownX25519Sk         recipient x25519 secret key, base64
- * @param {Uint8Array} ownMlkemDk      recipient ML-KEM-768 secret key, raw bytes
+ * @param {Uint8Array} ownMlkemSeed    recipient ML-KEM-768 64-byte seed, raw bytes
  * @param {string} [context]           must match the wrap context
  * @returns {Promise<Uint8Array>} the recovered payload
  * @throws on unknown suite or authentication failure (fail-closed)
  */
-export async function hybridUnwrap(envelope, ownX25519Sk, ownMlkemDk, context = '') {
+export async function hybridUnwrap(envelope, ownX25519Sk, ownMlkemSeed, context = '') {
     await ready();
     if (! envelope || envelope.suite !== 1) {
         throw new Error('hybridUnwrap: unknown or missing suite');
     }
 
-    const ssPq = ml_kem768.decapsulate(unb64(envelope.kem_ct), ownMlkemDk);
+    // Regenerate the ML-KEM secret key deterministically from the stored seed
+    // (FIPS-203 keygen(seed) — the seed is the portable canonical secret).
+    const { secretKey: dk } = ml_kem768.keygen(ownMlkemSeed);
+    const ssPq = ml_kem768.decapsulate(unb64(envelope.kem_ct), dk);
     const ssEc = sodium.crypto_scalarmult(unb64(ownX25519Sk), unb64(envelope.epk));
 
     const wrapKey = deriveWrapKey(ssEc, ssPq, context);

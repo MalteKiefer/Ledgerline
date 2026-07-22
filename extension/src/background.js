@@ -74,17 +74,17 @@ async function loadSharedVaults(serverUrl, token, vkBytes) {
     // Store v3 hybrid identity: need BOTH the X25519 sk and the ML-KEM dk to
     // unwrap vault keys (they are hybrid-wrapped X25519+ML-KEM-768, §6.3).
     if (! keys || ! keys.public_key || ! keys.wrapped_secret_key || ! keys.wrapped_mlkem_secret_key) return true; // no (hybrid) identity → no shared vaults
-    let sk, mlkemDk;
+    let sk, mlkemSeed;
     try {
         sk = await unwrapIdentitySecret(keys.wrapped_secret_key, vkBytes);
-        mlkemDk = await unwrapMlkemSecret(keys.wrapped_mlkem_secret_key, vkBytes);
+        mlkemSeed = await unwrapMlkemSecret(keys.wrapped_mlkem_secret_key, vkBytes);
     } catch (e) { return true; }
     let vaults;
     try { vaults = await api.getVaults(serverUrl, token); } catch (e) { return false; }
     for (const v of (vaults || [])) {
         if (v.status !== 'active') continue;
         try {
-            const vk = await unwrapVaultKey(v.wrapped_vault_key, sk, mlkemDk);
+            const vk = await unwrapVaultKey(v.wrapped_vault_key, sk, mlkemSeed);
             const store = await api.getVaultStore(serverUrl, token, v.vault_id);
             if (! store || ! store.sealed_manifest) continue;
             const manifest = await openManifest(store.sealed_manifest, vk);

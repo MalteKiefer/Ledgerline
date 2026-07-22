@@ -144,7 +144,7 @@ describe('hybrid PQ-KEM (§6.3)', () => {
         const x = sodium.crypto_box_keypair();
         const xPub = sodium.to_base64(x.publicKey, sodium.base64_variants.ORIGINAL);
         const xSk = sodium.to_base64(x.privateKey, sodium.base64_variants.ORIGINAL);
-        const { ek, dk } = await mlkemKeypair();
+        const { ek, seed } = await mlkemKeypair();
 
         const vk = sodium.randombytes_buf(32);
         const env = await hybridWrap(vk, xPub, ek, 'vault:conformance');
@@ -152,7 +152,7 @@ describe('hybrid PQ-KEM (§6.3)', () => {
         expect(env).toHaveProperty('epk');
         expect(env).toHaveProperty('kem_ct');
 
-        const out = await hybridUnwrap(env, xSk, dk, 'vault:conformance');
+        const out = await hybridUnwrap(env, xSk, seed, 'vault:conformance');
         expect(hex(out)).toBe(hex(vk));
     });
 
@@ -161,11 +161,11 @@ describe('hybrid PQ-KEM (§6.3)', () => {
         const x = sodium.crypto_box_keypair();
         const xPub = sodium.to_base64(x.publicKey, sodium.base64_variants.ORIGINAL);
         const xSk = sodium.to_base64(x.privateKey, sodium.base64_variants.ORIGINAL);
-        const { ek, dk } = await mlkemKeypair();
+        const { ek, seed } = await mlkemKeypair();
         const env = await hybridWrap(sodium.randombytes_buf(32), xPub, ek, 'ctx-a');
 
-        await expect(hybridUnwrap(env, xSk, dk, 'ctx-b')).rejects.toThrow();
-        await expect(hybridUnwrap({ ...env, suite: 2 }, xSk, dk, 'ctx-a')).rejects.toThrow(/suite/);
+        await expect(hybridUnwrap(env, xSk, seed, 'ctx-b')).rejects.toThrow();
+        await expect(hybridUnwrap({ ...env, suite: 2 }, xSk, seed, 'ctx-a')).rejects.toThrow(/suite/);
     });
 });
 

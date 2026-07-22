@@ -292,14 +292,15 @@ export const VaultShareCrypto = {
     /**
      * Generate a fresh hybrid identity (Store v3 §6.3): an X25519 keypair plus an
      * ML-KEM-768 keypair. Returns { pub: base64, sk: Uint8Array, mlkemEk: base64,
-     * mlkemDk: Uint8Array } — secret keys are raw bytes kept in memory only.
+     * mlkemSeed: Uint8Array } — the ML-KEM secret is the 64-byte FIPS-203 seed
+     * (portable across clients); secrets are raw bytes kept in memory only.
      */
     async newIdentity() {
         await ready();
         const { mlkemKeypair } = await import('./shared/pq-kem.js');
         const kp = sodium.crypto_box_keypair();
-        const { ek, dk } = await mlkemKeypair();
-        return { pub: b64(kp.publicKey), sk: kp.privateKey, mlkemEk: ek, mlkemDk: dk };
+        const { ek, seed } = await mlkemKeypair();
+        return { pub: b64(kp.publicKey), sk: kp.privateKey, mlkemEk: ek, mlkemSeed: seed };
     },
 
     /** Fresh 32-byte vault key, base64. */
@@ -326,15 +327,15 @@ export const VaultShareCrypto = {
 
     /**
      * Unwrap a hybrid-KEM vault-key envelope with the recipient's own secret
-     * identity keys. `ownSkBytes` is the raw X25519 secret key; `ownMlkemDk` the raw
-     * ML-KEM-768 secret key (both from ensureIdentityKeys). Returns the vault key
+     * identity keys. `ownSkBytes` is the raw X25519 secret key; `ownMlkemSeed` the
+     * 64-byte ML-KEM-768 seed (both from ensureIdentityKeys). Returns the vault key
      * as base64. Fail-closed on unknown suite or authentication failure.
      */
-    async unwrapVaultKey(wrappedStr, ownSkBytes, ownMlkemDk, context = '') {
+    async unwrapVaultKey(wrappedStr, ownSkBytes, ownMlkemSeed, context = '') {
         await ready();
         const { hybridUnwrap } = await import('./shared/pq-kem.js');
         const env = JSON.parse(wrappedStr);
-        const out = await hybridUnwrap(env, b64(ownSkBytes), ownMlkemDk, context);
+        const out = await hybridUnwrap(env, b64(ownSkBytes), ownMlkemSeed, context);
         return b64(out);
     },
 
@@ -653,8 +654,8 @@ export const Vault = {
             const wrapped = JSON.parse(data.wrapped_secret_key);
             const sk = open(wrapped.c, wrapped.n, this.vk);
             const wrappedMl = JSON.parse(data.wrapped_mlkem_secret_key);
-            const mlkemDk = open(wrappedMl.c, wrappedMl.n, this.vk);
-            this._idKeys = { pub: data.public_key, sk, mlkemEk: data.mlkem_public_key, mlkemDk };
+            const mlkemSeed = open(wrappedMl.c, wrappedMl.n, this.vk);
+            this._idKeys = { pub: data.public_key, sk, mlkemEk: data.mlkem_public_key, mlkemSeed };
             return this._idKeys;
         }
 
@@ -668,9 +669,9 @@ export const Vault = {
         //    ML-KEM stays out of the startup bundle.
         const { mlkemKeypair } = await import('./shared/pq-kem.js');
         const kp = sodium.crypto_box_keypair();
-        const { ek: mlkemEk, dk: mlkemDk } = await mlkemKeypair();
+        const { ek: mlkemEk, seed: mlkemSeed } = await mlkemKeypair();
         const wrapped = seal(kp.privateKey, this.vk);
-        const wrappedMl = seal(mlkemDk, this.vk);
+        const wrappedMl = seal(mlkemSeed, this.vk);
         const pub = b64(kp.publicKey);
         const fingerprint = await VaultShareCrypto.fingerprint(pub);
 
@@ -695,7 +696,7 @@ export const Vault = {
             throw new Error('identity key publish failed');
         }
 
-        this._idKeys = { pub, sk: kp.privateKey, mlkemEk, mlkemDk };
+        this._idKeys = { pub, sk: kp.privateKey, mlkemEk, mlkemSeed };
         return this._idKeys;
     },
 
