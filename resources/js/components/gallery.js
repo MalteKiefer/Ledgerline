@@ -1005,6 +1005,18 @@ return {
             const m = JSON.parse(new TextDecoder().decode(b));
             if (this.viewer.photo?.id !== p.id) return;
             this.viewer.meta = m;
+            // Self-heal: a client that uploaded this photo (e.g. mobile) may have
+            // written the capture date only into the cold meta blob, leaving the hot
+            // record's `taken_at` empty — so the timeline grouped it by upload date
+            // (`created`) while the detail showed the meta's capture date. Backfill
+            // the hot field from the meta so grid + detail agree (and the record
+            // carries it for on-this-day / dashboard). Re-seal only on a real change.
+            if (m.exif?.taken_at && p.taken_at !== m.exif.taken_at) {
+                p.taken_at = m.exif.taken_at;
+                const entry = this.index.photos.find((x) => x.id === p.id);
+                if (entry) entry.taken_at = m.exif.taken_at;
+                this._save(); // bumps _mut → invalidates the timeline memo, regroups
+            }
             // meta.exif carries raw numbers; p.lat/p.lng are dec-strings — coerce
             // to Number for Leaflet either way.
             const lat = m.exif?.lat ?? (p.lat != null ? parseFloat(p.lat) : null);
