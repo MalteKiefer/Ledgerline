@@ -1,10 +1,10 @@
 <x-layouts.app :title="__('explore.title')">
   <div x-data="explore({
-        styleUrl: '{{ url('/maps/style') }}',
         uploadUrl: '{{ url('/explore/upload') }}',
         rawBase: '{{ url('/explore/raw') }}',
         usageUrl: '{{ url('/explore/usage') }}',
         deleteUrl: '{{ url('/explore/blob') }}',
+        routeUrl: '{{ url('/maps/route') }}',
         token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('explore.load_failed')),
@@ -24,6 +24,7 @@
         save: @js(__('explore.save')),
         routeName: @js(__('explore.route_name')),
         plannedRoute: @js(__('explore.planned_route_default')),
+        routeFallback: @js(__('explore.auto_route_fallback')),
      })">
 
     {{-- Zero-knowledge gate: tracks + couplings decrypt with the vault key. --}}
@@ -192,6 +193,13 @@
                 <template x-if="planning">
                   <div class="border-b border-black/[0.06] dark:border-white/10 bg-accent/5 px-4 py-3">
                     <p class="text-xs text-gray-700 dark:text-gray-300">{{ __('explore.planning_hint') }}</p>
+                    {{-- Opt-in auto-routing: snap waypoints to real paths (default OFF). --}}
+                    <label class="mt-2 flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                      <input type="checkbox" x-model="autoRoute" @change="toggleAutoRoute()" class="rounded">
+                      <span>{{ __('explore.auto_route') }}</span>
+                      <span x-show="routing" class="text-accent">{{ __('explore.auto_route_routing') }}</span>
+                    </label>
+                    <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('explore.auto_route_hint') }}</p>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
                       <button type="button" @click="savePlan()" :disabled="planPoints.length < 2"
                         class="inline-flex items-center gap-1.5 rounded-lg ll-accent px-3 py-1.5 text-xs font-medium disabled:opacity-40">

@@ -17,6 +17,7 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordBreachController;
@@ -133,9 +134,11 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('api.explore.upload');
         Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.explore.raw');
         Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.explore.blob.destroy');
-
-        // Same-origin map relay (style.json + single-tile proxy) for the Explore
-        // viewer; SSRF-guarded, coordinate never logged, 404 when upstream unset.
+        // Explore tour-planner auto-routing: snap clicked waypoints to real paths via
+        // an OSRM-compatible upstream. SSRF-guarded, coordinates never logged/persisted,
+        // clean {geometry:null} when the upstream is unset/unreachable. User-initiated,
+        // opt-in egress — same class as /gallery/geocode.
+        Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:60,1')->name('api.maps.route');
 
         // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
         // k-anonymity), and 2fa.directory dataset. Same controllers as the web

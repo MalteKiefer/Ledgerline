@@ -41,7 +41,12 @@ export default (config = {}, labels = {}) => ({
 
     // Tour-planning (hand-drawn route) mode.
     planning: false,
-    planPoints: [],       // ordered [lat, lng] waypoints while drawing
+    planPoints: [],       // ordered [lat, lng] waypoints the user clicked (kept raw)
+    autoRoute: false,     // opt-in: snap waypoints to real paths via /maps/route (OFF = straight lines)
+    routing: false,       // an auto-route request is in flight
+    _routedGeometry: null, // snapped [lat,lng] geometry from the router (null = use straight waypoints)
+    _routeSeq: 0,         // monotonic token so a stale route response can't overwrite a newer one
+    _routeTimer: null,    // debounce handle for auto-route on waypoint change
     _planLayer: null,     // Leaflet polyline of the growing route
     _planMarkers: [],     // small vertex markers
     _planClick: null,     // bound map click handler (removed on exit)
@@ -187,6 +192,9 @@ export default (config = {}, labels = {}) => ({
         if (! this._map || ! this._mapReady) return;
         this._clearTrackLayers();
         this._clearMarkers();
+        // While planning a route only the plan polyline is shown — never redraw
+        // the existing tracks over it (the plan layer is managed by _drawPlan).
+        if (this.planning) return;
         if (this.view === 'tracks' || this.view === 'detail') this._drawTracks();
         else this._drawMediaPins();
     },
@@ -526,9 +534,17 @@ export default (config = {}, labels = {}) => ({
     _enterPlan() {
         if (! this._map || ! this._mapReady || ! this._L) return;
         this.view = 'tracks';
-        this.selectedTrackId = null;
         this.planning = true;
+        this.selectedTrackId = null;
         this.planPoints = [];
+        this._routedGeometry = null;
+        this.routing = false;
+        this._routeSeq++;            // invalidate any in-flight route from a prior session
+        if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
+        // Clear whatever route/pins were on the map so only the new plan shows.
+        this._clearTrackLayers();
+        this._clearMarkers();
+        this._hideHover();
         this._planClick = (e) => this._addWaypoint(e.latlng.lat, e.latlng.lng);
         this._map.on('click', this._planClick);
     },
@@ -536,23 +552,95 @@ export default (config = {}, labels = {}) => ({
     _exitPlan() {
         this.planning = false;
         this.planPoints = [];
+        this._routedGeometry = null;
+        this.routing = false;
+        this._routeSeq++;            // any late route response is now stale
+        if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
         if (this._map && this._planClick) { try { this._map.off('click', this._planClick); } catch (e) { /* ignore */ } }
         this._planClick = null;
         if (this._planLayer) { try { this._planLayer.remove(); } catch (e) { /* ignore */ } this._planLayer = null; }
         for (const m of this._planMarkers) { try { m.remove(); } catch (e) { /* ignore */ } }
         this._planMarkers = [];
+        this._renderView(); // restore the normal track/pin layers
     },
 
     cancelPlan() { this._exitPlan(); },
 
+    // Toggle the opt-in auto-routing. Turning it ON re-routes the current
+    // waypoints; turning it OFF drops the snapped geometry back to straight
+    // lines. The raw clicked waypoints are always preserved either way.
+    toggleAutoRoute() {
+        this.autoRoute = ! this.autoRoute;
+        if (! this.autoRoute) {
+            this._routedGeometry = null;
+            this.routing = false;
+            this._routeSeq++;
+            if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
+            this._drawPlan();
+            return;
+        }
+        this._scheduleRoute();
+    },
+
     _addWaypoint(lat, lng) {
         this.planPoints.push([lat, lng]);
+        // A new waypoint invalidates any previously snapped geometry until the
+        // re-route lands, so the preview never shows a route for stale points.
+        this._routedGeometry = null;
         this._drawPlan();
+        this._scheduleRoute();
     },
 
     undoWaypoint() {
         this.planPoints.pop();
+        this._routedGeometry = null;
         this._drawPlan();
+        this._scheduleRoute();
+    },
+
+    // Debounce an auto-route request (only when auto-route is on and there are
+    // at least two waypoints). Straight-line mode never calls the server.
+    _scheduleRoute() {
+        if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
+        if (! this.autoRoute || this.planPoints.length < 2) return;
+        this._routeTimer = setTimeout(() => { this._routeTimer = null; this._requestRoute(); }, 500);
+    },
+
+    // Ask the server-side proxy (/maps/route) to snap the current waypoints onto
+    // real paths. On success the snapped geometry becomes the preview + saved
+    // track; on failure/null we fall back to the straight-line waypoints and
+    // surface a subtle notice — the user's waypoints are never lost.
+    async _requestRoute() {
+        if (! this.autoRoute || this.planPoints.length < 2) return;
+        const seq = ++this._routeSeq;
+        const points = this.planPoints
+            .map(([lat, lng]) => `${lat.toFixed(6)},${lng.toFixed(6)}`)
+            .join(';');
+        this.routing = true;
+        let geometry = null;
+        try {
+            const res = await fetch(`${config.routeUrl}?points=${encodeURIComponent(points)}`, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (res.ok) {
+                const d = await res.json();
+                if (Array.isArray(d.geometry) && d.geometry.length >= 2) geometry = d.geometry;
+            }
+        } catch (e) { /* fall back to straight lines below */ }
+        // A newer waypoint edit (or plan exit / auto-route off) superseded us.
+        if (seq !== this._routeSeq || ! this.planning || ! this.autoRoute) return;
+        this.routing = false;
+        this._routedGeometry = geometry;
+        if (! geometry) window.llToast?.(labels.routeFallback || '');
+        this._drawPlan();
+    },
+
+    // The polyline actually shown/saved: the snapped geometry when auto-route
+    // produced one, otherwise the raw clicked waypoints (straight lines).
+    _planLine() {
+        return (this.autoRoute && this._routedGeometry && this._routedGeometry.length >= 2)
+            ? this._routedGeometry
+            : this.planPoints;
     },
 
     _drawPlan() {
@@ -561,11 +649,18 @@ export default (config = {}, labels = {}) => ({
         if (this._planLayer) { try { this._planLayer.remove(); } catch (e) { /* ignore */ } this._planLayer = null; }
         for (const m of this._planMarkers) { try { m.remove(); } catch (e) { /* ignore */ } }
         this._planMarkers = [];
-        if (this.planPoints.length >= 2) {
+        const line = this._planLine();
+        // Snapped routes render solid; straight-line previews stay dashed.
+        const snapped = this.autoRoute && this._routedGeometry && this._routedGeometry.length >= 2;
+        if (line.length >= 2) {
             try {
-                this._planLayer = L.polyline(this.planPoints, { color: '#7066f5', weight: 4, dashArray: '6 6', opacity: 0.9 }).addTo(this._map);
+                this._planLayer = L.polyline(line, {
+                    color: '#7066f5', weight: 4, opacity: 0.9,
+                    ...(snapped ? {} : { dashArray: '6 6' }),
+                }).addTo(this._map);
             } catch (e) { /* ignore */ }
         }
+        // Vertex markers always mark the user's clicked waypoints.
         for (const [lat, lng] of this.planPoints) {
             try {
                 this._planMarkers.push(L.circleMarker([lat, lng], { radius: 4, color: '#fff', weight: 2, fillColor: '#7066f5', fillOpacity: 1 }).addTo(this._map));
@@ -575,10 +670,19 @@ export default (config = {}, labels = {}) => ({
 
     async savePlan() {
         if (this.planPoints.length < 2) return;
+        // If auto-route is on but the debounce hasn't fired yet, snap now so the
+        // saved track follows real paths (best-effort; falls back on failure).
+        if (this.autoRoute && ! this.routing && ! this._routedGeometry) {
+            if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
+            await this._requestRoute();
+        }
         const name = await this.$store.confirm.prompt('', { placeholder: labels.routeName || '', ok: labels.save || '' });
         if (name === null) return; // cancelled
+        // Save the snapped geometry when we have one; otherwise the raw waypoints.
+        // sourceFormat stays 'planned' (no elevation/time) → distance-only stats
+        // over whichever line we saved.
         const track = buildPlannedTrack(
-            this.planPoints,
+            this._planLine(),
             String(name || '').trim() || labels.plannedRoute || 'Route',
             window.LLModuleStore.explore.newId(),
             new Date().toISOString(),
@@ -658,14 +762,21 @@ export default (config = {}, labels = {}) => ({
         const track = this.selectedTrack;
         const el = this.$refs.elevation;
         if (! el || ! track) return;
+        el.innerHTML = ''; // drop any orphaned uPlot DOM from a superseded render
         const profile = (track.stats && track.stats.elevationProfile) || [];
         if (! hasElevation(profile)) return;
 
         const { xs, ys, idx } = downsampleProfile(profile, 400);
         if (xs.length < 2) return;
 
+        // Concurrency guard: openDetail flips both `view` and `selectedTrackId`,
+        // firing two watchers → two async renders racing into the same container.
+        // A monotonic token lets only the latest win (both awaited loadUplot()).
+        const token = (this._elToken = (this._elToken || 0) + 1);
         const UPlot = await loadUplot();
-        if (! el.isConnected) return;
+        if (token !== this._elToken || ! el.isConnected) return;
+        this._destroyChart();
+        el.innerHTML = '';
         const isDark = document.documentElement.classList.contains('dark');
         const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
         const axis = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';

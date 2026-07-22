@@ -20,6 +20,7 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
@@ -286,6 +287,11 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('explore.upload');
     Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('explore.raw');
     Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('explore.blob.destroy');
+    // Explore tour-planner auto-routing: snap clicked waypoints to real paths via
+    // an OSRM-compatible upstream (SSRF-guarded, coordinates never logged/persisted,
+    // clean {geometry:null} when the upstream is unset/unreachable). User-initiated,
+    // opt-in egress — same class as the gallery place-picker geocoding.
+    Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:60,1')->name('maps.route');
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');

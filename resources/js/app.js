@@ -509,7 +509,7 @@ Alpine.data('dashboard', dashboard);
 /**
  * Explore: zero-knowledge map. Tracks, photo↔track couplings and coupling
  * tolerances live in the sealed `explore` module store; gallery photos are read
- * from the decrypted gallery index. MapLibre (same-origin tiles via /maps),
+ * from the decrypted gallery index. Leaflet (OSM raster tiles in the browser),
  * uPlot (elevation) and fflate (KMZ unzip) are all lazy-loaded on demand.
  */
 Alpine.data('explore', explore);
