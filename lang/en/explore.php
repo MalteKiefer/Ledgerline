@@ -70,6 +70,7 @@ return [
     'auto_route_routing' => 'Routing…',
     'auto_route_fallback' => 'Could not fetch a route — using straight lines.',
     'auto_route_rate_limited' => 'Routing is rate-limited right now — using straight lines. Try again shortly.',
+    'auto_route_too_many' => 'Too many waypoints to auto-route — using straight lines.',
 
     // Assign-to-tour modal source filter
     'filter_all' => 'All',

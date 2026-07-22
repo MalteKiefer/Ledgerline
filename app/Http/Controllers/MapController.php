@@ -28,12 +28,12 @@ class MapController extends Controller
     public function route(Request $request, MapRouter $router): JsonResponse
     {
         $request->validate([
-            // "lat,lng;lat,lng;…" — 2..25 waypoints, each within coordinate range.
-            'points' => ['required', 'string', 'max:1024'],
+            // "lat,lng;lat,lng;…" — 2..100 waypoints, each within coordinate range.
+            'points' => ['required', 'string', 'max:4096'],
         ]);
 
         $waypoints = $this->parsePoints($request->string('points')->value());
-        abort_if(count($waypoints) < 2 || count($waypoints) > 25, 422, 'Between 2 and 25 waypoints are required.');
+        abort_if(count($waypoints) < 2 || count($waypoints) > 100, 422, 'Between 2 and 100 waypoints are required.');
 
         $result = $router->route($waypoints);
 
