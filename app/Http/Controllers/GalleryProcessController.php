@@ -54,6 +54,11 @@ class GalleryProcessController extends Controller
             'exif' => $d['exif'],
             'place' => $d['place'],
             'embedding' => $d['embedding'],
+            // The CLIP model the embedding was produced with, so every client tags
+            // `embModel` authoritatively (cross-client search coherence, spec §8.5).
+            // Native clients (iOS/Go/Android) have no injected config, so they read
+            // the model from here rather than assuming it.
+            'model' => config('gallery.ml_clip_model'),
             'phash' => $d['phash'],
             'faces' => array_map(fn (array $f): array => [
                 'score' => $f['score'],
@@ -89,6 +94,11 @@ class GalleryProcessController extends Controller
 
         return response()->json([
             'embedding' => $d['embedding'],
+            // The CLIP model the embedding was produced with, so every client tags
+            // `embModel` identically (cross-client search coherence, spec §8.5).
+            // Native clients (iOS/Go/Android) read the model authoritatively from
+            // here (no injected config); the web mirrors its own config value.
+            'model' => config('gallery.ml_clip_model'),
             'faces' => array_map(fn (array $f): array => [
                 'score' => $f['score'],
                 'box' => $f['box'],
