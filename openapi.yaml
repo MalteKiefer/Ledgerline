@@ -1808,6 +1808,14 @@ paths:
                     type: string
                     nullable: true
                     description: Base64-encoded CLIP embedding.
+                  model:
+                    type: string
+                    nullable: true
+                    description: >
+                      CLIP model the embedding was produced with (server config
+                      gallery.ml_clip_model). Clients tag the record's embModel
+                      with this so semantic search only compares embeddings from
+                      one model (spec §8.5). Native clients read it here.
                   phash:
                     type: string
                     nullable: true
@@ -1863,6 +1871,13 @@ paths:
                   embedding:
                     type: string
                     nullable: true
+                  model:
+                    type: string
+                    nullable: true
+                    description: >
+                      CLIP model the embedding was produced with (spec §8.5);
+                      clients tag embModel with it so semantic search compares
+                      only same-model embeddings. Native clients read it here.
                   faces:
                     type: array
                     items:
