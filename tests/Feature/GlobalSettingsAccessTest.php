@@ -38,26 +38,23 @@ class GlobalSettingsAccessTest extends TestCase
         $this->get(route('settings.system.edit'))->assertOk();
     }
 
-    public function test_settings_index_hides_infra_cards_for_non_admins(): void
+    public function test_settings_index_redirects_non_admins_to_profile(): void
     {
         config()->set('services.pocketid.admin_group', 'admins');
         $this->actingAs(User::factory()->create(['groups' => []]));
 
-        // Personal section shown (mail is per-user since 1.298.3), admin
-        // section hidden entirely.
-        $this->get(route('settings'))->assertOk()
-            ->assertSee(__('settings.personal_heading'))
-            ->assertSee(__('settings.files_desc'))
-            ->assertDontSee(__('settings.admin_heading'));
+        // Settings is admin-only now; personal preferences live under the profile.
+        $this->get(route('settings'))->assertRedirect(route('profile'));
     }
 
-    public function test_settings_index_shows_both_sections_for_admins(): void
+    public function test_settings_index_shows_only_admin_sections_for_admins(): void
     {
         config()->set('services.pocketid.admin_group', 'admins');
         $this->actingAs(User::factory()->create(['groups' => ['admins']]));
 
         $this->get(route('settings'))->assertOk()
-            ->assertSee(__('settings.personal_heading'))
-            ->assertSee(__('settings.admin_heading'));
+            ->assertSee(__('settings.admin_heading'))
+            ->assertSee(__('settings.backup_section'))
+            ->assertDontSee(__('settings.personal_heading'));
     }
 }

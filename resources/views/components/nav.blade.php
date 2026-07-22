@@ -97,7 +97,9 @@
                     </div>
                     <div class="border-t border-black/[0.06] dark:border-white/10 py-1">
                         <a href="{{ route('profile') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent"><x-icon name="user" class="h-4 w-4" />{{ __('messages.menu.profile') }}</a>
-                        <a href="{{ route('settings') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent"><x-icon name="shield-check" class="h-4 w-4" />{{ __('messages.menu.settings') }}</a>
+                        @if (auth()->user()->managesGlobalSettings())
+                            <a href="{{ route('settings') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent"><x-icon name="shield-check" class="h-4 w-4" />{{ __('messages.menu.settings') }}</a>
+                        @endif
                     </div>
                     @php $llTheme = \App\Models\UserSetting::for((int) auth()->id())->theme ?? 'system'; @endphp
                     <div class="border-t border-black/[0.06] dark:border-white/10 px-3 py-2.5">
