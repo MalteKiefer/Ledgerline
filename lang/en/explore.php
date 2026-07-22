@@ -37,11 +37,34 @@ return [
     'elevation' => 'Elevation',
     'elevation_profile' => 'Elevation profile',
     'no_elevation' => 'No elevation data',
+    'min_elevation' => 'Min elevation',
+    'max_elevation' => 'Max elevation',
     'delete_track' => 'Delete track',
     'delete_track_confirm' => 'Delete this track permanently? This cannot be undone.',
     'rename_track' => 'Rename track',
+    'edit_name' => 'Edit name',
+    'cancel' => 'Cancel',
     'started' => 'Started',
     'ended' => 'Ended',
+    'note' => 'Note',
+    'note_placeholder' => 'Add a note…',
+    'details' => 'Details',
+    'back' => 'Back',
+    'coupled_photos' => 'Photos on this track',
+
+    // Search
+    'search_tracks' => 'Search tracks…',
+    'search_media' => 'Search photos…',
+    'no_search_results' => 'No matches.',
+
+    // Tour planning
+    'plan_tour' => 'Plan a tour',
+    'planning_hint' => 'Click the map to add waypoints.',
+    'undo_point' => 'Undo last point',
+    'save_route' => 'Save route',
+    'route_name' => 'Route name',
+    'planned_route_default' => 'Route',
+    'planned_route' => 'Planned route',
 
     // Coupling
     'coupling' => 'Photo matching',

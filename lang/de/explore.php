@@ -37,11 +37,34 @@ return [
     'elevation' => 'Höhe',
     'elevation_profile' => 'Höhenprofil',
     'no_elevation' => 'Keine Höhendaten',
+    'min_elevation' => 'Min. Höhe',
+    'max_elevation' => 'Max. Höhe',
     'delete_track' => 'Tour löschen',
     'delete_track_confirm' => 'Diese Tour endgültig löschen? Das kann nicht rückgängig gemacht werden.',
     'rename_track' => 'Tour umbenennen',
+    'edit_name' => 'Name bearbeiten',
+    'cancel' => 'Abbrechen',
     'started' => 'Start',
     'ended' => 'Ende',
+    'note' => 'Notiz',
+    'note_placeholder' => 'Notiz hinzufügen…',
+    'details' => 'Details',
+    'back' => 'Zurück',
+    'coupled_photos' => 'Fotos auf dieser Tour',
+
+    // Search
+    'search_tracks' => 'Touren suchen…',
+    'search_media' => 'Fotos suchen…',
+    'no_search_results' => 'Keine Treffer.',
+
+    // Tour planning
+    'plan_tour' => 'Tour planen',
+    'planning_hint' => 'Klicke auf die Karte, um Wegpunkte hinzuzufügen.',
+    'undo_point' => 'Letzten Punkt zurücknehmen',
+    'save_route' => 'Route speichern',
+    'route_name' => 'Routenname',
+    'planned_route_default' => 'Route',
+    'planned_route' => 'Geplante Route',
 
     // Coupling
     'coupling' => 'Foto-Zuordnung',
