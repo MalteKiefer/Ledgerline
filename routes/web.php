@@ -133,6 +133,11 @@ Route::middleware('auth')->group(function (): void {
     // Non-personal, workspace-wide settings — restricted to the Pocket-ID admin
     // group (config services.pocketid.admin_group; open to all when unset).
     Route::middleware('can:manage-global-settings')->group(function (): void {
+        // Workspace-wide file limits (quota, max upload, orphan grace). The
+        // per-user version-keep count stays on settings.files.edit (profile hub).
+        Route::get('/settings/files/limits', [SettingsFilesController::class, 'limits'])->name('settings.files.limits');
+        Route::put('/settings/files/limits', [SettingsFilesController::class, 'limitsUpdate'])->name('settings.files.limits.update');
+
         Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
         Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');
 
