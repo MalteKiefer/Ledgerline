@@ -305,12 +305,16 @@ services:
   graphhopper:
     image: israelhikingmap/graphhopper:11.0@sha256:e77e14e48ea69ea7bb0eb71ddc9d583e5ce85dd295475572371f72ed4880a1ff
     profiles: ["maps"]
-    # The image's ENTRYPOINT is `./graphhopper.sh -c config-example.yml`, which
-    # runs the server on 8989 and reads its OSM data + graph paths from the config.
-    # The operator supplies both under ./data/graphhopper (mounted at /data): the
-    # region.osm.pbf extract and a config-example.yml whose datareader.file points
-    # at /data/region.osm.pbf and graph.location at /graphhopper-graph-cache — see
-    # .env.docker.example. No command override so the image's launch stays intact.
+    # The image's ENTRYPOINT is `./graphhopper.sh -c config-example.yml`. That
+    # wrapper drives graph.location + datareader.file from its OWN CLI flags
+    # (-o / -i) via -D overrides — the config file alone can't set them (a bare
+    # launch defaults the graph to /data/default-gh with no OSM input and dies).
+    # So we append a command: its args are parsed after the entrypoint's, and the
+    # later -c wins. The operator supplies, under ./data/graphhopper (mounted at
+    # /data): region.osm.pbf (the OSM extract) + config-example.yml (profiles,
+    # encoded_values, elevation/surface). The built graph persists in the
+    # graphhopper-data volume (/graphhopper-graph-cache) — see .env.docker.example.
+    command: ["-i", "/data/region.osm.pbf", "-o", "/graphhopper-graph-cache", "-c", "/data/config-example.yml"]
     environment:
       # Cap the JVM heap so a regional graph fits a modest box; raise on a bigger
       # host or for country/continent extracts.
