@@ -57,7 +57,7 @@ class TwoFactorDirectoryController extends Controller
      * entry advertises an app/hardware 2FA method. v4 is a flat object keyed by
      * domain: { "example.com": { "methods": ["totp","sms"], ... }, ... }.
      *
-     * @param  array<string, mixed>  $data
+     * @param  array<array-key, mixed>  $data
      * @return array<string, string>
      */
     private function parse(array $data): array

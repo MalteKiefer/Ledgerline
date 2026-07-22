@@ -19,18 +19,20 @@ class LocaleController extends Controller
         $languages = config('locales.languages');
         $supported = array_keys(is_array($languages) ? $languages : []);
 
-        $validated = $request->validate([
+        $request->validate([
             'locale' => ['required', 'string', 'in:'.implode(',', $supported)],
         ]);
 
+        $locale = $request->string('locale')->value();
+
         // Session is web-only; a token API request has none.
         if ($request->hasSession()) {
-            $request->session()->put('locale', $validated['locale']);
+            $request->session()->put('locale', $locale);
         }
-        $request->user()?->forceFill(['locale' => $validated['locale']])->save();
+        $request->user()?->forceFill(['locale' => $locale])->save();
 
         return $request->expectsJson()
-            ? response()->json(['ok' => true, 'locale' => $validated['locale']])
+            ? response()->json(['ok' => true, 'locale' => $locale])
             : back();
     }
 }

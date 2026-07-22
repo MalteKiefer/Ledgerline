@@ -39,7 +39,7 @@ class PaperlessController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
+        $request->validate([
             'paperless_enabled' => ['sometimes', 'boolean'],
             'paperless_url' => ['nullable', 'url', 'max:255', new SafeUrl],
             'paperless_token' => ['nullable', 'string', 'max:255'],
@@ -50,6 +50,10 @@ class PaperlessController extends Controller
 
         $user = $this->requireUser($request);
         $settings = UserSetting::for($user->id);
+        $validated = [
+            'paperless_url' => $request->input('paperless_url'),
+            'paperless_token' => $request->string('paperless_token')->value(),
+        ];
         // An empty token field keeps the stored one (so it need not be retyped).
         $validated = KeepBlankSecrets::preserve($validated, ['paperless_token']);
         $validated['paperless_enabled'] = $request->boolean('paperless_enabled');

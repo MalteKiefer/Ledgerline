@@ -201,13 +201,13 @@ abstract class BlobStoreController extends Controller
     {
         $this->authorizeMutation($request);
 
-        $data = $request->validate([
+        $request->validate([
             'blobs' => ['present', 'array', 'max:100000'],
             'blobs.*' => ['uuid'],
         ]);
 
         $lockId = $this->reconcileLockId($request);
-        $live = array_flip($data['blobs']);
+        $live = array_flip($request->collect('blobs')->map(static fn ($b): string => is_scalar($b) ? (string) $b : '')->all());
         $grace = Carbon::now()->subHours($this->configInt($this->module().'.blob_orphan_grace_hours', 24));
         $disk = $this->disk();
         $prefix = $this->module();
@@ -280,14 +280,14 @@ abstract class BlobStoreController extends Controller
     /** Begin a multipart upload; returns an opaque session token + the blob id. */
     public function chunkInit(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             // max_upload_mb bounds a single POST body — irrelevant here since the
             // file arrives in small parts. Bound by the S3 multipart ceiling
             // instead (10 000 parts) so multi-GB uploads are allowed.
             'size' => ['required', 'integer', 'min:1', 'max:'.(10000 * self::CHUNK_PART_SIZE)],
         ]);
         $user = $this->requireUser($request);
-        abort_if($this->quotaExceeded($this->chunkOwnerId($request), (int) $data['size']), 413, __('files.quota_exceeded'));
+        abort_if($this->quotaExceeded($this->chunkOwnerId($request), $request->integer('size')), 413, __('files.quota_exceeded'));
 
         $id = (string) Str::uuid();
         $key = $this->module().'/'.$id;
@@ -519,15 +519,16 @@ abstract class BlobStoreController extends Controller
      */
     public function rawBatch(Request $request): StreamedResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'blobs' => ['required', 'array', 'max:512'],
             'blobs.*' => ['required', 'string', 'uuid'],
         ]);
 
         // Only ids that are BOTH owned (in the ledger) AND present on disk, keeping
         // the caller's request order for deterministic client-side splitting.
-        /** @var list<string> $requested */
-        $requested = array_values(array_unique($data['blobs']));
+        $requested = array_values(array_unique(
+            $request->collect('blobs')->map(static fn ($b): string => is_scalar($b) ? (string) $b : '')->all()
+        ));
         $owned = (clone $this->scopeLedger($request))
             ->whereIn('blob', $requested)
             ->pluck('blob')

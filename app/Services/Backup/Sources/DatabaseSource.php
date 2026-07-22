@@ -27,9 +27,13 @@ final class DatabaseSource implements BackupSource
     {
         $connection = config('database.default');
         $connection = is_string($connection) ? $connection : '';
-        $config = config("database.connections.{$connection}");
-        if (! is_array($config)) {
+        $rawConfig = config("database.connections.{$connection}");
+        if (! is_array($rawConfig)) {
             throw new RuntimeException("No database connection configured for backup: {$connection}");
+        }
+        $config = [];
+        foreach ($rawConfig as $key => $value) {
+            $config[(string) $key] = $value;
         }
         $driver = is_string($config['driver'] ?? null) ? $config['driver'] : '';
 

@@ -10,11 +10,11 @@ use App\Models\AuditLog;
 use App\Models\BackupDestination;
 use App\Models\BackupJob;
 use App\Models\BackupRun;
+use App\Rules\SafeHost;
 use App\Rules\SafeUrl;
 use App\Services\Backup\ArchiveCipher;
 use App\Services\Backup\BackupDestinationFactory;
 use App\Services\Backup\BackupVerifier;
-use App\Support\OutboundUrl;
 use Cron\CronExpression;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -202,9 +202,10 @@ class BackupController extends Controller
     public function verifyRun(Request $request, BackupRun $run, BackupVerifier $verifier): JsonResponse
     {
         abort_unless($run->status === 'success' && $run->filename, 404);
-        $data = $request->validate(['passphrase' => ['nullable', 'string', 'max:255']]);
+        $request->validate(['passphrase' => ['nullable', 'string', 'max:255']]);
 
-        $result = $verifier->verify($run, $data['passphrase'] ?? null);
+        $passphrase = $request->input('passphrase') !== null ? $request->string('passphrase')->value() : null;
+        $result = $verifier->verify($run, $passphrase);
 
         return response()->json([
             'ok' => $result['ok'],
@@ -246,7 +247,8 @@ class BackupController extends Controller
         abort_unless($run->status === 'success' && $run->filename && str_ends_with((string) $run->filename, '.enc'), 404);
         $job = $run->job;
         abort_unless($job !== null && $job->destination !== null, 404);
-        $data = $request->validate(['passphrase' => ['required', 'string', 'max:255']]);
+        $request->validate(['passphrase' => ['required', 'string', 'max:255']]);
+        $passphrase = $request->string('passphrase')->value();
 
         $fs = $this->factory->make($job->destination);
         abort_unless($fs->fileExists($run->filename), 404);
@@ -271,7 +273,7 @@ class BackupController extends Controller
         fclose($stream);
 
         try {
-            $cipher->decryptFile($enc, $dec, $data['passphrase']);
+            $cipher->decryptFile($enc, $dec, $passphrase);
         } catch (\Throwable) {
             @unlink($enc);
             @unlink($dec);
@@ -333,7 +335,7 @@ class BackupController extends Controller
     /** @return array{name: string, driver: string, config: array<string, mixed>} */
     private function validateDestination(Request $request, ?BackupDestination $existing = null): array
     {
-        $validated = $request->validate([
+        $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'driver' => ['required', Rule::in(BackupDestination::DRIVERS)],
             // S3 / B2
@@ -344,11 +346,7 @@ class BackupController extends Controller
             'endpoint' => ['nullable', 'string', 'max:255', new SafeUrl],
             'use_path_style' => ['sometimes', 'boolean'],
             // SFTP / WebDAV
-            'host' => ['nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) {
-                if (is_string($value) && $value !== '' && ! OutboundUrl::hostAllowed($value)) {
-                    $fail('settings.safe_url')->translate(['attribute' => $attribute]);
-                }
-            }],
+            'host' => ['nullable', 'string', 'max:255', new SafeHost],
             'port' => ['nullable', 'integer', 'min:1', 'max:65535'],
             'username' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'max:255'],
@@ -357,7 +355,8 @@ class BackupController extends Controller
             'path' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $keys = match ($validated['driver']) {
+        $driver = $request->string('driver')->value();
+        $keys = match ($driver) {
             's3', 'b2' => ['bucket', 'region', 'key', 'secret', 'endpoint', 'use_path_style', 'path'],
             'sftp' => ['host', 'port', 'username', 'password', 'host_fingerprint', 'path'],
             'webdav' => ['base_uri', 'username', 'password', 'path'],
@@ -365,16 +364,25 @@ class BackupController extends Controller
         };
         $config = [];
         foreach ($keys as $k) {
-            $config[$k] = $k === 'use_path_style' ? $request->boolean('use_path_style') : ($validated[$k] ?? null);
+            if ($k === 'use_path_style') {
+                $config[$k] = $request->boolean('use_path_style');
+
+                continue;
+            }
+            $v = $request->input($k);
+            $config[$k] = $k === 'port'
+                ? ($v !== null ? $request->integer('port') : null)
+                : (is_string($v) ? $v : null);
         }
         // On edit, keep an existing secret/password when left blank.
         foreach (['secret', 'password'] as $secret) {
             if (in_array($secret, $keys, true) && ($config[$secret] ?? '') === '' && $existing !== null) {
-                $config[$secret] = $existing->config[$secret] ?? null;
+                $existingConfig = $existing->config;
+                $config[$secret] = is_array($existingConfig) ? ($existingConfig[$secret] ?? null) : null;
             }
         }
 
-        return ['name' => $validated['name'], 'driver' => $validated['driver'], 'config' => $config];
+        return ['name' => $request->string('name')->value(), 'driver' => $driver, 'config' => $config];
     }
 
     /**
@@ -404,7 +412,7 @@ class BackupController extends Controller
     /** @return array<string, mixed> */
     private function validateJob(Request $request, bool $requirePassphrase): array
     {
-        $data = $request->validate([
+        $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'source' => ['required', Rule::in(BackupJob::SOURCES)],
             'mode' => ['sometimes', Rule::in(BackupJob::MODES)],
@@ -420,25 +428,43 @@ class BackupController extends Controller
             'enabled' => ['sometimes', 'boolean'],
         ]);
 
-        if (! CronExpression::isValidExpression($data['cron'])) {
+        $cron = $request->string('cron')->value();
+        if (! CronExpression::isValidExpression($cron)) {
             throw ValidationException::withMessages(['cron' => __('settings.backup_cron_invalid')]);
         }
 
-        $data['mode'] = $data['mode'] ?? 'mirror';
-        $data['encrypt'] = $request->boolean('encrypt');
-        $data['enabled'] = $request->boolean('enabled');
-        $data['notify_channels'] = array_values($data['notify_channels'] ?? []);
+        $source = $request->string('source')->value();
+        $encrypt = $request->boolean('encrypt');
+        $passphrase = $request->string('passphrase')->value();
+        $notifyChannels = array_values(array_map(
+            static fn (mixed $c): string => is_scalar($c) ? (string) $c : '',
+            $request->collect('notify_channels')->all()
+        ));
+
+        $data = [
+            'name' => $request->string('name')->value(),
+            'source' => $source,
+            'mode' => $request->input('mode') !== null ? $request->string('mode')->value() : 'mirror',
+            'backup_destination_id' => $request->integer('backup_destination_id'),
+            'cron' => $cron,
+            'retention' => $request->integer('retention'),
+            'encrypt' => $encrypt,
+            'passphrase' => $passphrase !== '' ? $passphrase : null,
+            'notify_channels' => $notifyChannels,
+            'enabled' => $request->boolean('enabled'),
+        ];
+
         // A database dump carries the non-ZK rows in plaintext plus the wrapped
         // vault-key material (an offline passphrase-cracking oracle). It must
         // never be written to an off-box destination unencrypted.
-        if ($data['source'] === 'database' && ! $data['encrypt']) {
+        if ($source === 'database' && ! $encrypt) {
             throw ValidationException::withMessages(['encrypt' => __('settings.backup_db_encrypt_required')]);
         }
         // A per-job passphrase is only required when there is no environment
         // passphrase (BACKUP_PASSPHRASE); the latter keeps the key out of the DB.
         $envPassphrase = config('backup.passphrase', '');
-        if ($requirePassphrase && $data['encrypt']
-            && ($data['passphrase'] ?? '') === '' && (is_string($envPassphrase) ? $envPassphrase : '') === '') {
+        if ($requirePassphrase && $encrypt
+            && $passphrase === '' && (is_string($envPassphrase) ? $envPassphrase : '') === '') {
             throw ValidationException::withMessages(['passphrase' => __('settings.backup_passphrase_required')]);
         }
 

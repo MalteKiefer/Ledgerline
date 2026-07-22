@@ -23,9 +23,13 @@ class NotificationController extends Controller
         // client's ETag nothing changed → 304, skipping the row fetch + payload.
         $agg = AppNotification::where('user_id', $userId)
             ->selectRaw('MAX(id) as max_id, MAX(updated_at) as max_updated, COUNT(*) as total')
+            ->toBase()
             ->first();
         $unread = AppNotification::where('user_id', $userId)->whereNull('read_at')->count();
-        $etag = '"'.md5(($agg->max_id ?? 0).':'.($agg->total ?? 0).':'.($agg->max_updated ?? '').':'.$unread).'"';
+        $maxId = is_scalar($agg?->max_id) ? (string) $agg->max_id : '0';
+        $total = is_scalar($agg?->total) ? (string) $agg->total : '0';
+        $maxUpdated = is_scalar($agg?->max_updated) ? (string) $agg->max_updated : '';
+        $etag = '"'.md5($maxId.':'.$total.':'.$maxUpdated.':'.$unread).'"';
 
         if (trim((string) $request->header('If-None-Match')) === $etag) {
             return response()->json(null, 304)->header('ETag', $etag);

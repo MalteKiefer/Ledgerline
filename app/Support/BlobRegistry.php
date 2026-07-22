@@ -6,6 +6,7 @@ namespace App\Support;
 
 use App\Models\FileBlob;
 use App\Models\GalleryBlob;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Registry mapping module keys to their blob model and disk prefix.
@@ -13,13 +14,13 @@ use App\Models\GalleryBlob;
  */
 final class BlobRegistry
 {
-    /** @var array<string, array{model: class-string, prefix: string}> */
+    /** @var array<string, array{model: class-string<Model>, prefix: string}> */
     private const MAP = [
         'gallery' => ['model' => GalleryBlob::class, 'prefix' => 'gallery'],
         'files' => ['model' => FileBlob::class,    'prefix' => 'files'],
     ];
 
-    /** @return class-string */
+    /** @return class-string<Model> */
     public static function model(string $module): string
     {
         return self::MAP[$module]['model']

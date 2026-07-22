@@ -140,9 +140,9 @@ class GalleryProcessController extends Controller
     /** Embed a search query string (CLIP text space) for client-side content search. */
     public function embedText(Request $request, MachineLearning $ml): JsonResponse
     {
-        $data = $request->validate(['q' => ['required', 'string', 'max:1024']]);
+        $request->validate(['q' => ['required', 'string', 'max:1024']]);
 
-        return response()->json(['embedding' => $ml->embedText($data['q'])])
+        return response()->json(['embedding' => $ml->embedText($request->string('q')->value())])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
@@ -153,10 +153,10 @@ class GalleryProcessController extends Controller
      */
     public function geocode(Request $request, NominatimClient $nominatim): JsonResponse
     {
-        $data = $request->validate(['q' => ['required', 'string', 'max:256']]);
+        $request->validate(['q' => ['required', 'string', 'max:256']]);
 
         $json = $nominatim->get('search', [
-            'q' => $data['q'],
+            'q' => $request->string('q')->value(),
             'format' => 'jsonv2',
             'limit' => 6,
             'addressdetails' => 0,
@@ -194,12 +194,12 @@ class GalleryProcessController extends Controller
      */
     public function reverse(Request $request, ReverseGeocoder $geocoder): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'lat' => ['required', 'numeric', 'between:-90,90'],
             'lng' => ['required', 'numeric', 'between:-180,180'],
         ]);
 
-        $result = $geocoder->lookupDetailed((float) $data['lat'], (float) $data['lng']);
+        $result = $geocoder->lookupDetailed($request->float('lat'), $request->float('lng'));
 
         return response()->json([
             'place' => $result['display'],

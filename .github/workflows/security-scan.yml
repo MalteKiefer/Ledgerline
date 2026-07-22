@@ -33,6 +33,13 @@ jobs:
       - name: PHPStan (static analysis, blocking)
         run: vendor/bin/phpstan analyse --no-progress --memory-limit=2G
 
+      # Rector runs as a non-blocking dry-run report: it surfaces dead code /
+      # code-quality suggestions without failing the build. Sensitive crypto /
+      # blob / backup / sharing paths must be hand-reviewed before any apply, so
+      # nothing is auto-applied in CI. See rector.php.
+      - name: Rector (dry-run report, non-blocking)
+        run: composer rector || true
+
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
@@ -43,6 +50,25 @@ jobs:
         run: |
           npm ci
           npm audit --omit=dev || true
+
+      # CycloneDX SBOMs (one per build, uploaded as artifacts). Complements the
+      # SPDX SBOM emitted by the trivy job. Composer plugin + npm tool pinned.
+      - name: Generate SBOM (CycloneDX, Composer)
+        if: always()
+        run: composer CycloneDX:make-sbom --output-format=JSON --output-file=sbom.composer.cdx.json --spec-version=1.6
+
+      - name: Generate SBOM (CycloneDX, npm)
+        if: always()
+        run: npx --yes @cyclonedx/cyclonedx-npm@6.0.0 --output-format JSON --output-file sbom.npm.cdx.json
+
+      - name: Upload CycloneDX SBOM artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-cyclonedx
+          path: |
+            sbom.composer.cdx.json
+            sbom.npm.cdx.json
 
   secrets:
     runs-on: ubuntu-latest

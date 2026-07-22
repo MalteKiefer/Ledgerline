@@ -50,9 +50,11 @@ class SharedVaultController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'wrapped_vault_key' => ['required', 'string'],
         ]);
+
+        $wrappedVaultKey = $request->string('wrapped_vault_key')->value();
 
         // Validate kind explicitly so the controller always returns JSON for
         // this endpoint (ValidationException on web routes redirects; abort
@@ -62,7 +64,7 @@ class SharedVaultController extends Controller
             abort(422, 'The selected kind is invalid.');
         }
 
-        $vault = DB::transaction(function () use ($data, $request, $kind): SharedVault {
+        $vault = DB::transaction(function () use ($wrappedVaultKey, $request, $kind): SharedVault {
             $vault = new SharedVault;
             $vault->kind = $kind; // server-assigned; not mass-assignable
             $vault->save();
@@ -77,7 +79,7 @@ class SharedVaultController extends Controller
                 'user_id' => $this->requireUser($request)->id,
                 'role' => VaultRole::Manager->value,
                 'status' => 'active',
-                'wrapped_vault_key' => $data['wrapped_vault_key'],
+                'wrapped_vault_key' => $wrappedVaultKey,
                 'recipient_fingerprint' => null,
             ]);
 
@@ -132,14 +134,16 @@ class SharedVaultController extends Controller
     {
         $this->authorize('manage', $vault);
 
-        $data = $request->validate([
+        $request->validate([
             'identifier' => ['required', 'string'],
         ]);
 
+        $identifier = $request->string('identifier')->value();
+
         /** @var User|null $recipient */
-        $recipient = User::where(function ($q) use ($data): void {
-            $q->where('email', $data['identifier'])
-                ->orWhere('oidc_sub', $data['identifier']);
+        $recipient = User::where(function ($q) use ($identifier): void {
+            $q->where('email', $identifier)
+                ->orWhere('oidc_sub', $identifier);
         })
             ->whereNotNull('x25519_public_key')
             // Store v3 (§6.3): a recipient must also have published ML-KEM material
@@ -175,7 +179,7 @@ class SharedVaultController extends Controller
         $this->authorize('manage', $vault);
 
         $manifestMax = config('vault.manifest_max_bytes');
-        $data = $request->validate([
+        $request->validate([
             'sealed_manifest' => ['required', 'string', 'max:'.(is_numeric($manifestMax) ? (int) $manifestMax : 0)],
             'expected_version' => ['required', 'integer', 'min:0'],
             'members' => ['required', 'array'],
@@ -184,10 +188,28 @@ class SharedVaultController extends Controller
             'remove_member_id' => ['required', 'integer'],
         ]);
 
-        // Inject authenticated user id so the transaction closure can perform the self-remove guard.
-        $data['_auth_user_id'] = $this->requireUser($request)->id;
+        $sealedManifest = $request->string('sealed_manifest')->value();
+        $expectedVersion = $request->integer('expected_version');
+        $removeMemberId = $request->integer('remove_member_id');
+        // Authenticated user id for the self-remove guard inside the transaction.
+        $authUserId = (int) $this->requireUser($request)->id;
 
-        $result = DB::transaction(function () use ($vault, $data): array {
+        // Normalise the validated members list into a typed shape for the closure.
+        // The validation rules above guarantee each entry has an integer user_id
+        // and a string wrapped_vault_key.
+        /** @var list<array{user_id: int, wrapped_vault_key: string}> $members */
+        $members = $request->collect('members')
+            ->map(function ($entry): array {
+                $entry = is_array($entry) ? $entry : [];
+
+                return [
+                    'user_id' => is_numeric($entry['user_id'] ?? null) ? (int) $entry['user_id'] : 0,
+                    'wrapped_vault_key' => is_string($entry['wrapped_vault_key'] ?? null) ? $entry['wrapped_vault_key'] : '',
+                ];
+            })
+            ->all();
+
+        $result = DB::transaction(function () use ($vault, $sealedManifest, $expectedVersion, $removeMemberId, $authUserId, $members): array {
             /** @var SharedVaultStore|null $row */
             $row = SharedVaultStore::where('vault_id', $vault->id)
                 ->lockForUpdate()
@@ -195,7 +217,7 @@ class SharedVaultController extends Controller
 
             // Verify remove_member_id belongs to this vault (inside the lock to prevent races).
             $removeMemberRow = SharedVaultMember::where('vault_id', $vault->id)
-                ->where('id', $data['remove_member_id'])
+                ->where('id', $removeMemberId)
                 ->first();
 
             if ($removeMemberRow === null) {
@@ -203,20 +225,20 @@ class SharedVaultController extends Controller
             }
 
             // R4: A manager cannot remove themselves via rotate.
-            if ((int) $removeMemberRow->user_id === (int) $data['_auth_user_id']) {
+            if ((int) $removeMemberRow->user_id === $authUserId) {
                 return ['conflict' => false, 'self_remove' => true];
             }
 
             // Verify the removed member does not appear in the supplied members list.
-            $incomingUserIds = array_column($data['members'], 'user_id');
+            $incomingUserIds = array_column($members, 'user_id');
 
-            if (in_array((int) $removeMemberRow->user_id, array_map('intval', $incomingUserIds), true)) {
+            if (in_array((int) $removeMemberRow->user_id, $incomingUserIds, true)) {
                 return ['conflict' => false, 'invalid_user' => true, 'removed_in_list' => true];
             }
 
             $current = (int) ($row?->version ?? 0);
 
-            if ($current !== (int) $data['expected_version']) {
+            if ($current !== $expectedVersion) {
                 return [
                     'conflict' => true,
                     'version' => $current,
@@ -231,8 +253,8 @@ class SharedVaultController extends Controller
                 ->map(fn ($id): int => is_numeric($id) ? (int) $id : 0)
                 ->all();
 
-            foreach ($data['members'] as $entry) {
-                if (! in_array((int) $entry['user_id'], $activeUserIds, true)) {
+            foreach ($members as $entry) {
+                if (! in_array($entry['user_id'], $activeUserIds, true)) {
                     return [
                         'conflict' => false,
                         'invalid_user' => true,
@@ -241,7 +263,7 @@ class SharedVaultController extends Controller
             }
 
             // Update wrapped vault keys for the remaining members.
-            foreach ($data['members'] as $entry) {
+            foreach ($members as $entry) {
                 SharedVaultMember::where('vault_id', $vault->id)
                     ->where('user_id', $entry['user_id'])
                     ->update(['wrapped_vault_key' => $entry['wrapped_vault_key']]);
@@ -249,13 +271,13 @@ class SharedVaultController extends Controller
 
             // Remove the rotated-out member.
             SharedVaultMember::where('vault_id', $vault->id)
-                ->where('id', $data['remove_member_id'])
+                ->where('id', $removeMemberId)
                 ->delete();
 
             $nextVersion = $current + 1;
 
             SharedVaultStore::where('vault_id', $vault->id)->update([
-                'sealed_manifest' => $data['sealed_manifest'],
+                'sealed_manifest' => $sealedManifest,
                 'version' => $nextVersion,
             ]);
 

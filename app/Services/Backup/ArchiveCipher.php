@@ -102,7 +102,11 @@ final class ArchiveCipher
                 if ($unpacked === false) {
                     throw new RuntimeException('Corrupt archive (chunk length).');
                 }
-                $len = $unpacked[1];
+                $lenValue = $unpacked[1] ?? null;
+                $len = is_numeric($lenValue) ? (int) $lenValue : 0;
+                if ($len < 1) {
+                    throw new RuntimeException('Corrupt archive (chunk length).');
+                }
                 $cipher = fread($in, $len);
                 if ($cipher === false || strlen($cipher) !== $len) {
                     throw new RuntimeException('Truncated archive (chunk body).');
@@ -112,6 +116,9 @@ final class ArchiveCipher
                     throw new RuntimeException('Wrong passphrase or corrupted archive.');
                 }
                 [$plain, $tag] = $result;
+                if (! is_string($plain)) {
+                    throw new RuntimeException('Wrong passphrase or corrupted archive.');
+                }
                 $this->write($out, $plain);
                 if ($tag === SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_FINAL) {
                     $sawFinal = true;
@@ -144,8 +151,13 @@ final class ArchiveCipher
     private function initPush(string $key): array
     {
         $state = sodium_crypto_secretstream_xchacha20poly1305_init_push($key);
+        $encState = $state[0] ?? null;
+        $header = $state[1] ?? null;
+        if (! is_string($encState) || ! is_string($header)) {
+            throw new RuntimeException('Failed to initialize archive encryption.');
+        }
 
-        return [$state[0], $state[1]];
+        return [$encState, $header];
     }
 
     /**
@@ -197,8 +209,12 @@ final class ArchiveCipher
         if ($unpacked === false) {
             throw new RuntimeException('Corrupt archive (KDF parameter).');
         }
+        $value = $unpacked[1] ?? null;
+        if (! is_numeric($value)) {
+            throw new RuntimeException('Corrupt archive (KDF parameter).');
+        }
 
-        return $unpacked[1];
+        return (int) $value;
     }
 
     /** @return resource */

@@ -22,7 +22,7 @@ class ContactNotifyController extends Controller
 {
     public function send(Request $request, ChannelNotifier $channels): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'kind' => ['required', Rule::in(['birthday', 'anniversary'])],
             'title' => ['required', 'string', 'max:200'],
             'body' => ['required', 'string', 'max:500'],
@@ -30,7 +30,7 @@ class ContactNotifyController extends Controller
 
         $user = $this->requireUser($request);
         $s = UserSetting::for($user->id);
-        $allowed = (array) ($data['kind'] === 'birthday'
+        $allowed = (array) ($request->string('kind')->value() === 'birthday'
             ? $s->contact_birthday_channels
             : $s->contact_anniversary_channels);
 
@@ -40,7 +40,7 @@ class ContactNotifyController extends Controller
             return response()->json(['sent' => false]);
         }
 
-        $channels->send($targets, $data['title'], $data['body'], [
+        $channels->send($targets, $request->string('title')->value(), $request->string('body')->value(), [
             'user_id' => $user->id,
             'event' => 'reminder',
             'category' => 'reminder',

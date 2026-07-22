@@ -117,24 +117,27 @@ trait SealedManifestStore
     {
         $this->guardManifestRequest($request);
 
-        $data = $request->validate([
+        $request->validate([
             'ciphertext' => ['required', 'string', 'max:'.$this->manifestMaxBytes()],
             'version' => ['required', 'integer', 'min:0'],
         ]);
 
+        $ciphertext = $request->string('ciphertext')->value();
+        $expectedVersion = $request->integer('version');
+
         $model = $this->manifestModel();
         $key = $this->manifestKey($request);
 
-        $next = DB::transaction(function () use ($request, $data, $model, $key): ?int {
+        $next = DB::transaction(function () use ($request, $ciphertext, $expectedVersion, $model, $key): ?int {
             $row = $this->manifestScope($request, $model::query())->lockForUpdate()->first();
             $current = (int) ($row?->version ?? 0);
-            if ($current !== (int) $data['version']) {
+            if ($current !== $expectedVersion) {
                 return null; // conflict
             }
             $version = $current + 1;
             $model::query()->updateOrCreate(
                 $key,
-                ['ciphertext' => $data['ciphertext'], 'version' => $version],
+                ['ciphertext' => $ciphertext, 'version' => $version],
             );
 
             return $version;

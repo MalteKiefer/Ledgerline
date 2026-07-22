@@ -40,18 +40,16 @@ trait ManagesPublicShares
     protected function createShare(Request $request, string $kind): JsonResponse
     {
         $user = $this->requireUser($request);
-        $data = $request->validate($this->shareRules());
+        $request->validate($this->shareRules());
 
         $token = $this->uniqueShareToken();
         $share = new PublicShare;
         $share->token = $token;
         $share->user_id = (int) $user->id;
         $share->kind = $kind;
-        $share->sealed_manifest = $data['sealed_manifest'];
-        $share->blob_refs = array_values(array_unique($data['blob_refs']));
-        $share->allow_download = (bool) ($data['allow_download'] ?? false);
-        $share->expires_at = $data['expires_at'] ?? null;
-        $share->password_hash = ! empty($data['password']) ? Hash::make($data['password']) : null;
+        $this->applyShareData($share, $request);
+        $password = $request->string('password')->value();
+        $share->password_hash = $password !== '' ? Hash::make($password) : null;
         $share->save();
 
         // NEVER log the full token — it grants access. Log the row id + kind only.
@@ -66,20 +64,40 @@ trait ManagesPublicShares
     protected function updateShareRecord(Request $request, string $token): JsonResponse
     {
         $share = $this->ownedShare($request, $token);
-        $data = $request->validate($this->shareRules() + ['clear_password' => ['boolean']]);
+        $request->validate($this->shareRules() + ['clear_password' => ['boolean']]);
 
-        $share->sealed_manifest = $data['sealed_manifest'];
-        $share->blob_refs = array_values(array_unique($data['blob_refs']));
-        $share->allow_download = (bool) ($data['allow_download'] ?? false);
-        $share->expires_at = $data['expires_at'] ?? null;
+        $this->applyShareData($share, $request);
         if ($request->boolean('clear_password')) {
             $share->password_hash = null;
-        } elseif (! empty($data['password'])) {
-            $share->password_hash = Hash::make($data['password']);
+        } else {
+            $password = $request->string('password')->value();
+            if ($password !== '') {
+                $share->password_hash = Hash::make($password);
+            }
         }
         $share->save();
 
         return response()->json(['token' => $share->token]);
+    }
+
+    /**
+     * Copy the already-validated (and thus type-checked) share fields onto the
+     * model, reading each through a typed request accessor so nothing is `mixed`.
+     */
+    private function applyShareData(PublicShare $share, Request $request): void
+    {
+        $share->sealed_manifest = $request->string('sealed_manifest')->value();
+
+        /** @var list<string> $refs */
+        $refs = array_values(array_unique($request->collect('blob_refs')
+            ->map(fn (mixed $v): string => is_string($v) ? $v : '')
+            ->all()));
+        $share->blob_refs = $refs;
+
+        $share->allow_download = $request->boolean('allow_download');
+
+        // 'expires_at' passed the 'nullable|date' rule; date() yields Carbon|null.
+        $share->expires_at = $request->date('expires_at');
     }
 
     protected function destroyShareRecord(Request $request, string $token): JsonResponse

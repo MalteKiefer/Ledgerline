@@ -46,7 +46,7 @@ class UserKeyController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'public_key' => ['required', 'string'],
             'wrapped_secret_key' => ['required', 'string'],
             'fingerprint' => ['required', 'string'],
@@ -56,6 +56,12 @@ class UserKeyController extends Controller
             'wrapped_mlkem_secret_key' => ['required', 'string'],
         ]);
 
+        $publicKey = $request->string('public_key')->value();
+        $wrappedSecretKey = $request->string('wrapped_secret_key')->value();
+        $fingerprint = $request->string('fingerprint')->value();
+        $mlkemPublicKey = $request->string('mlkem_public_key')->value();
+        $wrappedMlkemSecretKey = $request->string('wrapped_mlkem_secret_key')->value();
+
         $user = $this->requireUser($request);
 
         // Write-once guard: if the user already has a different public key stored,
@@ -63,23 +69,23 @@ class UserKeyController extends Controller
         // vault invitations (wrapped vault keys are sealed to the original pubkey).
         if (
             filled($user->x25519_public_key) &&
-            $user->x25519_public_key !== $data['public_key']
+            $user->x25519_public_key !== $publicKey
         ) {
             return response()->json(['error' => 'key_conflict'], 409);
         }
 
         $user->forceFill([
-            'x25519_public_key' => $data['public_key'],
-            'wrapped_x25519_secret_key' => $data['wrapped_secret_key'],
-            'public_key_fingerprint' => $data['fingerprint'],
-            'mlkem_public_key' => $data['mlkem_public_key'],
-            'wrapped_mlkem_secret_key' => $data['wrapped_mlkem_secret_key'],
+            'x25519_public_key' => $publicKey,
+            'wrapped_x25519_secret_key' => $wrappedSecretKey,
+            'public_key_fingerprint' => $fingerprint,
+            'mlkem_public_key' => $mlkemPublicKey,
+            'wrapped_mlkem_secret_key' => $wrappedMlkemSecretKey,
         ])->save();
 
         // Fingerprint is already non-secret (it is compared out-of-band for TOFU).
         // NEVER log the wrapped secret key material.
         AuditLog::record('identity.key.published', $user, [
-            'fingerprint' => is_string($data['fingerprint']) ? $data['fingerprint'] : null,
+            'fingerprint' => $fingerprint,
         ]);
 
         return response()->json(['ok' => true]);

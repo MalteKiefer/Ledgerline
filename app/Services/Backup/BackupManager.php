@@ -127,7 +127,9 @@ final class BackupManager
                     $newBlobs = $ledger::query()
                         ->when($job->mirror_cursor !== null, fn ($q) => $q->where('created_at', '>', $job->mirror_cursor))
                         ->orderBy('created_at')
-                        ->pluck('blob');
+                        ->pluck('blob')
+                        ->map(static fn (mixed $b): string => is_scalar($b) ? (string) $b : '')
+                        ->all();
                     $r = $this->mirror->delta($fs, $diskPrefix, $prefix, $newBlobs, $step, $checkCancel);
                     // Advance the cursor to the newest blob we considered.
                     $cursor = $ledger::query()

@@ -44,7 +44,8 @@ class PasswordIconController extends Controller
         // BIMI: a DNS TXT record at default._bimi.<domain> carries l=<svg url>.
         try {
             foreach (@dns_get_record('default._bimi.'.$domain, DNS_TXT) ?: [] as $rec) {
-                if (preg_match('/\bl=\s*(https:\/\/[^\s;"]+)/i', (string) ($rec['txt'] ?? ''), $m)) {
+                $txt = is_string($rec['txt'] ?? null) ? $rec['txt'] : '';
+                if (preg_match('/\bl=\s*(https:\/\/[^\s;"]+)/i', $txt, $m)) {
                     $urls[] = $m[1];
                     break;
                 }

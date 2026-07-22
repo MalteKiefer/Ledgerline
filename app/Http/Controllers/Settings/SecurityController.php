@@ -33,13 +33,17 @@ class SecurityController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'vault_remember_days' => ['required', 'integer', 'min:1', 'max:365'],
             'vault_public_idle_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'max_connected_devices' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        AppSettings::current()->update($data);
+        AppSettings::current()->update([
+            'vault_remember_days' => $request->integer('vault_remember_days'),
+            'vault_public_idle_minutes' => $request->integer('vault_public_idle_minutes'),
+            'max_connected_devices' => $request->integer('max_connected_devices'),
+        ]);
 
         return $this->savedSettings('security', 'settings.security.edit', 'settings.security_saved');
     }

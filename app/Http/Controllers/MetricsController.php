@@ -35,7 +35,8 @@ class MetricsController extends Controller
             if ($labels !== []) {
                 $parts = [];
                 foreach ($labels as $k => $v) {
-                    $parts[] = $k.'="'.str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $v).'"';
+                    $value = is_scalar($v) ? (string) $v : '';
+                    $parts[] = $k.'="'.str_replace(['\\', '"'], ['\\\\', '\\"'], $value).'"';
                 }
                 $label = '{'.implode(',', $parts).'}';
             }

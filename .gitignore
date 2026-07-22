@@ -42,6 +42,10 @@ docs/superpowers/
 # Docker secret files (never commit)
 /secrets/
 
+# CycloneDX SBOMs (generated per build in CI, uploaded as artifacts)
+/sbom.composer.cdx.json
+/sbom.npm.cdx.json
+
 # Host deploy artifacts (never commit)
 /db-snapshots/
 /deploy-provenance.log
