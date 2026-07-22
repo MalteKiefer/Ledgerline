@@ -569,8 +569,9 @@ export default (config = {}, labels = {}) => ({
     // Toggle the opt-in auto-routing. Turning it ON re-routes the current
     // waypoints; turning it OFF drops the snapped geometry back to straight
     // lines. The raw clicked waypoints are always preserved either way.
+    // Reacts to the checkbox @change — x-model has ALREADY flipped `autoRoute`,
+    // so this only runs the side-effect (do NOT toggle again or it cancels out).
     toggleAutoRoute() {
-        this.autoRoute = ! this.autoRoute;
         if (! this.autoRoute) {
             this._routedGeometry = null;
             this.routing = false;
