@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Models\AuditLog;
 use App\Support\BlobStore;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -83,6 +84,15 @@ class ResetStoreV3 extends Command
             'wrapped_mlkem_secret_key' => null,
         ]);
         $this->line('  reset all user identity keypairs');
+
+        // Destructive clean-slate wipe MUST leave a trail. This runs without an
+        // HTTP user, so the actor is null (system/ops); record who invoked it at
+        // the OS level and whether the production guard was forced.
+        $osUser = get_current_user();
+        AuditLog::record('store.reset_v3', null, [
+            'invoked_by' => $osUser !== '' ? $osUser : 'unknown',
+            'forced' => $force,
+        ]);
 
         $this->info('Store v3 clean-slate reset complete. Clients will re-initialise on next unlock.');
 

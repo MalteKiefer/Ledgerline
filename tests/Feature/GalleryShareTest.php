@@ -8,6 +8,7 @@ use App\Models\GalleryBlob;
 use App\Models\PublicShare;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -91,6 +92,21 @@ class GalleryShareTest extends TestCase
 
         $this->getJson(route('public.share.manifest', $token))->assertOk();
         $this->get(route('public.share.blob', ['token' => $token, 'ref' => $ref]))->assertOk();
+    }
+
+    public function test_share_password_is_hashed_with_argon2id(): void
+    {
+        $owner = User::factory()->create();
+        $ref = $this->makeBlob($owner);
+        $token = $this->createShare($owner, [$ref], ['password' => 'hunter2secret']);
+
+        $share = PublicShare::where('token', $token)->firstOrFail();
+        $this->assertNotNull($share->password_hash);
+        // Newly created hashes must use Argon2id, not the framework bcrypt default.
+        $this->assertStringStartsWith('$argon2id$', (string) $share->password_hash);
+        // And the hash still verifies through the driver-agnostic Hash::check.
+        $this->assertTrue(Hash::check('hunter2secret', (string) $share->password_hash));
+        $this->assertFalse(Hash::check('wrong', (string) $share->password_hash));
     }
 
     public function test_expired_share_is_not_served(): void

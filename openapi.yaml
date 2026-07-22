@@ -2253,7 +2253,7 @@ paths:
         Write-once: publishes the X25519 public key, wrapped secret key, and
         fingerprint. A re-publish of the same public key is idempotent. Attempting
         to change the public key returns 409 (would orphan existing vault
-        invitations). No per-route throttle beyond default.
+        invitations). Throttle: 30 requests/minute.
       requestBody:
         required: true
         content:
@@ -2616,7 +2616,7 @@ paths:
       description: >
         Creates a pending membership. The `wrapped_vault_key` is VK_vault sealed
         with `crypto_box_seal` to the recipient's X25519 public key — opaque to
-        the server. Manager-gated. No per-route throttle.
+        the server. Manager-gated. Throttle: 30 requests/minute.
       parameters:
         - name: vault
           in: path
@@ -2667,7 +2667,7 @@ paths:
       summary: Accept a vault invitation
       description: >
         Transitions the caller's own pending membership to active. Only the invited
-        user may accept their own invitation. No per-route throttle.
+        user may accept their own invitation. Throttle: 30 requests/minute.
       parameters:
         - name: vault
           in: path
@@ -2700,7 +2700,7 @@ paths:
       summary: Update a member's role
       description: >
         Changes the role of an existing active member. Manager-gated; a manager
-        cannot change their own role. No per-route throttle.
+        cannot change their own role. Throttle: 30 requests/minute.
       parameters:
         - name: vault
           in: path

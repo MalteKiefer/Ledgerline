@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -74,6 +75,12 @@ class UserKeyController extends Controller
             'mlkem_public_key' => $data['mlkem_public_key'],
             'wrapped_mlkem_secret_key' => $data['wrapped_mlkem_secret_key'],
         ])->save();
+
+        // Fingerprint is already non-secret (it is compared out-of-band for TOFU).
+        // NEVER log the wrapped secret key material.
+        AuditLog::record('identity.key.published', $user, [
+            'fingerprint' => is_string($data['fingerprint']) ? $data['fingerprint'] : null,
+        ]);
 
         return response()->json(['ok' => true]);
     }

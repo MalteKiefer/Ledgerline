@@ -161,7 +161,7 @@ Route::prefix('v1')->group(function (): void {
         // all are guard-agnostic (use $request->user() / Auth::id()).
         Route::prefix('vaults')->name('api.vaults.')->group(function (): void {
             Route::get('/keys', [UserKeyController::class, 'show'])->middleware('throttle:60,1')->name('keys.show');
-            Route::put('/keys', [UserKeyController::class, 'store'])->name('keys.store');
+            Route::put('/keys', [UserKeyController::class, 'store'])->middleware('throttle:30,1')->name('keys.store');
             Route::post('/', [SharedVaultController::class, 'store'])->name('store');
             Route::get('/', [SharedVaultController::class, 'index'])->name('index');
             Route::post('/{vault}/resolve-recipient', [SharedVaultController::class, 'resolveRecipient'])
@@ -169,9 +169,9 @@ Route::prefix('v1')->group(function (): void {
                 ->name('resolve-recipient');
             Route::get('/{vault}/store', [SharedVaultStoreController::class, 'show'])->name('store.show');
             Route::put('/{vault}/store', [SharedVaultStoreController::class, 'save'])->middleware('throttle:600,1')->name('store.save');
-            Route::post('/{vault}/members', [SharedVaultMemberController::class, 'store'])->name('members.store');
-            Route::post('/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])->name('members.accept');
-            Route::patch('/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])->name('members.update');
+            Route::post('/{vault}/members', [SharedVaultMemberController::class, 'store'])->middleware('throttle:30,1')->name('members.store');
+            Route::post('/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])->middleware('throttle:30,1')->name('members.accept');
+            Route::patch('/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])->middleware('throttle:30,1')->name('members.update');
             Route::delete('/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])->name('members.destroy');
             Route::get('/{vault}/members', [SharedVaultMemberController::class, 'index'])->middleware('throttle:60,1')->name('members.index');
             Route::post('/{vault}/rotate', [SharedVaultController::class, 'rotate'])->middleware('throttle:30,1')->name('rotate');

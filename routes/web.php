@@ -301,7 +301,7 @@ Route::middleware('auth')->group(function (): void {
         ->middleware('throttle:60,1')
         ->name('user.keys.show');
     Route::put('/vaults/keys', [UserKeyController::class, 'store'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:30,1')
         ->name('user.keys.store');
 
     // Vault container management.
@@ -324,13 +324,13 @@ Route::middleware('auth')->group(function (): void {
 
     // Membership management.
     Route::post('/vaults/{vault}/members', [SharedVaultMemberController::class, 'store'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:30,1')
         ->name('vaults.members.store');
     Route::post('/vaults/{vault}/members/{member}/accept', [SharedVaultMemberController::class, 'accept'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:30,1')
         ->name('vaults.members.accept');
     Route::patch('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'update'])
-        ->middleware('throttle:60,1')
+        ->middleware('throttle:30,1')
         ->name('vaults.members.update');
     Route::delete('/vaults/{vault}/members/{member}', [SharedVaultMemberController::class, 'destroy'])
         ->middleware('throttle:60,1')
