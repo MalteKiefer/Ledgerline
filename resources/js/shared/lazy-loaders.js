@@ -28,18 +28,6 @@ export async function loadLeaflet() {
     return leafletModule;
 }
 
-// MapLibre GL is heavy (~800 KiB). Lazy-load it (and its CSS) so it never lands
-// in the startup bundle — only the Explore view pulls it, on open.
-let maplibreModule = null;
-export async function mapLibre() {
-    if (! maplibreModule) {
-        const m = await import('maplibre-gl');
-        await import('maplibre-gl/dist/maplibre-gl.css');
-        maplibreModule = m.default ?? m;
-    }
-    return maplibreModule;
-}
-
 // Exported as a live binding: app.js reads cmModule after loadCodeMirror() has
 // populated it (ESM keeps the imported reference in sync).
 export let cmModule = null;

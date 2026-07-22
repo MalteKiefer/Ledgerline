@@ -4,16 +4,18 @@
 // the already-decrypted gallery index (window.LLGalleryStore.data.photos) —
 // their sealed EXIF lat/lng place a pin, and photos without GPS are placed by
 // matching their capture time against an imported track (matchPhotoToTracks +
-// interpolatePosition). MapLibre renders same-origin tiles relayed via /maps.
+// interpolatePosition). Leaflet renders raster OpenStreetMap tiles as <img>
+// (allowed by the CSP img-src) — same tile layer the gallery location-picker
+// and viewer mini-map use; no tile relay / tileserver is involved.
 //
-// Everything heavy is lazy: MapLibre (mapLibre()), uPlot (loadUplot()) and the
+// Everything heavy is lazy: Leaflet (loadLeaflet()), uPlot (loadUplot()) and the
 // KMZ unzip (fflate, dynamic import) are only pulled when the view needs them,
 // so none of them touch the startup bundle.
 
 import { bootStore, bootGalleryStore } from '../shared/zk-module';
 import { parseTrack, parseTrackBinary } from '../shared/track-parse';
 import { matchPhotoToTracks } from '../shared/photo-track-match';
-import { mapLibre } from '../shared/lazy-loaders';
+import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
@@ -44,13 +46,15 @@ export default (config = {}, labels = {}) => ({
     settingsOpen: false,
     assignFor: null,     // mediaId currently choosing a manual track, or null
 
-    // Persisted map camera so it survives the media↔tracks view toggle.
+    // Persisted map camera ([lat, lng] + zoom) so it survives the media↔tracks
+    // view toggle. The Leaflet map itself is never torn down on toggle.
     _cam: { center: null, zoom: null },
     _map: null,
     _mapReady: false,
-    _markers: [],        // MapLibre Marker instances (media pins)
-    _trackLayerIds: [],  // GeoJSON source/layer ids currently on the map
-    _hoverMarker: null,  // elevation-profile hover position marker
+    _markers: [],        // Leaflet media-pin marker layers
+    _trackLayers: [],    // Leaflet polyline layers currently on the map
+    _hoverMarker: null,  // elevation-profile hover position marker (circleMarker)
+    _L: null,            // resolved Leaflet module (sync access for draw helpers)
     _chart: null,        // uPlot elevation instance
     _chartAbort: null,
 
@@ -107,26 +111,28 @@ export default (config = {}, labels = {}) => ({
     async _initMap() {
         const el = this.$refs.map;
         if (! el || this._map) return;
-        let maplibregl;
-        try { maplibregl = await mapLibre(); } catch (e) { this.error = labels.loadFailed || 'map load failed'; return; }
-        this.__ml = maplibregl; // cache so sync draw helpers can reach the module
+        let L;
+        try { L = await loadLeaflet(); } catch (e) { this.error = labels.loadFailed || 'map load failed'; return; }
+        this._L = L; // cache so sync draw helpers can reach the module
         if (! el.isConnected) return;
         try {
-            this._map = new maplibregl.Map({
-                container: el,
-                style: config.styleUrl,
-                center: this._cam.center || [0, 20],
-                zoom: this._cam.zoom ?? 1.5,
-                attributionControl: true,
-            });
-            this._map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-            this._map.on('load', () => { this._mapReady = true; this._renderView(); this.fitToData(); });
+            this._map = L.map(el).setView(this._cam.center || [20, 0], this._cam.zoom ?? 2);
+            // Raster OSM tiles as <img> — same layer as the gallery location
+            // picker; allowed by the CSP img-src, no tile relay.
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19,
+            }).addTo(this._map);
             // Keep the camera across the view toggle.
             this._map.on('moveend', () => {
                 if (! this._map) return;
                 const c = this._map.getCenter();
-                this._cam = { center: [c.lng, c.lat], zoom: this._map.getZoom() };
+                this._cam = { center: [c.lat, c.lng], zoom: this._map.getZoom() };
             });
+            this._mapReady = true;
+            this._renderView();
+            this.fitToData();
+            setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 120);
         } catch (e) {
             this.error = labels.mapUnavailable || 'map unavailable';
         }
@@ -135,6 +141,8 @@ export default (config = {}, labels = {}) => ({
     _destroyMap() {
         this._clearTrackLayers();
         this._clearMarkers();
+        this._hideHover();
+        this._hoverMarker = null;
         if (this._map) { try { this._map.remove(); } catch (e) { /* ignore */ } this._map = null; }
         this._mapReady = false;
     },
@@ -145,12 +153,8 @@ export default (config = {}, labels = {}) => ({
     },
 
     _clearTrackLayers() {
-        if (! this._map) { this._trackLayerIds = []; return; }
-        for (const id of this._trackLayerIds) {
-            try { if (this._map.getLayer(id)) this._map.removeLayer(id); } catch (e) { /* ignore */ }
-            try { if (this._map.getSource(id)) this._map.removeSource(id); } catch (e) { /* ignore */ }
-        }
-        this._trackLayerIds = [];
+        for (const layer of this._trackLayers) { try { layer.remove(); } catch (e) { /* ignore */ } }
+        this._trackLayers = [];
     },
 
     // Draw whatever the active view needs onto the map.
@@ -164,59 +168,61 @@ export default (config = {}, labels = {}) => ({
     },
 
     _drawTracks() {
+        const L = this._L;
+        if (! L) return;
         this.tracks.forEach((track, i) => {
-            const coords = (track.points || []).map((p) => [p.lng, p.lat]);
-            if (coords.length < 2) return;
-            const id = 'track-' + track.id;
+            const latlngs = (track.points || []).map((p) => [p.lat, p.lng]);
+            if (latlngs.length < 2) return;
             const color = TRACK_COLORS[i % TRACK_COLORS.length];
             const selected = this.selectedTrackId === track.id;
             try {
-                this._map.addSource(id, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} } });
-                this._map.addLayer({
-                    id,
-                    type: 'line',
-                    source: id,
-                    layout: { 'line-join': 'round', 'line-cap': 'round' },
-                    paint: { 'line-color': color, 'line-width': selected ? 5 : 3, 'line-opacity': selected || ! this.selectedTrackId ? 0.9 : 0.4 },
-                });
-                this._trackLayerIds.push(id);
-                this._map.on('click', id, () => { this.selectedTrackId = track.id; });
+                const line = L.polyline(latlngs, {
+                    color,
+                    weight: selected ? 5 : 3,
+                    opacity: selected || ! this.selectedTrackId ? 0.9 : 0.4,
+                    lineJoin: 'round',
+                    lineCap: 'round',
+                }).addTo(this._map);
+                line.on('click', () => { this.selectedTrackId = track.id; });
+                this._trackLayers.push(line);
             } catch (e) { /* ignore a track that fails to add */ }
         });
     },
 
-    async _drawMediaPins() {
-        const maplibregl = this._maplibre;
-        if (! maplibregl) return;
+    _drawMediaPins() {
+        const L = this._L;
+        if (! L) return;
         for (const p of this.placedMedia) {
-            const el = document.createElement('button');
-            el.type = 'button';
-            el.className = 'explore-pin';
-            el.style.cssText = 'width:34px;height:34px;border-radius:9px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);background:#7066f5 center/cover no-repeat;cursor:pointer;padding:0;';
-            const marker = new maplibregl.Marker({ element: el }).setLngLat([p._lng, p._lat]).addTo(this._map);
+            const icon = L.divIcon({
+                className: 'explore-pin',
+                html: '<span style="display:block;width:34px;height:34px;border-radius:9px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);background:#7066f5 center/cover no-repeat;"></span>',
+                iconSize: [34, 34],
+                iconAnchor: [17, 17],
+            });
+            const marker = L.marker([p._lat, p._lng], { icon }).addTo(this._map);
             this._markers.push(marker);
             // Lazy thumbnail into the pin background (bounded worker lane).
-            this._thumbFor(p).then((url) => { if (url) el.style.backgroundImage = `url("${url}")`; });
+            this._thumbFor(p).then((url) => {
+                if (! url) return;
+                const span = marker.getElement()?.querySelector('span');
+                if (span) span.style.backgroundImage = `url("${url}")`;
+            });
         }
     },
 
     // Recenter/zoom to fit everything currently placed.
     fitToData() {
-        if (! this._map || ! this._mapReady) return;
+        const L = this._L;
+        if (! this._map || ! this._mapReady || ! L) return;
         const pts = [];
         if (this.view === 'tracks') {
-            for (const t of this.tracks) for (const p of (t.points || [])) pts.push([p.lng, p.lat]);
+            for (const t of this.tracks) for (const p of (t.points || [])) pts.push([p.lat, p.lng]);
         } else {
-            for (const m of this.placedMedia) pts.push([m._lng, m._lat]);
+            for (const m of this.placedMedia) pts.push([m._lat, m._lng]);
         }
         if (pts.length === 0) return;
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const [x, y] of pts) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
-        try { this._map.fitBounds([[minX, minY], [maxX, maxY]], { padding: 48, maxZoom: 15, duration: 400 }); } catch (e) { /* ignore */ }
+        try { this._map.fitBounds(L.latLngBounds(pts), { padding: [48, 48], maxZoom: 15 }); } catch (e) { /* ignore */ }
     },
-
-    // Cache the resolved maplibre module so draw helpers can reach it sync.
-    get _maplibre() { return this.__ml || null; },
 
     /* -------------------------------------------------------- Media placement */
 
@@ -492,16 +498,17 @@ export default (config = {}, labels = {}) => ({
         el.addEventListener('mouseleave', () => this._hideHover(), { signal: this._chartAbort.signal });
     },
 
-    async _showHover(lat, lng) {
-        if (! this._map || ! this._mapReady) return;
-        const maplibregl = this._maplibre;
-        if (! maplibregl) return;
+    _showHover(lat, lng) {
+        const L = this._L;
+        if (! this._map || ! this._mapReady || ! L) return;
         if (! this._hoverMarker) {
-            const el = document.createElement('div');
-            el.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#7066f5;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5);';
-            this._hoverMarker = new maplibregl.Marker({ element: el });
+            this._hoverMarker = L.circleMarker([lat, lng], {
+                radius: 6, color: '#fff', weight: 2, fillColor: '#7066f5', fillOpacity: 1,
+            });
+        } else {
+            this._hoverMarker.setLatLng([lat, lng]);
         }
-        this._hoverMarker.setLngLat([lng, lat]).addTo(this._map);
+        this._hoverMarker.addTo(this._map);
     },
     _hideHover() { if (this._hoverMarker) { try { this._hoverMarker.remove(); } catch (e) { /* ignore */ } } },
 

@@ -41,7 +41,6 @@
         "leaflet": "^1.9.4",
         "leaflet.markercluster": "^1.5.3",
         "libsodium-wrappers-sumo": "^0.8.4",
-        "maplibre-gl": "5.24.0",
         "marked": "18.0.7",
         "marked-highlight": "^2.2.4",
         "pdfjs-dist": "^6.1.200",
