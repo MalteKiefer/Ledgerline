@@ -33,7 +33,7 @@ class CompanyController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'company_name' => ['nullable', 'string', 'max:200'],
             'company_address' => ['nullable', 'string', 'max:1000'],
             'company_email' => ['nullable', 'email', 'max:200'],
@@ -59,6 +59,24 @@ class CompanyController extends Controller
             'remove_logo' => ['nullable', 'boolean'],
         ]);
 
+        // Persist only the fields that were actually submitted (mirrors the
+        // validated set); logo/remove_logo are handled separately below.
+        $fields = [
+            'company_name', 'company_address', 'company_email', 'company_phone',
+            'company_tax_id', 'company_vat_id', 'company_iban', 'company_bic',
+            'company_bank_name', 'invoice_number_format', 'invoice_next_number',
+            'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
+            'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
+            'invoice_payment_methods', 'invoice_payment_terms_text',
+        ];
+
+        $data = [];
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                $data[$field] = $request->input($field);
+            }
+        }
+
         $settings = AppSettings::current();
 
         $disk = BlobStore::disk();
@@ -71,10 +89,12 @@ class CompanyController extends Controller
         }
 
         if ($request->hasFile('logo')) {
-            $data['company_logo_path'] = $request->file('logo')->store(self::LOGO_DIR, ['disk' => config('files.disk')]);
+            $diskName = config('files.disk');
+            $data['company_logo_path'] = $request->file('logo')->store(
+                self::LOGO_DIR,
+                ['disk' => is_string($diskName) ? $diskName : ''],
+            );
         }
-
-        unset($data['logo'], $data['remove_logo']);
 
         $settings->update($data);
 

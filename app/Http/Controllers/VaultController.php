@@ -80,11 +80,11 @@ class VaultController extends Controller
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, string|int|null>
      */
     private function rules(Request $request, bool $withRecovery): array
     {
-        return $request->validate([
+        $request->validate([
             'salt' => ['required', 'string', 'max:255'],
             // Enforce a real Argon2id cost floor so a tampered/downgraded row can't
             // leave the passphrase near-unstretched for an offline attacker. The
@@ -97,5 +97,22 @@ class VaultController extends Controller
             'wrapped_vault_key_recovery' => [$withRecovery ? 'required' : 'nullable', 'string', 'max:1024'],
             'recovery_nonce' => [$withRecovery ? 'required' : 'nullable', 'string', 'max:255'],
         ]);
+
+        // The rules above guarantee runtime types; read each field through a typed
+        // accessor. Recovery fields are nullable when $withRecovery is false, so
+        // preserve null (rather than the empty-string coercion of string()->value()).
+        return [
+            'salt' => $request->string('salt')->value(),
+            'kdf_ops' => $request->integer('kdf_ops'),
+            'kdf_mem' => $request->integer('kdf_mem'),
+            'wrapped_vault_key' => $request->string('wrapped_vault_key')->value(),
+            'wrap_nonce' => $request->string('wrap_nonce')->value(),
+            'wrapped_vault_key_recovery' => $request->filled('wrapped_vault_key_recovery')
+                ? $request->string('wrapped_vault_key_recovery')->value()
+                : null,
+            'recovery_nonce' => $request->filled('recovery_nonce')
+                ? $request->string('recovery_nonce')->value()
+                : null,
+        ];
     }
 }

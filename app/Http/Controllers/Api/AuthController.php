@@ -25,12 +25,12 @@ class AuthController extends Controller
     /** App claims a scanned code (public). Moves the pairing to pending-approval. */
     public function pair(Request $request, Pairing $pairing): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'code' => ['required', 'string'],
             'device_name' => ['required', 'string', 'max:60'],
         ]);
 
-        $pairing->claim($data['code'], $data['device_name']);
+        $pairing->claim($request->string('code')->value(), $request->string('device_name')->value());
 
         return response()->json(['status' => 'pending']);
     }
@@ -38,9 +38,9 @@ class AuthController extends Controller
     /** App polls with the code (public). Returns the token once the owner approves. */
     public function collect(Request $request, Pairing $pairing): JsonResponse
     {
-        $data = $request->validate(['code' => ['required', 'string']]);
+        $request->validate(['code' => ['required', 'string']]);
 
-        $result = $pairing->collect($data['code'], $request->ip());
+        $result = $pairing->collect($request->string('code')->value(), $request->ip());
         if ($result['status'] !== 'approved') {
             return response()->json(['status' => 'pending']);
         }
@@ -83,7 +83,7 @@ class AuthController extends Controller
      */
     public function heartbeat(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'state' => ['required', 'in:idle,syncing'],
             'detail' => ['nullable', 'string', 'max:160'],
         ]);
@@ -92,9 +92,10 @@ class AuthController extends Controller
         if (! $token instanceof PersonalAccessToken) {
             return response()->json(['wipe' => false]);
         }
+        $detail = $request->input('detail');
         $token->forceFill([
-            'sync_state' => $data['state'],
-            'sync_detail' => $data['detail'] ?? null,
+            'sync_state' => $request->string('state')->value(),
+            'sync_detail' => is_string($detail) ? $detail : null,
             'sync_reported_at' => now(),
         ])->save();
 

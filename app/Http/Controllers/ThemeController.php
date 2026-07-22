@@ -14,15 +14,16 @@ class ThemeController extends Controller
 {
     public function update(Request $request): RedirectResponse|JsonResponse
     {
-        $validated = $request->validate([
+        $request->validate([
             'theme' => ['required', 'string', 'in:light,dark,system'],
         ]);
 
-        UserSetting::for($this->requireUser($request)->id)->update(['theme' => $validated['theme']]);
+        $theme = $request->string('theme')->value();
+        UserSetting::for($this->requireUser($request)->id)->update(['theme' => $theme]);
 
         // API clients (Sanctum) get JSON; the web form gets a redirect back.
         return $request->expectsJson()
-            ? response()->json(['ok' => true, 'theme' => $validated['theme']])
+            ? response()->json(['ok' => true, 'theme' => $theme])
             : back();
     }
 }

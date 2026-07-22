@@ -156,6 +156,8 @@ class AppSettings extends Model
             app()->instance(self::MEMO_KEY, static::query()->firstOr(fn (): self => static::create()));
         }
 
-        return app(self::MEMO_KEY);
+        $settings = app(self::MEMO_KEY);
+
+        return $settings instanceof self ? $settings : static::query()->firstOr(fn (): self => static::create());
     }
 }

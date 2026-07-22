@@ -8,6 +8,7 @@ use App\Models\PublicShare;
 use App\Support\BlobRegistry;
 use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -63,9 +64,9 @@ class PublicShareController extends Controller
     {
         $share = $this->resolve($token);
         abort_if($share === null || $share->isExpired(), 404);
-        $data = $request->validate(['password' => ['required', 'string', 'max:200']]);
+        $request->validate(['password' => ['required', 'string', 'max:200']]);
 
-        if (! $share->needsPassword() || ! Hash::check($data['password'], (string) $share->password_hash)) {
+        if (! $share->needsPassword() || ! Hash::check($request->string('password')->value(), (string) $share->password_hash)) {
             return response()->json(['ok' => false], 422);
         }
 
@@ -131,7 +132,7 @@ class PublicShareController extends Controller
     /**
      * Where a share's opaque blobs live: [disk prefix, ownership-ledger model].
      *
-     * @return array{string, class-string}
+     * @return array{string, class-string<Model>}
      */
     private function blobSource(PublicShare $share): array
     {

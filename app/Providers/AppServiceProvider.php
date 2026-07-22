@@ -65,8 +65,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Record each scheduled maintenance task's last run + outcome so the
         // System settings page can show whether the cron is alive.
-        Event::listen(ScheduledTaskFinished::class, fn ($e) => self::recordCronRun($e->task, true));
-        Event::listen(ScheduledTaskFailed::class, fn ($e) => self::recordCronRun($e->task, false));
+        Event::listen(ScheduledTaskFinished::class, fn (ScheduledTaskFinished $e) => self::recordCronRun($e->task, true));
+        Event::listen(ScheduledTaskFailed::class, fn (ScheduledTaskFailed $e) => self::recordCronRun($e->task, false));
     }
 
     /** Cache key holding the last run for a scheduled command. */
@@ -78,11 +78,19 @@ class AppServiceProvider extends ServiceProvider
     /** Extract the artisan command name from a scheduled Event (or its summary). */
     public static function cronName(object $event): string
     {
-        if (preg_match('/artisan[\'"]?\s+([a-z0-9:_-]+)/i', (string) ($event->command ?? ''), $m) === 1) {
+        $command = $event->command ?? null;
+        $command = is_scalar($command) ? (string) $command : '';
+        if (preg_match('/artisan[\'"]?\s+([a-z0-9:_-]+)/i', $command, $m) === 1) {
             return $m[1];
         }
 
-        return method_exists($event, 'getSummaryForDisplay') ? $event->getSummaryForDisplay() : 'task';
+        if (method_exists($event, 'getSummaryForDisplay')) {
+            $summary = $event->getSummaryForDisplay();
+
+            return is_string($summary) ? $summary : 'task';
+        }
+
+        return 'task';
     }
 
     private static function recordCronRun(object $event, bool $ok): void
@@ -146,10 +154,10 @@ class AppServiceProvider extends ServiceProvider
             }
             $v = $values[$col];
             config([$cfg => match ($type) {
-                'int' => (int) $v,
-                'float' => (float) $v,
+                'int' => is_numeric($v) ? (int) $v : 0,
+                'float' => is_numeric($v) ? (float) $v : 0.0,
                 'bool' => (bool) $v,
-                default => (string) $v,
+                default => is_scalar($v) ? (string) $v : '',
             }]);
         }
     }

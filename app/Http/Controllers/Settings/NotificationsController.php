@@ -32,7 +32,7 @@ class NotificationsController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'mail_enabled' => ['sometimes', 'boolean'],
             'smtp_host' => ['nullable', 'string', 'max:255'],
             'smtp_port' => ['nullable', 'integer', 'min:1', 'max:65535'],
@@ -49,6 +49,20 @@ class NotificationsController extends Controller
             'webhook_url' => ['nullable', 'url', 'max:255', new SafeUrl],
             'webhook_secret' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // Persist only the fields that were actually submitted (mirrors the
+        // validated set); the boolean flags are applied below.
+        $fields = [
+            'smtp_host', 'smtp_port', 'smtp_encryption', 'smtp_username',
+            'smtp_password', 'smtp_from_address', 'smtp_from_name',
+            'ntfy_url', 'ntfy_topic', 'ntfy_token', 'webhook_url', 'webhook_secret',
+        ];
+        $data = [];
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                $data[$field] = $request->input($field);
+            }
+        }
 
         $settings = AppSettings::current();
 
@@ -70,9 +84,10 @@ class NotificationsController extends Controller
      */
     public function test(Request $request, BackupNotifier $notifier): RedirectResponse
     {
-        $channel = $request->validate([
+        $request->validate([
             'channel' => ['required', Rule::in(['mail', 'ntfy', 'webhook'])],
-        ])['channel'];
+        ]);
+        $channel = $request->string('channel')->value();
 
         try {
             $notifier->test($channel);

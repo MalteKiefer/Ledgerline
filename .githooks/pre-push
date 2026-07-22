@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#
+# Ledgerline pre-push hook: gitleaks secret scan.
+#
+# WHY pre-push (not pre-commit): this repo commits with `git commit --no-verify`
+# by convention, which ALSO bypasses any pre-commit hook -- so a pre-commit
+# gitleaks gate would be dead weight. `git push` is NOT --no-verify'd here, so a
+# pre-push gate is the last local line of defence before secrets leave the machine.
+# It mirrors the CI gitleaks job (security-scan.yml) so leaks are caught locally
+# instead of only in CI.
+#
+# ACTIVATE (one-time, per clone):
+#
+#     git config core.hooksPath .githooks
+#
+# Verify with:  git config --get core.hooksPath   # -> .githooks
+#
+# The hook honours the repo's .gitleaks.toml config automatically.
+#
+# BEHAVIOUR:
+#   - Prefers the pinned dockerized gitleaks the CI uses (reproducible).
+#   - Falls back to a local `gitleaks` binary if present.
+#   - If NEITHER docker nor gitleaks is available, it SKIPS with a warning
+#     (non-blocking) so a dev without the tooling is not hard-blocked.
+#   - If the tool IS available, ANY finding ABORTS the push (exit 1).
+
+set -euo pipefail
+
+# Pinned image matches .github/workflows/security-scan.yml -- keep in sync.
+GITLEAKS_IMAGE="ghcr.io/gitleaks/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854"
+
+# Resolve the repo root (this hook may run from an arbitrary cwd).
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+run_docker() {
+    # Mirrors the CI invocation (security-scan.yml): scans the working tree +
+    # full git history. --redact keeps any finding out of the terminal/log.
+    # .gitleaks.toml is auto-discovered at the source root (same as CI), so a
+    # real credential anywhere still fails while the reviewed allowlist holds.
+    # Mount the repo read-only at /repo.
+    docker run --rm \
+        -v "${REPO_ROOT}:/repo:ro" \
+        "${GITLEAKS_IMAGE}" \
+        detect \
+        --source=/repo \
+        --redact \
+        --no-banner
+}
+
+run_binary() {
+    gitleaks detect \
+        --source="${REPO_ROOT}" \
+        --redact \
+        --no-banner
+}
+
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    echo "pre-push: running gitleaks (dockerized, pinned) ..."
+    if run_docker; then
+        echo "pre-push: gitleaks found no leaks. Proceeding with push."
+        exit 0
+    else
+        echo "pre-push: gitleaks reported findings -- ABORTING push." >&2
+        echo "pre-push: review the (redacted) output above; remove the secret and rewrite history if needed." >&2
+        exit 1
+    fi
+elif command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-push: running gitleaks (local binary) ..."
+    if run_binary; then
+        echo "pre-push: gitleaks found no leaks. Proceeding with push."
+        exit 0
+    else
+        echo "pre-push: gitleaks reported findings -- ABORTING push." >&2
+        echo "pre-push: review the (redacted) output above; remove the secret and rewrite history if needed." >&2
+        exit 1
+    fi
+else
+    echo "pre-push: WARNING -- neither docker nor a 'gitleaks' binary is available; skipping secret scan." >&2
+    echo "pre-push: install docker or gitleaks to enable the local pre-push secret gate (CI still enforces it)." >&2
+    exit 0
+fi

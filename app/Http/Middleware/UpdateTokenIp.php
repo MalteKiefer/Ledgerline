@@ -23,6 +23,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class UpdateTokenIp
 {
+    /**
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next): Response
     {
         $token = $request->user()?->currentAccessToken();

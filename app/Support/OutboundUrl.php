@@ -141,8 +141,8 @@ final class OutboundUrl
         $aaaa = @dns_get_record($host, DNS_AAAA);
         if (is_array($aaaa)) {
             foreach ($aaaa as $record) {
-                if (isset($record['ipv6'])) {
-                    $ips[] = (string) $record['ipv6'];
+                if (isset($record['ipv6']) && is_string($record['ipv6'])) {
+                    $ips[] = $record['ipv6'];
                 }
             }
         }

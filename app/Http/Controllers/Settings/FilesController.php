@@ -38,21 +38,30 @@ class FilesController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'file_max_versions' => ['required', 'integer', 'min:1', 'max:200'],
         ]);
         $user = $this->requireUser($request);
-        UserSetting::for($user->id)->update(['file_max_versions' => $data['file_max_versions']]);
+        UserSetting::for($user->id)->update(['file_max_versions' => $request->integer('file_max_versions')]);
 
         // Global limits are admin-only; a null value clears the override so the
         // config/env default applies again.
         if (Gate::allows('manage-global-settings')) {
-            $limits = $request->validate([
+            $request->validate([
                 'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
                 'files_max_upload_mb' => ['nullable', 'integer', 'min:1', 'max:100000000'],
                 'files_blob_orphan_grace_hours' => ['nullable', 'integer', 'min:0', 'max:100000'],
             ]);
-            AppSettings::current()->update($limits);
+            $nullableInt = static function (Request $r, string $key): ?int {
+                $v = $r->input($key);
+
+                return is_numeric($v) ? (int) $v : null;
+            };
+            AppSettings::current()->update([
+                'files_quota_mb' => $nullableInt($request, 'files_quota_mb'),
+                'files_max_upload_mb' => $nullableInt($request, 'files_max_upload_mb'),
+                'files_blob_orphan_grace_hours' => $nullableInt($request, 'files_blob_orphan_grace_hours'),
+            ]);
             Cache::forget(AppServiceProvider::OVERRIDES_CACHE_KEY);
         }
 

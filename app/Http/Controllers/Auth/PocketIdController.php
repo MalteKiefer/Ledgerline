@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\AbstractProvider;
 use Laravel\Socialite\Two\User as SocialiteUser;
+use SocialiteProviders\Manager\OAuth2\User as OAuth2User;
 use Throwable;
 
 /**
@@ -141,10 +142,15 @@ class PocketIdController extends Controller
         Auth::login($user, remember: ! $public);
         AuditLog::record('auth.login', $user, ['public_computer' => $public], $user->id);
 
-        // Keep the provider id_token so logout can end the SSO session too.
-        $idToken = $oidcUser->accessTokenResponseBody['id_token'] ?? null;
-        if (is_string($idToken)) {
-            $request->session()->put('oidc_id_token', $idToken);
+        // Keep the provider id_token so logout can end the SSO session too. The
+        // pocketid driver returns the SocialiteProviders manager user, which
+        // carries the raw token response body.
+        if ($oidcUser instanceof OAuth2User) {
+            $tokenResponse = $oidcUser->accessTokenResponseBody;
+            $idToken = is_array($tokenResponse) ? ($tokenResponse['id_token'] ?? null) : null;
+            if (is_string($idToken)) {
+                $request->session()->put('oidc_id_token', $idToken);
+            }
         }
 
         // Prevent session fixation by issuing a fresh session identifier.

@@ -23,7 +23,7 @@ class ChannelNotifier
 {
     /**
      * @param  list<string>  $channels
-     * @param  array{url?:?string, level?:string, category?:string, priority?:string, event?:string}  $opts
+     * @param  array{url?:?string, level?:string, category?:string, priority?:string, event?:string, user_id?:int}  $opts
      */
     public function send(array $channels, string $title, string $body, array $opts = []): void
     {

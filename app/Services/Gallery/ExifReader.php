@@ -35,7 +35,12 @@ class ExifReader
             }
 
             $decoded = json_decode($stdout, true);
-            $tags = is_array($decoded) && isset($decoded[0]) && is_array($decoded[0]) ? $decoded[0] : [];
+            $first = is_array($decoded) && isset($decoded[0]) && is_array($decoded[0]) ? $decoded[0] : [];
+
+            $tags = [];
+            foreach ($first as $key => $value) {
+                $tags[(string) $key] = $value;
+            }
 
             return $this->normalize($tags);
         } catch (Throwable) {

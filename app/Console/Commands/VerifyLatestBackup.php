@@ -34,8 +34,9 @@ class VerifyLatestBackup extends Command
                 continue;
             }
             $result = $verifier->verify($run, $job->effectivePassphrase());
-            if (! ($result['ok'] ?? false)) {
-                $failures[] = ($job->name ?: 'backup').': '.($result['message'] ?? 'verification failed');
+            if (! $result['ok']) {
+                $name = is_string($job->name) && $job->name !== '' ? $job->name : 'backup';
+                $failures[] = $name.': '.$result['message'];
             }
         }
 

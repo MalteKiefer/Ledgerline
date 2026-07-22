@@ -42,8 +42,10 @@ trait AssignsOwner
 
     protected static function bootAssignsOwner(): void
     {
-        static::creating(function ($model): void {
-            $column = $model->ownerColumn();
+        static::creating(function (Model $model): void {
+            // $model is a concrete instance of the model this trait is mixed into,
+            // so it always exposes ownerColumn(); resolve the column name off it.
+            $column = $model instanceof self ? $model->ownerColumn() : 'user_id';
             if ($model->{$column} === null && Auth::check()) {
                 $model->{$column} = Auth::id();
             }

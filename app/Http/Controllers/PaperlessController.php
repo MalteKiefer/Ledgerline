@@ -31,7 +31,10 @@ class PaperlessController extends Controller
             ->groupBy('kind');
 
         $map = fn (string $kind) => ($grouped[$kind] ?? collect())
-            ->map(fn ($t) => ['id' => $t->paperless_id, 'name' => $t->name, 'color' => $t->color])
+            ->map(fn (mixed $t) => $t instanceof PaperlessTerm
+                ? ['id' => $t->paperless_id, 'name' => $t->name, 'color' => $t->color]
+                : null)
+            ->filter()
             ->values();
 
         return response()->json([
@@ -45,10 +48,13 @@ class PaperlessController extends Controller
     /** Create a tag / document type / correspondent in Paperless and cache it. */
     public function createTerm(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'kind' => ['required', Rule::in(PaperlessTerm::KINDS)],
             'name' => ['required', 'string', 'max:255'],
         ]);
+
+        $kind = $request->string('kind')->value();
+        $name = $request->string('name')->value();
 
         $user = $this->requireUser($request);
         $client = PaperlessClient::forUser($user->id);
@@ -57,7 +63,7 @@ class PaperlessController extends Controller
         }
 
         try {
-            $term = $client->create($data['kind'], $data['name']);
+            $term = $client->create($kind, $name);
         } catch (\Throwable $e) {
             Log::warning('Paperless createTerm failed', ['error' => $e->getMessage()]);
 
@@ -65,7 +71,7 @@ class PaperlessController extends Controller
         }
 
         PaperlessTerm::updateOrCreate(
-            ['user_id' => $user->id, 'kind' => $data['kind'], 'paperless_id' => $term['paperless_id']],
+            ['user_id' => $user->id, 'kind' => $kind, 'paperless_id' => $term['paperless_id']],
             ['name' => $term['name'], 'color' => $term['color']],
         );
 
@@ -75,7 +81,7 @@ class PaperlessController extends Controller
     /** Upload a document (from a mail attachment or a stored file) to Paperless. */
     public function submit(Request $request): JsonResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'file' => ['required', 'file', 'max:51200'], // 50 MB
             'title' => ['nullable', 'string', 'max:255'],
             'created' => ['nullable', 'date'],
@@ -91,17 +97,26 @@ class PaperlessController extends Controller
             return response()->json(['ok' => false, 'detail' => 'Paperless is not configured.'], 422);
         }
 
+        $title = $request->input('title');
+        $created = $request->input('created');
+        $correspondent = $request->input('correspondent');
+        $documentType = $request->input('document_type');
+        $tags = array_values(array_map(
+            fn (mixed $id): int => is_numeric($id) ? (int) $id : 0,
+            $request->collect('tags')->all(),
+        ));
+
         $file = $request->file('file');
         try {
             $task = $client->postDocument(
                 (string) file_get_contents($file->getRealPath()),
                 $file->getClientOriginalName() ?: 'document.pdf',
                 [
-                    'title' => $data['title'] ?? null,
-                    'created' => $data['created'] ?? null,
-                    'correspondent' => $data['correspondent'] ?? null,
-                    'document_type' => $data['document_type'] ?? null,
-                    'tags' => $data['tags'] ?? [],
+                    'title' => is_string($title) ? $title : null,
+                    'created' => is_string($created) ? $created : null,
+                    'correspondent' => is_numeric($correspondent) ? (int) $correspondent : null,
+                    'document_type' => is_numeric($documentType) ? (int) $documentType : null,
+                    'tags' => $tags,
                 ],
             );
         } catch (\Throwable $e) {

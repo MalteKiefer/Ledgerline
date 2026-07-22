@@ -38,17 +38,23 @@ class ContactsController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $request->validate([
             'birthday' => ['nullable', 'array'],
             'birthday.*' => [Rule::in(self::CHANNELS)],
             'anniversary' => ['nullable', 'array'],
             'anniversary.*' => [Rule::in(self::CHANNELS)],
         ]);
 
+        $channels = static fn (string $key): array => $request->collect($key)
+            ->map(fn (mixed $c) => is_scalar($c) ? (string) $c : '')
+            ->unique()
+            ->values()
+            ->all();
+
         $user = $this->requireUser($request);
         UserSetting::for($user->id)->update([
-            'contact_birthday_channels' => array_values(array_unique($data['birthday'] ?? [])),
-            'contact_anniversary_channels' => array_values(array_unique($data['anniversary'] ?? [])),
+            'contact_birthday_channels' => $channels('birthday'),
+            'contact_anniversary_channels' => $channels('anniversary'),
         ]);
 
         return $this->savedRedirect('settings.contacts.edit', 'settings.contacts_saved');

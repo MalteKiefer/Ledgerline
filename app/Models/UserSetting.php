@@ -63,6 +63,8 @@ class UserSetting extends Model
             app()->instance($key, static::query()->firstOrCreate(['user_id' => $userId]));
         }
 
-        return app($key);
+        $setting = app($key);
+
+        return $setting instanceof self ? $setting : static::query()->firstOrCreate(['user_id' => $userId]);
     }
 }
