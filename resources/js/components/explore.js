@@ -640,6 +640,14 @@ export default (config = {}, labels = {}) => ({
     // surface a subtle notice — the user's waypoints are never lost.
     async _requestRoute() {
         if (! this.autoRoute || this.planPoints.length < 2) return;
+        // Server caps a route at 100 waypoints — beyond that keep straight lines
+        // (don't fire a request that would 422) and tell the user.
+        if (this.planPoints.length > 100) {
+            this._routedGeometry = null;
+            window.llToast?.(labels.routeTooMany || labels.routeFallback || '');
+            this._drawPlan();
+            return;
+        }
         const seq = ++this._routeSeq;
         const points = this.planPoints
             .map(([lat, lng]) => `${lat.toFixed(6)},${lng.toFixed(6)}`)

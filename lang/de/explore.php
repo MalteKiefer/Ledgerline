@@ -70,6 +70,7 @@ return [
     'auto_route_routing' => 'Route wird berechnet…',
     'auto_route_fallback' => 'Route konnte nicht geladen werden — gerade Linien werden verwendet.',
     'auto_route_rate_limited' => 'Routing ist gerade limitiert — gerade Linien werden verwendet. Gleich nochmal versuchen.',
+    'auto_route_too_many' => 'Zu viele Wegpunkte für Auto-Routing — gerade Linien werden verwendet.',
 
     // Assign-to-tour modal source filter
     'filter_all' => 'Alle',
