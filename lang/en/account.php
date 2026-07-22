@@ -5,6 +5,15 @@ return [
     'last_login' => 'Last sign-in',
     'never' => 'Never',
 
+    'stats_heading' => 'Overview',
+    'stat_member_since' => 'Member since',
+    'stat_devices' => 'Devices',
+    'stat_sessions' => 'Web sessions',
+    'stat_storage' => 'Storage',
+    'stat_devices_of' => ':n of :max',
+    'storage_unlimited' => 'used',
+    'storage_of' => 'of :quota',
+
     'sessions_heading' => 'Active sessions',
     'sessions_hint' => 'Devices currently signed in to your account.',
     'sessions_current' => 'This device',
@@ -46,7 +55,6 @@ return [
     'devices_last_sync' => 'last sync',
     'devices_wipe' => 'Remote wipe',
     'devices_wipe_pending' => 'wipe pending',
-    'devices_wipe_confirm' => 'Wipe this client\'s local data on its next connection? It stays logged in until then — use Remove to revoke it entirely.',
 
     'export_heading' => 'Export my data',
     'export_hint' => 'Download a copy of your data (one JSON file per module).',

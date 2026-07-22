@@ -5,6 +5,15 @@ return [
     'last_login' => 'Letzte Anmeldung',
     'never' => 'Nie',
 
+    'stats_heading' => 'Übersicht',
+    'stat_member_since' => 'Mitglied seit',
+    'stat_devices' => 'Geräte',
+    'stat_sessions' => 'Web-Sitzungen',
+    'stat_storage' => 'Speicher',
+    'stat_devices_of' => ':n von :max',
+    'storage_unlimited' => 'belegt',
+    'storage_of' => 'von :quota',
+
     'sessions_heading' => 'Aktive Sitzungen',
     'sessions_hint' => 'Aktuell an deinem Konto angemeldete Geräte.',
     'sessions_current' => 'Dieses Gerät',
@@ -46,7 +55,6 @@ return [
     'devices_last_sync' => 'letzter Sync',
     'devices_wipe' => 'Fernlöschen',
     'devices_wipe_pending' => 'Löschung ausstehend',
-    'devices_wipe_confirm' => 'Lokale Daten dieses Clients beim nächsten Verbinden löschen? Bis dahin bleibt er angemeldet — mit Entfernen ganz widerrufen.',
 
     'export_heading' => 'Meine Daten exportieren',
     'export_hint' => 'Lade eine Kopie deiner Daten herunter (eine JSON-Datei pro Modul).',
