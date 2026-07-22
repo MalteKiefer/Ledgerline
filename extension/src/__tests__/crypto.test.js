@@ -18,7 +18,11 @@ import {
     openManifest,
     unwrapVaultKey,
     unwrapIdentitySecret,
+    unwrapMlkemSecret,
 } from '../crypto.js';
+// The web app is the wrapper (Store v3 §6.3 hybrid KEM); the extension only
+// unwraps. Import the web's wrap side to prove web→extension interop.
+import { hybridWrap, mlkemKeypair } from '../../../resources/js/shared/pq-kem.js';
 
 // ---- sodium bootstrap -------------------------------------------------------
 // crypto.js initialises libsodium lazily inside its own ready() call.
@@ -211,37 +215,48 @@ describe('sealManifest / openManifest', () => {
 
 // ---- unwrapVaultKey ---------------------------------------------------------
 
-describe('unwrapVaultKey', () => {
-    it('recovers the vault key from a crypto_box_seal-wrapped ciphertext', async () => {
-        const kp = s.crypto_box_keypair();
+describe('unwrapVaultKey (hybrid X25519+ML-KEM-768, §6.3)', () => {
+    // The web wraps VK_vault to the recipient identity via hybridWrap; the
+    // extension unwraps with its X25519 sk + ML-KEM dk. Context '' (prod default).
+    async function identity() {
+        const x = s.crypto_box_keypair();          // X25519 identity
+        const ml = await mlkemKeypair();            // { ek: b64, dk: bytes }
+        return { x, ml };
+    }
+
+    it('recovers a vault key hybrid-wrapped by the web app', async () => {
+        const { x, ml } = await identity();
         const vkBytes = new Uint8Array(32).fill(0x77);
 
-        // Wrap as the server/vault.js does: crypto_box_seal to the public key
-        const wrapped = s.crypto_box_seal(vkBytes, kp.publicKey);
-        const wrappedB64 = b64(wrapped);
-
-        const recovered = await unwrapVaultKey(wrappedB64, kp.publicKey, kp.privateKey);
+        const env = await hybridWrap(vkBytes, b64(x.publicKey), ml.ek);
+        const recovered = await unwrapVaultKey(JSON.stringify(env), x.privateKey, ml.dk);
 
         expect(s.to_hex(recovered)).toBe(s.to_hex(vkBytes));
         expect(recovered).toBeInstanceOf(Uint8Array);
     });
 
-    it('round-trips any 32-byte key', async () => {
-        const kp = s.crypto_box_keypair();
+    it('round-trips any 32-byte key (envelope as object or JSON string)', async () => {
+        const { x, ml } = await identity();
         for (const fill of [0x00, 0x01, 0xab, 0xff]) {
             const vkBytes = new Uint8Array(32).fill(fill);
-            const wrapped = b64(s.crypto_box_seal(vkBytes, kp.publicKey));
-            const recovered = await unwrapVaultKey(wrapped, kp.publicKey, kp.privateKey);
+            const env = await hybridWrap(vkBytes, b64(x.publicKey), ml.ek);
+            const recovered = await unwrapVaultKey(env, x.privateKey, ml.dk);
             expect(s.to_hex(recovered)).toBe(s.to_hex(vkBytes));
         }
     });
 
-    it('throws when the wrong keypair tries to unwrap', async () => {
-        const owner = s.crypto_box_keypair();
-        const attacker = s.crypto_box_keypair();
+    it('throws when the wrong identity tries to unwrap', async () => {
+        const owner = await identity();
+        const attacker = await identity();
         const vkBytes = s.randombytes_buf(32);
-        const wrapped = b64(s.crypto_box_seal(vkBytes, owner.publicKey));
-        await expect(unwrapVaultKey(wrapped, attacker.publicKey, attacker.privateKey)).rejects.toThrow();
+        const env = await hybridWrap(vkBytes, b64(owner.x.publicKey), owner.ml.ek);
+        await expect(unwrapVaultKey(env, attacker.x.privateKey, attacker.ml.dk)).rejects.toThrow();
+    });
+
+    it('fails closed on an unknown suite', async () => {
+        const { x, ml } = await identity();
+        const env = await hybridWrap(s.randombytes_buf(32), b64(x.publicKey), ml.ek);
+        await expect(unwrapVaultKey({ ...env, suite: 2 }, x.privateKey, ml.dk)).rejects.toThrow();
     });
 });
 
@@ -289,24 +304,30 @@ describe('unwrapIdentitySecret', () => {
         await expect(unwrapIdentitySecret(wrappedJson, wrongVk)).rejects.toThrow();
     });
 
-    it('recovered identity secret can open a crypto_box_seal envelope (full auth chain)', async () => {
-        // Simulates the accept-flow: inviter sealed vkVault to invitee public key;
-        // invitee recovers sk via unwrapIdentitySecret and opens the vault key.
+    it('recovered identity secrets open a hybrid envelope (full accept-flow chain)', async () => {
+        // Simulates the accept-flow: inviter hybrid-wraps vkVault to the invitee's
+        // published identity; invitee recovers BOTH secret keys from VK-sealed blobs
+        // (unwrapIdentitySecret + unwrapMlkemSecret) and unwraps the vault key.
         const vk = s.randombytes_buf(32);
-        const idKp = s.crypto_box_keypair();
+        const idKp = s.crypto_box_keypair();          // X25519 identity
+        const ml = await mlkemKeypair();              // ML-KEM identity { ek, dk }
 
-        // Store identity secret sealed under VK
-        const nonce = s.randombytes_buf(s.crypto_secretbox_NONCEBYTES);
-        const cipher = s.crypto_secretbox_easy(idKp.privateKey, nonce, vk);
-        const wrappedJson = JSON.stringify({ c: b64(cipher), n: b64(nonce) });
+        // Store both identity secrets sealed under VK (as vault.js ensureIdentityKeys does)
+        const seal = (bytes) => {
+            const nonce = s.randombytes_buf(s.crypto_secretbox_NONCEBYTES);
+            return JSON.stringify({ c: b64(s.crypto_secretbox_easy(bytes, nonce, vk)), n: b64(nonce) });
+        };
+        const wrappedSkJson = seal(idKp.privateKey);
+        const wrappedMlkemJson = seal(ml.dk);
 
-        // Inviter wrapped a vault key to invitee's public key
+        // Inviter hybrid-wraps a vault key to the invitee's published identity
         const vkVault = s.randombytes_buf(32);
-        const wrappedVaultKey = b64(s.crypto_box_seal(vkVault, idKp.publicKey));
+        const wrappedVaultKey = JSON.stringify(await hybridWrap(vkVault, b64(idKp.publicKey), ml.ek));
 
-        // Invitee recovers identity sk, then unwraps the vault key
-        const recoveredSk = await unwrapIdentitySecret(wrappedJson, vk);
-        const recoveredVkVault = await unwrapVaultKey(wrappedVaultKey, idKp.publicKey, recoveredSk);
+        // Invitee recovers both identity secrets, then unwraps the vault key
+        const recoveredSk = await unwrapIdentitySecret(wrappedSkJson, vk);
+        const recoveredMlkemDk = await unwrapMlkemSecret(wrappedMlkemJson, vk);
+        const recoveredVkVault = await unwrapVaultKey(wrappedVaultKey, recoveredSk, recoveredMlkemDk);
 
         expect(s.to_hex(recoveredVkVault)).toBe(s.to_hex(vkVault));
     });

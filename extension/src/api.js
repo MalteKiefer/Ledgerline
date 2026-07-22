@@ -62,8 +62,10 @@ export async function getTfaDirectory(base, token) {
     return (data && data.entries) || {};
 }
 
-/** The user's own published X25519 identity key material (caller-scoped).
- *  { public_key, wrapped_secret_key, fingerprint } — nulls if none published. */
+/** The user's own published hybrid identity key material (caller-scoped, §6.3).
+ *  { public_key, wrapped_secret_key, fingerprint, mlkem_public_key,
+ *    wrapped_mlkem_secret_key } — nulls if none published. The ML-KEM fields are
+ *  required to unwrap shared-vault keys (hybrid X25519+ML-KEM-768). */
 export async function getUserKeys(base, token) {
     const res = await call(base, '/vaults/keys', { token });
     if (res.status === 401) throw new Error('unauthorized');

@@ -2,7 +2,7 @@
 // live (in memory / chrome.storage.session — never written to disk). The popup
 // and content scripts hold no secrets; they message this worker.
 import * as api from './api.js';
-import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentitySecret, unwrapVaultKey } from './crypto.js';
+import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentitySecret, unwrapMlkemSecret, unwrapVaultKey } from './crypto.js';
 import * as pk from './passkey.js';
 import { hostOf, hostsMatch } from './hosts.js';
 import { IDENTITY_FIELDS } from './identity.js';
@@ -71,18 +71,20 @@ async function ensureSecrets() {
 async function loadSharedVaults(serverUrl, token, vkBytes) {
     let keys;
     try { keys = await api.getUserKeys(serverUrl, token); } catch (e) { return false; }
-    if (! keys || ! keys.public_key || ! keys.wrapped_secret_key) return true; // no identity → no shared vaults
-    let pub, sk;
+    // Store v3 hybrid identity: need BOTH the X25519 sk and the ML-KEM dk to
+    // unwrap vault keys (they are hybrid-wrapped X25519+ML-KEM-768, §6.3).
+    if (! keys || ! keys.public_key || ! keys.wrapped_secret_key || ! keys.wrapped_mlkem_secret_key) return true; // no (hybrid) identity → no shared vaults
+    let sk, mlkemDk;
     try {
-        pub = await fromB64(keys.public_key);
         sk = await unwrapIdentitySecret(keys.wrapped_secret_key, vkBytes);
+        mlkemDk = await unwrapMlkemSecret(keys.wrapped_mlkem_secret_key, vkBytes);
     } catch (e) { return true; }
     let vaults;
     try { vaults = await api.getVaults(serverUrl, token); } catch (e) { return false; }
     for (const v of (vaults || [])) {
         if (v.status !== 'active') continue;
         try {
-            const vk = await unwrapVaultKey(v.wrapped_vault_key, pub, sk);
+            const vk = await unwrapVaultKey(v.wrapped_vault_key, sk, mlkemDk);
             const store = await api.getVaultStore(serverUrl, token, v.vault_id);
             if (! store || ! store.sealed_manifest) continue;
             const manifest = await openManifest(store.sealed_manifest, vk);
