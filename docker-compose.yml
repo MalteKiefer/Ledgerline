@@ -279,6 +279,42 @@ services:
       retries: 5
       start_period: 180s
 
+  # Optional self-hosted map-tile server for the Explore module. Serves raster/
+  # vector tiles + a style.json from a mounted .mbtiles file; the app relays them
+  # same-origin via /maps/tiles and /maps/style (MAPS_TILE_UPSTREAM=http://tiles:8080),
+  # so the browser never talks to this service directly and it needs no host port.
+  # Enable with:  docker compose --profile maps up -d
+  # Provide a basemap: drop an .mbtiles into ./data/tiles (e.g. a MapTiler/OpenMapTiles
+  # export) and, if needed, a config.json selecting the style. See tileserver-gl docs.
+  tiles:
+    # Plain digest-pinned (no ${VAR:-default} wrapper) so Dependabot's docker
+    # ecosystem can parse and bump it; tag + digest move together on every bump.
+    image: maptiler/tileserver-gl:v5.6.0@sha256:3a9ccdb24820b6814c8119bcc8a4376c39867cb0ffe69d62919ef898b90c2427
+    profiles: ["maps"]
+    command: ["--port", "8080"]
+    volumes:
+      # Bind-mount the basemap data (read-only). Contains the .mbtiles + optional
+      # config.json/styles. Documented default: ./data/tiles on the host.
+      - ${MAPS_DATA_DIR:-./data/tiles}:/data:ro
+    networks:
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "${TILES_CPU_LIMIT:-2}"
+          memory: ${TILES_MEMORY_LIMIT:-2g}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 networks:
   internal:
 

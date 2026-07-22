@@ -22,6 +22,7 @@ import devicePairing from './components/device-pairing';
 import paperlessSettings from './components/paperless-settings';
 import notificationBell from './components/notification-bell';
 import dashboard from './components/dashboard';
+import explore from './components/explore';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -504,6 +505,14 @@ Alpine.data('bookmarks', bookmarks);
  */
 Alpine.data('passwords', passwords);
 Alpine.data('dashboard', dashboard);
+
+/**
+ * Explore: zero-knowledge map. Tracks, photo↔track couplings and coupling
+ * tolerances live in the sealed `explore` module store; gallery photos are read
+ * from the decrypted gallery index. MapLibre (same-origin tiles via /maps),
+ * uPlot (elevation) and fflate (KMZ unzip) are all lazy-loaded on demand.
+ */
+Alpine.data('explore', explore);
 
 Alpine.start();
 

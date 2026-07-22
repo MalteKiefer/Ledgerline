@@ -52,13 +52,10 @@ return {
             if (on && this.state !== 'ready') this.load();
             if (! on) { this.state = 'locked'; this._revokeThumbs(); window.LLGalleryStore.reset(); }
         });
-        // Leaving the library clears the selection + any active search; entering
-        // the map (re)builds it from the geotagged photos.
+        // Leaving the library clears the selection + any active search.
         this.$watch('view', (v) => {
             this.selected = [];
             if (v !== 'library') this.clearSearch();
-            if (v === 'map') this.renderMap();
-            else this._destroyMap();
             if (v === 'people' || v === 'person') this._loadPeopleContacts();
         });
     },
@@ -1348,44 +1345,8 @@ return {
         return this.groupedPhotos;
     },
 
-    /* ---- Map ---- */
-    _map: null,
+    /* ---- Viewer mini-map (single photo location) ---- */
     _miniMap: null,
-    _geoLoaded: false,
-    get mapPhotos() { return this._cache('mapPhotos', () => this.libraryPhotos.filter((p) => p.lat != null && p.lng != null)); },
-    // Photos processed before GPS was promoted onto the index carry their
-    // coordinates only inside the meta blob; backfill lat/lng from there once.
-    geoProgress: { done: 0, total: 0 },
-    async _ensureGeo() {
-        if (this._geoLoaded) return;
-        // Only photos we've never inspected: those with promoted coords are done,
-        // and `geoChecked` marks the geo-less ones so we never decrypt them again
-        // (across sessions), which is what made the first map open crawl.
-        const targets = this.libraryPhotos.filter((p) => p.lat == null && ! p.geoChecked && p.metaRef);
-        if (! targets.length) { this._geoLoaded = true; return; }
-        this.geoProgress = { done: 0, total: targets.length };
-        let changed = false, i = 0, done = 0;
-        // Decrypt the meta blobs in parallel on the worker pool (off the main
-        // thread; the ciphertext fetch hits the immutable blob cache).
-        const worker = async () => {
-            while (i < targets.length) {
-                const p = targets[i++];
-                try {
-                    const b = await fetchDecryptWorker('/gallery/raw', p.metaRef, p.metaKey);
-                    const m = JSON.parse(new TextDecoder().decode(b));
-                    if (m.exif && m.exif.lat != null) {
-                        p.lat = dec6(m.exif.lat); p.lng = dec6(m.exif.lon);
-                        if (! p.camera && m.exif.camera) p.camera = m.exif.camera;
-                    }
-                } catch (e) { /* skip */ }
-                p.geoChecked = true; changed = true;
-                this.geoProgress = { done: ++done, total: targets.length };
-            }
-        };
-        await Promise.all(Array.from({ length: Math.min(8, targets.length) }, worker));
-        this._geoLoaded = true;
-        if (changed) this._save();
-    },
     // A small, static map with one marker for the viewer info panel.
     async _renderMiniMap(lat, lng) {
         if (lat == null || lng == null) return;
@@ -1400,32 +1361,6 @@ return {
             setTimeout(() => { if (this._miniMap) this._miniMap.invalidateSize(); }, 120);
         });
     },
-    async renderMap() {
-        await this._ensureGeo();
-        const L = await loadLeaflet();
-        this.$nextTick(() => {
-            const el = this.$refs.map;
-            if (! el) return;
-            if (this._map) { this._map.remove(); this._map = null; }
-            // Zoom animation off: with markercluster + fitBounds/double-click, an
-            // in-flight animateZoom can fire on a torn-down pane and throw
-            // "_latLngToNewLayerPoint of null". Instant zoom sidesteps it entirely.
-            this._map = L.map(el, { zoomAnimation: false, markerZoomAnimation: false }).setView([20, 0], 2);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(this._map);
-            const cluster = L.markerClusterGroup ? L.markerClusterGroup({ animate: false }) : L.layerGroup();
-            for (const p of this.mapPhotos) {
-                const m = L.marker([parseFloat(p.lat), parseFloat(p.lng)]);
-                m.on('click', () => this.openViewer(p));
-                cluster.addLayer(m);
-            }
-            this._map.addLayer(cluster);
-            if (this.mapPhotos.length) this._map.fitBounds(L.latLngBounds(this.mapPhotos.map((p) => [parseFloat(p.lat), parseFloat(p.lng)])), { padding: [40, 40], maxZoom: 14, animate: false });
-            setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 120);
-        });
-    },
-    // Tear the map down when leaving the map view so stray animation callbacks
-    // can't fire on a hidden/half-removed container.
-    _destroyMap() { if (this._map) { this._map.remove(); this._map = null; } },
 
     /* ---- Albums (plain client-side grouping, sealed in the index) ---- */
     activeAlbum: null,

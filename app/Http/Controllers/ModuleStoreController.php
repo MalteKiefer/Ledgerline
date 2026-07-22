@@ -26,7 +26,7 @@ class ModuleStoreController extends Controller
     /** The only module keys a client may read/write — an unknown key is a 404. */
     private const MODULES = [
         'notes', 'todos', 'bookmarks', 'contacts', 'invoices',
-        'passwords', 'health', 'sharing',
+        'passwords', 'health', 'sharing', 'explore',
     ];
 
     private const MAX_BYTES = 67108864; // 64 MiB sealed-index cap (metadata, not blobs)

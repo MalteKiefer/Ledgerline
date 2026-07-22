@@ -14,6 +14,7 @@ return [
         'gallery' => 'Galerie',
         'todos' => 'Aufgaben',
         'health' => 'Gesundheit',
+        'explore' => 'Entdecken',
         'more' => 'Mehr',
     ],
     'menu' => [

@@ -23,6 +23,7 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('contacts:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('shared-folders:sweep-orphans')->daily()->withoutOverlapping();
 
 // Drop expired/consumed QR device-pairing rows (short-lived, single-use).

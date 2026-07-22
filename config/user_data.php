@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\UserData\ExploreData;
 use App\Support\UserData\FilesData;
 use App\Support\UserData\GalleryData;
 use App\Support\UserData\PaperlessData;
@@ -14,6 +15,7 @@ return [
         StoreData::class,
         FilesData::class,
         GalleryData::class,
+        ExploreData::class,
         SharedData::class,
         PaperlessData::class,
         SettingsData::class,

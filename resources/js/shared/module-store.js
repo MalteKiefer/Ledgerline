@@ -94,6 +94,7 @@ export const MODULE_BLANKS = {
     passwords: () => ({ v: 3, secrets: [], secretFolders: [], pwVaultMigrated: false }),
     health: () => ({ v: 3, healthEntries: [], healthProfile: null }),
     sharing: () => ({ v: 3, knownFingerprints: {} }),
+    explore: () => ({ v: 3, tracks: [], couplings: {}, settings: { couplingTimeToleranceS: 3600, couplingDistanceToleranceM: 100 } }),
 };
 
 /** Build the window-global registry of per-module stores. */

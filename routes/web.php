@@ -9,6 +9,8 @@ use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevicePairingController;
+use App\Http\Controllers\ExploreBlobController;
+use App\Http\Controllers\ExploreController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\FileShareController;
 use App\Http\Controllers\FilesStoreController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
@@ -274,6 +277,23 @@ Route::middleware('auth')->group(function (): void {
     // Client-relayed birthday/anniversary alert (ZK: the client detects the due
     // date; the server only forwards to the user's chosen channels).
     Route::post('/contacts/notify', [ContactNotifyController::class, 'send'])->middleware('throttle:60,1')->name('contacts.notify');
+    // Explore (map/GPS): the records (tracks, couplings, tolerances) live in the
+    // opaque `explore` module store (GET/PUT /store/explore); only the optional
+    // raw track files are opaque content blobs (explore/{blob}). Same
+    // controller-reuse, owner-scoped, zero-knowledge as the contacts blobs.
+    Route::get('/explore', ExploreController::class)->name('explore');
+    Route::get('/explore/usage', [ExploreBlobController::class, 'usage'])->name('explore.usage');
+    Route::post('/explore/blobs/reconcile', [ExploreBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('explore.blobs.reconcile');
+    Route::post('/explore/upload', [ExploreBlobController::class, 'upload'])->middleware('throttle:600,1')->name('explore.upload');
+    Route::get('/explore/raw/{blob}', [ExploreBlobController::class, 'raw'])->middleware('throttle:600,1')->name('explore.raw');
+    Route::delete('/explore/blob/{blob}', [ExploreBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('explore.blob.destroy');
+    // Same-origin map relay for the Explore viewer: the style.json (tile URLs
+    // rewritten to same-origin) and single-tile proxy from the tileserver-gl
+    // sidecar through the SSRF guard. Tiles are non-secret base-map imagery;
+    // relaying keeps the client same-origin (CSP connect-src 'self' holds) and
+    // the coordinate a tile encodes is never logged. 404 when upstream is unset.
+    Route::get('/maps/style', [MapController::class, 'style'])->middleware('throttle:120,1')->name('maps.style');
+    Route::get('/maps/tiles/{z}/{x}/{y}', [MapController::class, 'tile'])->where(['z' => '[0-9]+', 'x' => '[0-9]+', 'y' => '[0-9]+'])->middleware('throttle:600,1')->name('maps.tile');
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
