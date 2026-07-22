@@ -82,7 +82,15 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
-    Route::get('/profile', ProfileController::class)->name('profile');
+    // Profile = the iOS-style personal hub; each section is its own sub-page.
+    Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
+    Route::get('/profile/account', [ProfileController::class, 'account'])->name('profile.account');
+    Route::get('/profile/devices', [ProfileController::class, 'devices'])->name('profile.devices');
+    Route::get('/profile/sessions', [ProfileController::class, 'sessions'])->name('profile.sessions');
+    Route::get('/profile/encryption', [ProfileController::class, 'encryption'])->name('profile.encryption');
+    Route::get('/profile/appearance', [ProfileController::class, 'appearance'])->name('profile.appearance');
+    Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
+    Route::get('/profile/danger', [ProfileController::class, 'danger'])->name('profile.danger');
     Route::get('/profile/avatar', AvatarController::class)->name('profile.avatar');
     // Self-service account: GDPR export, session revocation, account erasure.
     Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('account.export');

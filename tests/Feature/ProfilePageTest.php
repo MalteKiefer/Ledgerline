@@ -21,7 +21,9 @@ class ProfilePageTest extends TestCase
             'last_login_at' => now()->subDay(),
         ]);
 
-        $this->actingAs($user)->get(route('profile'))
+        // The hub renders; the last-login timestamp lives on the sessions sub-page.
+        $this->actingAs($user)->get(route('profile'))->assertOk();
+        $this->actingAs($user)->get(route('profile.sessions'))
             ->assertOk()
             ->assertSee($user->last_login_at->format('Y-m-d'), false);
     }

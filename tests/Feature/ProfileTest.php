@@ -25,11 +25,15 @@ class ProfileTest extends TestCase
             'oidc_sub' => 'sub-abc-123',
         ]);
 
+        // Name + email head the hub; the Pocket-ID subject lives on the account sub-page.
         $this->actingAs($user)
             ->get(route('profile'))
             ->assertOk()
             ->assertSee('Grace Hopper')
-            ->assertSee('grace@example.com')
+            ->assertSee('grace@example.com');
+        $this->actingAs($user)
+            ->get(route('profile.account'))
+            ->assertOk()
             ->assertSee('sub-abc-123');
     }
 
@@ -37,10 +41,14 @@ class ProfileTest extends TestCase
     {
         $user = User::factory()->create(['avatar' => 'avatars/1.png']);
 
+        // The hero shows the avatar; its provenance is detailed on the account sub-page.
         $this->actingAs($user)
             ->get(route('profile'))
             ->assertOk()
-            ->assertSee(route('profile.avatar'))
+            ->assertSee(route('profile.avatar'));
+        $this->actingAs($user)
+            ->get(route('profile.account'))
+            ->assertOk()
             ->assertSee('object storage');
     }
 }

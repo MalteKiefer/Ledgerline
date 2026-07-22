@@ -1,6 +1,27 @@
 <?php
 
 return [
+    'back' => 'Profile',
+    'hub_account_heading' => 'Account',
+    'hub_personal_heading' => 'Personal',
+    'hub_data_heading' => 'Data',
+    'hub_admin_heading' => 'Administration',
+    'nav_account' => 'Account details',
+    'nav_account_desc' => 'Name, email and identity',
+    'nav_devices' => 'Devices',
+    'nav_devices_desc' => 'Connected apps and command-line clients',
+    'nav_sessions' => 'Web sessions',
+    'nav_sessions_desc' => 'Browsers signed in to your account',
+    'nav_encryption' => 'Encryption',
+    'nav_encryption_desc' => 'Vault passphrase and recovery',
+    'nav_appearance' => 'Appearance',
+    'nav_appearance_desc' => 'Theme and language',
+    'nav_admin' => 'Administration',
+    'nav_admin_desc' => 'Workspace-wide settings',
+    'appearance_heading' => 'Appearance',
+    'appearance_theme' => 'Theme',
+    'appearance_language' => 'Language',
+
     'security_heading' => 'Security & data',
     'last_login' => 'Last sign-in',
     'never' => 'Never',
