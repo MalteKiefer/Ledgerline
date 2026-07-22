@@ -58,6 +58,12 @@ tags:
       (tracks, couplings, tolerances) live in the sealed explore module store
       (see Store, GET/PUT /store/explore) — these endpoints only hold the
       optional raw track file bytes a record references.
+  - name: Maps
+    description: >
+      Explore tour-planner auto-routing. Server-side proxy to an OSRM-compatible
+      router that snaps clicked waypoints onto real paths/roads. A user-initiated,
+      opt-in boundary crossing (same class as gallery geocoding); coordinates are
+      never logged or persisted.
   - name: Passwords
     description: Password-manager enrichment endpoints (favicon, HIBP, 2FA directory)
   - name: Vaults
@@ -2231,6 +2237,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UsageResponse"
+        "429":
+          description: Rate limit exceeded.
+
+  # --------------------------------------------------------------------------
+  # Maps (Explore tour-planner auto-routing)
+  # --------------------------------------------------------------------------
+
+  /maps/route:
+    get:
+      tags: [Maps]
+      operationId: mapsRoute
+      summary: Snap tour waypoints to a real path/road route
+      description: >
+        Snaps an ordered list of clicked waypoints onto real paths/roads via an
+        OSRM-compatible upstream and returns the snapped geometry plus total
+        distance/duration. User-initiated, opt-in egress (same class as
+        /gallery/geocode); the client CSP forbids third-party calls so this goes
+        through the server. Coordinates are never logged or persisted. When the
+        upstream is unset/unreachable or no route exists, a clean 200 with
+        geometry:null is returned so the client falls back to straight lines.
+        Throttle: 60 req/min.
+      parameters:
+        - name: points
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 1024
+          description: >
+            Ordered waypoints as "lat,lng;lat,lng;…" (2..25 points, each within
+            coordinate range).
+      responses:
+        "200":
+          description: Snapped route, or geometry:null when routing is unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  geometry:
+                    type: array
+                    nullable: true
+                    description: Ordered [lat, lng] pairs of the snapped route; null on fallback.
+                    items:
+                      type: array
+                      items:
+                        type: number
+                      minItems: 2
+                      maxItems: 2
+                  distanceM:
+                    type: number
+                    description: Total route distance in metres.
+                  durationS:
+                    type: number
+                    description: Estimated route duration in seconds.
+        "422":
+          description: Missing/invalid points, or not between 2 and 25 waypoints.
         "429":
           description: Rate limit exceeded.
 

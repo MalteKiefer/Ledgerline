@@ -65,6 +65,10 @@ return [
     'route_name' => 'Routenname',
     'planned_route_default' => 'Route',
     'planned_route' => 'Geplante Route',
+    'auto_route' => 'Wegen folgen / Auto-Route',
+    'auto_route_hint' => 'Wegpunkte über einen Routing-Dienst an echte Wege anlegen. Aus zeichnet gerade Linien und bleibt vollständig offline.',
+    'auto_route_routing' => 'Route wird berechnet…',
+    'auto_route_fallback' => 'Route konnte nicht geladen werden — gerade Linien werden verwendet.',
 
     // Coupling
     'coupling' => 'Foto-Zuordnung',

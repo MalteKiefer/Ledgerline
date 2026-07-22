@@ -65,6 +65,10 @@ return [
     'route_name' => 'Route name',
     'planned_route_default' => 'Route',
     'planned_route' => 'Planned route',
+    'auto_route' => 'Follow paths / Auto-route',
+    'auto_route_hint' => 'Snap waypoints onto real paths via a routing service. Off draws straight lines and stays fully offline.',
+    'auto_route_routing' => 'Routing…',
+    'auto_route_fallback' => 'Could not fetch a route — using straight lines.',
 
     // Coupling
     'coupling' => 'Photo matching',
