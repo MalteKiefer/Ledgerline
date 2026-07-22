@@ -220,7 +220,7 @@ describe('unwrapVaultKey (hybrid X25519+ML-KEM-768, §6.3)', () => {
     // extension unwraps with its X25519 sk + ML-KEM dk. Context '' (prod default).
     async function identity() {
         const x = s.crypto_box_keypair();          // X25519 identity
-        const ml = await mlkemKeypair();            // { ek: b64, dk: bytes }
+        const ml = await mlkemKeypair();            // { ek: b64, seed: 64 bytes }
         return { x, ml };
     }
 
@@ -229,7 +229,7 @@ describe('unwrapVaultKey (hybrid X25519+ML-KEM-768, §6.3)', () => {
         const vkBytes = new Uint8Array(32).fill(0x77);
 
         const env = await hybridWrap(vkBytes, b64(x.publicKey), ml.ek);
-        const recovered = await unwrapVaultKey(JSON.stringify(env), x.privateKey, ml.dk);
+        const recovered = await unwrapVaultKey(JSON.stringify(env), x.privateKey, ml.seed);
 
         expect(s.to_hex(recovered)).toBe(s.to_hex(vkBytes));
         expect(recovered).toBeInstanceOf(Uint8Array);
@@ -240,7 +240,7 @@ describe('unwrapVaultKey (hybrid X25519+ML-KEM-768, §6.3)', () => {
         for (const fill of [0x00, 0x01, 0xab, 0xff]) {
             const vkBytes = new Uint8Array(32).fill(fill);
             const env = await hybridWrap(vkBytes, b64(x.publicKey), ml.ek);
-            const recovered = await unwrapVaultKey(env, x.privateKey, ml.dk);
+            const recovered = await unwrapVaultKey(env, x.privateKey, ml.seed);
             expect(s.to_hex(recovered)).toBe(s.to_hex(vkBytes));
         }
     });
@@ -250,13 +250,13 @@ describe('unwrapVaultKey (hybrid X25519+ML-KEM-768, §6.3)', () => {
         const attacker = await identity();
         const vkBytes = s.randombytes_buf(32);
         const env = await hybridWrap(vkBytes, b64(owner.x.publicKey), owner.ml.ek);
-        await expect(unwrapVaultKey(env, attacker.x.privateKey, attacker.ml.dk)).rejects.toThrow();
+        await expect(unwrapVaultKey(env, attacker.x.privateKey, attacker.ml.seed)).rejects.toThrow();
     });
 
     it('fails closed on an unknown suite', async () => {
         const { x, ml } = await identity();
         const env = await hybridWrap(s.randombytes_buf(32), b64(x.publicKey), ml.ek);
-        await expect(unwrapVaultKey({ ...env, suite: 2 }, x.privateKey, ml.dk)).rejects.toThrow();
+        await expect(unwrapVaultKey({ ...env, suite: 2 }, x.privateKey, ml.seed)).rejects.toThrow();
     });
 });
 
@@ -310,7 +310,7 @@ describe('unwrapIdentitySecret', () => {
         // (unwrapIdentitySecret + unwrapMlkemSecret) and unwraps the vault key.
         const vk = s.randombytes_buf(32);
         const idKp = s.crypto_box_keypair();          // X25519 identity
-        const ml = await mlkemKeypair();              // ML-KEM identity { ek, dk }
+        const ml = await mlkemKeypair();              // ML-KEM identity { ek, seed }
 
         // Store both identity secrets sealed under VK (as vault.js ensureIdentityKeys does)
         const seal = (bytes) => {
@@ -318,7 +318,7 @@ describe('unwrapIdentitySecret', () => {
             return JSON.stringify({ c: b64(s.crypto_secretbox_easy(bytes, nonce, vk)), n: b64(nonce) });
         };
         const wrappedSkJson = seal(idKp.privateKey);
-        const wrappedMlkemJson = seal(ml.dk);
+        const wrappedMlkemJson = seal(ml.seed);
 
         // Inviter hybrid-wraps a vault key to the invitee's published identity
         const vkVault = s.randombytes_buf(32);

@@ -7,7 +7,7 @@ describe('VaultShareCrypto', () => {
             const id = await VaultShareCrypto.newIdentity();
             const vk = await VaultShareCrypto.newVaultKey();
             const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, id.pub, id.mlkemEk, 'test');
-            const recovered = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
+            const recovered = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemSeed, 'test');
             expect(recovered).toBe(vk);
         });
 
@@ -67,7 +67,7 @@ describe('VaultShareCrypto', () => {
             const vk = await VaultShareCrypto.newVaultKey();
             const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vk, owner.pub, owner.mlkemEk, 'test');
             await expect(
-                VaultShareCrypto.unwrapVaultKey(wrapped, attacker.sk, attacker.mlkemDk, 'test'),
+                VaultShareCrypto.unwrapVaultKey(wrapped, attacker.sk, attacker.mlkemSeed, 'test'),
             ).rejects.toThrow();
         });
     });
@@ -78,7 +78,7 @@ describe('VaultShareCrypto', () => {
             // Derive a raw key bytes: unwrap a freshly wrapped key to get Uint8Array
             const vkB64 = await VaultShareCrypto.newVaultKey();
             const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub, id.mlkemEk, 'test');
-            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
+            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemSeed, 'test');
             // Convert base64 vault key to raw bytes for sealVaultManifest
             // We need raw bytes — use atob + Uint8Array
             const vkBytes = Uint8Array.from(atob(recoveredB64), (c) => c.charCodeAt(0));
@@ -93,7 +93,7 @@ describe('VaultShareCrypto', () => {
             const id = await VaultShareCrypto.newIdentity();
             const vkB64 = await VaultShareCrypto.newVaultKey();
             const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub, id.mlkemEk, 'test');
-            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
+            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemSeed, 'test');
             const vkBytes = Uint8Array.from(atob(recoveredB64), (c) => c.charCodeAt(0));
 
             const small1 = { a: 1 };
@@ -111,7 +111,7 @@ describe('VaultShareCrypto', () => {
             const id = await VaultShareCrypto.newIdentity();
             const vkB64 = await VaultShareCrypto.newVaultKey();
             const wrapped = await VaultShareCrypto.wrapVaultKeyFor(vkB64, id.pub, id.mlkemEk, 'test');
-            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemDk, 'test');
+            const recoveredB64 = await VaultShareCrypto.unwrapVaultKey(wrapped, id.sk, id.mlkemSeed, 'test');
             const vkBytes = Uint8Array.from(atob(recoveredB64), (c) => c.charCodeAt(0));
 
             const sealed = await VaultShareCrypto.sealVaultManifest({ tiny: true }, vkBytes);

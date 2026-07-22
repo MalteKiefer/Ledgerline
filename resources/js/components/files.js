@@ -362,7 +362,7 @@ export default (config = {}, labels = {}) => ({
                 if (m.status === 'pending') continue;
                 if (m.status !== 'active') continue;
                 try {
-                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, ids.sk, ids.mlkemDk);
+                    const vkB64 = await VaultShareCrypto.unwrapVaultKey(m.wrapped_vault_key, ids.sk, ids.mlkemSeed);
                     // atob decodes standard base64 (ORIGINAL variant), matching vault.js's
                     // base64_variants.ORIGINAL encoding. unb64 is not exported from vault.js.
                     const vk = Uint8Array.from(atob(vkB64), (c) => c.charCodeAt(0));
@@ -2652,7 +2652,7 @@ export default (config = {}, labels = {}) => ({
         const id = await Vault.ensureIdentityKeys();
         // Verify the wrapped key actually decrypts before accepting.
         try {
-            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.sk, id.mlkemDk);
+            await VaultShareCrypto.unwrapVaultKey(inv.wrapped_vault_key, id.sk, id.mlkemSeed);
         } catch (_e) {
             window.llToast(labels.inviteInvalid || '');
             return;
