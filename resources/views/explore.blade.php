@@ -96,7 +96,10 @@
         <div class="grid gap-4 lg:grid-cols-[1fr_22rem]">
           {{-- Map --}}
           <div class="ll-card !p-0 overflow-hidden">
-            <div x-ref="map" class="h-[calc(100dvh-16rem)] min-h-80 w-full"></div>
+            {{-- `isolate` (+ z-0) confines Leaflet's internal z-indexes (panes/controls
+                 up to ~1000) to a local stacking context so the map can't paint over
+                 the z-40 nav dropdown. --}}
+            <div x-ref="map" class="relative z-0 isolate h-[calc(100dvh-16rem)] min-h-80 w-full"></div>
           </div>
 
           {{-- Sidebar: media list (media view) or tracks list + elevation (tracks view) --}}
