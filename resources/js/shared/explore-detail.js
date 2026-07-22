@@ -51,6 +51,52 @@ export function buildPlannedTrack(waypoints, name, id, createdAt) {
 }
 
 /**
+ * Convert a routing service's elevation array ([{distM, eleM}]) into the internal
+ * elevation-profile shape ([{distM, eleM}]) used by computeStats/hasElevation and
+ * the uPlot chart. Filters out malformed entries and keeps only finite distances,
+ * mapping non-finite elevations to null. Returns [] for missing/empty input.
+ *
+ * @param {Array<{distM:number, eleM:(number|null)}>|null|undefined} elevation
+ * @returns {Array<{distM:number, eleM:(number|null)}>}
+ */
+export function normalizeRouteElevation(elevation) {
+    const src = Array.isArray(elevation) ? elevation : [];
+    const out = [];
+    for (const pt of src) {
+        if (!pt || typeof pt !== 'object') continue;
+        const distM = Number(pt.distM);
+        if (!Number.isFinite(distM)) continue;
+        const ele = Number(pt.eleM);
+        out.push({ distM, eleM: Number.isFinite(ele) ? ele : null });
+    }
+    return out;
+}
+
+/**
+ * Aggregate a routing service's per-segment surface list ([{surface, distM}]) into
+ * a compact breakdown: one row per distinct surface with the summed distance,
+ * sorted by distance descending. Unknown/blank surface names collapse into a
+ * single 'unknown' bucket. Returns [] for missing/empty input.
+ *
+ * @param {Array<{surface:string, distM:number}>|null|undefined} surfaces
+ * @returns {Array<{surface:string, distM:number}>}
+ */
+export function aggregateSurfaces(surfaces) {
+    const src = Array.isArray(surfaces) ? surfaces : [];
+    const totals = new Map();
+    for (const seg of src) {
+        if (!seg || typeof seg !== 'object') continue;
+        const distM = Number(seg.distM);
+        if (!Number.isFinite(distM) || distM <= 0) continue;
+        const name = (typeof seg.surface === 'string' && seg.surface.trim()) ? seg.surface.trim() : 'unknown';
+        totals.set(name, (totals.get(name) || 0) + distM);
+    }
+    return [...totals.entries()]
+        .map(([surface, dist]) => ({ surface, distM: dist }))
+        .sort((a, b) => b.distM - a.distM);
+}
+
+/**
  * True when the profile carries at least two real elevation samples — i.e. an
  * elevation chart is worth drawing. Planned routes / GPS-only tracks return false.
  *

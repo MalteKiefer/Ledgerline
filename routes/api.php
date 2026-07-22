@@ -175,7 +175,7 @@ Route::prefix('v1')->group(function (): void {
         // stores, and membership management. Same controllers as the web routes —
         // all are guard-agnostic (use $request->user() / Auth::id()).
         Route::prefix('vaults')->name('api.vaults.')->group(function (): void {
-            Route::get('/keys', [UserKeyController::class, 'show'])->middleware('throttle:60,1')->name('keys.show');
+            Route::get('/keys', [UserKeyController::class, 'show'])->middleware('throttle:240,1')->name('keys.show');
             Route::put('/keys', [UserKeyController::class, 'store'])->middleware('throttle:30,1')->name('keys.store');
             Route::post('/', [SharedVaultController::class, 'store'])->name('store');
             Route::get('/', [SharedVaultController::class, 'index'])->name('index');

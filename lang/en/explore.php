@@ -72,6 +72,30 @@ return [
     'auto_route_rate_limited' => 'Routing is rate-limited right now — using straight lines. Try again shortly.',
     'auto_route_too_many' => 'Too many waypoints to auto-route — using straight lines.',
 
+    // Live planning stats
+    'plan_waypoints' => 'Waypoints',
+    'plan_distance' => 'Distance',
+    'plan_duration' => 'Est. duration',
+    'surfaces' => 'Surfaces',
+    'surface' => [
+        'asphalt' => 'Asphalt',
+        'paved' => 'Paved',
+        'unpaved' => 'Unpaved',
+        'gravel' => 'Gravel',
+        'ground' => 'Ground',
+        'dirt' => 'Dirt',
+        'grass' => 'Grass',
+        'sand' => 'Sand',
+        'concrete' => 'Concrete',
+        'cobblestone' => 'Cobblestone',
+        'paving_stones' => 'Paving stones',
+        'wood' => 'Wood',
+        'compacted' => 'Compacted',
+        'fine_gravel' => 'Fine gravel',
+        'unknown' => 'Unknown',
+        'other' => 'Other',
+    ],
+
     // Assign-to-tour modal source filter
     'filter_all' => 'All',
     'filter_imported' => 'Imported',

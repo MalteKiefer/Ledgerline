@@ -482,6 +482,7 @@ export const Vault = {
     lock() {
         this.vk = null;
         this._idKeys = null;
+        this._idKeysPromise = null;
         this.mode = 'trusted';
         this._clearPublic();
         this._clearTrusted();
@@ -628,6 +629,18 @@ export const Vault = {
             throw new Error('vault locked');
         }
 
+        // Single-flight: several modules (files/passwords/dashboard) call this at
+        // once on unlock. Without sharing the in-flight promise each fires its own
+        // GET /vaults/keys — and a failure (e.g. 429) never populates the cache, so
+        // every re-nav retries and the burst spirals into the rate limit. Share one.
+        if (this._idKeysPromise) {
+            return this._idKeysPromise;
+        }
+        this._idKeysPromise = this._resolveIdentityKeys().finally(() => { this._idKeysPromise = null; });
+        return this._idKeysPromise;
+    },
+
+    async _resolveIdentityKeys() {
         // 2. Try to recover an existing keypair from the server.
         const existing = await fetch('/vaults/keys', {
             headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },

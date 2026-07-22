@@ -19,7 +19,8 @@ import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
-import { buildPlannedTrack, hasElevation, downsampleProfile } from '../shared/explore-detail';
+import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
+import { haversineM } from '../shared/track-parse';
 
 // Distinct, deterministic polyline colours cycled per track (iOS-ish accents).
 const TRACK_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f', '#9e70fa', '#ef4444'];
@@ -45,11 +46,19 @@ export default (config = {}, labels = {}) => ({
     autoRoute: false,     // opt-in: snap waypoints to real paths via /maps/route (OFF = straight lines)
     routing: false,       // an auto-route request is in flight
     _routedGeometry: null, // snapped [lat,lng] geometry from the router (null = use straight waypoints)
+    // Rich metadata from the last successful auto-route (/maps/route): distance,
+    // duration, elevation profile + ascent/descent, surface breakdown. Null while
+    // straight-line or before the first route lands; cleared on waypoint edit /
+    // auto-route off / plan exit. `_mut` is bumped so the toolbar getters recompute.
+    _routeMeta: null,     // { distanceM, durationS, elevation:[{distM,eleM}]|null, ascentM, descentM, surfaces:[{surface,distM}]|null }
     _routeSeq: 0,         // monotonic token so a stale route response can't overwrite a newer one
     _routeTimer: null,    // debounce handle for auto-route on waypoint change
     _planLayer: null,     // Leaflet polyline of the growing route
     _planMarkers: [],     // small vertex markers
     _planClick: null,     // bound map click handler (removed on exit)
+    _planChart: null,     // uPlot instance for the live planning elevation profile
+    _planChartAbort: null,
+    _planElToken: 0,      // monotonic token guarding concurrent plan-chart renders
 
     // Store-bound collections (aliased to the sealed store's own objects so
     // mutations persist through touch()). `_mut` is bumped on every save so
@@ -562,9 +571,11 @@ export default (config = {}, labels = {}) => ({
         this.selectedTrackId = null;
         this.planPoints = [];
         this._routedGeometry = null;
+        this._routeMeta = null;
         this.routing = false;
         this._routeSeq++;            // invalidate any in-flight route from a prior session
         if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
+        this._destroyPlanChart();
         // Clear whatever route/pins were on the map so only the new plan shows.
         this._clearTrackLayers();
         this._clearMarkers();
@@ -577,9 +588,11 @@ export default (config = {}, labels = {}) => ({
         this.planning = false;
         this.planPoints = [];
         this._routedGeometry = null;
+        this._routeMeta = null;
         this.routing = false;
         this._routeSeq++;            // any late route response is now stale
         if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
+        this._destroyPlanChart();
         if (this._map && this._planClick) { try { this._map.off('click', this._planClick); } catch (e) { /* ignore */ } }
         this._planClick = null;
         if (this._planLayer) { try { this._planLayer.remove(); } catch (e) { /* ignore */ } this._planLayer = null; }
@@ -598,9 +611,11 @@ export default (config = {}, labels = {}) => ({
     toggleAutoRoute() {
         if (! this.autoRoute) {
             this._routedGeometry = null;
+            this._routeMeta = null;
             this.routing = false;
             this._routeSeq++;
             if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
+            this._destroyPlanChart();
             this._drawPlan();
             return;
         }
@@ -609,9 +624,12 @@ export default (config = {}, labels = {}) => ({
 
     _addWaypoint(lat, lng) {
         this.planPoints.push([lat, lng]);
-        // A new waypoint invalidates any previously snapped geometry until the
-        // re-route lands, so the preview never shows a route for stale points.
+        // A new waypoint invalidates any previously snapped geometry + its rich
+        // metadata until the re-route lands, so the preview/stats never show a
+        // route for stale points.
         this._routedGeometry = null;
+        this._routeMeta = null;
+        this._destroyPlanChart();
         this._drawPlan();
         this._scheduleRoute();
     },
@@ -619,6 +637,8 @@ export default (config = {}, labels = {}) => ({
     undoWaypoint() {
         this.planPoints.pop();
         this._routedGeometry = null;
+        this._routeMeta = null;
+        this._destroyPlanChart();
         this._drawPlan();
         this._scheduleRoute();
     },
@@ -644,6 +664,8 @@ export default (config = {}, labels = {}) => ({
         // (don't fire a request that would 422) and tell the user.
         if (this.planPoints.length > 100) {
             this._routedGeometry = null;
+            this._routeMeta = null;
+            this._destroyPlanChart();
             window.llToast?.(labels.routeTooMany || labels.routeFallback || '');
             this._drawPlan();
             return;
@@ -654,6 +676,7 @@ export default (config = {}, labels = {}) => ({
             .join(';');
         this.routing = true;
         let geometry = null;
+        let meta = null;
         let rateLimited = false;
         try {
             const res = await fetch(`${config.routeUrl}?points=${encodeURIComponent(points)}`, {
@@ -661,7 +684,21 @@ export default (config = {}, labels = {}) => ({
             });
             if (res.ok) {
                 const d = await res.json();
-                if (Array.isArray(d.geometry) && d.geometry.length >= 2) geometry = d.geometry;
+                if (Array.isArray(d.geometry) && d.geometry.length >= 2) {
+                    geometry = d.geometry;
+                    // Capture the rich route metadata (distance/duration always present;
+                    // elevation/surfaces only when a GraphHopper backend is configured).
+                    const elevation = normalizeRouteElevation(d.elevation);
+                    const surfaces = aggregateSurfaces(d.surfaces);
+                    meta = {
+                        distanceM: Number.isFinite(Number(d.distanceM)) ? Number(d.distanceM) : null,
+                        durationS: Number.isFinite(Number(d.durationS)) ? Number(d.durationS) : null,
+                        elevation: elevation.length ? elevation : null,
+                        ascentM: Number.isFinite(Number(d.ascentM)) ? Number(d.ascentM) : null,
+                        descentM: Number.isFinite(Number(d.descentM)) ? Number(d.descentM) : null,
+                        surfaces: surfaces.length ? surfaces : null,
+                    };
+                }
             } else if (res.status === 429) {
                 // Too many routing calls (our throttle or the upstream). Back off for
                 // Retry-After (default 30s) and keep straight lines until then.
@@ -674,8 +711,11 @@ export default (config = {}, labels = {}) => ({
         if (seq !== this._routeSeq || ! this.planning || ! this.autoRoute) return;
         this.routing = false;
         this._routedGeometry = geometry;
+        this._routeMeta = meta;
         if (! geometry) window.llToast?.((rateLimited ? (labels.routeRateLimited || labels.routeFallback) : labels.routeFallback) || '');
         this._drawPlan();
+        // Draw/update or tear down the live elevation profile for the new route.
+        this.$nextTick(() => this.renderPlanElevation());
     },
 
     // The polyline actually shown/saved: the snapped geometry when auto-route
@@ -684,6 +724,50 @@ export default (config = {}, labels = {}) => ({
         return (this.autoRoute && this._routedGeometry && this._routedGeometry.length >= 2)
             ? this._routedGeometry
             : this.planPoints;
+    },
+
+    /* ------------------------------------------------- Live planning stats */
+
+    // Total distance of the plan (metres). Prefers the router's reported distance
+    // when an auto-route is in effect; otherwise a haversine sum over the line
+    // actually drawn (snapped geometry or straight-line waypoints).
+    get planDistanceM() {
+        if (this._routeMeta && Number.isFinite(this._routeMeta.distanceM)) return this._routeMeta.distanceM;
+        const line = this._planLine();
+        if (! Array.isArray(line) || line.length < 2) return 0;
+        let sum = 0;
+        for (let i = 1; i < line.length; i++) {
+            sum += haversineM(line[i - 1][0], line[i - 1][1], line[i][0], line[i][1]);
+        }
+        return sum;
+    },
+
+    // Estimated duration (seconds) from the router, or null in straight-line mode
+    // (we can't estimate travel time without a routing profile).
+    get planDurationS() {
+        return (this._routeMeta && Number.isFinite(this._routeMeta.durationS)) ? this._routeMeta.durationS : null;
+    },
+
+    // Elevation profile of the routed plan ([{distM,eleM}]) or [] when unavailable.
+    get planElevationProfile() {
+        return (this._routeMeta && Array.isArray(this._routeMeta.elevation)) ? this._routeMeta.elevation : [];
+    },
+    get planHasElevation() { return hasElevation(this.planElevationProfile); },
+
+    // Ascent/descent from the routed plan (metres) or null.
+    get planAscentM() { return (this._routeMeta && Number.isFinite(this._routeMeta.ascentM)) ? this._routeMeta.ascentM : null; },
+    get planDescentM() { return (this._routeMeta && Number.isFinite(this._routeMeta.descentM)) ? this._routeMeta.descentM : null; },
+
+    // Compact surface breakdown ([{surface, distM}] sorted desc) or [] when the
+    // router didn't return per-segment surfaces (no GraphHopper backend).
+    get planSurfaces() {
+        return (this._routeMeta && Array.isArray(this._routeMeta.surfaces)) ? this._routeMeta.surfaces : [];
+    },
+
+    // Human label for a routing surface token (falls back to the raw token).
+    surfaceLabel(surface) {
+        const key = String(surface || 'unknown');
+        return (labels.surfaces && labels.surfaces[key]) || key;
     },
 
     _drawPlan() {
@@ -731,6 +815,30 @@ export default (config = {}, labels = {}) => ({
             new Date().toISOString(),
         );
         if (! track) return;
+        // Enrich with the router's real elevation profile + surface breakdown when
+        // present (GraphHopper backend). Straight-line / no-elevation plans stay as
+        // buildPlannedTrack left them (distance-only stats, no elevation, no surfaces).
+        if (this._routeMeta) {
+            const profile = Array.isArray(this._routeMeta.elevation) ? this._routeMeta.elevation : [];
+            if (hasElevation(profile)) {
+                track.stats.elevationProfile = profile;
+                let minEle = null;
+                let maxEle = null;
+                for (const pt of profile) {
+                    if (pt.eleM == null || ! Number.isFinite(pt.eleM)) continue;
+                    if (minEle === null || pt.eleM < minEle) minEle = pt.eleM;
+                    if (maxEle === null || pt.eleM > maxEle) maxEle = pt.eleM;
+                }
+                track.stats.minEleM = minEle;
+                track.stats.maxEleM = maxEle;
+                if (Number.isFinite(this._routeMeta.ascentM)) track.stats.ascentM = this._routeMeta.ascentM;
+                if (Number.isFinite(this._routeMeta.descentM)) track.stats.descentM = this._routeMeta.descentM;
+            }
+            if (Number.isFinite(this._routeMeta.durationS)) track.stats.durationTotalS = this._routeMeta.durationS;
+            if (Array.isArray(this._routeMeta.surfaces) && this._routeMeta.surfaces.length) {
+                track.surfaces = this._routeMeta.surfaces;
+            }
+        }
         this.tracks.push(track);
         this._exitPlan();
         this._save();
@@ -766,6 +874,62 @@ export default (config = {}, labels = {}) => ({
     _destroyChart() {
         if (this._chartAbort) { this._chartAbort.abort(); this._chartAbort = null; }
         if (this._chart) { try { this._chart.destroy(); } catch (e) { /* ignore */ } this._chart = null; }
+    },
+
+    _destroyPlanChart() {
+        this._planElToken++; // supersede any in-flight render awaiting loadUplot()
+        if (this._planChartAbort) { this._planChartAbort.abort(); this._planChartAbort = null; }
+        if (this._planChart) { try { this._planChart.destroy(); } catch (e) { /* ignore */ } this._planChart = null; }
+        const el = this.$refs.planElevation;
+        if (el) el.innerHTML = '';
+    },
+
+    // Render a small live elevation profile of the auto-routed plan (GraphHopper
+    // only). Mirrors renderElevation() but reads _routeMeta.elevation and targets
+    // the planning toolbar's own container so it never collides with the detail
+    // chart. No map-hover coupling — this is a compact preview only.
+    async renderPlanElevation() {
+        this._destroyPlanChart();
+        const el = this.$refs.planElevation;
+        if (! el || ! this.planning) return;
+        const profile = this.planElevationProfile;
+        if (! hasElevation(profile)) return;
+
+        const { xs, ys } = downsampleProfile(profile, 300);
+        if (xs.length < 2) return;
+
+        const token = ++this._planElToken;
+        const UPlot = await loadUplot();
+        if (token !== this._planElToken || ! el.isConnected || ! this.planning) return;
+        el.innerHTML = '';
+        const isDark = document.documentElement.classList.contains('dark');
+        const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+        const axis = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+        const km = labels.unitKm || 'km';
+        const m = labels.unitM || 'm';
+
+        const opts = {
+            width: el.clientWidth || 320,
+            height: 120,
+            cursor: { drag: { x: false, y: false }, points: { size: 6 } },
+            legend: { show: false },
+            scales: { x: { time: false }, y: {} },
+            axes: [
+                {
+                    stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, size: 26,
+                    values: (_u, vals) => vals.map((v) => v.toFixed(1) + ' ' + km),
+                },
+                {
+                    stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, size: 44,
+                    values: (_u, vals) => vals.map((v) => Math.round(v) + ' ' + m),
+                },
+            ],
+            series: [
+                { label: km },
+                { label: labels.elevation || 'Elevation', stroke: '#7066f5', fill: 'rgba(112,102,245,0.15)', width: 2, spanGaps: true },
+            ],
+        };
+        this._planChart = new UPlot(opts, [xs, ys], el);
     },
 
     // True when the selected track has a usable elevation profile.
