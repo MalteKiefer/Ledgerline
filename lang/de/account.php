@@ -1,6 +1,27 @@
 <?php
 
 return [
+    'back' => 'Profil',
+    'hub_account_heading' => 'Konto',
+    'hub_personal_heading' => 'Persönlich',
+    'hub_data_heading' => 'Daten',
+    'hub_admin_heading' => 'Verwaltung',
+    'nav_account' => 'Account-Daten',
+    'nav_account_desc' => 'Name, E-Mail und Identität',
+    'nav_devices' => 'Geräte',
+    'nav_devices_desc' => 'Verbundene Apps und Kommandozeilen-Clients',
+    'nav_sessions' => 'Web-Sitzungen',
+    'nav_sessions_desc' => 'Bei deinem Konto angemeldete Browser',
+    'nav_encryption' => 'Verschlüsselung',
+    'nav_encryption_desc' => 'Tresor-Passphrase und Wiederherstellung',
+    'nav_appearance' => 'Darstellung',
+    'nav_appearance_desc' => 'Design und Sprache',
+    'nav_admin' => 'Verwaltung',
+    'nav_admin_desc' => 'Arbeitsbereich-weite Einstellungen',
+    'appearance_heading' => 'Darstellung',
+    'appearance_theme' => 'Design',
+    'appearance_language' => 'Sprache',
+
     'security_heading' => 'Sicherheit & Daten',
     'last_login' => 'Letzte Anmeldung',
     'never' => 'Nie',
