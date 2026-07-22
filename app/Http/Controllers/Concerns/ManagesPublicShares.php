@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Models\AuditLog;
 use App\Models\PublicShare;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,12 @@ trait ManagesPublicShares
         $share->expires_at = $data['expires_at'] ?? null;
         $share->password_hash = ! empty($data['password']) ? Hash::make($data['password']) : null;
         $share->save();
+
+        // NEVER log the full token — it grants access. Log the row id + kind only.
+        AuditLog::record('share.public.created', $share, [
+            'kind' => $kind,
+            'has_password' => $share->password_hash !== null,
+        ]);
 
         return response()->json(['token' => $token]);
     }

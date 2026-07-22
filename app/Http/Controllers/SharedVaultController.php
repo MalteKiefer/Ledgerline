@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\VaultRole;
+use App\Models\AuditLog;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
 use App\Models\SharedVaultStore;
@@ -82,6 +83,8 @@ class SharedVaultController extends Controller
 
             return $vault;
         });
+
+        AuditLog::record('vault.shared.created', $vault, ['kind' => $kind]);
 
         return response()->json(['id' => $vault->id], 201);
     }
@@ -256,7 +259,15 @@ class SharedVaultController extends Controller
                 'version' => $nextVersion,
             ]);
 
-            return ['conflict' => false, 'invalid_user' => false, 'version' => $nextVersion];
+            $remaining = SharedVaultMember::where('vault_id', $vault->id)->count();
+
+            return [
+                'conflict' => false,
+                'invalid_user' => false,
+                'version' => $nextVersion,
+                'removed_member_id' => (int) $removeMemberRow->id,
+                'remaining_members' => $remaining,
+            ];
         });
 
         if ($result['conflict']) {
@@ -282,6 +293,13 @@ class SharedVaultController extends Controller
             return response()->json(['error' => 'members contains unknown or inactive user'], 422);
         }
 
+        // Revocation: a member was cryptographically rotated out. Highest-priority
+        // audit event. Meta is ids + counts only — no keys or wrapped material.
+        AuditLog::record('vault.member.rotated', $vault, [
+            'removed_member_id' => $result['removed_member_id'] ?? null,
+            'remaining_members' => $result['remaining_members'] ?? null,
+        ]);
+
         return response()->json(['version' => $result['version'] ?? 0]);
     }
 
@@ -295,6 +313,8 @@ class SharedVaultController extends Controller
         $this->authorize('manage', $vault);
 
         $vault->delete();
+
+        AuditLog::record('vault.shared.deleted', null, ['vault_id' => $vault->id]);
 
         return response()->noContent();
     }

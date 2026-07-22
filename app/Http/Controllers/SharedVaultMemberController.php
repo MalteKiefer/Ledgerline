@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Enums\VaultRole;
 use App\Http\Requests\Vault\CreateMemberRequest;
 use App\Http\Requests\Vault\UpdateMemberRequest;
+use App\Models\AuditLog;
 use App\Models\SharedVault;
 use App\Models\SharedVaultMember;
 use Illuminate\Http\JsonResponse;
@@ -76,6 +77,11 @@ class SharedVaultMemberController extends Controller
             'recipient_fingerprint' => $data['recipient_fingerprint'] ?? null,
         ]);
 
+        AuditLog::record('vault.member.invited', $vault, [
+            'invited_user_id' => $request->integer('user_id'),
+            'role' => $request->string('role')->value(),
+        ]);
+
         return response()->json(['ok' => true], 201);
     }
 
@@ -100,6 +106,8 @@ class SharedVaultMemberController extends Controller
         $member->status = 'active';
         $member->save();
 
+        AuditLog::record('vault.member.accepted', $vault);
+
         return response()->json(['ok' => true]);
     }
 
@@ -118,6 +126,11 @@ class SharedVaultMemberController extends Controller
         $member->role = VaultRole::from(is_string($role) ? $role : '');
         $member->save();
 
+        AuditLog::record('vault.member.role_changed', $vault, [
+            'member_id' => (int) $member->id,
+            'new_role' => $member->role->value,
+        ]);
+
         return response()->json(['ok' => true]);
     }
 
@@ -134,7 +147,10 @@ class SharedVaultMemberController extends Controller
         // Cross-vault isolation.
         $this->ensureMemberOfVault($member, $vault);
 
+        $memberId = (int) $member->id;
         $member->delete();
+
+        AuditLog::record('vault.member.removed', $vault, ['member_id' => $memberId]);
 
         return response()->json(['ok' => true]);
     }
