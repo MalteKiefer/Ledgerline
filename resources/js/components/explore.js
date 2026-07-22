@@ -839,7 +839,9 @@ export default (config = {}, labels = {}) => ({
         if (this.thumbs[p.id]) return this.thumbs[p.id];
         if (this._thumbPending[p.id]) return this._thumbPending[p.id];
         const job = thumbLane(async () => {
-            const bytes = await fetchDecryptWorker(config.rawBase, p.thumbRef, p.thumbKey);
+            // Photo thumbnails are GALLERY blobs (thumbRef), not explore raw files —
+            // fetch from the gallery raw base, not /explore/raw.
+            const bytes = await fetchDecryptWorker(config.galleryRawBase, p.thumbRef, p.thumbKey);
             const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
             this.thumbs[p.id] = url;
             return url;

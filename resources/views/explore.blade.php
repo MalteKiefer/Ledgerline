@@ -2,6 +2,7 @@
   <div x-data="explore({
         uploadUrl: '{{ url('/explore/upload') }}',
         rawBase: '{{ url('/explore/raw') }}',
+        galleryRawBase: '{{ url('/gallery/raw') }}',
         usageUrl: '{{ url('/explore/usage') }}',
         deleteUrl: '{{ url('/explore/blob') }}',
         routeUrl: '{{ url('/maps/route') }}',
