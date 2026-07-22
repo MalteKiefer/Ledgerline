@@ -1006,17 +1006,36 @@ return {
             if (this.viewer.photo?.id !== p.id) return;
             this.viewer.meta = m;
             // Self-heal: a client that uploaded this photo (e.g. mobile) may have
-            // written the capture date only into the cold meta blob, leaving the hot
-            // record's `taken_at` empty — so the timeline grouped it by upload date
-            // (`created`) while the detail showed the meta's capture date. Backfill
-            // the hot field from the meta so grid + detail agree (and the record
-            // carries it for on-this-day / dashboard). Re-seal only on a real change.
+            // written EXIF (capture date + GPS + camera) only into the cold meta
+            // blob, leaving the hot record's display fields empty. The timeline then
+            // groups by upload date (`created`) instead of the capture date, and the
+            // photo carries no coords so it never pins on the Explore map — while the
+            // detail panel (which reads the meta blob) shows both correctly. Backfill
+            // the hot fields from the meta so every consumer that reads the manifest
+            // (timeline, on-this-day, dashboard, Explore) agrees. Re-seal once, only
+            // on a real change. All fields stay in the sealed manifest (ZK).
+            let healed = false;
+            const entry = this.index.photos.find((x) => x.id === p.id);
             if (m.exif?.taken_at && p.taken_at !== m.exif.taken_at) {
                 p.taken_at = m.exif.taken_at;
-                const entry = this.index.photos.find((x) => x.id === p.id);
                 if (entry) entry.taken_at = m.exif.taken_at;
-                this._save(); // bumps _mut → invalidates the timeline memo, regroups
+                healed = true;
             }
+            // Coords: meta carries raw numbers; the hot record stores dec-6 strings.
+            if (p.lat == null && m.exif?.lat != null && m.exif?.lon != null) {
+                const dlat = dec6(m.exif.lat), dlng = dec6(m.exif.lon);
+                if (dlat != null && dlng != null) {
+                    p.lat = dlat; p.lng = dlng; p.geoChecked = true;
+                    if (entry) { entry.lat = dlat; entry.lng = dlng; entry.geoChecked = true; }
+                    healed = true;
+                }
+            }
+            if (p.camera == null && m.exif?.camera) {
+                p.camera = m.exif.camera;
+                if (entry) entry.camera = m.exif.camera;
+                healed = true;
+            }
+            if (healed) this._save(); // bumps _mut → invalidates memos, regroups + re-pins
             // meta.exif carries raw numbers; p.lat/p.lng are dec-strings — coerce
             // to Number for Leaflet either way.
             const lat = m.exif?.lat ?? (p.lat != null ? parseFloat(p.lat) : null);
