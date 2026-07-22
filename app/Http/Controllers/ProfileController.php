@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\AppSettings;
 use App\Models\FileBlob;
 use App\Models\GalleryBlob;
 use Illuminate\Contracts\View\View;
@@ -33,7 +34,12 @@ class ProfileController extends Controller
                 ])->all()
             : [];
 
-        $deviceMax = config('devices.max', 3);
+        // The device cap the admin configured (AppSettings) wins over the config
+        // default — same resolution as the pairing enforcement + security settings
+        // page, so the profile shows the real limit, not the hardcoded fallback.
+        $configuredMax = config('devices.max', 3);
+        $deviceMax = AppSettings::current()->max_connected_devices
+            ?: (is_numeric($configuredMax) ? (int) $configuredMax : 3);
 
         // Storage the account occupies: the user's OWN sealed blob bytes (files +
         // gallery). The server sees only ciphertext sizes — non-secret, the same
@@ -54,7 +60,7 @@ class ProfileController extends Controller
         return view('profile', [
             'user' => $user,
             'sessions' => $sessions,
-            'deviceMax' => is_numeric($deviceMax) ? (int) $deviceMax : 3,
+            'deviceMax' => $deviceMax,
             'deviceCount' => $user->tokens()->count(),
             'storageUsed' => $storageUsed,
             'storageQuota' => $storageQuota,
