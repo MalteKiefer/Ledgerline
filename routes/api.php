@@ -138,7 +138,7 @@ Route::prefix('v1')->group(function (): void {
         // an OSRM-compatible upstream. SSRF-guarded, coordinates never logged/persisted,
         // clean {geometry:null} when the upstream is unset/unreachable. User-initiated,
         // opt-in egress — same class as /gallery/geocode.
-        Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:60,1')->name('api.maps.route');
+        Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('api.maps.route');
 
         // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
         // k-anonymity), and 2fa.directory dataset. Same controllers as the web

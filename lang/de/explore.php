@@ -69,6 +69,7 @@ return [
     'auto_route_hint' => 'Wegpunkte über einen Routing-Dienst an echte Wege anlegen. Aus zeichnet gerade Linien und bleibt vollständig offline.',
     'auto_route_routing' => 'Route wird berechnet…',
     'auto_route_fallback' => 'Route konnte nicht geladen werden — gerade Linien werden verwendet.',
+    'auto_route_rate_limited' => 'Routing ist gerade limitiert — gerade Linien werden verwendet. Gleich nochmal versuchen.',
 
     // Coupling
     'coupling' => 'Foto-Zuordnung',

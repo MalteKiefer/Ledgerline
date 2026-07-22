@@ -604,7 +604,10 @@ export default (config = {}, labels = {}) => ({
     _scheduleRoute() {
         if (this._routeTimer) { clearTimeout(this._routeTimer); this._routeTimer = null; }
         if (! this.autoRoute || this.planPoints.length < 2) return;
-        this._routeTimer = setTimeout(() => { this._routeTimer = null; this._requestRoute(); }, 500);
+        // Honour a rate-limit cooldown: while set, keep the straight-line preview
+        // and don't hammer the proxy/upstream (a 429 set this).
+        if (this._routeCooldownUntil && Date.now() < this._routeCooldownUntil) return;
+        this._routeTimer = setTimeout(() => { this._routeTimer = null; this._requestRoute(); }, 700);
     },
 
     // Ask the server-side proxy (/maps/route) to snap the current waypoints onto
@@ -619,6 +622,7 @@ export default (config = {}, labels = {}) => ({
             .join(';');
         this.routing = true;
         let geometry = null;
+        let rateLimited = false;
         try {
             const res = await fetch(`${config.routeUrl}?points=${encodeURIComponent(points)}`, {
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -626,13 +630,19 @@ export default (config = {}, labels = {}) => ({
             if (res.ok) {
                 const d = await res.json();
                 if (Array.isArray(d.geometry) && d.geometry.length >= 2) geometry = d.geometry;
+            } else if (res.status === 429) {
+                // Too many routing calls (our throttle or the upstream). Back off for
+                // Retry-After (default 30s) and keep straight lines until then.
+                rateLimited = true;
+                const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+                this._routeCooldownUntil = Date.now() + (Number.isFinite(ra) && ra > 0 ? ra * 1000 : 30000);
             }
         } catch (e) { /* fall back to straight lines below */ }
         // A newer waypoint edit (or plan exit / auto-route off) superseded us.
         if (seq !== this._routeSeq || ! this.planning || ! this.autoRoute) return;
         this.routing = false;
         this._routedGeometry = geometry;
-        if (! geometry) window.llToast?.(labels.routeFallback || '');
+        if (! geometry) window.llToast?.((rateLimited ? (labels.routeRateLimited || labels.routeFallback) : labels.routeFallback) || '');
         this._drawPlan();
     },
 

@@ -291,7 +291,7 @@ Route::middleware('auth')->group(function (): void {
     // an OSRM-compatible upstream (SSRF-guarded, coordinates never logged/persisted,
     // clean {geometry:null} when the upstream is unset/unreachable). User-initiated,
     // opt-in egress — same class as the gallery place-picker geocoding.
-    Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:60,1')->name('maps.route');
+    Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('maps.route');
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');
