@@ -26,6 +26,7 @@
         routeName: @js(__('explore.route_name')),
         plannedRoute: @js(__('explore.planned_route_default')),
         routeFallback: @js(__('explore.auto_route_fallback')),
+        routeRateLimited: @js(__('explore.auto_route_rate_limited')),
      })">
 
     {{-- Zero-knowledge gate: tracks + couplings decrypt with the vault key. --}}

@@ -56,8 +56,33 @@ tags:
     description: >
       Optional encrypted Explore track blobs. The Explore RECORDS themselves
       (tracks, couplings, tolerances) live in the sealed explore module store
-      (see Store, GET/PUT /store/explore) — these endpoints only hold the
-      optional raw track file bytes a record references.
+      (see Store, GET/PUT /store/explore, shape = ExploreStoreModel) — these
+      endpoints only hold the optional raw track file bytes a record references.
+
+
+      MOBILE PARITY (incl. live tracking): every Explore capability is reachable
+      with the endpoints already listed — no per-record or "tracking" endpoint
+      exists (that would break zero-knowledge; GPS points never reach the server
+      as plaintext). The client does ALL of it and persists results into the
+      sealed store:
+
+        * Browse: read gallery photos (GET /gallery/store + /gallery/raw) for map
+          pins; read tracks from GET /store/explore.
+        * Import: parse GPX/KML/KMZ/TCX/FIT on-device, add a track to
+          ExploreStoreModel.tracks (sourceFormat = gpx|kml|kmz|tcx|fit), PUT
+          /store/explore. Optionally seal the original file via POST
+          /explore/upload and store its blob id as track.rawBlobId.
+        * Live tracking (mobile): record device GPS on-device, build a track with
+          sourceFormat = "recorded" (points carry lat/lng/ele/t), compute stats
+          client-side, PUT /store/explore. Nothing GPS-related is sent to the
+          server except the sealed ciphertext.
+        * Plan a tour: sourceFormat = "planned"; optionally snap waypoints to
+          paths via GET /maps/route (opt-in) before saving.
+        * Photo↔track coupling + tolerances: computed on-device, stored in
+          ExploreStoreModel.couplings / .settings.
+
+      Writes use the standard optimistic-concurrency PUT /store/explore
+      (read → mutate the decrypted object → write with the version; 409 → re-read).
   - name: Maps
     description: >
       Explore tour-planner auto-routing. Server-side proxy to an OSRM-compatible
@@ -88,6 +113,140 @@ components:
         pairing exchange. Include as `Authorization: Bearer <token>`.
 
   schemas:
+    ExploreStoreModel:
+      type: object
+      description: >
+        DECRYPTED shape of the `explore` module store (GET/PUT /store/explore).
+        The server NEVER sees this — it stores only the sealed ciphertext in
+        StoreResponse.ciphertext. This schema is the cross-client contract so the
+        mobile app (and any client) reads/writes the same structure the web client
+        does. Seal with the vault key using canonical JSON + Padmé + the suite
+        envelope, exactly like the other module stores.
+      properties:
+        v:
+          type: integer
+          description: Schema version (currently 3).
+          example: 3
+        tracks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExploreTrack"
+        couplings:
+          type: object
+          description: >
+            Map of gallery-photo id → coupling. A photo is placed on the map by
+            its own sealed EXIF lat/lng or, lacking that, by this coupling's
+            interpolated position along a track.
+          additionalProperties:
+            $ref: "#/components/schemas/ExploreCoupling"
+        settings:
+          $ref: "#/components/schemas/ExploreSettings"
+
+    ExploreTrack:
+      type: object
+      description: One GPS track (imported, planned, or mobile-recorded).
+      required: [id, name, sourceFormat, points]
+      properties:
+        id:
+          type: string
+          description: Client-generated UUID.
+        name:
+          type: string
+        note:
+          type: string
+          nullable: true
+          description: Optional free-text note.
+        sourceFormat:
+          type: string
+          description: >
+            How the track originated. `recorded` = live on-device GPS recording
+            (mobile); `planned` = hand-drawn/auto-routed in the planner; the rest
+            are imported file formats.
+          enum: [gpx, kml, kmz, tcx, fit, planned, recorded]
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        points:
+          type: array
+          description: Ordered track points.
+          items:
+            type: object
+            required: [lat, lng]
+            properties:
+              lat:
+                type: number
+              lng:
+                type: number
+              ele:
+                type: number
+                nullable: true
+                description: Elevation in metres (null for planned routes).
+              t:
+                type: integer
+                nullable: true
+                description: Epoch-ms timestamp (null for planned routes).
+        stats:
+          type: object
+          description: >
+            Client-computed metrics (see shared/track-parse.js computeStats):
+            distanceM, durationTotalS, durationMovingS, ascentM, descentM,
+            minEleM, maxEleM, avgSpeedMps, maxSpeedMps, pointCount, and
+            elevationProfile [{distM, eleM}].
+        bbox:
+          type: object
+          nullable: true
+          properties:
+            minLat: { type: number }
+            minLng: { type: number }
+            maxLat: { type: number }
+            maxLng: { type: number }
+        rawBlobId:
+          type: string
+          nullable: true
+          description: >
+            Optional id of the sealed original file uploaded via POST
+            /explore/upload (for later re-export). Null if not kept.
+        rawBlobKey:
+          type: string
+          nullable: true
+          description: Per-blob content key for rawBlobId (sealed in this record).
+        createdAt:
+          type: string
+          format: date-time
+
+    ExploreCoupling:
+      type: object
+      required: [trackId, source]
+      properties:
+        trackId:
+          type: string
+        source:
+          type: string
+          enum: [exif, interpolated, manual, none]
+        lat:
+          type: number
+          nullable: true
+          description: Interpolated position (present when source ≠ exif).
+        lng:
+          type: number
+          nullable: true
+
+    ExploreSettings:
+      type: object
+      description: Photo↔track coupling tolerances (client-side matching).
+      properties:
+        couplingTimeToleranceS:
+          type: integer
+          example: 3600
+        couplingDistanceToleranceM:
+          type: integer
+          example: 100
+
     IdResponse:
       type: object
       description: Response containing the newly created resource id.
