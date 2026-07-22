@@ -72,6 +72,30 @@ return [
     'auto_route_rate_limited' => 'Routing ist gerade limitiert — gerade Linien werden verwendet. Gleich nochmal versuchen.',
     'auto_route_too_many' => 'Zu viele Wegpunkte für Auto-Routing — gerade Linien werden verwendet.',
 
+    // Live planning stats
+    'plan_waypoints' => 'Wegpunkte',
+    'plan_distance' => 'Distanz',
+    'plan_duration' => 'Gesch. Dauer',
+    'surfaces' => 'Untergrund',
+    'surface' => [
+        'asphalt' => 'Asphalt',
+        'paved' => 'Befestigt',
+        'unpaved' => 'Unbefestigt',
+        'gravel' => 'Schotter',
+        'ground' => 'Naturboden',
+        'dirt' => 'Erde',
+        'grass' => 'Gras',
+        'sand' => 'Sand',
+        'concrete' => 'Beton',
+        'cobblestone' => 'Kopfsteinpflaster',
+        'paving_stones' => 'Pflastersteine',
+        'wood' => 'Holz',
+        'compacted' => 'Verdichtet',
+        'fine_gravel' => 'Feinschotter',
+        'unknown' => 'Unbekannt',
+        'other' => 'Sonstige',
+    ],
+
     // Assign-to-tour modal source filter
     'filter_all' => 'Alle',
     'filter_imported' => 'Importiert',

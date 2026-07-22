@@ -37,7 +37,20 @@ class MapController extends Controller
 
         $result = $router->route($waypoints);
 
-        return response()->json($result ?? ['geometry' => null])
+        // Backward-compatible extended shape: OSRM leaves elevation/ascent/
+        // descent/surfaces null; GraphHopper populates them. On any fallback the
+        // full null-shape keeps the client's parsing uniform.
+        $fallback = [
+            'geometry' => null,
+            'distanceM' => null,
+            'durationS' => null,
+            'elevation' => null,
+            'ascentM' => null,
+            'descentM' => null,
+            'surfaces' => null,
+        ];
+
+        return response()->json($result ?? $fallback)
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 

@@ -2409,14 +2409,19 @@ paths:
       operationId: mapsRoute
       summary: Snap tour waypoints to a real path/road route
       description: >
-        Snaps an ordered list of clicked waypoints onto real paths/roads via an
-        OSRM-compatible upstream and returns the snapped geometry plus total
-        distance/duration. User-initiated, opt-in egress (same class as
+        Snaps an ordered list of clicked waypoints onto real paths/roads via a
+        routing upstream and returns the snapped geometry plus total
+        distance/duration. Engine-dependent (server config maps.route_engine):
+        the default OSRM engine fills geometry/distanceM/durationS and leaves
+        elevation/ascentM/descentM/surfaces null; a self-hosted GraphHopper engine
+        additionally returns the elevation profile, ascent/descent and an OSM
+        surface breakdown. User-initiated, opt-in egress (same class as
         /gallery/geocode); the client CSP forbids third-party calls so this goes
-        through the server. Coordinates are never logged or persisted. When the
+        through the server. The upstream host comes from server config, never from
+        request input. Coordinates are never logged or persisted. When the
         upstream is unset/unreachable or no route exists, a clean 200 with
-        geometry:null is returned so the client falls back to straight lines.
-        Throttle: 60 req/min.
+        geometry:null (and all other fields null) is returned so the client falls
+        back to straight lines. Throttle: 60 req/min.
       parameters:
         - name: points
           in: query
@@ -2447,10 +2452,53 @@ paths:
                       maxItems: 2
                   distanceM:
                     type: number
-                    description: Total route distance in metres.
+                    nullable: true
+                    description: Total route distance in metres; null on fallback.
                   durationS:
                     type: number
-                    description: Estimated route duration in seconds.
+                    nullable: true
+                    description: Estimated route duration in seconds; null on fallback.
+                  elevation:
+                    type: array
+                    nullable: true
+                    description: >
+                      Elevation profile: cumulative distance (metres) vs elevation
+                      (metres above sea level), downsampled to ~256 points. Populated
+                      only by the GraphHopper engine; null for OSRM/fallback.
+                    items:
+                      type: object
+                      properties:
+                        distM:
+                          type: number
+                          description: Cumulative distance along the route in metres.
+                        eleM:
+                          type: number
+                          description: Elevation in metres above sea level.
+                  ascentM:
+                    type: number
+                    nullable: true
+                    description: >
+                      Total climb in metres (GraphHopper only); null for OSRM/fallback.
+                  descentM:
+                    type: number
+                    nullable: true
+                    description: >
+                      Total descent in metres (GraphHopper only); null for OSRM/fallback.
+                  surfaces:
+                    type: array
+                    nullable: true
+                    description: >
+                      OSM surface breakdown — distance per surface value, sorted
+                      descending by distance (GraphHopper only); null for OSRM/fallback.
+                    items:
+                      type: object
+                      properties:
+                        surface:
+                          type: string
+                          description: OSM surface tag value (e.g. asphalt, gravel, ground).
+                        distM:
+                          type: number
+                          description: Total distance on this surface in metres.
         "422":
           description: Missing/invalid points, or not between 2 and 25 waypoints.
         "429":

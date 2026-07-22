@@ -169,7 +169,7 @@ services:
       start_period: 20s
 
   valkey:
-    image: valkey/valkey:8-alpine@sha256:cfe71288f087704b06be45e270afa7a2abbf820093d6b11a23762081f5ff321d
+    image: valkey/valkey:8-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
     # Build the config from the mounted secret at start so the password is never
     # on the command line (visible in `ps`/`docker inspect`) nor in an env var.
     command: ["sh", "-c", "printf 'requirepass %s\\ndir /data\\nappendonly yes\\n' \"$$(cat /run/secrets/redis_password)\" > /tmp/valkey.conf && exec valkey-server /tmp/valkey.conf"]
@@ -279,6 +279,69 @@ services:
       retries: 5
       start_period: 180s
 
+  # Optional self-hosted GraphHopper router for Explore tour auto-routing, so the
+  # planned-route geometry never leaves the host AND you get elevation + OSM
+  # surface data (which OSRM does not provide). Opt-in; the default deploy stays
+  # on OSRM/straight-line. Enable with:
+  #   1. Drop an OSM region extract at ./data/graphhopper/region.osm.pbf
+  #      (e.g. from https://download.geofabrik.de/, matching PHOTON_REGION), and a
+  #      ./data/graphhopper/config.yml enabling the "foot"/"hike" profile with
+  #      graph.elevation.provider: srtm (elevation) — see .env.docker.example.
+  #   2. In .env:  MAPS_ROUTE_ENGINE=graphhopper
+  #                MAPS_ROUTE_UPSTREAM=http://graphhopper:8989
+  #                MAPS_ROUTE_PROFILE=hike   # (or foot — must match config.yml)
+  #   3. docker compose --profile maps up -d
+  # FIRST RUN imports the .pbf into a routing graph — this is slow (minutes for a
+  # regional extract, longer for a country) and one-time; the built graph is cached
+  # in the graphhopper-data volume, so subsequent starts are fast. Watch progress
+  # with `docker compose logs -f graphhopper` and wait for the container to become
+  # healthy before switching the engine. Internal-only (no host port).
+  #
+  # NOTE: this is the community-maintained image the official GraphHopper README
+  # points to (hub.docker.com/r/israelhikingmap/graphhopper); the GraphHopper org
+  # publishes no `graphhopper/graphhopper` image. Tag 11.0 == GraphHopper 11.0.
+  # Plain digest-pinned (no ${VAR:-default} wrapper) so Dependabot's docker
+  # ecosystem can parse and bump it; tag + digest move together on every bump.
+  graphhopper:
+    image: israelhikingmap/graphhopper:11.0@sha256:e77e14e48ea69ea7bb0eb71ddc9d583e5ce85dd295475572371f72ed4880a1ff
+    profiles: ["maps"]
+    # The image's ENTRYPOINT is `./graphhopper.sh -c config-example.yml`, which
+    # runs the server on 8989 and reads its OSM data + graph paths from the config.
+    # The operator supplies both under ./data/graphhopper (mounted at /data): the
+    # region.osm.pbf extract and a config-example.yml whose datareader.file points
+    # at /data/region.osm.pbf and graph.location at /graphhopper-graph-cache — see
+    # .env.docker.example. No command override so the image's launch stays intact.
+    environment:
+      # Cap the JVM heap so a regional graph fits a modest box; raise on a bigger
+      # host or for country/continent extracts.
+      JAVA_OPTS: ${GRAPHHOPPER_JAVA_OPTS:--Xmx2g -Xms1g}
+    volumes:
+      # region.osm.pbf + config-example.yml supplied by the operator; graph persists.
+      - ./data/graphhopper:/data
+      - graphhopper-data:/graphhopper-graph-cache
+    networks:
+      - internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "${GRAPHHOPPER_CPU_LIMIT:-2}"
+          memory: ${GRAPHHOPPER_MEMORY_LIMIT:-3g}
+    healthcheck:
+      # GraphHopper (Dropwizard) serves the routing API on 8989; the /info
+      # endpoint returns once the graph is loaded and routing is ready. (The
+      # Dropwizard /healthcheck lives on the separate admin connector, so /info
+      # on the app port is the reliable "routing is up" signal here.)
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:8989/info' >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
 networks:
   internal:
 
@@ -299,4 +362,5 @@ volumes:
   app-storage:
   ml-cache:
   photon-data:
+  graphhopper-data:
 

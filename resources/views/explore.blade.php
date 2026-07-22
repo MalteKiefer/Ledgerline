@@ -19,6 +19,7 @@
         sourceManual: @js(__('explore.source_manual')),
         sourceNone: @js(__('explore.source_none')),
         elevation: @js(__('explore.elevation')),
+        surfaces: @js(__('explore.surface')),
         unitKm: @js(__('explore.unit_km')),
         unitM: @js(__('explore.unit_m')),
         unitKmh: @js(__('explore.unit_kmh')),
@@ -191,7 +192,52 @@
                       <span x-show="routing" class="text-accent">{{ __('explore.auto_route_routing') }}</span>
                     </label>
                     <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('explore.auto_route_hint') }}</p>
-                    <div class="mt-2 flex flex-wrap items-center gap-2">
+
+                    {{-- Live plan stats: waypoints, distance, (routed) duration + ascent/descent. --}}
+                    <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      <div>
+                        <dt class="text-gray-500 dark:text-gray-400">{{ __('explore.plan_waypoints') }}</dt>
+                        <dd class="font-medium text-gray-900 dark:text-gray-100" x-text="planPoints.length"></dd>
+                      </div>
+                      <div x-show="planPoints.length >= 2">
+                        <dt class="text-gray-500 dark:text-gray-400">{{ __('explore.plan_distance') }}</dt>
+                        <dd class="font-medium text-gray-900 dark:text-gray-100" x-text="fmtDistance(planDistanceM)"></dd>
+                      </div>
+                      <div x-show="planDurationS !== null">
+                        <dt class="text-gray-500 dark:text-gray-400">{{ __('explore.plan_duration') }}</dt>
+                        <dd class="font-medium text-gray-900 dark:text-gray-100" x-text="fmtDuration(planDurationS)"></dd>
+                      </div>
+                      <div x-show="planAscentM !== null">
+                        <dt class="text-gray-500 dark:text-gray-400">{{ __('explore.ascent') }}</dt>
+                        <dd class="font-medium text-gray-900 dark:text-gray-100" x-text="fmtEle(planAscentM)"></dd>
+                      </div>
+                      <div x-show="planDescentM !== null">
+                        <dt class="text-gray-500 dark:text-gray-400">{{ __('explore.descent') }}</dt>
+                        <dd class="font-medium text-gray-900 dark:text-gray-100" x-text="fmtEle(planDescentM)"></dd>
+                      </div>
+                    </dl>
+
+                    {{-- Live elevation profile (GraphHopper only) or a subtle hint. --}}
+                    <div class="mt-3" x-show="planPoints.length >= 2 && autoRoute && ! routing">
+                      <p class="mb-1 text-[11px] font-medium text-gray-600 dark:text-gray-400">{{ __('explore.elevation_profile') }}</p>
+                      <div x-show="planHasElevation" x-ref="planElevation" class="w-full"></div>
+                      <p x-show="! planHasElevation" x-cloak class="text-[11px] text-gray-400 dark:text-gray-500">{{ __('explore.no_elevation') }}</p>
+                    </div>
+
+                    {{-- Surface breakdown (GraphHopper only). --}}
+                    <div class="mt-3" x-show="planSurfaces.length">
+                      <p class="mb-1 text-[11px] font-medium text-gray-600 dark:text-gray-400">{{ __('explore.surfaces') }}</p>
+                      <div class="flex flex-wrap gap-1.5">
+                        <template x-for="s in planSurfaces" :key="s.surface">
+                          <span class="inline-flex items-center gap-1 rounded-full bg-black/[0.04] dark:bg-white/10 px-2 py-0.5 text-[11px] text-gray-700 dark:text-gray-300">
+                            <span x-text="surfaceLabel(s.surface)"></span>
+                            <span class="text-gray-400 dark:text-gray-500" x-text="fmtDistance(s.distM)"></span>
+                          </span>
+                        </template>
+                      </div>
+                    </div>
+
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
                       <button type="button" @click="savePlan()" :disabled="planPoints.length < 2"
                         class="inline-flex items-center gap-1.5 rounded-lg ll-accent px-3 py-1.5 text-xs font-medium disabled:opacity-40">
                         <x-icon name="check" class="h-3.5 w-3.5" />
@@ -204,13 +250,13 @@
                       </button>
                       <button type="button" @click="cancelPlan()"
                         class="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">{{ __('explore.cancel') }}</button>
-                      <span class="text-xs text-gray-400" x-text="planPoints.length"></span>
                     </div>
                   </div>
                 </template>
 
-                {{-- Search --}}
-                <div x-show="tracks.length" class="border-b border-black/[0.06] dark:border-white/10 px-3 py-2">
+                {{-- Search + list + empty states are hidden while planning so the
+                     in-progress route isn't cluttered by existing tours. --}}
+                <div x-show="tracks.length && ! planning" class="border-b border-black/[0.06] dark:border-white/10 px-3 py-2">
                   <div class="relative">
                     <x-icon name="magnifying-glass" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <input type="search" x-model="trackQuery" placeholder="{{ __('explore.search_tracks') }}"
@@ -218,14 +264,14 @@
                   </div>
                 </div>
 
-                <template x-if="! tracks.length">
+                <template x-if="! tracks.length && ! planning">
                   <p class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('explore.empty_tracks') }}</p>
                 </template>
-                <template x-if="tracks.length && ! filteredTracks.length">
+                <template x-if="tracks.length && ! filteredTracks.length && ! planning">
                   <p class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('explore.no_search_results') }}</p>
                 </template>
 
-                <div class="max-h-[calc(100dvh-24rem)] overflow-y-auto divide-y divide-black/[0.06] dark:divide-white/10">
+                <div x-show="! planning" class="max-h-[calc(100dvh-24rem)] overflow-y-auto divide-y divide-black/[0.06] dark:divide-white/10">
                   <template x-for="t in filteredTracks" :key="t.id">
                     <div class="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-accent/5"
                       :class="selectedTrackId === t.id ? 'bg-accent/10' : ''">

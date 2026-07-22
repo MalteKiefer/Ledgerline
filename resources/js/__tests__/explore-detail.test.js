@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlannedTrack, hasElevation, downsampleProfile } from '../shared/explore-detail';
+import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
 
 describe('buildPlannedTrack', () => {
     it('returns null for fewer than two valid waypoints', () => {
@@ -90,5 +90,65 @@ describe('downsampleProfile', () => {
         const r = downsampleProfile(profile);
         expect(r.ys).toEqual([null, null]);
         expect(r.xs).toEqual([0, 1]);
+    });
+});
+
+describe('normalizeRouteElevation', () => {
+    it('returns [] for missing/empty/non-array input', () => {
+        expect(normalizeRouteElevation(null)).toEqual([]);
+        expect(normalizeRouteElevation(undefined)).toEqual([]);
+        expect(normalizeRouteElevation([])).toEqual([]);
+        expect(normalizeRouteElevation('nope')).toEqual([]);
+    });
+
+    it('keeps finite distances and passes elevation through', () => {
+        const r = normalizeRouteElevation([
+            { distM: 0, eleM: 100 },
+            { distM: 500, eleM: 110 },
+        ]);
+        expect(r).toEqual([{ distM: 0, eleM: 100 }, { distM: 500, eleM: 110 }]);
+    });
+
+    it('drops entries with non-finite distance and maps non-finite elevation to null', () => {
+        const r = normalizeRouteElevation([
+            { distM: 'x', eleM: 100 },   // dropped (bad distance)
+            { distM: 200, eleM: 'y' },   // kept, eleM -> null
+            null,                        // dropped
+            { distM: 400, eleM: 120 },
+        ]);
+        expect(r).toEqual([{ distM: 200, eleM: null }, { distM: 400, eleM: 120 }]);
+    });
+});
+
+describe('aggregateSurfaces', () => {
+    it('returns [] for missing/empty input', () => {
+        expect(aggregateSurfaces(null)).toEqual([]);
+        expect(aggregateSurfaces([])).toEqual([]);
+        expect(aggregateSurfaces('nope')).toEqual([]);
+    });
+
+    it('sums per-surface distances and sorts by distance descending', () => {
+        const r = aggregateSurfaces([
+            { surface: 'asphalt', distM: 1000 },
+            { surface: 'gravel', distM: 500 },
+            { surface: 'asphalt', distM: 2200 },
+            { surface: 'ground', distM: 400 },
+        ]);
+        expect(r).toEqual([
+            { surface: 'asphalt', distM: 3200 },
+            { surface: 'gravel', distM: 500 },
+            { surface: 'ground', distM: 400 },
+        ]);
+    });
+
+    it('collapses blank/missing surface names into "unknown" and skips zero/negative distances', () => {
+        const r = aggregateSurfaces([
+            { surface: '', distM: 300 },
+            { surface: '   ', distM: 200 },
+            { surface: 'asphalt', distM: 0 },     // skipped
+            { surface: 'gravel', distM: -5 },      // skipped
+            { distM: 100 },                        // no surface -> unknown
+        ]);
+        expect(r).toEqual([{ surface: 'unknown', distM: 600 }]);
     });
 });
