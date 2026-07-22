@@ -70,12 +70,14 @@ are bundled and served locally — no external CDNs, fonts, or trackers.
 - **Contacts** — zero-knowledge vCard 4.0 contacts (no CardDAV), encrypted
   avatars, address mini-maps, bidirectional link to gallery People.
 - **Invoices** — zero-knowledge invoicing with print/PDF templates.
-- **Explore** — a map-centric view (MapLibre GL) unifying gallery photo/video
-  pins with self-recorded/imported **GPS tracks** (GPX/KML/KMZ/TCX/FIT, parsed
-  client-side) and automatic photo-to-track coupling. Track points, couplings and
-  tolerances live sealed in the `explore` store; map tiles are relayed
-  same-origin from a self-hosted tileserver sidecar. (Offline `.map` regions are a
-  later iOS-client addition.)
+- **Explore** — a map-centric view unifying gallery photo/video pins with
+  self-recorded/imported **GPS tracks** (GPX/KML/KMZ/TCX/FIT, parsed client-side)
+  and automatic photo-to-track coupling. Track points, couplings and tolerances
+  live sealed in the `explore` store. The map renders with Leaflet + OpenStreetMap
+  raster tiles loaded directly in the browser (same as the gallery location
+  picker; allowed by the existing `img-src *.tile.openstreetmap.org` CSP) — no
+  tile server, relay or `.mbtiles` needed. (Offline vector maps are a later
+  iOS-client addition.)
 - **Health** — zero-knowledge health tracking (weight, blood pressure, pulse,
   SpO₂, temperature, glucose), charts (uPlot), and a doctor-export.
 - **Backup** — encrypted, incremental backups to S3/B2/SFTP/WebDAV.
@@ -498,7 +500,7 @@ index via `GET/PUT /files/store`; gallery via `GET/PUT /gallery/store`. There is
 **no per-record endpoint** (that would break zero-knowledge).
 
 See [`openapi.yaml`](openapi.yaml) for the complete machine-readable reference
-(OpenAPI 3.1, 95 operations, verified 1:1 against the route table).
+(OpenAPI 3.1, 93 operations, verified 1:1 against the route table).
 
 ---
 

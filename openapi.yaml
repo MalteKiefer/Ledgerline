@@ -58,13 +58,6 @@ tags:
       (tracks, couplings, tolerances) live in the sealed explore module store
       (see Store, GET/PUT /store/explore) — these endpoints only hold the
       optional raw track file bytes a record references.
-  - name: Maps
-    description: >
-      Same-origin map relay for the Explore viewer. The server proxies base-map
-      tiles + the style.json from a self-hosted tileserver-gl through the SSRF
-      guard so the browser stays same-origin; tiles are non-secret and the
-      coordinate a tile encodes is never logged or persisted. Returns 404 when
-      no upstream tile server is configured.
   - name: Passwords
     description: Password-manager enrichment endpoints (favicon, HIBP, 2FA directory)
   - name: Vaults
@@ -2238,79 +2231,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UsageResponse"
-        "429":
-          description: Rate limit exceeded.
-
-  # --------------------------------------------------------------------------
-  # Maps (same-origin tile relay)
-  # --------------------------------------------------------------------------
-
-  /maps/style:
-    get:
-      tags: [Maps]
-      operationId: mapsStyle
-      summary: Relay the map style.json (same-origin)
-      description: >
-        Returns the upstream tileserver-gl style.json with every source's tile
-        URLs rewritten to the same-origin /maps/tiles/{z}/{x}/{y} relay, so the
-        client never learns or connects to the upstream tile host. Throttle:
-        120 req/min. Returns 404 when no upstream tile server is configured.
-      responses:
-        "200":
-          description: Map style descriptor (MapLibre/Mapbox GL style JSON).
-          content:
-            application/json:
-              schema:
-                type: object
-        "404":
-          description: Map relay disabled or upstream unreachable.
-        "429":
-          description: Rate limit exceeded.
-
-  /maps/tiles/{z}/{x}/{y}:
-    get:
-      tags: [Maps]
-      operationId: mapsTile
-      summary: Relay a single map tile (same-origin)
-      description: >
-        Proxies one base-map tile from the upstream tileserver-gl through the
-        SSRF guard and streams the bytes with a long immutable cache header. z is
-        0..22 and x/y are bounded by the zoom level; an out-of-range coordinate
-        is a 404. The coordinate is never logged or persisted. Throttle: 600
-        req/min. Returns 404 when no upstream tile server is configured.
-      parameters:
-        - name: z
-          in: path
-          required: true
-          description: Zoom level (0..22).
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 22
-        - name: x
-          in: path
-          required: true
-          description: Tile column (0 .. 2^z - 1).
-          schema:
-            type: integer
-            minimum: 0
-        - name: y
-          in: path
-          required: true
-          description: Tile row (0 .. 2^z - 1).
-          schema:
-            type: integer
-            minimum: 0
-      responses:
-        "200":
-          description: Tile image bytes.
-          content:
-            image/png:
-              schema:
-                type: string
-                format: binary
-        "404":
-          description: Out-of-range coordinate, relay disabled, or upstream unreachable.
         "429":
           description: Rate limit exceeded.
 

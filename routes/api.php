@@ -17,7 +17,6 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
-use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordBreachController;
@@ -137,8 +136,6 @@ Route::prefix('v1')->group(function (): void {
 
         // Same-origin map relay (style.json + single-tile proxy) for the Explore
         // viewer; SSRF-guarded, coordinate never logged, 404 when upstream unset.
-        Route::get('/maps/style', [MapController::class, 'style'])->middleware('throttle:120,1')->name('api.maps.style');
-        Route::get('/maps/tiles/{z}/{x}/{y}', [MapController::class, 'tile'])->where(['z' => '[0-9]+', 'x' => '[0-9]+', 'y' => '[0-9]+'])->middleware('throttle:600,1')->name('api.maps.tile');
 
         // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
         // k-anonymity), and 2fa.directory dataset. Same controllers as the web
