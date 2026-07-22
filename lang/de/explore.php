@@ -71,6 +71,12 @@ return [
     'auto_route_fallback' => 'Route konnte nicht geladen werden — gerade Linien werden verwendet.',
     'auto_route_rate_limited' => 'Routing ist gerade limitiert — gerade Linien werden verwendet. Gleich nochmal versuchen.',
 
+    // Assign-to-tour modal source filter
+    'filter_all' => 'Alle',
+    'filter_imported' => 'Importiert',
+    'filter_planned' => 'Geplant',
+    'filter_recorded' => 'Aufgezeichnet',
+
     // Coupling
     'coupling' => 'Foto-Zuordnung',
     'match_photos' => 'Fotos den Touren zuordnen',

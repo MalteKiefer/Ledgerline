@@ -65,7 +65,9 @@ export default (config = {}, labels = {}) => ({
 
     selectedTrackId: null,
     settingsOpen: false,
-    assignFor: null,     // mediaId currently choosing a manual track, or null
+    assignFor: null,     // mediaId currently choosing a manual track (modal open), or null
+    assignQuery: '',     // autocomplete search in the assign modal
+    assignSource: 'all', // assign-modal source filter: all | imported | planned | recorded
 
     // Persisted map camera ([lat, lng] + zoom) so it survives the media↔tracks
     // view toggle. The Leaflet map itself is never torn down on toggle.
@@ -419,6 +421,28 @@ export default (config = {}, labels = {}) => ({
         } finally {
             this.busy = false;
         }
+    },
+
+    // Open the assign-to-tour modal for a photo (search + filter over tracks).
+    openAssign(mediaId) {
+        this.assignFor = mediaId;
+        this.assignQuery = '';
+        this.assignSource = 'all';
+    },
+    closeAssign() { this.assignFor = null; },
+
+    // Tracks offered in the assign modal: name autocomplete + source filter.
+    get assignCandidates() {
+        void this._mut;
+        const q = (this.assignQuery || '').trim().toLowerCase();
+        const src = this.assignSource || 'all';
+        return this.tracks.filter((t) => {
+            if (src !== 'all') {
+                const kind = t.sourceFormat === 'planned' || t.sourceFormat === 'recorded' ? t.sourceFormat : 'imported';
+                if (kind !== src) return false;
+            }
+            return ! q || (t.name || '').toLowerCase().includes(q);
+        });
     },
 
     // Manually pin a photo to a specific track (interpolated position by time),
