@@ -32,9 +32,9 @@ class VaultRotateTest extends TestCase
         $vault->save();
 
         SharedVaultStore::create([
-            'vault_id'        => $vault->id,
+            'vault_id' => $vault->id,
             'sealed_manifest' => 'SEALED',
-            'version'         => 1,
+            'version' => 1,
         ]);
 
         return $vault;
@@ -47,23 +47,23 @@ class VaultRotateTest extends TestCase
         string $status = 'active',
     ): SharedVaultMember {
         return SharedVaultMember::create([
-            'vault_id'              => $vault->id,
-            'user_id'               => $user->id,
-            'role'                  => $role,
-            'wrapped_vault_key'     => 'WRAPPED',
-            'recipient_fingerprint' => 'FP-' . $user->id,
-            'status'                => $status,
+            'vault_id' => $vault->id,
+            'user_id' => $user->id,
+            'role' => $role,
+            'wrapped_vault_key' => 'WRAPPED',
+            'recipient_fingerprint' => 'FP-'.$user->id,
+            'status' => $status,
         ]);
     }
 
     private function rotatePayload(int $removeId, array $memberIds, int $version = 1): array
     {
         return [
-            'sealed_manifest'  => 'NEW-SEALED',
+            'sealed_manifest' => 'NEW-SEALED',
             'expected_version' => $version,
-            'members'          => array_map(fn (int $id) => [
-                'user_id'          => $id,
-                'wrapped_vault_key' => 'REWRAPPED-' . $id,
+            'members' => array_map(fn (int $id) => [
+                'user_id' => $id,
+                'wrapped_vault_key' => 'REWRAPPED-'.$id,
             ], $memberIds),
             'remove_member_id' => $removeId,
         ];
@@ -102,8 +102,8 @@ class VaultRotateTest extends TestCase
     public function test_members_index_returns_members_with_public_key(): void
     {
         $manager = User::factory()->create(['x25519_public_key' => 'MGR-PUB-KEY']);
-        $member  = User::factory()->create(['x25519_public_key' => 'MBR-PUB-KEY']);
-        $vault   = $this->makeVault($manager);
+        $member = User::factory()->create(['x25519_public_key' => 'MBR-PUB-KEY']);
+        $vault = $this->makeVault($manager);
         $this->addMember($vault, $manager, 'manager');
         $memberRow = $this->addMember($vault, $member, 'viewer');
 
@@ -127,7 +127,7 @@ class VaultRotateTest extends TestCase
     public function test_members_index_does_not_return_wrapped_vault_key(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
+        $vault = $this->makeVault($manager);
         $this->addMember($vault, $manager, 'manager');
 
         $response = $this->actingAs($manager)
@@ -145,8 +145,8 @@ class VaultRotateTest extends TestCase
 
     public function test_rotate_requires_manager_role(): void
     {
-        $owner  = User::factory()->create();
-        $vault  = $this->makeVault($owner);
+        $owner = User::factory()->create();
+        $vault = $this->makeVault($owner);
         $ownerM = $this->addMember($vault, $owner, 'manager');
 
         // viewer
@@ -157,7 +157,7 @@ class VaultRotateTest extends TestCase
             ->assertNotFound();
 
         // editor
-        $editor  = User::factory()->create();
+        $editor = User::factory()->create();
         $editorM = $this->addMember($vault, $editor, 'editor');
         $this->actingAs($editor)
             ->postJson(route('vaults.rotate', $vault), $this->rotatePayload($editorM->id, [$owner->id]))
@@ -177,10 +177,10 @@ class VaultRotateTest extends TestCase
     public function test_rotate_returns_409_on_stale_expected_version(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
-        $mgr     = $this->addMember($vault, $manager, 'manager');
-        $other   = User::factory()->create();
-        $otherM  = $this->addMember($vault, $other, 'viewer');
+        $vault = $this->makeVault($manager);
+        $mgr = $this->addMember($vault, $manager, 'manager');
+        $other = User::factory()->create();
+        $otherM = $this->addMember($vault, $other, 'viewer');
 
         $response = $this->actingAs($manager)
             ->postJson(route('vaults.rotate', $vault), $this->rotatePayload(
@@ -201,19 +201,19 @@ class VaultRotateTest extends TestCase
     public function test_rotate_removes_member_updates_wrapped_keys_and_bumps_version(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
-        $mgr     = $this->addMember($vault, $manager, 'manager');
+        $vault = $this->makeVault($manager);
+        $mgr = $this->addMember($vault, $manager, 'manager');
         $memberA = User::factory()->create();
         $memberB = User::factory()->create();
-        $mA      = $this->addMember($vault, $memberA, 'viewer');
-        $mB      = $this->addMember($vault, $memberB, 'viewer');
+        $mA = $this->addMember($vault, $memberA, 'viewer');
+        $mB = $this->addMember($vault, $memberB, 'viewer');
 
         // Remove memberB, re-wrap for manager and memberA
         $response = $this->actingAs($manager)
             ->postJson(route('vaults.rotate', $vault), [
-                'sealed_manifest'  => 'NEW-SEALED-MANIFEST',
+                'sealed_manifest' => 'NEW-SEALED-MANIFEST',
                 'expected_version' => 1,
-                'members'          => [
+                'members' => [
                     ['user_id' => $manager->id, 'wrapped_vault_key' => 'NEW-MGR-WRAP'],
                     ['user_id' => $memberA->id, 'wrapped_vault_key' => 'NEW-A-WRAP'],
                 ],
@@ -243,18 +243,18 @@ class VaultRotateTest extends TestCase
     public function test_rotate_rejects_unknown_user_in_members_list(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
-        $mgr     = $this->addMember($vault, $manager, 'manager');
-        $victim  = User::factory()->create();
+        $vault = $this->makeVault($manager);
+        $mgr = $this->addMember($vault, $manager, 'manager');
+        $victim = User::factory()->create();
         $victimM = $this->addMember($vault, $victim, 'viewer');
 
         $stranger = User::factory()->create(); // not a member
 
         $response = $this->actingAs($manager)
             ->postJson(route('vaults.rotate', $vault), [
-                'sealed_manifest'  => 'SEALED',
+                'sealed_manifest' => 'SEALED',
                 'expected_version' => 1,
-                'members'          => [
+                'members' => [
                     ['user_id' => $manager->id, 'wrapped_vault_key' => 'WRAP'],
                     ['user_id' => $stranger->id, 'wrapped_vault_key' => 'WRAP'], // not a member
                 ],
@@ -267,18 +267,18 @@ class VaultRotateTest extends TestCase
     public function test_rotate_rejects_pending_member_in_members_list(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
-        $mgr     = $this->addMember($vault, $manager, 'manager');
-        $victim  = User::factory()->create();
+        $vault = $this->makeVault($manager);
+        $mgr = $this->addMember($vault, $manager, 'manager');
+        $victim = User::factory()->create();
         $victimM = $this->addMember($vault, $victim, 'viewer');
         $pending = User::factory()->create();
         $this->addMember($vault, $pending, 'viewer', 'pending');
 
         $response = $this->actingAs($manager)
             ->postJson(route('vaults.rotate', $vault), [
-                'sealed_manifest'  => 'SEALED',
+                'sealed_manifest' => 'SEALED',
                 'expected_version' => 1,
-                'members'          => [
+                'members' => [
                     ['user_id' => $manager->id, 'wrapped_vault_key' => 'WRAP'],
                     ['user_id' => $pending->id, 'wrapped_vault_key' => 'WRAP'], // pending, not active
                 ],
@@ -295,20 +295,20 @@ class VaultRotateTest extends TestCase
     public function test_rotate_rejects_remove_member_id_from_different_vault(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
-        $mgr     = $this->addMember($vault, $manager, 'manager');
+        $vault = $this->makeVault($manager);
+        $mgr = $this->addMember($vault, $manager, 'manager');
 
         // Create a member row on a completely different vault
         $otherOwner = User::factory()->create();
         $otherVault = $this->makeVault($otherOwner);
         $otherMember = User::factory()->create();
-        $foreignRow  = $this->addMember($otherVault, $otherMember, 'viewer');
+        $foreignRow = $this->addMember($otherVault, $otherMember, 'viewer');
 
         $response = $this->actingAs($manager)
             ->postJson(route('vaults.rotate', $vault), [
-                'sealed_manifest'  => 'SEALED',
+                'sealed_manifest' => 'SEALED',
                 'expected_version' => 1,
-                'members'          => [
+                'members' => [
                     ['user_id' => $manager->id, 'wrapped_vault_key' => 'WRAP'],
                 ],
                 'remove_member_id' => $foreignRow->id, // belongs to another vault
@@ -323,8 +323,8 @@ class VaultRotateTest extends TestCase
 
     public function test_delete_vault_requires_manager_role(): void
     {
-        $owner  = User::factory()->create();
-        $vault  = $this->makeVault($owner);
+        $owner = User::factory()->create();
+        $vault = $this->makeVault($owner);
         $this->addMember($vault, $owner, 'manager');
 
         $viewer = User::factory()->create();
@@ -348,10 +348,10 @@ class VaultRotateTest extends TestCase
     public function test_delete_vault_cascades_members_and_store(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
-        $mgr     = $this->addMember($vault, $manager, 'manager');
-        $other   = User::factory()->create();
-        $otherM  = $this->addMember($vault, $other, 'viewer');
+        $vault = $this->makeVault($manager);
+        $mgr = $this->addMember($vault, $manager, 'manager');
+        $other = User::factory()->create();
+        $otherM = $this->addMember($vault, $other, 'viewer');
 
         $vaultId = $vault->id;
 
@@ -372,17 +372,17 @@ class VaultRotateTest extends TestCase
     public function test_rotate_rejects_manager_removing_themselves(): void
     {
         $manager = User::factory()->create();
-        $vault   = $this->makeVault($manager);
-        $mgr     = $this->addMember($vault, $manager, 'manager');
-        $other   = User::factory()->create();
-        $otherM  = $this->addMember($vault, $other, 'viewer');
+        $vault = $this->makeVault($manager);
+        $mgr = $this->addMember($vault, $manager, 'manager');
+        $other = User::factory()->create();
+        $otherM = $this->addMember($vault, $other, 'viewer');
 
         // Manager passes their own membership row as remove_member_id
         $response = $this->actingAs($manager)
             ->postJson(route('vaults.rotate', $vault), [
-                'sealed_manifest'  => 'SEALED',
+                'sealed_manifest' => 'SEALED',
                 'expected_version' => 1,
-                'members'          => [
+                'members' => [
                     ['user_id' => $other->id, 'wrapped_vault_key' => 'WRAP'],
                 ],
                 'remove_member_id' => $mgr->id,
@@ -392,5 +392,4 @@ class VaultRotateTest extends TestCase
         // Membership must NOT have been deleted
         $this->assertNotNull(SharedVaultMember::find($mgr->id));
     }
-
 }
