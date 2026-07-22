@@ -23,8 +23,10 @@ export default (opts = {}) => ({
         } catch (e) { /* ignore */ }
     },
     // Remote kill switch: flag a client to erase its local state on next contact.
+    // No confirm prompt — the owner asked for immediate action (single-tenant,
+    // owner-only device management); the wipe is reversible until the client next
+    // connects, and the pending state is shown in the list.
     async wipeDevice(id) {
-        if (! await this.$store.confirm.ask(opts.wipeConfirm || 'Wipe this client on its next connection?')) return;
         try {
             await postForm(`/devices/${id}/wipe`, null, 'POST');
             this.loadDevices();
