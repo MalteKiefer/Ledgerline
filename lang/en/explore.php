@@ -71,6 +71,12 @@ return [
     'auto_route_fallback' => 'Could not fetch a route — using straight lines.',
     'auto_route_rate_limited' => 'Routing is rate-limited right now — using straight lines. Try again shortly.',
 
+    // Assign-to-tour modal source filter
+    'filter_all' => 'All',
+    'filter_imported' => 'Imported',
+    'filter_planned' => 'Planned',
+    'filter_recorded' => 'Recorded',
+
     // Coupling
     'coupling' => 'Photo matching',
     'match_photos' => 'Match photos to tracks',

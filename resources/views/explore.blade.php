@@ -143,7 +143,7 @@
                       <p class="text-xs text-gray-500 dark:text-gray-400" x-text="couplingLabel(m.id)"></p>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                      <button type="button" @click="assignFor = (assignFor === m.id ? null : m.id)"
+                      <button type="button" @click="openAssign(m.id)"
                         class="rounded-md p-1.5 text-gray-500 hover:bg-accent/5 hover:text-accent"
                         :title="@js(__('explore.assign_to_track'))" :aria-label="@js(__('explore.assign_to_track'))">
                         <x-icon name="route" class="h-4 w-4" />
@@ -157,21 +157,6 @@
                   </div>
                 </template>
 
-                {{-- Manual assign picker for the selected media --}}
-                <template x-if="assignFor">
-                  <div class="bg-accent/5 px-4 py-3">
-                    <p class="mb-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('explore.assign_to_track') }}</p>
-                    <div class="space-y-1">
-                      <template x-for="t in tracks" :key="t.id">
-                        <button type="button" @click="assignToTrack(assignFor, t.id)"
-                          class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-white/70 dark:hover:bg-white/10">
-                          <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="'background:' + trackColor(t)"></span>
-                          <span class="truncate" x-text="t.name"></span>
-                        </button>
-                      </template>
-                    </div>
-                  </div>
-                </template>
               </div>
             </div>
 
@@ -397,6 +382,62 @@
               <div class="mt-5 flex justify-end gap-3">
                 <button type="button" @click="settingsOpen = false" class="rounded-md border border-gray-300 dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">{{ __('explore.close') }}</button>
                 <button type="button" @click="saveSettings()" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium">{{ __('explore.save') }}</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        {{-- Assign-to-tour modal: search/autocomplete + source filter over tracks --}}
+        <template x-teleport="body">
+          <div x-show="assignFor" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closeAssign()">
+            <div class="absolute inset-0 bg-gray-900/40" @click="closeAssign()"></div>
+            <div class="relative flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.assign_to_track') }}</h3>
+                <button type="button" @click="closeAssign()" class="rounded-md p-1.5 text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10" :aria-label="@js(__('explore.close'))">
+                  <x-icon name="x-mark" class="h-4 w-4" />
+                </button>
+              </div>
+              <div class="space-y-3 px-5 py-4">
+                {{-- Autocomplete search --}}
+                <input type="search" x-model="assignQuery" x-ref="assignSearch"
+                  x-effect="if (assignFor) $nextTick(() => $refs.assignSearch && $refs.assignSearch.focus())"
+                  placeholder="{{ __('explore.search_tracks') }}"
+                  class="block w-full rounded-lg border-gray-300 dark:border-white/10 dark:bg-white/5 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                {{-- Source filter chips --}}
+                <div class="flex flex-wrap gap-1.5">
+                  @foreach (['all','imported','planned','recorded'] as $src)
+                    <button type="button" @click="assignSource = '{{ $src }}'"
+                      class="rounded-full px-2.5 py-1 text-xs font-medium"
+                      :class="assignSource === '{{ $src }}' ? 'll-accent' : 'bg-black/[0.04] dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-accent/10'">
+                      {{ __('explore.filter_' . $src) }}
+                    </button>
+                  @endforeach
+                </div>
+              </div>
+              {{-- Track list --}}
+              <div class="min-h-0 flex-1 overflow-y-auto border-t border-black/[0.06] dark:border-white/10 px-2 py-2">
+                <template x-for="t in assignCandidates" :key="t.id">
+                  <button type="button" @click="assignToTrack(assignFor, t.id)"
+                    class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-accent/5"
+                    :class="assignFor && couplings[assignFor] && couplings[assignFor].trackId === t.id ? 'bg-accent/10' : ''">
+                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="'background:' + trackColor(t)"></span>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-sm text-gray-900 dark:text-gray-100" x-text="t.name"></span>
+                      <span class="block truncate text-xs text-gray-500 dark:text-gray-400" x-text="fmtDistance(t.stats && t.stats.distanceM)"></span>
+                    </span>
+                    <x-icon name="check" class="h-4 w-4 shrink-0 text-accent"
+                      x-show="assignFor && couplings[assignFor] && couplings[assignFor].trackId === t.id" />
+                  </button>
+                </template>
+                <p x-show="! assignCandidates.length" class="px-3 py-6 text-center text-xs text-gray-500 dark:text-gray-400">{{ __('explore.no_search_results') }}</p>
+              </div>
+              {{-- Footer: clear coupling --}}
+              <div class="flex items-center justify-between border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <button type="button" x-show="assignFor && couplings[assignFor]" @click="clearCoupling(assignFor); closeAssign()"
+                  class="text-xs font-medium text-red-500 hover:text-red-600">{{ __('explore.clear_coupling') }}</button>
+                <span x-show="! (assignFor && couplings[assignFor])"></span>
+                <button type="button" @click="closeAssign()" class="rounded-md border border-gray-300 dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">{{ __('explore.close') }}</button>
               </div>
             </div>
           </div>
