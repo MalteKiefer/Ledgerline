@@ -73,6 +73,7 @@
         ];
         $data = [
             ['url' => route('profile.export'), 'icon' => 'arrow-down-tray', 'tint' => '#3fae9f', 'title' => __('account.export_heading'), 'desc' => __('account.export_hint')],
+            ['url' => route('passwords.index').'?reset=1', 'icon' => 'key', 'tint' => '#ef4444', 'title' => __('passwords.reset'), 'desc' => __('settings.passwords_reset_desc'), 'danger' => true],
             ['url' => route('profile.danger'), 'icon' => 'exclamation-triangle', 'tint' => '#ef4444', 'title' => __('account.delete_heading'), 'desc' => __('account.delete_hint'), 'danger' => true],
         ];
     @endphp
