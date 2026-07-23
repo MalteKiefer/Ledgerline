@@ -24,6 +24,8 @@ import { haversineM } from '../shared/track-parse';
 import { classifySearch } from '../shared/geo-search';
 import { escapeHtml, saveBlobAs } from '../shared/dom';
 import { buildGpx, gpxFilename } from '../shared/track-export';
+import { estimateCalories } from '../shared/explore-calories';
+import { routeGroup } from '../shared/track-similarity';
 
 // Distinct, deterministic polyline colours cycled per track (iOS-ish accents).
 const TRACK_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f', '#9e70fa', '#ef4444'];
@@ -83,6 +85,8 @@ export default (config = {}, labels = {}) => ({
     photos: [],          // gallery photos (best-effort; [] when gallery empty/locked)
     thumbs: {},          // photoId -> decrypted object URL (for media pins/popups)
     _thumbPending: {},
+    healthProfile: null, // { heightCm, sex, ... } from the sealed health store (best-effort)
+    latestWeightKg: null, // most recent weight entry (kg), for the calorie estimate
 
     selectedTrackId: null,
     settingsOpen: false,
@@ -137,6 +141,18 @@ export default (config = {}, labels = {}) => ({
                 this.photos = (window.LLGalleryStore.data.photos || []).filter((p) => ! p.trashed);
             }
         } catch (e) { this.photos = []; }
+
+        // Health profile is best-effort too — drives the optional calorie estimate,
+        // only when height + sex + latest weight are all on file. Read-only.
+        try {
+            if (await bootStore(this.$store, 'health')) {
+                const h = window.LLModuleStore.health.data || {};
+                this.healthProfile = h.healthProfile || null;
+                const weights = (h.healthEntries || []).filter((e) => e.metric === 'weight' && Number.isFinite(e.v));
+                weights.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+                this.latestWeightKg = weights.length ? weights[0].v : null;
+            }
+        } catch (e) { this.healthProfile = null; this.latestWeightKg = null; }
 
         this.state = 'ready';
         this.$nextTick(() => this._initMap());
@@ -1078,6 +1094,58 @@ export default (config = {}, labels = {}) => ({
         };
         out.sort((a, b) => (ts(a) - ts(b)) || String(a.name || '').localeCompare(String(b.name || '')));
         return out;
+    },
+
+    // Whether the health profile is complete enough to show a calorie estimate
+    // (height + sex + a recorded weight, per the user's opt-in condition).
+    get hasHealthForCalories() {
+        void this._mut;
+        const h = this.healthProfile;
+        return !! (h && Number(h.heightCm) > 0 && h.sex && Number(this.latestWeightKg) > 0);
+    },
+    // Estimated kcal for a track, or null when health data is incomplete / no stats.
+    caloriesFor(track) {
+        if (! this.hasHealthForCalories || ! track || ! track.stats) return null;
+        const s = track.stats;
+        return estimateCalories({
+            distanceM: s.distanceM,
+            durationS: s.durationMovingS || s.durationTotalS || 0,
+            ascentM: s.ascentM,
+            weightKg: this.latestWeightKg,
+            sex: this.healthProfile.sex,
+        });
+    },
+
+    // Comparison across every track that covers the SAME route as the selected
+    // one (a loop/out-and-back repeated) — for spotting improvement in pace or
+    // effort. Returns rows sorted by date (newest first), each with duration,
+    // average speed and calories, plus which row is the fastest.
+    get routeComparison() {
+        void this._mut;
+        const t = this.selectedTrack;
+        if (! t) return [];
+        const group = routeGroup(t, this.tracks);
+        if (group.length < 2) return []; // nothing to compare against
+        const rows = group.map((tr) => {
+            const s = tr.stats || {};
+            const durS = s.durationMovingS || s.durationTotalS || 0;
+            const speedMps = s.avgSpeedMps || (durS > 0 ? (s.distanceM || 0) / durS : 0);
+            return {
+                id: tr.id,
+                name: tr.name,
+                when: tr.startedAt || tr.importedAt || null,
+                durationS: durS,
+                speedMps,
+                calories: this.caloriesFor(tr),
+                isCurrent: tr.id === t.id,
+            };
+        });
+        // Fastest = highest average speed among timed tracks.
+        let bestId = null, bestSpeed = -1;
+        for (const r of rows) if (r.speedMps > bestSpeed) { bestSpeed = r.speedMps; bestId = r.id; }
+        for (const r of rows) r.isFastest = r.id === bestId && r.speedMps > 0;
+        rows.sort((a, b) => new Date(b.when || 0) - new Date(a.when || 0));
+        return rows;
     },
 
     // Render an elevation-over-distance profile for the selected track; hovering

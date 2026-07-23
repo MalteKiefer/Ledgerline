@@ -412,9 +412,44 @@
                     <div x-show="selectedTrack.stats.maxEleM != null"><dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('explore.max_elevation') }}</dt><dd class="text-gray-900 dark:text-gray-100" x-text="fmtEle(selectedTrack.stats.maxEleM)"></dd></div>
                     <div x-show="selectedTrack.stats.avgSpeedMps"><dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('explore.avg_speed') }}</dt><dd class="text-gray-900 dark:text-gray-100" x-text="fmtSpeed(selectedTrack.stats.avgSpeedMps)"></dd></div>
                     <div x-show="selectedTrack.stats.maxSpeedMps"><dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('explore.max_speed') }}</dt><dd class="text-gray-900 dark:text-gray-100" x-text="fmtSpeed(selectedTrack.stats.maxSpeedMps)"></dd></div>
+                    <div x-show="caloriesFor(selectedTrack) != null"><dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('explore.calories') }}</dt><dd class="text-gray-900 dark:text-gray-100" x-text="caloriesFor(selectedTrack) + ' kcal'"></dd></div>
                     <div x-show="selectedTrack.startedAt"><dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('explore.started') }}</dt><dd class="text-gray-900 dark:text-gray-100" x-text="fmtDateTime(selectedTrack.startedAt)"></dd></div>
                     <div x-show="selectedTrack.endedAt"><dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('explore.ended') }}</dt><dd class="text-gray-900 dark:text-gray-100" x-text="fmtDateTime(selectedTrack.endedAt)"></dd></div>
                   </dl>
+
+                  {{-- Same-route comparison: other tours over the same route, with
+                       pace + calories, the fastest one flagged. --}}
+                  <template x-if="routeComparison.length">
+                    <div class="mt-5">
+                      <p class="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">{{ __('explore.same_route') }}</p>
+                      <div class="overflow-x-auto rounded-xl border border-black/[0.06] dark:border-white/10">
+                        <table class="w-full text-left text-xs">
+                          <thead>
+                            <tr class="border-b border-black/[0.06] dark:border-white/10 text-gray-400 dark:text-gray-500">
+                              <th class="px-3 py-2 font-medium">{{ __('explore.cmp_when') }}</th>
+                              <th class="px-3 py-2 font-medium">{{ __('explore.cmp_time') }}</th>
+                              <th class="px-3 py-2 font-medium">{{ __('explore.cmp_speed') }}</th>
+                              <th class="px-3 py-2 font-medium">{{ __('explore.cmp_calories') }}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <template x-for="r in routeComparison" :key="r.id">
+                              <tr class="border-b border-black/[0.04] dark:border-white/[0.06]"
+                                  :class="r.isCurrent ? 'bg-accent/5' : ''">
+                                <td class="px-3 py-2">
+                                  <span class="text-gray-700 dark:text-gray-300" x-text="r.when ? fmtDateTime(r.when) : r.name"></span>
+                                  <span x-show="r.isFastest" class="ml-1 rounded bg-green-100 dark:bg-green-900/40 px-1 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-300">{{ __('explore.cmp_fastest') }}</span>
+                                </td>
+                                <td class="px-3 py-2 text-gray-500 dark:text-gray-400" x-text="r.durationS ? fmtDuration(r.durationS) : '—'"></td>
+                                <td class="px-3 py-2 text-gray-500 dark:text-gray-400" x-text="r.speedMps ? fmtSpeed(r.speedMps) : '—'"></td>
+                                <td class="px-3 py-2 text-gray-500 dark:text-gray-400" x-text="r.calories != null ? (r.calories + ' kcal') : '—'"></td>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </template>
 
                   {{-- Elevation profile (or graceful no-elevation state) --}}
                   <div class="mt-5">
