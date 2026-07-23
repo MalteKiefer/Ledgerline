@@ -199,6 +199,14 @@ export default (config = {}, labels = {}) => ({
         this.manifest.files = window.LLFilesStore.data.files;
         this.state = 'ready';
         this.refreshUsage();
+        // Read-only guard when a record shard blob is missing (see gallery.js):
+        // skip reconcile (writes/reclaims) so nothing further is lost; the store's
+        // flush() is frozen. Surviving files render. A clean reload clears it.
+        if (window.LLFilesStore.degraded) {
+            window.llToast?.((labels.indexDegraded || ':n item(s) could not be loaded (a storage blob is missing). Files are read-only until this is resolved — nothing was deleted.')
+                .replace(':n', window.LLFilesStore._missingShards || 1));
+            return;
+        }
         // Tell the server which blobs the manifest still references so it can
         // reclaim the quota held by any it no longer does (grace-gated).
         this.reconcileBlobs();

@@ -21,7 +21,7 @@
 
 import { csrfToken, jsonHeaders, getJson } from './api';
 import { newId as _newId } from './sealed-store';
-import { fetchDecryptWorker, queueBlobDelete } from './blob-io';
+import { fetchDecryptWorker } from './blob-io';
 import { padBlob } from './padme';
 import { bucketize, shardHash, recommendedShardBits } from './shard';
 import { canonicalJSON } from './canonical-json';
@@ -39,8 +39,9 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         _shardBits: 0,
         _shards: [], // [{ ref, key, hash, count, bucket }] descriptors from the last load/save
         _collDesc: {}, // { <collection.key>: { ref, key, hash } | null } for each collection blob
-        degraded: false, // true when load() had to skip a permanently-missing (404) shard
-        _missingShards: 0, // count of shards dropped during a degraded load
+        degraded: false, // true when load() found a shard blob missing (404 after retries)
+        _missingShards: 0, // count of shards that failed to load in a degraded load
+        _missingRefs: [], // refs of the missing shards (kept in the root for recovery)
 
         _blank() {
             const b = { v: 3, [recordKey]: [] };
@@ -69,16 +70,16 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         },
 
         // Seal a collection array into its own content-addressed blob, reusing the
-        // previous blob when the canonical bytes are unchanged; frees a replaced blob.
+        // previous blob when the canonical bytes are unchanged. A REPLACED blob is
+        // NOT deleted here — a concurrent writer (second tab / mobile) may still
+        // reference it in its own root; eager deletion is what dangled a live root
+        // and lost data. Superseded blobs are reclaimed by the grace-gated reconcile
+        // (24h), by which time all writers have converged on one root.
         async _buildCollection(arr, prev) {
-            if (! arr.length) {
-                if (prev?.ref) queueBlobDelete(prefix + '/blob/' + prev.ref, csrfToken());
-                return null;
-            }
+            if (! arr.length) return null;
             const hash = await shardHash(arr);
             if (prev && prev.hash === hash && prev.ref) return prev;
             const sealed = await this._sealBlob(new TextEncoder().encode(canonicalJSON(arr)));
-            if (prev?.ref) queueBlobDelete(prefix + '/blob/' + prev.ref, csrfToken());
             return { ref: sealed.ref, key: sealed.key, hash };
         },
 
@@ -109,22 +110,34 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                 this._shardBits = root.shardBits ?? 0;
                 this.degraded = false;
                 this._missingShards = 0;
+                this._missingRefs = [];
                 // Load + decrypt every record shard in parallel (immutable blob cache
-                // makes repeats instant). A shard that is PERMANENTLY gone (HTTP 404 —
-                // its blob was lost, e.g. a partial save that stored the root pointer
-                // but never landed the shard upload) is skipped and the store enters a
-                // `degraded` state: its records are unrecoverable anyway, so dropping
-                // them loses nothing new, and the next save re-seals the root WITHOUT
-                // the dead ref (self-heal). Any OTHER failure (429/network/decrypt)
-                // still THROWS — that shard might recover, and saving a partial set
-                // would free it and lose data for good.
-                const kept = [];
-                const parts = await Promise.all(root.shards.map((s) => fetchDecryptWorker(prefix + '/raw', s.ref, s.key)
-                    .then((b) => { kept.push(s); return JSON.parse(new TextDecoder().decode(b)); })
-                    .catch((e) => {
-                        if (e && e.status === 404) { this.degraded = true; this._missingShards++; return null; }
-                        throw e;
-                    })));
+                // makes repeats instant). A 404 is RETRIED first: gallery/files blobs
+                // live on eventually-consistent object storage (B2), where a freshly
+                // written shard can 404 briefly — treating that transient miss as
+                // permanent would erase live data. Only after retries do we mark the
+                // store `degraded` and record the missing ref. Crucially the missing
+                // shard's descriptor is KEPT (not dropped): the root still points at
+                // it, so nothing is rewritten to erase the slot and a later blob
+                // restore re-links it. Writes are frozen while degraded (see flush()).
+                // Any OTHER failure (429/network/decrypt) THROWS — it may recover, and
+                // persisting a partial set would lose data for good.
+                const fetchShard = async (s) => {
+                    for (let attempt = 0; ; attempt++) {
+                        try {
+                            const b = await fetchDecryptWorker(prefix + '/raw', s.ref, s.key);
+                            return JSON.parse(new TextDecoder().decode(b));
+                        } catch (e) {
+                            if (e && e.status === 404) {
+                                if (attempt < 3) { await new Promise((r) => setTimeout(r, 500 * 2 ** attempt)); continue; }
+                                this.degraded = true; this._missingShards++; this._missingRefs.push(s.ref);
+                                return null;
+                            }
+                            throw e;
+                        }
+                    }
+                };
+                const parts = await Promise.all(root.shards.map((s) => fetchShard(s)));
                 const records = [];
                 for (const arr of parts) if (Array.isArray(arr)) records.push(...arr);
                 const data = { v: 3, [recordKey]: records };
@@ -134,9 +147,10 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     this._collDesc[c.key] = root[c.rootRef] ? { ref: root[c.rootRef], key: root[c.rootKey], hash: root[c.rootHash] } : null;
                 }
                 this.data = data;
-                // Only the shards we actually loaded survive into _shards, so the next
-                // save's root omits the dead ones and shardRefs() never keeps them.
-                this._shards = kept.map((s) => ({ ...s }));
+                // Keep EVERY shard descriptor from the root — including any that were
+                // missing — so the root is preserved intact (no self-erasing rewrite)
+                // and shardRefs() keeps the whole set alive for reconcile/recovery.
+                this._shards = root.shards.map((s) => ({ ...s }));
             } else {
                 this.data = this._blank();
             }
@@ -149,7 +163,7 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         reset() {
             this.data = null; this.version = 0; this.ready = false; this.loaded = false;
             this._shards = []; this._collDesc = {}; this._shardBits = 0;
-            this.degraded = false; this._missingShards = 0; clearTimeout(this._timer);
+            this.degraded = false; this._missingShards = 0; this._missingRefs = []; clearTimeout(this._timer);
         },
 
         touch() {
@@ -165,6 +179,11 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         // retry budget.
         flush() {
             if (! this.loaded) return Promise.resolve();
+            // FROZEN while degraded: a shard blob is missing, so the root must NOT be
+            // rewritten (that would drop the missing shard's slot and make the loss
+            // permanent) and no reconcile may run. The store is read-only until the
+            // missing blob is restored and a clean reload clears `degraded`.
+            if (this.degraded) return Promise.resolve();
             if (this._queued) return this._chain; // a save is already scheduled after the running one
             this._queued = true;
             this._chain = (this._chain || Promise.resolve())
@@ -198,9 +217,12 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     descriptors.push({ ref: sealed.ref, key: sealed.key, hash, count: recs.length, bucket });
                 }
             }
-            // Free shard blobs no longer referenced (shrunk/re-bucketed/changed).
-            const live = new Set(descriptors.map((d) => d.ref));
-            for (const old of this._shards) if (old.ref && ! live.has(old.ref)) queueBlobDelete(prefix + '/blob/' + old.ref, csrfToken());
+            // A shard blob replaced by this save is deliberately NOT deleted here.
+            // Eager deletion is the race that lost data: a concurrent writer (second
+            // tab / mobile) may still reference this exact shard ref in its own root,
+            // and deleting it dangles that root → 404 → corrupt index. Superseded
+            // shards become orphans reclaimed by the grace-gated reconcile (24h),
+            // long after every writer has converged on one root.
             this._shards = descriptors;
             this._shardBits = shardBits;
 
@@ -234,6 +256,24 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     // concurrent flushes doesn't livelock.
                     const cur = await fetch(prefix + '/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
                     this.version = cur.version ?? this.version;
+                    // Re-base our shard descriptors on the CURRENT server root before
+                    // re-sealing. Without this, _buildRoot would reuse this tab's cached
+                    // shard refs — some of which the winning writer may have superseded —
+                    // and a future save could reference a ref no longer live. Adopting
+                    // the server's descriptors means we only reuse blobs that are
+                    // provably still referenced, and only re-seal buckets we changed.
+                    try {
+                        const curRoot = cur.ciphertext ? window.Vault.openManifest(cur.ciphertext) : null;
+                        if (curRoot && curRoot.v === 3 && Array.isArray(curRoot.shards)) {
+                            this._shards = curRoot.shards.map((s) => ({ ...s }));
+                            this._shardBits = curRoot.shardBits ?? 0;
+                            for (const c of collections) {
+                                this._collDesc[c.key] = curRoot[c.rootRef]
+                                    ? { ref: curRoot[c.rootRef], key: curRoot[c.rootKey], hash: curRoot[c.rootHash] }
+                                    : null;
+                            }
+                        }
+                    } catch (e) { /* keep our own descriptors as a fallback */ }
                     if (retry < 8) { await new Promise((r) => setTimeout(r, Math.min(120 * 2 ** retry, 2000))); return this._doFlush(retry + 1); }
                     throw new Error('store save conflict');
                 } else if (res.status === 429 && retry < 8) {
