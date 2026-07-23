@@ -429,10 +429,16 @@ export default (labels = {}) => ({
     // --- Getters ---
 
     get age() {
+        void this._mut; // profile lives on the (non-Alpine) store — recompute on save
         return computeAge(this.profile.birthdate, new Date().toISOString());
     },
 
     get bmi() {
+        // Both the weight entries AND the profile live on the sealed store, which
+        // is NOT an Alpine proxy — without touching _mut this getter wouldn't
+        // recompute when a weight is added or the height edited (the store-getter
+        // gotcha), so the BMI stayed stale/empty.
+        void this._mut;
         const latest = this._latestEntry('weight');
         if (! latest) return null;
         return computeBmi(latest.v, this.profile.heightCm);
@@ -440,6 +446,10 @@ export default (labels = {}) => ({
 
     // Filtered, sorted entries for a given metric key.
     entriesFor(key) {
+        // `entries` is bound to the sealed store array (NOT an Alpine proxy), so
+        // every store-derived reader must touch _mut to recompute after a save —
+        // otherwise latestFor/avgFor/minFor/maxFor/bmi stay stale until reload.
+        void this._mut;
         return this.entries
             .filter((e) => e.metric === key)
             .sort((a, b) => (b.ts < a.ts ? -1 : b.ts > a.ts ? 1 : 0));
