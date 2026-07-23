@@ -36,6 +36,7 @@ use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
+use App\Http\Controllers\Settings\SecurityLogController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
 use App\Http\Controllers\SharedFolderBlobController;
@@ -140,6 +141,9 @@ Route::middleware('auth')->group(function (): void {
 
         Route::get('/settings/system', [SystemController::class, 'edit'])->name('settings.system.edit');
         Route::post('/settings/system/errors/{error}/resolve', [SystemController::class, 'resolveError'])->name('settings.system.errors.resolve');
+
+        // Security log: filterable audit trail + CSV/JSON export (admin only).
+        Route::get('/settings/security-log', [SecurityLogController::class, 'index'])->name('settings.security-log');
 
         // Vault lock policy (trusted-device days + public-computer idle timeout).
         Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');

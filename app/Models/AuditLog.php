@@ -7,6 +7,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
@@ -14,6 +15,16 @@ use RuntimeException;
  * One append-only security audit entry (a login, a privileged action, a
  * settings change). Rows are never updated: the trail is tamper-evident by
  * construction — mutating an existing row throws.
+ *
+ * @property int $id
+ * @property ?int $user_id
+ * @property string $action
+ * @property ?string $subject_type
+ * @property ?string $subject_id
+ * @property ?string $ip
+ * @property ?string $user_agent
+ * @property array<string, mixed>|null $meta
+ * @property Carbon $created_at
  */
 #[Fillable([
     'user_id', 'action', 'subject_type', 'subject_id', 'ip', 'user_agent', 'meta', 'created_at',
