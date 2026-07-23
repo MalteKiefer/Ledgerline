@@ -41,6 +41,40 @@ export function haversineM(lat1, lng1, lat2, lng2) {
 const MOVING_SPEED_THRESHOLD_MPS = 0.5;
 // Ignore implausible instantaneous speeds (GPS glitches) when computing maxSpeed.
 const MAX_PLAUSIBLE_SPEED_MPS = 150;
+// Dead-band for ascent/descent: GPS/barometric elevation jitters ±5-10 m per
+// fix, so summing raw per-point deltas inflates total climb wildly (a flat loop
+// with a 30 m elevation span can show 300 m of "ascent"). Only commit a climb
+// or drop once the change from the last committed elevation clears this band.
+const ELEVATION_DEADBAND_M = 5;
+
+/**
+ * Total ascent + descent over a point list with GPS-noise smoothing.
+ *
+ * Hysteresis: hold a reference elevation and only count a gain/loss once the
+ * signed change from that reference clears ELEVATION_DEADBAND_M — then the full
+ * change is committed and the reference advances. Slow real climbs made of many
+ * sub-threshold steps are still captured (the reference lags but catches up);
+ * pure jitter under the band is discarded.
+ *
+ * @param {Array<{ele?:number}>} points
+ * @param {number} [thresholdM]
+ * @returns {{ascentM:number, descentM:number}}
+ */
+export function smoothedAscentDescent(points, thresholdM = ELEVATION_DEADBAND_M) {
+    let ascent = 0;
+    let descent = 0;
+    let ref = null;
+    for (const p of (Array.isArray(points) ? points : [])) {
+        const e = (typeof p.ele === 'number' && isFinite(p.ele)) ? p.ele : null;
+        if (e === null) continue;
+        if (ref === null) { ref = e; continue; }
+        const d = e - ref;
+        if (d >= thresholdM) { ascent += d; ref = e; }
+        else if (d <= -thresholdM) { descent += -d; ref = e; }
+        // else: within the noise band — hold the reference.
+    }
+    return { ascentM: ascent, descentM: descent };
+}
 
 /**
  * @typedef {{lat:number,lng:number,ele:(number|null),t:(number|null)}} TrackPoint
@@ -89,14 +123,6 @@ export function computeStats(points) {
             cumDist += seg;
             out.distanceM += seg;
 
-            // Ascent / descent over positive / negative elevation deltas.
-            if (typeof p.ele === 'number' && typeof prev.ele === 'number'
-                && isFinite(p.ele) && isFinite(prev.ele)) {
-                const dEle = p.ele - prev.ele;
-                if (dEle > 0) out.ascentM += dEle;
-                else out.descentM += -dEle;
-            }
-
             // Time-based accumulation.
             if (typeof p.t === 'number' && typeof prev.t === 'number') {
                 const dtS = (p.t - prev.t) / 1000;
@@ -121,6 +147,12 @@ export function computeStats(points) {
     if (typeof first.t === 'number' && typeof last.t === 'number' && last.t > first.t) {
         out.durationTotalS = (last.t - first.t) / 1000;
     }
+    // Ascent / descent with GPS-noise smoothing (raw per-point deltas would
+    // inflate total climb by an order of magnitude on jittery elevation data).
+    const ad = smoothedAscentDescent(pts);
+    out.ascentM = ad.ascentM;
+    out.descentM = ad.descentM;
+
     const durForAvg = out.durationMovingS > 0 ? out.durationMovingS : out.durationTotalS;
     if (durForAvg > 0) out.avgSpeedMps = out.distanceM / durForAvg;
 

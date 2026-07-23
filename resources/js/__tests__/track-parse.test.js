@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    parseTrack, parseTrackBinary, computeStats, haversineM, parseXml,
+    parseTrack, parseTrackBinary, computeStats, haversineM, parseXml, smoothedAscentDescent,
 } from '../shared/track-parse';
 
 // ---------------------------------------------------------------------------
@@ -297,5 +297,39 @@ describe('parseTrackBinary FIT', () => {
         const bad = new Uint8Array(20); // valid length, no ".FIT" signature
         bad[0] = 12;
         expect(() => parseTrackBinary(bad, 'x.fit')).toThrow(/FIT/);
+    });
+});
+
+describe('smoothedAscentDescent', () => {
+    it('discards sub-threshold GPS jitter', () => {
+        // Elevation oscillating ±3 m around 100 — pure noise, no real climb.
+        const pts = [100, 103, 98, 102, 99, 101, 100].map((ele) => ({ ele }));
+        const r = smoothedAscentDescent(pts);
+        expect(r.ascentM).toBe(0);
+        expect(r.descentM).toBe(0);
+    });
+
+    it('counts a genuine climb and drop past the dead-band', () => {
+        const pts = [100, 130, 110].map((ele) => ({ ele }));
+        const r = smoothedAscentDescent(pts);
+        expect(r.ascentM).toBe(30);
+        expect(r.descentM).toBe(20);
+    });
+
+    it('captures a slow climb made of many sub-threshold steps', () => {
+        // +2 m each step, 10 steps → +20 m real gain despite no single step ≥5.
+        const pts = [];
+        for (let e = 100; e <= 120; e += 2) pts.push({ ele: e });
+        const r = smoothedAscentDescent(pts);
+        // Captured within one dead-band of the true +20 (a sub-threshold tail
+        // stays uncommitted) — the key point: it is NOT discarded as noise.
+        expect(r.ascentM).toBeGreaterThan(14);
+        expect(r.ascentM).toBeLessThanOrEqual(20);
+        expect(r.descentM).toBe(0);
+    });
+
+    it('ignores points without elevation', () => {
+        const pts = [{ ele: 100 }, { ele: null }, {}, { ele: 110 }];
+        expect(smoothedAscentDescent(pts).ascentM).toBe(10);
     });
 });
