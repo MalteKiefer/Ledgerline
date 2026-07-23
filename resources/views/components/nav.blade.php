@@ -101,41 +101,7 @@
                             <a href="{{ route('settings') }}" class="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent"><x-icon name="shield-check" class="h-4 w-4" />{{ __('messages.menu.settings') }}</a>
                         @endif
                     </div>
-                    @php $llTheme = \App\Models\UserSetting::for((int) auth()->id())->theme ?? 'system'; @endphp
-                    <div class="border-t border-black/[0.06] dark:border-white/10 px-3 py-2.5">
-                        <div class="flex gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1">
-                            @foreach (['light' => 'sun', 'dark' => 'moon', 'system' => 'computer-desktop'] as $mode => $icon)
-                                <form method="POST" action="{{ route('theme.update') }}" class="flex-1">
-                                    @csrf
-                                    <input type="hidden" name="theme" value="{{ $mode }}">
-                                    <button type="submit" title="{{ __('messages.menu.theme_'.$mode) }}"
-                                        @class([
-                                            'flex w-full items-center justify-center rounded-lg px-2 py-1.5 transition',
-                                            'll-accent shadow-sm shadow-accent/30' => $llTheme === $mode,
-                                            'text-gray-500 dark:text-gray-400 hover:text-accent' => $llTheme !== $mode,
-                                        ])>
-                                        <x-icon :name="$icon" class="h-4 w-4" />
-                                    </button>
-                                </form>
-                            @endforeach
-                        </div>
-                    </div>
-                    <div class="border-t border-black/[0.06] dark:border-white/10 px-3 py-2.5">
-                        <div class="flex gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1">
-                            @foreach (config('locales.languages') as $code => $label)
-                                <form method="POST" action="{{ route('locale.update') }}" class="flex-1">
-                                    @csrf
-                                    <input type="hidden" name="locale" value="{{ $code }}">
-                                    <button type="submit"
-                                        @class([
-                                            'w-full rounded-lg px-2 py-1 text-xs font-semibold transition',
-                                            'll-accent shadow-sm shadow-accent/30' => app()->getLocale() === $code,
-                                            'text-gray-500 dark:text-gray-400 hover:text-accent' => app()->getLocale() !== $code,
-                                        ])>{{ strtoupper($code) }}</button>
-                                </form>
-                            @endforeach
-                        </div>
-                    </div>
+                    {{-- Theme + language live on the profile Appearance sub-page now. --}}
                     {{-- Drop the cached zero-knowledge vault key at logout time. --}}
                     <form method="POST" action="{{ route('logout') }}" @submit="window.Vault && window.Vault.lock()" class="border-t border-black/[0.06] dark:border-white/10 py-1">
                         @csrf

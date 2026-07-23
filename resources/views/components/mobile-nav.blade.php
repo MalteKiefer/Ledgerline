@@ -45,39 +45,8 @@
             </button>
         </div>
 
-        @php $llTheme = \App\Models\UserSetting::for((int) auth()->id())->theme ?? 'system'; @endphp
-        <div class="mt-3 flex gap-1 border-t border-gray-100 dark:border-gray-800 pt-3">
-            @foreach (['light' => 'sun', 'dark' => 'moon', 'system' => 'computer-desktop'] as $mode => $icon)
-                <form method="POST" action="{{ route('theme.update') }}" class="flex-1">
-                    @csrf
-                    <input type="hidden" name="theme" value="{{ $mode }}">
-                    <button type="submit" title="{{ __('messages.menu.theme_'.$mode) }}"
-                        @class([
-                            'flex min-h-11 w-full items-center justify-center rounded-md',
-                            'll-accent' => $llTheme === $mode,
-                            'text-gray-600 dark:text-gray-400 hover:bg-accent/5' => $llTheme !== $mode,
-                        ])>
-                        <x-icon :name="$icon" class="h-5 w-5" />
-                    </button>
-                </form>
-            @endforeach
-        </div>
-
-        <div class="mt-3 flex items-center justify-between border-t border-gray-100 dark:border-gray-800 pt-3">
-            <div class="flex gap-1">
-                @foreach (config('locales.languages') as $code => $label)
-                    <form method="POST" action="{{ route('locale.update') }}">
-                        @csrf
-                        <input type="hidden" name="locale" value="{{ $code }}">
-                        <button type="submit"
-                            @class([
-                                'rounded px-3 py-2 text-xs font-medium',
-                                'bg-accent text-white' => app()->getLocale() === $code,
-                                'text-gray-600 dark:text-gray-400 hover:bg-accent/5' => app()->getLocale() !== $code,
-                            ])>{{ strtoupper($code) }}</button>
-                    </form>
-                @endforeach
-            </div>
+        {{-- Theme + language live on the profile Appearance sub-page now. --}}
+        <div class="mt-3 flex items-center justify-end border-t border-gray-100 dark:border-gray-800 pt-3">
             <form method="POST" action="{{ route('logout') }}" @submit="window.Vault && window.Vault.lock()">
                 @csrf
                 <button type="submit" class="rounded-md px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('messages.menu.logout') }}</button>
