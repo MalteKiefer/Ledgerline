@@ -473,10 +473,11 @@ async function renderBookmarks() {
     document.getElementById('sw-pw').onclick = () => { mainView = 'passwords'; renderMain(); };
     document.getElementById('sw-bm').onclick = () => { mainView = 'bookmarks'; renderBookmarks(); };
 
-    // Bookmarks are read-only here — the only action is a one-way import of the
-    // browser's own bookmarks into the vault. Everything else is view/open only.
+    // Toolbar: Save page + New folder (current folder) + Import from browser
     app.append(el(`<div style="display:flex;gap:6px;margin-bottom:8px">
-        <button class="primary" id="bm-import" style="flex:1;margin-top:0;padding:8px 10px;display:flex;align-items:center;justify-content:center;gap:5px">${icon('folder-plus', 14)} ${t('bm.import_browser')}</button>
+        <button class="primary" id="bm-save" style="flex:1;margin-top:0;padding:8px 10px;display:flex;align-items:center;justify-content:center;gap:5px">${icon('bookmark', 14)} ${t('bm.save_page')}</button>
+        <button class="ic" id="bm-folder-new" title="${esc(t('bm.new_folder'))}" style="width:auto;padding:0 12px;border:1px solid var(--border);border-radius:10px">${icon('folder-plus', 16)}</button>
+        <button class="ic" id="bm-import" title="${esc(t('bm.import_browser'))}" style="width:auto;padding:0 12px;border:1px solid var(--border);border-radius:10px">${icon('open', 16)}</button>
     </div>`));
 
     // Search + filter chips
@@ -506,6 +507,25 @@ async function renderBookmarks() {
         const out = []; const seen = new Set(); let cur = byId(id);
         while (cur && ! seen.has(cur.id)) { seen.add(cur.id); out.unshift(cur); cur = cur.parentId ? byId(cur.parentId) : null; }
         return out;
+    }
+    function descendants(id) {
+        const out = new Set([id]); let added = true;
+        while (added) { added = false; for (const f of folders) { if (f.parentId && out.has(f.parentId) && ! out.has(f.id)) { out.add(f.id); added = true; } } }
+        return out;
+    }
+    function folderDepth(id, visited = new Set()) {
+        if (! id || visited.has(id)) return 0;
+        visited.add(id);
+        const f = byId(id);
+        if (! f || ! f.parentId) return 0;
+        return 1 + folderDepth(f.parentId, visited);
+    }
+    function folderOptions(selectedId, includeNone) {
+        const head = includeNone ? `<option value="">${includeNone}</option>` : '';
+        return head + folders.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map((f) => {
+            const indent = '    '.repeat(folderDepth(f.id));
+            return `<option value="${esc(f.id)}"${selectedId === f.id ? ' selected' : ''}>${indent}${esc(f.name)}</option>`;
+        }).join('');
     }
 
     async function reload() { const d = await send({ type: 'bookmarks.list' }); bookmarks = d.bookmarks || []; folders = d.folders || []; }
@@ -549,9 +569,21 @@ async function renderBookmarks() {
         const countLabel = t(count === 1 ? 'bm.item_count_one' : 'bm.item_count_other', { count });
         const li = el(`<li><div class="bmrow">
             <button class="main"><span class="av mono">${icon('folder', 15)}</span><span class="grow"><div class="t">${esc(f.name)}</div><div class="u">${countLabel}</div></span></button>
+            <span class="rowacts"><button class="ic" data-act="ren" title="${esc(t('bm.rename_folder'))}">${icon('pencil', 14)}</button><button class="ic" data-act="del" title="${esc(t('bm.delete_folder'))}">${icon('trash', 14)}</button></span>
             <span class="chev">${icon('chevron', 14)}</span>
         </div></li>`);
         li.querySelector('.main').onclick = () => { bmCwd = f.id; paint(); };
+        li.querySelector('[data-act="ren"]').onclick = async () => {
+            const n = prompt(t('bm.rename_prompt'), f.name);
+            if (! n || ! n.trim()) return;
+            const r = await send({ type: 'bookmarkFolders.rename', id: f.id, name: n.trim() });
+            if (r?.ok) { await reload(); paint(); } else setMsg(t('bm.rename_error'));
+        };
+        li.querySelector('[data-act="del"]').onclick = async () => {
+            if (! confirm(t('bm.delete_confirm', { name: f.name }))) return;
+            const r = await send({ type: 'bookmarkFolders.delete', id: f.id });
+            if (r?.ok) { if (descendants(f.id).has(bmCwd)) bmCwd = ''; await reload(); paint(); } else setMsg(t('bm.delete_error'));
+        };
         return li;
     }
 
@@ -560,9 +592,16 @@ async function renderBookmarks() {
         const sub = path || b.url || '';
         const li = el(`<li><div class="bmrow">
             <button class="main"><span class="av mono">${icon('bookmark', 14)}</span><span class="grow"><div class="t">${esc(b.title || b.url || t('bm.untitled'))}</div><div class="u">${esc(sub)}</div></span>${b.favorite ? `<span class="star">${icon('star', 13)}</span>` : ''}${b.readLater ? `<span style="color:var(--muted)">${icon('clock', 13)}</span>` : ''}</button>
+            <span class="rowacts"><button class="ic" data-act="edit" title="${esc(t('bm.edit'))}">${icon('pencil', 14)}</button><button class="ic" data-act="trash" title="${esc(t('bm.trash'))}">${icon('trash', 14)}</button></span>
             <span class="chev">${icon('open', 13)}</span>
         </div></li>`);
         li.querySelector('.main').onclick = () => openBm(b);
+        li.querySelector('[data-act="edit"]').onclick = () => renderBmEdit(b);
+        li.querySelector('[data-act="trash"]').onclick = async () => {
+            if (! confirm(t('bm.trash_confirm'))) return;
+            const r = await send({ type: 'bookmarks.trash', id: b.id });
+            if (r?.ok) { await reload(); paint(); } else setMsg(t('bm.trash_error'));
+        };
         return li;
     }
 
@@ -593,10 +632,89 @@ async function renderBookmarks() {
         }
     }
 
-    // One-way import of the browser's OWN bookmarks — the only write path (no
-    // per-item create/edit/delete). Reads the browser tree, flattens it to
-    // {title,url,path[]}, and hands it to the background to merge (folders rebuilt
-    // from the path, http(s)-only, duplicates skipped).
+    // Inline edit form (opened from a bookmark row)
+    function renderBmEdit(bm) {
+        const d = detailEl(); if (! d) return;
+        d.innerHTML = '';
+        d.append(el(`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+            <label class="fld">${t('bm.title')}</label><input id="be-title" value="${esc(bm.title || '')}">
+            <label class="fld">${t('bm.url')}</label><input id="be-url" value="${esc(bm.url || '')}">
+            <label class="fld">${t('bm.description')}</label><textarea id="be-desc" rows="2" style="resize:vertical">${esc(bm.description || '')}</textarea>
+            <label class="fld">${t('bm.tags')}</label><input id="be-tags" value="${esc((bm.tags || []).join(', '))}">
+            <label class="fld">${t('bm.folder')}</label><select id="be-folder">${folderOptions(bm.folderId, t('bm.no_folder'))}</select>
+            <div class="opts" style="margin-top:8px">
+                <label><input type="checkbox" id="be-fav"${bm.favorite ? ' checked' : ''}> ${t('bm.favorite')}</label>
+                <label><input type="checkbox" id="be-rl"${bm.readLater ? ' checked' : ''}> ${t('bm.read_later_check')}</label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="primary" id="be-save" style="flex:1;margin-top:0">${t('bm.save')}</button>
+                <button id="be-cancel" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:12px;background:transparent;color:inherit;cursor:pointer">${t('bm.cancel')}</button>
+            </div>
+            <p class="err" id="be-err"></p>
+        </div>`));
+        d.scrollIntoView({ block: 'nearest' });
+        $('be-cancel').onclick = () => { d.innerHTML = ''; };
+        $('be-save').onclick = async () => {
+            $('be-save').disabled = true; $('be-save').textContent = t('bm.saving');
+            const patch = {
+                title: $('be-title').value.trim(),
+                url: $('be-url').value.trim(),
+                description: $('be-desc').value,
+                tags: $('be-tags').value.split(',').map((t) => t.trim()).filter(Boolean),
+                folderId: $('be-folder').value || null,
+                favorite: $('be-fav').checked,
+                readLater: $('be-rl').checked,
+            };
+            const r = await send({ type: 'bookmarks.update', id: bm.id, patch });
+            if (r?.ok) { await reload(); paint(); }
+            else { $('be-save').disabled = false; $('be-save').textContent = t('bm.save'); const e = $('be-err'); if (e) e.textContent = t('bm.save_error'); }
+        };
+    }
+
+    // Save the current tab as a bookmark (defaults into the current folder)
+    async function renderSavePage() {
+        const tab = await activeTab();
+        const d = detailEl(); if (! d) return;
+        d.innerHTML = '';
+        d.append(el(`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+            <div style="font-weight:600;margin-bottom:8px">${icon('bookmark', 14)} ${t('bm.save_page_heading')}</div>
+            <label class="fld">${t('bm.title')}</label><input id="sp-title" value="${esc(tab ? (tab.title || '') : '')}">
+            <label class="fld">${t('bm.url')}</label><input id="sp-url" value="${esc(tab ? (tab.url || '') : '')}">
+            <label class="fld">${t('bm.description')}</label><textarea id="sp-desc" rows="2" style="resize:vertical"></textarea>
+            <label class="fld">${t('bm.tags')}</label><input id="sp-tags">
+            <label class="fld">${t('bm.folder')}</label><select id="sp-folder">${folderOptions(bmCwd, t('bm.no_folder'))}</select>
+            <div class="opts" style="margin-top:8px">
+                <label><input type="checkbox" id="sp-fav"> ${t('bm.favorite')}</label>
+                <label><input type="checkbox" id="sp-rl"> ${t('bm.read_later_check')}</label>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="primary" id="sp-save" style="flex:1;margin-top:0">${t('bm.save_bookmark')}</button>
+                <button id="sp-cancel" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:12px;background:transparent;color:inherit;cursor:pointer">${t('bm.cancel')}</button>
+            </div>
+            <p class="err" id="sp-err"></p>
+        </div>`));
+        d.scrollIntoView({ block: 'nearest' });
+        $('sp-title').focus();
+        $('sp-cancel').onclick = () => { d.innerHTML = ''; };
+        $('sp-save').onclick = async () => {
+            $('sp-save').disabled = true; $('sp-save').textContent = t('bm.saving');
+            const bookmark = {
+                title: $('sp-title').value.trim(),
+                url: $('sp-url').value.trim(),
+                description: $('sp-desc').value,
+                tags: $('sp-tags').value.split(',').map((t) => t.trim()).filter(Boolean),
+                folderId: $('sp-folder').value || null,
+                favorite: $('sp-fav').checked,
+                readLater: $('sp-rl').checked,
+            };
+            const r = await send({ type: 'bookmarks.create', bookmark });
+            if (r?.id) { bmFilter = 'all'; bmQuery = ''; const qEl = $('bm-q'); if (qEl) qEl.value = ''; bmCwd = bookmark.folderId || ''; await reload(); paint(); }
+            else { $('sp-save').disabled = false; $('sp-save').textContent = t('bm.save_bookmark'); const e = $('sp-err'); if (e) e.textContent = t('bm.save_error'); }
+        };
+    }
+
+    // Bulk-import the browser's own bookmarks (folders rebuilt from the path,
+    // http(s)-only, duplicates skipped) into the vault store.
     async function importFromBrowser() {
         const btn = $('bm-import');
         if (! chrome.bookmarks) { setMsg(t('bm.import_error')); return; }
@@ -627,6 +745,13 @@ async function renderBookmarks() {
     }
 
     // Wire up toolbar + search
+    $('bm-save').onclick = () => renderSavePage();
+    $('bm-folder-new').onclick = async () => {
+        const n = prompt(t('bm.new_folder_prompt'));
+        if (! n || ! n.trim()) return;
+        const r = await send({ type: 'bookmarkFolders.create', name: n.trim(), parentId: bmCwd || null });
+        if (r?.id) { await reload(); paint(); } else setMsg(t('bm.create_error'));
+    };
     $('bm-import').onclick = () => importFromBrowser();
     $('bm-q').addEventListener('input', (e) => { bmQuery = e.target.value; paint(); });
 
