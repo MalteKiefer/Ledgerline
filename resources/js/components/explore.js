@@ -148,9 +148,13 @@ export default (config = {}, labels = {}) => ({
             if (await bootStore(this.$store, 'health')) {
                 const h = window.LLModuleStore.health.data || {};
                 this.healthProfile = h.healthProfile || null;
-                const weights = (h.healthEntries || []).filter((e) => e.metric === 'weight' && Number.isFinite(e.v));
-                weights.sort((a, b) => new Date(b.ts) - new Date(a.ts));
-                this.latestWeightKg = weights.length ? weights[0].v : null;
+                // Weight is a health MEASUREMENT (metric 'weight'), not a profile
+                // field — take the most recent one. Coerce v (it may be stored as a
+                // string) so a valid weight is never dropped.
+                const weights = (h.healthEntries || [])
+                    .filter((e) => e.metric === 'weight' && Number.isFinite(Number(e.v)))
+                    .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+                this.latestWeightKg = weights.length ? Number(weights[0].v) : null;
             }
         } catch (e) { this.healthProfile = null; this.latestWeightKg = null; }
 
