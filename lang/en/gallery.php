@@ -136,6 +136,7 @@ return [
     'trash_empty' => 'Trash is empty.',
     'dismiss' => 'Dismiss',
     'load_failed' => 'Could not load this item.',
+    'index_repaired' => ':n damaged entries were removed from the gallery index.',
     'working' => 'Working…',
     'delete' => 'Delete',
     'delete_confirm' => 'Move the selected photos to the trash?',

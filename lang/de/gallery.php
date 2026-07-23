@@ -136,6 +136,7 @@ return [
     'trash_empty' => 'Papierkorb ist leer.',
     'dismiss' => 'Schließen',
     'load_failed' => 'Element konnte nicht geladen werden.',
+    'index_repaired' => ':n beschädigte Einträge wurden aus dem Galerie-Index entfernt.',
     'working' => 'Arbeite…',
     'delete' => 'Löschen',
     'delete_confirm' => 'Ausgewählte Fotos in den Papierkorb verschieben?',
