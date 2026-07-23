@@ -22,6 +22,13 @@ return [
     'audit_retention_days' => (int) env('OPS_AUDIT_RETENTION_DAYS', 365),
 
     /*
+     * Retention (days) for the high-volume device access trail (device_access_log).
+     * Much shorter than the lifecycle audit log — it's a usage trail, not a
+     * security record. 0 keeps forever.
+     */
+    'access_log_retention_days' => (int) env('OPS_ACCESS_LOG_RETENTION_DAYS', 30),
+
+    /*
      * Alert when the most recent successful backup is older than this many hours
      * (backup staleness). 0 disables the staleness check.
      */

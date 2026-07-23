@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Support\ApiAccessTrail;
 use App\Support\DeviceAudit;
 use Closure;
 use Illuminate\Http\Request;
@@ -56,6 +57,15 @@ class UpdateTokenIp
             }
         }
 
-        return $next($request);
+        $response = $next($request);
+
+        // Throttled usage trail (one row per token per minute) with the real
+        // response status. Runs after the handler so a rejected-but-authenticated
+        // request (e.g. an ability 403) is captured too.
+        if ($token instanceof PersonalAccessToken) {
+            ApiAccessTrail::trail($token, $request, $response->getStatusCode());
+        }
+
+        return $response;
     }
 }

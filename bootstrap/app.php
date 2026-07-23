@@ -3,10 +3,14 @@
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Services\Ops\ErrorRecorder;
+use App\Support\ApiAccessTrail;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Laravel\Sanctum\Exceptions\MissingAbilityException;
 use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
 
@@ -50,5 +54,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // service). Recording is best-effort and must never affect the request.
         $exceptions->report(function (Throwable $e): void {
             app(ErrorRecorder::class)->record($e);
+        });
+
+        // Audit a rejected API request (throttled, with a reason code) so a device
+        // that keeps getting 401/403 is diagnosable. Only fires when a bearer was
+        // presented; falls through to normal rendering (returns nothing).
+        $exceptions->render(function (Throwable $e, Request $request): void {
+            if (! $request->is('api/*')) {
+                return;
+            }
+            if ($e instanceof AuthenticationException) {
+                ApiAccessTrail::unauthorized($request, 401);
+            } elseif ($e instanceof MissingAbilityException || $e instanceof AuthorizationException) {
+                ApiAccessTrail::unauthorized($request, 403);
+            }
         });
     })->create();
