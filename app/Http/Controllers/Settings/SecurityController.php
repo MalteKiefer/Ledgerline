@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
+use App\Models\AuditLog;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -39,11 +40,30 @@ class SecurityController extends Controller
             'max_connected_devices' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        AppSettings::current()->update([
+        $settings = AppSettings::current();
+        $before = [
+            'vault_remember_days' => $settings->vault_remember_days,
+            'vault_public_idle_minutes' => $settings->vault_public_idle_minutes,
+            'max_connected_devices' => $settings->max_connected_devices,
+        ];
+        $after = [
             'vault_remember_days' => $request->integer('vault_remember_days'),
             'vault_public_idle_minutes' => $request->integer('vault_public_idle_minutes'),
             'max_connected_devices' => $request->integer('max_connected_devices'),
-        ]);
+        ];
+        $settings->update($after);
+
+        // Audit the exact security-policy diff (values, never secrets) so a change
+        // to the device cap / vault-lock policy is attributable and reversible.
+        $changes = [];
+        foreach ($after as $key => $value) {
+            if ((string) ($before[$key] ?? '') !== (string) $value) {
+                $changes[$key] = ['from' => $before[$key], 'to' => $value];
+            }
+        }
+        if ($changes !== []) {
+            AuditLog::record('settings.security_changed', null, ['changes' => $changes]);
+        }
 
         return $this->savedSettings('security', 'settings.security.edit', 'settings.security_saved');
     }
