@@ -5,6 +5,7 @@ declare(strict_types=1);
 return [
     'download_failed' => 'Der Download ist fehlgeschlagen.',
     'upload_failed' => 'Ein Upload ist fehlgeschlagen.',
+    'index_degraded' => ':n Objekt(e) konnten nicht geladen werden, weil ein Speicher-Blob fehlt. Dateien sind schreibgeschützt, bis das behoben ist — es wurde nichts gelöscht.',
     'vault_stale' => 'Die Dateien wurden zeitgleich woanders geändert und neu geladen. Bitte letzte Änderung wiederholen.',
     'actions' => 'Aktionen',
     'trash' => 'Papierkorb',

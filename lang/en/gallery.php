@@ -136,7 +136,7 @@ return [
     'trash_empty' => 'Trash is empty.',
     'dismiss' => 'Dismiss',
     'load_failed' => 'Could not load this item.',
-    'index_repaired' => ':n damaged entries were removed from the gallery index.',
+    'index_degraded' => ':n photo(s) could not be loaded because a storage blob is missing. The gallery is read-only until this is resolved — nothing was deleted.',
     'working' => 'Working…',
     'delete' => 'Delete',
     'delete_confirm' => 'Move the selected photos to the trash?',

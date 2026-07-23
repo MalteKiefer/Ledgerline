@@ -136,7 +136,7 @@ return [
     'trash_empty' => 'Papierkorb ist leer.',
     'dismiss' => 'Schließen',
     'load_failed' => 'Element konnte nicht geladen werden.',
-    'index_repaired' => ':n beschädigte Einträge wurden aus dem Galerie-Index entfernt.',
+    'index_degraded' => ':n Foto(s) konnten nicht geladen werden, weil ein Speicher-Blob fehlt. Die Galerie ist schreibgeschützt, bis das behoben ist — es wurde nichts gelöscht.',
     'working' => 'Arbeite…',
     'delete' => 'Löschen',
     'delete_confirm' => 'Ausgewählte Fotos in den Papierkorb verschieben?',

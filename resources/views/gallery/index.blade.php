@@ -15,7 +15,7 @@
         token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('gallery.load_failed')),
-        indexRepaired: @js(__('gallery.index_repaired')),
+        indexDegraded: @js(__('gallery.index_degraded')),
         deleteConfirm: @js(__('gallery.delete_confirm')),
         purgeConfirm: @js(__('gallery.purge_confirm')),
         emptyTrashConfirm: @js(__('gallery.empty_trash_confirm')),

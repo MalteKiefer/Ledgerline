@@ -30,6 +30,7 @@
         saveFailed: @js(__('files.save_failed')),
         uploadFailed: @js(__('files.upload_failed')),
         downloadFailed: @js(__('files.download_failed')),
+        indexDegraded: @js(__('files.index_degraded')),
         rootFolder: @js(__('files.all_files')),
         migrateFailed: @js(__('files.migrate_failed')),
         restoreConfirm: @js(__('files.version_restore_confirm')),

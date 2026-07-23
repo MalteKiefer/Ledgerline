@@ -80,15 +80,16 @@ return {
             if (target) this.openViewer(target);
         }
         this.refreshUsage();
-        // Recover from a corrupt index: if a record shard was permanently missing
-        // (404) the store loaded in `degraded` mode (its records are gone for good).
-        // Re-seal the root now so it no longer points at the dead shard (self-heal),
-        // and tell the user what was lost. flush() must land BEFORE reconcile so the
-        // healed shard set drives the live-set.
+        // Corrupt-index guard: a record shard blob is missing (404 after retries), so
+        // the store is `degraded`. Do NOT self-heal — rewriting the root would erase
+        // the missing shard's slot and make the loss permanent, and it may still be
+        // recoverable (a transient object-store miss, or restorable from backup). Go
+        // READ-ONLY: surviving photos render, but skip reconcile + the pipeline (both
+        // write). The store's flush() is frozen too. A clean reload clears `degraded`.
         if (window.LLGalleryStore.degraded) {
-            window.llToast?.((labels.indexRepaired || ':n damaged entries were removed from the gallery index.')
+            window.llToast?.((labels.indexDegraded || ':n photo(s) could not be loaded (a storage blob is missing). The gallery is read-only until this is resolved — nothing was deleted.')
                 .replace(':n', window.LLGalleryStore._missingShards || 1));
-            try { await window.LLGalleryStore.flush(); } catch (e) { /* debounce backstop */ }
+            return;
         }
         // Tell the server which blobs the manifest still references so it can
         // reclaim the quota held by any it no longer does (grace-gated). Without
