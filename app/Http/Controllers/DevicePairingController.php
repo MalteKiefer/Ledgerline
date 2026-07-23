@@ -132,7 +132,13 @@ class DevicePairingController extends Controller
     {
         $this->requireUser($request)->tokens()->whereKey($tokenId)->delete();
 
-        AuditLog::record('device.revoked', null, ['token_id' => $tokenId]);
+        // Reason code distinguishes a deliberate owner removal from the automatic
+        // killers (cap/idle/expired/wipe); via marks web-session vs API-token actor.
+        AuditLog::record('device.revoked', null, [
+            'token_id' => $tokenId,
+            'reason' => 'manual',
+            'via' => $request->user()?->currentAccessToken() ? 'api' : 'web',
+        ]);
 
         return response()->json(['ok' => true]);
     }

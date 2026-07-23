@@ -7,6 +7,7 @@ namespace App\Services\Auth;
 use App\Models\AppSettings;
 use App\Models\DevicePairing;
 use App\Models\User;
+use App\Support\DeviceAudit;
 use Illuminate\Support\Str;
 
 /**
@@ -119,15 +120,32 @@ class Pairing
         // Admin-configurable cap (Security settings); null/0 falls back to config default.
         $configuredMax = AppSettings::current()->max_connected_devices ?: config('devices.max', 3);
         $max = max(1, is_numeric($configuredMax) ? (int) $configuredMax : 3);
-        $existing = $user->tokens()->orderBy('id')->pluck('id');
+        // LRU eviction: keep the most-recently-used devices. A token that never
+        // contacted the API (last_used_at NULL) is evicted first, then the least
+        // recently used, then the oldest by id. This never evicts an actively-used
+        // device just because it was paired early (the old orderBy('id') bug).
+        $existing = $user->tokens()
+            ->orderByRaw('last_used_at is null desc')
+            ->orderBy('last_used_at')
+            ->orderBy('id')
+            ->get();
         $overflow = $existing->count() - ($max - 1);
         if ($overflow > 0) {
-            $user->tokens()->whereIn('id', $existing->take($overflow))->delete();
+            foreach ($existing->take($overflow) as $victim) {
+                DeviceAudit::record($victim, 'device.evicted', ['reason' => 'cap', 'cap' => $max]);
+                $victim->delete();
+            }
         }
 
         // Scope the token to a named 'device' ability (not the '*' wildcard) so a
         // future ability check can constrain what a paired device may reach.
-        $token = $user->createToken($pairing->device_name ?? 'device', ['device']);
+        // Set expires_at explicitly (= the Sanctum global lifetime) so the absolute
+        // expiry is visible in the device list and auditable when it lapses, rather
+        // than an invisible global cut-off (config/sanctum.php expiration).
+        $ttlCfg = config('sanctum.expiration', 60 * 24 * 180);
+        $ttl = is_numeric($ttlCfg) ? (int) $ttlCfg : 60 * 24 * 180;
+        $expiresAt = $ttl > 0 ? now()->addMinutes($ttl) : null;
+        $token = $user->createToken($pairing->device_name ?? 'device', ['device'], $expiresAt);
         // Record the paired device's IP for the web "Connected devices" list.
         if ($ip !== null) {
             $token->accessToken->forceFill(['ip' => $ip])->save();

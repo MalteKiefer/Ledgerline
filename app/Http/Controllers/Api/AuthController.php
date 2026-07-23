@@ -9,6 +9,7 @@ use App\Models\FileBlob;
 use App\Models\GalleryBlob;
 use App\Models\User;
 use App\Services\Auth\Pairing;
+use App\Support\DeviceAudit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -105,7 +106,11 @@ class AuthController extends Controller
     /** Revoke the presented bearer (log the device out). */
     public function destroy(Request $request): JsonResponse
     {
-        $this->requireUser($request)->currentAccessToken()->delete();
+        $token = $this->requireUser($request)->currentAccessToken();
+        if ($token instanceof PersonalAccessToken) {
+            DeviceAudit::record($token, 'device.revoked', ['reason' => 'logout', 'via' => 'api']);
+        }
+        $token->delete();
 
         return response()->json(['ok' => true]);
     }
