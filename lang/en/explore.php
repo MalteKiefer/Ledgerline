@@ -56,6 +56,11 @@ return [
     'details' => 'Details',
     'back' => 'Back',
     'coupled_photos' => 'Photos on this track',
+    'no_coupled_photos' => 'No photos linked yet. Use “Add photos” to attach some.',
+    'add_photos' => 'Add photos',
+    'search_photos' => 'Search photos…',
+    'no_photos' => 'No photos in your gallery.',
+    'done' => 'Done',
 
     // Search
     'search_tracks' => 'Search tracks…',
