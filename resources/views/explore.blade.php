@@ -372,22 +372,32 @@
                         </div>
                       </template>
                       <template x-if="renamingId !== selectedTrack.id">
-                        <div class="flex items-center gap-1.5">
-                          <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="selectedTrack.name"></h3>
-                          <button type="button" @click="startRename(selectedTrack)" class="shrink-0 rounded-md p-1 text-gray-400 hover:bg-accent/5 hover:text-accent" :title="@js(__('explore.edit_name'))" :aria-label="@js(__('explore.edit_name'))"><x-icon name="pencil" class="h-4 w-4" /></button>
-                        </div>
+                        <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="selectedTrack.name"></h3>
                       </template>
                     </div>
-                    <button type="button" @click="downloadGpx(selectedTrack)"
-                      class="mt-0.5 rounded-lg p-1.5 text-gray-400 hover:bg-accent/10 hover:text-accent"
-                      :title="@js(__('explore.download_gpx'))" :aria-label="@js(__('explore.download_gpx'))">
-                      <x-icon name="arrow-down-tray" class="h-5 w-5" />
-                    </button>
-                    <button type="button" @click="deleteTrack(selectedTrack)"
-                      class="mt-0.5 rounded-lg p-1.5 text-gray-400 hover:bg-red-500/10 hover:text-red-500"
-                      :title="@js(__('explore.delete_track'))" :aria-label="@js(__('explore.delete_track'))">
-                      <x-icon name="trash" class="h-5 w-5" />
-                    </button>
+                    {{-- Actions: rename / GPX download / delete, in a 3-dot menu --}}
+                    <div class="relative mt-0.5 shrink-0" x-data="{ open: false }" @keydown.escape.window="open = false">
+                      <button type="button" @click="open = ! open"
+                        class="rounded-lg p-1.5 text-gray-400 hover:bg-accent/5 hover:text-accent"
+                        :title="@js(__('explore.track_actions'))" :aria-label="@js(__('explore.track_actions'))" :aria-expanded="open">
+                        <x-icon name="ellipsis" class="h-5 w-5" />
+                      </button>
+                      <div x-show="open" x-cloak @click.outside="open = false"
+                        class="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
+                        <button type="button" @click="open = false; startRename(selectedTrack)"
+                          class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent">
+                          <x-icon name="pencil" class="h-4 w-4" />{{ __('explore.edit_name') }}
+                        </button>
+                        <button type="button" @click="open = false; downloadGpx(selectedTrack)"
+                          class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 transition hover:bg-accent/5 hover:text-accent">
+                          <x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('explore.download_gpx') }}
+                        </button>
+                        <button type="button" @click="open = false; deleteTrack(selectedTrack)"
+                          class="flex w-full items-center gap-2.5 border-t border-black/[0.06] dark:border-white/10 px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 transition hover:bg-red-500/10">
+                          <x-icon name="trash" class="h-4 w-4" />{{ __('explore.delete_track') }}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {{-- Full stats table --}}

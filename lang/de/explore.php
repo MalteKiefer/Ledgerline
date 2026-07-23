@@ -46,6 +46,7 @@ return [
     'max_elevation' => 'Max. Höhe',
     'delete_track' => 'Tour löschen',
     'download_gpx' => 'Als GPX herunterladen',
+    'track_actions' => 'Tour-Aktionen',
     'delete_track_confirm' => 'Diese Tour endgültig löschen? Das kann nicht rückgängig gemacht werden.',
     'rename_track' => 'Tour umbenennen',
     'edit_name' => 'Name bearbeiten',
