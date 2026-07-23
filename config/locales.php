@@ -17,6 +17,7 @@ return [
     'languages' => [
         'de' => 'Deutsch',
         'en' => 'English',
+        'ru' => 'Русский',
     ],
 
 ];
