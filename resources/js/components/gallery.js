@@ -80,6 +80,12 @@ return {
             if (target) this.openViewer(target);
         }
         this.refreshUsage();
+        // Tell the server which blobs the manifest still references so it can
+        // reclaim the quota held by any it no longer does (grace-gated). Without
+        // this, deleted/emptied-trash photos keep occupying storage forever — the
+        // gallery never ran a reconcile pass (files.js always has). Safe: the
+        // live-set below covers every ref class (per-photo blobs + shard refs).
+        this.reconcileBlobs();
         // Process pending uploads (its finally pairs Live Photos); also run a pair
         // pass for the backfill case where nothing is pending but split Live Photos
         // already exist. The guard makes a double call a no-op.
