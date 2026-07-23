@@ -10,6 +10,7 @@
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc'), 'icon' => 'bell', 'tint' => '#d9a441'],
             ['url' => route('settings.backup.index'), 'title' => __('settings.backup_section'), 'desc' => __('settings.backup_desc'), 'icon' => 'archive-box', 'tint' => '#3fae9f'],
             ['url' => route('settings.security.edit'), 'title' => __('settings.security_section'), 'desc' => __('settings.security_desc'), 'icon' => 'shield-check', 'tint' => '#9e70fa'],
+            ['url' => route('settings.security-log'), 'title' => __('settings.seclog_section'), 'desc' => __('settings.seclog_desc'), 'icon' => 'finger-print', 'tint' => '#3fae9f'],
             ['url' => route('settings.system.edit'), 'title' => __('settings.system_section'), 'desc' => __('settings.system_desc'), 'icon' => 'server', 'tint' => '#6b7280'],
         ];
         usort($admin, fn ($a, $b) => strcasecmp($a['title'], $b['title']));
