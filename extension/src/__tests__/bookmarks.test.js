@@ -2,8 +2,36 @@ import { describe, it, expect } from 'vitest';
 import {
   newId, isTrashed, isSafeUrl, listBookmarks, getBookmark,
   addBookmark, updateBookmark, trashBookmark, restoreBookmark,
-  createFolder, renameFolder, deleteFolder,
+  createFolder, renameFolder, deleteFolder, importBrowserBookmarks,
 } from '../bookmarks.js';
+
+describe('importBrowserBookmarks', () => {
+  it('rebuilds folders from paths, skips unsafe URLs and dedups', () => {
+    const m = { bookmarks: [], bookmarkFolders: [] };
+    const r = importBrowserBookmarks(m, [
+      { title: 'A', url: 'https://a.test', path: ['Bar'] },
+      { title: 'B', url: 'https://b.test', path: ['Bar', 'Sub'] },
+      { title: 'Bad', url: 'javascript:alert(1)', path: ['Bar'] },
+    ]);
+    expect(r).toEqual({ added: 2, skipped: 1 });
+    // "Bar" reused for both, "Sub" nested under it — 2 folders total.
+    expect(m.bookmarkFolders).toHaveLength(2);
+    const bar = m.bookmarkFolders.find(f => f.name === 'Bar');
+    const sub = m.bookmarkFolders.find(f => f.name === 'Sub');
+    expect(sub.parentId).toBe(bar.id);
+    expect(m.bookmarks.find(b => b.title === 'A').folderId).toBe(bar.id);
+    expect(m.bookmarks.find(b => b.title === 'B').folderId).toBe(sub.id);
+  });
+
+  it('skips a bookmark already present in the same folder', () => {
+    const m = { bookmarks: [], bookmarkFolders: [] };
+    importBrowserBookmarks(m, [{ title: 'A', url: 'https://a.test', path: ['Bar'] }]);
+    const r = importBrowserBookmarks(m, [{ title: 'A again', url: 'https://a.test', path: ['Bar'] }]);
+    expect(r).toEqual({ added: 0, skipped: 1 });
+    expect(m.bookmarks).toHaveLength(1);
+    expect(m.bookmarkFolders).toHaveLength(1); // "Bar" reused, not duplicated
+  });
+});
 
 describe('newId', () => {
   it('is 32 hex chars and unique', () => {

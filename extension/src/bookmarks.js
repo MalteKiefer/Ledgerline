@@ -178,3 +178,57 @@ export function deleteFolder(manifest, id) {
     manifest.bookmarkFolders = folders.filter(f => f.id !== id);
     return { ok: true };
 }
+
+/**
+ * Merge a flattened list of the browser's own bookmarks into the vault manifest.
+ * The ONLY write path the extension offers for bookmarks (there is no per-item
+ * CRUD): a one-way bulk import. Rebuilds the folder hierarchy from each item's
+ * `path` (array of folder names, root→leaf), reusing an existing folder when a
+ * same-named child already exists, and skips http(s)-unsafe URLs plus exact
+ * duplicates (same URL already present in the same target folder). Mutates
+ * `manifest` in place.
+ *
+ * @param {object} manifest
+ * @param {Array<{ title?: string, url: string, path?: string[] }>} items
+ * @returns {{ added: number, skipped: number }}
+ */
+export function importBrowserBookmarks(manifest, items) {
+    if (!Array.isArray(manifest.bookmarks)) manifest.bookmarks = [];
+    if (!Array.isArray(manifest.bookmarkFolders)) manifest.bookmarkFolders = [];
+    let added = 0, skipped = 0;
+
+    const pathCache = new Map(); // lowercased path-key → folderId
+    const childByName = (parentId, name) =>
+        (manifest.bookmarkFolders.find(f =>
+            (f.parentId || null) === (parentId || null) &&
+            (f.name || '').toLowerCase() === name.toLowerCase()) || {}).id || null;
+    const ensurePath = (path) => {
+        let parentId = null, key = '';
+        for (const raw of (Array.isArray(path) ? path : [])) {
+            const name = String(raw || '').trim();
+            if (!name) continue;
+            key += '/' + name.toLowerCase();
+            let id = pathCache.get(key);
+            if (!id) { id = childByName(parentId, name) || createFolder(manifest, { name, parentId }).id; pathCache.set(key, id); }
+            parentId = id;
+        }
+        return parentId;
+    };
+
+    // Dedupe against bookmarks already present (folder + url), ignoring trashed.
+    const seen = new Set(manifest.bookmarks
+        .filter(b => !b.trashed)
+        .map(b => (b.folderId || '') + '|' + (b.url || '').toLowerCase()));
+
+    for (const it of (Array.isArray(items) ? items : [])) {
+        const url = String(it && it.url || '');
+        if (!isSafeUrl(url)) { skipped++; continue; }
+        const folderId = ensurePath(it.path);
+        const dk = (folderId || '') + '|' + url.toLowerCase();
+        if (seen.has(dk)) { skipped++; continue; }
+        addBookmark(manifest, { title: it.title, url, folderId });
+        seen.add(dk);
+        added++;
+    }
+    return { added, skipped };
+}
