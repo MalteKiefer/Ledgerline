@@ -36,7 +36,10 @@ export function estimateCalories(p) {
     // Hilly terrain (steep average grade) raises the effort.
     if (ascent / distKm > 40) met += 1.5;
 
-    let kcal = met * weightKg * hours;      // horizontal / activity energy
+    // ACTIVE energy only — 1 MET ≈ resting metabolism, which a fitness tracker's
+    // "active/activity calories" excludes. Subtract that baseline so the estimate
+    // matches an Apple Watch / Garmin reading rather than total expenditure.
+    let kcal = Math.max(0, met - 1) * weightKg * hours;
     kcal += weightKg * ascent * 0.0098;     // extra vertical work (mgh at ~24% efficiency)
     if (p.sex === 'f') kcal *= 0.92;        // rough lower-lean-mass adjustment
 

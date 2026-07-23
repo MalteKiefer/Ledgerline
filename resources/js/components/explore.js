@@ -13,7 +13,7 @@
 // so none of them touch the startup bundle.
 
 import { bootStore, bootGalleryStore } from '../shared/zk-module';
-import { parseTrack, parseTrackBinary } from '../shared/track-parse';
+import { parseTrack, parseTrackBinary, smoothedAscentDescent } from '../shared/track-parse';
 import { matchPhotoToTracks } from '../shared/photo-track-match';
 import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
@@ -134,6 +134,7 @@ export default (config = {}, labels = {}) => ({
         this.tracks = data.tracks;
         this.couplings = data.couplings;
         this.settings = data.settings;
+        this._healAscent();
 
         // Gallery photos are best-effort — Explore still works with none.
         try {
@@ -179,6 +180,26 @@ export default (config = {}, labels = {}) => ({
 
     // Persist the sealed store (debounced) after a mutation.
     _save() { this._mut++; window.LLModuleStore.explore.touch(); },
+
+    // Re-derive ascent/descent for existing tracks with the GPS-noise smoothing
+    // (older tracks were stored with raw per-point deltas that inflated total
+    // climb ~5-10x — wrong on the display AND in the calorie estimate). One
+    // debounced save if anything changed; leaves duration/distance untouched.
+    _healAscent() {
+        let dirty = false;
+        for (const t of (this.tracks || [])) {
+            const pts = t.points || [];
+            if (! t.stats || pts.length < 2) continue;
+            const { ascentM, descentM } = smoothedAscentDescent(pts);
+            const round2 = (n) => Math.round(n * 100) / 100;
+            if (Math.abs(round2(ascentM) - (Number(t.stats.ascentM) || 0)) > 1) {
+                t.stats.ascentM = round2(ascentM);
+                t.stats.descentM = round2(descentM);
+                dirty = true;
+            }
+        }
+        if (dirty) this._save();
+    },
 
     /* ---------------------------------------------------------------- Map */
 
