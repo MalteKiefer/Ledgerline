@@ -80,6 +80,16 @@ return {
             if (target) this.openViewer(target);
         }
         this.refreshUsage();
+        // Recover from a corrupt index: if a record shard was permanently missing
+        // (404) the store loaded in `degraded` mode (its records are gone for good).
+        // Re-seal the root now so it no longer points at the dead shard (self-heal),
+        // and tell the user what was lost. flush() must land BEFORE reconcile so the
+        // healed shard set drives the live-set.
+        if (window.LLGalleryStore.degraded) {
+            window.llToast?.((labels.indexRepaired || ':n damaged entries were removed from the gallery index.')
+                .replace(':n', window.LLGalleryStore._missingShards || 1));
+            try { await window.LLGalleryStore.flush(); } catch (e) { /* debounce backstop */ }
+        }
         // Tell the server which blobs the manifest still references so it can
         // reclaim the quota held by any it no longer does (grace-gated). Without
         // this, deleted/emptied-trash photos keep occupying storage forever — the

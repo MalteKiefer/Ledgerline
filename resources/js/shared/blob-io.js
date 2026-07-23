@@ -19,7 +19,11 @@ export async function fetchBlobBuffer(url) {
                 await new Promise((r) => setTimeout(r, wait));
                 continue;
             }
-            throw new Error('fetch failed');
+            // Surface the HTTP status so callers can tell a permanent 404 (blob
+            // gone for good) from a transient failure that might recover.
+            const err = new Error('fetch failed');
+            err.status = res.status;
+            throw err;
         }
     } finally {
         _blobActive--;

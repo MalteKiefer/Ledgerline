@@ -39,6 +39,8 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         _shardBits: 0,
         _shards: [], // [{ ref, key, hash, count, bucket }] descriptors from the last load/save
         _collDesc: {}, // { <collection.key>: { ref, key, hash } | null } for each collection blob
+        degraded: false, // true when load() had to skip a permanently-missing (404) shard
+        _missingShards: 0, // count of shards dropped during a degraded load
 
         _blank() {
             const b = { v: 3, [recordKey]: [] };
@@ -105,12 +107,24 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
             // v3 only (clean slate — no v1/v2 read paths). Anything else = fresh store.
             if (root.v === 3 && Array.isArray(root.shards)) {
                 this._shardBits = root.shardBits ?? 0;
+                this.degraded = false;
+                this._missingShards = 0;
                 // Load + decrypt every record shard in parallel (immutable blob cache
-                // makes repeats instant). A failed shard THROWS (fails the whole load)
-                // rather than dropping records — a partial in-memory set could be saved
-                // and would free the "missing" shard, losing data for good.
+                // makes repeats instant). A shard that is PERMANENTLY gone (HTTP 404 —
+                // its blob was lost, e.g. a partial save that stored the root pointer
+                // but never landed the shard upload) is skipped and the store enters a
+                // `degraded` state: its records are unrecoverable anyway, so dropping
+                // them loses nothing new, and the next save re-seals the root WITHOUT
+                // the dead ref (self-heal). Any OTHER failure (429/network/decrypt)
+                // still THROWS — that shard might recover, and saving a partial set
+                // would free it and lose data for good.
+                const kept = [];
                 const parts = await Promise.all(root.shards.map((s) => fetchDecryptWorker(prefix + '/raw', s.ref, s.key)
-                    .then((b) => JSON.parse(new TextDecoder().decode(b)))));
+                    .then((b) => { kept.push(s); return JSON.parse(new TextDecoder().decode(b)); })
+                    .catch((e) => {
+                        if (e && e.status === 404) { this.degraded = true; this._missingShards++; return null; }
+                        throw e;
+                    })));
                 const records = [];
                 for (const arr of parts) if (Array.isArray(arr)) records.push(...arr);
                 const data = { v: 3, [recordKey]: records };
@@ -120,7 +134,9 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     this._collDesc[c.key] = root[c.rootRef] ? { ref: root[c.rootRef], key: root[c.rootKey], hash: root[c.rootHash] } : null;
                 }
                 this.data = data;
-                this._shards = root.shards.map((s) => ({ ...s }));
+                // Only the shards we actually loaded survive into _shards, so the next
+                // save's root omits the dead ones and shardRefs() never keeps them.
+                this._shards = kept.map((s) => ({ ...s }));
             } else {
                 this.data = this._blank();
             }
@@ -132,7 +148,8 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
 
         reset() {
             this.data = null; this.version = 0; this.ready = false; this.loaded = false;
-            this._shards = []; this._collDesc = {}; this._shardBits = 0; clearTimeout(this._timer);
+            this._shards = []; this._collDesc = {}; this._shardBits = 0;
+            this.degraded = false; this._missingShards = 0; clearTimeout(this._timer);
         },
 
         touch() {
