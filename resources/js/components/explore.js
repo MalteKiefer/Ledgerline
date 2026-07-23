@@ -477,9 +477,9 @@ export default (config = {}, labels = {}) => ({
     // Match every gallery photo against the imported tracks using the current
     // tolerances, writing results into data.couplings. A photo already given a
     // manual coupling is left untouched.
-    async matchPhotos() {
+    async matchPhotos(silent = false) {
         if (! this.tracks.length || ! this.photos.length) return;
-        this.busy = true;
+        if (! silent) this.busy = true;
         try {
             const matchTracks = this.tracks.map((t) => ({ id: t.id, points: t.points || [] }));
             const opts = { timeToleranceS: this.settings.couplingTimeToleranceS, distanceToleranceM: this.settings.couplingDistanceToleranceM };
@@ -497,10 +497,10 @@ export default (config = {}, labels = {}) => ({
                 this.couplings[p.id] = { trackId: m.trackId, source: m.source, lat: m.lat ?? null, lng: m.lng ?? null };
                 n++;
             }
-            this._save();
-            window.llToast?.((labels.matched || ':n matched').replace(':n', n));
+            if (n > 0) this._save();
+            if (! silent) window.llToast?.((labels.matched || ':n matched').replace(':n', n));
         } finally {
-            this.busy = false;
+            if (! silent) this.busy = false;
         }
     },
 
@@ -616,6 +616,10 @@ export default (config = {}, labels = {}) => ({
         this.selectedTrackId = id;
         this.renamingId = null;
         this.view = 'detail';
+        // Auto-match photos to this (and every) track on open so a photo taken on
+        // the tour shows up without the user hunting for a match button. Silent +
+        // idempotent (skips manual couplings, only saves when something changed).
+        this.matchPhotos(true);
     },
 
     // Return to the tracks list from the detail view.

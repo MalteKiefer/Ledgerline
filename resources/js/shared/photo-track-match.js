@@ -87,18 +87,23 @@ export function matchPhotoToTracks(photo, tracks, opts) {
         && typeof photo.photoLng === 'number' && Number.isFinite(photo.photoLng);
     const hasTime = photo && typeof photo.photoTime === 'number' && Number.isFinite(photo.photoTime);
 
-    // --- 1) EXIF GPS: nearest track point within BOTH time + distance tol -----
+    // --- 1) EXIF GPS: nearest track point within the distance tolerance -------
+    // Spatial proximity is the primary signal: a photo taken ON a track almost
+    // certainly belongs to it, even if the camera clock is off or in the wrong
+    // timezone. Time is only a TIEBREAKER — among equally-near candidates the
+    // temporally-closest wins (disambiguating two tours over the same ground) —
+    // never a hard gate that drops a spatially-perfect match.
     if (hasGps) {
-        let best = null; // { trackId, distM }
+        let best = null; // { trackId, distM, dtMs }
         for (const track of list) {
             const pts = track?.points || [];
             for (const p of pts) {
-                // Distance gate.
                 const d = haversineM(photo.photoLat, photo.photoLng, p.lat, p.lng);
                 if (d > distTolM) continue;
-                // Time gate (only when both sides carry a timestamp).
-                if (hasTime && typeof p.t === 'number' && Math.abs(p.t - photo.photoTime) > timeTolMs) continue;
-                if (best === null || d < best.distM) best = { trackId: track.id, distM: d };
+                const dtMs = (hasTime && typeof p.t === 'number') ? Math.abs(p.t - photo.photoTime) : Infinity;
+                if (best === null || d < best.distM || (d === best.distM && dtMs < best.dtMs)) {
+                    best = { trackId: track.id, distM: d, dtMs };
+                }
             }
         }
         if (best) return { trackId: best.trackId, source: 'exif', lat: photo.photoLat, lng: photo.photoLng };
