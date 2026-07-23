@@ -45,6 +45,7 @@ return [
     'min_elevation' => 'Мин. высота',
     'max_elevation' => 'Макс. высота',
     'delete_track' => 'Удалить трек',
+    'download_gpx' => 'Скачать как GPX',
     'delete_track_confirm' => 'Удалить этот трек навсегда? Это действие нельзя отменить.',
     'rename_track' => 'Переименовать трек',
     'edit_name' => 'Изменить название',

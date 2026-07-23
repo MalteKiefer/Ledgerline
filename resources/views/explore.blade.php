@@ -378,6 +378,11 @@
                         </div>
                       </template>
                     </div>
+                    <button type="button" @click="downloadGpx(selectedTrack)"
+                      class="mt-0.5 rounded-lg p-1.5 text-gray-400 hover:bg-accent/10 hover:text-accent"
+                      :title="@js(__('explore.download_gpx'))" :aria-label="@js(__('explore.download_gpx'))">
+                      <x-icon name="arrow-down-tray" class="h-5 w-5" />
+                    </button>
                     <button type="button" @click="deleteTrack(selectedTrack)"
                       class="mt-0.5 rounded-lg p-1.5 text-gray-400 hover:bg-red-500/10 hover:text-red-500"
                       :title="@js(__('explore.delete_track'))" :aria-label="@js(__('explore.delete_track'))">

@@ -22,7 +22,8 @@ import { padBlob } from '../shared/padme';
 import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
 import { haversineM } from '../shared/track-parse';
 import { classifySearch } from '../shared/geo-search';
-import { escapeHtml } from '../shared/dom';
+import { escapeHtml, saveBlobAs } from '../shared/dom';
+import { buildGpx, gpxFilename } from '../shared/track-export';
 
 // Distinct, deterministic polyline colours cycled per track (iOS-ish accents).
 const TRACK_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f', '#9e70fa', '#ef4444'];
@@ -650,6 +651,16 @@ export default (config = {}, labels = {}) => ({
     },
 
     /* --------------------------------------------------------- Rename / note */
+
+    // Download a track (recorded, imported or planned) as a GPX file. Fully
+    // client-side from the already-decrypted points — nothing leaves the ZK
+    // boundary; the server never sees the track in the clear.
+    downloadGpx(track) {
+        if (! track || ! (track.points || []).length) return;
+        const gpx = buildGpx(track);
+        if (! gpx) return;
+        saveBlobAs(new TextEncoder().encode(gpx), gpxFilename(track.name), 'application/gpx+xml');
+    },
 
     startRename(track) {
         this.renamingId = track.id;
