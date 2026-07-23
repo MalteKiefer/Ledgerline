@@ -63,4 +63,19 @@ class SecurityLogPageTest extends TestCase
         $this->assertStringContainsString('text/csv', (string) $res->headers->get('Content-Type'));
         $this->assertStringContainsString('device.evicted', $res->streamedContent());
     }
+
+    public function test_csv_export_neutralises_formula_injection(): void
+    {
+        config(['services.pocketid.admin_group' => null]);
+        // A client-controlled cell (user-agent) starting with a formula char.
+        AuditLog::create(['action' => 'auth.unauthorized', 'user_id' => 1, 'user_agent' => '=cmd|calc', 'created_at' => now()]);
+
+        $csv = $this->actingAs(User::factory()->create())
+            ->get(route('settings.security-log', ['export' => 'csv']))->streamedContent();
+
+        // The value survives but is neutralised with a leading apostrophe, so the
+        // cell never begins a formula.
+        $this->assertStringContainsString("'=cmd|calc", $csv);
+        $this->assertStringNotContainsString(',=cmd|calc', $csv);
+    }
 }
