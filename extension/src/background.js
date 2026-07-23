@@ -6,7 +6,7 @@ import { deriveVaultKey, openManifest, sealManifest, b64, fromB64, unwrapIdentit
 import * as pk from './passkey.js';
 import { hostOf, hostsMatch } from './hosts.js';
 import { IDENTITY_FIELDS } from './identity.js';
-import { listBookmarks, getBookmark, addBookmark, updateBookmark, trashBookmark, restoreBookmark, createFolder, renameFolder, deleteFolder } from './bookmarks.js';
+import { listBookmarks, getBookmark, importBrowserBookmarks } from './bookmarks.js';
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -735,34 +735,12 @@ const handlers = {
         const m = await readManifest("bookmarks");
         return { bookmark: getBookmark(m, id) };
     },
-    async 'bookmarks.create'({ bookmark }) {
-        return mutateManifest("bookmarks", (m) => addBookmark(m, bookmark || {}));
-    },
-    async 'bookmarks.update'({ id, patch }) {
-        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest("bookmarks", (m) => updateBookmark(m, id, patch || {}));
-    },
-    async 'bookmarks.trash'({ id }) {
-        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest("bookmarks", (m) => trashBookmark(m, id, new Date().toISOString()));
-    },
-    async 'bookmarks.restore'({ id }) {
-        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest("bookmarks", (m) => restoreBookmark(m, id));
-    },
-    async 'bookmarkFolders.create'({ name, parentId }) {
-        if (typeof name !== 'string' || name.length > 120) throw new Error('bad input');
-        if (parentId != null && (typeof parentId !== 'string' || parentId.length > 64)) throw new Error('bad input');
-        return mutateManifest("bookmarks", (m) => createFolder(m, { name, parentId: parentId ?? null }));
-    },
-    async 'bookmarkFolders.rename'({ id, name }) {
-        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        if (typeof name !== 'string' || name.length > 120) throw new Error('bad input');
-        return mutateManifest("bookmarks", (m) => renameFolder(m, id, name));
-    },
-    async 'bookmarkFolders.delete'({ id }) {
-        if (typeof id !== 'string' || id.length > 64) throw new Error('bad input');
-        return mutateManifest("bookmarks", (m) => deleteFolder(m, id));
+    // Bookmarks are read-only in the extension — the ONLY write is a one-way bulk
+    // import of the browser's own bookmarks (folders rebuilt from each item's path,
+    // http(s)-only, exact duplicates skipped). No per-item create/edit/delete.
+    async 'bookmarks.importBrowser'({ items }) {
+        const list = Array.isArray(items) ? items.slice(0, 10000) : [];
+        return mutateManifest("bookmarks", (m) => importBrowserBookmarks(m, list));
     },
     // ── Passwords/TOTP ─────────────────────────────────────────────────────────
     // Current TOTP code for a login id (secret stays in the worker).
