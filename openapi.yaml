@@ -462,6 +462,21 @@ paths:
                 code:
                   type: string
                   description: The same one-time pairing code.
+                install_id:
+                  type: string
+                  maxLength: 64
+                  description: >
+                    Optional device-local random id (NOT a secret) that lets the
+                    server audit trail be correlated with the client's own
+                    diagnostic log. Stored on the token; echoed in device audit meta.
+                app_version:
+                  type: string
+                  maxLength: 32
+                  description: Optional client app version reported at pairing (non-secret).
+                os_version:
+                  type: string
+                  maxLength: 32
+                  description: Optional client OS version reported at pairing (non-secret).
       responses:
         "200":
           description: Pending or approved.

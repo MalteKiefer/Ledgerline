@@ -24,10 +24,16 @@ final class DeviceAudit
      */
     public static function record(PersonalAccessToken $token, string $action, array $extra = []): void
     {
-        AuditLog::record($action, null, array_merge([
+        $base = [
             'token_id' => $token->getKey(),
             'token_name' => $token->name,
             'last_used_at' => $token->last_used_at?->toIso8601String(),
-        ], $extra), is_numeric($token->tokenable_id) ? (int) $token->tokenable_id : null);
+        ];
+        // Client-correlation id (joins the server trail with the client's own
+        // diagnostic log). Custom column — a plain string, non-secret.
+        if (is_string($token->install_id) && $token->install_id !== '') {
+            $base['install_id'] = $token->install_id;
+        }
+        AuditLog::record($action, null, array_merge($base, $extra), is_numeric($token->tokenable_id) ? (int) $token->tokenable_id : null);
     }
 }

@@ -39,9 +39,19 @@ class AuthController extends Controller
     /** App polls with the code (public). Returns the token once the owner approves. */
     public function collect(Request $request, Pairing $pairing): JsonResponse
     {
-        $request->validate(['code' => ['required', 'string']]);
+        $request->validate([
+            'code' => ['required', 'string'],
+            // Non-secret client-correlation fields (all optional).
+            'install_id' => ['nullable', 'string', 'max:64'],
+            'app_version' => ['nullable', 'string', 'max:32'],
+            'os_version' => ['nullable', 'string', 'max:32'],
+        ]);
 
-        $result = $pairing->collect($request->string('code')->value(), $request->ip());
+        $result = $pairing->collect($request->string('code')->value(), $request->ip(), [
+            'install_id' => $request->string('install_id')->value() ?: null,
+            'app_version' => $request->string('app_version')->value() ?: null,
+            'os_version' => $request->string('os_version')->value() ?: null,
+        ]);
         if ($result['status'] !== 'approved') {
             return response()->json(['status' => 'pending']);
         }

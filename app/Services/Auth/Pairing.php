@@ -85,9 +85,10 @@ class Pairing
      * App polls with the code. Returns ['status' => 'pending'] until approved, then
      * mints + returns the Sanctum token EXACTLY ONCE and consumes the pairing.
      *
+     * @param  array{install_id?: ?string, app_version?: ?string, os_version?: ?string}  $client  Non-secret client-correlation fields reported by the pairing device.
      * @return array{status: 'pending'}|array{status: 'approved', token: string, user: User}
      */
-    public function collect(string $code, ?string $ip = null): array
+    public function collect(string $code, ?string $ip = null, array $client = []): array
     {
         $pairing = DevicePairing::query()->where('code_hash', $this->hash($code))->first();
         abort_if(
@@ -146,9 +147,20 @@ class Pairing
         $ttl = is_numeric($ttlCfg) ? (int) $ttlCfg : 60 * 24 * 180;
         $expiresAt = $ttl > 0 ? now()->addMinutes($ttl) : null;
         $token = $user->createToken($pairing->device_name ?? 'device', ['device'], $expiresAt);
-        // Record the paired device's IP for the web "Connected devices" list.
+        // Record the paired device's IP + non-secret client-correlation fields for
+        // the web "Connected devices" list and the audit trail.
+        $fill = [];
         if ($ip !== null) {
-            $token->accessToken->forceFill(['ip' => $ip])->save();
+            $fill['ip'] = $ip;
+        }
+        foreach (['install_id', 'app_version', 'os_version'] as $field) {
+            $val = $client[$field] ?? null;
+            if (is_string($val) && $val !== '') {
+                $fill[$field] = mb_substr($val, 0, $field === 'install_id' ? 64 : 32);
+            }
+        }
+        if ($fill !== []) {
+            $token->accessToken->forceFill($fill)->save();
         }
         $pairing->forceFill(['token_id' => $token->accessToken->getKey()])->save();
 
