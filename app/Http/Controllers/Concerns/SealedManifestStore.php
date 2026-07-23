@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -75,6 +76,28 @@ trait SealedManifestStore
     protected function guardManifestRequest(Request $request): void {}
 
     /**
+     * Blob ledger backing a SHARDED store, scoped to the caller, or null for a
+     * store with no content blobs (the per-module store). When non-null, a save may
+     * carry a `shards` array — the blob refs the new sealed root points at — and the
+     * server verifies every one exists in this ledger before persisting the root.
+     *
+     * This is the referential-integrity guard that makes the sharded-store data-loss
+     * bug impossible from ANY client: a root that references a shard whose blob never
+     * durably landed (a partial/racy save) is REJECTED (422), so the store never ends
+     * up pointing at a missing shard — which is what corrupted the gallery index and
+     * blanked the library. The refs are blob UUIDs, already non-secret (they appear in
+     * the ledger and in /raw URLs), so sending them reveals nothing about content — ZK
+     * is preserved. The check reads the ledger ROW (created synchronously on upload),
+     * not the object-store bytes, so it is immune to eventual-consistency false-404s.
+     *
+     * @return Builder<Model>|null
+     */
+    protected function manifestBlobLedger(Request $request): ?Builder
+    {
+        return null;
+    }
+
+    /**
      * Return the caller's sealed manifest + version (empty on first use).
      *
      * Store v3 (§10.4/A4): a weak, version-derived ETag lets the client send
@@ -120,7 +143,24 @@ trait SealedManifestStore
         $request->validate([
             'ciphertext' => ['required', 'string', 'max:'.$this->manifestMaxBytes()],
             'version' => ['required', 'integer', 'min:0'],
+            'shards' => ['sometimes', 'array', 'max:200000'],
+            'shards.*' => ['uuid'],
         ]);
+
+        // Referential-integrity guard for sharded stores: reject a root that points
+        // at a shard blob with no ledger row (a partial/racy save), so the store can
+        // never be persisted in the corrupt "dangling shard" state that lost data.
+        $ledger = $this->manifestBlobLedger($request);
+        if ($ledger !== null && $request->has('shards')) {
+            $refs = $request->collect('shards')
+                ->map(static fn ($s): string => is_scalar($s) ? (string) $s : '')
+                ->filter()
+                ->unique()
+                ->values();
+            if ($refs->isNotEmpty() && (clone $ledger)->whereIn('blob', $refs->all())->count() < $refs->count()) {
+                return response()->json(['error' => 'missing_shard'], 422);
+            }
+        }
 
         $ciphertext = $request->string('ciphertext')->value();
         $expectedVersion = $request->integer('version');
