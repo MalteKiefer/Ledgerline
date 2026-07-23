@@ -58,22 +58,36 @@ describe('matchPhotoToTracks — EXIF GPS cascade (1)', () => {
         expect(r.lat).toBe(0.01);
     });
 
-    it('rejects a track point outside the time tolerance', () => {
+    it('matches a spatially-near GPS photo regardless of the time gate', () => {
         const r = matchPhotoToTracks(
             { photoLat: 0.001, photoLng: 0, photoTime: T0 + 60000 },
             [track],
-            { timeToleranceS: 1, distanceToleranceM: 100 }, // photo time matches exactly point 2
+            { timeToleranceS: 1, distanceToleranceM: 100 },
         );
-        // Exact time + exact position → still matches (dt = 0).
         expect(r.trackId).toBe('trk1');
 
+        // A photo taken ON the track but with a wildly wrong clock (80 s past the
+        // last point, time tol 1 s) STILL matches — spatial proximity wins; time
+        // is only a tiebreaker, never a hard gate that drops a good match.
         const r2 = matchPhotoToTracks(
-            { photoLat: 0.0015, photoLng: 0, photoTime: T0 + 200000 }, // 80 s past end
+            { photoLat: 0.0015, photoLng: 0, photoTime: T0 + 200000 },
             [track],
             { timeToleranceS: 1, distanceToleranceM: 100 },
         );
-        expect(r2.trackId).toBeNull(); // no point within 1 s
+        expect(r2.trackId).toBe('trk1');
         expect(r2.source).toBe('exif');
+    });
+
+    it('uses time only to disambiguate two tracks over the same ground', () => {
+        const near = { id: 'a', points: [{ lat: 0.001, lng: 0, t: T0 }] };
+        const far = { id: 'b', points: [{ lat: 0.001, lng: 0, t: T0 + 3_600_000 }] };
+        // Same position; the photo's time is closest to track b.
+        const r = matchPhotoToTracks(
+            { photoLat: 0.001, photoLng: 0, photoTime: T0 + 3_600_000 },
+            [near, far],
+            { timeToleranceS: 60, distanceToleranceM: 100 },
+        );
+        expect(r.trackId).toBe('b');
     });
 });
 
