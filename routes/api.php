@@ -139,6 +139,9 @@ Route::prefix('v1')->group(function (): void {
         // clean {geometry:null} when the upstream is unset/unreachable. User-initiated,
         // opt-in egress — same class as /gallery/geocode.
         Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('api.maps.route');
+        // Resolve a Google-Maps short link to coordinates for the Explore search.
+        // Google-hosts-only egress, link never logged; same opt-in class.
+        Route::get('/maps/resolve', [MapController::class, 'resolve'])->middleware('throttle:30,1')->name('api.maps.resolve');
 
         // Password enrichment: icon (BIMI/favicon proxy), breach check (HIBP
         // k-anonymity), and 2fa.directory dataset. Same controllers as the web

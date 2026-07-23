@@ -6,6 +6,8 @@
         usageUrl: '{{ url('/explore/usage') }}',
         deleteUrl: '{{ url('/explore/blob') }}',
         routeUrl: '{{ url('/maps/route') }}',
+        geocodeUrl: '{{ url('/gallery/geocode') }}',
+        resolveUrl: '{{ url('/maps/resolve') }}',
         token: '{{ csrf_token() }}',
      }, {
         loadFailed: @js(__('explore.load_failed')),
@@ -29,6 +31,9 @@
         routeFallback: @js(__('explore.auto_route_fallback')),
         routeRateLimited: @js(__('explore.auto_route_rate_limited')),
         routeTooMany: @js(__('explore.auto_route_too_many')),
+        searchNotFound: @js(__('explore.search_not_found')),
+        searchFailed: @js(__('explore.search_failed')),
+        searchResult: @js(__('explore.search_result')),
      })">
 
     {{-- Zero-knowledge gate: tracks + couplings decrypt with the vault key. --}}
@@ -98,10 +103,37 @@
         <div class="grid gap-4 lg:grid-cols-[1fr_22rem]">
           {{-- Map --}}
           <div class="ll-card !p-0 overflow-hidden">
+            {{-- Search: place / POI / coordinates / Google-Maps link. Coordinates
+                 and long Google links are parsed locally; a place query hits the
+                 geocoder and a short google link hits the resolver. --}}
+            <div class="relative z-10 border-b border-black/[0.06] dark:border-white/10 p-2">
+              <div class="relative">
+                <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><x-icon name="magnifying-glass" class="h-4 w-4" /></span>
+                <input type="search" x-model="searchQuery" @keydown.enter.prevent="runSearch()"
+                  :placeholder="@js(__('explore.search_ph'))"
+                  class="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-24 text-sm focus:border-accent focus:ring-accent">
+                <div class="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                  <button type="button" x-show="searchQuery.trim()" @click="searchQuery=''; searchResults=[]; searchMsg=''" class="flex h-6 w-6 items-center justify-center rounded-full text-gray-400 transition hover:bg-black/5 dark:hover:bg-white/10" :title="@js(__('common.cancel'))"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                  <button type="button" @click="runSearch()" :disabled="searching || !searchQuery.trim()"
+                    class="rounded-lg ll-accent px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                    x-text="searching ? '…' : @js(__('explore.search_go'))"></button>
+                </div>
+              </div>
+              {{-- Geocoder result dropdown --}}
+              <div x-show="searchResults.length" x-cloak class="mt-1 max-h-56 overflow-y-auto rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-lg">
+                <template x-for="(r, i) in searchResults" :key="i">
+                  <button type="button" @click="pickSearchResult(r)" class="flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition hover:bg-accent/5">
+                    <x-icon name="map-pin" class="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                    <span class="min-w-0 flex-1 truncate" x-text="r.display"></span>
+                  </button>
+                </template>
+              </div>
+              <p x-show="searchMsg" x-cloak class="mt-1 px-1 text-xs text-gray-500 dark:text-gray-400" x-text="searchMsg"></p>
+            </div>
             {{-- `isolate` (+ z-0) confines Leaflet's internal z-indexes (panes/controls
                  up to ~1000) to a local stacking context so the map can't paint over
                  the z-40 nav dropdown. --}}
-            <div x-ref="map" class="relative z-0 isolate h-[calc(100dvh-16rem)] min-h-80 w-full"></div>
+            <div x-ref="map" class="relative z-0 isolate h-[calc(100dvh-19rem)] min-h-80 w-full"></div>
           </div>
 
           {{-- Sidebar: media list (media view) or tracks list + elevation (tracks view) --}}

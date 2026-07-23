@@ -305,6 +305,9 @@ Route::middleware('auth')->group(function (): void {
     // clean {geometry:null} when the upstream is unset/unreachable). User-initiated,
     // opt-in egress — same class as the gallery place-picker geocoding.
     Route::get('/maps/route', [MapController::class, 'route'])->middleware('throttle:180,1')->name('maps.route');
+    // Resolve a Google-Maps short link (maps.app.goo.gl/…) to coordinates for the
+    // Explore search. Google-hosts-only egress, link never logged; same opt-in class.
+    Route::get('/maps/resolve', [MapController::class, 'resolve'])->middleware('throttle:30,1')->name('maps.resolve');
     // Paperless transfer modal: cached quick-pick terms, term creation and
     // document upload (shared by mail attachments and the file browser).
     Route::get('/paperless/terms', [PaperlessController::class, 'terms'])->name('paperless.terms');

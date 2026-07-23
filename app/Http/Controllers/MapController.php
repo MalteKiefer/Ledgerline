@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Services\Support\MapLinkResolver;
 use App\Services\Support\MapRouter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -51,6 +52,25 @@ class MapController extends Controller
         ];
 
         return response()->json($result ?? $fallback)
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+
+    /**
+     * Resolve a Google-Maps short link (maps.app.goo.gl / goo.gl / g.co) to the
+     * coordinates it points at, for the Explore search box. User-initiated, opt-in
+     * egress to Google hosts only; the link + coordinates are never logged. On any
+     * failure (non-Google host, no coordinates, unreachable) a clean 200
+     * { lat: null, lng: null } is returned so the client shows "not found".
+     */
+    public function resolve(Request $request, MapLinkResolver $resolver): JsonResponse
+    {
+        $request->validate([
+            'url' => ['required', 'string', 'max:2048', 'url'],
+        ]);
+
+        $coords = $resolver->resolve($request->string('url')->value());
+
+        return response()->json($coords ?? ['lat' => null, 'lng' => null])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
