@@ -41,6 +41,9 @@ Schedule::command('ops:snapshot-storage')->dailyAt('00:10')->withoutOverlapping(
 // Enforce retention on the append-only security audit log.
 Schedule::command('audit:prune')->dailyAt('00:20')->withoutOverlapping();
 
+// Enforce the (shorter) retention on the high-volume device access trail.
+Schedule::command('device-access-log:prune')->dailyAt('00:25')->withoutOverlapping();
+
 // Verify the latest successful backup restores, and alert on staleness/failure.
 Schedule::command('backups:verify')->dailyAt('04:30')->withoutOverlapping();
 
