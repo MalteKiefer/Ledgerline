@@ -46,6 +46,7 @@ return [
     'max_elevation' => 'Max elevation',
     'delete_track' => 'Delete track',
     'download_gpx' => 'Download as GPX',
+    'track_actions' => 'Track actions',
     'delete_track_confirm' => 'Delete this track permanently? This cannot be undone.',
     'rename_track' => 'Rename track',
     'edit_name' => 'Edit name',
