@@ -4,21 +4,25 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Support\DeviceAudit;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\PersonalAccessToken;
 
 /**
- * Revoke device bearer tokens that have gone idle past the configured window, or
- * that were flagged for a remote wipe more than the grace window ago (a backstop
- * for a client that never comes back to be revoked at request time). Sanctum's
- * own absolute `expiration` handles the hard lifetime; this closes the idle +
- * offline-wipe gaps a request-time check cannot.
+ * Revoke device bearer tokens that have gone idle past the configured window, that
+ * were flagged for a remote wipe more than the grace window ago (a backstop for a
+ * client that never comes back to be revoked at request time), or that have passed
+ * their absolute expiry. Every token deleted here writes exactly one audit entry
+ * with its reason, so a device never vanishes silently — each row is selected,
+ * audited, then deleted (no blind mass DELETE).
  */
 class PruneDeviceTokens extends Command
 {
     protected $signature = 'devices:prune-tokens';
 
-    protected $description = 'Revoke idle and wipe-flagged device tokens';
+    protected $description = 'Revoke idle, wipe-flagged and expired device tokens (audited)';
 
     public function handle(): int
     {
@@ -32,23 +36,62 @@ class PruneDeviceTokens extends Command
             // A token that was paired but never used has last_used_at = NULL — fall
             // back to created_at so a leaked, never-touched token still dies.
             $cutoff = now()->subDays($idleDays);
-            $idleResult = PersonalAccessToken::query()
-                ->where(function ($q) use ($cutoff): void {
+            $idle = $this->auditThenDelete(
+                PersonalAccessToken::query()->where(function ($q) use ($cutoff): void {
                     $q->where('last_used_at', '<', $cutoff)
                         ->orWhere(fn ($q2) => $q2->whereNull('last_used_at')->where('created_at', '<', $cutoff));
-                })
-                ->delete();
-            $idle = is_numeric($idleResult) ? (int) $idleResult : 0;
+                }),
+                'device.idle_pruned',
+                ['idle_days' => $idleDays],
+            );
         }
 
-        $wipedResult = PersonalAccessToken::query()
-            ->whereNotNull('wipe_requested_at')
-            ->where('wipe_requested_at', '<', now()->subMinutes($graceMin))
-            ->delete();
-        $wiped = is_numeric($wipedResult) ? (int) $wipedResult : 0;
+        $wiped = $this->auditThenDelete(
+            PersonalAccessToken::query()
+                ->whereNotNull('wipe_requested_at')
+                ->where('wipe_requested_at', '<', now()->subMinutes($graceMin)),
+            'device.wipe_finalized',
+            ['grace_minutes' => $graceMin],
+        );
 
-        $this->info("Pruned {$idle} idle + {$wiped} wiped device token(s).");
+        // Absolute-expiry sweep: Sanctum stops accepting an expired token but never
+        // deletes it, so it would 401 forever with no audit. Delete + audit any that
+        // are past expires_at (set explicitly at pairing time).
+        $expired = $this->auditThenDelete(
+            PersonalAccessToken::query()->whereNotNull('expires_at')->where('expires_at', '<', now()),
+            'device.expired',
+            [],
+        );
+
+        $this->info("Pruned {$idle} idle + {$wiped} wiped + {$expired} expired device token(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Select the matching tokens, write one audit entry per token (with its reason
+     * + the given extra meta), then delete them. Returns the count deleted.
+     *
+     * @param  Builder<PersonalAccessToken>  $query
+     * @param  array<string, mixed>  $extra
+     */
+    private function auditThenDelete($query, string $action, array $extra): int
+    {
+        $count = 0;
+        // Chunk so a large backlog never loads every row into memory at once.
+        $query->clone()->orderBy('id')->chunkById(500, function ($tokens) use ($action, $extra, &$count): void {
+            foreach ($tokens as $token) {
+                $meta = $extra;
+                if ($action === 'device.wipe_finalized' && $token->wipe_requested_at !== null) {
+                    // Custom column — Sanctum doesn't cast it, so it's a raw string.
+                    $meta['wipe_requested_at'] = Carbon::parse((string) $token->wipe_requested_at)->toIso8601String();
+                }
+                DeviceAudit::record($token, $action, $meta);
+                $token->delete();
+                $count++;
+            }
+        });
+
+        return $count;
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Support\DeviceAudit;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -37,10 +38,20 @@ class UpdateTokenIp
             $graceMinutes = is_numeric($graceMinutes) ? (int) $graceMinutes : 15;
             if ($token->wipe_requested_at !== null
                 && Carbon::parse($token->wipe_requested_at)->lte(now()->subMinutes($graceMinutes))) {
+                DeviceAudit::record($token, 'device.wipe_finalized', [
+                    'wipe_requested_at' => Carbon::parse((string) $token->wipe_requested_at)->toIso8601String(),
+                    'grace_minutes' => $graceMinutes,
+                    'enforced_by' => 'request',
+                ]);
                 $token->delete();
                 abort(401, 'Device wiped.');
             }
+            // Record an IP change as its own event (a token hopping IPs is a theft
+            // signal), then persist the new IP for the device list.
             if ($token->ip !== $request->ip()) {
+                if ($token->ip !== null && $token->ip !== '') {
+                    DeviceAudit::record($token, 'device.ip_changed', ['old_ip' => $token->ip, 'new_ip' => $request->ip()]);
+                }
                 $token->forceFill(['ip' => $request->ip()])->save();
             }
         }
