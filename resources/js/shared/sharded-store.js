@@ -247,7 +247,16 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
             if (! this.loaded || ! this.data) return;
             try {
                 const root = await this._buildRoot();
-                const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(root), version: this.version });
+                // Send the shard/collection blob refs the new root points at. The
+                // server rejects (422) a root referencing a blob with no ledger row —
+                // the integrity guard that makes a dangling-shard save impossible. The
+                // refs are non-secret UUIDs (already in the ledger / raw URLs), so this
+                // leaks nothing about content.
+                const body = JSON.stringify({
+                    ciphertext: window.Vault.sealManifest(root),
+                    version: this.version,
+                    shards: this.shardRefs(),
+                });
                 const res = await fetch(prefix + '/store', { method: 'PUT', headers: jsonHeaders(), body });
                 if (res.status === 409) {
                     // Another writer (e.g. the background ML pass, or a second tab)

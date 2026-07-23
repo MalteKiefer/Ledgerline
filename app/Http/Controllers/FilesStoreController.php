@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\SealedManifestStore;
+use App\Models\FileBlob;
 use App\Models\FilesStore;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 
 /**
  * Opaque zero-knowledge files index store (Store v3 §4.2/§13-A10b). The browser
@@ -29,5 +32,16 @@ class FilesStoreController extends Controller
     protected function manifestMaxBytes(): int
     {
         return 67108864;
+    }
+
+    /**
+     * Files blob ledger (record shards + file-content blobs), scoped to the caller —
+     * drives the shard-reference integrity guard on save.
+     *
+     * @return Builder<FileBlob>
+     */
+    protected function manifestBlobLedger(Request $request): ?Builder
+    {
+        return FileBlob::query()->where('user_id', (int) $this->requireUser($request)->id);
     }
 }

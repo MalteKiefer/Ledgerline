@@ -789,6 +789,18 @@ paths:
                   type: integer
                   minimum: 0
                   description: Version the client last read (optimistic concurrency token).
+                shards:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: >
+                    Optional referential-integrity guard. The blob refs (record shards
+                    + collection blobs) the new sealed root points at. When present, the
+                    server rejects the write (422 missing_shard) if any ref has no blob
+                    ledger row — preventing a root that dangles at a shard whose upload
+                    never durably landed (the sharded-store data-loss failure mode). The
+                    refs are non-secret UUIDs, so this preserves zero-knowledge.
       responses:
         "200":
           description: Write successful; new version counter.
@@ -807,7 +819,17 @@ paths:
                     type: string
                     enum: [version_conflict]
         "422":
-          description: Validation error.
+          description: >
+            Validation error, or `missing_shard` — the root references a blob with no
+            ledger row (rejected to prevent a dangling-shard save).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [missing_shard]
         "429":
           description: Rate limit exceeded.
 
@@ -1648,6 +1670,17 @@ paths:
                 version:
                   type: integer
                   minimum: 0
+                shards:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: >
+                    Optional referential-integrity guard. The blob refs (record shards
+                    + collection blobs) the new sealed root points at. When present, the
+                    server rejects the write (422 missing_shard) if any ref has no blob
+                    ledger row — preventing a root that dangles at a shard whose upload
+                    never durably landed. Non-secret UUIDs; zero-knowledge preserved.
       responses:
         "200":
           description: Write successful.
@@ -1665,6 +1698,18 @@ paths:
                   error:
                     type: string
                     enum: [version_conflict]
+        "422":
+          description: >
+            `missing_shard` — the root references a blob with no ledger row (rejected to
+            prevent a dangling-shard save).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [missing_shard]
         "429":
           description: Rate limit exceeded.
 
