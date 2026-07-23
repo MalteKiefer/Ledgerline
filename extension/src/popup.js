@@ -3,6 +3,7 @@ import { generate, GEN_LANGS } from './generator.js';
 import { esc } from './esc.js';
 import { hostOf, matchScore } from './hosts.js';
 import { IDENTITY_LABELS } from './identity.js';
+import { t } from './i18n.js';
 
 const app = document.getElementById('app');
 const links = document.getElementById('links');
@@ -44,7 +45,7 @@ async function activeTab() {
     return tab;
 }
 
-const TYPE = { login: 'Login', password: 'Password', card: 'Card', wifi: 'Wi-Fi', license: 'License', server: 'Server', passkey: 'Passkey', identity: 'Identity', secure_note: 'Secure note' };
+const TYPE = { login: t('type.login'), password: t('type.password'), card: t('type.card'), wifi: t('type.wifi'), license: t('type.license'), server: t('type.server'), passkey: t('type.passkey'), identity: t('type.identity'), secure_note: t('type.secure_note') };
 let totpTimer = null;
 function stopTotp() { if (totpTimer) { clearInterval(totpTimer); totpTimer = null; } }
 
@@ -63,38 +64,38 @@ async function render() {
 function renderPair() {
     app.innerHTML = '';
     app.append(el(`<div>
-        <p class="hint">Open your Ledgerline profile, start a command-line/extension pairing and copy the code. Approve the device there after connecting.</p>
-        <label class="fld">Server URL</label><input id="url" placeholder="https://home.example.com" value="https://">
-        <label class="fld">Pairing code</label><input id="code" placeholder="paste code">
-        <button class="primary" id="go">Connect</button>
+        <p class="hint">${t('pair.hint')}</p>
+        <label class="fld">${t('pair.server_url')}</label><input id="url" placeholder="${esc(t('pair.server_ph'))}" value="https://">
+        <label class="fld">${t('pair.code_label')}</label><input id="code" placeholder="${esc(t('pair.code_ph'))}">
+        <button class="primary" id="go">${t('pair.connect')}</button>
         <p class="err" id="err"></p>
     </div>`));
     document.getElementById('go').onclick = async () => {
         const serverUrl = document.getElementById('url').value.trim();
         const code = document.getElementById('code').value.trim();
         if (! serverUrl || ! code) return;
-        document.getElementById('go').textContent = 'Waiting for approval…';
+        document.getElementById('go').textContent = t('pair.waiting');
         document.getElementById('go').disabled = true;
         const r = await send({ type: 'pair', serverUrl, code });
-        if (r.ok) render(); else { document.getElementById('err').textContent = 'Pairing failed or timed out.'; document.getElementById('go').textContent = 'Connect'; document.getElementById('go').disabled = false; }
+        if (r.ok) render(); else { document.getElementById('err').textContent = t('pair.error'); document.getElementById('go').textContent = t('pair.connect'); document.getElementById('go').disabled = false; }
     };
 }
 
 function renderUnlock() {
-    links.innerHTML = iconBtn('unpair', 'back', 'Unpair');
+    links.innerHTML = iconBtn('unpair', 'back', t('unlock.unpair'));
     document.getElementById('unpair').onclick = async () => { await send({ type: 'unpair' }); render(); };
     app.innerHTML = '';
     app.append(el(`<div>
-        <p class="hint">Enter your vault passphrase to unlock. It stays in this browser session only — never sent to the server.</p>
-        <label class="fld">Vault passphrase</label><input id="pass" type="password">
-        <button class="primary" id="go">Unlock</button>
+        <p class="hint">${t('unlock.hint')}</p>
+        <label class="fld">${t('unlock.pass_label')}</label><input id="pass" type="password">
+        <button class="primary" id="go">${t('unlock.action')}</button>
         <p class="err" id="err"></p>
     </div>`));
     const go = document.getElementById('go');
     const submit = async () => {
-        go.disabled = true; go.textContent = 'Unlocking…';
+        go.disabled = true; go.textContent = t('unlock.loading');
         const r = await send({ type: 'unlock', passphrase: document.getElementById('pass').value });
-        if (r.ok) render(); else { document.getElementById('err').textContent = 'Wrong passphrase.'; go.disabled = false; go.textContent = 'Unlock'; }
+        if (r.ok) render(); else { document.getElementById('err').textContent = t('unlock.wrong'); go.disabled = false; go.textContent = t('unlock.action'); }
     };
     go.onclick = submit;
     document.getElementById('pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
@@ -123,20 +124,20 @@ function supports2fa(it) { return ! (it && it.hasTotp) && ! ! tfaMatch(it); }
 async function renderMain() {
     if (mainView === 'bookmarks') { return renderBookmarks(); }
     filterFolder = ''; filterTag = ''; selected = null; showAll = false;
-    links.innerHTML = iconBtn('new', 'plus', 'New login') + iconBtn('gen', 'key', 'Generate password') + iconBtn('refresh', 'refresh', 'Refresh from server') + iconBtn('lock', 'lock', 'Lock');
+    links.innerHTML = iconBtn('new', 'plus', t('list.new_login')) + iconBtn('gen', 'key', t('list.generate')) + iconBtn('refresh', 'refresh', t('list.refresh')) + iconBtn('lock', 'lock', t('list.lock'));
     document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
     document.getElementById('gen').onclick = () => renderGen();
     app.innerHTML = '';
     app.append(el(`<div class="seg" style="margin-bottom:10px">
-        <button id="sw-pw" class="on">Passwords</button>
-        <button id="sw-bm">Bookmarks</button>
+        <button id="sw-pw" class="on">${t('nav.passwords')}</button>
+        <button id="sw-bm">${t('nav.bookmarks')}</button>
     </div>`));
     document.getElementById('sw-pw').onclick = () => { mainView = 'passwords'; renderMain(); };
     document.getElementById('sw-bm').onclick = () => { mainView = 'bookmarks'; renderMain(); };
     app.append(el(`<div class="cols">
         <div class="list">
             <div class="top">
-                <div class="search">${icon('magnifier', 16)}<input id="q" placeholder="Search…" autofocus></div>
+                <div class="search">${icon('magnifier', 16)}<input id="q" placeholder="${esc(t('list.search_ph'))}" autofocus></div>
                 <select id="folder"></select>
                 <div class="chips" id="tags"></div>
             </div>
@@ -160,9 +161,9 @@ async function renderMain() {
     function paintNav() {
         const counts = {};
         for (const it of library) counts[it.folder || '_none'] = (counts[it.folder || '_none'] || 0) + 1;
-        folderEl.innerHTML = `<option value="">All items (${library.length})</option>`
+        folderEl.innerHTML = `<option value="">${t('list.all_items', { count: library.length })}</option>`
             + folders.map((f) => `<option value="${esc(f.id)}"${filterFolder === f.id ? ' selected' : ''}>${esc(f.name)} (${counts[f.id] || 0})</option>`).join('')
-            + (counts._none ? `<option value="_none"${filterFolder === '_none' ? ' selected' : ''}>No folder (${counts._none})</option>` : '');
+            + (counts._none ? `<option value="_none"${filterFolder === '_none' ? ' selected' : ''}>${t('list.no_folder', { count: counts._none })}</option>` : '');
         const tags = [...new Set(library.flatMap((it) => it.tags || []))].sort((a, b) => a.localeCompare(b));
         tagsEl.innerHTML = '';
         for (const t of tags) {
@@ -191,7 +192,7 @@ async function renderMain() {
         if (prefilter) items = siteMatches;
         items = items.slice().sort((a, b) => matchScore(b, host) - matchScore(a, host));
         listEl.innerHTML = '';
-        if (! items.length) { listEl.append(el('<li class="muted">Nothing found</li>')); return; }
+        if (! items.length) { listEl.append(el(`<li class="muted">${t('list.nothing_found')}</li>`)); return; }
         for (const it of items) {
             const sub = it.username || (it.urls || [])[0] || TYPE[it.type] || it.type;
             const li = el(`<li><button class="row${selected && selected.id === it.id ? ' on' : ''}">
@@ -203,7 +204,7 @@ async function renderMain() {
             listEl.append(li);
         }
         if (prefilter && library.length > items.length) {
-            const more = el(`<li><button class="row" style="justify-content:center;color:#9ca3af">Show all items (${library.length})</button></li>`);
+            const more = el(`<li><button class="row" style="justify-content:center;color:#9ca3af">${t('list.show_all', { count: library.length })}</button></li>`);
             more.querySelector('button').onclick = () => { showAll = true; paint(q.value); };
             listEl.append(more);
         }
@@ -220,54 +221,54 @@ async function renderMain() {
         const secrets = {};
         let si = 0;
         const field = (label, valHtml, actions) => `<div class="field"><div class="flabel">${esc(label)}</div><div class="frow">${valHtml}${actions || ''}</div></div>`;
-        const copyBtn = (v) => `<button class="ic" data-copy="${esc(v)}" title="Copy">${icon('clipboard', 16)}</button>`;
+        const copyBtn = (v) => `<button class="ic" data-copy="${esc(v)}" title="${esc(t('detail.copy'))}">${icon('clipboard', 16)}</button>`;
         const plain = (label, v) => field(label, `<span class="fval">${esc(v)}</span>`, copyBtn(v));
         const secret = (label, v) => {
             const id = 's' + (si++); secrets[id] = v;
-            return `<div class="field"><div class="flabel">${esc(label)}</div><div class="frow"><span class="fval mono" data-sec="${id}">••••••••••</span><button class="ic" data-reveal="${id}" title="Reveal">${icon('eye', 16)}</button>${copyBtn(v)}</div></div>`;
+            return `<div class="field"><div class="flabel">${esc(label)}</div><div class="frow"><span class="fval mono" data-sec="${id}">••••••••••</span><button class="ic" data-reveal="${id}" title="${esc(t('detail.reveal'))}">${icon('eye', 16)}</button>${copyBtn(v)}</div></div>`;
         };
 
         if (it.type === 'card') {
-            if (it.cardholder) rows.push(plain('Cardholder', it.cardholder));
-            if (it.number) rows.push(secret('Card number', it.number));
-            if (it.expiry) rows.push(plain('Expiry', it.expiry));
-            if (it.cvv) rows.push(secret('CVV', it.cvv));
+            if (it.cardholder) rows.push(plain(t('field.cardholder'), it.cardholder));
+            if (it.number) rows.push(secret(t('field.card_number'), it.number));
+            if (it.expiry) rows.push(plain(t('field.expiry'), it.expiry));
+            if (it.cvv) rows.push(secret(t('field.cvv'), it.cvv));
         } else if (it.type === 'identity') {
             for (const [k, label] of IDENTITY_LABELS) {
                 if (it[k]) rows.push(plain(label, it[k]));
             }
         } else {
-            if (it.username) rows.push(plain('Username', it.username));
-            if (it.password) rows.push(secret('Password', it.password));
+            if (it.username) rows.push(plain(t('field.username'), it.username));
+            if (it.password) rows.push(secret(t('field.password'), it.password));
         }
-        if (it.hasTotp) rows.push(`<div class="field totp"><div class="flabel">One-time code</div><div class="frow"><span class="fval code" id="totpCode">······</span><span class="remain" id="totpRemain"></span><button class="ic" id="totpCopy" title="Copy">${icon('clipboard', 16)}</button></div></div>`);
-        for (const u of (it.urls || [])) rows.push(field('Website', `<a class="fval" href="${esc(/^https?:\/\//.test(u) ? u : 'https://' + u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`, `<button class="ic" data-open="${esc(u)}" title="Open">${icon('open', 16)}</button>` + copyBtn(u)));
-        if (it.note) rows.push(field('Note', `<span class="fval" style="white-space:pre-wrap">${esc(it.note)}</span>`, ''));
+        if (it.hasTotp) rows.push(`<div class="field totp"><div class="flabel">${t('field.totp')}</div><div class="frow"><span class="fval code" id="totpCode">······</span><span class="remain" id="totpRemain"></span><button class="ic" id="totpCopy" title="${esc(t('detail.copy'))}">${icon('clipboard', 16)}</button></div></div>`);
+        for (const u of (it.urls || [])) rows.push(field(t('field.website'), `<a class="fval" href="${esc(/^https?:\/\//.test(u) ? u : 'https://' + u)}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`, `<button class="ic" data-open="${esc(u)}" title="${esc(t('detail.open'))}">${icon('open', 16)}</button>` + copyBtn(u)));
+        if (it.note) rows.push(field(t('field.note'), `<span class="fval" style="white-space:pre-wrap">${esc(it.note)}</span>`, ''));
 
         // Embedded passkeys: list each with metadata only (no private/public key).
         // Shared items are read-only — never show remove on shared items.
         const embeddedPasskeys = (it.type === 'login' && ! it.shared && Array.isArray(it.passkeys) && it.passkeys.length > 0)
-            ? it.passkeys.map((pk) => `<div class="field"><div class="flabel">Passkey</div><div class="frow"><span class="fval">${esc(pk.userName || pk.rpId || 'Passkey')}</span><button class="ic" data-rm-pk="${esc(pk.credentialId)}" title="Remove passkey">${icon('trash', 16)}</button></div></div>`).join('')
+            ? it.passkeys.map((pk) => `<div class="field"><div class="flabel">${t('field.passkey')}</div><div class="frow"><span class="fval">${esc(pk.userName || pk.rpId || t('field.passkey'))}</span><button class="ic" data-rm-pk="${esc(pk.credentialId)}" title="${esc(t('detail.remove_passkey_title'))}">${icon('trash', 16)}</button></div></div>`).join('')
             : '';
 
         const tags = (it.tags || []).length ? `<div class="dtags">${it.tags.map((t) => `<span class="tg">#${esc(t)}</span>`).join('')}</div>` : '';
         const canFill = it.type === 'login' || (it.type === 'card' && it.number) || ! ! it.password;
-        const fillLabel = it.type === 'card' ? 'Fill card on this page' : 'Fill on this page';
+        const fillLabel = it.type === 'card' ? t('detail.fill_card') : t('detail.fill');
         const rawDoc = tfaMap ? (tfaMap[tfaMatch(it)] || '') : '';
         const doc = /^https?:\/\//i.test(rawDoc) ? rawDoc : '';
         const tfaHtml = supports2fa(it)
-            ? `<div class="tfahint">${icon('key', 16)}<div><div>This website offers two-factor authentication. Add a one-time code to this login.</div>${doc ? `<a href="${esc(doc)}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;color:inherit">How to enable it</a>` : ''}</div></div>`
+            ? `<div class="tfahint">${icon('key', 16)}<div><div>${t('detail.tfa_hint')}</div>${doc ? `<a href="${esc(doc)}" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;color:inherit">${t('detail.tfa_how')}</a>` : ''}</div></div>`
             : '';
         const canScan = it.type === 'login' && ! it.hasTotp && ! it.shared;
         const canEdit = (it.type === 'login' || it.type === 'password') && ! it.shared;
         const canTrash = ! it.shared;
         detailEl.innerHTML = '';
         detailEl.append(el(`<div>
-            <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}${it.shared ? ' <span class="muted" style="font-size:11px">(shared)</span>' : ''}</div></div>
+            <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}${it.shared ? ` <span class="muted" style="font-size:11px">${t('detail.shared_badge')}</span>` : ''}</div></div>
               <div class="dactions">
-                ${canEdit ? `<button class="ic" id="edit" title="Edit">${icon('pencil', 18)}</button>` : ''}
-                ${canScan ? `<button class="ic" id="scan2fa" title="Scan a 2FA QR code">${icon('qr', 18)}</button>` : ''}
-                ${canTrash ? `<button class="ic" id="del" title="Move to trash">${icon('trash', 18)}</button>` : ''}
+                ${canEdit ? `<button class="ic" id="edit" title="${esc(t('detail.edit'))}">${icon('pencil', 18)}</button>` : ''}
+                ${canScan ? `<button class="ic" id="scan2fa" title="${esc(t('detail.scan2fa'))}">${icon('qr', 18)}</button>` : ''}
+                ${canTrash ? `<button class="ic" id="del" title="${esc(t('detail.trash'))}">${icon('trash', 18)}</button>` : ''}
               </div>
             </div>
             ${tfaHtml}
@@ -290,8 +291,8 @@ async function renderMain() {
             const credentialId = b.dataset.rmPk;
             b.onclick = async () => {
                 const pkEntry = (it.passkeys || []).find((p) => p.credentialId === credentialId);
-                const label = pkEntry ? (pkEntry.userName || pkEntry.rpId || 'this passkey') : 'this passkey';
-                if (! confirm(`Remove ${label} from this login?`)) return;
+                const label = pkEntry ? (pkEntry.userName || pkEntry.rpId || t('field.passkey')) : t('field.passkey');
+                if (! confirm(t('detail.remove_passkey_confirm', { label }))) return;
                 b.disabled = true;
                 try {
                     const r = await send({ type: 'removePasskey', id: it.id, credentialId });
@@ -301,11 +302,11 @@ async function renderMain() {
                         if (fresh) { selected = fresh; renderDetailView(fresh, tab); } else renderDetailView(it, tab);
                     } else {
                         b.disabled = false;
-                        alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not remove passkey.');
+                        alert(r?.error === 'locked' ? t('detail.remove_passkey_locked') : t('detail.remove_passkey_error'));
                     }
                 } catch (e) {
                     b.disabled = false;
-                    alert('Could not remove passkey.');
+                    alert(t('detail.remove_passkey_error'));
                 }
             };
         });
@@ -313,15 +314,15 @@ async function renderMain() {
         if (fillBtn) fillBtn.onclick = () => it.type === 'card' ? fillCardOnPage(it, tab) : fill(it, tab);
         const delBtn = detailEl.querySelector('#del');
         if (delBtn) delBtn.onclick = async () => {
-            if (! confirm('Move this entry to the trash?')) return;
+            if (! confirm(t('detail.trash_confirm'))) return;
             delBtn.disabled = true;
             try {
                 const r = await send({ type: 'trashItem', id: it.id });
-                if (r?.ok) { selected = null; await reloadLibrary(); detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>'; }
-                else { delBtn.disabled = false; alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not delete.'); }
+                if (r?.ok) { selected = null; await reloadLibrary(); detailEl.innerHTML = `<div class="empty">${t('detail.empty')}</div>`; }
+                else { delBtn.disabled = false; alert(r?.error === 'locked' ? t('detail.trash_locked') : t('detail.trash_error')); }
             } catch (e) {
                 delBtn.disabled = false;
-                alert('Could not delete.');
+                alert(t('detail.trash_error'));
             }
         };
         const editBtn = detailEl.querySelector('#edit');
@@ -350,30 +351,30 @@ async function renderMain() {
         // login: username, password, first url, totp secret, note
         // password: password, note
         const urlVal = esc((it.urls || [])[0] || '');
-        const totpHint = it.hasTotp ? ' (leave blank to keep existing)' : '';
+        const totpHint = it.hasTotp ? t('edit.totp_keep') : '';
         const loginFields = isLogin ? `
-            <label class="fld">Username</label><input id="e-user" value="${esc(it.username || '')}">
-            <label class="fld">Password</label><input id="e-pass" type="password" value="${esc(it.password || '')}">
-            <label class="fld">Website URL</label><input id="e-url" value="${urlVal}">
-            <label class="fld">TOTP secret${esc(totpHint)}</label><input id="e-totp" autocomplete="off">
-            <label class="fld">Note</label><textarea id="e-note" rows="3" style="resize:vertical">${esc(it.note || '')}</textarea>
+            <label class="fld">${t('edit.username')}</label><input id="e-user" value="${esc(it.username || '')}">
+            <label class="fld">${t('edit.password')}</label><input id="e-pass" type="password" value="${esc(it.password || '')}">
+            <label class="fld">${t('edit.website_url')}</label><input id="e-url" value="${urlVal}">
+            <label class="fld">${t('edit.totp_secret')}${esc(totpHint)}</label><input id="e-totp" autocomplete="off">
+            <label class="fld">${t('edit.note')}</label><textarea id="e-note" rows="3" style="resize:vertical">${esc(it.note || '')}</textarea>
         ` : `
-            <label class="fld">Password</label><input id="e-pass" type="password" value="${esc(it.password || '')}">
-            <label class="fld">Note</label><textarea id="e-note" rows="3" style="resize:vertical">${esc(it.note || '')}</textarea>
+            <label class="fld">${t('edit.password')}</label><input id="e-pass" type="password" value="${esc(it.password || '')}">
+            <label class="fld">${t('edit.note')}</label><textarea id="e-note" rows="3" style="resize:vertical">${esc(it.note || '')}</textarea>
         `;
         detailEl.append(el(`<div>
             <div class="dhead">${avatar(it, true)}<div class="grow"><div class="dtitle">${esc(it.title)}</div><div class="dtype">${esc(TYPE[it.type] || it.type)}</div></div></div>
             ${loginFields}
             <div style="display:flex;gap:8px;margin-top:8px">
-                <button class="primary" id="e-save" style="flex:1">Save</button>
-                <button id="e-cancel" style="flex:1">Cancel</button>
+                <button class="primary" id="e-save" style="flex:1">${t('edit.save')}</button>
+                <button id="e-cancel" style="flex:1">${t('edit.cancel')}</button>
             </div>
             <p class="err" id="e-err"></p>
         </div>`));
         const $ = (id) => document.getElementById(id);
         $('e-cancel').onclick = () => renderDetailView(it, tab);
         $('e-save').onclick = async () => {
-            $('e-save').disabled = true; $('e-save').textContent = 'Saving…';
+            $('e-save').disabled = true; $('e-save').textContent = t('edit.saving');
             const patch = {};
             if (isLogin) {
                 patch.username = $('e-user').value;
@@ -398,12 +399,12 @@ async function renderMain() {
                     selected = fresh || it;
                     renderDetailView(fresh || it, tab);
                 } else {
-                    $('e-save').disabled = false; $('e-save').textContent = 'Save';
-                    $('e-err').textContent = r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save.';
+                    $('e-save').disabled = false; $('e-save').textContent = t('edit.save');
+                    $('e-err').textContent = r?.error === 'locked' ? t('edit.locked') : t('edit.error');
                 }
             } catch (e) {
-                $('e-save').disabled = false; $('e-save').textContent = 'Save';
-                $('e-err').textContent = 'Could not save.';
+                $('e-save').disabled = false; $('e-save').textContent = t('edit.save');
+                $('e-err').textContent = t('edit.error');
             }
         };
         const passEl = $('e-pass');
@@ -425,13 +426,13 @@ async function renderMain() {
             const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
             const d = ctx.getImageData(0, 0, c.width, c.height);
             const code = jsQR(d.data, d.width, d.height);
-            if (! code || ! /^otpauth:\/\//i.test(code.data)) { alert('No 2FA QR code found on the current tab. Make sure the QR is visible, then try again.'); return; }
+            if (! code || ! /^otpauth:\/\//i.test(code.data)) { alert(t('detail.scan_notfound')); return; }
             const r = await send({ type: 'updateItem', id: it.id, patch: { totp: code.data } });
-            if (! r?.ok) { alert(r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save the code.'); return; }
+            if (! r?.ok) { alert(r?.error === 'locked' ? t('detail.scan_locked') : t('detail.scan_error')); return; }
             await reloadLibrary();
             const fresh = library.find((x) => x.id === it.id);
             if (fresh) { selected = fresh; showDetail(fresh, tab); }
-        } catch (e) { alert('Could not capture the tab to scan a QR code.'); }
+        } catch (e) { alert(t('detail.scan_capture_error')); }
     }
 
     const first = await send({ type: 'search', query: '' });
@@ -453,33 +454,33 @@ async function renderMain() {
     // Preselect the best match for the current site (matching 1Password).
     const matches = library.filter((x) => matchScore(x, host)).sort((a, b) => (a.title || '').localeCompare(b.title || ''));
     if (matches.length) { selected = matches[0]; showDetail(selected, tab); }
-    else detailEl.innerHTML = '<div class="empty">Select an entry to view its details.</div>';
+    else detailEl.innerHTML = `<div class="empty">${t('detail.empty')}</div>`;
     paint('');
 }
 
 // --- Bookmarks view ---
 async function renderBookmarks() {
     stopTotp();
-    links.innerHTML = iconBtn('lock', 'lock', 'Lock');
+    links.innerHTML = iconBtn('lock', 'lock', t('list.lock'));
     document.getElementById('lock').onclick = async () => { await send({ type: 'lock' }); render(); };
     app.innerHTML = '';
 
     // View switcher
     app.append(el(`<div class="seg" style="margin-bottom:10px">
-        <button id="sw-pw">Passwords</button>
-        <button id="sw-bm" class="on">Bookmarks</button>
+        <button id="sw-pw">${t('nav.passwords')}</button>
+        <button id="sw-bm" class="on">${t('nav.bookmarks')}</button>
     </div>`));
     document.getElementById('sw-pw').onclick = () => { mainView = 'passwords'; renderMain(); };
     document.getElementById('sw-bm').onclick = () => { mainView = 'bookmarks'; renderBookmarks(); };
 
     // Toolbar: Save page + New folder (in the current folder)
     app.append(el(`<div style="display:flex;gap:6px;margin-bottom:8px">
-        <button class="primary" id="bm-save" style="flex:1;margin-top:0;padding:8px 10px;display:flex;align-items:center;justify-content:center;gap:5px">${icon('bookmark', 14)} Save page</button>
-        <button class="ic" id="bm-folder-new" title="New folder here" style="width:auto;padding:0 12px;border:1px solid var(--border);border-radius:10px">${icon('folder-plus', 16)}</button>
+        <button class="primary" id="bm-save" style="flex:1;margin-top:0;padding:8px 10px;display:flex;align-items:center;justify-content:center;gap:5px">${icon('bookmark', 14)} ${t('bm.save_page')}</button>
+        <button class="ic" id="bm-folder-new" title="${esc(t('bm.new_folder'))}" style="width:auto;padding:0 12px;border:1px solid var(--border);border-radius:10px">${icon('folder-plus', 16)}</button>
     </div>`));
 
     // Search + filter chips
-    app.append(el(`<div class="search" style="position:relative;margin-bottom:8px">${icon('magnifier', 16)}<input id="bm-q" placeholder="Search all bookmarks…" style="padding-left:32px"></div>`));
+    app.append(el(`<div class="search" style="position:relative;margin-bottom:8px">${icon('magnifier', 16)}<input id="bm-q" placeholder="${esc(t('bm.search_ph'))}" style="padding-left:32px"></div>`));
     app.append(el(`<div class="chips" id="bm-chips" style="margin-bottom:8px"></div>`));
     app.append(el(`<div id="bm-crumbs" class="bm-crumbs"></div>`));
     app.append(el(`<div id="bm-msg" class="err" style="margin:0 0 6px"></div>`));
@@ -530,15 +531,15 @@ async function renderBookmarks() {
 
     function openBm(b) {
         if (/^https?:\/\//i.test(b.url)) chrome.tabs.create({ url: b.url });
-        else setMsg('Unsafe URL — edit the bookmark to fix it.');
+        else setMsg(t('bm.unsafe_url'));
     }
 
     function paintChips() {
         const chips = $('bm-chips'); if (! chips) return;
         const defs = [
-            { id: 'all', label: `${icon('folder', 12)} Browse` },
-            { id: 'favorites', label: `${icon('star', 12)} Favorites` },
-            { id: 'readlater', label: `${icon('clock', 12)} Read later` },
+            { id: 'all', label: `${icon('folder', 12)} ${t('bm.browse')}` },
+            { id: 'favorites', label: `${icon('star', 12)} ${t('bm.favorites')}` },
+            { id: 'readlater', label: `${icon('clock', 12)} ${t('bm.read_later')}` },
         ];
         chips.innerHTML = '';
         for (const d of defs) {
@@ -551,7 +552,7 @@ async function renderBookmarks() {
     function paintCrumbs() {
         const c = $('bm-crumbs'); if (! c) return;
         c.innerHTML = '';
-        const home = el(`<button class="crumb">${icon('bookmark', 12)} All</button>`);
+        const home = el(`<button class="crumb">${icon('bookmark', 12)} ${t('bm.all_crumb')}</button>`);
         home.onclick = () => { bmCwd = ''; paint(); };
         c.append(home);
         for (const f of folderPath(bmCwd)) {
@@ -564,22 +565,23 @@ async function renderBookmarks() {
 
     function folderRow(f) {
         const count = bookmarksIn(f.id).length + childFolders(f.id).length;
+        const countLabel = t(count === 1 ? 'bm.item_count_one' : 'bm.item_count_other', { count });
         const li = el(`<li><div class="bmrow">
-            <button class="main"><span class="av mono">${icon('folder', 15)}</span><span class="grow"><div class="t">${esc(f.name)}</div><div class="u">${count} item${count === 1 ? '' : 's'}</div></span></button>
-            <span class="rowacts"><button class="ic" data-act="ren" title="Rename">${icon('pencil', 14)}</button><button class="ic" data-act="del" title="Delete folder">${icon('trash', 14)}</button></span>
+            <button class="main"><span class="av mono">${icon('folder', 15)}</span><span class="grow"><div class="t">${esc(f.name)}</div><div class="u">${countLabel}</div></span></button>
+            <span class="rowacts"><button class="ic" data-act="ren" title="${esc(t('bm.rename_folder'))}">${icon('pencil', 14)}</button><button class="ic" data-act="del" title="${esc(t('bm.delete_folder'))}">${icon('trash', 14)}</button></span>
             <span class="chev">${icon('chevron', 14)}</span>
         </div></li>`);
         li.querySelector('.main').onclick = () => { bmCwd = f.id; paint(); };
         li.querySelector('[data-act="ren"]').onclick = async () => {
-            const n = prompt('Rename folder', f.name);
+            const n = prompt(t('bm.rename_prompt'), f.name);
             if (! n || ! n.trim()) return;
             const r = await send({ type: 'bookmarkFolders.rename', id: f.id, name: n.trim() });
-            if (r?.ok) { await reload(); paint(); } else setMsg('Could not rename folder.');
+            if (r?.ok) { await reload(); paint(); } else setMsg(t('bm.rename_error'));
         };
         li.querySelector('[data-act="del"]').onclick = async () => {
-            if (! confirm(`Delete folder "${f.name}"? Bookmarks inside move to All; subfolders move up one level.`)) return;
+            if (! confirm(t('bm.delete_confirm', { name: f.name }))) return;
             const r = await send({ type: 'bookmarkFolders.delete', id: f.id });
-            if (r?.ok) { if (descendants(f.id).has(bmCwd)) bmCwd = ''; await reload(); paint(); } else setMsg('Could not delete folder.');
+            if (r?.ok) { if (descendants(f.id).has(bmCwd)) bmCwd = ''; await reload(); paint(); } else setMsg(t('bm.delete_error'));
         };
         return li;
     }
@@ -588,16 +590,16 @@ async function renderBookmarks() {
         const path = showPath && b.folderId ? folderPath(b.folderId).map((f) => f.name).join(' / ') : '';
         const sub = path || b.url || '';
         const li = el(`<li><div class="bmrow">
-            <button class="main"><span class="av mono">${icon('bookmark', 14)}</span><span class="grow"><div class="t">${esc(b.title || b.url || 'Untitled')}</div><div class="u">${esc(sub)}</div></span>${b.favorite ? `<span class="star">${icon('star', 13)}</span>` : ''}${b.readLater ? `<span style="color:var(--muted)">${icon('clock', 13)}</span>` : ''}</button>
-            <span class="rowacts"><button class="ic" data-act="edit" title="Edit">${icon('pencil', 14)}</button><button class="ic" data-act="trash" title="Move to trash">${icon('trash', 14)}</button></span>
+            <button class="main"><span class="av mono">${icon('bookmark', 14)}</span><span class="grow"><div class="t">${esc(b.title || b.url || t('bm.untitled'))}</div><div class="u">${esc(sub)}</div></span>${b.favorite ? `<span class="star">${icon('star', 13)}</span>` : ''}${b.readLater ? `<span style="color:var(--muted)">${icon('clock', 13)}</span>` : ''}</button>
+            <span class="rowacts"><button class="ic" data-act="edit" title="${esc(t('bm.edit'))}">${icon('pencil', 14)}</button><button class="ic" data-act="trash" title="${esc(t('bm.trash'))}">${icon('trash', 14)}</button></span>
             <span class="chev">${icon('open', 13)}</span>
         </div></li>`);
         li.querySelector('.main').onclick = () => openBm(b);
         li.querySelector('[data-act="edit"]').onclick = () => renderBmEdit(b);
         li.querySelector('[data-act="trash"]').onclick = async () => {
-            if (! confirm('Move this bookmark to trash?')) return;
+            if (! confirm(t('bm.trash_confirm'))) return;
             const r = await send({ type: 'bookmarks.trash', id: b.id });
-            if (r?.ok) { await reload(); paint(); } else setMsg('Could not delete.');
+            if (r?.ok) { await reload(); paint(); } else setMsg(t('bm.trash_error'));
         };
         return li;
     }
@@ -616,7 +618,7 @@ async function renderBookmarks() {
             const bms = bookmarksIn(bmCwd);
             for (const f of subs) ul.append(folderRow(f));
             for (const b of bms) ul.append(bookmarkRow(b, false));
-            if (! subs.length && ! bms.length) ul.append(el('<li class="muted">This folder is empty</li>'));
+            if (! subs.length && ! bms.length) ul.append(el(`<li class="muted">${t('bm.empty_folder')}</li>`));
         } else {
             const q = bmQuery.trim().toLowerCase();
             let items = bookmarks;
@@ -625,7 +627,7 @@ async function renderBookmarks() {
             if (q) items = items.filter((b) => (b.title || '').toLowerCase().includes(q) || (b.url || '').toLowerCase().includes(q) || (b.tags || []).some((t) => t.toLowerCase().includes(q)));
             items = items.slice().sort((a, b) => (a.title || a.url || '').localeCompare(b.title || b.url || ''));
             for (const b of items) ul.append(bookmarkRow(b, true));
-            if (! items.length) ul.append(el('<li class="muted">No bookmarks found</li>'));
+            if (! items.length) ul.append(el(`<li class="muted">${t('bm.empty_search')}</li>`));
         }
     }
 
@@ -634,25 +636,25 @@ async function renderBookmarks() {
         const d = detailEl(); if (! d) return;
         d.innerHTML = '';
         d.append(el(`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
-            <label class="fld">Title</label><input id="be-title" value="${esc(bm.title || '')}">
-            <label class="fld">URL</label><input id="be-url" value="${esc(bm.url || '')}">
-            <label class="fld">Description</label><textarea id="be-desc" rows="2" style="resize:vertical">${esc(bm.description || '')}</textarea>
-            <label class="fld">Tags (comma-separated)</label><input id="be-tags" value="${esc((bm.tags || []).join(', '))}">
-            <label class="fld">Folder</label><select id="be-folder">${folderOptions(bm.folderId, 'All (no folder)')}</select>
+            <label class="fld">${t('bm.title')}</label><input id="be-title" value="${esc(bm.title || '')}">
+            <label class="fld">${t('bm.url')}</label><input id="be-url" value="${esc(bm.url || '')}">
+            <label class="fld">${t('bm.description')}</label><textarea id="be-desc" rows="2" style="resize:vertical">${esc(bm.description || '')}</textarea>
+            <label class="fld">${t('bm.tags')}</label><input id="be-tags" value="${esc((bm.tags || []).join(', '))}">
+            <label class="fld">${t('bm.folder')}</label><select id="be-folder">${folderOptions(bm.folderId, t('bm.no_folder'))}</select>
             <div class="opts" style="margin-top:8px">
-                <label><input type="checkbox" id="be-fav"${bm.favorite ? ' checked' : ''}> Favorite</label>
-                <label><input type="checkbox" id="be-rl"${bm.readLater ? ' checked' : ''}> Read later</label>
+                <label><input type="checkbox" id="be-fav"${bm.favorite ? ' checked' : ''}> ${t('bm.favorite')}</label>
+                <label><input type="checkbox" id="be-rl"${bm.readLater ? ' checked' : ''}> ${t('bm.read_later_check')}</label>
             </div>
             <div style="display:flex;gap:8px;margin-top:8px">
-                <button class="primary" id="be-save" style="flex:1;margin-top:0">Save</button>
-                <button id="be-cancel" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:12px;background:transparent;color:inherit;cursor:pointer">Cancel</button>
+                <button class="primary" id="be-save" style="flex:1;margin-top:0">${t('bm.save')}</button>
+                <button id="be-cancel" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:12px;background:transparent;color:inherit;cursor:pointer">${t('bm.cancel')}</button>
             </div>
             <p class="err" id="be-err"></p>
         </div>`));
         d.scrollIntoView({ block: 'nearest' });
         $('be-cancel').onclick = () => { d.innerHTML = ''; };
         $('be-save').onclick = async () => {
-            $('be-save').disabled = true; $('be-save').textContent = 'Saving…';
+            $('be-save').disabled = true; $('be-save').textContent = t('bm.saving');
             const patch = {
                 title: $('be-title').value.trim(),
                 url: $('be-url').value.trim(),
@@ -664,7 +666,7 @@ async function renderBookmarks() {
             };
             const r = await send({ type: 'bookmarks.update', id: bm.id, patch });
             if (r?.ok) { await reload(); paint(); }
-            else { $('be-save').disabled = false; $('be-save').textContent = 'Save'; const e = $('be-err'); if (e) e.textContent = 'Could not save.'; }
+            else { $('be-save').disabled = false; $('be-save').textContent = t('bm.save'); const e = $('be-err'); if (e) e.textContent = t('bm.save_error'); }
         };
     }
 
@@ -674,19 +676,19 @@ async function renderBookmarks() {
         const d = detailEl(); if (! d) return;
         d.innerHTML = '';
         d.append(el(`<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
-            <div style="font-weight:600;margin-bottom:8px">${icon('bookmark', 14)} Save current page</div>
-            <label class="fld">Title</label><input id="sp-title" value="${esc(tab ? (tab.title || '') : '')}">
-            <label class="fld">URL</label><input id="sp-url" value="${esc(tab ? (tab.url || '') : '')}">
-            <label class="fld">Description</label><textarea id="sp-desc" rows="2" style="resize:vertical"></textarea>
-            <label class="fld">Tags (comma-separated)</label><input id="sp-tags">
-            <label class="fld">Folder</label><select id="sp-folder">${folderOptions(bmCwd, 'All (no folder)')}</select>
+            <div style="font-weight:600;margin-bottom:8px">${icon('bookmark', 14)} ${t('bm.save_page_heading')}</div>
+            <label class="fld">${t('bm.title')}</label><input id="sp-title" value="${esc(tab ? (tab.title || '') : '')}">
+            <label class="fld">${t('bm.url')}</label><input id="sp-url" value="${esc(tab ? (tab.url || '') : '')}">
+            <label class="fld">${t('bm.description')}</label><textarea id="sp-desc" rows="2" style="resize:vertical"></textarea>
+            <label class="fld">${t('bm.tags')}</label><input id="sp-tags">
+            <label class="fld">${t('bm.folder')}</label><select id="sp-folder">${folderOptions(bmCwd, t('bm.no_folder'))}</select>
             <div class="opts" style="margin-top:8px">
-                <label><input type="checkbox" id="sp-fav"> Favorite</label>
-                <label><input type="checkbox" id="sp-rl"> Read later</label>
+                <label><input type="checkbox" id="sp-fav"> ${t('bm.favorite')}</label>
+                <label><input type="checkbox" id="sp-rl"> ${t('bm.read_later_check')}</label>
             </div>
             <div style="display:flex;gap:8px;margin-top:8px">
-                <button class="primary" id="sp-save" style="flex:1;margin-top:0">Save bookmark</button>
-                <button id="sp-cancel" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:12px;background:transparent;color:inherit;cursor:pointer">Cancel</button>
+                <button class="primary" id="sp-save" style="flex:1;margin-top:0">${t('bm.save_bookmark')}</button>
+                <button id="sp-cancel" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:12px;background:transparent;color:inherit;cursor:pointer">${t('bm.cancel')}</button>
             </div>
             <p class="err" id="sp-err"></p>
         </div>`));
@@ -694,7 +696,7 @@ async function renderBookmarks() {
         $('sp-title').focus();
         $('sp-cancel').onclick = () => { d.innerHTML = ''; };
         $('sp-save').onclick = async () => {
-            $('sp-save').disabled = true; $('sp-save').textContent = 'Saving…';
+            $('sp-save').disabled = true; $('sp-save').textContent = t('bm.saving');
             const bookmark = {
                 title: $('sp-title').value.trim(),
                 url: $('sp-url').value.trim(),
@@ -706,17 +708,17 @@ async function renderBookmarks() {
             };
             const r = await send({ type: 'bookmarks.create', bookmark });
             if (r?.id) { bmFilter = 'all'; bmQuery = ''; const qEl = $('bm-q'); if (qEl) qEl.value = ''; bmCwd = bookmark.folderId || ''; await reload(); paint(); }
-            else { $('sp-save').disabled = false; $('sp-save').textContent = 'Save bookmark'; const e = $('sp-err'); if (e) e.textContent = 'Could not save.'; }
+            else { $('sp-save').disabled = false; $('sp-save').textContent = t('bm.save_bookmark'); const e = $('sp-err'); if (e) e.textContent = t('bm.save_error'); }
         };
     }
 
     // Wire up toolbar + search
     $('bm-save').onclick = () => renderSavePage();
     $('bm-folder-new').onclick = async () => {
-        const n = prompt('New folder name');
+        const n = prompt(t('bm.new_folder_prompt'));
         if (! n || ! n.trim()) return;
         const r = await send({ type: 'bookmarkFolders.create', name: n.trim(), parentId: bmCwd || null });
-        if (r?.id) { await reload(); paint(); } else setMsg('Could not create folder.');
+        if (r?.id) { await reload(); paint(); } else setMsg(t('bm.create_error'));
     };
     $('bm-q').addEventListener('input', (e) => { bmQuery = e.target.value; paint(); });
 
@@ -727,16 +729,16 @@ async function renderBookmarks() {
 // --- Create a new login ---
 function renderNew(prefill = {}) {
     stopTotp();
-    links.innerHTML = iconBtn('back', 'back', 'Back');
+    links.innerHTML = iconBtn('back', 'back', t('new.back'));
     document.getElementById('back').onclick = () => render();
     app.innerHTML = '';
     app.append(el(`<div>
-        <label class="fld">Title</label><input id="n-title">
-        <label class="fld">Username</label><input id="n-user">
-        <label class="fld">Password</label>
-        <div class="prev" style="margin-top:4px"><input id="n-pass" type="text" class="grow" style="border:0;background:transparent;padding:0"><button class="ic" id="n-gen" title="Generate">${icon('refresh', 16)}</button><button class="ic" id="n-copy" title="Copy">${icon('clipboard', 16)}</button></div>
-        <label class="fld">Website</label><input id="n-url">
-        <button class="primary" id="n-save">Save login</button>
+        <label class="fld">${t('new.title')}</label><input id="n-title">
+        <label class="fld">${t('new.username')}</label><input id="n-user">
+        <label class="fld">${t('new.password')}</label>
+        <div class="prev" style="margin-top:4px"><input id="n-pass" type="text" class="grow" style="border:0;background:transparent;padding:0"><button class="ic" id="n-gen" title="${esc(t('new.generate'))}">${icon('refresh', 16)}</button><button class="ic" id="n-copy" title="${esc(t('new.copy'))}">${icon('clipboard', 16)}</button></div>
+        <label class="fld">${t('new.website')}</label><input id="n-url">
+        <button class="primary" id="n-save">${t('new.save')}</button>
         <p class="err" id="n-err"></p>
     </div>`));
     const $ = (id) => document.getElementById(id);
@@ -748,11 +750,11 @@ function renderNew(prefill = {}) {
     $('n-copy').onclick = () => navigator.clipboard.writeText($('n-pass').value).catch(() => {});
     $('n-save').onclick = async () => {
         const login = { title: $('n-title').value.trim(), username: $('n-user').value.trim(), password: $('n-pass').value, url: $('n-url').value.trim() };
-        if (! login.title && ! login.username && ! login.url) { $('n-err').textContent = 'Enter at least a title or website.'; return; }
-        $('n-save').disabled = true; $('n-save').textContent = 'Saving…';
+        if (! login.title && ! login.username && ! login.url) { $('n-err').textContent = t('new.validation'); return; }
+        $('n-save').disabled = true; $('n-save').textContent = t('new.saving');
         const r = await send({ type: 'createLogin', login });
         if (r?.ok) render();
-        else { $('n-err').textContent = r?.error === 'locked' ? 'Unlock the vault first.' : 'Could not save.'; $('n-save').disabled = false; $('n-save').textContent = 'Save login'; }
+        else { $('n-err').textContent = r?.error === 'locked' ? t('new.locked') : t('new.error'); $('n-save').disabled = false; $('n-save').textContent = t('new.save'); }
     };
     $('n-title').focus();
 }
@@ -762,35 +764,35 @@ const gen = { mode: 'chars', length: 20, upper: true, lower: true, digits: true,
 
 function renderGen() {
     stopTotp();
-    links.innerHTML = iconBtn('back', 'back', 'Back');
+    links.innerHTML = iconBtn('back', 'back', t('gen.back'));
     document.getElementById('back').onclick = () => render();
     app.innerHTML = '';
     const langOpts = GEN_LANGS.map((l) => `<option value="${l}">${l.toUpperCase()}</option>`).join('');
     app.append(el(`<div>
         <div class="prev"><span class="grow" id="prev"></span>
-            <button class="ic" id="regen" title="Regenerate">${icon('refresh', 16)}</button>
-            <button class="ic" id="copy" title="Copy">${icon('clipboard', 16)}</button>
+            <button class="ic" id="regen" title="${esc(t('gen.regenerate'))}">${icon('refresh', 16)}</button>
+            <button class="ic" id="copy" title="${esc(t('gen.copy'))}">${icon('clipboard', 16)}</button>
         </div>
-        <div class="seg"><button id="mChars" class="on">Characters</button><button id="mWords">Memorable words</button></div>
+        <div class="seg"><button id="mChars" class="on">${t('gen.chars')}</button><button id="mWords">${t('gen.words')}</button></div>
         <div id="cChars">
-            <label class="rng">Length: <span id="lenv"></span><input type="range" min="8" max="64" id="len"></label>
+            <label class="rng">${t('gen.length_label')}<span id="lenv"></span><input type="range" min="8" max="64" id="len"></label>
             <div class="opts">
-                <label><input type="checkbox" id="upper">A–Z</label>
-                <label><input type="checkbox" id="lower">a–z</label>
-                <label><input type="checkbox" id="digits">0–9</label>
-                <label><input type="checkbox" id="symbols">!@#</label>
-                <label><input type="checkbox" id="similar">Allow look-alike characters</label>
+                <label><input type="checkbox" id="upper">${t('gen.upper')}</label>
+                <label><input type="checkbox" id="lower">${t('gen.lower')}</label>
+                <label><input type="checkbox" id="digits">${t('gen.digits')}</label>
+                <label><input type="checkbox" id="symbols">${t('gen.symbols')}</label>
+                <label><input type="checkbox" id="similar">${t('gen.similar')}</label>
             </div>
         </div>
         <div id="cWords" style="display:none">
-            <label class="rng">Words: <span id="wcv"></span><input type="range" min="3" max="8" id="wc"></label>
+            <label class="rng">${t('gen.words_label')}<span id="wcv"></span><input type="range" min="3" max="8" id="wc"></label>
             <div class="grid2">
                 <label>Language<select id="lang">${langOpts}</select></label>
-                <label>Separator<select id="sep"><option value="-">-</option><option value=".">.</option><option value="_">_</option><option value="space">Space</option><option value="">None</option></select></label>
+                <label>Separator<select id="sep"><option value="-">-</option><option value=".">.</option><option value="_">_</option><option value="space">${t('gen.sep_space')}</option><option value="">${t('gen.sep_none')}</option></select></label>
             </div>
-            <div class="opts"><label><input type="checkbox" id="cap">Capitalize</label><label><input type="checkbox" id="num">Add number</label></div>
+            <div class="opts"><label><input type="checkbox" id="cap">${t('gen.capitalize')}</label><label><input type="checkbox" id="num">${t('gen.add_number')}</label></div>
         </div>
-        <button class="primary" id="use">Copy to clipboard</button>
+        <button class="primary" id="use">${t('gen.copy_clipboard')}</button>
     </div>`));
 
     const $ = (id) => document.getElementById(id);

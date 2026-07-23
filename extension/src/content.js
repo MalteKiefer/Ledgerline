@@ -5,6 +5,7 @@
 import { genPassword } from './generator';
 import { esc } from './esc.js';
 import { IDENTITY_AC, IDENTITY_HAY, personalAc } from './identity.js';
+import { t } from './i18n.js';
 
 const send = (msg) => new Promise((r) => { try { chrome.runtime.sendMessage(msg, r); } catch (e) { r(null); } });
 
@@ -118,7 +119,7 @@ async function fillCode(login) {
     }
     const otp = otpField();
     if (otp) { setValue(otp, code); otp.focus(); return; }
-    try { await navigator.clipboard.writeText(code); notify('2FA code copied'); } catch (e) { /* clipboard blocked */ }
+    try { await navigator.clipboard.writeText(code); notify(t('notify.2fa_copied')); } catch (e) { /* clipboard blocked */ }
 }
 
 // --- Credit-card autofill ---
@@ -259,14 +260,14 @@ function openGenPanel(field) {
       <div style="width:280px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:14px;box-shadow:0 8px 24px #0003;padding:12px;font:13px system-ui,sans-serif">
         <div style="display:flex;align-items:center;gap:6px">
           <span id="pw" style="flex:1;min-width:0;word-break:break-all;font-family:ui-monospace,monospace;font-size:13px;background:#0000000a;border-radius:6px;padding:7px 8px"></span>
-          <button id="regen" title="Regenerate" style="border:0;background:transparent;cursor:pointer;font-size:15px;padding:4px">↻</button>
+          <button id="regen" title="${esc(t('gen.regenerate'))}" style="border:0;background:transparent;cursor:pointer;font-size:15px;padding:4px">↻</button>
         </div>
-        <label style="display:block;font-size:11px;color:#6b7280;margin-top:10px">Length: <span id="lenv"></span></label>
+        <label style="display:block;font-size:11px;color:#6b7280;margin-top:10px">${t('gen.length_label')}<span id="lenv"></span></label>
         <input id="len" type="range" min="8" max="64" value="${genOpts.length}" style="width:100%">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;font-size:12px">
-          ${cb('upper', 'A–Z')}${cb('lower', 'a–z')}${cb('digits', '0–9')}${cb('symbols', '!@#')}
+          ${cb('upper', t('gen.upper'))}${cb('lower', t('gen.lower'))}${cb('digits', t('gen.digits'))}${cb('symbols', t('gen.symbols'))}
         </div>
-        <button id="use" style="width:100%;margin-top:10px;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer">Fill password</button>
+        <button id="use" style="width:100%;margin-top:10px;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer">${t('gen.fill_password')}</button>
       </div>`;
     shadow.append(box);
     document.body.append(genHost);
@@ -278,11 +279,11 @@ function openGenPanel(field) {
     q('#regen').onclick = regen;
     q('#len').oninput = (e) => { genOpts.length = +e.target.value; regen(); };
     shadow.querySelectorAll('input[data-k]').forEach((el) => { el.onchange = (e) => { genOpts[e.target.dataset.k] = e.target.checked; regen(); }; });
-    q('#use').onclick = () => { fillGenerated(field, pw); closeGenPanel(); field?.focus?.(); notify('Password filled & copied'); };
+    q('#use').onclick = () => { fillGenerated(field, pw); closeGenPanel(); field?.focus?.(); notify(t('notify.pw_filled')); };
 }
 function attachGenBadge(field) {
     if (! field || field.dataset.llBadge) return;
-    const item = { title: 'Suggest a password…', username: 'Configurable · shown before filling', __gen: true };
+    const item = { title: t('gen.suggest_title'), username: t('gen.suggest_sub'), __gen: true };
     attachBadge(field, [item], () => openGenPanel(field), async () => [item]);
 }
 document.addEventListener('click', (e) => { if (genHost && e.target !== genHost) closeGenPanel(); }, true);
@@ -359,7 +360,7 @@ function attachBadge(field, logins, onPick = doFill, fetchList = null) {
     // Visible in-field icon so the user can see autofill is available.
     const icon = document.createElement('div');
     icon.textContent = 'L';
-    icon.title = 'Ledgerline — fill';
+    icon.title = t('badge.title');
     icon.style.cssText = 'position:absolute;z-index:2147483646;width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font:600 11px/18px system-ui,sans-serif;text-align:center;cursor:pointer;box-shadow:0 1px 3px #0004;';
     icon.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); show(); });
     const place = () => {
@@ -553,13 +554,13 @@ function promptSave(cred) {
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <div style="width:300px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;padding:14px;font:13px system-ui,sans-serif">
-        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Save this login to Ledgerline?</div>
-        <label style="display:block;font-size:11px;color:#6b7280;margin:10px 0 3px">Title</label>
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> ${t('save.heading')}</div>
+        <label style="display:block;font-size:11px;color:#6b7280;margin:10px 0 3px">${t('save.title_label')}</label>
         <input id="t" style="width:100%;box-sizing:border-box;padding:7px;border:1px solid #d1d5db;border-radius:10px;font:inherit" value="${esc(host)}">
-        <div style="font-size:12px;color:#6b7280;margin-top:8px">${cred.username ? ('Username: ' + esc(cred.username)) : 'No username detected'}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:8px">${cred.username ? t('save.username_line', { username: esc(cred.username) }) : t('save.no_username')}</div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button id="d" style="flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
-          <button id="s" style="flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit">Save</button>
+          <button id="d" style="flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit">${t('save.not_now')}</button>
+          <button id="s" style="flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit">${t('save.save')}</button>
         </div>
       </div>`;
     shadow.append(wrap);
@@ -567,10 +568,10 @@ function promptSave(cred) {
     wrap.querySelector('#d').onclick = closeSavePrompt;
     wrap.querySelector('#s').onclick = async () => {
         const title = wrap.querySelector('#t').value.trim() || host;
-        const btn = wrap.querySelector('#s'); btn.textContent = 'Saving…'; btn.disabled = true;
+        const btn = wrap.querySelector('#s'); btn.textContent = t('save.saving'); btn.disabled = true;
         const r = await send({ type: 'createLogin', login: { title, username: cred.username, password: cred.password, url: cred.url } });
         closeSavePrompt();
-        notify(r?.ok ? 'Saved to Ledgerline' : (r?.error === 'locked' ? 'Unlock Ledgerline to save' : 'Could not save'));
+        notify(r?.ok ? t('notify.saved') : (r?.error === 'locked' ? t('notify.save_locked') : t('notify.save_error')));
     };
     setTimeout(closeSavePrompt, 20000);
 }
@@ -584,21 +585,21 @@ function promptUpdate(loginId, domain, username, newPassword) {
     const wrap = document.createElement('div');
     wrap.innerHTML = `
       <div style="width:300px;background:#fff;color:#111827;border:1px solid #0000001a;border-radius:12px;box-shadow:0 12px 34px #0003;padding:14px;font:13px system-ui,sans-serif">
-        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> Update password for ${esc(domain)}?</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:8px">${username ? esc(username) : 'No username'}</div>
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600"><span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">L</span> ${t('update.heading', { domain: esc(domain) })}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:8px">${username ? esc(username) : t('update.no_username')}</div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button id="d" style="flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit">Not now</button>
-          <button id="s" style="flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit">Update</button>
+          <button id="d" style="flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit">${t('update.not_now')}</button>
+          <button id="s" style="flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit">${t('update.update')}</button>
         </div>
       </div>`;
     shadow.append(wrap);
     document.body.append(savePromptHost);
     wrap.querySelector('#d').onclick = closeSavePrompt;
     wrap.querySelector('#s').onclick = async () => {
-        const btn = wrap.querySelector('#s'); btn.textContent = 'Updating…'; btn.disabled = true;
+        const btn = wrap.querySelector('#s'); btn.textContent = t('update.updating'); btn.disabled = true;
         const r = await send({ type: 'updateItem', id: loginId, patch: { password: newPassword } });
         closeSavePrompt();
-        notify(r?.ok ? 'Password updated in Ledgerline' : (r?.error === 'locked' ? 'Unlock Ledgerline to update' : 'Could not update'));
+        notify(r?.ok ? t('notify.updated') : (r?.error === 'locked' ? t('notify.update_locked') : t('notify.update_error')));
     };
     setTimeout(closeSavePrompt, 20000);
 }
@@ -669,7 +670,7 @@ function openPasskeyPickerFixed(candidates, rpId) {
             const c = candidates[0];
             const hdr = document.createElement('div');
             hdr.style.cssText = 'padding:14px 14px 8px;font-weight:600;border-bottom:1px solid #0000000d;';
-            hdr.textContent = 'Bei ' + rpId + ' anmelden?';
+            hdr.textContent = t('passkey.sign_in_prompt', { rpId });
             const lbl = document.createElement('div');
             lbl.style.cssText = 'padding:10px 14px;font-size:12px;color:#6b7280;';
             lbl.textContent = c.label || c.userName || rpId;
@@ -677,11 +678,11 @@ function openPasskeyPickerFixed(candidates, rpId) {
             actions.style.cssText = 'display:flex;gap:8px;padding:10px 14px 14px;';
             const btnCancel = document.createElement('button');
             btnCancel.style.cssText = 'flex:1;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit;';
-            btnCancel.textContent = 'Abbrechen';
+            btnCancel.textContent = t('passkey.cancel');
             btnCancel.onclick = () => finish({ cancel: true });
             const btnOk = document.createElement('button');
             btnOk.style.cssText = 'flex:1;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit;';
-            btnOk.textContent = 'Anmelden';
+            btnOk.textContent = t('passkey.sign_in');
             btnOk.onclick = () => finish({ credentialId: c.credentialId });
             actions.append(btnCancel, btnOk);
             box.append(hdr, lbl, actions);
@@ -756,19 +757,19 @@ function openPasskeySavePrompt(rpId, userName, logins) {
         badge.style.cssText = 'width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:none;';
         badge.textContent = 'L';
         const hdrText = document.createElement('span');
-        hdrText.textContent = 'Passkey für ' + rpId + ' speichern?';
+        hdrText.textContent = t('passkey.save_heading', { rpId });
         hdr.append(badge, hdrText);
 
         const sub = document.createElement('div');
         sub.style.cssText = 'padding:8px 14px 6px;font-size:12px;color:#6b7280;';
-        sub.textContent = 'User: ' + (userName || '');
+        sub.textContent = t('passkey.user_label', { userName: userName || '' });
 
         wrap.append(hdr, sub);
 
         if (logins.length > 0) {
             const sectionLbl = document.createElement('div');
             sectionLbl.style.cssText = 'padding:6px 14px 4px;font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.05em;';
-            sectionLbl.textContent = 'Zu bestehendem Login hinzufügen';
+            sectionLbl.textContent = t('passkey.attach_section');
             wrap.append(sectionLbl);
 
             for (const lg of logins) {
@@ -798,12 +799,12 @@ function openPasskeySavePrompt(rpId, userName, logins) {
 
         const btnNew = document.createElement('button');
         btnNew.style.cssText = 'width:100%;padding:8px;border:0;border-radius:10px;background:linear-gradient(135deg,#7066f5,#9e70fa);color:#fff;font-weight:600;cursor:pointer;font:inherit;';
-        btnNew.textContent = 'Neuer Passkey-Eintrag';
+        btnNew.textContent = t('passkey.new_entry');
         btnNew.onclick = () => finish({ target: 'new' });
 
         const btnCancel = document.createElement('button');
         btnCancel.style.cssText = 'width:100%;padding:8px;border:0;border-radius:10px;background:#0000000d;cursor:pointer;font:inherit;';
-        btnCancel.textContent = 'Abbrechen';
+        btnCancel.textContent = t('passkey.cancel');
         btnCancel.onclick = () => finish({ target: null });
 
         actions.append(btnNew, btnCancel);
