@@ -56,6 +56,11 @@ return [
     'details' => 'Details',
     'back' => 'Zurück',
     'coupled_photos' => 'Fotos auf dieser Tour',
+    'no_coupled_photos' => 'Noch keine Fotos verknüpft. Über „Fotos hinzufügen" anhängen.',
+    'add_photos' => 'Fotos hinzufügen',
+    'search_photos' => 'Fotos suchen…',
+    'no_photos' => 'Keine Fotos in deiner Galerie.',
+    'done' => 'Fertig',
 
     // Search
     'search_tracks' => 'Touren suchen…',

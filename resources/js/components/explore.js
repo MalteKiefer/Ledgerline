@@ -88,6 +88,8 @@ export default (config = {}, labels = {}) => ({
     assignFor: null,     // mediaId currently choosing a manual track (modal open), or null
     assignQuery: '',     // autocomplete search in the assign modal
     assignSource: 'all', // assign-modal source filter: all | imported | planned | recorded
+    photoPickerFor: null, // trackId whose "add photos" picker is open, or null
+    photoPickerQuery: '', // search inside the photo picker
 
     // Persisted map camera ([lat, lng] + zoom) so it survives the media↔tracks
     // view toggle. The Leaflet map itself is never torn down on toggle.
@@ -547,6 +549,41 @@ export default (config = {}, labels = {}) => ({
     clearCoupling(mediaId) {
         delete this.couplings[mediaId];
         this._save();
+    },
+
+    // Track-detail "add photos" picker: choose from ALL gallery photos (including
+    // ones with no GPS, which never appear in the map media list) and toggle their
+    // coupling to this track. This is the entry point for manually attaching
+    // photos to a tour — the map list only shows already-placed media.
+    openPhotoPicker(trackId) {
+        this.photoPickerFor = trackId || this.selectedTrackId;
+        this.photoPickerQuery = '';
+    },
+    closePhotoPicker() { this.photoPickerFor = null; },
+    get pickerPhotos() {
+        void this._mut;
+        const q = this.photoPickerQuery.trim().toLowerCase();
+        let list = this.photos;
+        if (q) list = list.filter((p) => String(p.name || p.id || '').toLowerCase().includes(q));
+        // Show the newest first (by capture time, else upload time).
+        const ts = (p) => {
+            const v = p.taken_at ? Date.parse(p.taken_at) : (p.created ? Date.parse(p.created) : NaN);
+            return Number.isFinite(v) ? v : 0;
+        };
+        return list.slice().sort((a, b) => ts(b) - ts(a));
+    },
+    // Whether a photo is already coupled to the picker's track.
+    pickerCoupled(mediaId) {
+        const c = this.couplings[mediaId];
+        return !! (c && c.trackId === this.photoPickerFor);
+    },
+    // Toggle a photo's coupling to the picker's track (add / remove).
+    togglePickerPhoto(mediaId) {
+        if (! this.photoPickerFor) return;
+        const trackId = this.photoPickerFor;
+        if (this.pickerCoupled(mediaId)) this.clearCoupling(mediaId);
+        else this.assignToTrack(mediaId, trackId);
+        // assignToTrack clears assignFor (the other modal); the picker stays open.
     },
 
     couplingLabel(mediaId) {

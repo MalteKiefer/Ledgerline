@@ -420,23 +420,28 @@
                       class="w-full rounded-lg border-0 bg-black/[0.04] dark:bg-white/10 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:ring-2 focus:ring-accent"></textarea>
                   </div>
 
-                  {{-- Coupled photos, chronological --}}
-                  <template x-if="coupledPhotos.length">
-                    <div class="mt-5">
-                      <p class="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">
+                  {{-- Coupled photos, chronological + an "add photos" entry point --}}
+                  <div class="mt-5">
+                    <div class="mb-2 flex items-center justify-between">
+                      <p class="text-xs font-medium text-gray-700 dark:text-gray-300">
                         {{ __('explore.coupled_photos') }}
                         <span class="text-gray-400" x-text="'(' + coupledPhotos.length + ')'"></span>
                       </p>
-                      <div class="flex flex-wrap gap-2">
-                        <template x-for="p in coupledPhotos" :key="p.id">
-                          <div class="h-14 w-14 shrink-0 rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center"
-                               :title="p.name || p.id"
-                               :style="thumbs[p.id] ? ('background-image:url(\'' + thumbs[p.id] + '\')') : ''"
-                               x-init="$nextTick(() => _thumbFor(p))"></div>
-                        </template>
-                      </div>
+                      <button type="button" @click="openPhotoPicker(selectedTrackId)"
+                        class="inline-flex items-center gap-1 rounded-lg border border-black/[0.08] dark:border-white/10 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 transition hover:border-accent hover:text-accent">
+                        <x-icon name="plus" class="h-3.5 w-3.5" />{{ __('explore.add_photos') }}
+                      </button>
                     </div>
-                  </template>
+                    <div class="flex flex-wrap gap-2" x-show="coupledPhotos.length">
+                      <template x-for="p in coupledPhotos" :key="p.id">
+                        <div class="h-14 w-14 shrink-0 rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center"
+                             :title="p.name || p.id"
+                             :style="thumbs[p.id] ? ('background-image:url(\'' + thumbs[p.id] + '\')') : ''"
+                             x-init="$nextTick(() => _thumbFor(p))"></div>
+                      </template>
+                    </div>
+                    <p x-show="! coupledPhotos.length" class="text-xs text-gray-400 dark:text-gray-500">{{ __('explore.no_coupled_photos') }}</p>
+                  </div>
                 </div>
               </template>
             </div>
@@ -520,6 +525,47 @@
                   class="text-xs font-medium text-red-500 hover:text-red-600">{{ __('explore.clear_coupling') }}</button>
                 <span x-show="! (assignFor && couplings[assignFor])"></span>
                 <button type="button" @click="closeAssign()" class="rounded-md border border-gray-300 dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">{{ __('explore.close') }}</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        {{-- Photo picker (track detail → add photos): choose from ALL photos,
+             including ones with no GPS that never show in the map media list. --}}
+        <template x-teleport="body">
+          <div x-show="photoPickerFor" x-cloak class="fixed inset-0 z-[1100] flex items-center justify-center p-4" role="dialog" aria-modal="true" @keydown.escape.window="closePhotoPicker()">
+            <div class="absolute inset-0 bg-gray-900/40" @click="closePhotoPicker()"></div>
+            <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
+              <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.add_photos') }}</h3>
+                <button type="button" @click="closePhotoPicker()" class="rounded-md p-1.5 text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10" :aria-label="@js(__('explore.close'))">
+                  <x-icon name="x-mark" class="h-4 w-4" />
+                </button>
+              </div>
+              <div class="px-5 py-4">
+                <input type="search" x-model="photoPickerQuery"
+                  placeholder="{{ __('explore.search_photos') }}"
+                  class="block w-full rounded-lg border-gray-300 dark:border-white/10 dark:bg-white/5 text-sm shadow-sm focus:border-accent focus:ring-accent">
+              </div>
+              <div class="min-h-0 flex-1 overflow-y-auto border-t border-black/[0.06] dark:border-white/10 p-3">
+                <div class="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                  <template x-for="p in pickerPhotos" :key="p.id">
+                    <button type="button" @click="togglePickerPhoto(p.id)"
+                      class="relative aspect-square overflow-hidden rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center ring-2 ring-transparent transition"
+                      :class="pickerCoupled(p.id) ? '!ring-accent' : ''"
+                      :title="p.name || p.id"
+                      :style="thumbs[p.id] ? ('background-image:url(\'' + thumbs[p.id] + '\')') : ''"
+                      x-init="$nextTick(() => _thumbFor(p))">
+                      <span x-show="pickerCoupled(p.id)" class="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full ll-accent shadow">
+                        <x-icon name="check" class="h-3 w-3 text-white" />
+                      </span>
+                    </button>
+                  </template>
+                </div>
+                <p x-show="! pickerPhotos.length" class="px-3 py-8 text-center text-xs text-gray-500 dark:text-gray-400">{{ __('explore.no_photos') }}</p>
+              </div>
+              <div class="flex justify-end border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
+                <button type="button" @click="closePhotoPicker()" class="rounded-md ll-accent px-4 py-2 text-sm font-medium">{{ __('explore.done') }}</button>
               </div>
             </div>
           </div>
