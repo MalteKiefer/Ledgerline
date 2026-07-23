@@ -5,6 +5,11 @@ declare(strict_types=1);
 return [
     'title' => 'Обзор',
     'subtitle' => 'Ваши треки и геотегированные фото на приватной карте.',
+    'search_ph' => 'Поиск места, POI, координат или ссылки Google Maps',
+    'search_go' => 'Найти',
+    'search_result' => 'Найдено: :place',
+    'search_not_found' => 'По этому запросу ничего не найдено.',
+    'search_failed' => 'Не удалось выполнить поиск. Повторите попытку.',
 
     // Views
     'view_media' => 'Медиа',

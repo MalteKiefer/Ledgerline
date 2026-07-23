@@ -5,6 +5,11 @@ declare(strict_types=1);
 return [
     'title' => 'Explore',
     'subtitle' => 'Your tracks and geotagged photos on a private map.',
+    'search_ph' => 'Search a place, POI, coordinates or Google-Maps link',
+    'search_go' => 'Search',
+    'search_result' => 'Found: :place',
+    'search_not_found' => 'Nothing found for that search.',
+    'search_failed' => 'Search failed. Try again.',
 
     // Views
     'view_media' => 'Media',

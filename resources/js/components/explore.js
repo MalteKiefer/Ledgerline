@@ -21,6 +21,8 @@ import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { padBlob } from '../shared/padme';
 import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
 import { haversineM } from '../shared/track-parse';
+import { classifySearch } from '../shared/geo-search';
+import { escapeHtml } from '../shared/dom';
 
 // Distinct, deterministic polyline colours cycled per track (iOS-ish accents).
 const TRACK_COLORS = ['#7066f5', '#3b9fd6', '#59ad6b', '#e2915a', '#d9a441', '#3fae9f', '#9e70fa', '#ef4444'];
@@ -35,6 +37,15 @@ export default (config = {}, labels = {}) => ({
     // Client-side search over the decrypted data (never leaves the browser).
     trackQuery: '',
     mediaQuery: '',
+
+    // Map search box: place / POI / coordinates / Google-Maps link. Coordinates
+    // and long Google links resolve locally (no egress); a place query hits the
+    // geocoder, a short google link hits /maps/resolve.
+    searchQuery: '',
+    searching: false,
+    searchResults: [], // geocoder hits [{display,lat,lng}]
+    searchMsg: '',
+    _searchMarker: null, // Leaflet marker for the last search hit
 
     // Inline rename editor: the track id being renamed, plus the working name.
     renamingId: null,
@@ -271,6 +282,65 @@ export default (config = {}, labels = {}) => ({
         }
         if (pts.length === 0) return;
         try { this._map.fitBounds(L.latLngBounds(pts), { padding: [48, 48], maxZoom: 15 }); } catch (e) { /* ignore */ }
+    },
+
+    /* ------------------------------------------------------------- Map search */
+
+    // Run the search box: coordinates + long Google-Maps links resolve locally;
+    // a short google link goes to /maps/resolve; anything else is a place/POI
+    // query to the geocoder (results shown in a dropdown).
+    async runSearch() {
+        const action = classifySearch(this.searchQuery);
+        if (! action) return;
+        this.searchResults = [];
+        this.searchMsg = '';
+
+        if (action.kind === 'coords') { this._goToPlace(action.lat, action.lng); return; }
+
+        this.searching = true;
+        try {
+            if (action.kind === 'resolve') {
+                const url = `${config.resolveUrl}?url=${encodeURIComponent(action.url)}`;
+                const res = await fetch(url, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                const d = res.ok ? await res.json() : {};
+                if (Number.isFinite(d.lat) && Number.isFinite(d.lng)) this._goToPlace(d.lat, d.lng);
+                else this.searchMsg = labels.searchNotFound || 'Nothing found.';
+                return;
+            }
+            // Free-text place/POI query → geocoder.
+            const url = `${config.geocodeUrl}?q=${encodeURIComponent(action.q)}`;
+            const res = await fetch(url, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+            const d = res.ok ? await res.json() : {};
+            const results = Array.isArray(d.results) ? d.results : [];
+            if (! results.length) { this.searchMsg = labels.searchNotFound || 'Nothing found.'; return; }
+            if (results.length === 1) { this.pickSearchResult(results[0]); return; }
+            this.searchResults = results;
+        } catch (e) {
+            this.searchMsg = labels.searchFailed || 'Search failed.';
+        } finally {
+            this.searching = false;
+        }
+    },
+
+    pickSearchResult(r) {
+        this.searchResults = [];
+        this._goToPlace(r.lat, r.lng, r.display);
+    },
+
+    // Fly to a coordinate and drop a temporary search marker + popup.
+    _goToPlace(lat, lng, label) {
+        const L = this._L;
+        if (! this._map || ! this._mapReady || ! L) return;
+        if (this._searchMarker) { try { this._searchMarker.remove(); } catch (e) { /* ignore */ } this._searchMarker = null; }
+        const coordText = `${(+lat).toFixed(6)}, ${(+lng).toFixed(6)}`;
+        const title = label || coordText;
+        try {
+            this._searchMarker = L.marker([lat, lng]).addTo(this._map)
+                .bindPopup(`<strong>${escapeHtml(title)}</strong><br><span style="color:#6b7280">${escapeHtml(coordText)}</span>`)
+                .openPopup();
+            this._map.flyTo([lat, lng], Math.max(this._map.getZoom() || 0, 14), { duration: 0.6 });
+        } catch (e) { /* ignore */ }
+        this.searchMsg = (labels.searchResult || 'Found: :place').replace(':place', title);
     },
 
     /* -------------------------------------------------------- Media placement */

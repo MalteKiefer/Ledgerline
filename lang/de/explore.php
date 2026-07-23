@@ -5,6 +5,11 @@ declare(strict_types=1);
 return [
     'title' => 'Entdecken',
     'subtitle' => 'Deine Touren und verorteten Fotos auf einer privaten Karte.',
+    'search_ph' => 'Ort, POI, Koordinaten oder Google-Maps-Link suchen',
+    'search_go' => 'Suchen',
+    'search_result' => 'Gefunden: :place',
+    'search_not_found' => 'Nichts zu dieser Suche gefunden.',
+    'search_failed' => 'Suche fehlgeschlagen. Erneut versuchen.',
 
     // Views
     'view_media' => 'Medien',

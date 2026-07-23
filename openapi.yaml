@@ -2504,6 +2504,53 @@ paths:
         "429":
           description: Rate limit exceeded.
 
+  /maps/resolve:
+    get:
+      tags: [Maps]
+      operationId: mapsResolve
+      summary: Resolve a Google-Maps short link to coordinates
+      description: >
+        Resolves a Google-Maps short link (maps.app.goo.gl / goo.gl / g.co) to
+        the { lat, lng } it points at, for the Explore search box. Follows the
+        redirect chain (max 6 hops) and extracts the coordinates from the final
+        URL or page body. User-initiated, opt-in egress (same class as
+        /gallery/geocode): the short link is the only thing sent outbound, and
+        only to Google hosts (allow-list re-checked on every hop); a redirect off
+        Google is refused. Every hop is SSRF-guarded (link-local/metadata refused,
+        IP pinned against DNS-rebinding, redirects walked manually). The link and
+        resolved coordinates are never logged or persisted. On any failure
+        (non-Google host, no coordinates, unreachable) a clean 200 with
+        lat:null,lng:null is returned. Throttle 30 req/min.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+            maxLength: 2048
+          description: The Google-Maps short link to resolve.
+      responses:
+        "200":
+          description: Coordinates, or lat:null,lng:null when the link cannot be resolved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lat:
+                    type: number
+                    nullable: true
+                    description: Latitude, or null when unresolved.
+                  lng:
+                    type: number
+                    nullable: true
+                    description: Longitude, or null when unresolved.
+        "422":
+          description: Missing or invalid url.
+        "429":
+          description: Rate limit exceeded.
+
   # --------------------------------------------------------------------------
   # Passwords (enrichment endpoints)
   # --------------------------------------------------------------------------
