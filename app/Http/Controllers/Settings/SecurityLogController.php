@@ -112,17 +112,31 @@ class SecurityLogController extends Controller
             }
             fputcsv($out, ['at', 'user_id', 'actor', 'action', 'ip', 'user_agent', 'meta']);
             foreach ($rows as $r) {
+                // Neutralise formula prefixes in every cell derived from untrusted
+                // input (actor name, user-agent, and the meta blob which carries a
+                // user-chosen device_name) so a spreadsheet can't execute it.
                 fputcsv($out, [
                     $r->created_at?->toIso8601String(),
                     $r->user_id,
-                    $r->actor?->name,
-                    $r->action,
-                    $r->ip,
-                    $r->user_agent,
-                    json_encode($r->meta, JSON_UNESCAPED_SLASHES),
+                    self::csvSafe($r->actor?->name),
+                    self::csvSafe($r->action),
+                    self::csvSafe($r->ip),
+                    self::csvSafe($r->user_agent),
+                    self::csvSafe(json_encode($r->meta, JSON_UNESCAPED_SLASHES) ?: ''),
                 ]);
             }
             fclose($out);
         }, "security-log-{$stamp}.csv", ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * Prefix a leading formula character with an apostrophe so a spreadsheet
+     * treats the cell as text (CSV/formula-injection defence).
+     */
+    private static function csvSafe(?string $value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^[=+\-@\t\r]/', $value) === 1 ? "'".$value : $value;
     }
 }
