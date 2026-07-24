@@ -29,6 +29,14 @@ return [
     'access_log_retention_days' => (int) env('OPS_ACCESS_LOG_RETENTION_DAYS', 30),
 
     /*
+     * Retention (days) for the blob/shard forensic trail (blob_audit_log): every
+     * create/delete/reconcile/sweep of a content blob and every sealed-root write.
+     * Kept longer than the access trail — this is the record used to reconstruct a
+     * data-loss event after the fact. 0 keeps forever.
+     */
+    'blob_audit_retention_days' => (int) env('OPS_BLOB_AUDIT_RETENTION_DAYS', 180),
+
+    /*
      * Alert when the most recent successful backup is older than this many hours
      * (backup staleness). 0 disables the staleness check.
      */

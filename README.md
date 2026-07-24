@@ -21,8 +21,9 @@ are bundled and served locally — no external CDNs, fonts, or trackers.
 
 - [Modules](#modules)
 - [Stack](#stack)
-- [Deployment](#deployment-docker--host-caddy)
-- [Environment variables](#environment-variables)
+- [Requirements](#requirements)
+- [Installation](#installation-docker-compose)
+- [Configuration reference](#configuration-reference-environment-variables)
 - [**Security — the full breakdown**](#security--the-full-breakdown)
   - [Threat model: what the server can and cannot see](#threat-model-what-the-server-can-and-cannot-see)
   - [The key model (how keys are made and used)](#the-key-model-how-keys-are-made-and-used)
@@ -92,7 +93,7 @@ are bundled and served locally — no external CDNs, fonts, or trackers.
 | Component     | Version        | Notes                                                   |
 | ------------- | -------------- | ------------------------------------------------------- |
 | PHP           | 8.5            | `declare(strict_types=1)`, full type hints, PHPStan L10 |
-| Laravel       | 13.21          | Framework                                               |
+| Laravel       | 13.x           | Framework (`composer.json` requires `^13.8`)            |
 | PostgreSQL    | 17 (pgvector)  | `vector` extension for CLIP/face similarity             |
 | Valkey        | 8.x            | Cache, session, queue (Redis-compatible, `predis`)      |
 | Node.js       | 22 LTS / Vite 8 / Tailwind 4 | Asset build                               |
@@ -106,27 +107,146 @@ are bundled and served locally — no external CDNs, fonts, or trackers.
 
 ---
 
-## Deployment (Docker + host Caddy)
+## Requirements
 
-Production runs as a Docker Compose stack; TLS + routing are handled by **Caddy
-on the host**, reverse-proxying to `127.0.0.1:${APP_PORT}`.
+Ledgerline is designed to run as a Docker Compose stack. To operate it you need:
+
+| Requirement | Version / notes |
+| --- | --- |
+| **Docker + Docker Compose** | Compose v2 (the `docker compose` plugin). The production image is built locally from the repo `Dockerfile`. |
+| **PostgreSQL 17 with pgvector** | Provided by the bundled `db` service (`pgvector/pgvector:pg17`). The `vector` extension backs CLIP / face-similarity duplicate detection. |
+| **Valkey 8** | Provided by the bundled `valkey` service. Redis-protocol compatible; used for cache, session and queue via the pure-PHP `predis` client (no `phpredis` extension needed). |
+| **A Pocket-ID OIDC provider** | [Pocket-ID](https://github.com/pocket-id/pocket-id) is the sole identity provider — the app has **no local password login**. You must register a Pocket-ID OAuth2 client and provide its base URL, client id/secret and redirect URI. |
+| **Object storage (optional but recommended)** | An S3-compatible bucket (Amazon S3, Cloudflare R2, Backblaze B2, Hetzner Object Storage, MinIO, …) for the private `files` blob disk. If omitted, blobs are stored on the local `app-storage` volume. |
+| **A TLS-terminating reverse proxy** | Production expects **Caddy on the host** (or any equivalent) in front of the app, which binds to `127.0.0.1:${APP_PORT}` only. The proxy terminates TLS 1.3 and forwards `X-Forwarded-*`. Secure cookies + HSTS are emitted when `SESSION_SECURE_COOKIE=true`. |
+| **Node.js 22 LTS** | Only for local (non-Docker) development / building assets. In the Docker build, assets are compiled in a Node 22 stage automatically. |
+
+Optional, profile-gated sidecars (all self-hosted, all off by default):
+
+| Service | Compose profile | Purpose |
+| --- | --- | --- |
+| `ml` (immich-machine-learning) | `ml` | CLIP object/scene tagging + smart search and facial recognition. Reached over the internal network at `http://ml:3003`. |
+| `photon` (Photon geocoder) | `geocode` | Self-hosted reverse geocoding so photo coordinates for the imported region never leave the host (falls back to public Nominatim on a miss). |
+| `graphhopper` (GraphHopper router) | `maps` | Self-hosted Explore tour auto-routing with elevation + OSM surface data (alternative to the default public OSRM). |
+
+All images are pinned by immutable digest; every service runs non-root with
+`no-new-privileges` and `cap_drop: [ALL]` (selective capability re-add).
+
+---
+
+## Installation (Docker Compose)
+
+### 1. Clone and prepare the environment file
 
 ```bash
-cp .env.docker.example .env      # fill APP_KEY, DB/REDIS passwords, POCKETID_*, S3
-docker compose build
-docker compose up -d             # app + worker + scheduler + db + valkey
-docker compose --profile ml up -d       # optionally add the ML sidecar
-docker compose --profile geocode up -d  # optionally add self-hosted Photon geocoding
+git clone <this-repository> ledgerline && cd ledgerline
+cp .env.docker.example .env
 ```
 
-Services: `app` (nginx + php-fpm, runs migrations on start), `worker`
-(`queue:work`, scale with `--scale worker=N`), `scheduler` (`schedule:work`),
-`db` (pgvector/pg17), `valkey`, plus the optional `ml` and `photon` sidecars.
-All images are digest-pinned; every service runs non-root with
-`no-new-privileges` and `cap_drop: [ALL]` (selective re-add). The app port binds
-to `127.0.0.1` only — put Caddy in front for TLS 1.3 + HSTS.
+`.env` is read both by `docker compose` (for `${...}` interpolation) and by the
+app containers (via `env_file`), so a single file configures the whole stack.
+See [Configuration reference](#configuration-reference-environment-variables) for
+every variable.
 
-Health check: `curl -fsS https://<your-domain>/up` → `200`.
+### 2. Generate the application key
+
+```bash
+docker compose run --rm app php artisan key:generate --show
+```
+
+Copy the printed `base64:…` value into `APP_KEY` in `.env`. This key encrypts
+sessions and a few non-content server-side values; **it never encrypts the user
+vault** (that is derived client-side from the vault passphrase).
+
+### 3. Set the required secrets
+
+At minimum, fill these in `.env`:
+
+- `DB_PASSWORD` and `REDIS_PASSWORD` (both **required**) — datastore credentials.
+  These are delivered to the `db`/`valkey` containers as mounted secret files, so
+  they never appear in `docker inspect` or `/proc/<pid>/environ`.
+- `APP_URL` — your public HTTPS URL (e.g. `https://cloud.example.com`).
+- `TRUSTED_PROXIES` — the private range(s) your host proxy reaches the container
+  over. **Never `*`** in production behind a shared network.
+
+### 4. Configure the Pocket-ID OIDC client
+
+Register an OAuth2 client in your Pocket-ID instance, then set:
+
+```dotenv
+POCKETID_BASE_URL=https://id.example.com
+POCKETID_CLIENT_ID=…
+POCKETID_CLIENT_SECRET=…
+POCKETID_REDIRECT_URI=https://cloud.example.com/auth/callback   # = <APP_URL>/auth/callback
+```
+
+The redirect URI must be registered verbatim in Pocket-ID. If you run a
+multi-user install and want the workspace-admin gate, expose the `groups` claim
+and set `POCKETID_ADMIN_GROUP` (see the config table). By default sign-in is
+**first-user-wins**: the first subject to authenticate claims the sole account
+and all others are rejected. Pin `POCKETID_ALLOWED_SUBS` / `POCKETID_ALLOWED_EMAILS`
+to restrict sign-in to explicit subjects / verified e-mails.
+
+### 5. Choose your blob storage
+
+- **Local (default):** leave `FILES_DISK=local` — uploads land in the
+  `app-storage` volume. Simplest, no external dependency.
+- **S3-compatible:** set `FILES_DISK=files` (Docker) / `FILES_DISK=files` and fill
+  the `FILES_S3_*` block (`FILES_S3_KEY`, `FILES_S3_SECRET`, `FILES_S3_BUCKET`,
+  `FILES_S3_REGION`, `FILES_S3_ENDPOINT`, `FILES_S3_USE_PATH_STYLE`). The bucket is
+  private; the app streams every byte behind auth. All stored bytes are already
+  client-side ciphertext.
+
+### 6. Build and start the stack
+
+```bash
+docker compose build
+docker compose up -d          # starts app + worker + scheduler + db + valkey
+```
+
+The `app` service runs database migrations and cache warm-up automatically on
+start (isolated behind a lock so `worker`/`scheduler` skip it). No manual
+`php artisan migrate` step is required. Core services:
+
+- **`app`** — nginx + php-fpm, serves the UI and API on `:8080` (mapped to
+  `127.0.0.1:${APP_PORT}`), runs migrations + `optimize` on boot.
+- **`worker`** — `queue:work` for photo/video processing, backups, etc. Scale it:
+  `docker compose up -d --scale worker=10`.
+- **`scheduler`** — `schedule:work` (orphan sweeps, token pruning, backups).
+- **`db`** — PostgreSQL 17 + pgvector.
+- **`valkey`** — cache / session / queue.
+
+### 7. (Optional) enable sidecars
+
+```bash
+docker compose --profile ml up -d        # ML sidecar (also set ML_ENABLED=true / FACE_ENABLED=true)
+docker compose --profile geocode up -d   # Photon geocoder (also set PHOTON_URL=http://photon:2322)
+docker compose --profile maps up -d      # GraphHopper router (see .env.docker.example for graph setup)
+```
+
+Enabling a profile only starts the container — you still flip the matching feature
+flags in `.env` (e.g. `ML_ENABLED`, `PHOTON_URL`, `MAPS_ROUTE_ENGINE`) and
+re-run `docker compose up -d` so the app picks them up. The ML and GraphHopper
+sidecars download / import models or graphs on first use and can take minutes to
+become healthy — watch with `docker compose logs -f <service>`.
+
+### 8. Put a reverse proxy in front (TLS)
+
+The app binds to `127.0.0.1:${APP_PORT}` (default `8300`). Configure Caddy (or
+your proxy of choice) on the host to terminate TLS and `reverse_proxy` to that
+address; keep `SESSION_SECURE_COOKIE=true` so Secure cookies + HSTS are emitted.
+Align the proxy's request-body limit with the app's upload limits
+(`NGINX_CLIENT_MAX_BODY_SIZE` / `PHP_POST_MAX_SIZE` are `560M`/`550M` in the image).
+
+### 9. Verify
+
+```bash
+docker compose ps                              # every service healthy
+curl -fsS https://cloud.example.com/up         # → 200
+```
+
+Then open `APP_URL`, sign in through Pocket-ID, and create your vault passphrase
+(store the one-time recovery key safely).
 
 ### Local development (without Docker)
 
@@ -141,32 +261,220 @@ php artisan serve
 
 ---
 
-## Environment variables
+## Configuration reference (environment variables)
 
-| Variable | Purpose |
-| --- | --- |
-| `APP_KEY` | Laravel app key (`php artisan key:generate --show`). Encrypts sessions + a few server-side non-content values; never the user vault. |
-| `APP_URL` | Public URL; must be HTTPS in production. |
-| `DB_*` | PostgreSQL (pgvector) connection. |
-| `REDIS_CLIENT` | `predis` (pure PHP) — no `phpredis` extension needed. |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Valkey connection. |
-| `CACHE_STORE` / `SESSION_DRIVER` / `QUEUE_CONNECTION` | All `redis` → Valkey. |
-| `POCKETID_BASE_URL` / `POCKETID_CLIENT_ID` / `POCKETID_CLIENT_SECRET` / `POCKETID_REDIRECT_URI` | Pocket-ID OIDC client. Redirect URI = `<APP_URL>/auth/callback`. |
-| `POCKETID_ADMIN_GROUP` | OIDC group whose members may change global/infra settings (fail-closed in multi-user). |
-| `AWS_*` / `FILES_S3_*` | The `files` blob disk (Hetzner/S3/R2/B2/MinIO). Bucket is private; app streams all bytes behind auth. |
-| `AWS_EC2_METADATA_DISABLED` | `true` — always pass explicit S3 keys; skip the IMDS probe. |
-| `TRUSTED_PROXIES` | The private ranges the host reverse-proxy uses. **Never `*`** — that lets a remote client forge `X-Forwarded-For`. |
-| `ML_ENABLED` / `ML_URL` / `FACE_ENABLED` / `ML_FACE_MODEL` / `ML_CLIP_MODEL` | Machine-learning sidecar (optional). `ML_URL` defaults to `http://ml:3003`. |
-| `SANCTUM_EXPIRATION` | Absolute device-token lifetime in minutes (default 180 days). |
-| `DEVICE_IDLE_DAYS` | Revoke a device token unused this many days (default 90; 0 disables). |
-| `DEVICE_WIPE_GRACE_MINUTES` | Grace before a remotely-wiped token is hard-revoked (default 15). |
-| `PAIRING_MAX_DEVICES` | Max paired devices (app + CLI + extension) per user (default 3). |
-| `BACKUP_RECONCILE_HOURS` | Full list-and-prune vs. fast incremental delta cadence (default 24). |
-| `OPS_METRICS_TOKEN` | Bearer for the Prometheus `/metrics` endpoint. Unset → `/metrics` returns 404. |
-| `VAULT_REMEMBER_DAYS` / `VAULT_PUBLIC_IDLE_MINUTES` | Trusted-device vault-unlock persistence vs. public-computer idle lock. |
-| `HASH_DRIVER` / `ARGON_MEMORY` / `ARGON_TIME` / `ARGON_THREADS` | Server-side password hashing (Argon2id; only the public-share password gate uses it). |
+Every variable below is read by the application. Names, defaults and required
+flags are derived directly from `config/*.php` (`env('NAME', default)`) and the
+`.env.example` / `.env.docker.example` files. Where a value is **required**, the
+stack will not function without it; everything else has a working default.
 
-See `.env.example` (local) and `.env.docker.example` (Docker) for the full set.
+> **Note — not everything is an env var.** A few security-relevant settings are
+> **admin-configurable in the database** (workspace Settings UI), *not* through
+> the environment: trusted-device vault-remember days (default **7**),
+> public-computer idle-lock minutes (default **10**), and the maximum connected
+> devices per user (overrides `PAIRING_MAX_DEVICES` at runtime; default falls back
+> to `PAIRING_MAX_DEVICES`). They are listed here for completeness but are set in
+> the UI, not `.env`.
+
+### Application
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `APP_NAME` | Display name of the instance. | `Laravel` (`.env` ships `Ledgerline`) | no |
+| `APP_ENV` | Environment. Use `production` in prod, `local` for dev. | `production` | no |
+| `APP_KEY` | Laravel app key (`php artisan key:generate --show`). Encrypts sessions + a few server-side non-content values; **never** the user vault. | — | **yes** |
+| `APP_DEBUG` | Debug pages (leak stack traces, env, config). Keep `false` in prod. | `false` | no |
+| `APP_URL` | Public URL; must be HTTPS in production. | `http://localhost` | **yes** (prod) |
+| `APP_VERSION` | Reported app version. | `1.505.49` (repo value) | no |
+| `APP_LOCALE` | Default UI locale (`en`, `de`, `ru`). | `en` | no |
+| `APP_FALLBACK_LOCALE` | Locale used when a key is missing. | `en` | no |
+| `APP_FAKER_LOCALE` | Faker locale (dev/tests only). | `en_US` | no |
+| `APP_MAINTENANCE_DRIVER` | Maintenance-mode driver. | `file` | no |
+| `LOG_CHANNEL` | Log channel (`stack` locally, `stderr` in Docker). | `stack` | no |
+| `LOG_LEVEL` | Minimum log level. | `debug` (`.env.docker.example`: `warning`) | no |
+
+### Database (PostgreSQL / pgvector)
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `DB_CONNECTION` | Must be `pgsql` (PostgreSQL only). | `pgsql` | no |
+| `DB_HOST` | Database host (`db` in Docker). | `127.0.0.1` | no |
+| `DB_PORT` | Database port. | `5432` | no |
+| `DB_DATABASE` | Database name. | `ledgerline` | no |
+| `DB_USERNAME` | Database user. | `ledgerline` | no |
+| `DB_PASSWORD` | Database password (mounted as a Docker secret file in compose). | — | **yes** |
+
+### Cache / queue / session (Valkey)
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `REDIS_CLIENT` | Client library — `predis` (pure PHP, no C extension). | `predis` | no |
+| `REDIS_HOST` | Valkey host (`valkey` in Docker). | `127.0.0.1` | no |
+| `REDIS_PORT` | Valkey port. | `6379` | no |
+| `REDIS_PASSWORD` | Valkey password (mounted as a Docker secret file in compose). | — | **yes** (Docker) |
+| `CACHE_STORE` | Cache backend. | `redis` | no |
+| `SESSION_DRIVER` | Session store. | `redis` | no |
+| `SESSION_LIFETIME` | Session lifetime (minutes). | `120` | no |
+| `SESSION_ENCRYPT` | Encrypt session payloads. | `true` | no |
+| `SESSION_SECURE_COOKIE` | Emit Secure cookies + HSTS. Set `true` behind TLS. | `true` when `APP_ENV=production` | no |
+| `QUEUE_CONNECTION` | Queue backend. | `redis` | no |
+| `REDIS_QUEUE_RETRY_AFTER` | Retry window (s); keep above the worker `--timeout`. | `700` | no |
+
+### Object storage / blob disk
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `FILESYSTEM_DISK` | Default Laravel disk. | `local` | no |
+| `FILES_DISK` | Disk used for the blob store. `local` (volume) or `files` (S3). | `files` (config) / `local` (`.env` examples) | no |
+| `FILES_S3_KEY` | S3 access key id (falls back to `AWS_ACCESS_KEY_ID`). | — | if `FILES_DISK=files` |
+| `FILES_S3_SECRET` | S3 secret (or `FILES_S3_SECRET_FILE`; falls back to `AWS_SECRET_ACCESS_KEY`). | — | if `FILES_DISK=files` |
+| `FILES_S3_REGION` | S3 region. | `auto` (config) / `us-east-1` (`.env`) | no |
+| `FILES_S3_BUCKET` | Private bucket name. | — (falls back to `AWS_BUCKET`) | if `FILES_DISK=files` |
+| `FILES_S3_ENDPOINT` | S3 endpoint (for R2/B2/MinIO/Hetzner). | — (falls back to `AWS_ENDPOINT`) | provider-dependent |
+| `FILES_S3_USE_PATH_STYLE` | Path-style addressing (`true` for MinIO; `false` for virtual-hosted). | `true` | no |
+| `FILES_S3_CHECKSUM_CALCULATION` | `x-amz-checksum-*` behaviour; `when_required` for B2/Hetzner/older MinIO. | `when_required` | no |
+| `FILES_S3_CHECKSUM_VALIDATION` | Response checksum validation. | `when_required` | no |
+| `FILES_S3_RETRY_MODE` | AWS SDK retry mode (transient multipart 5xx). | `standard` | no |
+| `FILES_S3_MAX_ATTEMPTS` | Max retry attempts. | `8` | no |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_DEFAULT_REGION` / `AWS_BUCKET` / `AWS_ENDPOINT` / `AWS_USE_PATH_STYLE_ENDPOINT` / `AWS_URL` | Generic `s3` disk credentials; the `FILES_S3_*` block falls back to these. | — | no |
+| `AWS_EC2_METADATA_DISABLED` | `true` — always pass explicit S3 keys; skip the IMDS probe (set in compose). | `true` (compose) | no |
+
+### Authentication (Pocket-ID OIDC)
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `POCKETID_BASE_URL` | OIDC issuer base URL of your Pocket-ID instance. | — | **yes** |
+| `POCKETID_CLIENT_ID` | OAuth2 client id. | — | **yes** |
+| `POCKETID_CLIENT_SECRET` | OAuth2 client secret (or `POCKETID_CLIENT_SECRET_FILE`). | — | **yes** |
+| `POCKETID_REDIRECT_URI` | OAuth2 redirect. Must equal `<APP_URL>/auth/callback`. | — | **yes** |
+| `POCKETID_USE_PKCE` | Use PKCE in the authorization-code flow. | `true` | no |
+| `POCKETID_LOGOUT_ENDPOINT` | Optional RP-initiated logout endpoint. | — | no |
+| `POCKETID_ADMIN_GROUP` | OIDC group whose members may change global/infra settings (backups of all users, workspace config). Empty is allowed only on a single-user install; **required** for multi-user (fail-closed). | — | multi-user only |
+| `POCKETID_ALLOWED_SUBS` | Comma list of OIDC subject ids permitted to sign in (empty = first-user-wins). | — | no |
+| `POCKETID_ALLOWED_EMAILS` | Comma list of verified e-mails permitted to sign in. | — | no |
+| `TRUSTED_PROXIES` | Private range(s) the host reverse-proxy uses. **Never `*`** in production — it lets a remote client forge `X-Forwarded-For` and spoof its source IP. | none | recommended |
+
+### Device tokens (mobile / CLI / extension)
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `SANCTUM_EXPIRATION` | Absolute device-token lifetime (minutes). | `259200` (180 days) | no |
+| `DEVICE_IDLE_DAYS` | Revoke a token unused this many days (0 disables). | `90` | no |
+| `DEVICE_WIPE_GRACE_MINUTES` | Grace before a remotely-wiped token is hard-revoked. | `15` | no |
+| `PAIRING_MAX_DEVICES` | Max paired devices per user (oldest revoked past the cap). Runtime override: the admin `max_connected_devices` setting. | `3` | no |
+| `SANCTUM_TOKEN_PREFIX` | Optional token prefix (for secret-scanner detection). | `''` | no |
+
+### Machine learning (image recognition)
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `ML_ENABLED` | Enable the ML sidecar (CLIP tagging + smart search). | `false` | no |
+| `ML_URL` | Internal URL of the `ml` service. | `http://ml:3003` | no |
+| `ML_CLIP_MODEL` | CLIP model name. | `XLM-Roberta-Large-Vit-B-32` (config) / `ViT-B-32__openai` (`.env.docker.example`) | no |
+| `FACE_ENABLED` | Enable facial recognition. | `false` | no |
+| `ML_FACE_MODEL` | Face model name. | `buffalo_l` | no |
+| `GALLERY_FACE_MIN_SCORE` | Minimum face-detection confidence. | `0.7` | no |
+| `FILES_SEMANTIC_SEARCH` | Enable semantic file search. | `true` | no |
+
+### Gallery, files, contacts, explore (quotas & limits)
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `GALLERY_FFMPEG_PATH` | Path to the `ffmpeg` binary (baked into the image). | `ffmpeg` | no |
+| `EXIFTOOL_PATH` | Path to `exiftool`. | `exiftool` | no |
+| `GALLERY_QUOTA_MB` | Gallery per-user quota MB (0 = unlimited). | `0` | no |
+| `GALLERY_MAX_UPLOAD_MB` | Max gallery upload size. | `512` | no |
+| `GALLERY_MAX_MEGAPIXELS` | Reject images above this megapixel count. | `120` | no |
+| `GALLERY_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced gallery blob is swept. | `24` | no |
+| `GALLERY_SHARE_MAX_MANIFEST_BYTES` | Max public-share manifest size. | `16777216` | no |
+| `GALLERY_SHARE_MAX_BLOBS` | Max blobs in a public share. | `16000` | no |
+| `FILES_MAX_UPLOAD_MB` | Max file upload size. | `512` (`.env.example`: `FILES_MAX_UPLOAD_MB=2048`) | no |
+| `FILES_QUOTA_MB` | Files per-user quota MB (0 = unlimited). | `0` | no |
+| `FILES_VAULT_IDLE_MINUTES` | Fallback idle-lock minutes for the vault. | `10` | no |
+| `FILES_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced file blob is swept. | `24` | no |
+| `CONTACTS_QUOTA_MB` | Contacts avatar quota MB (0 = unlimited). | `0` | no |
+| `CONTACTS_MAX_UPLOAD_MB` | Max contact-avatar upload size. | `16` | no |
+| `CONTACTS_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced contact blob is swept. | `24` | no |
+| `EXPLORE_QUOTA_MB` | Explore track-blob quota MB (0 = unlimited). | `0` | no |
+| `EXPLORE_MAX_UPLOAD_MB` | Max explore track-file upload size. | `64` | no |
+| `EXPLORE_BLOB_ORPHAN_GRACE_HOURS` | Grace before an unreferenced explore blob is swept. | `24` | no |
+| `VAULT_MANIFEST_MAX_BYTES` | Max sealed-manifest size accepted server-side. | `16000000` | no |
+
+### Geocoding (photo GPS → place name)
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `GALLERY_GEOCODE_ON_UPLOAD` | Auto-geocode on upload (a boundary crossing; off by default). | `false` | no |
+| `PHOTON_URL` | Self-hosted Photon reverse-geocoder URL; queried first so covered points stay in-boundary. | `''` (empty) | no |
+| `GEOCODER_URL` | Public fallback geocoder (queried only on a Photon miss). | `https://nominatim.openstreetmap.org` | no |
+| `GALLERY_GEOCODE_INTERVAL_MS` | Rate-limit between geocode calls. | `1100` | no |
+| `GALLERY_GEOCODE_GRID_KM` | Snap-to-grid size for geocode lookups (privacy). | `0.5` | no |
+| `PHOTON_IMPORT_MODE` | Photon container import mode (`db` prebuilt / `jsonl`). | `db` | no |
+| `PHOTON_REGION` | Photon coverage region(s). | `germany` | no |
+
+### Maps / Explore auto-routing
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `MAPS_ROUTE_ENGINE` | Routing upstream protocol: `osrm` or `graphhopper`. | `osrm` | no |
+| `MAPS_ROUTE_UPSTREAM` | Router base URL. Empty **disables** auto-routing (straight lines only, no egress). | `https://router.project-osrm.org` | no |
+| `MAPS_ROUTE_PROFILE` | Routing profile (`foot`/`hike`; must match GraphHopper config). | `foot` | no |
+| `GRAPHHOPPER_JAVA_OPTS` / `GRAPHHOPPER_CPU_LIMIT` / `GRAPHHOPPER_MEMORY_LIMIT` | GraphHopper container tuning (compose). | `-Xmx2g -Xms1g` / `2` / `3g` | no |
+
+### Backups
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `BACKUP_PASSPHRASE` | Passphrase for the always-encrypted DB dump (keeps the key out of the DB that gets dumped). Prefer a mounted secret. | — | recommended |
+| `BACKUP_RECONCILE_HOURS` | Full list-and-prune vs. fast incremental delta cadence. | `24` | no |
+
+### Server-side hashing (Argon2id)
+
+Only the optional public-share password gate is hashed server-side — never the
+encryption root.
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `HASH_DRIVER` | Hash driver. | `argon2id` | no |
+| `ARGON_MEMORY` | Argon2id memory cost (KiB). | `65536` | no |
+| `ARGON_TIME` | Argon2id time cost. | `4` | no |
+| `ARGON_THREADS` | Argon2id threads. | `1` | no |
+| `BCRYPT_ROUNDS` | bcrypt cost (only if `HASH_DRIVER=bcrypt`). | `12` | no |
+
+### Operations, security & metrics
+
+| Variable | Purpose | Default | Required |
+| --- | --- | --- | --- |
+| `OPS_METRICS_TOKEN` | Bearer for the Prometheus `/metrics` endpoint. Unset → `/metrics` returns 404. | `''` | no |
+| `OPS_ERROR_ALERTS` | Send alerts on recorded server errors. | `true` | no |
+| `OPS_AUDIT_RETENTION_DAYS` | Retention for the security audit log. | `365` | no |
+| `OPS_ACCESS_LOG_RETENTION_DAYS` | Retention for the device access-trail log. | `30` | no |
+| `OPS_BACKUP_STALE_HOURS` | Alert threshold for a stale backup. | `48` | no |
+| `SECURITY_BLOCK_PRIVATE_HOSTS` | Extra SSRF hardening: block private/link-local hosts on outbound calls. | `false` | no |
+
+### Docker / compose tuning
+
+These are consumed by `docker-compose.yml` (not the application):
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `IMAGE_TAG` | Tag of the locally-built image. | `local` |
+| `APP_PORT` | Host port the app binds to (`127.0.0.1:${APP_PORT}`). | `8300` |
+| `APP_MEMORY_LIMIT` | Hard memory ceiling for the web app. | `8g` |
+| `WORKER_REPLICAS` / `WORKER_MEMORY_LIMIT` / `WORKER_PHP_MEMORY` | Queue-worker scaling / memory caps. | `1` / `768m` / `512` |
+| `SCHEDULER_CPU_LIMIT` / `SCHEDULER_MEMORY_LIMIT` | Scheduler limits. | `1` / `512m` |
+| `ML_CPU_LIMIT` / `ML_MEMORY_LIMIT` | ML sidecar limits. | `4` / `8g` |
+| `PHOTON_CPU_LIMIT` / `PHOTON_MEMORY_LIMIT` | Photon sidecar limits. | `2` / `4g` |
+| `NGINX_CLIENT_MAX_BODY_SIZE` | nginx upload limit (compose). | `560M` |
+
+> **Secrets from files.** Any of `APP_KEY`, `DB_PASSWORD`, `REDIS_PASSWORD`,
+> `POCKETID_CLIENT_SECRET`, `AWS_SECRET_ACCESS_KEY`, `FILES_S3_SECRET` can be
+> supplied via a `<KEY>_FILE` variable pointing at a mounted secret file instead
+> of the plain value — then remove the plain value so it never lands in the
+> container environment.
+
+See `.env.example` (local) and `.env.docker.example` (Docker) for annotated,
+copy-ready templates.
 
 ---
 
@@ -500,7 +808,7 @@ index via `GET/PUT /files/store`; gallery via `GET/PUT /gallery/store`. There is
 **no per-record endpoint** (that would break zero-knowledge).
 
 See [`openapi.yaml`](openapi.yaml) for the complete machine-readable reference
-(OpenAPI 3.1, 93 operations, verified 1:1 against the route table).
+(OpenAPI 3.1, 95 operations, verified 1:1 against the route table).
 
 ---
 
@@ -509,12 +817,12 @@ See [`openapi.yaml`](openapi.yaml) for the complete machine-readable reference
 - **Git Flow.** `develop` is the working branch; every `main` commit is a tagged
   `vX.Y.Z` release (app + extension carry the same version). Merge with `--no-ff`.
 - **Gates (all green before a release):** Pint, PHPStan level 10, ESLint, Vitest,
-  the full PHP test suite, EN/DE language parity, a zero-knowledge scan (no new
+  the full PHP test suite, EN/DE/RU language parity, a zero-knowledge scan (no new
   plaintext columns / server render paths), `openapi.yaml` in sync, and `CLAUDE.md`
   + the security register updated in the same commit.
 - **Tests:** `php artisan test --teamcity`. Run `PhotoEditTest` in a filtered chunk
   — it can segfault under imagick/GD and mask later tests.
-- **Conventions:** monochrome icons via `<x-icon>` only; EN/DE parity for every
+- **Conventions:** monochrome icons via `<x-icon>` only; EN/DE/RU parity for every
   string; no AI references in code, comments, commits or releases; assets bundled
   locally (no CDNs/telemetry); only `README.md` + `CLAUDE.md` are Markdown.
 

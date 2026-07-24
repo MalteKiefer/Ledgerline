@@ -46,4 +46,9 @@ class GalleryStoreController extends Controller
     {
         return GalleryBlob::query()->where('user_id', (int) $this->requireUser($request)->id);
     }
+
+    protected function manifestAuditModule(Request $request): ?string
+    {
+        return 'gallery';
+    }
 }
