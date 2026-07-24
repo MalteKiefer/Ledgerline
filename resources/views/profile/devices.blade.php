@@ -62,6 +62,8 @@
                             <span x-show="d.wipeRequested" class="shrink-0 rounded-full bg-red-100 dark:bg-red-900/40 px-1.5 py-0.5 text-[11px] font-medium text-red-700 dark:text-red-300">{{ __('account.devices_wipe_pending') }}</span>
                         </p>
                         <p class="truncate text-xs text-gray-500 dark:text-gray-400" x-text="d.meta"></p>
+                        <p x-show="d.version || d.installId" class="truncate text-xs text-gray-400 dark:text-gray-500"
+                           x-text="[d.version, d.installId ? '#' + d.installId : null].filter(Boolean).join(' · ')"></p>
                         <p x-show="d.syncing && d.syncDetail" class="truncate text-xs text-green-700 dark:text-green-400" x-text="d.syncDetail"></p>
                         <p x-show="!d.syncing && d.syncSeen" class="truncate text-xs text-gray-400" x-text="'{{ __('account.devices_last_sync') }} ' + d.syncSeen"></p>
                     </div>

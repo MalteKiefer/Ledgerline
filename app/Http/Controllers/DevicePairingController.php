@@ -99,6 +99,10 @@ class DevicePairingController extends Controller
         $user = $this->requireUser($request);
         $currentKey = $user->currentAccessToken()?->getKey();
         $devices = $user->tokens()
+            // Most-recently-used first (nulls last), so the live device is on top and
+            // any stale row sinks — a web caller can't match currentAccessToken().
+            ->orderByRaw('last_used_at is null')
+            ->orderByDesc('last_used_at')
             ->orderByDesc('created_at')->get()
             ->map(function ($t) use ($currentKey): array {
                 // Custom (non-Sanctum) columns come back as strings; parse the
@@ -106,6 +110,15 @@ class DevicePairingController extends Controller
                 // reported so recently (a stale "syncing" is treated as idle).
                 $reportedAt = $t->sync_reported_at ? Carbon::parse($t->sync_reported_at) : null;
                 $syncing = $t->sync_state === 'syncing' && $reportedAt && $reportedAt->gt(now()->subMinutes(3));
+
+                // Non-secret client-correlation fields for the list (help the owner
+                // tell the live device from a stale row): app/OS build + a short
+                // install id. All already stored on the token; never a secret.
+                $installId = is_string($t->install_id) && $t->install_id !== '' ? mb_substr($t->install_id, -6) : null;
+                $version = trim(implode(' · ', array_filter([
+                    is_string($t->os_version) ? $t->os_version : null,
+                    is_string($t->app_version) ? $t->app_version : null,
+                ])));
 
                 return [
                     'id' => $t->id,
@@ -117,6 +130,8 @@ class DevicePairingController extends Controller
                             ? __('account.devices_last_used', ['when' => $t->last_used_at->diffForHumans()])
                             : __('account.devices_never_used'),
                     ]))),
+                    'version' => $version !== '' ? $version : null,
+                    'installId' => $installId,
                     'syncing' => $syncing,
                     'syncDetail' => $syncing ? $t->sync_detail : null,
                     'syncSeen' => $reportedAt?->diffForHumans(),
