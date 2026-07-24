@@ -20,6 +20,7 @@
         sourceInterpolated: @js(__('explore.source_interpolated')),
         sourceManual: @js(__('explore.source_manual')),
         sourceNone: @js(__('explore.source_none')),
+        photoNoPosition: @js(__('explore.photo_no_position')),
         elevation: @js(__('explore.elevation')),
         surfaces: @js(__('explore.surface')),
         unitKm: @js(__('explore.unit_km')),
@@ -484,10 +485,13 @@
                     </div>
                     <div class="flex flex-wrap gap-2" x-show="coupledPhotos.length">
                       <template x-for="p in coupledPhotos" :key="p.id">
-                        <div class="h-14 w-14 shrink-0 rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center"
-                             :title="p.name || p.id"
+                        <button type="button"
+                             class="h-14 w-14 shrink-0 rounded-lg bg-black/[0.06] dark:bg-white/10 bg-cover bg-center ring-offset-1 ring-offset-white dark:ring-offset-[#1c1c1e] transition hover:opacity-90 focus:outline-none"
+                             :class="focusedPhotoId === p.id ? 'ring-2 ring-accent' : ''"
+                             :title="(p.name || p.id) + ' — ' + @js(__('explore.show_on_route'))"
+                             @click="focusPhoto(p)"
                              :style="thumbs[p.id] ? ('background-image:url(\'' + thumbs[p.id] + '\')') : ''"
-                             x-init="$nextTick(() => _thumbFor(p))"></div>
+                             x-init="$nextTick(() => _thumbFor(p))"></button>
                       </template>
                     </div>
                     <p x-show="! coupledPhotos.length" class="text-xs text-gray-400 dark:text-gray-500">{{ __('explore.no_coupled_photos') }}</p>
