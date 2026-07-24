@@ -107,7 +107,7 @@ export default (config = {}, labels = {}) => ({
     _markers: [],        // Leaflet media-pin marker layers
     _trackLayers: [],    // Leaflet polyline layers currently on the map
     _hoverMarker: null,  // elevation-profile hover position marker (circleMarker)
-    _photoMarker: null,  // thumbnail marker for the clicked coupled photo (detail view)
+    _photoMarkers: {},   // id → { marker, photo } thumbnail markers on the detail map
     focusedPhotoId: null, // id of the coupled photo currently pinned on the route
     _L: null,            // resolved Leaflet module (sync access for draw helpers)
     _chart: null,        // uPlot elevation instance
@@ -126,7 +126,7 @@ export default (config = {}, labels = {}) => ({
             if (this.view === 'detail') { this.$nextTick(() => { this.fitToData(); this.renderElevation(); }); }
         });
         this.$watch('_mut', () => this._renderView());
-        this.$watch('selectedTrackId', () => { this._renderView(); this.$nextTick(() => this.renderElevation()); });
+        this.$watch('selectedTrackId', () => { this.focusedPhotoId = null; this._renderView(); this.$nextTick(() => this.renderElevation()); });
     },
 
     async _boot() {
@@ -176,6 +176,8 @@ export default (config = {}, labels = {}) => ({
         this.trackQuery = '';
         this.mediaQuery = '';
         this.renamingId = null;
+        this.focusedPhotoId = null;
+        this._photoMarkers = {};
         this._exitPlan();
         this._revokeThumbs();
         this._destroyChart();
@@ -250,8 +252,10 @@ export default (config = {}, labels = {}) => ({
     _clearMarkers() {
         for (const m of this._markers) { try { m.remove(); } catch (e) { /* ignore */ } }
         this._markers = [];
-        if (this._photoMarker) { try { this._photoMarker.remove(); } catch (e) { /* ignore */ } this._photoMarker = null; }
-        this.focusedPhotoId = null;
+        this._photoMarkers = {}; // the marker layers themselves were in _markers (removed above)
+        // NB: focusedPhotoId is NOT reset here — it must survive incidental re-renders
+        // (a data save bumps _mut → _renderView) so the highlight persists; it is reset
+        // only on track switch / lock.
     },
 
     _clearTrackLayers() {
@@ -270,6 +274,9 @@ export default (config = {}, labels = {}) => ({
         if (this.planning) return;
         if (this.view === 'tracks' || this.view === 'detail') this._drawTracks();
         else this._drawMediaPins();
+        // In the tour detail, place the coupled photos directly on the route (not
+        // only on click) — clicking one just highlights it.
+        if (this.view === 'detail') this._drawDetailPhotos();
     },
 
     _drawTracks() {
@@ -293,8 +300,99 @@ export default (config = {}, labels = {}) => ({
                 }).addTo(this._map);
                 line.on('click', () => { this.selectedTrackId = track.id; });
                 this._trackLayers.push(line);
+                // Direction-of-travel arrows along the selected track, at regular
+                // spacing (points in track order → the tour was walked start→end).
+                if (selected) this._directionArrows(track, color);
             } catch (e) { /* ignore a track that fails to add */ }
         });
+    },
+
+    // Compass bearing (deg, 0 = north, clockwise) from a → b.
+    _bearing(lat1, lng1, lat2, lng2) {
+        const toRad = (d) => (d * Math.PI) / 180;
+        const φ1 = toRad(lat1), φ2 = toRad(lat2), Δλ = toRad(lng2 - lng1);
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+    },
+
+    // Place small triangular arrows along a track pointing in the travel direction,
+    // spaced ~evenly by distance (4..40 arrows depending on length). Non-interactive;
+    // stored in _trackLayers so they clear with the polyline.
+    _directionArrows(track, color) {
+        const L = this._L;
+        const pts = (track.points || []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+        if (! L || pts.length < 2) return;
+        const cum = [0];
+        let total = 0;
+        for (let i = 1; i < pts.length; i++) { total += haversineM(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng); cum.push(total); }
+        if (total < 80) return;
+        const count = Math.min(40, Math.max(4, Math.round(total / 400)));
+        const step = total / (count + 1);
+        let seg = 1;
+        for (let k = 1; k <= count; k++) {
+            const target = step * k;
+            while (seg < pts.length && cum[seg] < target) seg++;
+            if (seg >= pts.length) break;
+            const a = pts[seg - 1], b = pts[seg];
+            const span = cum[seg] - cum[seg - 1];
+            const t = span > 0 ? (target - cum[seg - 1]) / span : 0;
+            const lat = a.lat + (b.lat - a.lat) * t;
+            const lng = a.lng + (b.lng - a.lng) * t;
+            const deg = this._bearing(a.lat, a.lng, b.lat, b.lng);
+            try {
+                const icon = L.divIcon({
+                    className: 'explore-arrow',
+                    html: `<div style="transform:rotate(${deg}deg);color:${color};font-size:13px;line-height:0;text-shadow:0 0 2px rgba(255,255,255,.9),0 0 2px rgba(255,255,255,.9);">▲</div>`,
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7],
+                });
+                const m = L.marker([lat, lng], { icon, interactive: false, keyboard: false }).addTo(this._map);
+                this._trackLayers.push(m);
+            } catch (e) { /* ignore */ }
+        }
+    },
+
+    // Thumbnail divIcon for a coupled photo; larger + accent-ringed when focused.
+    _photoIcon(focused) {
+        const L = this._L;
+        const size = focused ? 46 : 30;
+        const radius = focused ? 12 : 9;
+        const border = focused ? '3px solid #7066f5' : '2px solid #fff';
+        const shadow = focused ? '0 2px 10px rgba(0,0,0,.5)' : '0 1px 4px rgba(0,0,0,.4)';
+        return L.divIcon({
+            className: 'explore-pin',
+            html: `<span style="display:block;width:${size}px;height:${size}px;border-radius:${radius}px;border:${border};box-shadow:${shadow};background:#7066f5 center/cover no-repeat;"></span>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+        });
+    },
+
+    _applyThumb(marker, photo) {
+        this._thumbFor(photo).then((url) => {
+            if (! url) return;
+            const span = marker.getElement()?.querySelector('span');
+            if (span) span.style.backgroundImage = `url("${url}")`;
+        });
+    },
+
+    // Draw every coupled photo that has a position directly onto the detail map.
+    _drawDetailPhotos() {
+        const L = this._L;
+        if (! L || this.view !== 'detail') return;
+        this._photoMarkers = {};
+        for (const p of this.coupledPhotos) {
+            const pos = this._photoPosition(p);
+            if (! pos) continue;
+            const focused = this.focusedPhotoId === p.id;
+            try {
+                const marker = L.marker(pos, { icon: this._photoIcon(focused), zIndexOffset: focused ? 1000 : 500 }).addTo(this._map);
+                marker.on('click', () => this.focusPhoto(p));
+                this._photoMarkers[p.id] = { marker, photo: p };
+                this._markers.push(marker);
+                this._applyThumb(marker, p);
+            } catch (e) { /* ignore */ }
+        }
     },
 
     _drawMediaPins() {
@@ -1288,28 +1386,31 @@ export default (config = {}, labels = {}) => ({
         return (lat !== null && lng !== null) ? [lat, lng] : null;
     },
 
-    // Clicking a photo in the tour detail drops its thumbnail as a marker at its
-    // position on the route and flies the map to it.
+    // Photos are already drawn on the route; clicking one (on the map or in the list)
+    // just HIGHLIGHTS it — enlarge + accent-ring the focused marker, reset the rest —
+    // and flies the map to it.
     focusPhoto(photo) {
         const L = this._L;
         if (! this._map || ! this._mapReady || ! L) return;
         const pos = this._photoPosition(photo);
         if (! pos) { window.llToast?.(labels.photoNoPosition || 'This photo has no position on the route.'); return; }
         this.focusedPhotoId = photo.id;
-        if (this._photoMarker) { try { this._photoMarker.remove(); } catch (e) { /* ignore */ } this._photoMarker = null; }
-        const icon = L.divIcon({
-            className: 'explore-pin',
-            html: '<span style="display:block;width:46px;height:46px;border-radius:12px;border:3px solid #7066f5;box-shadow:0 2px 10px rgba(0,0,0,.5);background:#7066f5 center/cover no-repeat;"></span>',
-            iconSize: [46, 46],
-            iconAnchor: [23, 23],
-        });
-        const marker = L.marker(pos, { icon, zIndexOffset: 1000 }).addTo(this._map);
-        this._photoMarker = marker;
-        this._thumbFor(photo).then((url) => {
-            if (! url) return;
-            const span = marker.getElement()?.querySelector('span');
-            if (span) span.style.backgroundImage = `url("${url}")`;
-        });
+        // Restyle the drawn markers (setIcon rebuilds the element → re-apply the thumb).
+        for (const [id, entry] of Object.entries(this._photoMarkers || {})) {
+            const isF = id === photo.id;
+            try { entry.marker.setIcon(this._photoIcon(isF)); entry.marker.setZIndexOffset(isF ? 1000 : 500); } catch (e) { /* ignore */ }
+            this._applyThumb(entry.marker, entry.photo);
+        }
+        // If it wasn't drawn (e.g. list-only edge case), add a focused marker now.
+        if (! this._photoMarkers?.[photo.id]) {
+            try {
+                const marker = L.marker(pos, { icon: this._photoIcon(true), zIndexOffset: 1000 }).addTo(this._map);
+                marker.on('click', () => this.focusPhoto(photo));
+                (this._photoMarkers ||= {})[photo.id] = { marker, photo };
+                this._markers.push(marker);
+                this._applyThumb(marker, photo);
+            } catch (e) { /* ignore */ }
+        }
         this._map.flyTo(pos, Math.max(this._map.getZoom() || 0, 15), { duration: 0.6 });
     },
 
