@@ -110,18 +110,6 @@
                     </button>
                 </template>
 
-                {{-- Master data row --}}
-                <button type="button"
-                    @click="selectedMetric = '_master'"
-                    class="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-accent/5"
-                    :class="selectedMetric === '_master' ? 'bg-accent/10' : ''">
-                    <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:#6b7280">
-                        <x-icon name="user" class="h-4 w-4 text-white" />
-                    </span>
-                    <span class="min-w-0 flex-1 truncate text-sm font-medium"
-                          :class="selectedMetric === '_master' ? 'text-accent' : 'text-gray-900 dark:text-gray-100'">{{ __('health.master_data') }}</span>
-                </button>
-
                 {{-- Fasting row --}}
                 <button type="button"
                     @click="selectedMetric = '_fasting'"
@@ -140,6 +128,18 @@
                         <span class="h-2.5 w-2.5 shrink-0 rounded-full"
                               :class="activeFastProgress && activeFastProgress.reached ? 'bg-green-500' : 'bg-accent'"></span>
                     </template>
+                </button>
+
+                {{-- Master data row — always last --}}
+                <button type="button"
+                    @click="selectedMetric = '_master'"
+                    class="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-accent/5"
+                    :class="selectedMetric === '_master' ? 'bg-accent/10' : ''">
+                    <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:#6b7280">
+                        <x-icon name="user" class="h-4 w-4 text-white" />
+                    </span>
+                    <span class="min-w-0 flex-1 truncate text-sm font-medium"
+                          :class="selectedMetric === '_master' ? 'text-accent' : 'text-gray-900 dark:text-gray-100'">{{ __('health.master_data') }}</span>
                 </button>
             </div>
         </aside>
@@ -185,17 +185,17 @@
                         <span x-text="metricLabel(m.key)"></span>
                     </button>
                 </template>
-                <button type="button" @click="selectedMetric = '_master'"
-                    class="inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
-                    :class="selectedMetric === '_master' ? 'll-accent border-transparent' : 'border-black/[0.08] dark:border-white/10 text-gray-600 dark:text-gray-300'">
-                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style="background:#6b7280"><x-icon name="user" class="h-3.5 w-3.5 text-white" /></span>
-                    {{ __('health.master_data') }}
-                </button>
                 <button type="button" @click="selectedMetric = '_fasting'"
                     class="inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
                     :class="selectedMetric === '_fasting' ? 'll-accent border-transparent' : 'border-black/[0.08] dark:border-white/10 text-gray-600 dark:text-gray-300'">
                     <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style="background:#e2915a"><x-icon name="clock" class="h-3.5 w-3.5 text-white" /></span>
                     {{ __('health.fasting') }}
+                </button>
+                <button type="button" @click="selectedMetric = '_master'"
+                    class="inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
+                    :class="selectedMetric === '_master' ? 'll-accent border-transparent' : 'border-black/[0.08] dark:border-white/10 text-gray-600 dark:text-gray-300'">
+                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style="background:#6b7280"><x-icon name="user" class="h-3.5 w-3.5 text-white" /></span>
+                    {{ __('health.master_data') }}
                 </button>
             </div>
 
@@ -301,7 +301,7 @@
                     </div>
 
                     <div class="text-center">
-                        <div class="text-3xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fastElapsedLabel(activeFast)"></div>
+                        <div class="text-3xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fastElapsedHMS(activeFast)"></div>
                         <div class="text-xs text-gray-400 dark:text-gray-500">{{ __('health.fasting_target') }}: <span x-text="fastTargetLabel(activeFast)"></span></div>
                     </div>
                     <div class="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
@@ -748,11 +748,15 @@
 
             <div>
                 <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('health.fasting_window') }}</label>
+                {{-- Static options (a <template x-for> inside <select> doesn't reflect the
+                     x-model value on first open — the options aren't in the DOM yet). --}}
                 <select x-model.number="_fastForm.targetHours"
                     class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
-                    <template x-for="t in fastTemplates" :key="'opt-'+t.key">
-                        <option :value="t.targetHours" x-text="t.key + ' (' + t.targetHours + 'h)'"></option>
-                    </template>
+                    <option value="12">12:12 (12h)</option>
+                    <option value="14">14:10 (14h)</option>
+                    <option value="16">16:8 (16h)</option>
+                    <option value="18">18:6 (18h)</option>
+                    <option value="20">20:4 (20h)</option>
                 </select>
             </div>
 

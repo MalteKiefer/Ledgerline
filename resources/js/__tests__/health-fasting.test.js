@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     FAST_TEMPLATES, activeFast, fastElapsedSeconds, fastTargetSeconds,
-    fastProgress, formatDuration, templateLabel, isValidFast,
+    fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast,
 } from '../shared/health-fasting.js';
 
 const T0 = Date.parse('2026-07-24T08:00:00Z');
@@ -47,6 +47,12 @@ describe('health-fasting', () => {
         expect(formatDuration(0)).toBe('0h 00m');
         expect(formatDuration(5040)).toBe('1h 24m');
         expect(formatDuration(16 * 3600)).toBe('16h 00m');
+    });
+
+    it('formats the live timer as HH:MM:SS', () => {
+        expect(formatDurationHMS(0)).toBe('00:00:00');
+        expect(formatDurationHMS(5045)).toBe('01:24:05');
+        expect(formatDurationHMS(16 * 3600 + 3)).toBe('16:00:03');
     });
 
     it('labels a window from its fasting hours', () => {

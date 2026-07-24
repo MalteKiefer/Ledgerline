@@ -9,7 +9,7 @@ import {
 import { loadUplot } from '../shared/uplot-loader';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import {
-    FAST_TEMPLATES, activeFast, fastProgress, formatDuration, templateLabel, isValidFast,
+    FAST_TEMPLATES, activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast,
 } from '../shared/health-fasting';
 
 const DEFAULT_PROFILE = () => ({
@@ -140,6 +140,8 @@ export default (labels = {}) => ({
         return formatDuration(p.elapsed);
     },
     fastTargetLabel(fast) { return formatDuration((Number(fast?.targetHours) || 0) * 3600); },
+    // Live elapsed with seconds (HH:MM:SS) for the big running-fast timer.
+    fastElapsedHMS(fast) { return formatDurationHMS(fastProgress(fast, this._now).elapsed); },
     fastWindowLabel(hours) { return templateLabel(hours); },
     fastPct(fast) {
         const p = fastProgress(fast, this._now);
