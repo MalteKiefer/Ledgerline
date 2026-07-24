@@ -122,7 +122,7 @@
                         <span class="block truncate text-sm font-medium"
                               :class="selectedMetric === '_fasting' ? 'text-accent' : 'text-gray-900 dark:text-gray-100'">{{ __('health.fasting') }}</span>
                         <span class="block truncate text-xs text-gray-500 dark:text-gray-400"
-                              x-text="activeFast ? (fastWindowLabel(activeFast.targetHours) + ' · ' + fastElapsedLabel(activeFast)) : @js(__('health.fasting_none'))"></span>
+                              x-text="activeFast ? (fastWindowLabel(activeFast?.targetHours) + ' · ' + fastElapsedLabel(activeFast)) : @js(__('health.fasting_none'))"></span>
                     </span>
                     <template x-if="activeFast">
                         <span class="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -156,7 +156,7 @@
                   </span>
                   <span class="min-w-0 flex-1">
                       <span class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                          <span x-text="fastWindowLabel(activeFast.targetHours)"></span>
+                          <span x-text="fastWindowLabel(activeFast?.targetHours)"></span>
                           <span class="text-gray-400">·</span>
                           <span x-text="fastElapsedLabel(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
                           <template x-if="activeFastProgress && activeFastProgress.reached">
@@ -268,7 +268,7 @@
                     <div class="flex items-center justify-between gap-2">
                         <div>
                             <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('health.fasting_running') }}</h2>
-                            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="fastWindowLabel(activeFast.targetHours)"></p>
+                            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="fastWindowLabel(activeFast?.targetHours)"></p>
                         </div>
                         <template x-if="activeFastProgress && activeFastProgress.reached">
                             <span class="rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400">{{ __('health.fasting_reached') }}</span>
@@ -285,7 +285,7 @@
                               :style="'width:' + fastPct(activeFast) + '%'"></span>
                     </div>
                     <p class="text-xs text-gray-400 dark:text-gray-500">
-                        {{ __('health.fasting_started_at') }}: <span x-text="fmtDate(activeFast.start)"></span>
+                        {{ __('health.fasting_started_at') }}: <span x-text="fmtDate(activeFast?.start)"></span>
                     </p>
 
                     <div class="flex flex-wrap gap-2">
