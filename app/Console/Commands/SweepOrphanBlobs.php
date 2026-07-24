@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Support\BlobAudit;
 use App\Support\BlobStore;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
@@ -62,6 +63,11 @@ abstract class SweepOrphanBlobs extends Command
             $disk->delete($path);
             $disk->delete('thumbs/'.$blob.'.jpg');
             $swept++;
+            BlobAudit::record('sweep_delete', $this->configNs(), [
+                'blob' => $blob,
+                'source' => 'command',
+                'reason' => 'orphan_sweep',
+            ]);
         }
 
         $this->info("Swept {$swept} unreferenced blob file(s).");

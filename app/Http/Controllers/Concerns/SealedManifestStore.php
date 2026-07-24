@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Support\BlobAudit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -98,6 +99,16 @@ trait SealedManifestStore
     }
 
     /**
+     * Module label for the blob forensic trail (root_write / root_reject events), or
+     * null to skip auditing this store (the blobless per-module store). Sharded
+     * stores return 'gallery' / 'files'.
+     */
+    protected function manifestAuditModule(Request $request): ?string
+    {
+        return null;
+    }
+
+    /**
      * Return the caller's sealed manifest + version (empty on first use).
      *
      * Store v3 (§10.4/A4): a weak, version-derived ETag lets the client send
@@ -147,23 +158,42 @@ trait SealedManifestStore
             'shards.*' => ['uuid'],
         ]);
 
+        $auditModule = $this->manifestAuditModule($request);
+        $expectedVersion = $request->integer('version');
+
         // Referential-integrity guard for sharded stores: reject a root that points
         // at a shard blob with no ledger row (a partial/racy save), so the store can
         // never be persisted in the corrupt "dangling shard" state that lost data.
         $ledger = $this->manifestBlobLedger($request);
-        if ($ledger !== null && $request->has('shards')) {
+        $refs = null;
+        if ($request->has('shards')) {
             $refs = $request->collect('shards')
                 ->map(static fn ($s): string => is_scalar($s) ? (string) $s : '')
                 ->filter()
                 ->unique()
                 ->values();
-            if ($refs->isNotEmpty() && (clone $ledger)->whereIn('blob', $refs->all())->count() < $refs->count()) {
-                return response()->json(['error' => 'missing_shard'], 422);
+            if ($ledger !== null && $refs->isNotEmpty()) {
+                $present = (clone $ledger)->whereIn('blob', $refs->all())->pluck('blob');
+                if ($present->count() < $refs->count()) {
+                    if ($auditModule !== null) {
+                        BlobAudit::record('root_reject', $auditModule, [
+                            'user_id' => (int) $this->requireUser($request)->id,
+                            'result' => 'rejected',
+                            'reason' => 'missing_shard',
+                            'meta' => [
+                                'version' => $expectedVersion,
+                                'shard_count' => $refs->count(),
+                                'missing' => $refs->reject(static fn (string $r): bool => $present->contains($r))->values()->all(),
+                            ],
+                        ]);
+                    }
+
+                    return response()->json(['error' => 'missing_shard'], 422);
+                }
             }
         }
 
         $ciphertext = $request->string('ciphertext')->value();
-        $expectedVersion = $request->integer('version');
 
         $model = $this->manifestModel();
         $key = $this->manifestKey($request);
@@ -185,6 +215,23 @@ trait SealedManifestStore
 
         if ($next === null) {
             return response()->json(['error' => 'version_conflict'], 409);
+        }
+
+        // Forensic trail of the persisted root: its ciphertext hash + the fingerprint
+        // of the exact shard set it points at. Comparing shard_set_sha256 across
+        // versions pinpoints the write that added or DROPPED a shard — the single most
+        // useful signal when reconstructing a data-loss event.
+        if ($auditModule !== null) {
+            BlobAudit::record('root_write', $auditModule, [
+                'user_id' => (int) $this->requireUser($request)->id,
+                'sha256' => BlobAudit::hashString($ciphertext),
+                'meta' => [
+                    'version' => $next,
+                    'bytes' => strlen($ciphertext),
+                    'shard_count' => $refs?->count(),
+                    'shard_set_sha256' => $refs !== null ? BlobAudit::shardSetHash($refs->all()) : null,
+                ],
+            ]);
         }
 
         return response()->json(['version' => $next]);

@@ -44,4 +44,9 @@ class FilesStoreController extends Controller
     {
         return FileBlob::query()->where('user_id', (int) $this->requireUser($request)->id);
     }
+
+    protected function manifestAuditModule(Request $request): ?string
+    {
+        return 'files';
+    }
 }

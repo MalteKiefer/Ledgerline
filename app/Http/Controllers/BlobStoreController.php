@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Support\BlobAudit;
 use App\Support\BlobStore;
 use Aws\S3\S3Client;
 use Carbon\Carbon;
@@ -214,11 +215,11 @@ abstract class BlobStoreController extends Controller
 
         // Serialize against the ledger scope's lock so concurrent reconciles from
         // different members of the same shared scope don't race against each other.
-        $this->withUserLock($lockId, function () use ($request, $live, $grace, $disk, $prefix): void {
+        $this->withUserLock($lockId, function () use ($request, $live, $grace, $disk, $prefix, $lockId): void {
             (clone $this->scopeLedger($request))
                 ->where('created_at', '<', $grace)
                 ->orderBy('blob')
-                ->chunkById(500, function (Collection $rows) use ($live, $disk, $prefix): void {
+                ->chunkById(500, function (Collection $rows) use ($live, $disk, $prefix, $lockId): void {
                     foreach ($rows as $row) {
                         // The blob id is the row's primary key ($primaryKey = 'blob'),
                         // a UUID string; narrow the mixed key before use as a string.
@@ -227,8 +228,19 @@ abstract class BlobStoreController extends Controller
                         if ($blob === '' || isset($live[$blob])) {
                             continue;
                         }
+                        $size = $row->getAttribute('size');
                         $disk->delete($prefix.'/'.$blob);
                         $row->delete();
+                        // Forensic trail: a reconcile freed this grace-expired,
+                        // no-longer-referenced blob. This is the path that reclaimed
+                        // the missing shard in the incident — every deletion is logged
+                        // with the actor so it is always attributable.
+                        BlobAudit::record('reconcile_delete', $prefix, [
+                            'blob' => $blob,
+                            'size' => is_numeric($size) ? (int) $size : null,
+                            'user_id' => $lockId,
+                            'reason' => 'reconcile',
+                        ]);
                     }
                 }, 'blob');
         });
@@ -261,11 +273,20 @@ abstract class BlobStoreController extends Controller
         // Record the uploader + stored byte size: this is the permanent blob
         // ownership ledger (quota + access control + orphan reclaim).
         $model = $this->blobModel();
+        $size = (int) $request->file('file')->getSize();
         $model::create(array_merge($this->stampAttributes($request), [
             'blob' => $id,
-            'size' => (int) $request->file('file')->getSize(),
+            'size' => $size,
             'created_at' => $this->stampedAt(),
         ]));
+
+        BlobAudit::record('create', $this->module(), [
+            'blob' => $id,
+            'size' => $size,
+            'sha256' => BlobAudit::hashSmallFile((string) $request->file('file')->getRealPath(), $size),
+            'user_id' => $uid,
+            'reason' => 'upload',
+        ]);
 
         return response()->json(['id' => $id], 201);
     }
@@ -355,11 +376,21 @@ abstract class BlobStoreController extends Controller
         $contentLength = $this->s3()->headObject(['Bucket' => $this->bucket(), 'Key' => $s['key']])['ContentLength'] ?? 0;
         $size = is_scalar($contentLength) ? (int) $contentLength : 0;
         $model = $this->blobModel();
+        $blobId = is_scalar($s['id']) ? (string) $s['id'] : '';
         $model::firstOrCreate(
-            ['blob' => $s['id']],
+            ['blob' => $blobId],
             array_merge($this->chunkLedgerAttributes($s), ['size' => $size, 'created_at' => $this->stampedAt()]),
         );
         Cache::forget($this->chunkKey($token));
+
+        // Large (chunked) blobs are not hashed here — reading a multi-GB object back
+        // would be prohibitive; the ref + size + actor still give full traceability.
+        BlobAudit::record('create', $this->module(), [
+            'blob' => $blobId,
+            'size' => $size,
+            'user_id' => $this->chunkOwnerId($request),
+            'reason' => 'upload_chunked',
+        ]);
 
         return response()->json(['id' => $s['id']], 201);
     }
@@ -586,8 +617,15 @@ abstract class BlobStoreController extends Controller
         // oracle, mirroring raw()'s uniform-404 pattern.
         $row = (clone $this->scopeLedger($request))->where('blob', $blob)->first();
         if ($row !== null) {
+            $size = $row->getAttribute('size');
             $this->disk()->delete($this->module().'/'.$blob);
             $row->delete();
+            BlobAudit::record('delete', $this->module(), [
+                'blob' => $blob,
+                'size' => is_numeric($size) ? (int) $size : null,
+                'user_id' => $this->ownerId($request),
+                'reason' => 'client_delete',
+            ]);
         }
 
         return response()->json(['deleted' => true]);
