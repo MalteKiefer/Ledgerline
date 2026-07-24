@@ -66,6 +66,8 @@ return [
     'back' => 'Zurück',
     'coupled_photos' => 'Fotos auf dieser Tour',
     'no_coupled_photos' => 'Noch keine Fotos verknüpft. Über „Fotos hinzufügen" anhängen.',
+    'show_on_route' => 'Auf Route anzeigen',
+    'photo_no_position' => 'Dieses Foto hat keine Position auf der Route.',
     'add_photos' => 'Fotos hinzufügen',
     'search_photos' => 'Fotos suchen…',
     'no_photos' => 'Keine Fotos in deiner Galerie.',

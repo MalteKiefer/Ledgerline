@@ -14,7 +14,7 @@
 
 import { bootStore, bootGalleryStore } from '../shared/zk-module';
 import { parseTrack, parseTrackBinary, smoothedAscentDescent } from '../shared/track-parse';
-import { matchPhotoToTracks } from '../shared/photo-track-match';
+import { matchPhotoToTracks, interpolatePosition } from '../shared/photo-track-match';
 import { loadLeaflet } from '../shared/lazy-loaders';
 import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
@@ -104,6 +104,8 @@ export default (config = {}, labels = {}) => ({
     _markers: [],        // Leaflet media-pin marker layers
     _trackLayers: [],    // Leaflet polyline layers currently on the map
     _hoverMarker: null,  // elevation-profile hover position marker (circleMarker)
+    _photoMarker: null,  // thumbnail marker for the clicked coupled photo (detail view)
+    focusedPhotoId: null, // id of the coupled photo currently pinned on the route
     _L: null,            // resolved Leaflet module (sync access for draw helpers)
     _chart: null,        // uPlot elevation instance
     _chartAbort: null,
@@ -245,6 +247,8 @@ export default (config = {}, labels = {}) => ({
     _clearMarkers() {
         for (const m of this._markers) { try { m.remove(); } catch (e) { /* ignore */ } }
         this._markers = [];
+        if (this._photoMarker) { try { this._photoMarker.remove(); } catch (e) { /* ignore */ } this._photoMarker = null; }
+        this.focusedPhotoId = null;
     },
 
     _clearTrackLayers() {
@@ -1253,6 +1257,49 @@ export default (config = {}, labels = {}) => ({
         this._hoverMarker.addTo(this._map);
     },
     _hideHover() { if (this._hoverMarker) { try { this._hoverMarker.remove(); } catch (e) { /* ignore */ } } },
+
+    // Position of a coupled photo ON the route. Prefer the coupling's stored lat/lng
+    // (computed at assign time — real GPS, or time-interpolated), then the photo's
+    // own hot-record GPS, then a live interpolation of the track by capture time.
+    _photoPosition(photo) {
+        if (! photo) return null;
+        const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+        const c = this.couplings[photo.id];
+        let lat = c ? num(c.lat) : null;
+        let lng = c ? num(c.lng) : null;
+        if (lat === null || lng === null) { lat = num(photo.lat); lng = num(photo.lng); }
+        if ((lat === null || lng === null) && this.selectedTrack) {
+            const when = photo.taken_at ? Date.parse(photo.taken_at) : (photo.created ? Date.parse(photo.created) : NaN);
+            const pos = Number.isFinite(when) ? interpolatePosition(this.selectedTrack.points || [], when) : null;
+            if (pos) { lat = pos.lat; lng = pos.lng; }
+        }
+        return (lat !== null && lng !== null) ? [lat, lng] : null;
+    },
+
+    // Clicking a photo in the tour detail drops its thumbnail as a marker at its
+    // position on the route and flies the map to it.
+    focusPhoto(photo) {
+        const L = this._L;
+        if (! this._map || ! this._mapReady || ! L) return;
+        const pos = this._photoPosition(photo);
+        if (! pos) { window.llToast?.(labels.photoNoPosition || 'This photo has no position on the route.'); return; }
+        this.focusedPhotoId = photo.id;
+        if (this._photoMarker) { try { this._photoMarker.remove(); } catch (e) { /* ignore */ } this._photoMarker = null; }
+        const icon = L.divIcon({
+            className: 'explore-pin',
+            html: '<span style="display:block;width:46px;height:46px;border-radius:12px;border:3px solid #7066f5;box-shadow:0 2px 10px rgba(0,0,0,.5);background:#7066f5 center/cover no-repeat;"></span>',
+            iconSize: [46, 46],
+            iconAnchor: [23, 23],
+        });
+        const marker = L.marker(pos, { icon, zIndexOffset: 1000 }).addTo(this._map);
+        this._photoMarker = marker;
+        this._thumbFor(photo).then((url) => {
+            if (! url) return;
+            const span = marker.getElement()?.querySelector('span');
+            if (span) span.style.backgroundImage = `url("${url}")`;
+        });
+        this._map.flyTo(pos, Math.max(this._map.getZoom() || 0, 15), { duration: 0.6 });
+    },
 
     /* --------------------------------------------------------- Thumbnails */
 

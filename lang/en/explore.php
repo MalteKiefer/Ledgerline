@@ -66,6 +66,8 @@ return [
     'back' => 'Back',
     'coupled_photos' => 'Photos on this track',
     'no_coupled_photos' => 'No photos linked yet. Use “Add photos” to attach some.',
+    'show_on_route' => 'Show on route',
+    'photo_no_position' => 'This photo has no position on the route.',
     'add_photos' => 'Add photos',
     'search_photos' => 'Search photos…',
     'no_photos' => 'No photos in your gallery.',
