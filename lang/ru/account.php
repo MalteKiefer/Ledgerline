@@ -21,6 +21,13 @@ return [
     'appearance_heading' => 'Внешний вид',
     'appearance_theme' => 'Тема',
     'appearance_language' => 'Язык',
+    'appearance_units' => 'Единицы и формат',
+    'pref_time' => 'Формат времени',
+    'pref_distance' => 'Расстояние',
+    'pref_elevation' => 'Высота',
+    'pref_weight' => 'Вес',
+    'pref_temp' => 'Температура',
+    'pref_glucose' => 'Глюкоза',
 
     'security_heading' => 'Безопасность и данные',
     'last_login' => 'Последний вход',

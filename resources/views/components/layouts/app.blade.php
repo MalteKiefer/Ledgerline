@@ -16,6 +16,7 @@
     <meta name="vault-idle-minutes" content="{{ (int) (\App\Models\AppSettings::current()->vault_public_idle_minutes ?: config('files.vault_idle_minutes', 10)) }}">
     <meta name="vault-remember-days" content="{{ (int) (\App\Models\AppSettings::current()->vault_remember_days ?: 7) }}">
     <meta name="gallery-columns" content="{{ (int) ($llCal->gallery_columns ?? 6) }}">
+    <meta name="ll-prefs" content="{{ json_encode($llCal->displayPrefs()) }}">
     <title>{{ $title }} — Ledgerline</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#7066f5">

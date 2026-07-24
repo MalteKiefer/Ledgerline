@@ -27,6 +27,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
+use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicShareController;
 use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
@@ -83,6 +84,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update');
     Route::post('/theme', [ThemeController::class, 'update'])->name('theme.update');
+    Route::post('/preferences', [PreferencesController::class, 'update'])->name('preferences.update');
     // Profile = the iOS-style personal hub; each section is its own sub-page.
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
     Route::get('/profile/account', [ProfileController::class, 'account'])->name('profile.account');

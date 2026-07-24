@@ -21,6 +21,13 @@ return [
     'appearance_heading' => 'Appearance',
     'appearance_theme' => 'Theme',
     'appearance_language' => 'Language',
+    'appearance_units' => 'Units & format',
+    'pref_time' => 'Time format',
+    'pref_distance' => 'Distance',
+    'pref_elevation' => 'Elevation',
+    'pref_weight' => 'Weight',
+    'pref_temp' => 'Temperature',
+    'pref_glucose' => 'Glucose',
 
     'security_heading' => 'Security & data',
     'last_login' => 'Last sign-in',
