@@ -29,6 +29,34 @@
                 </p>
             </div>
 
+            {{-- Running-fast banner (always shown while a fast is active) --}}
+            <template x-if="activeFast">
+              <a href="/health"
+                 class="mb-4 flex items-center gap-3 rounded-2xl border border-accent/30 bg-accent/5 px-4 py-3 transition hover:bg-accent/10">
+                  <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:#e2915a">
+                      <x-icon name="clock" class="h-4 w-4 text-white" />
+                  </span>
+                  <span class="min-w-0 flex-1">
+                      <span class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          <span>{{ __('health.fasting') }}</span>
+                          <span class="text-gray-400">·</span>
+                          <span x-text="fastWindowLabel(activeFast.targetHours)"></span>
+                          <span class="text-gray-400">·</span>
+                          <span x-text="fastElapsedLabel(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
+                          <template x-if="activeFastProgress && activeFastProgress.reached">
+                              <span class="rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">{{ __('health.fasting_reached') }}</span>
+                          </template>
+                      </span>
+                      <span class="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
+                          <span class="block h-full rounded-full transition-all"
+                                :class="activeFastProgress && activeFastProgress.reached ? 'bg-green-500' : 'bg-accent'"
+                                :style="'width:' + fastPct(activeFast) + '%'"></span>
+                      </span>
+                  </span>
+                  <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-400" />
+              </a>
+            </template>
+
             {{-- Widget grid --}}
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
 

@@ -113,6 +113,39 @@ components:
         pairing exchange. Include as `Authorization: Bearer <token>`.
 
   schemas:
+    HealthFast:
+      type: object
+      description: >
+        One intermittent-fasting record inside the `health` module store, under the
+        key `healthFasts` (array). DECRYPTED shape — the server never sees it. The
+        ACTIVE fast is the one with `end: null`; only ONE fast may be active at a
+        time. This is a cross-client invariant: web AND mobile MUST refuse to start a
+        second fast while one is active, and MUST always show the running fast. The
+        constraint is enforced client-side (the server can't read the sealed store)
+        plus by the store's optimistic version — before starting, re-read the store
+        (GET /store/health) to observe a fast started on another device, and never
+        write a second `end: null` record. targetHours is the fasting window (the
+        "X" in X:Y, e.g. 16 for 16:8); goal reached when elapsed ≥ targetHours.
+      required: [id, start, targetHours]
+      properties:
+        id:
+          type: string
+          description: Client-generated UUID v4.
+        start:
+          type: string
+          format: date-time
+          description: ISO-8601 fast start.
+        end:
+          type: [string, "null"]
+          format: date-time
+          description: ISO-8601 end, or null while the fast is running (the active fast).
+        targetHours:
+          type: number
+          description: Target fasting hours (e.g. 12, 14, 16, 18, 20). Goal met at elapsed ≥ this.
+          example: 16
+        note:
+          type: string
+
     ExploreStoreModel:
       type: object
       description: >
@@ -699,7 +732,11 @@ paths:
         Optimistic-concurrency write for a single module. The caller sends the
         ciphertext and the version it last read; if another client wrote in the
         meantime the server returns 409 so the client can re-read, re-apply, retry.
-        Throttle: 240 req/min.
+        Throttle: 240 req/min. For module=health, the decrypted object may carry
+        `healthFasts[]` (intermittent fasting, see schema HealthFast): only ONE fast
+        may be active (end=null) across ALL clients — re-read before starting and
+        never write a second active fast; web and mobile must always show the
+        running fast.
       requestBody:
         required: true
         content:

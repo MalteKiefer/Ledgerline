@@ -7,7 +7,10 @@ import {
     csvRows, csvCell,
 } from '../shared/health-metrics';
 import { loadUplot } from '../shared/uplot-loader';
-import { saveBlobAs } from '../shared/dom';
+import { saveBlobAs, formatDate } from '../shared/dom';
+import {
+    FAST_TEMPLATES, activeFast, fastProgress, formatDuration, templateLabel, isValidFast,
+} from '../shared/health-fasting';
 
 const DEFAULT_PROFILE = () => ({
     birthdate: '',
@@ -20,7 +23,7 @@ const DEFAULT_PROFILE = () => ({
 export default (labels = {}) => ({
     ...zkModule({
         store: 'health',
-        map: { healthEntries: 'entries' },
+        map: { healthEntries: 'entries', healthFasts: 'fasts' },
         onLock: (self) => {
             self.selectedMetric = 'weight';
             self.chartRange = '90d';
@@ -28,14 +31,24 @@ export default (labels = {}) => ({
             self.editorOpen = false;
             self.editing = null;
             self.view = 'main';
+            self._stopFastClock();
+            self.fastEditorOpen = false;
+            self.fastEditing = null;
             self._destroyChart();
             self._destroyReportCharts();
         },
     }),
 
     entries: [],
+    fasts: [],
     profile: DEFAULT_PROFILE(),
     selectedMetric: 'weight',
+    fastTemplates: FAST_TEMPLATES,
+    _now: Date.now(),        // ticking clock so a running fast's elapsed updates live
+    _fastClock: null,
+    fastEditorOpen: false,
+    fastEditing: null,       // the fast being edited
+    _fastForm: { start: '', end: '', targetHours: 16, note: '' },
     chartRange: '90d', // 7d | 30d | 90d | 1y | all
     editorOpen: false,
     editing: null, // null = new, object = existing (copy being edited)
@@ -54,12 +67,12 @@ export default (labels = {}) => ({
 
     async init() {
         await this._initZk();
-        if (this.state === 'ready') { this._initProfile(); this.$nextTick(() => this.renderChart()); }
+        if (this.state === 'ready') { this._initProfile(); this._initFasting(); this.$nextTick(() => this.renderChart()); }
         // Bind on the state transition to 'ready' (not vault.unlocked): _initZk's
         // boot is async, so at the unlocked-tick state is still 'locked' and the
         // bind would be skipped (profile edits would then be lost until reload).
         // $nextTick so the x-if="state==='ready'" subtree (chart ref) is mounted.
-        this.$watch('state', (s) => { if (s === 'ready') { this._initProfile(); this.$nextTick(() => this.renderChart()); } });
+        this.$watch('state', (s) => { if (s === 'ready') { this._initProfile(); this._initFasting(); this.$nextTick(() => this.renderChart()); } });
 
         // Re-render the chart whenever the selected metric, range, or entry
         // list changes (Alpine reactivity — _mut increments on every _save()).
@@ -93,6 +106,142 @@ export default (labels = {}) => ({
     _save() { this._mut++; window.LLModuleStore.health.touch(); },
 
     saveProfile() { this._save(); },
+
+    // ---- Intermittent fasting (ZK — lives in the sealed `health` store) --------
+
+    // Ensure the healthFasts array exists on the store data + bind this.fasts to it,
+    // then run the live clock if a fast is active. (An older manifest has no key.)
+    _initFasting() {
+        const data = window.LLModuleStore.health.data;
+        if (! data) return;
+        if (! Array.isArray(data.healthFasts)) data.healthFasts = [];
+        this.fasts = data.healthFasts;
+        if (this.activeFast) this._startFastClock(); else this._stopFastClock();
+    },
+
+    // The mapped `fasts` array is bound to the (non-Alpine) store — touch _mut so
+    // every fasting getter recomputes after a save.
+    get activeFast() { void this._mut; return activeFast(this.fasts); },
+    get fastHistory() {
+        void this._mut;
+        return (this.fasts || []).filter((f) => f && f.end)
+            .slice().sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+    },
+    // Progress of the running fast, recomputed each clock tick (_now).
+    get activeFastProgress() {
+        void this._mut;
+        const f = this.activeFast;
+        return f ? fastProgress(f, this._now) : null;
+    },
+
+    fastElapsedLabel(fast, end = null) {
+        const now = end ? Date.parse(end) : this._now;
+        const p = fastProgress(fast, now);
+        return formatDuration(p.elapsed);
+    },
+    fastTargetLabel(fast) { return formatDuration((Number(fast?.targetHours) || 0) * 3600); },
+    fastWindowLabel(hours) { return templateLabel(hours); },
+    fastPct(fast) {
+        const p = fastProgress(fast, this._now);
+        return Math.min(100, Math.round(p.fraction * 100));
+    },
+    // Final progress of a (finished or running) fast — for the history reached badge.
+    fastProgressOf(fast) { return fast ? fastProgress(fast, fast.end ? Date.parse(fast.end) : this._now) : null; },
+    fmtDate(iso) { return iso ? formatDate(iso, { dateStyle: 'medium', timeStyle: 'short' }) : ''; },
+
+    _startFastClock() {
+        if (this._fastClock) return;
+        this._now = Date.now();
+        this._fastClock = setInterval(() => { this._now = Date.now(); }, 1000);
+    },
+    _stopFastClock() {
+        if (this._fastClock) { clearInterval(this._fastClock); this._fastClock = null; }
+    },
+
+    // Pull the latest sealed store so a fast started on ANOTHER device (mobile) is
+    // visible before we decide whether a new fast may start. Only one fast may ever
+    // be active across all clients.
+    async _reloadFasting() {
+        try {
+            await window.LLModuleStore.health.flush();
+            await window.LLModuleStore.health.load();
+        } catch (e) { /* offline / transient — fall back to in-memory state */ }
+        this._initProfile();
+        const data = window.LLModuleStore.health.data;
+        if (data) { this.entries = data.healthEntries || (data.healthEntries = []); this._initFasting(); }
+        this._mut++;
+    },
+
+    async startFast(hours) {
+        const h = Number(hours) || 16;
+        // Re-check against the freshest server state — never start a second fast.
+        await this._reloadFasting();
+        if (this.activeFast) { window.llToast?.(labels.fastAlreadyRunning || 'A fast is already running.'); return; }
+        this.fasts.push({
+            id: window.LLModuleStore.health.newId(),
+            start: new Date().toISOString(),
+            end: null,
+            targetHours: h,
+            note: '',
+        });
+        this._save();
+        this._startFastClock();
+    },
+
+    async stopFast() {
+        const f = this.activeFast;
+        if (! f) return;
+        if (! await this.$store.confirm.ask(labels.fastStopConfirm || 'End this fast now?')) return;
+        f.end = new Date().toISOString();
+        this._save();
+        this._stopFastClock();
+    },
+
+    openFastEditor(fast) {
+        this.fastEditing = fast;
+        const toLocal = (iso) => {
+            if (! iso) return '';
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return '';
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+        this._fastForm = {
+            start: toLocal(fast.start),
+            end: fast.end ? toLocal(fast.end) : '',
+            targetHours: Number(fast.targetHours) || 16,
+            note: fast.note || '',
+        };
+        this.fastEditorOpen = true;
+    },
+    closeFastEditor() { this.fastEditorOpen = false; this.fastEditing = null; },
+
+    saveFastEdit() {
+        const f = this.fastEditing;
+        if (! f) return;
+        const start = this._fastForm.start ? new Date(this._fastForm.start).toISOString() : f.start;
+        const end = this._fastForm.end ? new Date(this._fastForm.end).toISOString() : null;
+        const candidate = { start, end, targetHours: Number(this._fastForm.targetHours) || 16, note: this._fastForm.note || '' };
+        if (! isValidFast(candidate)) { window.llToast?.(labels.fastInvalid || 'Please check the start, end and target.'); return; }
+        // Editing a finished fast back to running (end cleared) must not create a
+        // second active fast.
+        if (! end && this.activeFast && this.activeFast !== f) {
+            window.llToast?.(labels.fastAlreadyRunning || 'A fast is already running.');
+            return;
+        }
+        Object.assign(f, candidate);
+        this._save();
+        if (this.activeFast) this._startFastClock(); else this._stopFastClock();
+        this.closeFastEditor();
+    },
+
+    async deleteFast(fast) {
+        if (! await this.$store.confirm.ask(labels.fastDeleteConfirm || 'Delete this fast?')) return;
+        const i = this.fasts.indexOf(fast);
+        if (i >= 0) this.fasts.splice(i, 1);
+        this._save();
+        if (! this.activeFast) this._stopFastClock();
+    },
 
     // --- Chart ---
 

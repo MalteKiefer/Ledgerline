@@ -38,6 +38,10 @@
   <div x-data="health({
         deleteConfirm: @js(__('health.delete_confirm')),
         userName: @js(auth()->user()->name ?? ''),
+        fastAlreadyRunning: @js(__('health.fast_already_running')),
+        fastStopConfirm: @js(__('health.fast_stop_confirm')),
+        fastDeleteConfirm: @js(__('health.fast_delete_confirm')),
+        fastInvalid: @js(__('health.fast_invalid')),
         metricLabels: {
             weight: @js(__('health.metric_weight')), bp: @js(__('health.metric_bp')), pulse: @js(__('health.metric_pulse')),
             spo2: @js(__('health.metric_spo2')), temp: @js(__('health.metric_temp')), glucose: @js(__('health.metric_glucose')),
@@ -117,11 +121,57 @@
                     <span class="min-w-0 flex-1 truncate text-sm font-medium"
                           :class="selectedMetric === '_master' ? 'text-accent' : 'text-gray-900 dark:text-gray-100'">{{ __('health.master_data') }}</span>
                 </button>
+
+                {{-- Fasting row --}}
+                <button type="button"
+                    @click="selectedMetric = '_fasting'"
+                    class="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-accent/5"
+                    :class="selectedMetric === '_fasting' ? 'bg-accent/10' : ''">
+                    <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:#e2915a">
+                        <x-icon name="clock" class="h-4 w-4 text-white" />
+                    </span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm font-medium"
+                              :class="selectedMetric === '_fasting' ? 'text-accent' : 'text-gray-900 dark:text-gray-100'">{{ __('health.fasting') }}</span>
+                        <span class="block truncate text-xs text-gray-500 dark:text-gray-400"
+                              x-text="activeFast ? (fastWindowLabel(activeFast.targetHours) + ' · ' + fastElapsedLabel(activeFast)) : @js(__('health.fasting_none'))"></span>
+                    </span>
+                    <template x-if="activeFast">
+                        <span class="h-2.5 w-2.5 shrink-0 rounded-full"
+                              :class="activeFastProgress && activeFastProgress.reached ? 'bg-green-500' : 'bg-accent'"></span>
+                    </template>
+                </button>
             </div>
         </aside>
 
         {{-- Main pane --}}
         <section class="min-w-0 flex-1 overflow-y-auto">
+
+            {{-- Always-on running-fast banner (shown on every metric while a fast runs) --}}
+            <template x-if="activeFast">
+              <button type="button" @click="selectedMetric = '_fasting'"
+                  class="mb-3 flex w-full items-center gap-3 rounded-2xl border border-accent/30 bg-accent/5 px-4 py-3 text-left transition hover:bg-accent/10">
+                  <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:#e2915a">
+                      <x-icon name="clock" class="h-4 w-4 text-white" />
+                  </span>
+                  <span class="min-w-0 flex-1">
+                      <span class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          <span x-text="fastWindowLabel(activeFast.targetHours)"></span>
+                          <span class="text-gray-400">·</span>
+                          <span x-text="fastElapsedLabel(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
+                          <template x-if="activeFastProgress && activeFastProgress.reached">
+                              <span class="rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">{{ __('health.fasting_reached') }}</span>
+                          </template>
+                      </span>
+                      <span class="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
+                          <span class="block h-full rounded-full transition-all"
+                                :class="activeFastProgress && activeFastProgress.reached ? 'bg-green-500' : 'bg-accent'"
+                                :style="'width:' + fastPct(activeFast) + '%'"></span>
+                      </span>
+                  </span>
+                  <x-icon name="chevron-right" class="h-4 w-4 shrink-0 text-gray-400" />
+              </button>
+            </template>
 
             {{-- Mobile metric selector (the desktop rail is hidden below md) --}}
             <div class="md:hidden -mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -140,6 +190,12 @@
                     :class="selectedMetric === '_master' ? 'll-accent border-transparent' : 'border-black/[0.08] dark:border-white/10 text-gray-600 dark:text-gray-300'">
                     <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style="background:#6b7280"><x-icon name="user" class="h-3.5 w-3.5 text-white" /></span>
                     {{ __('health.master_data') }}
+                </button>
+                <button type="button" @click="selectedMetric = '_fasting'"
+                    class="inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors"
+                    :class="selectedMetric === '_fasting' ? 'll-accent border-transparent' : 'border-black/[0.08] dark:border-white/10 text-gray-600 dark:text-gray-300'">
+                    <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md" style="background:#e2915a"><x-icon name="clock" class="h-3.5 w-3.5 text-white" /></span>
+                    {{ __('health.fasting') }}
                 </button>
             </div>
 
@@ -227,8 +283,102 @@
               </div>
             </template>
 
+            {{-- ===== FASTING VIEW ===== --}}
+            <template x-if="selectedMetric === '_fasting'">
+              <div class="space-y-4">
+
+                {{-- Running fast card, or the start picker --}}
+                <template x-if="activeFast">
+                  <div class="ll-card space-y-4">
+                    <div class="flex items-center justify-between gap-2">
+                        <div>
+                            <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('health.fasting_running') }}</h2>
+                            <p class="text-xs text-gray-400 dark:text-gray-500" x-text="fastWindowLabel(activeFast.targetHours)"></p>
+                        </div>
+                        <template x-if="activeFastProgress && activeFastProgress.reached">
+                            <span class="rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400">{{ __('health.fasting_reached') }}</span>
+                        </template>
+                    </div>
+
+                    <div class="text-center">
+                        <div class="text-3xl font-semibold tabular-nums text-gray-900 dark:text-gray-100" x-text="fastElapsedLabel(activeFast)"></div>
+                        <div class="text-xs text-gray-400 dark:text-gray-500">{{ __('health.fasting_target') }}: <span x-text="fastTargetLabel(activeFast)"></span></div>
+                    </div>
+                    <div class="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06] dark:bg-white/10">
+                        <span class="block h-full rounded-full transition-all"
+                              :class="activeFastProgress && activeFastProgress.reached ? 'bg-green-500' : 'bg-accent'"
+                              :style="'width:' + fastPct(activeFast) + '%'"></span>
+                    </div>
+                    <p class="text-xs text-gray-400 dark:text-gray-500">
+                        {{ __('health.fasting_started_at') }}: <span x-text="fmtDate(activeFast.start)"></span>
+                    </p>
+
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" @click="stopFast()"
+                            class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">{{ __('health.fasting_stop') }}</button>
+                        <button type="button" @click="openFastEditor(activeFast)"
+                            class="rounded-lg border border-black/[0.08] dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-accent/5">{{ __('health.fasting_edit') }}</button>
+                    </div>
+                  </div>
+                </template>
+
+                <template x-if="! activeFast">
+                  <div class="ll-card space-y-3">
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('health.fasting_start') }}</h2>
+                        <p class="text-xs text-gray-400 dark:text-gray-500">{{ __('health.fasting_start_hint') }}</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                        <template x-for="t in fastTemplates" :key="t.key">
+                            <button type="button" @click="startFast(t.targetHours)"
+                                class="flex flex-col items-center gap-0.5 rounded-xl border border-black/[0.08] px-3 py-3 text-center transition hover:border-accent hover:bg-accent/5 dark:border-white/10">
+                                <span class="text-base font-semibold text-gray-900 dark:text-gray-100" x-text="t.key"></span>
+                                <span class="text-[11px] text-gray-400 dark:text-gray-500" x-text="t.targetHours + 'h'"></span>
+                            </button>
+                        </template>
+                    </div>
+                  </div>
+                </template>
+
+                {{-- History --}}
+                <div class="ll-card space-y-3">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('health.fasting_history') }}</h3>
+                    <p x-show="! fastHistory.length" class="text-xs text-gray-400 dark:text-gray-500">{{ __('health.fasting_no_history') }}</p>
+                    <div x-show="fastHistory.length" class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
+                        <template x-for="f in fastHistory" :key="f.id">
+                            <div class="group flex items-center gap-3 px-3.5 py-2.5">
+                                <span class="ll-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                                      :style="'background:' + ((function(){ const p = fastProgressOf(f); return p && p.reached ? '#59ad6b' : '#e2915a'; })())">
+                                    <x-icon name="clock" class="h-4 w-4 text-white" />
+                                </span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                        <span x-text="fastWindowLabel(f.targetHours)"></span>
+                                        <span class="text-gray-400">·</span>
+                                        <span x-text="fastElapsedLabel(f, f.end)"></span>
+                                        <template x-if="fastProgressOf(f) && fastProgressOf(f).reached">
+                                            <x-icon name="check" class="h-4 w-4 text-green-500" />
+                                        </template>
+                                    </div>
+                                    <div class="truncate text-xs text-gray-400 dark:text-gray-500" x-text="fmtDate(f.start)"></div>
+                                </div>
+                                <div class="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                    <button type="button" @click="openFastEditor(f)" class="rounded-lg p-1.5 text-gray-400 hover:bg-black/[0.06] hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200" :title="@js(__('health.fasting_edit'))">
+                                        <x-icon name="pencil" class="h-4 w-4" />
+                                    </button>
+                                    <button type="button" @click="deleteFast(f)" class="rounded-lg p-1.5 text-gray-400 hover:bg-red-500/10 hover:text-red-600" :title="@js(__('health.delete'))">
+                                        <x-icon name="trash" class="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+              </div>
+            </template>
+
             {{-- ===== METRIC DETAIL VIEW ===== --}}
-            <template x-if="selectedMetric !== '_master'">
+            <template x-if="selectedMetric !== '_master' && selectedMetric !== '_fasting'">
               <div class="ll-card space-y-4">
                 {{-- Header with metric label + actions --}}
                 <div class="flex items-center justify-between gap-2 flex-wrap">
@@ -580,6 +730,56 @@
                     {{ __('common.cancel') }}
                 </button>
                 <button type="button" @click="saveEditor()"
+                    class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
+                    {{ __('health.save') }}
+                </button>
+            </div>
+        </div>
+      </div>
+    </template>
+
+    {{-- ===== FASTING EDIT MODAL ===== --}}
+    <template x-if="fastEditorOpen">
+      <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
+           @keydown.escape.window="closeFastEditor()">
+        <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" @click="closeFastEditor()"></div>
+        <div class="relative w-full max-w-sm rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-5 shadow-xl space-y-4">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('health.fasting_edit') }}</h3>
+
+            <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('health.fasting_window') }}</label>
+                <select x-model.number="_fastForm.targetHours"
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+                    <template x-for="t in fastTemplates" :key="'opt-'+t.key">
+                        <option :value="t.targetHours" x-text="t.key + ' (' + t.targetHours + 'h)'"></option>
+                    </template>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('health.fasting_start_field') }}</label>
+                <input type="datetime-local" x-model="_fastForm.start"
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('health.fasting_end_field') }}</label>
+                <input type="datetime-local" x-model="_fastForm.end"
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('health.fasting_note') }}</label>
+                <input type="text" x-model="_fastForm.note" maxlength="200"
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
+            </div>
+
+            <div class="flex justify-end gap-2 pt-1">
+                <button type="button" @click="closeFastEditor()"
+                    class="rounded-lg border border-black/[0.08] dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-black/[0.04] dark:hover:bg-white/5">
+                    {{ __('common.cancel') }}
+                </button>
+                <button type="button" @click="saveFastEdit()"
                     class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
                     {{ __('health.save') }}
                 </button>
