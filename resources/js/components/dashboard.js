@@ -12,6 +12,7 @@ import {
 import { loadUplot } from '../shared/uplot-loader';
 import { fetchDecryptWorker, thumbLane } from '../shared/blob-io';
 import { formatBytes } from '../shared/file-categories';
+import { activeFast, fastProgress, formatDuration, templateLabel } from '../shared/health-fasting';
 
 export default (config = {}, labels = {}) => ({
     state: 'boot', // boot | locked | ready
@@ -22,19 +23,43 @@ export default (config = {}, labels = {}) => ({
     _sparkInst: null,
     _thumbCache: {}, // photoId -> objectURL
     _thumbPending: {}, // photoId -> in-flight promise
+    _fastNow: Date.now(), // clock for the running-fast widget
+    _fastClock: null,
 
     async init() {
         await this._boot();
         this.$watch('$store.vault.unlocked', async (on) => {
             if (on && this.state !== 'ready') await this._boot();
-            if (! on) { this.state = 'locked'; this._revokeThumbCache(); }
+            if (! on) { this.state = 'locked'; this._revokeThumbCache(); this._stopFastClock(); }
         });
         this.$watch('_mut', () => this.renderSpark());
+        // Tick a minute-resolution clock only while a fast is running.
+        this.$watch('state', () => { if (this.activeFast) this._startFastClock(); else this._stopFastClock(); });
     },
 
     destroy() {
         this._revokeThumbCache();
+        this._stopFastClock();
     },
+
+    _startFastClock() {
+        if (this._fastClock) return;
+        this._fastNow = Date.now();
+        this._fastClock = setInterval(() => { this._fastNow = Date.now(); }, 30000);
+    },
+    _stopFastClock() { if (this._fastClock) { clearInterval(this._fastClock); this._fastClock = null; } },
+
+    // --- Running-fast widget (intermittent fasting; always shown while active) ---
+    get activeFast() { void this._mut; return this._health ? activeFast(this._health.healthFasts) : null; },
+    get activeFastProgress() {
+        void this._mut;
+        const f = this.activeFast;
+        return f ? fastProgress(f, this._fastNow) : null;
+    },
+    fastWindowLabel(hours) { return templateLabel(hours); },
+    fastElapsedLabel(fast) { return formatDuration(fastProgress(fast, this._fastNow).elapsed); },
+    fastTargetLabel(fast) { return formatDuration((Number(fast?.targetHours) || 0) * 3600); },
+    fastPct(fast) { return Math.min(100, Math.round(fastProgress(fast, this._fastNow).fraction * 100)); },
 
     async _boot() {
         // Multi-module dashboard: wait for the vault, then load every per-module
