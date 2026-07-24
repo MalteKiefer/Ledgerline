@@ -375,7 +375,6 @@
                   <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.folder') }}</label>
                     <select x-model="draft.folder" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
-                      <option :value="null">{{ __('passwords.no_folder') }}</option>
                       <template x-for="f in folders" :key="f.id"><option :value="f.id" x-text="f.name"></option></template>
                     </select>
                   </div>

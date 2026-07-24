@@ -170,6 +170,16 @@ export default (config = {}, labels = {}) => ({
         const store = window.LLModuleStore.passwords.data;
         // Every vault gets a role (owner = manage) so the UI can gate actions.
         for (const v of this.folders) if (! v.role) v.role = 'manage';
+        // No orphaned items: heal any personal item without a valid vault (e.g. one
+        // created before the "no vault" option was removed) into the first vault.
+        if (this.folders.length) {
+            const first = this.folders[0].id;
+            let healed = false;
+            for (const it of this.items) {
+                if (! it.folder || ! this.folders.some((f) => f.id === it.folder)) { it.folder = first; healed = true; }
+            }
+            if (healed) this._save();
+        }
         if (store.pwVaultMigrated) return;
         const id = crypto.randomUUID();
         const privat = { id, name: 'Privat', role: 'manage' };
@@ -448,6 +458,15 @@ export default (config = {}, labels = {}) => ({
         d.custom = (d.custom || []).map((c) => ({ label: (c.label || '').trim(), value: (c.value || '').trim(), kind: this.customKind(c) })).filter((c) => c.label || c.value);
         const now = new Date().toISOString();
         const isShared = ! ! (d.shared && d.vaultId);
+        // Every personal item MUST live in a vault — no orphaned items. If the draft
+        // has no (or an invalid) vault, drop it into the first vault, creating a
+        // default one if somehow none exist.
+        if (! isShared) {
+            if (! d.folder || ! this.folders.some((f) => f.id === d.folder)) {
+                if (! this.folders.length) this.folders.push({ id: crypto.randomUUID(), name: labels.defaultVaultName || 'Privat', role: 'manage' });
+                d.folder = this.folders[0].id;
+            }
+        }
         if (isShared) {
             // Shared vault item: mutate sharedItems, then PUT the sealed vault.
             if (! d.id) {
