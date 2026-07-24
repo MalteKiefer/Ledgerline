@@ -3428,8 +3428,9 @@ paths:
       summary: List the caller's connected devices
       description: >
         Returns all Sanctum tokens (connected devices) for the authenticated user,
-        newest first. Includes live sync state, last-used time, and whether a remote
-        wipe has been requested. No per-route throttle beyond default.
+        most-recently-used first. Includes live sync state, last-used time, the app/OS
+        build + a short install id (non-secret client correlation), and whether a
+        remote wipe has been requested. No per-route throttle beyond default.
       responses:
         "200":
           description: List of connected devices.
@@ -3461,6 +3462,18 @@ paths:
                           description: >
                             Formatted string combining IP address and last-used time
                             (e.g. "192.168.1.1 · last used 3 hours ago").
+                        version:
+                          type: string
+                          nullable: true
+                          description: Non-secret app/OS build (e.g. "iOS 18.2 · 1.5.0"), when reported.
+                        installId:
+                          type: string
+                          nullable: true
+                          description: >
+                            Last 6 chars of the device's non-secret install id — helps the
+                            owner distinguish devices. Re-pairing the same install id
+                            supersedes the previous token (device.superseded) rather than
+                            stacking a duplicate row.
                         syncing:
                           type: boolean
                           description: >

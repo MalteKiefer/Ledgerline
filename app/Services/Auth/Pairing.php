@@ -121,6 +121,23 @@ class Pairing
         // Admin-configurable cap (Security settings); null/0 falls back to config default.
         $configuredMax = AppSettings::current()->max_connected_devices ?: config('devices.max', 3);
         $max = max(1, is_numeric($configuredMax) ? (int) $configuredMax : 3);
+
+        // Same-device re-pair dedupe: a reinstall/re-pair of a physical device sends
+        // a stable, non-secret install_id. Revoke that device's PREVIOUS token(s) up
+        // front so the "Connected devices" row is REPLACED, not stacked — this stops
+        // duplicate "iPhone" entries piling up (the owner could otherwise remove the
+        // active one and log the phone out) and frees the slot before the cap check.
+        // Audited as device.superseded so the resulting resume-401 on the old token
+        // is explained in the trail rather than looking like a silent eviction.
+        $rawInstall = $client['install_id'] ?? null;
+        if (is_string($rawInstall) && $rawInstall !== '') {
+            $installId = mb_substr($rawInstall, 0, 64);
+            foreach ($user->tokens()->where('install_id', $installId)->get() as $old) {
+                DeviceAudit::record($old, 'device.superseded', ['reason' => 'reinstall']);
+                $old->delete();
+            }
+        }
+
         // LRU eviction: keep the most-recently-used devices. A token that never
         // contacted the API (last_used_at NULL) is evicted first, then the least
         // recently used, then the oldest by id. This never evicts an actively-used

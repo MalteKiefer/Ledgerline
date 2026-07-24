@@ -33,6 +33,42 @@ class DeviceAuditTest extends TestCase
         ]);
     }
 
+    public function test_repairing_the_same_install_supersedes_the_previous_token(): void
+    {
+        $user = User::factory()->create();
+        // A previous pairing of the SAME physical device (same install_id).
+        $old = $user->createToken('iPhone', ['device'])->accessToken;
+        $old->forceFill(['install_id' => 'install-abc'])->save();
+
+        $this->approvedPairing($user, 'iPhone2');
+        app(Pairing::class)->collect('iPhone2-code', '1.2.3.4', ['install_id' => 'install-abc']);
+
+        // The old row is replaced, not stacked: exactly one token, the new one.
+        $this->assertNull(PersonalAccessToken::find($old->id), 'previous same-device token superseded');
+        $this->assertSame(1, $user->tokens()->count());
+        $this->assertSame('install-abc', $user->tokens()->first()->install_id);
+
+        $sup = AuditLog::where('action', 'device.superseded')->get();
+        $this->assertCount(1, $sup);
+        $this->assertSame($old->id, $sup->first()->meta['token_id']);
+        $this->assertSame('reinstall', $sup->first()->meta['reason']);
+        $this->assertArrayNotHasKey('token', $sup->first()->meta);
+    }
+
+    public function test_a_different_install_id_is_never_superseded(): void
+    {
+        $user = User::factory()->create();
+        $a = $user->createToken('iPhone', ['device'])->accessToken;
+        $a->forceFill(['install_id' => 'install-a'])->save();
+
+        $this->approvedPairing($user, 'iPad');
+        app(Pairing::class)->collect('iPad-code', '1.2.3.4', ['install_id' => 'install-b']);
+
+        $this->assertNotNull(PersonalAccessToken::find($a->id), 'a genuinely different device is untouched');
+        $this->assertSame(2, $user->tokens()->count());
+        $this->assertSame(0, AuditLog::where('action', 'device.superseded')->count());
+    }
+
     public function test_cap_eviction_is_lru_and_audited(): void
     {
         AppSettings::current()->update(['max_connected_devices' => 2]);
