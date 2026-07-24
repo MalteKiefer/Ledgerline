@@ -64,6 +64,15 @@ export function formatDuration(seconds) {
     return h + 'h ' + String(m).padStart(2, '0') + 'm';
 }
 
+/** "HH:MM:SS" with seconds, for the live fasting timer (e.g. 5040 → "01:24:00"). */
+export function formatDurationHMS(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return [h, m, sec].map((n) => String(n).padStart(2, '0')).join(':');
+}
+
 /** The X:Y label for a fasting window given its fasting hours. */
 export function templateLabel(targetHours) {
     const h = Number(targetHours);
