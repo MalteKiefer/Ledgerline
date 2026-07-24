@@ -40,7 +40,7 @@
                       <span class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                           <span>{{ __('health.fasting') }}</span>
                           <span class="text-gray-400">·</span>
-                          <span x-text="fastWindowLabel(activeFast.targetHours)"></span>
+                          <span x-text="fastWindowLabel(activeFast?.targetHours)"></span>
                           <span class="text-gray-400">·</span>
                           <span x-text="fastElapsedLabel(activeFast) + ' / ' + fastTargetLabel(activeFast)"></span>
                           <template x-if="activeFastProgress && activeFastProgress.reached">
