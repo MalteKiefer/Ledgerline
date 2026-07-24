@@ -248,37 +248,12 @@
                     </div>
                 </div>
 
-                {{-- Unit toggles --}}
-                <div class="space-y-3 border-t border-gray-100 dark:border-gray-800 pt-4">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('health.units_weight') }}</p>
-                    <div class="flex gap-2">
-                        <button type="button" @click="profile.units.weight = 'kg'; saveProfile()"
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                            :class="profile.units.weight === 'kg' ? 'll-accent' : 'border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">kg</button>
-                        <button type="button" @click="profile.units.weight = 'lb'; saveProfile()"
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                            :class="profile.units.weight === 'lb' ? 'll-accent' : 'border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">lb</button>
-                    </div>
-
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('health.units_glucose') }}</p>
-                    <div class="flex gap-2">
-                        <button type="button" @click="profile.units.glucose = 'mgdl'; saveProfile()"
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                            :class="profile.units.glucose === 'mgdl' ? 'll-accent' : 'border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">mg/dL</button>
-                        <button type="button" @click="profile.units.glucose = 'mmoll'; saveProfile()"
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                            :class="profile.units.glucose === 'mmoll' ? 'll-accent' : 'border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">mmol/L</button>
-                    </div>
-
-                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('health.units_temp') }}</p>
-                    <div class="flex gap-2">
-                        <button type="button" @click="profile.units.temp = 'c'; saveProfile()"
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                            :class="profile.units.temp === 'c' ? 'll-accent' : 'border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">°C</button>
-                        <button type="button" @click="profile.units.temp = 'f'; saveProfile()"
-                            class="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-                            :class="profile.units.temp === 'f' ? 'll-accent' : 'border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'">°F</button>
-                    </div>
+                {{-- Units are now a GLOBAL preference (set once, applied everywhere). --}}
+                <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+                    <a href="{{ route('profile.appearance') }}" class="inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
+                        {{ __('health.units_in_appearance') }}
+                        <x-icon name="chevron-right" class="h-4 w-4" />
+                    </a>
                 </div>
               </div>
             </template>

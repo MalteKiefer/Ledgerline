@@ -22,6 +22,7 @@ use App\Http\Controllers\ModuleStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
+use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\SharedFolderBlobController;
 use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
@@ -173,6 +174,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->middleware('throttle:6,1')->name('api.profile.avatar.refresh');
         Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
         Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
+        Route::post('/preferences', [PreferencesController::class, 'update'])->name('api.preferences.update');
 
         // Shared vault-sharing: identity keys, vault containers, sealed manifest
         // stores, and membership management. Same controllers as the web routes —

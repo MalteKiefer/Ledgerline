@@ -21,6 +21,13 @@ return [
     'appearance_heading' => 'Darstellung',
     'appearance_theme' => 'Design',
     'appearance_language' => 'Sprache',
+    'appearance_units' => 'Einheiten & Format',
+    'pref_time' => 'Zeitformat',
+    'pref_distance' => 'Distanz',
+    'pref_elevation' => 'Höhe',
+    'pref_weight' => 'Gewicht',
+    'pref_temp' => 'Temperatur',
+    'pref_glucose' => 'Glukose',
 
     'security_heading' => 'Sicherheit & Daten',
     'last_login' => 'Letzte Anmeldung',

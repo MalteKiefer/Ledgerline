@@ -23,6 +23,12 @@ use Illuminate\Database\Eloquent\Model;
     'theme',
     'contact_birthday_channels',
     'contact_anniversary_channels',
+    'unit_distance',
+    'unit_elevation',
+    'unit_weight',
+    'unit_temp',
+    'unit_glucose',
+    'time_format',
 ])]
 class UserSetting extends Model
 {
@@ -36,7 +42,31 @@ class UserSetting extends Model
         'gallery_columns' => 6,
         'file_max_versions' => 10,
         'theme' => 'system',
+        'unit_distance' => 'km',
+        'unit_elevation' => 'm',
+        'unit_weight' => 'kg',
+        'unit_temp' => 'c',
+        'unit_glucose' => 'mgdl',
+        'time_format' => '24h',
     ];
+
+    /**
+     * The non-secret display preferences as a flat map for injection into the page
+     * and the API (window.LLPrefs / GET /me). Presentation only — never data.
+     *
+     * @return array{distance:string, elevation:string, weight:string, temp:string, glucose:string, time_format:string}
+     */
+    public function displayPrefs(): array
+    {
+        return [
+            'distance' => (string) ($this->unit_distance ?? 'km'),
+            'elevation' => (string) ($this->unit_elevation ?? 'm'),
+            'weight' => (string) ($this->unit_weight ?? 'kg'),
+            'temp' => (string) ($this->unit_temp ?? 'c'),
+            'glucose' => (string) ($this->unit_glucose ?? 'mgdl'),
+            'time_format' => (string) ($this->time_format ?? '24h'),
+        ];
+    }
 
     protected function casts(): array
     {

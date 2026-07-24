@@ -11,6 +11,8 @@ import { saveBlobAs, formatDate } from '../shared/dom';
 import {
     FAST_TEMPLATES, activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast,
 } from '../shared/health-fasting';
+import { healthUnits, setPrefs, prefs } from '../shared/prefs';
+import { postForm } from '../shared/api';
 
 const DEFAULT_PROFILE = () => ({
     birthdate: '',
@@ -100,6 +102,23 @@ export default (labels = {}) => ({
         }
         // Bind this.profile to the same reference so mutations are reflected in the store data.
         this.profile = window.LLModuleStore.health.data.healthProfile;
+        this._seedUnitPrefs();
+    },
+
+    // One-time migration: units used to live in the sealed profile; they are now a
+    // global preference. If the global prefs are still at default but this user had
+    // chosen non-default sealed units, adopt them so nothing silently switches units.
+    _seedUnitPrefs() {
+        const g = prefs();
+        const globalDefault = g.weight === 'kg' && g.temp === 'c' && g.glucose === 'mgdl';
+        const u = this.profile.units || {};
+        const patch = {};
+        if (u.weight === 'lb') patch.weight = 'lb';
+        if (u.temp === 'f') patch.temp = 'f';
+        if (u.glucose === 'mmoll') patch.glucose = 'mmoll';
+        if (! globalDefault || Object.keys(patch).length === 0) return;
+        setPrefs(patch); // reflect immediately
+        postForm('/preferences', patch).catch(() => {});
     },
 
     // Override zkModule._save to track mutations (mirrors passwords.js).
@@ -359,7 +378,7 @@ export default (labels = {}) => ({
      * @param {string} key
      */
     exportCsv(key) {
-        const rows = csvRows(this.entries, key, this.profile.units);
+        const rows = csvRows(this.entries, key, this._units());
         const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
         saveBlobAs(new Blob([csv], { type: 'text/csv' }), 'health-' + key + '.csv');
     },
@@ -426,7 +445,7 @@ export default (labels = {}) => ({
 
         // temp BANDS are stored in °C; convert to display unit so band positions
         // align with the y-values that _buildChart plots via _displaySingle().
-        const tempInDisplayUnit = (c) => (this.profile.units?.temp === 'f' ? cToF(c) : c);
+        const tempInDisplayUnit = (c) => (this._units().temp === 'f' ? cToF(c) : c);
         const BANDS = {
             bp:    null,
             pulse: { amber: [0, 60], ok: [60, 100], amberHigh: [100, 300] },
@@ -659,9 +678,14 @@ export default (labels = {}) => ({
         return String(this._displaySingle(key, v));
     },
 
+    // Display units now come from the GLOBAL user preference (set on the appearance
+    // page, "like the language"), not the sealed health profile. weight/temp/glucose
+    // tokens are byte-compatible (kg|lb, c|f, mgdl|mmoll).
+    _units() { return healthUnits(); },
+
     // Convert a single canonical value to display units.
     _displaySingle(key, v) {
-        const u = this.profile.units || {};
+        const u = this._units();
         if (key === 'weight' && u.weight === 'lb') return kgToLb(v);
         if (key === 'temp' && u.temp === 'f') return cToF(v);
         if (key === 'glucose' && u.glucose === 'mmoll') return mgdlToMmoll(v);
@@ -670,7 +694,7 @@ export default (labels = {}) => ({
 
     // Display unit label for a metric.
     unitLabel(key) {
-        const u = this.profile.units || {};
+        const u = this._units();
         if (key === 'weight') return u.weight === 'lb' ? 'lb' : 'kg';
         if (key === 'temp') return u.temp === 'f' ? '°F' : '°C';
         if (key === 'glucose') return u.glucose === 'mmoll' ? 'mmol/L' : 'mg/dL';
@@ -734,7 +758,7 @@ export default (labels = {}) => ({
 
         // Convert display units back to canonical storage units.
         let canonV = v;
-        const u = this.profile.units || {};
+        const u = this._units();
         if (key === 'weight' && u.weight === 'lb') canonV = lbToKg(v);
         if (key === 'temp' && u.temp === 'f') canonV = fToC(v);
         if (key === 'glucose' && u.glucose === 'mmoll') canonV = mmollToMgdl(v);

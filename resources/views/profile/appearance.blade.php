@@ -39,5 +39,39 @@
                 </form>
             @endforeach
         </div>
+
+        {{-- Units & clock format (global, like the language) --}}
+        @php
+            $prefs = \App\Models\UserSetting::for(auth()->id())->displayPrefs();
+            $prefGroups = [
+                'time_format' => ['label' => __('account.pref_time'), 'options' => ['24h' => '24 h', '12h' => '12 h']],
+                'distance'    => ['label' => __('account.pref_distance'), 'options' => ['km' => 'km', 'mi' => 'mi']],
+                'elevation'   => ['label' => __('account.pref_elevation'), 'options' => ['m' => 'm', 'ft' => 'ft']],
+                'weight'      => ['label' => __('account.pref_weight'), 'options' => ['kg' => 'kg', 'lb' => 'lb']],
+                'temp'        => ['label' => __('account.pref_temp'), 'options' => ['c' => '°C', 'f' => '°F']],
+                'glucose'     => ['label' => __('account.pref_glucose'), 'options' => ['mgdl' => 'mg/dL', 'mmoll' => 'mmol/L']],
+            ];
+        @endphp
+        <h2 class="mt-6 mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('account.appearance_units') }}</h2>
+        <div class="ll-card !p-0 overflow-hidden divide-y divide-black/[0.06] dark:divide-white/10">
+            @foreach ($prefGroups as $key => $group)
+                <div class="flex items-center justify-between gap-3 px-4 py-3">
+                    <span class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ $group['label'] }}</span>
+                    <div class="flex gap-1 rounded-xl bg-black/5 dark:bg-white/5 p-1">
+                        @foreach ($group['options'] as $value => $optLabel)
+                            <form method="POST" action="{{ route('preferences.update') }}">
+                                @csrf
+                                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                <button type="submit" @class([
+                                    'rounded-lg px-3 py-1.5 text-sm font-medium transition',
+                                    'll-accent shadow-sm shadow-accent/30' => ($prefs[$key] ?? '') === $value,
+                                    'text-gray-500 dark:text-gray-400 hover:text-accent' => ($prefs[$key] ?? '') !== $value,
+                                ])>{{ $optLabel }}</button>
+                            </form>
+                        @endforeach
+                    </div>
+                </div>
+            @endforeach
+        </div>
     </div>
 </x-layouts.app>

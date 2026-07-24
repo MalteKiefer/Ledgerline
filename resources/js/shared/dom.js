@@ -1,5 +1,7 @@
 // Small DOM/string helpers shared across modules.
 
+import { is12h } from './prefs';
+
 export function escapeHtml(text) {
     return String(text ?? '').replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -13,7 +15,12 @@ export function formatDate(v, opts) {
     if (! v) return '';
     const d = new Date(v);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleString(undefined, opts || { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    let o = opts || { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+    // Honour the user's 12/24h clock preference for any time-bearing format, unless
+    // the caller pinned hour12 explicitly.
+    const hasTime = o.timeStyle || o.hour || o.minute || o.second;
+    if (hasTime && o.hour12 === undefined) o = { ...o, hour12: is12h() };
+    return d.toLocaleString(undefined, o);
 }
 
 // Trigger a client-side download of raw bytes without ever touching the server.

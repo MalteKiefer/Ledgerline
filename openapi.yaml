@@ -113,6 +113,22 @@ components:
         pairing exchange. Include as `Authorization: Bearer <token>`.
 
   schemas:
+    DisplayPreferences:
+      type: object
+      description: >
+        Global, non-secret DISPLAY preferences — measurement units + 12/24h clock.
+        Presentation only; the underlying data stays zero-knowledge. Returned in
+        GET /me and set via POST /preferences; the client applies them to its own
+        rendering (distances/elevations convert from canonical metres, times honour
+        the clock format). Canonical storage is unchanged (metres, kg, °C, mg/dL).
+      properties:
+        distance: { type: string, enum: [km, mi] }
+        elevation: { type: string, enum: [m, ft] }
+        weight: { type: string, enum: [kg, lb] }
+        temp: { type: string, enum: [c, f] }
+        glucose: { type: string, enum: [mgdl, mmoll] }
+        time_format: { type: string, enum: [24h, 12h] }
+
     HealthFast:
       type: object
       description: >
@@ -578,7 +594,11 @@ paths:
                   user:
                     type: object
                     description: >
-                      User fields: id, name, email, locale, groups, has_avatar (bool).
+                      User fields: id, name, email, locale, groups, has_avatar (bool),
+                      preferences (DisplayPreferences — units + clock format).
+                    properties:
+                      preferences:
+                        $ref: "#/components/schemas/DisplayPreferences"
                   usage:
                     type: object
                     properties:
@@ -4024,6 +4044,61 @@ paths:
                     enum: [light, dark, system]
         "422":
           description: Invalid theme value.
+        "401":
+          description: Unauthenticated.
+
+  /preferences:
+    post:
+      tags: [Preferences]
+      operationId: preferencesUpdate
+      summary: Update global display preferences (units + clock format)
+      description: >
+        Persists the user's non-secret DISPLAY preferences — measurement units and
+        12/24h clock. These are presentation choices only (the underlying data stays
+        zero-knowledge); the client applies them to its own rendering. Every field is
+        optional; only the sent fields change. Mirrored in GET /me.preferences. No
+        per-route throttle beyond default.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                distance:
+                  type: string
+                  enum: [km, mi]
+                elevation:
+                  type: string
+                  enum: [m, ft]
+                weight:
+                  type: string
+                  enum: [kg, lb]
+                temp:
+                  type: string
+                  enum: [c, f]
+                glucose:
+                  type: string
+                  enum: [mgdl, mmoll]
+                time_format:
+                  type: string
+                  enum: [24h, 12h]
+      responses:
+        "200":
+          description: Preferences updated; returns the full preference set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, preferences]
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  preferences:
+                    $ref: "#/components/schemas/DisplayPreferences"
+        "422":
+          description: Invalid preference value.
         "401":
           description: Unauthenticated.
 

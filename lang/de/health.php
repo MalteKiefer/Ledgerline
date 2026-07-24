@@ -37,6 +37,7 @@ return [
 
     // Intervallfasten
     'delete' => 'Löschen',
+    'units_in_appearance' => 'Einheiten unter Darstellung einstellen',
     'fasting' => 'Fasten',
     'fasting_none' => 'Kein Fasten aktiv',
     'fasting_running' => 'Fasten läuft',

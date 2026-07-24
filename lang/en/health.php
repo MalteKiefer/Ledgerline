@@ -37,6 +37,7 @@ return [
 
     // Intermittent fasting
     'delete' => 'Delete',
+    'units_in_appearance' => 'Units are set in Appearance',
     'fasting' => 'Fasting',
     'fasting_none' => 'No fast running',
     'fasting_running' => 'Fast running',

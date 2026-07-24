@@ -22,7 +22,10 @@ import { padBlob } from '../shared/padme';
 import { buildPlannedTrack, hasElevation, downsampleProfile, normalizeRouteElevation, aggregateSurfaces } from '../shared/explore-detail';
 import { haversineM } from '../shared/track-parse';
 import { classifySearch } from '../shared/geo-search';
-import { escapeHtml, saveBlobAs } from '../shared/dom';
+import { escapeHtml, saveBlobAs, formatDate } from '../shared/dom';
+import {
+    distanceUnit, distanceValue, distanceLabel, elevationUnit, elevationValue, elevationLabel, convertDistance,
+} from '../shared/prefs';
 import { buildGpx, gpxFilename } from '../shared/track-export';
 import { estimateCalories } from '../shared/explore-calories';
 import { routeGroup } from '../shared/track-similarity';
@@ -1019,22 +1022,25 @@ export default (config = {}, labels = {}) => ({
 
     /* --------------------------------------------------- Formatting helpers */
 
+    // Distance/elevation honour the user's global unit preference (km/mi, m/ft);
+    // the canonical value stays in metres — these convert for display only.
     fmtDistance(m) {
-        if (! (m > 0)) return '0 ' + (labels.unitKm || 'km');
-        return (m / 1000).toFixed(m < 10000 ? 2 : 1) + ' ' + (labels.unitKm || 'km');
+        if (! (m > 0)) return '0 ' + distanceUnit();
+        return distanceLabel(m, m < 10000 ? 2 : 1);
     },
     fmtDuration(s) {
         s = Math.round(s || 0);
         const h = Math.floor(s / 3600), min = Math.floor((s % 3600) / 60);
         return h > 0 ? `${h}h ${min}m` : `${min}m`;
     },
-    fmtSpeed(mps) { return ((mps || 0) * 3.6).toFixed(1) + ' ' + (labels.unitKmh || 'km/h'); },
-    fmtEle(m) { return m == null ? '—' : Math.round(m) + ' ' + (labels.unitM || 'm'); },
-    fmtDateTime(iso) {
-        if (! iso) return '—';
-        const d = new Date(iso);
-        return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+    // Speed in the distance unit's system: km/h for metric, mph for miles.
+    fmtSpeed(mps) {
+        const perHourM = (mps || 0) * 3600;
+        const d = convertDistance(perHourM, 1);
+        return d.value + ' ' + d.unit + '/h';
     },
+    fmtEle(m) { return m == null ? '—' : elevationLabel(m); },
+    fmtDateTime(iso) { return iso ? (formatDate(iso, { dateStyle: 'medium', timeStyle: 'short' }) || '—') : '—'; },
 
     /* ------------------------------------------------------ Elevation chart */
 
@@ -1072,8 +1078,11 @@ export default (config = {}, labels = {}) => ({
         const isDark = document.documentElement.classList.contains('dark');
         const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
         const axis = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
-        const km = labels.unitKm || 'km';
-        const m = labels.unitM || 'm';
+        const du = distanceUnit();
+        const eu = elevationUnit();
+        // xs come in km, ys in metres; convert both to the user's units for display.
+        const xu = xs.map((v) => distanceValue(v * 1000, 2));
+        const yu = ys.map((v) => (v == null ? null : elevationValue(v, 1)));
 
         const opts = {
             width: el.clientWidth || 320,
@@ -1084,19 +1093,19 @@ export default (config = {}, labels = {}) => ({
             axes: [
                 {
                     stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, size: 26,
-                    values: (_u, vals) => vals.map((v) => v.toFixed(1) + ' ' + km),
+                    values: (_u, vals) => vals.map((v) => v.toFixed(1) + ' ' + du),
                 },
                 {
                     stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, size: 44,
-                    values: (_u, vals) => vals.map((v) => Math.round(v) + ' ' + m),
+                    values: (_u, vals) => vals.map((v) => Math.round(v) + ' ' + eu),
                 },
             ],
             series: [
-                { label: km },
+                { label: du },
                 { label: labels.elevation || 'Elevation', stroke: '#7066f5', fill: 'rgba(112,102,245,0.15)', width: 2, spanGaps: true },
             ],
         };
-        this._planChart = new UPlot(opts, [xs, ys], el);
+        this._planChart = new UPlot(opts, [xu, yu], el);
     },
 
     // True when the selected track has a usable elevation profile.
@@ -1206,8 +1215,11 @@ export default (config = {}, labels = {}) => ({
         const isDark = document.documentElement.classList.contains('dark');
         const grid = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
         const axis = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
-        const km = labels.unitKm || 'km';
-        const m = labels.unitM || 'm';
+        const du = distanceUnit();
+        const eu = elevationUnit();
+        // xs come in km, ys in metres; convert both to the user's units for display.
+        const xu = xs.map((v) => distanceValue(v * 1000, 2));
+        const yu = ys.map((v) => (v == null ? null : elevationValue(v, 1)));
 
         const opts = {
             width: el.clientWidth || 600,
@@ -1217,16 +1229,16 @@ export default (config = {}, labels = {}) => ({
             axes: [
                 {
                     stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 },
-                    values: (_u, vals) => vals.map((v) => v.toFixed(1) + ' ' + km),
+                    values: (_u, vals) => vals.map((v) => v.toFixed(1) + ' ' + du),
                 },
                 {
                     stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 }, size: 52,
-                    values: (_u, vals) => vals.map((v) => Math.round(v) + ' ' + m),
+                    values: (_u, vals) => vals.map((v) => Math.round(v) + ' ' + eu),
                 },
             ],
             series: [
-                { label: km },
-                { label: labels.elevation || 'Elevation', stroke: '#7066f5', fill: 'rgba(112,102,245,0.15)', width: 2, spanGaps: true, value: (_u, v) => (v == null ? '—' : Math.round(v) + ' ' + m) },
+                { label: du },
+                { label: labels.elevation || 'Elevation', stroke: '#7066f5', fill: 'rgba(112,102,245,0.15)', width: 2, spanGaps: true, value: (_u, v) => (v == null ? '—' : Math.round(v) + ' ' + eu) },
             ],
             hooks: {
                 setCursor: [(u) => {
@@ -1238,7 +1250,7 @@ export default (config = {}, labels = {}) => ({
                 }],
             },
         };
-        this._chart = new UPlot(opts, [xs, ys], el);
+        this._chart = new UPlot(opts, [xu, yu], el);
 
         this._chartAbort = new AbortController();
         el.addEventListener('mouseleave', () => this._hideHover(), { signal: this._chartAbort.signal });
