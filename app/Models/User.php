@@ -44,7 +44,47 @@ class User extends Authenticatable implements MustVerifyEmail
             'two_factor_confirmed_at' => 'datetime',
             'password' => 'hashed',
             'groups' => 'array',
+            'files_quota_mb' => 'integer',
+            'gallery_quota_mb' => 'integer',
+            'max_connected_devices' => 'integer',
         ];
+    }
+
+    /**
+     * Effective files storage quota in MB (0 = unlimited): the per-user override
+     * if set, else the workspace default. Single source of truth for every quota
+     * check (blob upload, usage endpoints, /me, admin list).
+     */
+    public function effectiveFilesQuotaMb(): int
+    {
+        return $this->files_quota_mb ?? self::configInt('files.quota_mb');
+    }
+
+    /** Effective gallery storage quota in MB (0 = unlimited). */
+    public function effectiveGalleryQuotaMb(): int
+    {
+        return $this->gallery_quota_mb ?? self::configInt('gallery.quota_mb');
+    }
+
+    /** Effective connected-device cap: per-user override, else workspace, else config. */
+    public function effectiveMaxDevices(): int
+    {
+        if ($this->max_connected_devices !== null) {
+            return $this->max_connected_devices;
+        }
+        $workspace = AppSettings::current()->max_connected_devices;
+
+        return is_numeric($workspace) && (int) $workspace > 0
+            ? (int) $workspace
+            : self::configInt('devices.max', 3);
+    }
+
+    /** A config value read as a non-negative int (config returns mixed). */
+    private static function configInt(string $key, int $default = 0): int
+    {
+        $value = config($key, $default);
+
+        return is_numeric($value) ? (int) $value : $default;
     }
 
     /** Whether the user holds the admin role. */

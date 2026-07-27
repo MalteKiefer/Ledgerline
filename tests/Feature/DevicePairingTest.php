@@ -108,7 +108,7 @@ class DevicePairingTest extends TestCase
 
         // The bearer authenticates the API.
         $this->getJson('/api/v1/me', ['Authorization' => 'Bearer '.$token])
-            ->assertOk()->assertJson(['user' => ['id' => $user->id]])->assertJsonStructure(['usage' => ['files', 'gallery']]);
+            ->assertOk()->assertJson(['user' => ['id' => $user->id]])->assertJsonStructure(['usage' => ['files', 'gallery', 'quota']]);
 
         // The pairing is spent — a second collect fails.
         $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertStatus(410);
