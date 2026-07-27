@@ -25,6 +25,9 @@ import { fetchDecryptWorker } from './blob-io';
 import { padBlob } from './padme';
 import { bucketize, shardHash, recommendedShardBits } from './shard';
 import { canonicalJSON } from './canonical-json';
+import { mergeArrayById } from './manifest-merge';
+
+const clone = (v) => (v == null ? v : structuredClone(v));
 
 export function makeShardedStore({ prefix, recordKey, collections }) {
     return {
@@ -42,6 +45,10 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
         degraded: false, // true when load() found a shard blob missing (404 after retries)
         _missingShards: 0, // count of shards that failed to load in a degraded load
         _missingRefs: [], // refs of the missing shards (kept in the root for recovery)
+        // Last loaded/committed record + collection set. A 409 rebase replays only
+        // our delta (base -> current) onto the winning server records so a concurrent
+        // writer's records in the SAME shard survive (merge-safety spec §2/§3b).
+        _base: null,
 
         _blank() {
             const b = { v: 3, [recordKey]: [] };
@@ -97,64 +104,70 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
 
         newId() { return _newId(); },
 
-        async load() {
+        // Fetch + decrypt the current server root into a plain state object WITHOUT
+        // touching this.data — reused by load() and the 409 rebase. Sets the store's
+        // shard descriptors + degraded flags (a load-like read). Returns
+        // { version, data:{v,recordKey:[],<collections>}, shards, shardBits, collDesc }.
+        async _fetchServerState() {
             const d = await getJson(prefix + '/store');
-            this.version = d.version ?? 0;
-            this._shards = [];
-            this._collDesc = {};
-            this._shardBits = 0;
             const root = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
-
-            // v3 only (clean slate — no v1/v2 read paths). Anything else = fresh store.
-            if (root.v === 3 && Array.isArray(root.shards)) {
-                this._shardBits = root.shardBits ?? 0;
-                this.degraded = false;
-                this._missingShards = 0;
-                this._missingRefs = [];
-                // Load + decrypt every record shard in parallel (immutable blob cache
-                // makes repeats instant). A 404 is RETRIED first: gallery/files blobs
-                // live on eventually-consistent object storage (B2), where a freshly
-                // written shard can 404 briefly — treating that transient miss as
-                // permanent would erase live data. Only after retries do we mark the
-                // store `degraded` and record the missing ref. Crucially the missing
-                // shard's descriptor is KEPT (not dropped): the root still points at
-                // it, so nothing is rewritten to erase the slot and a later blob
-                // restore re-links it. Writes are frozen while degraded (see flush()).
-                // Any OTHER failure (429/network/decrypt) THROWS — it may recover, and
-                // persisting a partial set would lose data for good.
-                const fetchShard = async (s) => {
-                    for (let attempt = 0; ; attempt++) {
-                        try {
-                            const b = await fetchDecryptWorker(prefix + '/raw', s.ref, s.key);
-                            return JSON.parse(new TextDecoder().decode(b));
-                        } catch (e) {
-                            if (e && e.status === 404) {
-                                if (attempt < 3) { await new Promise((r) => setTimeout(r, 500 * 2 ** attempt)); continue; }
-                                this.degraded = true; this._missingShards++; this._missingRefs.push(s.ref);
-                                return null;
-                            }
-                            throw e;
-                        }
-                    }
-                };
-                const parts = await Promise.all(root.shards.map((s) => fetchShard(s)));
-                const records = [];
-                for (const arr of parts) if (Array.isArray(arr)) records.push(...arr);
-                const data = { v: 3, [recordKey]: records };
-                for (const c of collections) {
-                    const arr = await this._loadCollection(root[c.rootRef], root[c.rootKey]);
-                    data[c.key] = arr;
-                    this._collDesc[c.key] = root[c.rootRef] ? { ref: root[c.rootRef], key: root[c.rootKey], hash: root[c.rootHash] } : null;
-                }
-                this.data = data;
-                // Keep EVERY shard descriptor from the root — including any that were
-                // missing — so the root is preserved intact (no self-erasing rewrite)
-                // and shardRefs() keeps the whole set alive for reconcile/recovery.
-                this._shards = root.shards.map((s) => ({ ...s }));
-            } else {
-                this.data = this._blank();
+            const state = { version: d.version ?? 0, data: this._blank(), shards: [], shardBits: 0, collDesc: {} };
+            if (! (root.v === 3 && Array.isArray(root.shards))) {
+                return state;
             }
+            state.shardBits = root.shardBits ?? 0;
+            this.degraded = false;
+            this._missingShards = 0;
+            this._missingRefs = [];
+            // Load + decrypt every record shard in parallel (immutable blob cache makes
+            // repeats instant). A 404 is RETRIED first: shards live on eventually-
+            // consistent object storage (B2) where a fresh write can 404 briefly —
+            // treating that as permanent would erase live data. Only after retries do
+            // we mark `degraded` and keep the missing shard's descriptor (no self-
+            // erasing rewrite). Any OTHER failure THROWS (may recover; a partial set
+            // would lose data for good).
+            const fetchShard = async (s) => {
+                for (let attempt = 0; ; attempt++) {
+                    try {
+                        const b = await fetchDecryptWorker(prefix + '/raw', s.ref, s.key);
+                        return JSON.parse(new TextDecoder().decode(b));
+                    } catch (e) {
+                        if (e && e.status === 404) {
+                            if (attempt < 3) { await new Promise((r) => setTimeout(r, 500 * 2 ** attempt)); continue; }
+                            this.degraded = true; this._missingShards++; this._missingRefs.push(s.ref);
+                            return null;
+                        }
+                        throw e;
+                    }
+                }
+            };
+            const parts = await Promise.all(root.shards.map((s) => fetchShard(s)));
+            const records = [];
+            for (const arr of parts) if (Array.isArray(arr)) records.push(...arr);
+            state.data[recordKey] = records;
+            for (const c of collections) {
+                state.data[c.key] = await this._loadCollection(root[c.rootRef], root[c.rootKey]);
+                state.collDesc[c.key] = root[c.rootRef] ? { ref: root[c.rootRef], key: root[c.rootKey], hash: root[c.rootHash] } : null;
+            }
+            state.shards = root.shards.map((s) => ({ ...s }));
+            return state;
+        },
 
+        // A snapshot of the current record + collection set, used as the rebase base.
+        _snapshotBase() {
+            const base = { [recordKey]: clone(this.data?.[recordKey] ?? []) };
+            for (const c of collections) base[c.key] = clone(this.data?.[c.key] ?? []);
+            return base;
+        },
+
+        async load() {
+            const s = await this._fetchServerState();
+            this.version = s.version;
+            this._shardBits = s.shardBits;
+            this._shards = s.shards;
+            this._collDesc = s.collDesc;
+            this.data = s.data;
+            this._base = this._snapshotBase();
             this.loaded = true;
             this.ready = true;
             return this.data;
@@ -162,7 +175,7 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
 
         reset() {
             this.data = null; this.version = 0; this.ready = false; this.loaded = false;
-            this._shards = []; this._collDesc = {}; this._shardBits = 0;
+            this._shards = []; this._collDesc = {}; this._shardBits = 0; this._base = null;
             this.degraded = false; this._missingShards = 0; this._missingRefs = []; clearTimeout(this._timer);
         },
 
@@ -259,30 +272,27 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                 });
                 const res = await fetch(prefix + '/store', { method: 'PUT', headers: jsonHeaders(), body });
                 if (res.status === 409) {
-                    // Another writer (e.g. the background ML pass, or a second tab)
-                    // advanced the version. Adopt it and re-seal our data (this tab holds
-                    // the authoritative in-memory copy). Back off a touch so a burst of
-                    // concurrent flushes doesn't livelock.
-                    const cur = await fetch(prefix + '/store', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
-                    this.version = cur.version ?? this.version;
-                    // Re-base our shard descriptors on the CURRENT server root before
-                    // re-sealing. Without this, _buildRoot would reuse this tab's cached
-                    // shard refs — some of which the winning writer may have superseded —
-                    // and a future save could reference a ref no longer live. Adopting
-                    // the server's descriptors means we only reuse blobs that are
-                    // provably still referenced, and only re-seal buckets we changed.
-                    try {
-                        const curRoot = cur.ciphertext ? window.Vault.openManifest(cur.ciphertext) : null;
-                        if (curRoot && curRoot.v === 3 && Array.isArray(curRoot.shards)) {
-                            this._shards = curRoot.shards.map((s) => ({ ...s }));
-                            this._shardBits = curRoot.shardBits ?? 0;
-                            for (const c of collections) {
-                                this._collDesc[c.key] = curRoot[c.rootRef]
-                                    ? { ref: curRoot[c.rootRef], key: curRoot[c.rootKey], hash: curRoot[c.rootHash] }
-                                    : null;
-                            }
-                        }
-                    } catch (e) { /* keep our own descriptors as a fallback */ }
+                    // A concurrent writer advanced the version. REBASE: fetch the winning
+                    // records and replay ONLY our delta (base -> current) onto them, per
+                    // record id — so a concurrent writer's records in the SAME shard
+                    // survive instead of being overwritten by our stale in-memory copy
+                    // (merge-safety spec §2/§3b). Merge in place to keep bound refs live.
+                    const server = await this._fetchServerState();
+                    // If the winning root is missing a shard (404), its record set is
+                    // INCOMPLETE — merging + re-sealing would drop those records. Abort
+                    // and surface: writes stay frozen until the blob is restored.
+                    if (this.degraded) throw new Error('store save conflict (degraded)');
+                    const merged = mergeArrayById(this._base?.[recordKey] ?? [], this.data[recordKey] || [], server.data[recordKey] || []);
+                    this.data[recordKey].splice(0, this.data[recordKey].length, ...merged);
+                    for (const c of collections) {
+                        if (! Array.isArray(this.data[c.key])) this.data[c.key] = [];
+                        const mc = mergeArrayById(this._base?.[c.key] ?? [], this.data[c.key], server.data[c.key] || []);
+                        this.data[c.key].splice(0, this.data[c.key].length, ...mc);
+                    }
+                    this.version = server.version;
+                    this._shards = server.shards;
+                    this._shardBits = server.shardBits;
+                    this._collDesc = server.collDesc;
                     if (retry < 8) { await new Promise((r) => setTimeout(r, Math.min(120 * 2 ** retry, 2000))); return this._doFlush(retry + 1); }
                     throw new Error('store save conflict');
                 } else if (res.status === 429 && retry < 8) {
@@ -295,6 +305,8 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
                     return this._doFlush(retry + 1);
                 } else if (res.ok) {
                     this.version = (await res.json()).version ?? this.version + 1;
+                    // Committed: our current record + collection set is the new rebase base.
+                    this._base = this._snapshotBase();
                 } else {
                     throw new Error('store save failed');
                 }

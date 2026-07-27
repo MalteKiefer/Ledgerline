@@ -10,7 +10,6 @@ import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, 
 import { normVec as _normVec, dotVec as _dotVec } from '../shared/vector-math';
 import { ocrImage } from '../shared/ocr';
 import { loadCodeMirror, cmModule } from '../shared/lazy-loaders';
-import { bootStore } from '../shared/zk-module';
 
 // Heroicon path for the folder chip glyph (24-outline folder).
 const FOLDER_ICON_PATH = 'M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z';
@@ -869,14 +868,17 @@ export default (config = {}, labels = {}) => ({
     // leaves the vault) and schedules a sealed save.
     async migrateAddNote(note) {
         try {
-            if (! await bootStore(this.$store, 'notes')) return false;
-            if (! window.LLModuleStore.notes.loaded) await window.LLModuleStore.notes.load();
-            window.LLModuleStore.notes.data.notes.unshift({
-                id: window.LLModuleStore.notes.newId(),
+            // Notes graduated to the sharded LLNotesStore (spec §3b).
+            const ns = window.LLNotesStore;
+            while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+            if (! this.$store.vault.unlocked) return false;
+            if (! ns.loaded) await ns.load();
+            ns.data.notes.unshift({
+                id: ns.newId(),
                 title: note.title || '', content: note.content || '',
                 tags: [], pinned: false, trashed: false, updated: new Date().toISOString(),
             });
-            window.LLModuleStore.notes.touch();
+            ns.touch();
             return true;
         } catch (e) {
             return false;
