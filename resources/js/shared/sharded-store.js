@@ -179,6 +179,29 @@ export function makeShardedStore({ prefix, recordKey, collections }) {
             this.degraded = false; this._missingShards = 0; this._missingRefs = []; clearTimeout(this._timer);
         },
 
+        // Proactively pull the latest server records and rebase our pending in-memory
+        // delta onto them IN PLACE (bound refs stay live) — like the 409 rebase but
+        // without a write. Used where a caller must observe another device's records
+        // before acting (e.g. invoice numbering must see invoices issued elsewhere to
+        // avoid a duplicate number). Best-effort + non-destructive: offline keeps the
+        // in-memory copy; a degraded (missing-shard) server view is never merged.
+        async refresh() {
+            if (! this.loaded || this.degraded) return;
+            let s;
+            try { s = await this._fetchServerState(); } catch (e) { return; }
+            if (this.degraded) return; // a shard went missing — freeze, don't merge a partial view
+            const base = this._base ?? this._snapshotBase();
+            const recs = mergeArrayById(base[recordKey] ?? [], this.data[recordKey] || [], s.data[recordKey] || []);
+            this.data[recordKey].splice(0, this.data[recordKey].length, ...recs);
+            for (const c of collections) {
+                const m = mergeArrayById(base[c.key] ?? [], this.data[c.key] || [], s.data[c.key] || []);
+                (this.data[c.key] ||= []).splice(0, this.data[c.key].length, ...m);
+            }
+            this.version = s.version;
+            this._shardBits = s.shardBits; this._shards = s.shards; this._collDesc = s.collDesc;
+            this._base = this._snapshotBase();
+        },
+
         touch() {
             clearTimeout(this._timer);
             this._timer = setTimeout(() => this.flush(), 800);

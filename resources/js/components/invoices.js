@@ -2,9 +2,45 @@
 import { zkModule, bootStore } from '../shared/zk-module';
 import { nextSeq, duplicateNumbers as dupNumbers } from '../shared/invoice-numbering';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
+import { jsonHeaders } from '../shared/api';
+
+// One-time dual-read migration from the old single-blob module store (/store/invoices)
+// to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
+// empty; after moving the invoices it clears the old monolith so a later wipe can't
+// re-import them. The old scalar `invoiceSeq` (last issued sequence) is preserved by
+// anchoring it onto the most recent numbered invoice — legacy invoices may lack a
+// per-invoice `seq`, and without this the next number could duplicate a legacy one
+// (GoBD). Best-effort: a failure just leaves the invoices in the old store.
+async function migrateInvoicesFromMonolith(ms) {
+    if ((ms.data.invoices?.length ?? 0) > 0) return; // already sharded
+    let d = null;
+    try {
+        d = await fetch('/store/invoices', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
+    } catch (e) { return; }
+    if (! d || ! d.ciphertext) return;
+    let old = null;
+    try { old = window.Vault.openManifest(d.ciphertext); } catch (e) { return; }
+    const list = Array.isArray(old.invoices) ? old.invoices : [];
+    const seqFloor = Number.isFinite(old.invoiceSeq) ? old.invoiceSeq : 0;
+    if (list.length === 0 && seqFloor <= 0) return;
+    if (seqFloor > 0) {
+        const numbered = list.filter((i) => i.number);
+        const covered = numbered.some((i) => Number.isFinite(i.seq) && i.seq >= seqFloor);
+        if (! covered && numbered.length) {
+            const anchor = numbered.reduce((a, b) => ((b.issueDate || '') > (a.issueDate || '') ? b : a));
+            anchor.seq = Math.max(Number.isFinite(anchor.seq) ? anchor.seq : 0, seqFloor);
+        }
+    }
+    ms.data.invoices.push(...list);
+    await ms.flush(); // persist into the sharded store first
+    try {
+        const empty = window.Vault.sealManifest({ v: 3, invoices: [], invoiceSeq: 0 });
+        await fetch('/store/invoices', { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ ciphertext: empty, version: d.version ?? 0 }) });
+    } catch (e) { /* the length guard still prevents re-import this session */ }
+}
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'invoices', map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
+    ...zkModule({ store: 'invoices', instance: () => window.LLInvoicesStore, afterLoad: (self, ms) => migrateInvoicesFromMonolith(ms), map: { invoices: 'invoices' }, onLock: (self) => { self.view = 'list'; self.current = null; } }),
 
     company: config.company || {},
     _labelsByLang: config.labelsByLang || {},
@@ -37,7 +73,7 @@ export default (config = {}, labels = {}) => ({
     newInvoice() {
         const issue = this._today();
         const inv = {
-            id: window.LLModuleStore.invoices.newId(),
+            id: window.LLInvoicesStore.newId(),
             number: null,
             status: 'draft',
             issueDate: issue,
@@ -227,16 +263,16 @@ export default (config = {}, labels = {}) => ({
     // mergeable scalar; the scalar is kept as a floor hint.
     _assignNumber(inv) {
         const floor = parseInt(this.company.next_number, 10) || 1;
-        const seq = nextSeq(this.invoices, window.LLModuleStore.invoices.data.invoiceSeq || 0, floor);
-        inv.seq = seq;
-        window.LLModuleStore.invoices.data.invoiceSeq = seq;
+        const seq = nextSeq(this.invoices, 0, floor);
+        inv.seq = seq; // the sequence is stored on the invoice; no mergeable scalar
         inv.number = this._formatNumber(this.company.number_format, seq, inv.issueDate);
     },
     // Pull invoices issued on other devices before assigning a number, so two devices
-    // never mint the same number. Best-effort (offline uses the in-memory set).
+    // never mint the same number. Best-effort (offline uses the in-memory set); the
+    // sharded store rebase-merges records in place so bound refs stay live.
     async _refresh() {
-        await window.LLModuleStore.invoices.refresh();
-        this.invoices = window.LLModuleStore.invoices.data.invoices;
+        await window.LLInvoicesStore.refresh();
+        this.invoices = window.LLInvoicesStore.data.invoices;
     },
     // Numbers assigned to more than one invoice — a GoBD violation the owner MUST fix
     // (a concurrent finalize on two offline devices is the only way to reach it).

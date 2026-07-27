@@ -19,6 +19,8 @@ use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\InviteLinkController;
+use App\Http\Controllers\InvoiceBlobController;
+use App\Http\Controllers\InvoicesStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
@@ -241,6 +243,13 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('notes.raw');
     Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('notes.raw-batch');
     Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('notes.blobs.reconcile');
+
+    Route::get('/invoices/store', [InvoicesStoreController::class, 'show'])->name('invoices.store.show');
+    Route::put('/invoices/store', [InvoicesStoreController::class, 'save'])->middleware('throttle:600,1')->name('invoices.store.save');
+    Route::post('/invoices/upload', [InvoiceBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('invoices.upload');
+    Route::get('/invoices/raw/{blob}', [InvoiceBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('invoices.raw');
+    Route::post('/invoices/raw-batch', [InvoiceBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('invoices.raw-batch');
+    Route::post('/invoices/blobs/reconcile', [InvoiceBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('invoices.blobs.reconcile');
 
     // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
     Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->name('passwords.store.show');
