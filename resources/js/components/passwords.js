@@ -3,6 +3,7 @@ import { zkModule } from '../shared/zk-module';
 import { PW_WORDS } from '../shared/wordlists';
 import { parseCsv as pwParseCsv, detectCsv as pwDetectCsv, cardBrand as pwCardBrand, totpSecret as pwTotpSecret, totp as pwTotp, pwScore as pwStrength } from '../passwords-util';
 import { Vault, VaultShareCrypto } from '../vault';
+import { mergeManifest } from '../shared/manifest-merge';
 import { apiRequest, jsonHeaders, getJson, postForm } from '../shared/api';
 import { estimateStrength } from '../shared/strength';
 import { buildBitwardenJson, buildCsv, encryptExport } from '../shared/vault-export';
@@ -30,13 +31,14 @@ export const TYPES = {
 };
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'passwords', map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
+    ...zkModule({ store: 'passwords', map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; self._sharedBase = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
 
     items: [],
     folders: [],
     sharedVaults: [],  // [{id, name, role, shared: true, vaultId}]
     sharedItems: {},   // map of vaultId -> items array
     _sharedVersion: {}, // map of vaultId -> version number
+    _sharedBase: {}, // map of vaultId -> last loaded/committed manifest {name, items} (rebase base)
     _sharedKeys: {}, // map of vaultId -> Uint8Array vault key (in-memory only)
     view: 'list', // list | trash
     current: null, // item being viewed (live ref into items)
@@ -258,6 +260,9 @@ export default (config = {}, labels = {}) => ({
                     });
                     this.sharedItems[m.vault_id] = ((manifest && manifest.items) || []).map((item) => ({ ...item, shared: true, vaultId: m.vault_id }));
                     this._sharedVersion[m.vault_id] = store.version;
+                    // Rebase base: the manifest we just loaded. A 409 replays only our
+                    // delta (base→current) onto the winning copy — never overwrites it.
+                    this._sharedBase[m.vault_id] = structuredClone({ name: (manifest && manifest.name) || 'Shared Vault', items: this.sharedItems[m.vault_id] });
                 } catch (e) {
                     console.warn('[shared vault] failed to load vault', m.vault_id, e);
                 }
@@ -267,72 +272,64 @@ export default (config = {}, labels = {}) => ({
         }
     },
 
-    // Seal and PUT the shared vault manifest with optimistic concurrency.
-    // On 409 the server body contains the current sealed manifest + version;
-    // we re-apply the pending mutation and retry once before surfacing an error.
-    async _saveVault(vaultId, pendingMutation) {
+    // Seal and PUT the shared vault manifest with optimistic concurrency. On 409 we
+    // REBASE: fetch the winning manifest and replay ONLY our delta (base→current)
+    // onto it via mergeManifest, then retry — up to 5 times. This preserves a
+    // concurrent editor's items instead of overwriting them with our stale copy
+    // (the module-store data-loss class). 429 honours Retry-After (no budget cost).
+    async _saveVault(vaultId) {
         const vault = this.sharedVaults.find((sv) => sv.id === vaultId);
         const vkBytes = this._sharedKeys && this._sharedKeys[vaultId];
         if (! vault || ! vkBytes) throw new Error('Vault key not available for ' + vaultId);
-        const manifest = { name: vault.name, items: this.sharedItems[vaultId] || [] };
-        const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
-        const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._sharedVersion[vaultId] });
-        let res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
-        // On 429, honour Retry-After and retry once (mirrors personal module-store flush behaviour).
-        if (res.status === 429) {
-            const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
-            await this._sleep((isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000);
-            res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+
+        let ok = false;
+        let conflicts = 0;
+        while (! ok && conflicts < 5) {
+            const ours = { name: vault.name, items: this.sharedItems[vaultId] || [] };
+            const sealed = await VaultShareCrypto.sealVaultManifest(ours, vkBytes);
+            const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._sharedVersion[vaultId] });
+            const res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+            if (res.ok) {
+                this._sharedVersion[vaultId] = (await res.json()).version;
+                this._sharedBase[vaultId] = structuredClone(ours);
+                ok = true;
+            } else if (res.status === 429) {
+                const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+                await this._sleep((isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000);
+            } else if (res.status === 409) {
+                conflicts++;
+                const data = await res.json();
+                const serverManifest = data.sealed_manifest
+                    ? await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes)
+                    : { name: vault.name, items: [] };
+                const server = {
+                    name: serverManifest.name ?? vault.name,
+                    items: (serverManifest.items || []).map((i) => ({ ...i, shared: true, vaultId })),
+                };
+                const merged = mergeManifest(this._sharedBase[vaultId] || server, ours, server);
+                const items = (merged.items || []).map((i) => ({ ...i, shared: true, vaultId }));
+                this.sharedItems = { ...this.sharedItems, [vaultId]: items };
+                vault.name = merged.name ?? vault.name;
+                this._sharedVersion[vaultId] = data.version;
+                // Re-point this.current so it tracks the merged array element.
+                if (this.current && this.current.vaultId === vaultId) {
+                    this.current = items.find((i) => i.id === this.current.id) || null;
+                }
+            } else {
+                throw new Error('Save vault failed: ' + res.status);
+            }
         }
-        if (res.ok) {
-            const { version } = await res.json();
-            this._sharedVersion[vaultId] = version;
-            return;
-        }
-        if (res.status === 409 && pendingMutation) {
-            // Server has a newer version — merge and retry once.
-            const data = await res.json();
-            const serverManifest = await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes);
-            let serverItems = (serverManifest.items || []).map((item) => ({ ...item, shared: true, vaultId }));
-            if (pendingMutation.op === 'upsert') {
-                const idx = serverItems.findIndex((i) => i.id === pendingMutation.item.id);
-                if (idx >= 0) serverItems[idx] = pendingMutation.item; else serverItems.push(pendingMutation.item);
-            } else if (pendingMutation.op === 'delete') {
-                serverItems = serverItems.filter((i) => i.id !== pendingMutation.item.id);
-            }
-            this.sharedItems = { ...this.sharedItems, [vaultId]: serverItems };
-            this._sharedVersion[vaultId] = data.version;
-            // Re-point this.current if it belongs to this vault so it tracks the merged array element.
-            if (this.current && this.current.vaultId === vaultId) {
-                this.current = serverItems.find((i) => i.id === this.current.id) || null;
-            }
-            const sealed2 = await VaultShareCrypto.sealVaultManifest(
-                { name: vault.name, items: serverItems },
-                vkBytes,
-            );
-            const res2 = await fetch('/vaults/' + vaultId + '/store', {
-                method: 'PUT',
-                headers: jsonHeaders(),
-                body: JSON.stringify({ sealed_manifest: sealed2, expected_version: data.version }),
-            });
-            if (res2.ok) {
-                const { version } = await res2.json();
-                this._sharedVersion[vaultId] = version;
-                return;
-            }
-            // Second conflict — surface error and reload vault state.
+        if (! ok) {
             window.llToast(labels.saveConflict || '');
             await this._loadSharedVaults();
-            return;
         }
-        throw new Error('Save vault failed: ' + res.status);
     },
 
     // Route a mutation through the correct save path.
     // Shared items go to _saveVault(); personal items go to _save().
     async _persist(item, op = 'upsert') {
         if (item && item.shared && item.vaultId) {
-            return this._saveVault(item.vaultId, { op, item });
+            return this._saveVault(item.vaultId);
         }
         return this._save();
     },
@@ -490,7 +487,7 @@ export default (config = {}, labels = {}) => ({
             this.current = item;
             this.draft = null; this.reveal = {};
             this._refreshWifiQr(item);
-            await this._saveVault(item.vaultId, { op: 'upsert', item });
+            await this._saveVault(item.vaultId);
             if (item.type === 'login') this._fetchIcon(item);
             return;
         }
@@ -705,7 +702,7 @@ export default (config = {}, labels = {}) => ({
             const arr = (this.sharedItems[x.vaultId] || []).filter((i) => i.id !== x.id);
             this.sharedItems = { ...this.sharedItems, [x.vaultId]: arr };
             if (this.current === x) this.current = null;
-            try { await this._saveVault(x.vaultId, { op: 'delete', item: x }); } catch (e) { window.llToast(labels.saveFailed || ''); }
+            try { await this._saveVault(x.vaultId); } catch (e) { window.llToast(labels.saveFailed || ''); }
             this._autoSelect();
             return;
         }

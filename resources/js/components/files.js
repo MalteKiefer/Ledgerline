@@ -1,6 +1,7 @@
 // Files module (nestable ZK file browser). Extracted from app.js.
 import { apiRequest, jsonHeaders, postForm, getJson } from '../shared/api';
 import { Vault, VaultShareCrypto } from '../vault';
+import { mergeManifest } from '../shared/manifest-merge';
 import { fetchDecrypt, fetchBlobBuffer, queueBlobDelete } from '../shared/blob-io';
 import { collectSubtree } from './files-subtree';
 import { padBlob, padmeSize } from '../shared/padme';
@@ -73,6 +74,7 @@ export default (config = {}, labels = {}) => ({
     sharedTree: {},          // {vaultId: {folders: [], files: []}}
     _folderKeys: {},         // vaultId → Uint8Array VK_folder (in-memory only, never persisted)
     _folderVersion: {},      // vaultId → optimistic-lock version
+    _folderBase: {},         // vaultId → last loaded/committed manifest {name, folders, files} (rebase base)
     pendingFolderInvites: [], // [{vault_id, member_id, role, wrapped_vault_key}]
     activeShared: null,      // vaultId currently browsed, or null for personal
 
@@ -383,6 +385,8 @@ export default (config = {}, labels = {}) => ({
                     }
                     this._folderVersion[m.vault_id] = store.version || 0;
                     this.sharedTree[m.vault_id] = { folders: manifest.folders || [], files: manifest.files || [] };
+                    // Rebase base: a 409 replays only our delta onto the winning copy.
+                    this._folderBase[m.vault_id] = structuredClone({ name: manifest.name || '', folders: this.sharedTree[m.vault_id].folders, files: this.sharedTree[m.vault_id].files });
                     // Avoid duplicates if _loadSharedFolders is somehow called twice.
                     if (this.sharedFolders.some((sf) => sf.vaultId === m.vault_id)) continue;
                     active.push({
@@ -403,77 +407,49 @@ export default (config = {}, labels = {}) => ({
         }
     },
 
-    // Seal and PUT the shared folder manifest with optimistic concurrency.
-    // On 409 the server body contains the current sealed manifest + version;
-    // we re-apply the pending mutation and retry once before surfacing an error.
-    // mutation = { op: 'upsertFile'|'deleteFile'|'upsertFolder'|'deleteFolder', item }
-    //          | { op: 'deleteFiles', ids: string[], folderIds?: string[] }
-    async _saveFolder(vaultId, mutation) {
+    // Seal and PUT the shared folder manifest with optimistic concurrency. On 409 we
+    // REBASE: fetch the winning manifest and replay ONLY our delta (base→current)
+    // onto it via mergeManifest (folders + files merged per record, name preserved),
+    // then retry — up to 5 times. This preserves a concurrent editor's files/folders
+    // instead of overwriting them with our stale copy (the module-store data-loss
+    // class). The `mutation` argument is now vestigial — the delta is derived from
+    // the tracked base, so a caller that batched several edits keeps all of them.
+    async _saveFolder(vaultId, _mutation) {
         const entry = this.sharedFolders.find((sf) => sf.vaultId === vaultId);
         const vkBytes = this._folderKeys && this._folderKeys[vaultId];
         if (! entry || ! vkBytes) throw new Error('Vault key not available for ' + vaultId);
-        const tree = this.sharedTree[vaultId] || { folders: [], files: [] };
-        const manifest = { name: entry.name, folders: tree.folders || [], files: tree.files || [] };
-        const sealed = await VaultShareCrypto.sealVaultManifest(manifest, vkBytes);
-        const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._folderVersion[vaultId] });
-        let res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
-        // On 429, honour Retry-After and retry once (mirrors LLFilesStore.flush behaviour).
-        if (res.status === 429) {
-            const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
-            await new Promise((r) => setTimeout(r, (isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000));
-            res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
-        }
-        if (res.ok) {
-            const { version } = await res.json();
-            this._folderVersion[vaultId] = version;
-            return;
-        }
-        if (res.status === 409 && mutation) {
-            // Server has a newer version — merge and retry once.
-            // Fix 2: use the server manifest's name so a concurrent rename is not overwritten.
-            const data = await res.json();
-            const serverManifest = await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes);
-            let serverFolders = serverManifest.folders || [];
-            let serverFiles = serverManifest.files || [];
-            const serverName = serverManifest.name ?? entry.name;
-            if (mutation.op === 'upsertFolder') {
-                const idx = serverFolders.findIndex((f) => f.id === mutation.item.id);
-                if (idx >= 0) serverFolders[idx] = mutation.item; else serverFolders.push(mutation.item);
-            } else if (mutation.op === 'deleteFolder') {
-                serverFolders = serverFolders.filter((f) => f.id !== mutation.item.id);
-            } else if (mutation.op === 'upsertFile') {
-                const idx = serverFiles.findIndex((f) => f.id === mutation.item.id);
-                if (idx >= 0) serverFiles[idx] = mutation.item; else serverFiles.push(mutation.item);
-            } else if (mutation.op === 'deleteFile') {
-                serverFiles = serverFiles.filter((f) => f.id !== mutation.item.id);
-            } else if (mutation.op === 'deleteFiles') {
-                // Fix 1: plural delete — remove exactly the specified file ids (and folder ids if present).
-                const fileIdSet = new Set(mutation.ids ?? []);
-                const folderIdSet = new Set(mutation.folderIds ?? []);
-                serverFiles = serverFiles.filter((f) => ! fileIdSet.has(f.id));
-                if (folderIdSet.size) serverFolders = serverFolders.filter((f) => ! folderIdSet.has(f.id));
+
+        let ok = false;
+        let conflicts = 0;
+        while (! ok && conflicts < 5) {
+            const tree = this.sharedTree[vaultId] || { folders: [], files: [] };
+            const ours = { name: entry.name, folders: tree.folders || [], files: tree.files || [] };
+            const sealed = await VaultShareCrypto.sealVaultManifest(ours, vkBytes);
+            const body = JSON.stringify({ sealed_manifest: sealed, expected_version: this._folderVersion[vaultId] });
+            const res = await fetch('/vaults/' + vaultId + '/store', { method: 'PUT', headers: jsonHeaders(), body });
+            if (res.ok) {
+                this._folderVersion[vaultId] = (await res.json()).version;
+                this._folderBase[vaultId] = structuredClone(ours);
+                ok = true;
+            } else if (res.status === 429) {
+                const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+                await new Promise((r) => setTimeout(r, (isNaN(retryAfter) || retryAfter <= 0 ? 5 : Math.min(retryAfter, 60)) * 1000));
+            } else if (res.status === 409) {
+                conflicts++;
+                const data = await res.json();
+                const serverManifest = data.sealed_manifest
+                    ? await VaultShareCrypto.openVaultManifest(data.sealed_manifest, vkBytes)
+                    : { name: entry.name, folders: [], files: [] };
+                const server = { name: serverManifest.name ?? entry.name, folders: serverManifest.folders || [], files: serverManifest.files || [] };
+                const merged = mergeManifest(this._folderBase[vaultId] || server, ours, server);
+                this.sharedTree = { ...this.sharedTree, [vaultId]: { folders: merged.folders || [], files: merged.files || [] } };
+                entry.name = merged.name ?? entry.name;
+                this._folderVersion[vaultId] = data.version;
+            } else {
+                throw new Error('Save shared folder failed: ' + res.status);
             }
-            this.sharedTree = { ...this.sharedTree, [vaultId]: { folders: serverFolders, files: serverFiles } };
-            this._folderVersion[vaultId] = data.version;
-            const sealed2 = await VaultShareCrypto.sealVaultManifest(
-                { name: serverName, folders: serverFolders, files: serverFiles },
-                vkBytes,
-            );
-            const res2 = await fetch('/vaults/' + vaultId + '/store', {
-                method: 'PUT',
-                headers: jsonHeaders(),
-                body: JSON.stringify({ sealed_manifest: sealed2, expected_version: data.version }),
-            });
-            if (res2.ok) {
-                const { version } = await res2.json();
-                this._folderVersion[vaultId] = version;
-                return;
-            }
-            // Second conflict — surface error and reload folder state.
-            await this._loadSharedFolders();
-            return;
         }
-        throw new Error('Save shared folder failed: ' + res.status);
+        if (! ok) await this._loadSharedFolders();
     },
 
     // All descendant folder ids of the given folders (inclusive of the roots).
