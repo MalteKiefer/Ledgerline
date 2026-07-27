@@ -9,6 +9,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -57,26 +58,56 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function effectiveFilesQuotaMb(): int
     {
-        return $this->files_quota_mb ?? self::configInt('files.quota_mb');
+        return $this->files_quota_mb
+            ?? $this->maxGroupLimit('files_quota_mb')
+            ?? self::configInt('files.quota_mb');
     }
 
     /** Effective gallery storage quota in MB (0 = unlimited). */
     public function effectiveGalleryQuotaMb(): int
     {
-        return $this->gallery_quota_mb ?? self::configInt('gallery.quota_mb');
+        return $this->gallery_quota_mb
+            ?? $this->maxGroupLimit('gallery_quota_mb')
+            ?? self::configInt('gallery.quota_mb');
     }
 
-    /** Effective connected-device cap: per-user override, else workspace, else config. */
+    /** Effective connected-device cap: per-user override, else group, else workspace, else config. */
     public function effectiveMaxDevices(): int
     {
         if ($this->max_connected_devices !== null) {
             return $this->max_connected_devices;
+        }
+        $group = $this->maxGroupLimit('max_connected_devices');
+        if ($group !== null) {
+            return $group;
         }
         $workspace = AppSettings::current()->max_connected_devices;
 
         return is_numeric($workspace) && (int) $workspace > 0
             ? (int) $workspace
             : self::configInt('devices.max', 3);
+    }
+
+    /**
+     * The most generous limit set by any of the user's groups for a given column,
+     * or null if none of their groups sets it. "Most generous" = the highest value
+     * (per the group-limits policy: joining a group only ever raises capacity).
+     */
+    private function maxGroupLimit(string $column): ?int
+    {
+        $values = $this->memberGroups
+            ->pluck($column)
+            ->filter(static fn ($v): bool => is_numeric($v))
+            ->map(static fn ($v): int => (int) $v);
+
+        return $values->isEmpty() ? null : (int) $values->max();
+    }
+
+    /** Groups this user belongs to (limit templates + shareable targets). */
+    /** @return BelongsToMany<Group, $this> */
+    public function memberGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(Group::class);
     }
 
     /** A config value read as a non-negative int (config returns mixed). */

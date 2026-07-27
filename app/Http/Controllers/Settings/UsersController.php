@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
 use App\Models\FileBlob;
 use App\Models\GalleryBlob;
+use App\Models\Group;
 use App\Models\User;
 use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
@@ -33,7 +34,7 @@ class UsersController extends Controller
 
     public function index(Request $request): View
     {
-        $users = User::orderBy('id')->get();
+        $users = User::with('memberGroups')->orderBy('id')->get();
 
         // Per-user storage usage (files + gallery bytes), shown for every user
         // regardless of whether they have a quota set. One grouped query each.
@@ -56,6 +57,7 @@ class UsersController extends Controller
         return view('settings.users.index', [
             'users' => $users,
             'usage' => $usage,
+            'groups' => Group::orderBy('name')->get(),
             'settings' => AppSettings::current(),
             'mailEnabled' => (bool) AppSettings::current()->mail_enabled,
         ]);
@@ -78,6 +80,7 @@ class UsersController extends Controller
             'password' => Hash::make($password !== '' ? $password : Str::random(48)),
             'email_verified_at' => now(),
         ] + $this->privilegedFields($request))->save();
+        $user->memberGroups()->sync($this->groupIds($request));
 
         if ($password === '' && AppSettings::current()->mail_enabled) {
             Password::broker()->sendResetLink(['email' => $email]);
@@ -99,6 +102,7 @@ class UsersController extends Controller
             'name' => $request->string('name')->value(),
             'email' => $request->string('email')->value(),
         ] + $this->privilegedFields($request))->save();
+        $user->memberGroups()->sync($this->groupIds($request));
 
         return $this->savedSettings('users', 'settings.users', 'settings.users_saved');
     }
@@ -170,7 +174,28 @@ class UsersController extends Controller
             'files_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'groups' => ['nullable', 'array'],
+            'groups.*' => ['integer', 'exists:groups,id'],
         ]);
+    }
+
+    /**
+     * The submitted group ids (membership). Absent = no change vs cleared; the form
+     * always posts the full set, so an empty array clears membership.
+     *
+     * @return list<int>
+     */
+    private function groupIds(Request $request): array
+    {
+        $ids = $request->input('groups', []);
+        if (! is_array($ids)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0,
+            $ids,
+        ), static fn (int $v): bool => $v > 0));
     }
 
     /**
