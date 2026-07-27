@@ -64,6 +64,19 @@ class ModuleStoreController extends Controller
     }
 
     /**
+     * Forensic trail for module-store writes: every persisted root logs its version +
+     * ciphertext sha256 + byte length (blob_audit_log). These stores are blobless (no
+     * shards), but the write trail alone lets `blob-audit:show --module <m>` pinpoint an
+     * overwrite that dropped records — a ciphertext suddenly SMALLER than a prior
+     * version is the smoking gun. ZK-safe: the hash is over ciphertext, sizes are of
+     * the padded blob; no plaintext, never the key. (Reads are not logged — volume.)
+     */
+    protected function manifestAuditModule(Request $request): ?string
+    {
+        return 'store:'.(string) $request->route('module');
+    }
+
+    /**
      * @return array<string, int|string>
      */
     protected function manifestKey(Request $request): array
