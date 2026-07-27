@@ -66,10 +66,10 @@
           {{-- GoBD: unique, gapless numbers. If a concurrent finalize on two devices ever
                produced a duplicate number, alert the owner prominently to correct it. --}}
           <template x-if="duplicateNumbers.length">
-            <div class="mt-4 rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            <x-alert variant="error" class="mt-4">
               <p class="font-semibold">{{ __('invoices.dup_warning_title') }}</p>
               <p class="mt-0.5 text-xs" x-text="'{{ __('invoices.dup_warning_body') }} ' + duplicateNumbers.join(', ')"></p>
-            </div>
+            </x-alert>
           </template>
 
           @unless ($s->company_name)

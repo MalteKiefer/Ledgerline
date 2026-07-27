@@ -3,9 +3,7 @@
         <h1 class="text-center text-xl font-semibold text-gray-900 dark:text-gray-100">{{ __('auth_ui.forgot_title') }}</h1>
 
         @if (! \App\Models\AppSettings::current()->mail_enabled)
-            <div class="mt-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300" role="alert">
-                {{ __('auth_ui.mail_disabled') }}
-            </div>
+            <x-alert variant="warning" class="mt-4 text-xs" role="alert">{{ __('auth_ui.mail_disabled') }}</x-alert>
         @else
             <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">{{ __('auth_ui.forgot_intro') }}</p>
 

@@ -19,7 +19,7 @@
         @endif
 
         @if (! $mailEnabled)
-            <div class="mt-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">{{ __('settings.users_mail_off') }}</div>
+            <x-alert variant="warning" class="mt-4 text-xs">{{ __('settings.users_mail_off') }}</x-alert>
         @endif
 
         @if (session('invite_url'))
