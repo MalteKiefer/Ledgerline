@@ -14,32 +14,32 @@ use Illuminate\Support\Str;
 class UserFactory extends Factory
 {
     /**
-     * Define the model's default state.
-     *
-     * Users originate from Pocket-ID, so every generated user carries a unique
-     * OIDC subject identifier and no local password.
+     * Define the model's default state — a first-party email+password user.
      *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
         return [
-            'oidc_sub' => (string) Str::uuid(),
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
+            'password' => 'password', // hashed via the model's 'password' => 'hashed' cast
+            'role' => 'user',
             'avatar' => null,
             'email_verified_at' => now(),
             'remember_token' => Str::random(10),
         ];
     }
 
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
+    /** An admin user (may manage workspace-wide settings). */
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes): array => ['role' => 'admin']);
+    }
+
+    /** Indicate that the model's email address should be unverified. */
     public function unverified(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->state(fn (array $attributes): array => ['email_verified_at' => null]);
     }
 }

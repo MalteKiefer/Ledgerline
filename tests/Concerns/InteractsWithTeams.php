@@ -19,4 +19,10 @@ trait InteractsWithTeams
 
         return $user;
     }
+
+    /** Sign in as an admin — for tests that exercise workspace-admin routes. */
+    protected function signInAdmin(?User $user = null): User
+    {
+        return $this->signIn($user ?? User::factory()->admin()->create());
+    }
 }

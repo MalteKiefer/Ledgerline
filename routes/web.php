@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
-use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
@@ -40,6 +39,7 @@ use App\Http\Controllers\Settings\SecurityController as SettingsSecurityControll
 use App\Http\Controllers\Settings\SecurityLogController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
+use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
 use App\Http\Controllers\SharedFolderBlobController;
 use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
@@ -71,13 +71,8 @@ Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
     Route::get('/blob/{ref}', [PublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
 });
 
-// Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
-// endpoints are throttled to blunt handshake replay/hammering.
-Route::middleware('guest')->group(function (): void {
-    Route::view('/login', 'auth.login')->name('login');
-    Route::get('/auth/redirect', [PocketIdController::class, 'redirect'])->middleware('throttle:30,1')->name('auth.redirect');
-    Route::get('/auth/callback', [PocketIdController::class, 'callback'])->middleware('throttle:30,1')->name('auth.callback');
-});
+// First-party auth (login, registration, password reset, email verification,
+// two-factor) is owned by Laravel Fortify — see FortifyServiceProvider.
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
@@ -91,6 +86,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile/devices', [ProfileController::class, 'devices'])->name('profile.devices');
     Route::get('/profile/sessions', [ProfileController::class, 'sessions'])->name('profile.sessions');
     Route::get('/profile/encryption', [ProfileController::class, 'encryption'])->name('profile.encryption');
+    Route::get('/profile/security', [ProfileController::class, 'security'])->name('profile.security');
     Route::get('/profile/appearance', [ProfileController::class, 'appearance'])->name('profile.appearance');
     Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
     Route::get('/profile/danger', [ProfileController::class, 'danger'])->name('profile.danger');
@@ -133,8 +129,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->middleware('throttle:20,1')->name('settings.paperless.test');
     Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->middleware('throttle:20,1')->name('settings.paperless.sync');
 
-    // Non-personal, workspace-wide settings — restricted to the Pocket-ID admin
-    // group (config services.pocketid.admin_group; open to all when unset).
+    // Non-personal, workspace-wide settings — restricted to users with the admin
+    // role (see User::managesGlobalSettings / the manage-global-settings gate).
     Route::middleware('can:manage-global-settings')->group(function (): void {
         // Workspace-wide file limits (quota, max upload, orphan grace). The
         // per-user version-keep count stays on settings.files.edit (profile hub).
@@ -147,13 +143,17 @@ Route::middleware('auth')->group(function (): void {
         // Security log: filterable audit trail + CSV/JSON export (admin only).
         Route::get('/settings/security-log', [SecurityLogController::class, 'index'])->name('settings.security-log');
 
+        // User management: list, create, edit role + per-user limits, reset, delete.
+        Route::get('/settings/users', [SettingsUsersController::class, 'index'])->name('settings.users');
+        Route::post('/settings/users', [SettingsUsersController::class, 'store'])->name('settings.users.store');
+        Route::put('/settings/users/{user}', [SettingsUsersController::class, 'update'])->name('settings.users.update');
+        Route::post('/settings/users/{user}/reset-password', [SettingsUsersController::class, 'resetPassword'])->middleware('throttle:10,1')->name('settings.users.reset');
+        Route::delete('/settings/users/{user}', [SettingsUsersController::class, 'destroy'])->name('settings.users.destroy');
+        Route::post('/settings/registration', [SettingsUsersController::class, 'registration'])->name('settings.registration');
+
         // Vault lock policy (trusted-device days + public-computer idle timeout).
         Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
         Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
-
-        // Company profile printed on invoices (name, address, tax ids, bank, logo).
-        Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
-        Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
 
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
@@ -177,7 +177,7 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/backup/runs/{run}/cancel', [SettingsBackupController::class, 'cancelRun'])->name('settings.backup.runs.cancel');
     });
 
-    Route::post('/logout', [PocketIdController::class, 'logout'])->name('logout');
+    // POST /logout is owned by Fortify (AuthenticatedSessionController@destroy).
 
     // Zero-knowledge gallery: the client holds all keys and renders entirely
     // from the sealed index + decrypted blobs. The server ships only the shell
@@ -281,9 +281,11 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
     // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
     Route::view('/health', 'health.index')->name('health.index');
-    // Invoices: zero-knowledge, records in the opaque /store manifest. The company
-    // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
+    // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
+    // company profile (printed on invoices) is plaintext in the user's settings.
     Route::view('/invoices', 'invoices.index')->name('invoices.index');
+    Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
+    Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
     // Contacts: zero-knowledge, records in the opaque /store manifest; only the
     // optional avatar images are opaque content blobs (contacts/{blob}).

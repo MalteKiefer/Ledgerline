@@ -16,7 +16,7 @@ class SecuritySettingsTest extends TestCase
 
     public function test_admin_can_set_the_vault_lock_policy(): void
     {
-        $this->signIn(); // single-user install = admin
+        $this->signInAdmin(); // single-user install = admin
 
         $this->get(route('settings.security.edit'))->assertOk();
 
@@ -34,7 +34,7 @@ class SecuritySettingsTest extends TestCase
 
     public function test_it_validates_the_ranges(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->put(route('settings.security.update'), [
             'vault_remember_days' => 0,
             'vault_public_idle_minutes' => 99999,

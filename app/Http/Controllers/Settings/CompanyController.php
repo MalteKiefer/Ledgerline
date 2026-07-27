@@ -6,7 +6,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
-use App\Models\AppSettings;
+use App\Models\UserSetting;
 use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -14,21 +14,22 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Company profile for invoices (admin). Stored in the clear in AppSettings — it
- * is the workspace owner's own business identity that prints on every invoice,
- * not customer data (which stays zero-knowledge in the client manifest).
+ * Per-user company profile for invoices. Each user invoices under their OWN
+ * business identity + number sequence (stored in the clear in the user's settings
+ * row — it is their own business identity that prints on every invoice, not
+ * customer data, which stays zero-knowledge in the client manifest).
  */
 class CompanyController extends Controller
 {
     use RedirectsToSettings;
 
     /** Logo lives on the shared blob disk (S3), unencrypted like other assets;
-     *  served only to authenticated users. */
+     *  served only to the owning user. */
     private const LOGO_DIR = 'company';
 
-    public function edit(): View
+    public function edit(Request $request): View
     {
-        return view('settings.company.edit', ['s' => AppSettings::current()]);
+        return view('settings.company.edit', ['s' => UserSetting::for($this->requireUser($request)->id)]);
     }
 
     public function update(Request $request): RedirectResponse
@@ -77,7 +78,7 @@ class CompanyController extends Controller
             }
         }
 
-        $settings = AppSettings::current();
+        $settings = UserSetting::for($this->requireUser($request)->id);
 
         $disk = BlobStore::disk();
 
@@ -101,11 +102,11 @@ class CompanyController extends Controller
         return $this->savedSettings('company', 'settings.company.edit', 'settings.company_saved');
     }
 
-    /** Stream the stored company logo (used by the invoice view + print/PDF). */
-    public function logo(): StreamedResponse
+    /** Stream the current user's stored company logo (invoice view + print/PDF). */
+    public function logo(Request $request): StreamedResponse
     {
         $disk = BlobStore::disk();
-        $path = AppSettings::current()->company_logo_path;
+        $path = UserSetting::for($this->requireUser($request)->id)->company_logo_path;
         abort_if(! $path || ! $disk->exists($path), 404);
 
         // Defense-in-depth: even though only raster images are accepted, pin the

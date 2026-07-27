@@ -8,7 +8,7 @@
                     ['icon' => 'user', 'tint' => '#7066f5', 'label' => __('pages.profile.name'), 'value' => $user->name ?: '—'],
                     ['icon' => 'envelope', 'tint' => '#3b9fd6', 'label' => __('pages.profile.email'), 'value' => $user->email ?: '—'],
                     ['icon' => 'shield-check', 'tint' => '#59ad6b', 'label' => __('pages.profile.email_verified'), 'value' => $user->email_verified_at ? __('pages.profile.verified_yes', ['date' => $user->email_verified_at->format('Y-m-d')]) : __('pages.profile.verified_no')],
-                    ['icon' => 'finger-print', 'tint' => '#6b7280', 'label' => __('pages.profile.pocketid_subject'), 'value' => $user->oidc_sub ?: '—', 'mono' => true],
+                    ['icon' => 'shield-check', 'tint' => '#6b7280', 'label' => __('pages.profile.role'), 'value' => ucfirst((string) $user->role)],
                     ['icon' => 'identification', 'tint' => '#3b9fd6', 'label' => __('pages.profile.avatar'), 'value' => $user->avatar ? __('pages.profile.avatar_provided') : __('pages.profile.avatar_none')],
                     ['icon' => 'clock', 'tint' => '#3fae9f', 'label' => __('pages.profile.account_created'), 'value' => $user->created_at?->format('Y-m-d H:i') ?: '—'],
                 ];

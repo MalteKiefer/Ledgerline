@@ -8,7 +8,6 @@ use App\Models\User;
 use App\Support\OutboundUrl;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -41,14 +40,13 @@ class SecurityAuditFixesTest extends TestCase
         $this->assertTrue(OutboundUrl::hostAllowed('8.8.8.8')); // public IP allowed
     }
 
-    public function test_global_settings_gate_fails_closed_on_multi_user_without_admin_group(): void
+    public function test_global_settings_gate_is_role_based(): void
     {
-        Config::set('services.pocketid.admin_group', null);
+        // Admin rights come from the first-party role, not user count or OIDC groups.
+        $admin = User::factory()->admin()->create();
+        $this->assertTrue($admin->managesGlobalSettings());
 
-        $solo = User::factory()->create();
-        $this->assertTrue($solo->managesGlobalSettings()); // single user: allowed
-
-        User::factory()->create(); // now multi-user
-        $this->assertFalse($solo->fresh()->managesGlobalSettings()); // fails closed
+        $plain = User::factory()->create(); // role 'user'
+        $this->assertFalse($plain->managesGlobalSettings());
     }
 }

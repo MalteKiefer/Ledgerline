@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\AppSettings;
+use App\Models\UserSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -14,9 +14,15 @@ class CompanySettingsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_edit_and_save_the_company_profile(): void
+    /** The current user's company profile, read fresh from the DB. */
+    private function settings(int $userId): UserSetting
     {
-        $this->signIn(); // single-user install = admin
+        return UserSetting::query()->where('user_id', $userId)->firstOrFail();
+    }
+
+    public function test_user_can_edit_and_save_their_company_profile(): void
+    {
+        $user = $this->signIn();
 
         $this->get(route('settings.company.edit'))->assertOk();
 
@@ -33,7 +39,7 @@ class CompanySettingsTest extends TestCase
             'invoice_payment_methods' => 'Bank transfer',
         ])->assertRedirect(route('settings.company.edit'));
 
-        $s = AppSettings::current();
+        $s = $this->settings($user->id);
         $this->assertSame('Acme GmbH', $s->company_name);
         $this->assertSame('YYYY-NNNN', $s->invoice_number_format);
         $this->assertSame(42, $s->invoice_next_number);
@@ -41,6 +47,18 @@ class CompanySettingsTest extends TestCase
         $this->assertSame('#2563eb', $s->invoice_accent_color);
         $this->assertSame('Bank transfer', $s->invoice_payment_methods);
         $this->assertSame('19.00', (string) $s->invoice_default_vat_rate);
+    }
+
+    public function test_company_profile_is_isolated_per_user(): void
+    {
+        $alice = $this->signIn();
+        $this->put(route('settings.company.update'), ['company_name' => 'Alice Ltd'])->assertRedirect();
+
+        $bob = $this->signIn();
+        $this->put(route('settings.company.update'), ['company_name' => 'Bob Ltd'])->assertRedirect();
+
+        $this->assertSame('Alice Ltd', $this->settings($alice->id)->company_name);
+        $this->assertSame('Bob Ltd', $this->settings($bob->id)->company_name);
     }
 
     public function test_it_rejects_a_bad_accent_colour(): void
@@ -71,33 +89,33 @@ class CompanySettingsTest extends TestCase
     {
         $disk = config('files.disk');
         Storage::fake($disk);
-        $this->signIn();
+        $user = $this->signIn();
 
         $this->put(route('settings.company.update'), [
             'logo' => UploadedFile::fake()->image('logo.png', 200, 80),
         ])->assertRedirect();
 
-        $path = AppSettings::current()->company_logo_path;
+        $path = $this->settings($user->id)->company_logo_path;
         $this->assertNotNull($path);
         Storage::disk($disk)->assertExists($path);
 
         $this->get(route('settings.company.logo'))->assertOk();
 
         $this->put(route('settings.company.update'), ['remove_logo' => 1])->assertRedirect();
-        $this->assertNull(AppSettings::current()->company_logo_path);
+        $this->assertNull($this->settings($user->id)->company_logo_path);
         Storage::disk($disk)->assertMissing($path);
     }
 
     public function test_svg_logo_is_rejected(): void
     {
         Storage::fake();
-        $this->signIn();
+        $user = $this->signIn();
 
         $this->put(route('settings.company.update'), [
             'logo' => UploadedFile::fake()->create('logo.svg', 4, 'image/svg+xml'),
         ])->assertSessionHasErrors('logo');
 
-        $this->assertNull(AppSettings::current()->company_logo_path);
+        $this->assertNull(UserSetting::for($user->id)->company_logo_path);
     }
 
     public function test_invoices_page_renders_for_authenticated_user(): void

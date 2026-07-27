@@ -66,6 +66,22 @@ class FilesBlobStoreTest extends TestCase
             ->assertStatus(413);
     }
 
+    public function test_a_per_user_quota_override_takes_precedence_over_the_workspace_default(): void
+    {
+        // Generous workspace default, but this user is capped at 1 MiB personally.
+        config(['files.quota_mb' => 1000]);
+        $user = $this->signIn();
+        $user->forceFill(['files_quota_mb' => 1])->save();
+
+        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $user->id, 'size' => 1024 * 1024, 'created_at' => now()]);
+
+        // The per-user cap (1 MiB), not the workspace 1000 MiB, governs.
+        $this->getJson(route('files.usage'))->assertOk()
+            ->assertJson(['quota' => 1 * 1024 * 1024]);
+        $this->post(route('files.upload'), ['file' => UploadedFile::fake()->create('more.enc', 4)])
+            ->assertStatus(413);
+    }
+
     public function test_usage_reports_the_users_blob_bytes(): void
     {
         config(['files.quota_mb' => 5]);

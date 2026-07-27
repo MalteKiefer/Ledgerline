@@ -34,7 +34,7 @@ return [
         'email_verified' => 'Эл. почта подтверждена',
         'verified_yes' => 'Да, :date',
         'verified_no' => 'Нет',
-        'pocketid_subject' => 'Субъект Pocket-ID',
+        'role' => 'Роль',
         'avatar' => 'Аватар',
         'avatar_provided' => 'Предоставлен Pocket-ID, хранится в объектном хранилище',
         'avatar_none' => 'Отсутствует',

@@ -134,8 +134,10 @@ class AuthController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'locale' => $user->locale,
-            'groups' => $user->groups ?? [],
-            // Non-secret Pocket-ID avatar. True → fetch GET /api/v1/avatar (Bearer).
+            // Derived from the first-party role (admin → ['admin'], else []); keeps
+            // the historical mobile contract stable without a separate 'role' field.
+            'groups' => $user->effectiveGroups(),
+            // Non-secret avatar. True → fetch GET /api/v1/avatar (Bearer).
             'has_avatar' => is_string($user->avatar) && $user->avatar !== '',
             // Non-secret display preferences (units + 12/24h clock). Mobile applies
             // these to its own rendering; set via POST /api/v1/preferences.

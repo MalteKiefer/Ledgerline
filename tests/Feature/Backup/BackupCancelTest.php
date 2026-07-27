@@ -26,7 +26,7 @@ class BackupCancelTest extends TestCase
 
     public function test_first_cancel_requests_a_graceful_stop(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $run = $this->makeRun();
 
         $this->postJson(route('settings.backup.runs.cancel', $run))
@@ -39,7 +39,7 @@ class BackupCancelTest extends TestCase
 
     public function test_second_cancel_force_stops(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $run = $this->makeRun(['cancel_requested' => true]);
 
         $this->postJson(route('settings.backup.runs.cancel', $run))
@@ -50,7 +50,7 @@ class BackupCancelTest extends TestCase
 
     public function test_runs_reaps_a_stale_cancelled_run(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $run = $this->makeRun(['cancel_requested' => true]);
         // Simulate no progress for a while (worker gone).
         DB::table('backup_runs')->where('id', $run->id)->update(['updated_at' => now()->subMinutes(5)]);
@@ -62,7 +62,7 @@ class BackupCancelTest extends TestCase
 
     public function test_runs_reaps_an_orphaned_running_run(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $run = $this->makeRun();
         DB::table('backup_runs')->where('id', $run->id)->update(['updated_at' => now()->subMinutes(45)]);
 
@@ -73,7 +73,7 @@ class BackupCancelTest extends TestCase
 
     public function test_a_healthy_running_run_is_not_reaped(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $run = $this->makeRun(); // updated just now
 
         $this->getJson(route('settings.backup.runs'))->assertOk();

@@ -7,7 +7,9 @@ namespace App\Http\Controllers;
 use App\Models\FileBlob;
 use App\Models\SharedFolderBlob;
 use App\Models\SharedVault;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
@@ -129,9 +131,30 @@ class SharedFolderBlobController extends BlobStoreController
         return $this->usedBytes($ownerId);
     }
 
-    protected function quotaBytes(): int
+    /**
+     * Read-only quota view for any active member. Overridden because the base
+     * usage() resolves the quota owner via ownerId() (update-scoped) — a viewer
+     * would be denied. Both the used bytes and the quota are owner-attributed and
+     * resolved via the view ability so read-only members can call it.
+     */
+    public function usage(Request $request): JsonResponse
     {
-        // Attributed to the owner's personal files quota.
+        $ownerId = (int) $this->vault($request, 'view')->owner_id;
+
+        return response()->json(['used' => $this->usedBytes($ownerId), 'quota' => $this->quotaBytes($ownerId)])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+    }
+
+    protected function quotaBytes(?int $userId = null): int
+    {
+        // Attributed to the folder owner's personal files quota (per-user override
+        // on the owner, else the workspace default).
+        if ($userId !== null) {
+            $override = User::whereKey($userId)->value('files_quota_mb');
+            if (is_numeric($override) && (int) $override > 0) {
+                return (int) $override * 1024 * 1024;
+            }
+        }
         $quotaMb = config('files.quota_mb', 0);
 
         return (is_numeric($quotaMb) ? (int) $quotaMb : 0) * 1024 * 1024;

@@ -118,8 +118,10 @@ class Pairing
         $user = $pairing->user;
         // A consumed pairing always has its owning user; guard for the type system.
         abort_if($user === null, 410);
-        // Admin-configurable cap (Security settings); null/0 falls back to config default.
-        $configuredMax = AppSettings::current()->max_connected_devices ?: config('devices.max', 3);
+        // Device cap: a per-user override (admin-set) wins, else the workspace
+        // setting, else the config default.
+        $configuredMax = $user->max_connected_devices
+            ?: (AppSettings::current()->max_connected_devices ?: config('devices.max', 3));
         $max = max(1, is_numeric($configuredMax) ? (int) $configuredMax : 3);
 
         // Same-device re-pair dedupe: a reinstall/re-pair of a physical device sends

@@ -27,13 +27,13 @@ class BackupSettingsTest extends TestCase
 
     public function test_the_page_loads(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->get(route('settings.backup.index'))->assertOk();
     }
 
     public function test_a_destination_is_created_with_an_encrypted_config(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->fakeReachableDestinations();
 
         $this->post(route('settings.backup.destinations.store'), [
@@ -55,7 +55,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_a_metadata_endpoint_is_rejected(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
 
         $this->post(route('settings.backup.destinations.store'), [
             'name' => 'Evil',
@@ -69,7 +69,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_a_job_is_created(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
@@ -93,7 +93,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_a_files_job_can_choose_full_archive_mode(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
@@ -106,7 +106,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_an_invalid_backup_mode_is_rejected(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
@@ -117,7 +117,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_an_invalid_cron_is_rejected(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
@@ -128,7 +128,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_encryption_requires_a_passphrase_on_create(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
 
         $this->post(route('settings.backup.jobs.store'), [
@@ -141,7 +141,7 @@ class BackupSettingsTest extends TestCase
     public function test_run_now_queues_a_backup(): void
     {
         Queue::fake();
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
         $job = BackupJob::create([
             'name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id,
@@ -156,7 +156,7 @@ class BackupSettingsTest extends TestCase
     public function test_run_now_returns_json_for_ajax(): void
     {
         Queue::fake();
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
         $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
 
@@ -166,7 +166,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_runs_endpoint_lists_runs_as_json(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
         $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
         BackupRun::create(['backup_job_id' => $job->id, 'status' => 'success', 'started_at' => now(), 'finished_at' => now(), 'bytes' => 1024, 'filename' => 'j-1/x.sql.gz']);
@@ -179,7 +179,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_download_of_an_unfinished_run_is_404(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $dest = BackupDestination::create(['name' => 'D', 'driver' => 's3', 'config' => []]);
         $job = BackupJob::create(['name' => 'J', 'source' => 'database', 'backup_destination_id' => $dest->id, 'cron' => '0 3 * * *', 'retention' => 3, 'enabled' => true]);
         $run = BackupRun::create(['backup_job_id' => $job->id, 'status' => 'failed', 'started_at' => now(), 'finished_at' => now()]);
@@ -189,7 +189,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_an_unreachable_destination_is_not_saved(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->mock(BackupDestinationFactory::class, function ($mock): void {
             $mock->shouldReceive('test')->andThrow(new \RuntimeException('connection refused'));
         });
@@ -204,7 +204,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_the_test_endpoint_reports_reachability(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->mock(BackupDestinationFactory::class, function ($mock): void {
             $mock->shouldReceive('test')->once()->andReturnNull();
         });
@@ -216,7 +216,7 @@ class BackupSettingsTest extends TestCase
 
     public function test_the_test_endpoint_reports_a_failure_as_json(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->mock(BackupDestinationFactory::class, function ($mock): void {
             $mock->shouldReceive('test')->andThrow(new \RuntimeException('connection refused'));
         });

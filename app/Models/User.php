@@ -5,30 +5,31 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
- * An authenticated user, provisioned from the Pocket-ID OIDC provider.
- *
- * Users are never created with a local password; they are matched on their
- * stable OIDC subject identifier ("oidc_sub"). All authenticated users share a
- * single workspace.
+ * An authenticated user. Identity is first-party (email + password, optional TOTP
+ * two-factor via Fortify); the legacy OIDC `oidc_sub` column is retained (nullable)
+ * for provenance only. Privilege is a first-party `role` (admin|user). App login is
+ * fully independent of the zero-knowledge vault passphrase.
  */
-// `groups` is deliberately NOT fillable — it drives the admin gate, so it is
-// only ever set server-side via forceFill() from the OIDC claim, never
+// `role` and `groups` are deliberately NOT fillable — `role` is the privilege
+// boundary (drives the admin gate), so it is only ever set server-side, never
 // mass-assigned from request input.
-#[Fillable(['oidc_sub', 'name', 'email', 'email_verified_at', 'avatar', 'avatar_url', 'locale'])]
-#[Hidden(['remember_token'])]
-class User extends Authenticatable
+#[Fillable(['name', 'email', 'password', 'email_verified_at', 'avatar', 'avatar_url', 'locale'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, TwoFactorAuthenticatable;
 
     /**
      * Get the attributes that should be cast.
@@ -40,14 +41,36 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'two_factor_confirmed_at' => 'datetime',
+            'password' => 'hashed',
             'groups' => 'array',
         ];
     }
 
-    /** Whether the user belongs to the given OIDC group. */
+    /** Whether the user holds the admin role. */
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    /**
+     * Legacy group membership check. Groups are now derived from the role for the
+     * mobile /me contract; kept so any remaining caller keeps working.
+     */
     public function inGroup(string $group): bool
     {
-        return in_array($group, (array) ($this->groups ?? []), true);
+        return in_array($group, $this->effectiveGroups(), true);
+    }
+
+    /**
+     * Groups exposed to the mobile API (/me). Derived from the first-party role so
+     * the existing contract (an array of group strings) is preserved without OIDC.
+     *
+     * @return list<string>
+     */
+    public function effectiveGroups(): array
+    {
+        return $this->isAdmin() ? ['admin'] : [];
     }
 
     /**
@@ -62,23 +85,11 @@ class User extends Authenticatable
     }
 
     /**
-     * May this user manage the non-personal, workspace-wide settings? True when
-     * no admin group is configured (single-admin / backwards compatible), else
-     * only members of that group.
+     * May this user manage the non-personal, workspace-wide settings? True only for
+     * the admin role. (Replaces the old OIDC-group / single-user heuristic.)
      */
     public function managesGlobalSettings(): bool
     {
-        $adminGroup = config('services.pocketid.admin_group');
-
-        if (is_scalar($adminGroup) && filled($adminGroup)) {
-            return $this->inGroup((string) $adminGroup);
-        }
-
-        // No admin group configured: allow on a single-user install (backwards
-        // compatible), but fail CLOSED on multi-user installs — otherwise every
-        // authenticated user could reach workspace-wide settings and download
-        // backups of ALL users' data. Multi-user installs must set
-        // POCKETID_ADMIN_GROUP to grant admin access.
-        return static::query()->count() <= 1;
+        return $this->isAdmin();
     }
 }

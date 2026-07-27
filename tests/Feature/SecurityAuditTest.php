@@ -21,8 +21,7 @@ class SecurityAuditTest extends TestCase
 
     private function admin(): User
     {
-        config(['services.pocketid.admin_group' => null]); // no group configured = everyone admin
-        $user = User::factory()->create();
+        $user = User::factory()->admin()->create();
         AppSettings::current()->update(['max_connected_devices' => 3, 'vault_remember_days' => 7, 'vault_public_idle_minutes' => 10]);
 
         return $user;

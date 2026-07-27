@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Support\BlobAudit;
 use App\Support\BlobStore;
 use Aws\S3\S3Client;
@@ -180,7 +181,7 @@ abstract class BlobStoreController extends Controller
     /** Current storage usage for the user (live blob bytes vs quota). */
     public function usage(Request $request): JsonResponse
     {
-        return response()->json(['used' => $this->usedBytesFor($request), 'quota' => $this->quotaBytes()])
+        return response()->json(['used' => $this->usedBytesFor($request), 'quota' => $this->quotaBytes($this->ownerId($request))])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
@@ -245,7 +246,7 @@ abstract class BlobStoreController extends Controller
                 }, 'blob');
         });
 
-        return response()->json(['used' => $this->usedBytesFor($request), 'quota' => $this->quotaBytes()]);
+        return response()->json(['used' => $this->usedBytesFor($request), 'quota' => $this->quotaBytes($this->ownerId($request))]);
     }
 
     /** Store one uploaded (already encrypted) blob and return its id. */
@@ -473,15 +474,27 @@ abstract class BlobStoreController extends Controller
         return (int) $model::where('user_id', $userId)->sum('size');
     }
 
-    /** Per-user quota in bytes (0 / null = unlimited). */
-    protected function quotaBytes(): int
+    /**
+     * Quota in bytes (0 = unlimited). A per-user override on the users table
+     * ({module}_quota_mb, admin-set) takes precedence over the workspace default;
+     * only the personal files/gallery modules carry a per-user column.
+     */
+    protected function quotaBytes(?int $userId = null): int
     {
-        return $this->configInt($this->module().'.quota_mb', 0) * 1024 * 1024;
+        $module = $this->module();
+        if ($userId !== null && in_array($module, ['files', 'gallery'], true)) {
+            $override = User::whereKey($userId)->value($module.'_quota_mb');
+            if (is_numeric($override) && (int) $override > 0) {
+                return (int) $override * 1024 * 1024;
+            }
+        }
+
+        return $this->configInt($module.'.quota_mb', 0) * 1024 * 1024;
     }
 
     private function quotaExceeded(int $userId, int $incoming): bool
     {
-        $quota = $this->quotaBytes();
+        $quota = $this->quotaBytes($userId);
 
         return $quota > 0 && ($this->usedBytes($userId) + $incoming) > $quota;
     }
