@@ -148,6 +148,8 @@ Route::middleware('auth')->group(function (): void {
         Route::post('/settings/users', [SettingsUsersController::class, 'store'])->name('settings.users.store');
         Route::put('/settings/users/{user}', [SettingsUsersController::class, 'update'])->name('settings.users.update');
         Route::post('/settings/users/{user}/reset-password', [SettingsUsersController::class, 'resetPassword'])->middleware('throttle:10,1')->name('settings.users.reset');
+        Route::post('/settings/users/{user}/reset-2fa', [SettingsUsersController::class, 'resetTwoFactor'])->name('settings.users.reset2fa');
+        Route::get('/settings/users/{user}/avatar', [SettingsUsersController::class, 'avatar'])->name('settings.users.avatar');
         Route::delete('/settings/users/{user}', [SettingsUsersController::class, 'destroy'])->name('settings.users.destroy');
         Route::post('/settings/registration', [SettingsUsersController::class, 'registration'])->name('settings.registration');
 
