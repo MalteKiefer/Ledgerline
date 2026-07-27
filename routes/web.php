@@ -27,8 +27,10 @@ use App\Http\Controllers\NoteBlobController;
 use App\Http\Controllers\NotesStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
+use App\Http\Controllers\PasswordBlobController;
 use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
+use App\Http\Controllers\PasswordsStoreController;
 use App\Http\Controllers\PreferencesController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicShareController;
@@ -239,6 +241,14 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('notes.raw');
     Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('notes.raw-batch');
     Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('notes.blobs.reconcile');
+
+    // Passwords sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
+    Route::get('/passwords/store', [PasswordsStoreController::class, 'show'])->name('passwords.store.show');
+    Route::put('/passwords/store', [PasswordsStoreController::class, 'save'])->middleware('throttle:600,1')->name('passwords.store.save');
+    Route::post('/passwords/upload', [PasswordBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('passwords.upload');
+    Route::get('/passwords/raw/{blob}', [PasswordBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('passwords.raw');
+    Route::post('/passwords/raw-batch', [PasswordBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('passwords.raw-batch');
+    Route::post('/passwords/blobs/reconcile', [PasswordBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('passwords.blobs.reconcile');
     // Generous limit: emptying a large trash frees hundreds of blobs at once, and
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');

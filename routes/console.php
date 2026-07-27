@@ -22,6 +22,7 @@ Schedule::command('paperless:sync')->hourly()->withoutOverlapping();
 // reconciles manifest-unreferenced blobs on its own; this is the crash net.
 Schedule::command('files:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('notes:sweep-orphans')->daily()->withoutOverlapping();
+Schedule::command('passwords:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('gallery:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('contacts:sweep-orphans')->daily()->withoutOverlapping();
 Schedule::command('explore:sweep-orphans')->daily()->withoutOverlapping();
