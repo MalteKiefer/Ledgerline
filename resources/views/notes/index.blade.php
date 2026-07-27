@@ -13,11 +13,9 @@
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
                x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <button type="button" @click="$dispatch('vault-panel')"
-                class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
-                <x-icon name="lock-open" class="h-4 w-4" />
+            <x-button variant="primary" icon="lock-open" class="mt-5" @click="$dispatch('vault-panel')">
                 <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </button>
+            </x-button>
         </div>
     </template>
 
@@ -72,14 +70,14 @@
                     </button>
                     <div class="flex items-center gap-2">
                         <input type="text" x-model="current.title" @input.debounce.800ms="save()" placeholder="{{ __('notes.title_placeholder') }}" class="w-full border-0 border-b border-gray-100 px-0 text-lg font-semibold text-gray-900 focus:border-accent focus:ring-accent">
-                        <button type="button" @click="togglePin(current)" :title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))" class="rounded p-1" :class="current.pinned ? 'text-accent' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'"><x-icon name="bookmark" class="h-4 w-4" /></button>
+                        <x-icon-button name="bookmark" tone="gray" size="sm" @click="togglePin(current)" x-bind:title="current.pinned ? @js(__('notes.unpin')) : @js(__('notes.pin'))" ::class="current.pinned ? 'text-accent' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600'" />
                         <template x-if="view === 'trash'">
                             <span class="flex items-center gap-1">
-                                <button type="button" @click="restore(current)" title="{{ __('notes.restore') }}" class="rounded p-1 text-gray-400 hover:text-gray-700"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
-                                <button type="button" @click="remove(current)" title="{{ __('notes.delete_forever') }}" class="rounded p-1 text-gray-400 hover:text-red-600"><x-icon name="trash" class="h-4 w-4" /></button>
+                                <x-icon-button name="arrow-uturn-left" tone="gray" size="sm" @click="restore(current)" title="{{ __('notes.restore') }}" />
+                                <x-icon-button name="trash" tone="gray" size="sm" @click="remove(current)" title="{{ __('notes.delete_forever') }}" class="hover:!text-red-600" />
                             </span>
                         </template>
-                        <button type="button" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('notes.to_trash') }}" class="rounded p-1 text-gray-400 hover:text-red-600"><x-icon name="trash" class="h-4 w-4" /></button>
+                        <x-icon-button name="trash" tone="gray" size="sm" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('notes.to_trash') }}" class="hover:!text-red-600" />
                     </div>
                     <input type="text" x-model="tagsValue" @change="save()" placeholder="{{ __('notes.tags_placeholder') }}" class="mt-2 w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-accent focus:ring-accent">
                     <textarea x-model="current.content" @input="save(); schedulePreview()" placeholder="{{ __('notes.content') }}" class="mt-3 min-h-0 w-full flex-1 rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>

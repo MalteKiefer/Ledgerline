@@ -6,12 +6,8 @@
         <div class="mt-5 ll-card">
             <template x-if="!active">
                 <div class="flex flex-wrap gap-2">
-                    <button type="button" x-on:click="start('app')" class="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 text-sm font-medium text-gray-700 dark:text-gray-300 transition hover:border-accent hover:text-accent">
-                        <x-icon name="qr-code" class="h-4 w-4" />{{ __('account.devices_connect') }}
-                    </button>
-                    <button type="button" x-on:click="start('cli')" class="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 px-3.5 text-sm font-medium text-gray-700 dark:text-gray-300 transition hover:border-accent hover:text-accent">
-                        <x-icon name="command-line" class="h-4 w-4" />{{ __('account.cli_connect') }}
-                    </button>
+                    <x-button variant="secondary" icon="qr-code" x-on:click="start('app')">{{ __('account.devices_connect') }}</x-button>
+                    <x-button variant="secondary" icon="command-line" x-on:click="start('cli')">{{ __('account.cli_connect') }}</x-button>
                 </div>
             </template>
 
@@ -25,9 +21,9 @@
                         <p class="text-gray-600 dark:text-gray-400">{{ __('account.cli_paste_hint') }}</p>
                         <div class="mt-2 flex items-center gap-2">
                             <code x-text="code" class="min-w-0 flex-1 truncate rounded-xl border border-black/[0.08] dark:border-white/10 bg-gray-50 dark:bg-gray-800 px-3 py-2 font-mono text-sm text-gray-800 dark:text-gray-200"></code>
-                            <button type="button" x-on:click="copyCode()" class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 transition hover:border-accent hover:text-accent">
-                                <x-icon name="clipboard" class="h-4 w-4" /><span x-text="copied ? @js(__('account.cli_copied')) : @js(__('account.cli_copy'))"></span>
-                            </button>
+                            <x-button variant="secondary" icon="clipboard" x-on:click="copyCode()" class="shrink-0">
+                                <span x-text="copied ? @js(__('account.cli_copied')) : @js(__('account.cli_copy'))"></span>
+                            </x-button>
                         </div>
                     </div>
                     <div x-show="status==='pending_scan' || status==='pending_approval'">
@@ -35,8 +31,8 @@
                         <div x-show="status==='pending_approval'" class="mt-3">
                             <p class="text-gray-900 dark:text-gray-100">{{ __('account.devices_approve_q') }} „<span x-text="deviceName" class="font-medium"></span>"?</p>
                             <div class="mt-2 flex gap-2">
-                                <button type="button" x-on:click="approve()" class="min-h-11 rounded-xl ll-accent px-4 text-sm font-medium shadow-sm shadow-accent/30">{{ __('account.devices_allow') }}</button>
-                                <button type="button" x-on:click="reject()" class="min-h-11 rounded-xl border border-black/[0.08] dark:border-white/10 px-4 text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('account.devices_deny') }}</button>
+                                <x-button variant="primary" x-on:click="approve()">{{ __('account.devices_allow') }}</x-button>
+                                <x-button variant="secondary" x-on:click="reject()">{{ __('account.devices_deny') }}</x-button>
                             </div>
                         </div>
                         <button type="button" x-on:click="regenerate()" class="mt-3 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('account.devices_regenerate') }}</button>
@@ -68,12 +64,8 @@
                         <p x-show="!d.syncing && d.syncSeen" class="truncate text-xs text-gray-400" x-text="'{{ __('account.devices_last_sync') }} ' + d.syncSeen"></p>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                        <button type="button" x-on:click="wipeDevice(d.id)" x-show="!d.wipeRequested" :title="@js(__('account.devices_wipe'))" aria-label="{{ __('account.devices_wipe') }}" class="inline-flex h-9 w-9 items-center justify-center rounded-full text-red-600 dark:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-900/30">
-                            <x-icon name="exclamation-triangle" class="h-5 w-5" />
-                        </button>
-                        <button type="button" x-on:click="revokeDevice(d.id)" :title="@js(__('account.devices_revoke'))" aria-label="{{ __('account.devices_revoke') }}" class="inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-400 dark:text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-red-600 dark:hover:text-red-400">
-                            <x-icon name="trash" class="h-5 w-5" />
-                        </button>
+                        <x-icon-button name="exclamation-triangle" tone="red" x-on:click="wipeDevice(d.id)" x-show="!d.wipeRequested" ::title="@js(__('account.devices_wipe'))" aria-label="{{ __('account.devices_wipe') }}" />
+                        <x-icon-button name="trash" tone="red" x-on:click="revokeDevice(d.id)" ::title="@js(__('account.devices_revoke'))" aria-label="{{ __('account.devices_revoke') }}" />
                     </div>
                 </div>
             </template>

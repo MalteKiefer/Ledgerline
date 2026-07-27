@@ -24,9 +24,9 @@
                 <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required
                     class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
             </div>
-            <button type="submit" class="ll-accent flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2">
+            <x-button variant="primary" size="lg" type="submit" class="w-full">
                 {{ __('auth_ui.reset_button') }}
-            </button>
+            </x-button>
         </form>
     </div>
 </x-layouts.guest>

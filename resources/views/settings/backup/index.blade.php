@@ -31,7 +31,7 @@
     <section class="mt-6 ll-card" x-data="{ adding: false, editing: null }">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_destinations_heading') }}</h2>
-            <button type="button" @click="adding = ! adding" class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('settings.backup_add_destination') }}</button>
+            <x-button variant="secondary" size="sm" @click="adding = ! adding">{{ __('settings.backup_add_destination') }}</x-button>
         </div>
 
         <div x-show="adding" x-cloak class="mt-4 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
@@ -46,10 +46,10 @@
                         <span class="ml-2 rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-xs uppercase text-gray-500 dark:text-gray-400">{{ $destination->driver }}</span>
                     </div>
                     <div class="flex shrink-0 items-center gap-2">
-                        <button type="button" @click="editing = (editing === {{ $destination->id }} ? null : {{ $destination->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5"><x-icon name="pencil" /></button>
+                        <x-icon-button name="pencil" tone="gray" size="lg" @click="editing = (editing === {{ $destination->id }} ? null : {{ $destination->id }})" :aria-label="__('common.edit')" />
                         <form method="POST" action="{{ route('settings.backup.destinations.destroy', $destination) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
-                            <button type="submit" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-red-600 dark:text-red-400 hover:bg-red-50"><x-icon name="trash" /></button>
+                            <x-icon-button name="trash" tone="red" size="lg" type="submit" :aria-label="__('common.delete')" />
                         </form>
                     </div>
                 </div>
@@ -66,7 +66,7 @@
     <section class="mt-6 ll-card" x-data="{ adding: false, editing: null }">
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.backup_jobs_heading') }}</h2>
-            <button type="button" x-show="{{ $destinations->isNotEmpty() ? 'true' : 'false' }}" @click="adding = ! adding" class="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">{{ __('settings.backup_add_job') }}</button>
+            <x-button variant="secondary" size="sm" x-show="{{ $destinations->isNotEmpty() ? 'true' : 'false' }}" @click="adding = ! adding">{{ __('settings.backup_add_job') }}</x-button>
         </div>
 
         <div x-show="adding" x-cloak class="mt-4 rounded-md border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-4">
@@ -93,21 +93,20 @@
                         </p>
                     </div>
                     <div class="flex shrink-0 items-center gap-2" x-data="{ queued: false }">
-                        <button type="button" :disabled="queued"
+                        <x-button variant="secondary" size="sm" ::disabled="queued"
                             @click="queued = true;
                                 fetch('{{ route('settings.backup.jobs.run', $job) }}', {
                                     method: 'POST',
                                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
                                 }).then(() => window.dispatchEvent(new CustomEvent('backup-ran')))
-                                  .finally(() => setTimeout(() => queued = false, 2000))"
-                            class="rounded-md border border-gray-300 dark:border-gray-700 px-2 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent disabled:opacity-50">
+                                  .finally(() => setTimeout(() => queued = false, 2000))">
                             <span x-show="! queued">{{ __('settings.backup_run_now') }}</span>
                             <span x-show="queued" x-cloak>{{ __('settings.backup_queued_short') }}</span>
-                        </button>
-                        <button type="button" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5"><x-icon name="pencil" /></button>
+                        </x-button>
+                        <x-icon-button name="pencil" tone="gray" size="lg" @click="editing = (editing === {{ $job->id }} ? null : {{ $job->id }})" :aria-label="__('common.edit')" />
                         <form method="POST" action="{{ route('settings.backup.jobs.destroy', $job) }}" data-confirm="{{ __('settings.backup_delete_confirm') }}">
                             @csrf @method('DELETE')
-                            <button type="submit" class="inline-flex min-h-11 min-w-11 items-center justify-center rounded p-2.5 text-red-600 dark:text-red-400 hover:bg-red-50"><x-icon name="trash" /></button>
+                            <x-icon-button name="trash" tone="red" size="lg" type="submit" :aria-label="__('common.delete')" />
                         </form>
                     </div>
                 </div>
@@ -181,8 +180,8 @@
                     <input type="password" name="passphrase" required autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
                         class="mt-3 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     <div class="mt-4 flex justify-end gap-2">
-                        <button type="button" @click="decrypt.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('common.cancel') }}</button>
-                        <button type="submit" class="ll-accent rounded-xl px-4 py-2 text-sm font-medium">{{ __('settings.backup_decrypt_download') }}</button>
+                        <x-button variant="secondary" @click="decrypt.open = false">{{ __('common.cancel') }}</x-button>
+                        <x-button variant="primary" type="submit">{{ __('settings.backup_decrypt_download') }}</x-button>
                     </div>
                 </form>
             </div>
@@ -202,10 +201,9 @@
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_verify_hint') }}</p>
                         <input x-show="restore.run && restore.run.needsPassphrase" type="password" x-model="verifyPass" autocomplete="off" placeholder="{{ __('settings.backup_passphrase') }}"
                             class="mt-2 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                        <button type="button" @click="runVerify()" :disabled="verifyBusy" class="mt-2 inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50">
-                            <x-icon name="shield" class="h-4 w-4" />
+                        <x-button variant="secondary" size="sm" icon="shield" @click="runVerify()" ::disabled="verifyBusy" class="mt-2">
                             <span x-text="verifyBusy ? '{{ __('settings.backup_verifying') }}' : '{{ __('settings.backup_verify') }}'"></span>
-                        </button>
+                        </x-button>
                         <p x-show="verifyResult" x-cloak class="mt-2 rounded-md px-3 py-2 text-xs" :class="verifyResult && verifyResult.ok ? 'bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300'" x-text="verifyResult ? verifyResult.message : ''"></p>
                     </div>
 
@@ -215,12 +213,12 @@
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.backup_recover_hint') }}</p>
                         <div class="mt-2 flex flex-wrap gap-2">
                             <a x-show="restore.run && restore.run.downloadable && ! restore.run.needsPassphrase" :href="restoreDownloadUrl()" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" />{{ __('settings.backup_download') }}</a>
-                            <button x-show="restore.run && restore.run.needsPassphrase" type="button" @click="openDecrypt(restore.run.id); closeRestore()" class="inline-flex items-center gap-1.5 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300"><x-icon name="lock-open" class="h-4 w-4" />{{ __('settings.backup_decrypt_download') }}</button>
+                            <x-button variant="secondary" size="sm" icon="lock-open" x-show="restore.run && restore.run.needsPassphrase" @click="openDecrypt(restore.run.id); closeRestore()">{{ __('settings.backup_decrypt_download') }}</x-button>
                         </div>
                     </div>
 
                     <div class="mt-4 flex justify-end">
-                        <button type="button" @click="closeRestore()" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">{{ __('common.close') }}</button>
+                        <x-button variant="secondary" @click="closeRestore()">{{ __('common.close') }}</x-button>
                     </div>
                 </div>
             </div>

@@ -31,7 +31,7 @@
     <main class="mx-auto max-w-6xl px-4 py-8">
       {{-- Loading --}}
       <div x-show="state === 'boot'" class="flex items-center justify-center py-24">
-        <svg class="h-6 w-6 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+        <x-icon name="arrow-path" class="h-6 w-6 animate-spin text-gray-400" />
       </div>
 
       {{-- Not found / expired / error --}}
@@ -50,7 +50,7 @@
           <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">{{ __('gallery.share_password_prompt') }}</p>
           <input type="password" x-model="password" autocomplete="current-password" class="mt-4 w-full rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
           <p x-show="error" x-cloak class="mt-2 text-xs text-red-600 dark:text-red-400" x-text="error"></p>
-          <button type="submit" :disabled="unlocking || ! password" class="mt-4 w-full ll-accent rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50">{{ __('gallery.share_unlock') }}</button>
+          <x-button variant="primary" type="submit" ::disabled="unlocking || ! password" class="mt-4 w-full">{{ __('gallery.share_unlock') }}</x-button>
         </form>
       </template>
 
@@ -63,7 +63,7 @@
               <button type="button" @click="openViewer(p)" class="block h-full w-full">
                 <img x-show="thumbs[p.id]" :src="thumbs[p.id]" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                 <div x-show="!thumbs[p.id]" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
-                  <svg class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                  <x-icon name="arrow-path" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" />
                 </div>
                 <template x-if="p.t === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
               </button>

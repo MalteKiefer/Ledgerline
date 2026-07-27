@@ -106,10 +106,9 @@
             </div>
 
             <div class="flex items-center justify-end gap-3 border-t border-gray-100 px-5 py-3 dark:border-gray-800">
-                <button type="button" @click="$store.paperless.close()" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">{{ __('paperless.cancel') }}</button>
-                <button type="button" @click="$store.paperless.submit()" :disabled="$store.paperless.submitting || $store.paperless.preparing || ! $store.paperless.file"
-                    class="ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50"
-                    x-text="$store.paperless.submitting ? @js(__('paperless.sending')) : @js(__('paperless.send'))"></button>
+                <x-button variant="secondary" @click="$store.paperless.close()">{{ __('paperless.cancel') }}</x-button>
+                <x-button variant="primary" @click="$store.paperless.submit()" ::disabled="$store.paperless.submitting || $store.paperless.preparing || ! $store.paperless.file"
+                    x-text="$store.paperless.submitting ? @js(__('paperless.sending')) : @js(__('paperless.send'))"></x-button>
             </div>
         </div>
     </div>

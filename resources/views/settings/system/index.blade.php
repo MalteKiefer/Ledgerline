@@ -7,27 +7,27 @@
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.system_status_heading') }}</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_status_desc') }}</p>
         <dl class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div class="rounded-md border border-gray-100 dark:border-gray-800 p-3">
+            <div class="ll-card">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_queue_pending') }}</dt>
                 <dd class="mt-0.5 text-lg font-semibold text-gray-900 dark:text-gray-100">{{ $status['queue']['pending'] }}</dd>
             </div>
-            <div class="rounded-md border border-gray-100 dark:border-gray-800 p-3">
+            <div class="ll-card">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_queue_failed') }}</dt>
                 <dd class="mt-0.5 text-lg font-semibold {{ $status['queue']['failed'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $status['queue']['failed'] }}</dd>
             </div>
-            <div class="rounded-md border border-gray-100 dark:border-gray-800 p-3">
+            <div class="ll-card">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_errors_unresolved') }}</dt>
                 <dd class="mt-0.5 text-lg font-semibold {{ $status['errors']['unresolved'] > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100' }}">{{ $status['errors']['unresolved'] }}</dd>
             </div>
-            <div class="rounded-md border border-gray-100 dark:border-gray-800 p-3">
+            <div class="ll-card">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_last_backup') }}</dt>
                 <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{{ $status['backup']['lastSuccessAt'] ? \Illuminate\Support\Carbon::parse($status['backup']['lastSuccessAt'])->diffForHumans() : __('settings.system_never') }}</dd>
             </div>
-            <div class="rounded-md border border-gray-100 dark:border-gray-800 p-3">
+            <div class="ll-card">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_scheduler_last') }}</dt>
                 <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{{ $status['scheduler']['lastRunAt'] ? \Illuminate\Support\Carbon::parse($status['scheduler']['lastRunAt'])->diffForHumans() : __('settings.system_never') }}</dd>
             </div>
-            <div class="rounded-md border border-gray-100 dark:border-gray-800 p-3">
+            <div class="ll-card">
                 <dt class="text-xs text-gray-500 dark:text-gray-400">{{ __('settings.system_disk_free') }}</dt>
                 <dd class="mt-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">{{ $status['disk']['free'] ? \Illuminate\Support\Number::fileSize($status['disk']['free']) : '—' }}</dd>
             </div>
@@ -110,7 +110,7 @@
                             @unless ($e->resolved_at)
                                 <form method="POST" action="{{ route('settings.system.errors.resolve', $e) }}" class="shrink-0">
                                     @csrf
-                                    <button type="submit" class="inline-flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:border-accent hover:text-accent"><x-icon name="check" class="h-3.5 w-3.5" />{{ __('settings.system_error_resolve') }}</button>
+                                    <x-button variant="secondary" size="sm" type="submit" icon="check">{{ __('settings.system_error_resolve') }}</x-button>
                                 </form>
                             @endunless
                         </div>

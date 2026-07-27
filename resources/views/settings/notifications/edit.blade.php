@@ -14,7 +14,7 @@
         {{-- Mail server --}}
         <section class="ll-card">
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="mail_enabled" value="1" @checked(old('mail_enabled', $settings->mail_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
+                <input type="checkbox" name="mail_enabled" value="1" @checked(old('mail_enabled', $settings->mail_enabled)) class="rounded border-gray-300 dark:border-gray-700 focus:ring-accent">
                 <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.notify_mail_heading') }}</span>
             </label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ __('settings.notify_mail_hint') }}</p>
@@ -45,7 +45,7 @@
         {{-- NTFY --}}
         <section class="ll-card">
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="ntfy_enabled" value="1" @checked(old('ntfy_enabled', $settings->ntfy_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
+                <input type="checkbox" name="ntfy_enabled" value="1" @checked(old('ntfy_enabled', $settings->ntfy_enabled)) class="rounded border-gray-300 dark:border-gray-700 focus:ring-accent">
                 <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.notify_ntfy_heading') }}</span>
             </label>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -63,7 +63,7 @@
         {{-- Webhook --}}
         <section class="ll-card">
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="webhook_enabled" value="1" @checked(old('webhook_enabled', $settings->webhook_enabled)) class="rounded border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 focus:ring-accent">
+                <input type="checkbox" name="webhook_enabled" value="1" @checked(old('webhook_enabled', $settings->webhook_enabled)) class="rounded border-gray-300 dark:border-gray-700 focus:ring-accent">
                 <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.notify_webhook_heading') }}</span>
             </label>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
@@ -76,7 +76,7 @@
             </div>
         </section>
 
-        <div><button type="submit" class="rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">{{ __('settings.save') }}</button></div>
+        <div><x-button variant="primary" type="submit">{{ __('settings.save') }}</x-button></div>
     </form>
 
     {{-- Send a test message over each channel (uses the saved settings above). --}}
@@ -88,9 +88,9 @@
                 <form method="POST" action="{{ route('settings.notifications.test') }}">
                     @csrf
                     <input type="hidden" name="channel" value="{{ $channel }}">
-                    <button type="submit" class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-accent hover:text-accent">
+                    <x-button variant="secondary" size="sm" type="submit">
                         {{ __('settings.notify_test_send', ['channel' => $label]) }}
-                    </button>
+                    </x-button>
                 </form>
             @endforeach
         </div>

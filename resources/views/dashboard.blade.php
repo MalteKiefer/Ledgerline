@@ -9,11 +9,9 @@
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
                x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <button type="button" @click="$dispatch('vault-panel')"
-                class="mt-5 inline-flex min-h-11 items-center gap-1.5 ll-accent rounded-xl px-4 py-2 text-sm font-medium">
-                <x-icon name="lock-open" class="h-4 w-4" />
+            <x-button variant="primary" icon="lock-open" @click="$dispatch('vault-panel')" class="mt-5">
                 <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </button>
+            </x-button>
         </div>
     </template>
 
@@ -350,10 +348,9 @@
                                     @keydown.enter="saveQuickAdd()"
                                     class="w-16 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 px-2 py-1.5 text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent" />
                             </template>
-                            <button type="button" @click="saveQuickAdd()"
-                                class="ll-accent rounded-lg px-3 py-1.5 text-xs font-medium text-white">
+                            <x-button variant="primary" size="sm" @click="saveQuickAdd()">
                                 {{ __('dashboard.add') }}
-                            </button>
+                            </x-button>
                         </div>
                     </div>
                 </div>

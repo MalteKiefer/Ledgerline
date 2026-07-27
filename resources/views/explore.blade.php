@@ -61,19 +61,14 @@
             </div>
 
             {{-- Import --}}
-            <button type="button" @click="$refs.file.click()" :disabled="importing"
-              class="inline-flex min-h-9 items-center gap-1.5 rounded-xl ll-accent px-3 py-1.5 text-sm font-medium hover:brightness-105 disabled:opacity-50">
-              <x-icon name="arrow-up-tray" class="h-4 w-4" />
+            <x-button variant="primary" size="sm" icon="arrow-up-tray" @click="$refs.file.click()" ::disabled="importing">
               <span x-text="importing ? @js(__('explore.importing')) : @js(__('explore.import'))"></span>
-            </button>
+            </x-button>
             <input type="file" x-ref="file" class="hidden" accept=".gpx,.kml,.kmz,.tcx,.fit" multiple @change="onImport($event)">
 
             {{-- Settings --}}
-            <button type="button" @click="settingsOpen = true"
-              class="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-black/[0.08] dark:border-white/10 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5"
-              :title="@js(__('explore.settings'))" :aria-label="@js(__('explore.settings'))">
-              <x-icon name="clock" class="h-4 w-4" />
-            </button>
+            <x-icon-button name="clock" size="sm" @click="settingsOpen = true"
+              ::title="@js(__('explore.settings'))" ::aria-label="@js(__('explore.settings'))" />
           </div>
         </template>
       </x-slot:actions>
@@ -84,11 +79,9 @@
       <div class="mx-auto mt-16 max-w-md ll-card !p-8 text-center">
         <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
         <p class="mt-3 text-sm text-gray-600 dark:text-gray-400">{{ __('explore.locked') }}</p>
-        <button type="button" @click="$dispatch('vault-panel')"
-          class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
-          <x-icon name="lock-open" class="h-4 w-4" />
+        <x-button variant="primary" icon="lock-open" @click="$dispatch('vault-panel')" class="mt-5">
           <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-        </button>
+        </x-button>
       </div>
     </template>
 
@@ -115,9 +108,8 @@
                   class="w-full rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-24 text-sm focus:border-accent focus:ring-accent">
                 <div class="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
                   <button type="button" x-show="searchQuery.trim()" @click="searchQuery=''; searchResults=[]; searchMsg=''" class="flex h-6 w-6 items-center justify-center rounded-full text-gray-400 transition hover:bg-black/5 dark:hover:bg-white/10" :title="@js(__('common.cancel'))"><x-icon name="x-mark" class="h-4 w-4" /></button>
-                  <button type="button" @click="runSearch()" :disabled="searching || !searchQuery.trim()"
-                    class="rounded-lg ll-accent px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-                    x-text="searching ? '…' : @js(__('explore.search_go'))"></button>
+                  <x-button variant="primary" size="sm" @click="runSearch()" ::disabled="searching || !searchQuery.trim()"
+                    x-text="searching ? '…' : @js(__('explore.search_go'))"></x-button>
                 </div>
               </div>
               {{-- Geocoder result dropdown --}}
@@ -181,16 +173,10 @@
                       <p class="text-xs text-gray-500 dark:text-gray-400" x-text="couplingLabel(m.id)"></p>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
-                      <button type="button" @click="openAssign(m.id)"
-                        class="rounded-md p-1.5 text-gray-500 hover:bg-accent/5 hover:text-accent"
-                        :title="@js(__('explore.assign_to_track'))" :aria-label="@js(__('explore.assign_to_track'))">
-                        <x-icon name="route" class="h-4 w-4" />
-                      </button>
-                      <button type="button" x-show="couplings[m.id]" @click="clearCoupling(m.id)"
-                        class="rounded-md p-1.5 text-gray-500 hover:bg-red-500/10 hover:text-red-500"
-                        :title="@js(__('explore.clear_coupling'))" :aria-label="@js(__('explore.clear_coupling'))">
-                        <x-icon name="x-mark" class="h-4 w-4" />
-                      </button>
+                      <x-icon-button name="route" size="sm" @click="openAssign(m.id)"
+                        ::title="@js(__('explore.assign_to_track'))" ::aria-label="@js(__('explore.assign_to_track'))" />
+                      <x-icon-button name="x-mark" tone="red" size="sm" x-show="couplings[m.id]" @click="clearCoupling(m.id)"
+                        ::title="@js(__('explore.clear_coupling'))" ::aria-label="@js(__('explore.clear_coupling'))" />
                     </div>
                   </div>
                 </template>
@@ -271,16 +257,12 @@
                     </div>
 
                     <div class="mt-3 flex flex-wrap items-center gap-2">
-                      <button type="button" @click="savePlan()" :disabled="planPoints.length < 2"
-                        class="inline-flex items-center gap-1.5 rounded-lg ll-accent px-3 py-1.5 text-xs font-medium disabled:opacity-40">
-                        <x-icon name="check" class="h-3.5 w-3.5" />
+                      <x-button variant="primary" size="sm" icon="check" @click="savePlan()" ::disabled="planPoints.length < 2">
                         <span>{{ __('explore.save_route') }}</span>
-                      </button>
-                      <button type="button" @click="undoWaypoint()" :disabled="! planPoints.length"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-black/[0.08] dark:border-white/10 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5 disabled:opacity-40">
-                        <x-icon name="arrow-uturn-left" class="h-3.5 w-3.5" />
+                      </x-button>
+                      <x-button variant="secondary" size="sm" icon="arrow-uturn-left" @click="undoWaypoint()" ::disabled="! planPoints.length">
                         <span>{{ __('explore.undo_point') }}</span>
-                      </button>
+                      </x-button>
                       <button type="button" @click="cancelPlan()"
                         class="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">{{ __('explore.cancel') }}</button>
                     </div>
@@ -316,8 +298,8 @@
                           <input type="text" x-ref="renameInput" x-model="renameValue"
                             @keydown.enter.prevent="saveRename(t)" @keydown.escape.prevent="cancelRename()"
                             class="min-w-0 flex-1 rounded-md border-0 bg-black/[0.04] dark:bg-white/10 px-2 py-1 text-sm text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent">
-                          <button type="button" @click="saveRename(t)" class="rounded-md p-1 text-accent hover:bg-accent/10" :aria-label="@js(__('explore.save'))"><x-icon name="check" class="h-4 w-4" /></button>
-                          <button type="button" @click="cancelRename()" class="rounded-md p-1 text-gray-400 hover:bg-black/5 dark:hover:bg-white/10" :aria-label="@js(__('explore.cancel'))"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                          <x-icon-button name="check" tone="accent" size="sm" @click="saveRename(t)" ::aria-label="@js(__('explore.save'))" />
+                          <x-icon-button name="x-mark" size="sm" @click="cancelRename()" ::aria-label="@js(__('explore.cancel'))" />
                         </div>
                       </template>
 
@@ -333,16 +315,12 @@
                       </template>
 
                       <div class="flex shrink-0 items-center gap-0.5" x-show="renamingId !== t.id">
-                        <button type="button" @click.stop="startRename(t)"
-                          class="rounded-md p-1.5 text-gray-400 hover:bg-accent/5 hover:text-accent md:opacity-0 md:group-hover:opacity-100"
-                          :title="@js(__('explore.rename_track'))" :aria-label="@js(__('explore.rename_track'))">
-                          <x-icon name="pencil" class="h-4 w-4" />
-                        </button>
-                        <button type="button" @click.stop="deleteTrack(t)"
-                          class="rounded-md p-1.5 text-gray-400 hover:bg-red-500/10 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
-                          :title="@js(__('explore.delete_track'))" :aria-label="@js(__('explore.delete_track'))">
-                          <x-icon name="trash" class="h-4 w-4" />
-                        </button>
+                        <x-icon-button name="pencil" size="sm" @click.stop="startRename(t)"
+                          class="md:opacity-0 md:group-hover:opacity-100"
+                          ::title="@js(__('explore.rename_track'))" ::aria-label="@js(__('explore.rename_track'))" />
+                        <x-icon-button name="trash" tone="red" size="sm" @click.stop="deleteTrack(t)"
+                          class="md:opacity-0 md:group-hover:opacity-100"
+                          ::title="@js(__('explore.delete_track'))" ::aria-label="@js(__('explore.delete_track'))" />
                         <x-icon name="chevron-right" class="h-4 w-4 text-gray-300 dark:text-gray-600" />
                       </div>
                     </div>
@@ -357,19 +335,16 @@
                 <div class="ll-card">
                   {{-- Header: back + name (editable) + actions --}}
                   <div class="flex items-start gap-2">
-                    <button type="button" @click="backToList()"
-                      class="mt-0.5 rounded-lg p-1.5 text-gray-500 hover:bg-accent/5 hover:text-accent"
-                      :title="@js(__('explore.back'))" :aria-label="@js(__('explore.back'))">
-                      <x-icon name="chevron-left" class="h-5 w-5" />
-                    </button>
+                    <x-icon-button name="chevron-left" @click="backToList()" class="mt-0.5"
+                      ::title="@js(__('explore.back'))" ::aria-label="@js(__('explore.back'))" />
                     <div class="min-w-0 flex-1">
                       <template x-if="renamingId === selectedTrack.id">
                         <div class="flex items-center gap-1.5">
                           <input type="text" x-ref="renameInput" x-model="renameValue"
                             @keydown.enter.prevent="saveRename(selectedTrack)" @keydown.escape.prevent="cancelRename()"
                             class="min-w-0 flex-1 rounded-md border-0 bg-black/[0.04] dark:bg-white/10 px-2 py-1 text-base font-semibold text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent">
-                          <button type="button" @click="saveRename(selectedTrack)" class="rounded-md p-1 text-accent hover:bg-accent/10" :aria-label="@js(__('explore.save'))"><x-icon name="check" class="h-4 w-4" /></button>
-                          <button type="button" @click="cancelRename()" class="rounded-md p-1 text-gray-400 hover:bg-black/5 dark:hover:bg-white/10" :aria-label="@js(__('explore.cancel'))"><x-icon name="x-mark" class="h-4 w-4" /></button>
+                          <x-icon-button name="check" tone="accent" size="sm" @click="saveRename(selectedTrack)" ::aria-label="@js(__('explore.save'))" />
+                          <x-icon-button name="x-mark" size="sm" @click="cancelRename()" ::aria-label="@js(__('explore.cancel'))" />
                         </div>
                       </template>
                       <template x-if="renamingId !== selectedTrack.id">
@@ -378,11 +353,8 @@
                     </div>
                     {{-- Actions: rename / GPX download / delete, in a 3-dot menu --}}
                     <div class="relative mt-0.5 shrink-0" x-data="{ open: false }" @keydown.escape.window="open = false">
-                      <button type="button" @click="open = ! open"
-                        class="rounded-lg p-1.5 text-gray-400 hover:bg-accent/5 hover:text-accent"
-                        :title="@js(__('explore.track_actions'))" :aria-label="@js(__('explore.track_actions'))" :aria-expanded="open">
-                        <x-icon name="ellipsis" class="h-5 w-5" />
-                      </button>
+                      <x-icon-button name="ellipsis" @click="open = ! open"
+                        ::title="@js(__('explore.track_actions'))" ::aria-label="@js(__('explore.track_actions'))" ::aria-expanded="open" />
                       <div x-show="open" x-cloak @click.outside="open = false"
                         class="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-1 shadow-lg">
                         <button type="button" @click="open = false; startRename(selectedTrack)"
@@ -478,10 +450,7 @@
                         {{ __('explore.coupled_photos') }}
                         <span class="text-gray-400" x-text="'(' + coupledPhotos.length + ')'"></span>
                       </p>
-                      <button type="button" @click="openPhotoPicker(selectedTrackId)"
-                        class="inline-flex items-center gap-1 rounded-lg border border-black/[0.08] dark:border-white/10 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 transition hover:border-accent hover:text-accent">
-                        <x-icon name="plus" class="h-3.5 w-3.5" />{{ __('explore.add_photos') }}
-                      </button>
+                      <x-button variant="secondary" size="sm" icon="plus" @click="openPhotoPicker(selectedTrackId)">{{ __('explore.add_photos') }}</x-button>
                     </div>
                     <div class="flex flex-wrap gap-2" x-show="coupledPhotos.length">
                       <template x-for="p in coupledPhotos" :key="p.id">
@@ -521,8 +490,8 @@
                 </label>
               </div>
               <div class="mt-5 flex justify-end gap-3">
-                <button type="button" @click="settingsOpen = false" class="rounded-md border border-gray-300 dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">{{ __('explore.close') }}</button>
-                <button type="button" @click="saveSettings()" class="rounded-xl ll-accent px-4 py-2 text-sm font-medium">{{ __('explore.save') }}</button>
+                <x-button variant="secondary" @click="settingsOpen = false">{{ __('explore.close') }}</x-button>
+                <x-button variant="primary" @click="saveSettings()">{{ __('explore.save') }}</x-button>
               </div>
             </div>
           </div>
@@ -535,9 +504,7 @@
             <div class="relative flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.assign_to_track') }}</h3>
-                <button type="button" @click="closeAssign()" class="rounded-md p-1.5 text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10" :aria-label="@js(__('explore.close'))">
-                  <x-icon name="x-mark" class="h-4 w-4" />
-                </button>
+                <x-icon-button name="x-mark" size="sm" @click="closeAssign()" ::aria-label="@js(__('explore.close'))" />
               </div>
               <div class="space-y-3 px-5 py-4">
                 {{-- Autocomplete search --}}
@@ -578,7 +545,7 @@
                 <button type="button" x-show="assignFor && couplings[assignFor]" @click="clearCoupling(assignFor); closeAssign()"
                   class="text-xs font-medium text-red-500 hover:text-red-600">{{ __('explore.clear_coupling') }}</button>
                 <span x-show="! (assignFor && couplings[assignFor])"></span>
-                <button type="button" @click="closeAssign()" class="rounded-md border border-gray-300 dark:border-white/10 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5">{{ __('explore.close') }}</button>
+                <x-button variant="secondary" @click="closeAssign()">{{ __('explore.close') }}</x-button>
               </div>
             </div>
           </div>
@@ -592,9 +559,7 @@
             <div class="relative flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] shadow-xl">
               <div class="flex items-center justify-between border-b border-black/[0.06] dark:border-white/10 px-5 py-4">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('explore.add_photos') }}</h3>
-                <button type="button" @click="closePhotoPicker()" class="rounded-md p-1.5 text-gray-500 hover:bg-black/[0.04] dark:hover:bg-white/10" :aria-label="@js(__('explore.close'))">
-                  <x-icon name="x-mark" class="h-4 w-4" />
-                </button>
+                <x-icon-button name="x-mark" size="sm" @click="closePhotoPicker()" ::aria-label="@js(__('explore.close'))" />
               </div>
               <div class="px-5 py-4">
                 <input type="search" x-model="photoPickerQuery"
@@ -619,7 +584,7 @@
                 <p x-show="! pickerPhotos.length" class="px-3 py-8 text-center text-xs text-gray-500 dark:text-gray-400">{{ __('explore.no_photos') }}</p>
               </div>
               <div class="flex justify-end border-t border-black/[0.06] dark:border-white/10 px-5 py-3">
-                <button type="button" @click="closePhotoPicker()" class="rounded-md ll-accent px-4 py-2 text-sm font-medium">{{ __('explore.done') }}</button>
+                <x-button variant="primary" @click="closePhotoPicker()">{{ __('explore.done') }}</x-button>
               </div>
             </div>
           </div>

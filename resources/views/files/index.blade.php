@@ -83,11 +83,9 @@
             <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
                x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-            <button type="button" @click="$dispatch('vault-panel')"
-                class="mt-5 inline-flex min-h-11 items-center gap-1.5 ll-accent rounded-xl px-4 py-2 text-sm font-medium">
-                <x-icon name="lock-open" class="h-4 w-4" />
+            <x-button variant="primary" icon="lock-open" @click="$dispatch('vault-panel')" class="mt-5">
                 <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-            </button>
+            </x-button>
         </div>
     </template>
 
@@ -96,9 +94,7 @@
             <p>{{ __('files.save_failed') }}</p>
             {{-- Recover from a transient load failure without a full page reload,
                  so the client isn't stuck in 'error' (which blocks all persists). --}}
-            <button type="button" @click="state = 'boot'; load()" class="mt-3 inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-1.5 font-medium hover:bg-red-100 dark:hover:bg-red-900">
-                <x-icon name="arrow-path" class="h-4 w-4" />{{ __('files.retry') }}
-            </button>
+            <x-button variant="danger" size="sm" icon="arrow-path" @click="state = 'boot'; load()" class="mt-3">{{ __('files.retry') }}</x-button>
         </div>
     </template>
 
@@ -147,16 +143,11 @@
                 </template>
                 <template x-if="view === 'files' && _canEditActive()">
                     {{-- New folder: opens modal instead of inline sidebar form --}}
-                    <button type="button" @click="openNewFolder()"
-                        title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}"
-                        class="ll-accent rounded-xl p-2">
-                        <x-icon name="folder-plus" class="h-5 w-5" />
-                    </button>
+                    <x-icon-button name="folder-plus" variant="solid" @click="openNewFolder()"
+                        title="{{ __('files.new_folder') }}" aria-label="{{ __('files.new_folder') }}" />
                 </template>
 <template x-if="trashView && trashCount > 0">
-                    <button type="button" @click="emptyTrash()" class="inline-flex items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">
-                        <x-icon name="trash" class="h-4 w-4" />{{ __('files.empty_trash') }}
-                    </button>
+                    <x-button variant="danger" icon="trash" @click="emptyTrash()">{{ __('files.empty_trash') }}</x-button>
                 </template>
             </div>
         </div>
@@ -181,11 +172,9 @@
                 <button type="button" @click="setLayout('grid')" :class="layout === 'grid' ? 'bg-accent text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_grid') }}" aria-label="{{ __('files.view_grid') }}" class="rounded p-1.5"><x-icon name="squares-2x2" class="h-4 w-4" /></button>
             </div>
             {{-- Index file contents for search (personal only — not available in shared context) --}}
-            <button type="button" x-show="! _isSharedContext() && unextractedCount() > 0 && ! _extracting" x-cloak @click="extractAllText()" :title="'{{ __('files.extract_hint') }}'" class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-accent/5">
-                <x-icon name="sparkles" class="h-4 w-4" />{{ __('files.extract_all') }} <span class="tabular-nums opacity-70" x-text="'(' + unextractedCount() + ')'"></span>
-            </button>
+            <x-button variant="secondary" size="sm" icon="sparkles" x-show="! _isSharedContext() && unextractedCount() > 0 && ! _extracting" x-cloak @click="extractAllText()" :title="__('files.extract_hint')">{{ __('files.extract_all') }} <span class="tabular-nums opacity-70" x-text="'(' + unextractedCount() + ')'"></span></x-button>
             <span x-show="extractProgress" x-cloak class="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 tabular-nums">
-                <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
                 <span x-text="(extractProgress?.done || 0) + ' / ' + (extractProgress?.total || 0)"></span>
             </span>
             <span x-show="activeTag" x-cloak class="inline-flex items-center gap-2 rounded-full bg-blue-50 dark:bg-blue-950 px-3 py-1 text-xs text-blue-800 dark:text-blue-300">
@@ -204,7 +193,7 @@
                     <div class="flex items-center gap-2">
                         <span class="ll-chip flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white" style="background:#e2915a"><x-icon name="envelope" class="h-4 w-4" /></span>
                         <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300" x-text="inv.name || '{{ __('files.folder_pending_invite') }}'"></span>
-                        <button type="button" @click="acceptFolderInvite(inv)" class="shrink-0 rounded-lg ll-accent px-2.5 py-1 text-xs font-medium">{{ __('files.folder_accept') }}</button>
+                        <x-button variant="primary" size="sm" @click="acceptFolderInvite(inv)" class="shrink-0">{{ __('files.folder_accept') }}</x-button>
                     </div>
                 </template>
             </div>
@@ -319,8 +308,8 @@
                                 <form x-show="renaming === row.id" x-cloak class="flex gap-2" @click.stop @submit.prevent="applyRename(row)">
                                     <input type="text" x-model="renameValue" x-ref="rename"
                                         class="w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
-                                    <button type="submit" class="ll-accent rounded-xl px-3 text-sm font-medium">{{ __('files.save') }}</button>
-                                    <button type="button" @click="renaming = null" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="x-mark" /></button>
+                                    <x-button type="submit" variant="primary">{{ __('files.save') }}</x-button>
+                                    <x-icon-button name="x-mark" @click="renaming = null" aria-label="{{ __('common.cancel') }}" />
                                 </form>
                             </td>
                             <td class="hidden px-4 py-3 text-gray-600 dark:text-gray-400 sm:table-cell" x-text="rowLabel(row)"></td>
@@ -336,8 +325,8 @@
                             <td class="px-4 py-3 text-right" @click.stop>
                                 {{-- Trash view: restore / delete-forever only --}}
                                 <div x-show="trashView" class="flex items-center justify-end gap-1">
-                                    <button type="button" @click="restore(row)" title="{{ __('files.restore') }}" aria-label="{{ __('files.restore') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-uturn-left" class="h-4 w-4" /></button>
-                                    <button type="button" @click="purge(row)" title="{{ __('files.delete_forever') }}" aria-label="{{ __('files.delete_forever') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"><x-icon name="trash" class="h-4 w-4" /></button>
+                                    <x-icon-button name="arrow-uturn-left" size="lg" @click="restore(row)" title="{{ __('files.restore') }}" aria-label="{{ __('files.restore') }}" />
+                                    <x-icon-button name="trash" tone="red" size="lg" @click="purge(row)" title="{{ __('files.delete_forever') }}" aria-label="{{ __('files.delete_forever') }}" />
                                 </div>
                                 <div x-show="! trashView" class="flex items-center justify-end gap-1">
                                     {{-- Quick actions (icon-only): favourite, preview, info, download. --}}
@@ -345,11 +334,11 @@
                                         <span x-show="row.favorite"><x-icon name="star-solid" class="h-4 w-4" /></span>
                                         <span x-show="! row.favorite"><x-icon name="star" class="h-4 w-4" /></span>
                                     </button>
-                                    <button type="button" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="eye" class="h-4 w-4" /></button>
-                                    <button type="button" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="info" class="h-4 w-4" /></button>
-                                    <button type="button" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-4 w-4" /></button>
+                                    <x-icon-button name="eye" size="lg" x-show="row.kind === 'file'" @click="openFile(row)" title="{{ __('files.preview') }}" aria-label="{{ __('files.preview') }}" />
+                                    <x-icon-button name="info" size="lg" @click="openInfo(row)" title="{{ __('files.info') }}" aria-label="{{ __('files.info') }}" />
+                                    <x-icon-button name="arrow-down-tray" size="lg" x-show="row.kind === 'file'" @click="download(row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" />
                                     <div class="relative inline-block text-left">
-                                        <button type="button" @click="toggleMenu($event)" @keydown.escape="menu = false" class="min-h-11 min-w-11 inline-flex items-center justify-center rounded p-2.5 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-600" aria-label="{{ __('files.actions') }}"><x-icon name="ellipsis" /></button>
+                                        <x-icon-button name="ellipsis" size="lg" @click="toggleMenu($event)" @keydown.escape="menu = false" aria-label="{{ __('files.actions') }}" />
                                         {{-- Teleported to the body so the table's overflow-x-auto wrapper cannot
                                              clip the menu (which would hide it and force a scrollbar). --}}
                                         <template x-teleport="body">
@@ -378,8 +367,8 @@
         <span class="text-sm font-medium text-gray-700 dark:text-gray-300"><span x-text="selected.length"></span> {{ __('files.selected_word') }}</span>
         {{-- No server-side bulk export under zero-knowledge (the server can't zip
              ciphertext); single files download + decrypt client-side. --}}
-        <button type="button" @click="openMove(null)" title="{{ __('files.move') }}" aria-label="{{ __('files.move') }}" class="ll-accent rounded-xl p-2"><x-icon name="arrows-right-left" class="h-5 w-5" /></button>
-        <button type="button" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" class="rounded-md border border-red-300 p-2 text-red-700 dark:text-red-300 hover:bg-red-50"><x-icon name="trash" class="h-5 w-5" /></button>
+        <x-icon-button name="arrows-right-left" variant="solid" @click="openMove(null)" title="{{ __('files.move') }}" aria-label="{{ __('files.move') }}" />
+        <x-icon-button name="trash" tone="red" @click="confirmDelete(null)" title="{{ __('common.delete') }}" aria-label="{{ __('common.delete') }}" />
     </div>
 
     {{-- Upload tray (Google/Proton style): fixed bottom-right, per-file state --}}
@@ -434,8 +423,8 @@
                     </template>
                 </div>
                 <div class="flex justify-end gap-3 border-t border-gray-100 dark:border-gray-800 px-6 py-4">
-                    <button type="button" @click="moveOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('common.cancel') }}</button>
-                    <button type="button" @click="applyMove()" class="ll-accent rounded-xl px-4 py-2 text-sm font-medium">{{ __('files.move_here') }}</button>
+                    <x-button variant="secondary" @click="moveOpen = false">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="applyMove()">{{ __('files.move_here') }}</x-button>
                 </div>
             </div>
         </div>
@@ -451,9 +440,9 @@
                     <h3 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100" x-text="viewer.row?.name"></h3>
                     <div class="flex shrink-0 items-center gap-3">
                         <span x-show="viewerHasGallery" x-cloak class="text-xs tabular-nums text-gray-400 dark:text-gray-500" x-text="`${viewerIndex + 1} / ${viewerImages.length}`"></span>
-                        <button type="button" x-show="viewer.kind === 'pdf' && $store.paperless.configured" @click="openPaperless(viewer.row)" title="{{ __('paperless.send_to_paperless') }}" aria-label="{{ __('paperless.send_to_paperless') }}" class="rounded p-1 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="share" class="h-5 w-5" /></button>
-                        <button type="button" @click="download(viewer.row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" class="rounded p-1 text-gray-500 dark:text-gray-400 hover:bg-accent/5 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="arrow-down-tray" class="h-5 w-5" /></button>
-                        <button type="button" @click="closeViewer()" title="{{ __('common.close') }}" aria-label="{{ __('common.close') }}" class="rounded p-1 text-gray-400 dark:text-gray-500 hover:bg-accent/5 hover:text-gray-600"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                        <x-icon-button name="share" x-show="viewer.kind === 'pdf' && $store.paperless.configured" @click="openPaperless(viewer.row)" title="{{ __('paperless.send_to_paperless') }}" aria-label="{{ __('paperless.send_to_paperless') }}" />
+                        <x-icon-button name="arrow-down-tray" @click="download(viewer.row)" title="{{ __('files.download') }}" aria-label="{{ __('files.download') }}" />
+                        <x-icon-button name="x-mark" @click="closeViewer()" title="{{ __('common.close') }}" aria-label="{{ __('common.close') }}" />
                     </div>
                 </div>
                 <div class="min-h-0 flex-1 overflow-auto p-4">
@@ -500,8 +489,7 @@
                         </div>
                         <div x-ref="viewerEditor" class="overflow-hidden rounded-lg border border-gray-300 dark:border-gray-700"></div>
                         <div class="mt-3 flex items-center gap-3">
-                            <button type="button" @click="saveText()" :disabled="viewer.saving"
-                                class="ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('files.save') }}</button>
+                            <x-button variant="primary" @click="saveText()" ::disabled="viewer.saving">{{ __('files.save') }}</x-button>
                             <span x-show="viewer.saved" x-cloak class="text-green-600"><x-icon name="check" class="h-4 w-4" /></span>
                         </div>
                     </div>
@@ -523,8 +511,8 @@
                     <template x-for="tag in allTags" :key="tag"><option :value="tag"></option></template>
                 </datalist>
                 <div class="mt-5 flex justify-end gap-3">
-                    <button type="button" @click="tagsOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('common.cancel') }}</button>
-                    <button type="button" @click="applyTags()" class="ll-accent rounded-xl px-4 py-2 text-sm font-medium">{{ __('files.save') }}</button>
+                    <x-button variant="secondary" @click="tagsOpen = false">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="applyTags()">{{ __('files.save') }}</x-button>
                 </div>
             </div>
         </div>
@@ -546,15 +534,15 @@
                                     <span class="text-gray-700 dark:text-gray-300" x-text="fmtSize(v.size)"></span>
                                 </span>
                                 <span class="flex shrink-0 items-center gap-2">
-                                    <button type="button" @click="downloadVersion(v)" class="inline-flex min-h-11 items-center rounded-md border border-gray-300 dark:border-gray-700 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('files.version_download') }}</button>
-                                    <button type="button" @click="restoreVersion(v)" class="inline-flex min-h-11 items-center ll-accent rounded-xl px-3 text-sm font-medium">{{ __('files.version_restore') }}</button>
+                                    <x-button variant="secondary" @click="downloadVersion(v)">{{ __('files.version_download') }}</x-button>
+                                    <x-button variant="primary" @click="restoreVersion(v)">{{ __('files.version_restore') }}</x-button>
                                 </span>
                             </li>
                         </template>
                     </ul>
                 </div>
                 <div class="flex justify-end border-t border-gray-100 dark:border-gray-800 px-6 py-3">
-                    <button type="button" @click="versions.open = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('common.close') }}</button>
+                    <x-button variant="secondary" @click="versions.open = false">{{ __('common.close') }}</x-button>
                 </div>
             </div>
         </div>
@@ -618,7 +606,7 @@
                     </ul>
                 </div>
                 <div class="mt-5 flex justify-end">
-                    <button type="button" @click="infoOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('common.close') }}</button>
+                    <x-button variant="secondary" @click="infoOpen = false">{{ __('common.close') }}</x-button>
                 </div>
             </div>
         </div>
@@ -631,7 +619,7 @@
             <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                 <div class="flex items-start justify-between gap-2">
                     <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.share_title') }} <span class="font-normal text-gray-500 dark:text-gray-400" x-text="share.name"></span></h3>
-                    <button type="button" @click="closeShare()" class="rounded-lg p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button>
+                    <x-icon-button name="x-mark" @click="closeShare()" aria-label="{{ __('gallery.share_close') }}" />
                 </div>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" x-text="share.kind === 'folder' ? '{{ __('files.share_intro_folder') }}' : '{{ __('files.share_intro_file') }}'"></p>
 
@@ -661,8 +649,8 @@
                     <button type="button" x-show="_shareSrc()?.share" x-cloak @click="revokeShare()" :disabled="share.busy" class="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50">{{ __('gallery.share_revoke') }}</button>
                     <div class="ml-auto flex gap-2">
                         <button type="button" @click="closeShare()" class="rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:bg-accent/5">{{ __('gallery.share_close') }}</button>
-                        <button type="button" x-show="! _shareSrc()?.share" @click="createShare()" :disabled="share.busy" class="inline-flex items-center gap-1.5 ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50"><x-icon name="link" class="h-4 w-4" />{{ __('gallery.share_create_link') }}</button>
-                        <button type="button" x-show="_shareSrc()?.share" x-cloak @click="updateShare()" :disabled="share.busy" class="inline-flex items-center gap-1.5 ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('gallery.share_update') }}</button>
+                        <x-button variant="primary" icon="link" x-show="! _shareSrc()?.share" @click="createShare()" ::disabled="share.busy">{{ __('gallery.share_create_link') }}</x-button>
+                        <x-button variant="primary" x-show="_shareSrc()?.share" x-cloak @click="updateShare()" ::disabled="share.busy">{{ __('gallery.share_update') }}</x-button>
                     </div>
                 </div>
             </div>
@@ -683,8 +671,8 @@
                     {{ __('files.migrate_delete_after') }}
                 </label>
                 <div class="mt-5 flex justify-end gap-3">
-                    <button type="button" @click="migrateOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('common.cancel') }}</button>
-                    <button type="button" @click="applyMigrate()" :disabled="migrateBusy" class="ll-accent rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50">{{ __('files.migrate_confirm') }}</button>
+                    <x-button variant="secondary" @click="migrateOpen = false">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="applyMigrate()" ::disabled="migrateBusy">{{ __('files.migrate_confirm') }}</x-button>
                 </div>
             </div>
         </div>
@@ -701,9 +689,9 @@
                 </p>
                 <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ __('files.delete_choice_hint') }}</p>
                 <div class="mt-5 flex flex-wrap justify-end gap-3">
-                    <button type="button" @click="deleteOpen = false" class="rounded-md border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-accent/5">{{ __('common.cancel') }}</button>
-                    <button type="button" @click="applyDelete(true)" class="rounded-md border border-red-300 dark:border-red-800 px-4 py-2 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950">{{ __('files.delete_forever') }}</button>
-                    <button type="button" @click="applyDelete(false)" class="ll-accent rounded-xl px-4 py-2 text-sm font-medium">{{ __('files.move_to_trash') }}</button>
+                    <x-button variant="secondary" @click="deleteOpen = false">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="danger" @click="applyDelete(true)">{{ __('files.delete_forever') }}</x-button>
+                    <x-button variant="primary" @click="applyDelete(false)">{{ __('files.move_to_trash') }}</x-button>
                 </div>
             </div>
         </div>
@@ -735,15 +723,8 @@
                     </label>
                 </template>
                 <div class="flex justify-end gap-2 pt-1">
-                    <button type="button" @click="newFolderModal = false"
-                        class="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        {{ __('common.cancel') }}
-                    </button>
-                    <button type="button" @click="submitNewFolder()"
-                        :disabled="! newFolderName.trim()"
-                        class="rounded-lg ll-accent px-4 py-2 text-sm font-medium hover:brightness-105 disabled:opacity-50">
-                        {{ __('files.new_folder') }}
-                    </button>
+                    <x-button variant="secondary" @click="newFolderModal = false">{{ __('common.cancel') }}</x-button>
+                    <x-button variant="primary" @click="submitNewFolder()" ::disabled="! newFolderName.trim()">{{ __('files.new_folder') }}</x-button>
                 </div>
             </div>
         </div>

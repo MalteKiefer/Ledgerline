@@ -9,14 +9,14 @@
 
         <form method="POST" action="{{ route('verification.send') }}" class="mt-6">
             @csrf
-            <button type="submit" class="ll-accent flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2">
+            <x-button variant="primary" size="lg" type="submit" class="w-full">
                 {{ __('auth_ui.verify_resend') }}
-            </button>
+            </x-button>
         </form>
 
         <form method="POST" action="{{ route('logout') }}" class="mt-3">
             @csrf
-            <button type="submit" class="w-full text-center text-xs text-gray-500 dark:text-gray-400 hover:text-accent">{{ __('auth_ui.sign_out') }}</button>
+            <button type="submit" class="w-full text-center text-sm text-accent hover:underline">{{ __('auth_ui.sign_out') }}</button>
         </form>
     </div>
 </x-layouts.guest>

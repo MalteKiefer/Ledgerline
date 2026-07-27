@@ -20,7 +20,7 @@
             <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 @foreach ($channels as $ch)
                     <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                        <input type="checkbox" name="birthday[]" value="{{ $ch }}" @checked(in_array($ch, $birthday, true)) class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">
+                        <input type="checkbox" name="birthday[]" value="{{ $ch }}" @checked(in_array($ch, $birthday, true)) class="rounded border-gray-300 dark:border-gray-600 text-gray-900">
                         {{ $labels[$ch] }}
                     </label>
                 @endforeach
@@ -33,7 +33,7 @@
             <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 @foreach ($channels as $ch)
                     <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                        <input type="checkbox" name="anniversary[]" value="{{ $ch }}" @checked(in_array($ch, $anniversary, true)) class="rounded border-gray-300 dark:border-gray-600 text-gray-900 focus:ring-0">
+                        <input type="checkbox" name="anniversary[]" value="{{ $ch }}" @checked(in_array($ch, $anniversary, true)) class="rounded border-gray-300 dark:border-gray-600 text-gray-900">
                         {{ $labels[$ch] }}
                     </label>
                 @endforeach

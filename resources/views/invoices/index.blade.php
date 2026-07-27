@@ -43,11 +43,9 @@
         <x-icon name="lock-closed" class="mx-auto h-8 w-8 text-gray-400" />
         <p class="mt-3 text-sm text-gray-600 dark:text-gray-400"
            x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-        <button type="button" @click="$dispatch('vault-panel')"
-            class="mt-5 inline-flex min-h-11 items-center gap-1.5 rounded-md ll-accent px-4 py-2 text-sm font-medium hover:brightness-105">
-          <x-icon name="lock-open" class="h-4 w-4" />
+        <x-button variant="primary" class="mt-5" icon="lock-open" @click="$dispatch('vault-panel')">
           <span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span>
-        </button>
+        </x-button>
       </div>
     </template>
 
@@ -122,9 +120,9 @@
                     </td>
                     <td class="px-4 py-2">
                       <div class="flex items-center justify-end gap-1">
-                        <button type="button" @click="open(inv)" title="{{ __('common.edit') }}" class="rounded p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="pencil" class="h-4 w-4" /></button>
-                        <button type="button" @click="printInvoice(inv)" title="{{ __('invoices.print') }}" class="rounded p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="printer" class="h-4 w-4" /></button>
-                        <button type="button" @click="trash(inv)" title="{{ __('invoices.trash') }}" class="rounded p-1.5 text-gray-500 hover:bg-accent/5"><x-icon name="trash" class="h-4 w-4" /></button>
+                        <x-icon-button name="pencil" size="sm" @click="open(inv)" title="{{ __('common.edit') }}" aria-label="{{ __('common.edit') }}" />
+                        <x-icon-button name="printer" size="sm" @click="printInvoice(inv)" title="{{ __('invoices.print') }}" aria-label="{{ __('invoices.print') }}" />
+                        <x-icon-button name="trash" size="sm" @click="trash(inv)" title="{{ __('invoices.trash') }}" aria-label="{{ __('invoices.trash') }}" />
                       </div>
                     </td>
                   </tr>
@@ -139,7 +137,7 @@
         <div x-cloak @input="saveSoon()">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-              <button type="button" @click="backToList()" class="rounded-lg p-2 text-gray-500 hover:bg-accent/5"><x-icon name="arrow-left" class="h-4 w-4" /></button>
+              <x-icon-button name="arrow-left" @click="backToList()" aria-label="{{ __('common.back') }}" />
               <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 tabular-nums" x-text="current?.number || @js(__('invoices.status_draft'))"></h1>
               <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300" x-text="statusLabel(current?.status)"></span>
             </div>
@@ -237,7 +235,7 @@
                       <td class="py-1 px-2"><input type="number" step="0.01" x-model.number="l.unitPrice" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2"><input type="number" step="0.01" x-model.number="l.vatRate" class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm text-right shadow-sm focus:border-accent focus:ring-accent"></td>
                       <td class="py-1 px-2 text-right tabular-nums text-gray-700 dark:text-gray-300" x-text="fmtMoney(lineNet(l))"></td>
-                      <td class="py-1 pl-2 text-right"><button type="button" @click="removeLine(i)" title="{{ __('invoices.remove') }}" class="rounded p-1 text-gray-400 hover:bg-accent/5 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button></td>
+                      <td class="py-1 pl-2 text-right"><x-icon-button name="x-mark" size="sm" @click="removeLine(i)" title="{{ __('invoices.remove') }}" aria-label="{{ __('invoices.remove') }}" /></td>
                     </tr>
                   </template>
                 </tbody>
@@ -256,7 +254,7 @@
           </div>
 
           <div class="mt-6 flex justify-end">
-            <button type="button" @click="remove(current)" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950"><x-icon name="trash" class="h-4 w-4" />{{ __('invoices.delete') }}</button>
+            <x-button variant="danger" size="sm" icon="trash" @click="remove(current)">{{ __('invoices.delete') }}</x-button>
           </div>
         </div>
         </template>

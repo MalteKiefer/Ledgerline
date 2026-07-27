@@ -14,7 +14,7 @@
                 <div class="rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-2 text-sm shadow-sm">
                     <div class="flex items-center justify-between px-3 py-1">
                         <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('bookmarks.folders') }}</p>
-                        <button type="button" @click="openFolderCreate(null)" title="{{ __('bookmarks.new_folder') }}" class="rounded p-0.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"><x-icon name="plus" class="h-4 w-4" /></button>
+                        <x-icon-button name="plus" tone="gray" size="sm" @click="openFolderCreate(null)" title="{{ __('bookmarks.new_folder') }}" />
                     </div>
                     {{-- Root drop target: move an item out of any folder --}}
                     <div @dragover.prevent="if (dragItem) $event.currentTarget.classList.add('ring-1','ring-gray-400')" @dragleave="$event.currentTarget.classList.remove('ring-1','ring-gray-400')"
@@ -32,9 +32,9 @@
                                 <span class="truncate" x-text="f.name"></span>
                             </button>
                             <span class="flex shrink-0 items-center gap-0.5 pr-2">
-                                <button type="button" @click="addSubfolder(f)" title="{{ __('bookmarks.subfolder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-gray-700 dark:hover:text-gray-300 md:opacity-0 md:group-hover:opacity-100"><x-icon name="plus" class="h-3.5 w-3.5" /></button>
-                                <button type="button" @click="openFolderEdit(f)" title="{{ __('bookmarks.edit_folder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-gray-700 dark:hover:text-gray-300 md:opacity-0 md:group-hover:opacity-100"><x-icon name="pencil" class="h-3.5 w-3.5" /></button>
-                                <button type="button" @click="deleteFolder(f)" title="{{ __('bookmarks.delete_folder') }}" class="rounded p-0.5 text-gray-400 dark:text-gray-500 opacity-100 hover:text-red-600 md:opacity-0 md:group-hover:opacity-100"><x-icon name="trash" class="h-3.5 w-3.5" /></button>
+                                <x-icon-button name="plus" tone="gray" size="sm" @click="addSubfolder(f)" title="{{ __('bookmarks.subfolder') }}" class="opacity-100 md:opacity-0 md:group-hover:opacity-100" />
+                                <x-icon-button name="pencil" tone="gray" size="sm" @click="openFolderEdit(f)" title="{{ __('bookmarks.edit_folder') }}" class="opacity-100 md:opacity-0 md:group-hover:opacity-100" />
+                                <x-icon-button name="trash" tone="gray" size="sm" @click="deleteFolder(f)" title="{{ __('bookmarks.delete_folder') }}" class="opacity-100 hover:!text-red-600 md:opacity-0 md:group-hover:opacity-100" />
                             </span>
                         </div>
                     </template>
@@ -44,7 +44,7 @@
                     <p class="px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{{ __('bookmarks.tags') }}</p>
                     <div class="flex flex-wrap gap-1 px-2 py-1">
                         <template x-for="t in allTags" :key="t">
-                            <button type="button" @click="activeTag = (activeTag === t ? '' : t)" class="rounded px-2 py-0.5 text-xs" :class="activeTag === t ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-accent/5'" x-text="t"></button>
+                            <button type="button" @click="activeTag = (activeTag === t ? '' : t)" class="rounded px-2 py-0.5 text-xs" :class="activeTag === t ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200'" x-text="t"></button>
                         </template>
                     </div>
                 </div>

@@ -71,7 +71,7 @@
       <div class="mx-auto mt-16 flex max-w-md flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-12 text-center">
         <div class="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"><x-icon name="lock-closed" class="h-7 w-7 text-gray-400" /></div>
         <p class="mt-4 text-sm text-gray-500 dark:text-gray-400" x-text="$store.vault.configured ? @js(__('vault.unlock_hint')) : @js(__('vault.setup_hint'))"></p>
-        <button type="button" @click="$dispatch('vault-panel')" class="mt-5 ll-accent rounded-xl px-5 py-2.5 text-sm font-medium"><span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span></button>
+        <x-button variant="primary" @click="$dispatch('vault-panel')" class="mt-5"><span x-text="$store.vault.configured ? @js(__('vault.unlock')) : @js(__('vault.setup'))"></span></x-button>
       </div>
     </template>
     <template x-if="state === 'error'"><p class="mt-8 text-center text-sm text-red-500">{{ __('gallery.load_failed') }}</p></template>
@@ -180,7 +180,7 @@
             <input type="search" x-model="query" @input="runSearch()" placeholder="{{ __('gallery.search_placeholder') }}"
                 class="w-full rounded-lg border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] py-2 pl-9 pr-9 text-sm shadow-sm focus:border-accent focus:ring-accent">
             <button type="button" x-show="query" @click="clearSearch()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><x-icon name="x-mark" class="h-4 w-4" /></button>
-            <svg x-show="searching" x-cloak class="absolute right-9 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+            <x-icon name="arrow-path" x-show="searching" x-cloak class="absolute right-9 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />
           </div>
 
           <template x-if="isSearching && ! displayGroups.length && ! searching">
@@ -210,7 +210,7 @@
                       <img x-show="thumbs[p.id]" :src="thumbs[p.id]" :style="photoTransform(p)" loading="lazy" class="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]">
                       <template x-if="p.motionRef && p.media_type !== 'video'"><video data-motion muted loop playsinline preload="none" style="display:none" class="pointer-events-none absolute inset-0 h-full w-full object-cover"></video></template>
                       <div x-show="!thumbs[p.id]" class="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900">
-                        <svg x-show="!p.thumbRef && !p.failed" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                        <x-icon name="arrow-path" x-show="!p.thumbRef && !p.failed" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" />
                         <span x-show="p.failed" :title="p.procError" class="text-amber-500 dark:text-amber-400"><x-icon name="exclamation-triangle" class="h-6 w-6" /></span>
                       </div>
                       <template x-if="p.media_type === 'video'"><span class="pointer-events-none absolute inset-0 flex items-center justify-center"><span class="flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm"><x-icon name="play" class="h-5 w-5" /></span></span></template>
@@ -235,7 +235,7 @@
           {{-- Infinite-scroll sentinel: reveals the next page of tiles as it
                nears the viewport, so the grid never builds the whole library. --}}
           <div x-show="hasMore" x-intersect.margin.800px="loadMore()" class="flex items-center justify-center py-6">
-            <svg class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+            <x-icon name="arrow-path" class="h-5 w-5 animate-spin text-gray-300 dark:text-gray-600" />
           </div>
         </div>
 
@@ -501,7 +501,7 @@
                 <x-icon name="sparkles" class="h-4 w-4" />{{ __('gallery.reindex_all') }}
               </button>
               <span x-show="reindexProgress" x-cloak class="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 tabular-nums">
-                <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                <x-icon name="arrow-path" class="h-4 w-4 animate-spin" />
                 <span x-text="(reindexProgress?.done || 0) + ' / ' + (reindexProgress?.total || 0)"></span>
               </span>
             </div>
@@ -509,7 +509,7 @@
 
           {{-- Scanning card (face clustering OR deep ML re-analysis) --}}
           <div x-show="peopleScanning || deepScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-10 text-center shadow-sm">
-            <svg class="h-8 w-8 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+            <x-icon name="arrow-path" class="h-8 w-8 animate-spin text-gray-400" />
             <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200" x-text="deepScanning && _mlRunning ? '{{ __('gallery.analyzing') }}' : '{{ __('gallery.scanning') }}'"></p>
             <template x-if="deepScanning && _mlRunning">
               <div class="w-full">
@@ -621,7 +621,7 @@
 
           {{-- Scanning card --}}
           <div x-show="dupScanning" x-cloak class="mx-auto mt-8 flex max-w-sm flex-col items-center rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-10 text-center shadow-sm">
-            <svg class="h-8 w-8 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+            <x-icon name="arrow-path" class="h-8 w-8 animate-spin text-gray-400" />
             <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ __('gallery.scanning') }}</p>
             <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div class="h-full rounded-full bg-gray-800 dark:bg-gray-200 transition-all duration-300" :style="`width: ${dupProgress.total ? (dupProgress.done / dupProgress.total * 100) : 8}%`"></div></div>
             <p class="mt-2 text-xs tabular-nums text-gray-400" x-text="dupProgress.done + ' / ' + dupProgress.total"></p>
@@ -742,7 +742,7 @@
         class="fixed inset-0 z-[950] flex bg-black/90" @click.self="closeViewer()">
       <button type="button" @click="closeViewer()" class="absolute right-4 top-4 z-10 text-white/70 hover:text-white"><x-icon name="x-mark" class="h-7 w-7" /></button>
       <div class="flex flex-1 items-center justify-center p-4" x-ref="vstage" @resize.window="_fitViewer()" @click.self="closeViewer()">
-        <template x-if="viewer.kind === 'loading'"><svg class="h-8 w-8 animate-spin text-white/60" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg></template>
+        <template x-if="viewer.kind === 'loading'"><x-icon name="arrow-path" class="h-8 w-8 animate-spin text-white/60" /></template>
         <template x-if="viewer.kind === 'image'">
           <div class="relative" @click.stop>
             <img :src="viewer.src" x-ref="vimg" @load="_fitViewer()" x-show="! viewer.motionOn" :style="viewerTransform()" class="max-h-[92vh] max-w-full rounded-lg">
@@ -756,7 +756,7 @@
                 <div class="pointer-events-none absolute rounded-sm border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]" :style="`left:${faceTag.box.x}px;top:${faceTag.box.y}px;width:${faceTag.box.w}px;height:${faceTag.box.h}px`"></div>
               </template>
               <div x-show="faceTag.busy" class="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
-                <svg class="h-8 w-8 animate-spin text-white" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"/></svg>
+                <x-icon name="arrow-path" class="h-8 w-8 animate-spin text-white" />
               </div>
             </div>
             <button type="button" x-show="viewer.hasMotion && ! viewer.motionOn" @click.stop="playMotion()"

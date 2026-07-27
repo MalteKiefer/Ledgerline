@@ -3,10 +3,10 @@
         @include('profile._header', ['title' => __('account.nav_security'), 'subtitle' => __('account.twofa_hint')])
 
         @if (session('status'))
-            <div class="mt-4 rounded-md border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
+            <div class="mt-4 rounded-lg border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
         @endif
         @if ($errors->any())
-            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
+            <div class="mt-4 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
         @endif
 
         <div class="mt-5 ll-card space-y-4">
@@ -62,7 +62,7 @@
                     </div>
                     <form method="POST" action="{{ route('two-factor.regenerate-recovery-codes') }}" class="mt-3">
                         @csrf
-                        <button type="submit" class="text-xs text-accent hover:underline">{{ __('account.twofa_regenerate') }}</button>
+                        <x-button variant="secondary" size="sm" type="submit">{{ __('account.twofa_regenerate') }}</x-button>
                     </form>
                 </div>
             @endif
@@ -71,7 +71,7 @@
             @if ($enabled)
                 <form method="POST" action="{{ route('two-factor.disable') }}">
                     @csrf @method('DELETE')
-                    <x-button variant="secondary" type="submit">{{ __('account.twofa_disable') }}</x-button>
+                    <x-button variant="danger" type="submit">{{ __('account.twofa_disable') }}</x-button>
                 </form>
             @endif
         </div>
