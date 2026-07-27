@@ -52,4 +52,16 @@ return [
     'confirm_title' => 'Confirm your password',
     'confirm_intro' => 'Please confirm your password to continue.',
     'confirm_button' => 'Confirm',
+
+    // Invite / reset link (mail-independent)
+    'invite_title' => 'Set your password',
+    'invite_subtitle' => 'Choose a password for :email.',
+    'invite_password_hint' => 'At least 12 characters.',
+    'invite_button' => 'Set password and sign in',
+    'invite_invalid' => 'This link is invalid, has expired, or was already used.',
+    'invite_mail_subject' => 'Your login link',
+    'invite_mail_greeting' => 'Hello!',
+    'invite_mail_line' => 'Use the button below to set your password and sign in.',
+    'invite_mail_action' => 'Set password',
+    'invite_mail_expires' => 'This link expires on :time.',
 ];

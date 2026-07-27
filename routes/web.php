@@ -18,6 +18,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\GalleryProcessController;
 use App\Http\Controllers\GalleryShareController;
 use App\Http\Controllers\GalleryStoreController;
+use App\Http\Controllers\InviteLinkController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
@@ -74,6 +75,12 @@ Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
 
 // First-party auth (login, registration, password reset, email verification,
 // two-factor) is owned by Laravel Fortify — see FortifyServiceProvider.
+
+// Mail-independent invite / password-reset links: public consumption. The token
+// is a hashed, single-use, expiring secret in the URL; the route is throttled and
+// verifies it in constant time. Consuming it sets the user's password.
+Route::get('/invite/{invite}/{token}', [InviteLinkController::class, 'show'])->middleware('throttle:20,1')->name('invite.show');
+Route::post('/invite/{invite}/{token}', [InviteLinkController::class, 'store'])->middleware('throttle:10,1')->name('invite.store');
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
@@ -150,6 +157,7 @@ Route::middleware('auth')->group(function (): void {
         Route::put('/settings/users/{user}', [SettingsUsersController::class, 'update'])->name('settings.users.update');
         Route::post('/settings/users/{user}/reset-password', [SettingsUsersController::class, 'resetPassword'])->middleware('throttle:10,1')->name('settings.users.reset');
         Route::post('/settings/users/{user}/reset-2fa', [SettingsUsersController::class, 'resetTwoFactor'])->name('settings.users.reset2fa');
+        Route::post('/settings/users/{user}/invite-link', [InviteLinkController::class, 'create'])->middleware('throttle:20,1')->name('settings.users.invite');
         Route::get('/settings/users/{user}/avatar', [SettingsUsersController::class, 'avatar'])->name('settings.users.avatar');
         Route::delete('/settings/users/{user}', [SettingsUsersController::class, 'destroy'])->name('settings.users.destroy');
         Route::post('/settings/registration', [SettingsUsersController::class, 'registration'])->name('settings.registration');
