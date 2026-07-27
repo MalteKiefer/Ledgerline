@@ -106,4 +106,6 @@ return [
     'import_done' => ':n invoices imported.',
     'import_load_failed' => 'PDF engine failed to load.',
     'import_summary_label' => 'Invoice amount',
+    'zugferd' => 'ZUGFeRD XML',
+    'zugferd_hint' => 'Download the structured e-invoice XML (ZUGFeRD / Factur-X, EN 16931).',
 ];

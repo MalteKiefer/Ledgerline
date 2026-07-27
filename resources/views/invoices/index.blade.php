@@ -148,6 +148,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <x-button variant="secondary" @click="printInvoice(current)"><x-icon name="printer" class="mr-1.5 h-4 w-4" />{{ __('invoices.print') }}</x-button>
+              <x-button variant="secondary" @click="downloadZugferd(current)" icon="arrow-down-tray" title="{{ __('invoices.zugferd_hint') }}">{{ __('invoices.zugferd') }}</x-button>
               <x-button variant="secondary" x-show="current?.status === 'draft'" @click="finalize(current)">{{ __('invoices.finalize') }}</x-button>
               <x-button variant="secondary" x-show="current?.status === 'sent'" @click="markPaid(current)">{{ __('invoices.mark_paid') }}</x-button>
             </div>
