@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\GroupController as ApiGroupController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
@@ -209,6 +210,16 @@ Route::prefix('v1')->group(function (): void {
                 Route::get('/raw/{blob}', [SharedFolderBlobController::class, 'raw'])->middleware('throttle:600,1')->name('raw');
                 Route::delete('/{blob}', [SharedFolderBlobController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('destroy');
             });
+        });
+
+        // Admin group management (workspace-wide limit templates + shareable flag).
+        // Gated by the admin role on top of the device token; JSON mirror of the web
+        // Settings/GroupsController. Non-secret metadata — zero-knowledge unaffected.
+        Route::middleware('can:manage-global-settings')->prefix('groups')->name('api.groups.')->group(function (): void {
+            Route::get('/', [ApiGroupController::class, 'index'])->name('index');
+            Route::post('/', [ApiGroupController::class, 'store'])->middleware('throttle:60,1')->name('store');
+            Route::put('/{group}', [ApiGroupController::class, 'update'])->middleware('throttle:60,1')->name('update');
+            Route::delete('/{group}', [ApiGroupController::class, 'destroy'])->middleware('throttle:60,1')->name('destroy');
         });
     });
 });
