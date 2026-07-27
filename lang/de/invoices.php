@@ -25,10 +25,10 @@ return [
     'col_actions' => 'Aktionen',
     'draft_label' => 'Entwurf (ohne Nummer)',
 
-    'back' => 'ZurÃ¼ck',
+    'back' => 'Zurück',
     'customer' => 'Kunde',
-    'choose_customer' => 'Aus Kontakten wÃ¤hlen',
-    'no_customer' => 'Kein Kunde ausgewÃ¤hlt',
+    'choose_customer' => 'Aus Kontakten wählen',
+    'no_customer' => 'Kein Kunde ausgewählt',
     'clear_customer' => 'Entfernen',
     'customer_name' => 'Name',
     'customer_address' => 'Adresse',
@@ -36,7 +36,7 @@ return [
     'customer_vat' => 'USt-IdNr.',
 
     'issue_date' => 'Rechnungsdatum',
-    'due_date' => 'FÃ¤llig am',
+    'due_date' => 'Fällig am',
 
     'lines' => 'Positionen',
     'line_desc' => 'Beschreibung',
@@ -44,12 +44,12 @@ return [
     'line_unit' => 'Einheit',
     'line_price' => 'Einzelpreis',
     'line_vat' => 'USt %',
-    'add_line' => 'Position hinzufÃ¼gen',
+    'add_line' => 'Position hinzufügen',
     'remove' => 'Entfernen',
     'csv_import' => 'CSV importieren',
-    'csv_hint' => 'Clockify Detailbericht â fÃ¼llt Startdatum, Beschreibung und Stunden.',
+    'csv_hint' => 'Clockify Detailbericht — füllt Startdatum, Beschreibung und Stunden.',
     'csv_imported' => ':n Positionen importiert.',
-    'csv_bad_format' => 'CSV konnte nicht gelesen werden (Spalten Description und Duration (decimal) nÃ¶tig).',
+    'csv_bad_format' => 'CSV konnte nicht gelesen werden (Spalten Description und Duration (decimal) nötig).',
 
     'net' => 'Netto',
     'vat' => 'USt',
@@ -57,7 +57,7 @@ return [
     'gross' => 'Gesamt',
 
     'note' => 'Notiz',
-    'footer' => 'FuÃzeile',
+    'footer' => 'Fußzeile',
 
     'finalize' => 'Finalisieren & Nummer vergeben',
     'mark_sent' => 'Als gesendet markieren',
@@ -65,17 +65,17 @@ return [
     'print' => 'Drucken / PDF',
     'trash' => 'In den Papierkorb',
     'restore' => 'Wiederherstellen',
-    'delete' => 'EndgÃ¼ltig lÃ¶schen',
-    'delete_confirm' => 'Diese Rechnung endgÃ¼ltig lÃ¶schen?',
+    'delete' => 'Endgültig löschen',
+    'delete_confirm' => 'Diese Rechnung endgültig löschen?',
 
     'company_missing' => 'Richte dein Firmenprofil in den Einstellungen ein, um Rechnungen zu nummerieren und zu branden.',
 
-    'picker_title' => 'Kunde auswÃ¤hlen',
+    'picker_title' => 'Kunde auswählen',
     'picker_search' => 'Kontakte suchen',
     'picker_empty' => 'Keine Kontakte gefunden.',
 
     'language' => 'Sprache',
-    'currency' => 'WÃ¤hrung',
+    'currency' => 'Währung',
     'attn' => 'Ansprechpartner',
 
     // Druck / PDF
@@ -85,7 +85,7 @@ return [
     'bill_to' => 'Rechnung an',
     'invoice_number' => 'Rechnungs-Nr.',
     'invoice_date' => 'Datum',
-    'due' => 'FÃ¤llig',
+    'due' => 'Fällig',
     'amount' => 'Betrag',
     'subtotal' => 'Zwischensumme',
     'tax_heading' => 'Steuer',

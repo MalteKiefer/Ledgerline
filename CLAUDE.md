@@ -6,7 +6,7 @@ nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**
 
 Module: **Dashboard, Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ
 + eingebettete Passkeys in `login`-Items), Kontakte, Rechnungen, Health, Explore (Karte + GPS-Tracks), Backup, Paperless**.
-Version **v1.506.22** (live https://home.kiefer-networks.de, `/up`=200).
+Version **v1.506.23** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill + Bookmarks-CRUD
 + **WebAuthn-Authenticator** (Passkeys).
 
