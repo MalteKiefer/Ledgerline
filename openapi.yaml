@@ -101,6 +101,12 @@ tags:
     description: GDPR data export, account deletion, and session revocation
   - name: Preferences
     description: User preferences — avatar refresh, locale, and colour-scheme
+  - name: Groups
+    description: >
+      Admin group management (requires the admin role on top of the device token).
+      A group is a reusable limit template (files/gallery quota + device cap) plus a
+      shareable flag; membership is many-to-many. Limits and membership are non-secret
+      metadata — zero-knowledge is unaffected.
 
 components:
   securitySchemes:
@@ -113,6 +119,28 @@ components:
         pairing exchange. Include as `Authorization: Bearer <token>`.
 
   schemas:
+    Group:
+      type: object
+      description: >
+        A user group: a reusable limit template plus a shareable flag. Limits are
+        nullable (null = the group sets no cap for that dimension). Non-secret
+        metadata — zero-knowledge is unaffected.
+      properties:
+        id: { type: integer }
+        name: { type: string, maxLength: 100 }
+        files_quota_mb: { type: integer, nullable: true, description: "Files quota in MB (null = no group cap)." }
+        gallery_quota_mb: { type: integer, nullable: true, description: "Gallery quota in MB (null = no group cap)." }
+        max_connected_devices: { type: integer, nullable: true, description: "Device cap (null = no group cap)." }
+        shareable: { type: boolean, description: "Members may offer this group as a share target." }
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              name: { type: string }
+              email: { type: string }
+
     DisplayPreferences:
       type: object
       description: >
@@ -4175,3 +4203,116 @@ paths:
           description: Validation error.
         "429":
           description: Rate limit exceeded.
+
+  /groups:
+    get:
+      tags: [Groups]
+      operationId: groupsIndex
+      summary: List all groups (admin)
+      description: >
+        Returns every group with its limits, shareable flag and members. Requires the
+        admin role (manage-global-settings) on top of the device token.
+      responses:
+        "200":
+          description: The groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items: { $ref: "#/components/schemas/Group" }
+        "403":
+          description: Not an admin.
+    post:
+      tags: [Groups]
+      operationId: groupsStore
+      summary: Create a group (admin)
+      description: "Throttle: 60 req/min."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 100 }
+                files_quota_mb: { type: integer, nullable: true, minimum: 0 }
+                gallery_quota_mb: { type: integer, nullable: true, minimum: 0 }
+                max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
+                shareable: { type: boolean }
+                members:
+                  type: array
+                  items: { type: integer }
+                  description: User ids to set as members.
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group: { $ref: "#/components/schemas/Group" }
+        "403":
+          description: Not an admin.
+        "422":
+          description: Validation error (e.g. duplicate name).
+
+  /groups/{group}:
+    put:
+      tags: [Groups]
+      operationId: groupsUpdate
+      summary: Update a group and sync its members (admin)
+      description: "Members is the full set — an omitted/empty array clears membership. Throttle: 60 req/min."
+      parameters:
+        - name: group
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 100 }
+                files_quota_mb: { type: integer, nullable: true, minimum: 0 }
+                gallery_quota_mb: { type: integer, nullable: true, minimum: 0 }
+                max_connected_devices: { type: integer, nullable: true, minimum: 1, maximum: 50 }
+                shareable: { type: boolean }
+                members:
+                  type: array
+                  items: { type: integer }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group: { $ref: "#/components/schemas/Group" }
+        "403":
+          description: Not an admin.
+        "422":
+          description: Validation error.
+    delete:
+      tags: [Groups]
+      operationId: groupsDestroy
+      summary: Delete a group (admin)
+      description: "Members keep their accounts; the group's limits stop applying. Throttle: 60 req/min."
+      parameters:
+        - name: group
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted.
+        "403":
+          description: Not an admin.
