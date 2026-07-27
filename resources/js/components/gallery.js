@@ -1518,8 +1518,8 @@ return {
         try {
             const sk = await window.ShareCrypto.newKey();
             const { sealed, refs } = await this._buildShareManifest(al, sk, this.share.allowDownload);
-            const { token } = await postForm(config.sharesUrl, this._shareBody(sealed, refs));
-            al.share = { token, sk, allowDownload: this.share.allowDownload, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString() };
+            const { token, version } = await postForm(config.sharesUrl, this._shareBody(sealed, refs));
+            al.share = { token, sk, allowDownload: this.share.allowDownload, hasPassword: ! ! this.share.password.trim(), expiresAt: this.share.expiresAt || null, created: new Date().toISOString(), version: version ?? 0 };
             this.share.password = '';
             this.share.link = this._shareLink(token, sk);
             this._save();
@@ -1537,7 +1537,11 @@ return {
             const { sealed, refs } = await this._buildShareManifest(al, sk, this.share.allowDownload);
             const body = this._shareBody(sealed, refs);
             if (! this.share.password.trim() && ! al.share.hasPassword) body.clear_password = true;
-            await postForm(`${config.sharesUrl}/${al.share.token}`, body, 'PUT');
+            // Optimistic concurrency: reject (409 → error) rather than clobber a
+            // concurrent edit from another device. Older shares have no version → blind.
+            if (al.share.version != null) body.expected_version = al.share.version;
+            const upd = await postForm(`${config.sharesUrl}/${al.share.token}`, body, 'PUT');
+            if (upd && upd.version != null) al.share.version = upd.version;
             al.share.allowDownload = this.share.allowDownload;
             al.share.expiresAt = this.share.expiresAt || null;
             if (this.share.password.trim()) al.share.hasPassword = true;

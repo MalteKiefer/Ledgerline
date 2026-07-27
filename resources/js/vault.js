@@ -586,7 +586,11 @@ export const Vault = {
         const recoveryKey = sodium.crypto_generichash(sodium.crypto_secretbox_KEYBYTES, recoveryBytes);
         const wrappedRecovery = seal(this.vk, recoveryKey);
 
-        await api('PUT', {
+        // Optimistic concurrency: pass the version we based this rotate on so a
+        // concurrent passphrase change on another device is rejected (409) rather
+        // than silently clobbering one wrapped key.
+        const cur = await api('GET');
+        const res = await api('PUT', {
             salt: b64(salt),
             kdf_ops: ops,
             kdf_mem: mem,
@@ -594,7 +598,11 @@ export const Vault = {
             wrap_nonce: wrapped.nonce,
             wrapped_vault_key_recovery: wrappedRecovery.cipher,
             recovery_nonce: wrappedRecovery.nonce,
+            expected_version: cur?.version ?? 0,
         });
+        if (res && res.error === 'version_conflict') {
+            throw new Error('vault rotate conflict — reload and try again');
+        }
 
         this.cache();
 

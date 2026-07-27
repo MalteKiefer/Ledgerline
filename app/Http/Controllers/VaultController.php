@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\Vault;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Stores a user's zero-knowledge encryption vault. Every value handled here is
@@ -30,6 +31,9 @@ class VaultController extends Controller
 
         return response()->json([
             'configured' => true,
+            // Optimistic-concurrency version — the client echoes it as
+            // expected_version on rotate so a stale passphrase change is rejected.
+            'version' => (int) $vault->version,
             'salt' => $vault->salt,
             'kdf_ops' => $vault->kdf_ops,
             'kdf_mem' => $vault->kdf_mem,
@@ -74,9 +78,34 @@ class VaultController extends Controller
             return response()->json(['message' => __('vault.not_configured')], 404);
         }
 
-        $vault->update($this->rules($request, withRecovery: $request->filled('wrapped_vault_key_recovery')));
+        $data = $this->rules($request, withRecovery: $request->filled('wrapped_vault_key_recovery'));
 
-        return response()->json(['configured' => true]);
+        // Optimistic concurrency (store merge-safety spec §6.3): if the client sends
+        // expected_version, reject a stale rotate (409) rather than clobbering a
+        // concurrent passphrase change on another device. Older clients omit it and
+        // keep today's blind-but-version-bumping behaviour.
+        if ($request->has('expected_version')) {
+            $expected = $request->integer('expected_version');
+            $next = DB::transaction(function () use ($vault, $data, $expected): ?int {
+                $row = Vault::query()->whereKey($vault->getKey())->lockForUpdate()->first();
+                $current = (int) ($row?->version ?? 0);
+                if ($row === null || $current !== $expected) {
+                    return null;
+                }
+                $row->forceFill($data + ['version' => $current + 1])->save();
+
+                return $current + 1;
+            });
+            if ($next === null) {
+                return response()->json(['error' => 'version_conflict', 'version' => (int) ($vault->fresh()?->version ?? 0)], 409);
+            }
+
+            return response()->json(['configured' => true, 'version' => $next]);
+        }
+
+        $vault->forceFill($data + ['version' => (int) $vault->version + 1])->save();
+
+        return response()->json(['configured' => true, 'version' => (int) $vault->version]);
     }
 
     /**

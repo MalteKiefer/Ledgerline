@@ -70,6 +70,29 @@ class VaultTest extends TestCase
         $this->actingAs($u)->putJson(route('vault.rotate'), $this->payload(false))->assertStatus(404);
     }
 
+    public function test_show_exposes_the_version_and_rotate_bumps_it(): void
+    {
+        $u = User::factory()->create();
+        $this->actingAs($u)->postJson(route('vault.store'), $this->payload())->assertCreated();
+
+        $this->actingAs($u)->getJson(route('vault.show'))->assertOk()->assertJson(['version' => 0]);
+        $this->actingAs($u)->putJson(route('vault.rotate'), $this->payload(false))->assertOk()->assertJson(['version' => 1]);
+    }
+
+    public function test_a_stale_expected_version_rotate_is_rejected_with_409(): void
+    {
+        $u = User::factory()->create();
+        $this->actingAs($u)->postJson(route('vault.store'), $this->payload())->assertCreated();
+
+        // First rotate with the correct version → succeeds (version 0 → 1).
+        $this->actingAs($u)->putJson(route('vault.rotate'), $this->payload(false) + ['expected_version' => 0])
+            ->assertOk()->assertJson(['version' => 1]);
+
+        // A second rotate still on version 0 (stale) is refused — no clobber.
+        $this->actingAs($u)->putJson(route('vault.rotate'), $this->payload(false) + ['expected_version' => 0])
+            ->assertStatus(409)->assertJson(['error' => 'version_conflict', 'version' => 1]);
+    }
+
     public function test_a_vault_is_per_user_isolated(): void
     {
         $a = User::factory()->create();

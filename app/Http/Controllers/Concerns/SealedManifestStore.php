@@ -214,6 +214,16 @@ trait SealedManifestStore
         });
 
         if ($next === null) {
+            // Forensic trail of the conflict (store merge-safety spec §8): a stale
+            // writer was rejected; the client must rebase + retry. Secret-free.
+            if ($auditModule !== null) {
+                BlobAudit::record('store_conflict', $auditModule, [
+                    'user_id' => (int) $this->requireUser($request)->id,
+                    'result' => 'conflict',
+                    'meta' => ['expected_version' => $expectedVersion],
+                ]);
+            }
+
             return response()->json(['error' => 'version_conflict'], 409);
         }
 
