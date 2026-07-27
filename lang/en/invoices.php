@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
     'title' => 'Invoices',
+    'dup_warning_title' => 'Duplicate invoice numbers detected',
+    'dup_warning_body' => 'These numbers are used more than once — correct them for a gapless, unique sequence (GoBD):',
     'new' => 'New invoice',
     'search' => 'Search invoices',
     'filter_all' => 'All',

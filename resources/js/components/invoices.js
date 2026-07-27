@@ -1,5 +1,6 @@
 // invoices component. Extracted from app.js.
 import { zkModule, bootStore } from '../shared/zk-module';
+import { nextSeq, duplicateNumbers as dupNumbers } from '../shared/invoice-numbering';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 
 export default (config = {}, labels = {}) => ({
@@ -221,25 +222,52 @@ export default (config = {}, labels = {}) => ({
             .replace(/DD/g, String(d.getDate()).padStart(2, '0'))
             .replace(/N+/g, (m) => String(seq).padStart(m.length, '0'));
     },
-    _nextNumber(issueDate) {
-        // The manifest counter is authoritative, but the company "next number"
-        // raises the floor — so an owner who already issued invoices elsewhere
-        // this year can resume at, say, 42.
+    // Assign a GAPLESS, unique invoice number (GoBD). The seq is stored on the invoice
+    // so future numbering derives from real data (shared/invoice-numbering), not just a
+    // mergeable scalar; the scalar is kept as a floor hint.
+    _assignNumber(inv) {
         const floor = parseInt(this.company.next_number, 10) || 1;
-        const seq = Math.max((window.LLModuleStore.invoices.data.invoiceSeq || 0) + 1, floor);
+        const seq = nextSeq(this.invoices, window.LLModuleStore.invoices.data.invoiceSeq || 0, floor);
+        inv.seq = seq;
         window.LLModuleStore.invoices.data.invoiceSeq = seq;
-        return this._formatNumber(this.company.number_format, seq, issueDate);
+        inv.number = this._formatNumber(this.company.number_format, seq, inv.issueDate);
     },
-    finalize(inv) {
-        const i = inv || this.current;
+    // Pull invoices issued on other devices before assigning a number, so two devices
+    // never mint the same number. Best-effort (offline uses the in-memory set).
+    async _refresh() {
+        await window.LLModuleStore.invoices.refresh();
+        this.invoices = window.LLModuleStore.invoices.data.invoices;
+    },
+    // Numbers assigned to more than one invoice — a GoBD violation the owner MUST fix
+    // (a concurrent finalize on two offline devices is the only way to reach it).
+    get duplicateNumbers() { return dupNumbers(this.invoices); },
+    async finalize(inv) {
+        let i = inv || this.current;
         if (! i) return;
-        if (! i.number) i.number = this._nextNumber(i.issueDate);
+        if (! i.number) {
+            const id = i.id;
+            await this._refresh();            // observe other devices' invoices first
+            i = this.invoices.find((x) => x.id === id) || i; // re-find after the in-place merge
+            if (this.current && this.current.id === id) this.current = i;
+            this._assignNumber(i);
+        }
         if (i.status === 'draft') i.status = 'sent';
         i.totals = this.computeTotals(i); // freeze
         this.saveSoon();
     },
     markPaid(inv) { inv.status = 'paid'; this.saveSoon(); },
-    markSent(inv) { if (! inv.number) inv.number = this._nextNumber(inv.issueDate); inv.status = 'sent'; this.saveSoon(); },
+    async markSent(inv) {
+        let i = inv;
+        if (! i.number) {
+            const id = i.id;
+            await this._refresh();
+            i = this.invoices.find((x) => x.id === id) || i;
+            if (this.current && this.current.id === id) this.current = i;
+            this._assignNumber(i);
+        }
+        i.status = 'sent';
+        this.saveSoon();
+    },
     statusLabel(s) { return ({ draft: labels.statusDraft, sent: labels.statusSent, paid: labels.statusPaid })[s] || s; },
 
     // ---- Print / PDF (client-side, zero-knowledge) ----

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
     'title' => 'Rechnungen',
+    'dup_warning_title' => 'Doppelte Rechnungsnummern erkannt',
+    'dup_warning_body' => 'Diese Nummern kommen mehrfach vor — bitte korrigieren für eine lückenlose, eindeutige Folge (GoBD):',
     'new' => 'Neue Rechnung',
     'search' => 'Rechnungen suchen',
     'filter_all' => 'Alle',
@@ -23,10 +25,10 @@ return [
     'col_actions' => 'Aktionen',
     'draft_label' => 'Entwurf (ohne Nummer)',
 
-    'back' => 'Zurück',
+    'back' => 'ZurÃ¼ck',
     'customer' => 'Kunde',
-    'choose_customer' => 'Aus Kontakten wählen',
-    'no_customer' => 'Kein Kunde ausgewählt',
+    'choose_customer' => 'Aus Kontakten wÃ¤hlen',
+    'no_customer' => 'Kein Kunde ausgewÃ¤hlt',
     'clear_customer' => 'Entfernen',
     'customer_name' => 'Name',
     'customer_address' => 'Adresse',
@@ -34,7 +36,7 @@ return [
     'customer_vat' => 'USt-IdNr.',
 
     'issue_date' => 'Rechnungsdatum',
-    'due_date' => 'Fällig am',
+    'due_date' => 'FÃ¤llig am',
 
     'lines' => 'Positionen',
     'line_desc' => 'Beschreibung',
@@ -42,12 +44,12 @@ return [
     'line_unit' => 'Einheit',
     'line_price' => 'Einzelpreis',
     'line_vat' => 'USt %',
-    'add_line' => 'Position hinzufügen',
+    'add_line' => 'Position hinzufÃ¼gen',
     'remove' => 'Entfernen',
     'csv_import' => 'CSV importieren',
-    'csv_hint' => 'Clockify Detailbericht — füllt Startdatum, Beschreibung und Stunden.',
+    'csv_hint' => 'Clockify Detailbericht â fÃ¼llt Startdatum, Beschreibung und Stunden.',
     'csv_imported' => ':n Positionen importiert.',
-    'csv_bad_format' => 'CSV konnte nicht gelesen werden (Spalten Description und Duration (decimal) nötig).',
+    'csv_bad_format' => 'CSV konnte nicht gelesen werden (Spalten Description und Duration (decimal) nÃ¶tig).',
 
     'net' => 'Netto',
     'vat' => 'USt',
@@ -55,7 +57,7 @@ return [
     'gross' => 'Gesamt',
 
     'note' => 'Notiz',
-    'footer' => 'Fußzeile',
+    'footer' => 'FuÃzeile',
 
     'finalize' => 'Finalisieren & Nummer vergeben',
     'mark_sent' => 'Als gesendet markieren',
@@ -63,17 +65,17 @@ return [
     'print' => 'Drucken / PDF',
     'trash' => 'In den Papierkorb',
     'restore' => 'Wiederherstellen',
-    'delete' => 'Endgültig löschen',
-    'delete_confirm' => 'Diese Rechnung endgültig löschen?',
+    'delete' => 'EndgÃ¼ltig lÃ¶schen',
+    'delete_confirm' => 'Diese Rechnung endgÃ¼ltig lÃ¶schen?',
 
     'company_missing' => 'Richte dein Firmenprofil in den Einstellungen ein, um Rechnungen zu nummerieren und zu branden.',
 
-    'picker_title' => 'Kunde auswählen',
+    'picker_title' => 'Kunde auswÃ¤hlen',
     'picker_search' => 'Kontakte suchen',
     'picker_empty' => 'Keine Kontakte gefunden.',
 
     'language' => 'Sprache',
-    'currency' => 'Währung',
+    'currency' => 'WÃ¤hrung',
     'attn' => 'Ansprechpartner',
 
     // Druck / PDF
@@ -83,7 +85,7 @@ return [
     'bill_to' => 'Rechnung an',
     'invoice_number' => 'Rechnungs-Nr.',
     'invoice_date' => 'Datum',
-    'due' => 'Fällig',
+    'due' => 'FÃ¤llig',
     'amount' => 'Betrag',
     'subtotal' => 'Zwischensumme',
     'tax_heading' => 'Steuer',
