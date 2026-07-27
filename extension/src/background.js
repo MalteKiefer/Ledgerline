@@ -7,6 +7,32 @@ import * as pk from './passkey.js';
 import { hostOf, hostsMatch } from './hosts.js';
 import { IDENTITY_FIELDS } from './identity.js';
 import { listBookmarks, getBookmark, addBookmark, updateBookmark, trashBookmark, restoreBookmark, createFolder, renameFolder, deleteFolder, importBrowserBookmarks } from './bookmarks.js';
+import { mutateSharded, loadSharded, PASSWORDS } from './sharded.js';
+
+// One-time dual-read migration of the personal passwords vault from the old
+// monolith (/store/passwords) to the sharded store, mirroring the web app. Runs
+// only while the sharded store is empty; moves secrets + secretFolders, then clears
+// the monolith so a later delete-all can't re-import. Best-effort.
+async function migratePasswordsMonolith(base, token, vk) {
+    const shd = await loadSharded(base, token, PASSWORDS.prefix, PASSWORDS.recordKey, PASSWORDS.collections, vk);
+    if ((shd.secrets?.length ?? 0) > 0 || (shd.secretFolders?.length ?? 0) > 0) return;
+    let store = null;
+    try { store = await api.getStore(base, token, 'passwords'); } catch (e) { return; }
+    if (! store || ! store.ciphertext) return;
+    let old = null;
+    try { old = await openManifest(store.ciphertext, vk); } catch (e) { return; }
+    const secrets = Array.isArray(old.secrets) ? old.secrets : [];
+    const folders = Array.isArray(old.secretFolders) ? old.secretFolders : [];
+    if (secrets.length === 0 && folders.length === 0) return;
+    await mutateSharded(base, token, PASSWORDS.prefix, PASSWORDS.recordKey, PASSWORDS.collections, vk, (m) => {
+        m.secrets = secrets;
+        m.secretFolders = folders;
+    });
+    try {
+        const empty = await sealManifest({ v: 3, secrets: [], secretFolders: [], pwVaultMigrated: true }, vk);
+        await api.saveStore(base, token, 'passwords', empty, store.version || 0);
+    } catch (e) { /* the length guard still prevents re-import this session */ }
+}
 
 // Decrypted secrets cache for this worker lifetime (re-derived from the session
 // VK if the worker was recycled). Never persisted.
@@ -37,23 +63,22 @@ async function ensureSecrets() {
     // browser can still decrypt with the in-session vault key. Ciphertext at
     // rest is safe — the key is never stored on disk.
     const vkBytes = await fromB64(vkB64);
-    let cipher = '';
+    // Passwords live in the sharded store (spec §3b). Read + migrate (dual-read),
+    // then cache the assembled personal manifest as a sealed blob for offline opens.
+    let manifest = null;
     let personalReachable = true;
     try {
-        const store = await api.getStore(serverUrl, token, "passwords");
-        cipher = store.ciphertext || '';
-        if (cipher) await local.set({ storeCipher: cipher });
+        await migratePasswordsMonolith(serverUrl, token, vkBytes);
+        manifest = await loadSharded(serverUrl, token, PASSWORDS.prefix, PASSWORDS.recordKey, PASSWORDS.collections, vkBytes);
+        try { await local.set({ storeCipher: await sealManifest({ v: 3, secrets: manifest.secrets || [], secretFolders: manifest.secretFolders || [] }, vkBytes) }); } catch (e) { /* offline cache best-effort */ }
     } catch (e) {
         personalReachable = false;
-        cipher = (await local.get('storeCipher')).storeCipher || '';
+        const cipher = (await local.get('storeCipher')).storeCipher || '';
+        if (cipher) manifest = await openManifest(cipher, vkBytes);
     }
-    SECRETS = [];
-    FOLDERS = [];
-    if (cipher) {
-        const manifest = await openManifest(cipher, vkBytes);
-        SECRETS = (manifest.secrets || []).filter((s) => ! s.trashed);
-        FOLDERS = (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
-    }
+    SECRETS = manifest ? (manifest.secrets || []).filter((s) => ! s.trashed) : [];
+    FOLDERS = manifest ? (manifest.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' })) : [];
+    const cipher = manifest; // for the reachability check below (non-null when we have data)
     // Also surface entries from shared Tresore the user is an active member of.
     // These live in per-vault sealed stores the web app writes; the extension
     // reads them for autofill (writes still target the personal manifest).
@@ -220,6 +245,21 @@ async function mutateManifest(module, fn) {
     const { serverUrl, token } = await creds();
     if (! serverUrl || ! token) throw new Error('unpaired');
     const vk = await fromB64(vkB64);
+
+    // Passwords graduated to the sharded store (spec §3b) — read/write via the
+    // sharded engine so web and the extension share one layout (no split-brain).
+    if (module === 'passwords') {
+        await migratePasswordsMonolith(serverUrl, token, vk);
+        const { result, data } = await mutateSharded(serverUrl, token, PASSWORDS.prefix, PASSWORDS.recordKey, PASSWORDS.collections, vk, (m) => {
+            if (! Array.isArray(m.secrets)) m.secrets = [];
+            if (! Array.isArray(m.secretFolders)) m.secretFolders = [];
+            return fn(m);
+        });
+        SECRETS = (data.secrets || []).filter((s) => ! s.trashed);
+        FOLDERS = (data.secretFolders || []).map((f) => ({ id: f.id, name: f.name || '' }));
+        try { await local.set({ storeCipher: await sealManifest({ v: 3, secrets: data.secrets || [], secretFolders: data.secretFolders || [] }, vk) }); } catch (e) { /* offline cache best-effort */ }
+        return result;
+    }
 
     for (let attempt = 0; attempt < 4; attempt++) {
         const store = await api.getStore(serverUrl, token, module); // { ciphertext, version }

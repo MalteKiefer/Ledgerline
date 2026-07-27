@@ -9,6 +9,32 @@ import { estimateStrength } from '../shared/strength';
 import { buildBitwardenJson, buildCsv, encryptExport } from '../shared/vault-export';
 import { saveBlobAs } from '../shared/dom';
 
+// One-time dual-read migration of the PERSONAL vault from the old single-blob module
+// store (/store/passwords) to the sharded LLPasswordsStore. Runs only while the
+// sharded store is empty; moves secrets + secretFolders, flushes, then clears the old
+// monolith so a later delete-all can't re-import. Shared vaults are unaffected (they
+// live in SharedVaultStore). Best-effort — a failure leaves the data in the old store.
+async function migratePasswordsFromMonolith(ms) {
+    if ((ms.data.secrets?.length ?? 0) > 0 || (ms.data.secretFolders?.length ?? 0) > 0) return;
+    let d = null;
+    try {
+        d = await fetch('/store/passwords', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
+    } catch (e) { return; }
+    if (! d || ! d.ciphertext) return;
+    let old = null;
+    try { old = window.Vault.openManifest(d.ciphertext); } catch (e) { return; }
+    const secrets = Array.isArray(old.secrets) ? old.secrets : [];
+    const folders = Array.isArray(old.secretFolders) ? old.secretFolders : [];
+    if (secrets.length === 0 && folders.length === 0) return;
+    ms.data.secrets.push(...secrets);
+    ms.data.secretFolders.push(...folders);
+    await ms.flush();
+    try {
+        const empty = window.Vault.sealManifest({ v: 3, secrets: [], secretFolders: [], pwVaultMigrated: true });
+        await fetch('/store/passwords', { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ ciphertext: empty, version: d.version ?? 0 }) });
+    } catch (e) { /* the length guard still prevents re-import this session */ }
+}
+
 // Base set of secret field keys. versionDiff extends this with the extra
 // opaque-array fields so adding a new base secret can't silently leak in diffs.
 export const SECRET_FIELDS = ['password', 'totp', 'cvv', 'pin', 'licensekey', 'privateKey'];
@@ -31,7 +57,7 @@ export const TYPES = {
 };
 
 export default (config = {}, labels = {}) => ({
-    ...zkModule({ store: 'passwords', map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; self._sharedBase = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
+    ...zkModule({ store: 'passwords', instance: () => window.LLPasswordsStore, afterLoad: (self, ms) => migratePasswordsFromMonolith(ms), map: { secrets: 'items', secretFolders: 'folders' }, onLock: (self) => { self.current = null; self.draft = null; self.view = 'list'; self._sharedKeys = {}; self.sharedItems = {}; self.sharedVaults = []; self._sharedVersion = {}; self._sharedBase = {}; if (self._strengthTimer) { clearTimeout(self._strengthTimer); self._strengthTimer = null; } } }),
 
     items: [],
     folders: [],
@@ -168,8 +194,8 @@ export default (config = {}, labels = {}) => ({
        sharing (read / edit / manage) can be layered on later. Runs once, gated
        by a durable flag in the sealed manifest. */
     _migrateVaults() {
-        if (this.state !== 'ready' || ! window.LLModuleStore.passwords.data) return;
-        const store = window.LLModuleStore.passwords.data;
+        if (this.state !== 'ready' || ! window.LLPasswordsStore.data) return;
+        const store = window.LLPasswordsStore.data;
         // Every vault gets a role (owner = manage) so the UI can gate actions.
         for (const v of this.folders) if (! v.role) v.role = 'manage';
         // No orphaned items: heal any personal item without a valid vault (e.g. one
@@ -584,7 +610,7 @@ export default (config = {}, labels = {}) => ({
     breachChecking: false,
     _mut: 0,
     _reusedCache: null,
-    _save() { this._mut++; window.LLModuleStore.passwords.touch(); },
+    _save() { this._mut++; window.LLPasswordsStore.touch(); },
     get _pwTypes() { return Object.keys(TYPES).filter((t) => TYPES[t].fields.some(([k]) => k === 'password')); },
     _pw(x) { return (x && x.fields && x.fields.password) || ''; },
     get healthItems() { return this.liveItems.filter((x) => (this._pwTypes.includes(x.type) && this._pw(x)) || (x.type === 'card' && this._cardExpiring(x))); },
