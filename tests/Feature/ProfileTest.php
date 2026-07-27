@@ -17,15 +17,14 @@ class ProfileTest extends TestCase
         $this->get(route('profile'))->assertRedirect(route('login'));
     }
 
-    public function test_profile_shows_pocket_id_details(): void
+    public function test_profile_shows_the_account_details(): void
     {
         $user = User::factory()->create([
             'name' => 'Grace Hopper',
             'email' => 'grace@example.com',
-            'oidc_sub' => 'sub-abc-123',
         ]);
 
-        // Name + email head the hub; the Pocket-ID subject lives on the account sub-page.
+        // Name + email head the hub and are detailed on the account sub-page.
         $this->actingAs($user)
             ->get(route('profile'))
             ->assertOk()
@@ -34,7 +33,7 @@ class ProfileTest extends TestCase
         $this->actingAs($user)
             ->get(route('profile.account'))
             ->assertOk()
-            ->assertSee('sub-abc-123');
+            ->assertSee('grace@example.com');
     }
 
     public function test_profile_renders_the_avatar_when_present(): void

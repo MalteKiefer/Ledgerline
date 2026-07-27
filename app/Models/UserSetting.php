@@ -11,6 +11,29 @@ use Illuminate\Database\Eloquent\Model;
  * A user's personal preferences (Paperless, gallery, files, theme).
  * One row per user; use for() to fetch (or lazily create) the current user's
  * row. Infra/workspace settings live on AppSettings instead.
+ *
+ * @property ?string $company_name
+ * @property ?string $company_address
+ * @property ?string $company_email
+ * @property ?string $company_phone
+ * @property ?string $company_tax_id
+ * @property ?string $company_vat_id
+ * @property ?string $company_iban
+ * @property ?string $company_bic
+ * @property ?string $company_bank_name
+ * @property ?string $company_logo_path
+ * @property ?string $invoice_number_prefix
+ * @property int $invoice_number_padding
+ * @property ?string $invoice_number_format
+ * @property int $invoice_next_number
+ * @property ?string $invoice_default_vat_rate
+ * @property int $invoice_payment_terms_days
+ * @property ?string $invoice_footer_text
+ * @property ?string $invoice_accent_color
+ * @property ?string $invoice_heading_color
+ * @property ?string $invoice_template
+ * @property ?string $invoice_payment_methods
+ * @property ?string $invoice_payment_terms_text
  */
 #[Fillable([
     'user_id',
@@ -29,6 +52,13 @@ use Illuminate\Database\Eloquent\Model;
     'unit_temp',
     'unit_glucose',
     'time_format',
+    // Per-user company identity + invoice numbering (formerly workspace-global).
+    'company_name', 'company_address', 'company_email', 'company_phone', 'company_tax_id',
+    'company_vat_id', 'company_iban', 'company_bic', 'company_bank_name', 'company_logo_path',
+    'invoice_number_prefix', 'invoice_number_padding', 'invoice_number_format', 'invoice_next_number',
+    'invoice_default_vat_rate', 'invoice_payment_terms_days', 'invoice_footer_text',
+    'invoice_accent_color', 'invoice_heading_color', 'invoice_template',
+    'invoice_payment_methods', 'invoice_payment_terms_text',
 ])]
 class UserSetting extends Model
 {
@@ -79,6 +109,10 @@ class UserSetting extends Model
             'file_max_versions' => 'integer',
             'contact_birthday_channels' => 'array',
             'contact_anniversary_channels' => 'array',
+            'invoice_number_padding' => 'integer',
+            'invoice_next_number' => 'integer',
+            'invoice_payment_terms_days' => 'integer',
+            'invoice_default_vat_rate' => 'decimal:2',
         ];
     }
 

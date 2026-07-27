@@ -189,7 +189,7 @@ class VaultPolicyTest extends TestCase
     public function test_non_member_gets_no_bypass_even_as_admin(): void
     {
         $owner = User::factory()->create();
-        $outsider = User::factory()->create(['groups' => ['admin']]);
+        $outsider = User::factory()->admin()->create(); // workspace admin, still no vault bypass
         $vault = $this->makeVault($owner);
 
         // No membership → all three abilities must be denied.

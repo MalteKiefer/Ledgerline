@@ -1,4 +1,4 @@
-@php $s = \App\Models\AppSettings::current(); @endphp
+@php $s = \App\Models\UserSetting::for(auth()->id()); @endphp
 <x-layouts.app :title="__('invoices.title')">
   <div x-data="invoices({
         token: '{{ csrf_token() }}',

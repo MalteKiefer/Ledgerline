@@ -70,6 +70,7 @@
             ['url' => route('settings.files.edit'), 'icon' => 'folder', 'tint' => '#3b9fd6', 'title' => __('settings.files_section'), 'desc' => __('settings.files_desc')],
             ['url' => route('settings.contacts.edit'), 'icon' => 'contacts', 'tint' => '#59ad6b', 'title' => __('settings.contacts_section'), 'desc' => __('settings.contacts_desc')],
             ['url' => route('settings.paperless.edit'), 'icon' => 'inbox-arrow-down', 'tint' => '#d9a441', 'title' => __('settings.paperless_section'), 'desc' => __('settings.paperless_desc')],
+            ['url' => route('settings.company.edit'), 'icon' => 'identification', 'tint' => '#7066f5', 'title' => __('settings.company_section'), 'desc' => __('settings.company_desc')],
             ['url' => route('health.index'), 'icon' => 'heart', 'tint' => '#ef4444', 'title' => __('pages.profile.health_title'), 'desc' => __('pages.profile.health_desc')],
         ];
         $data = [

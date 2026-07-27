@@ -328,33 +328,6 @@ class VaultApiTest extends TestCase
         ]);
     }
 
-    public function test_resolve_recipient_returns_key_for_keyed_user_by_oidc_sub(): void
-    {
-        $manager = $this->signIn();
-        $vault = $this->makeVault($manager);
-        $this->addMember($vault, $manager, 'manager');
-
-        $target = User::factory()->create(['oidc_sub' => 'sub-abc123']);
-        $target->forceFill([
-            'x25519_public_key' => 'target-pubkey',
-            'wrapped_x25519_secret_key' => 'wrapped-sk',
-            'public_key_fingerprint' => 'target-fp',
-            'mlkem_public_key' => 'target-mlkem-ek',
-            'wrapped_mlkem_secret_key' => 'wrapped-mlkem',
-        ])->save();
-
-        $response = $this->postJson(route('vaults.resolveRecipient', $vault), [
-            'identifier' => 'sub-abc123',
-        ]);
-
-        $response->assertOk();
-        $response->assertJson([
-            'user_id' => $target->id,
-            'public_key' => 'target-pubkey',
-            'fingerprint' => 'target-fp',
-        ]);
-    }
-
     public function test_resolve_recipient_returns_422_for_unknown_identifier(): void
     {
         $manager = $this->signIn();

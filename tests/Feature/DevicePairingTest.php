@@ -248,6 +248,26 @@ class DevicePairingTest extends TestCase
         $this->assertTrue($names->contains('New phone'));
     }
 
+    public function test_a_per_user_device_cap_override_takes_precedence(): void
+    {
+        // Generous workspace cap, but this user is personally limited to 1 device.
+        config(['devices.max' => 10]);
+        $user = User::factory()->create();
+        $user->forceFill(['max_connected_devices' => 1])->save();
+        $user->createToken('Old phone');
+
+        [$pairing, $code] = $this->pending($user);
+        $this->postJson('/api/v1/auth/pair', ['code' => $code, 'device_name' => 'New phone']);
+        app(Pairing::class)->approve($pairing->fresh());
+        $this->postJson('/api/v1/auth/pair/collect', ['code' => $code])->assertOk();
+
+        // The per-user cap of 1 evicts the old device rather than the workspace 10.
+        $names = $user->tokens()->pluck('name');
+        $this->assertCount(1, $names);
+        $this->assertTrue($names->contains('New phone'));
+        $this->assertFalse($names->contains('Old phone'));
+    }
+
     public function test_collect_records_the_device_ip_and_the_list_shows_it(): void
     {
         $user = User::factory()->create();

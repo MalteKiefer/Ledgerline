@@ -123,7 +123,7 @@ class SharedVaultController extends Controller
     }
 
     /**
-     * Resolve a recipient by email or OIDC subject identifier and return their
+     * Resolve a recipient by email address and return their
      * x25519 public key and fingerprint so the inviting client can wrap the
      * vault key for them (manage-gated; rate-limited via `pubkey-lookup`).
      *

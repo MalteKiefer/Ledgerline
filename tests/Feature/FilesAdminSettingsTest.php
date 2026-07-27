@@ -17,7 +17,7 @@ class FilesAdminSettingsTest extends TestCase
     {
         // Global file limits now live on their own admin route, separate from the
         // per-user version-keep count (which stays on settings.files.update).
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->admin()->create());
         $this->put(route('settings.files.limits.update'), [
             'files_quota_mb' => 1234,
             'files_max_upload_mb' => 700,
@@ -33,7 +33,7 @@ class FilesAdminSettingsTest extends TestCase
 
     public function test_limits_page_renders(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->admin()->create());
         $this->get(route('settings.files.limits'))->assertOk()->assertSee(__('settings.files_quota'));
     }
 

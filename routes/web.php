@@ -155,10 +155,6 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
         Route::put('/settings/security', [SettingsSecurityController::class, 'update'])->name('settings.security.update');
 
-        // Company profile printed on invoices (name, address, tax ids, bank, logo).
-        Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
-        Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
-
         // Notification channels (mail / NTFY / webhook).
         Route::get('/settings/notifications', [SettingsNotificationsController::class, 'edit'])->name('settings.notifications.edit');
         Route::put('/settings/notifications', [SettingsNotificationsController::class, 'update'])->name('settings.notifications.update');
@@ -285,9 +281,11 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/passwords/tfa-directory', [TwoFactorDirectoryController::class, 'index'])->middleware('throttle:120,1')->name('passwords.tfa');
     // Health: zero-knowledge, records (measurements + profile) in the opaque /store manifest.
     Route::view('/health', 'health.index')->name('health.index');
-    // Invoices: zero-knowledge, records in the opaque /store manifest. The company
-    // profile (printed on invoices) is plaintext AppSettings; its logo streams here.
+    // Invoices: zero-knowledge, records in the opaque /store manifest. The per-user
+    // company profile (printed on invoices) is plaintext in the user's settings.
     Route::view('/invoices', 'invoices.index')->name('invoices.index');
+    Route::get('/settings/company', [SettingsCompanyController::class, 'edit'])->name('settings.company.edit');
+    Route::put('/settings/company', [SettingsCompanyController::class, 'update'])->name('settings.company.update');
     Route::get('/settings/company/logo', [SettingsCompanyController::class, 'logo'])->name('settings.company.logo');
     // Contacts: zero-knowledge, records in the opaque /store manifest; only the
     // optional avatar images are opaque content blobs (contacts/{blob}).

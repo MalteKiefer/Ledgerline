@@ -24,16 +24,14 @@ class SecurityLogPageTest extends TestCase
 
     public function test_non_admin_cannot_open_the_security_log(): void
     {
-        config(['services.pocketid.admin_group' => 'admins']);
-        $this->actingAs(User::factory()->create(['groups' => ['users']]));
+        $this->actingAs(User::factory()->create()); // role 'user' — not an admin
         $this->get(route('settings.security-log'))->assertForbidden();
     }
 
     public function test_admin_sees_entries(): void
     {
-        config(['services.pocketid.admin_group' => null]); // everyone admin when unset
         $this->seedLogs();
-        $this->actingAs(User::factory()->create())
+        $this->actingAs(User::factory()->admin()->create())
             ->get(route('settings.security-log'))
             ->assertOk()
             ->assertSee('device.evicted')
@@ -42,11 +40,10 @@ class SecurityLogPageTest extends TestCase
 
     public function test_action_prefix_filter(): void
     {
-        config(['services.pocketid.admin_group' => null]);
         $this->seedLogs();
         // Filter via the export so we assert on the rows, not the (all-actions)
         // filter dropdown which always lists every distinct action.
-        $csv = $this->actingAs(User::factory()->create())
+        $csv = $this->actingAs(User::factory()->admin()->create())
             ->get(route('settings.security-log', ['action' => 'device.*', 'export' => 'csv']))
             ->streamedContent();
         $this->assertStringContainsString('device.evicted', $csv);
@@ -55,9 +52,8 @@ class SecurityLogPageTest extends TestCase
 
     public function test_csv_export_streams_the_rows(): void
     {
-        config(['services.pocketid.admin_group' => null]);
         $this->seedLogs();
-        $res = $this->actingAs(User::factory()->create())
+        $res = $this->actingAs(User::factory()->admin()->create())
             ->get(route('settings.security-log', ['export' => 'csv']));
         $res->assertOk();
         $this->assertStringContainsString('text/csv', (string) $res->headers->get('Content-Type'));
@@ -66,11 +62,10 @@ class SecurityLogPageTest extends TestCase
 
     public function test_csv_export_neutralises_formula_injection(): void
     {
-        config(['services.pocketid.admin_group' => null]);
         // A client-controlled cell (user-agent) starting with a formula char.
         AuditLog::create(['action' => 'auth.unauthorized', 'user_id' => 1, 'user_agent' => '=cmd|calc', 'created_at' => now()]);
 
-        $csv = $this->actingAs(User::factory()->create())
+        $csv = $this->actingAs(User::factory()->admin()->create())
             ->get(route('settings.security-log', ['export' => 'csv']))->streamedContent();
 
         // The value survives but is neutralised with a leading apostrophe, so the

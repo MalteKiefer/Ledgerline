@@ -9,6 +9,7 @@ use App\Models\SharedFolderBlob;
 use App\Models\SharedVault;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
@@ -128,6 +129,20 @@ class SharedFolderBlobController extends BlobStoreController
         $ownerId = (int) $this->vault($request, 'view')->owner_id;
 
         return $this->usedBytes($ownerId);
+    }
+
+    /**
+     * Read-only quota view for any active member. Overridden because the base
+     * usage() resolves the quota owner via ownerId() (update-scoped) — a viewer
+     * would be denied. Both the used bytes and the quota are owner-attributed and
+     * resolved via the view ability so read-only members can call it.
+     */
+    public function usage(Request $request): JsonResponse
+    {
+        $ownerId = (int) $this->vault($request, 'view')->owner_id;
+
+        return response()->json(['used' => $this->usedBytes($ownerId), 'quota' => $this->quotaBytes($ownerId)])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
     }
 
     protected function quotaBytes(?int $userId = null): int

@@ -15,13 +15,13 @@ class NotificationSettingsTest extends TestCase
 
     public function test_the_page_loads(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->get(route('settings.notifications.edit'))->assertOk();
     }
 
     public function test_it_saves_channels_and_encrypts_secrets_at_rest(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
 
         $this->put(route('settings.notifications.update'), [
             'mail_enabled' => '1',
@@ -48,7 +48,7 @@ class NotificationSettingsTest extends TestCase
 
     public function test_a_blank_secret_keeps_the_stored_value(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         AppSettings::current()->update(['smtp_password' => 'keep-me']);
 
         $this->put(route('settings.notifications.update'), [
@@ -62,7 +62,7 @@ class NotificationSettingsTest extends TestCase
 
     public function test_a_test_message_can_be_sent(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->mock(BackupNotifier::class, function ($mock): void {
             $mock->shouldReceive('test')->once()->with('ntfy')->andReturnNull();
         });
@@ -74,7 +74,7 @@ class NotificationSettingsTest extends TestCase
 
     public function test_a_failing_test_reports_the_error(): void
     {
-        $this->signIn();
+        $this->signInAdmin();
         $this->mock(BackupNotifier::class, function ($mock): void {
             $mock->shouldReceive('test')->andThrow(new \RuntimeException('no route to host'));
         });
