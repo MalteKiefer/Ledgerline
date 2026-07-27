@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\BlobAuditLog;
 use App\Models\ModuleStore;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,6 +41,23 @@ class StoreTest extends TestCase
 
         $this->assertSame('x', ModuleStore::query()->where('user_id', $user->id)->where('module', 'notes')->value('ciphertext'));
         $this->assertSame(1, (int) ModuleStore::query()->where('user_id', $user->id)->where('module', 'notes')->value('version'));
+    }
+
+    public function test_each_write_leaves_a_forensic_root_write_trail(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->putJson(route('module-store.save', 'explore'), ['ciphertext' => 'aaaaaa', 'version' => 0])->assertOk();
+        $this->actingAs($user)->putJson(route('module-store.save', 'explore'), ['ciphertext' => 'bb', 'version' => 1])->assertOk();
+
+        $rows = BlobAuditLog::query()->where('module', 'store:explore')->where('action', 'root_write')->orderBy('id')->get();
+        $this->assertCount(2, $rows);
+        // The trail records version + ciphertext hash + byte length (a shrink between
+        // versions is the smoking gun for a dropped-records overwrite). Never plaintext.
+        $this->assertSame(1, $rows[0]->meta['version']);
+        $this->assertSame(6, $rows[0]->meta['bytes']);
+        $this->assertSame(2, $rows[1]->meta['bytes']);
+        $this->assertSame(hash('sha256', 'aaaaaa'), $rows[0]->sha256);
     }
 
     public function test_modules_are_isolated_from_each_other(): void

@@ -9,6 +9,10 @@
 
 import { newId } from './sealed-store';
 import { jsonHeaders } from './api';
+import { mergeManifest } from './manifest-merge';
+
+/** How many 409 rebase attempts before we give up and surface an error. */
+const MAX_CONFLICT_RETRIES = 5;
 
 /**
  * @param {string} module  allowlisted module key (matches the server allowlist)
@@ -25,55 +29,81 @@ export function makeStore(module, blankFn) {
         _saving: false,
         _again: false,
         _onError: null,
+        // The manifest we last loaded / committed. Our delta is derived against this
+        // so a 409 can rebase (apply only our changes) onto the winning copy instead
+        // of blindly overwriting it — otherwise a concurrent writer's records vanish.
+        _base: null,
 
         newId() { return newId(); },
         _blank() { return blankFn(); },
 
-        async load() {
-            const res = await fetch('/store/' + module, {
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            const d = await res.json();
-            this.version = d.version ?? 0;
-            this.data = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
-            // Forward-compat: ensure every key of the blank shape exists.
+        // Forward-compat: ensure every key of the blank shape exists on a manifest.
+        _ensureShape(obj) {
             const blank = this._blank();
-            for (const k of Object.keys(blank)) if (! (k in this.data)) this.data[k] = blank[k];
+            for (const k of Object.keys(blank)) if (! (k in obj)) obj[k] = blank[k];
+            return obj;
+        },
+
+        async _fetchManifest() {
+            const d = await fetch('/store/' + module, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            }).then((r) => r.json());
+            const data = d.ciphertext ? window.Vault.openManifest(d.ciphertext) : this._blank();
+            return { version: d.version ?? 0, data: this._ensureShape(data) };
+        },
+
+        async load() {
+            const { version, data } = await this._fetchManifest();
+            this.version = version;
+            this.data = data;
+            this._base = structuredClone(this.data);
             this.loaded = true;
             this.ready = true;
             return this.data;
         },
 
-        reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; clearTimeout(this._timer); },
+        reset() { this.data = null; this.version = 0; this.ready = false; this.loaded = false; this._base = null; clearTimeout(this._timer); },
 
         touch() {
             clearTimeout(this._timer);
             this._timer = setTimeout(() => this.flush(), 800);
         },
 
-        // Seal + PUT with optimistic concurrency. On 409 adopt the server version
-        // and re-PUT our copy (single-user last-write-wins); on 429 honour
-        // Retry-After. Never silently drop a destructive edit.
+        // Seal + PUT with optimistic concurrency. On 409 we REBASE: fetch the winning
+        // manifest and replay only our delta (base→data) onto it, then retry — up to
+        // MAX_CONFLICT_RETRIES times. This preserves both writers' records instead of
+        // last-writer-wins on the whole blob. On 429 honour Retry-After (does not
+        // consume the conflict budget). Exhausting the budget surfaces an error;
+        // never silently drops a change.
         async flush() {
             if (! this.loaded) return;
             if (this._saving) { this._again = true; return; }
             this._saving = true;
+            let ok = false;
             try {
-                const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(this.data), version: this.version });
-                const res = await fetch('/store/' + module, { method: 'PUT', headers: jsonHeaders(), body });
-                if (res.status === 409) {
-                    const cur = await fetch('/store/' + module, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
-                    this.version = cur.version ?? this.version;
-                    this._again = true;
-                } else if (res.status === 429) {
-                    const ra = parseInt(res.headers.get('Retry-After') || '', 10);
-                    await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 1500));
-                    this._again = true;
-                } else if (res.ok) {
-                    this.version = (await res.json()).version ?? this.version + 1;
-                } else {
-                    throw new Error('module store save failed: ' + module);
+                let conflicts = 0;
+                while (! ok && conflicts < MAX_CONFLICT_RETRIES) {
+                    const body = JSON.stringify({ ciphertext: window.Vault.sealManifest(this.data), version: this.version });
+                    const res = await fetch('/store/' + module, { method: 'PUT', headers: jsonHeaders(), body });
+                    if (res.ok) {
+                        this.version = (await res.json()).version ?? this.version + 1;
+                        this._base = structuredClone(this.data);
+                        ok = true;
+                    } else if (res.status === 409) {
+                        conflicts++;
+                        const server = await this._fetchManifest();
+                        // Rebase our delta onto the winning manifest, then retry at
+                        // the winning version.
+                        this.data = mergeManifest(this._base ?? server.data, this.data, server.data);
+                        this.version = server.version;
+                    } else if (res.status === 429) {
+                        const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+                        await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 1500));
+                    } else {
+                        throw new Error('module store save failed: ' + module);
+                    }
                 }
+                if (! ok) throw new Error('module store conflict budget exhausted: ' + module);
             } catch (e) {
                 if (this._onError) this._onError();
             } finally {
