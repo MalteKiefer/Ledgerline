@@ -61,7 +61,7 @@
 
                 <ul class="mt-4 space-y-2">
                     <template x-for="b in filtered" :key="b.id">
-                        <li class="flex items-start gap-3 ll-card !p-3"
+                        <li class="flex items-start gap-3 rounded-xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-3 shadow-sm"
                             draggable="true" @dragstart="dragItem = { type: 'bookmark', id: b.id }" @dragend="dragItem = null" :class="dragItem && dragItem.type === 'bookmark' && dragItem.id === b.id ? 'opacity-50' : ''">
                             {{-- No server favicon fetch under zero-knowledge (it would
                                  leak the bookmarked domain to the server) — generic icon. --}}

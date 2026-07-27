@@ -156,10 +156,10 @@
               </div>
 
               <template x-if="! placedMedia.length">
-                <p class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('explore.empty_media') }}</p>
+                <x-empty-state class="px-4 py-8">{{ __('explore.empty_media') }}</x-empty-state>
               </template>
               <template x-if="placedMedia.length && ! filteredMedia.length">
-                <p class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('explore.no_search_results') }}</p>
+                <x-empty-state class="px-4 py-8">{{ __('explore.no_search_results') }}</x-empty-state>
               </template>
 
               <div class="max-h-[calc(100dvh-22rem)] overflow-y-auto divide-y divide-black/[0.06] dark:divide-white/10">
@@ -280,10 +280,10 @@
                 </div>
 
                 <template x-if="! tracks.length && ! planning">
-                  <p class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('explore.empty_tracks') }}</p>
+                  <x-empty-state class="px-4 py-8">{{ __('explore.empty_tracks') }}</x-empty-state>
                 </template>
                 <template x-if="tracks.length && ! filteredTracks.length && ! planning">
-                  <p class="px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('explore.no_search_results') }}</p>
+                  <x-empty-state class="px-4 py-8">{{ __('explore.no_search_results') }}</x-empty-state>
                 </template>
 
                 <div x-show="! planning" class="max-h-[calc(100dvh-24rem)] overflow-y-auto divide-y divide-black/[0.06] dark:divide-white/10">

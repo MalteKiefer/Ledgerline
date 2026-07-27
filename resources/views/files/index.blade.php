@@ -167,9 +167,9 @@
                 </button>
             </div>
             {{-- List / grid toggle --}}
-            <div class="flex items-center gap-0.5 rounded-md border border-gray-300 dark:border-gray-700 p-0.5">
-                <button type="button" @click="setLayout('list')" :class="layout === 'list' ? 'bg-accent text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_list') }}" aria-label="{{ __('files.view_list') }}" class="rounded p-1.5"><x-icon name="bars-3" class="h-4 w-4" /></button>
-                <button type="button" @click="setLayout('grid')" :class="layout === 'grid' ? 'bg-accent text-white' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_grid') }}" aria-label="{{ __('files.view_grid') }}" class="rounded p-1.5"><x-icon name="squares-2x2" class="h-4 w-4" /></button>
+            <div class="inline-flex rounded-xl bg-black/[0.04] dark:bg-white/10 p-0.5">
+                <button type="button" @click="setLayout('list')" :class="layout === 'list' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_list') }}" aria-label="{{ __('files.view_list') }}" class="rounded-lg p-1.5"><x-icon name="bars-3" class="h-4 w-4" /></button>
+                <button type="button" @click="setLayout('grid')" :class="layout === 'grid' ? 'bg-white dark:bg-[#2c2c2e] text-accent shadow-sm' : 'text-gray-500 dark:text-gray-400'" title="{{ __('files.view_grid') }}" aria-label="{{ __('files.view_grid') }}" class="rounded-lg p-1.5"><x-icon name="squares-2x2" class="h-4 w-4" /></button>
             </div>
             {{-- Index file contents for search (personal only — not available in shared context) --}}
             <x-button variant="secondary" size="sm" icon="sparkles" x-show="! _isSharedContext() && unextractedCount() > 0 && ! _extracting" x-cloak @click="extractAllText()" :title="__('files.extract_hint')">{{ __('files.extract_all') }} <span class="tabular-nums opacity-70" x-text="'(' + unextractedCount() + ')'"></span></x-button>
@@ -202,7 +202,7 @@
         {{-- Browser --}}
         <div class="mt-4 ll-card !p-0 overflow-hidden">
             <template x-if="rows.length === 0">
-                <p class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400" x-text="trashView ? @js(__('files.trash_empty')) : @js(__('files.empty_explorer'))"></p>
+                <x-empty-state class="px-4 py-10" x-text="trashView ? @js(__('files.trash_empty')) : @js(__('files.empty_explorer'))" />
             </template>
             {{-- Grid view: image thumbnails, icon fallback --}}
             <template x-if="layout === 'grid' && rows.length > 0">

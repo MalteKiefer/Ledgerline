@@ -64,8 +64,8 @@
           </template>
         </nav>
 
-        <template x-if="! allFiles.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('files.share_empty') }}</p></template>
-        <template x-if="allFiles.length && ! subfolders.length && ! filesHere.length"><p class="mt-16 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('gallery.album_empty') }}</p></template>
+        <template x-if="! allFiles.length"><x-empty-state class="mt-16">{{ __('files.share_empty') }}</x-empty-state></template>
+        <template x-if="allFiles.length && ! subfolders.length && ! filesHere.length"><x-empty-state class="mt-16">{{ __('gallery.album_empty') }}</x-empty-state></template>
 
         <ul x-show="subfolders.length || filesHere.length" class="divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e]">
           {{-- Subfolders first --}}
