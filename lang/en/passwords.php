@@ -178,7 +178,7 @@ return [
     'filter_type' => 'Filter by type',
     'delete_folder_confirm' => 'Delete this vault? Its entries are moved to another vault.',
     'tags' => 'Tags',
-    'tags_placeholder' => 'comma, separated',
+    'tags_placeholder' => 'Add a tag…',
     'custom_fields' => 'Custom fields',
     'custom_label' => 'Label',
     'custom_value' => 'Value',

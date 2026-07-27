@@ -70,7 +70,7 @@ return [
     'anniv_alert_title' => 'Anniversary',
     'anniv_alert_body' => ':name has an anniversary today.',
     'categories' => 'Groups',
-    'categories_hint' => 'comma-separated',
+    'categories_hint' => 'Add a category…',
     'note' => 'Note',
 
     'type_home' => 'Home',

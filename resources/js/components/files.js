@@ -4,6 +4,7 @@ import { Vault, VaultShareCrypto } from '../vault';
 import { mergeManifest } from '../shared/manifest-merge';
 import { fetchDecrypt, fetchBlobBuffer, queueBlobDelete } from '../shared/blob-io';
 import { collectSubtree } from './files-subtree';
+import { parseTags, addTags, removeTagFrom, popTag } from '../shared/tag-chips';
 import { padBlob, padmeSize } from '../shared/padme';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import { fileCategory, CATEGORY_ICON, categoryTint, fileTypeLabel, FOLDER_TINT, formatBytes } from '../shared/file-categories';
@@ -49,6 +50,15 @@ export default (config = {}, labels = {}) => ({
     tagsRef: null,    // {kind, id} being tagged
     tagsOpen: false,
     tagsValue: '',
+    // Badge-chip tag editing (files doesn't use the zkModule mixin, so the helpers
+    // live here). tagsValue stays the source of truth (comma-joined), read/written as
+    // chips; saveTags() still reads tagsValue unchanged.
+    tagDraft: '',
+    get tagList() { return parseTags(this.tagsValue); },
+    commitTag() { this.tagsValue = addTags(this.tagsValue, this.tagDraft); this.tagDraft = ''; },
+    onTagInput() { if ((this.tagDraft || '').includes(',')) this.commitTag(); },
+    tagBackspace() { if ((this.tagDraft || '') === '') this.tagsValue = popTag(this.tagsValue); },
+    removeTag(tag) { this.tagsValue = removeTagFrom(this.tagsValue, tag); },
     activeTag: '',
     view: 'files', // files | favorites | recent | trash
     newFolderName: '',

@@ -15,7 +15,7 @@ return [
     'delete_folder_confirm' => 'Diesen Ordner löschen? Seine Lesezeichen bleiben unter „Alle Lesezeichen".',
     'delete_confirm' => 'Dieses Lesezeichen endgültig löschen?',
     'empty_trash_confirm' => 'Alle Lesezeichen im Papierkorb endgültig löschen?',
-    'tags_placeholder' => 'komma, getrennte, tags',
+    'tags_placeholder' => 'Tag hinzufügen…',
     'save' => 'Speichern',
     'cancel' => 'Abbrechen',
     'empty' => 'Noch keine Lesezeichen — lege das erste an.',

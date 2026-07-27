@@ -8,7 +8,7 @@ return [
     'pick_note' => 'Select a note, or create a new one.',
     'content' => 'Content (Markdown)',
     'preview' => 'Preview',
-    'tags_placeholder' => 'comma, separated, tags',
+    'tags_placeholder' => 'Add a tag…',
     'delete_confirm' => 'Permanently delete this note?',
     'empty_trash_confirm' => 'Permanently delete all notes in the trash?',
     'untitled' => 'Untitled',

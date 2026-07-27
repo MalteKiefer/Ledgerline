@@ -70,7 +70,7 @@ return [
     'anniv_alert_title' => 'Jahrestag',
     'anniv_alert_body' => ':name hat heute Jahrestag.',
     'categories' => 'Gruppen',
-    'categories_hint' => 'kommagetrennt',
+    'categories_hint' => 'Kategorie hinzufügen…',
     'note' => 'Notiz',
 
     'type_home' => 'Privat',

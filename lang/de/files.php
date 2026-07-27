@@ -174,4 +174,5 @@ return [
     'share_convert_hint' => 'Beim Einladen wird dieser Ordner zu einem geteilten Ordner.',
     'convert_confirm' => 'Diesen Ordner mit anderen teilen? Der Inhalt wird in einen geteilten Ordner verschoben — bei großen Ordnern kann das einen Moment dauern.',
     'share_enable' => 'Teilen aktivieren',
+    'tags_placeholder' => 'Tag hinzufügen…',
 ];

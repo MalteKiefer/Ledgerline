@@ -174,4 +174,5 @@ return [
     'share_convert_hint' => 'Inviting people turns this folder into a shared folder.',
     'convert_confirm' => 'Share this folder with others? Its contents will be moved into a shared folder — this may take a moment for large folders.',
     'share_enable' => 'Enable sharing',
+    'tags_placeholder' => 'Add a tag…',
 ];

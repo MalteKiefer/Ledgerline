@@ -35,7 +35,7 @@ return [
     'due' => 'Fälligkeitsdatum & -zeit',
     'list' => 'Liste',
     'tags' => 'Tags',
-    'tags_placeholder' => 'komma, getrennte, tags',
+    'tags_placeholder' => 'Tag hinzufügen…',
 
     'save' => 'Speichern',
     'cancel' => 'Abbrechen',

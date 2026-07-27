@@ -210,7 +210,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('bookmarks.tags') }}</label>
-                            <input type="text" x-model="tagsValue" placeholder="{{ __('bookmarks.tags_placeholder') }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                            <x-tag-field :placeholder="__('bookmarks.tags_placeholder')" />
                         </div>
                     </div>
                     <div class="flex flex-wrap gap-4">

@@ -15,7 +15,7 @@ return [
     'delete_folder_confirm' => 'Delete this folder? Its bookmarks are kept under "All bookmarks".',
     'delete_confirm' => 'Permanently delete this bookmark?',
     'empty_trash_confirm' => 'Permanently delete all bookmarks in the trash?',
-    'tags_placeholder' => 'comma, separated, tags',
+    'tags_placeholder' => 'Add a tag…',
     'save' => 'Save',
     'cancel' => 'Cancel',
     'empty' => 'No bookmarks yet — add your first one.',

@@ -5,6 +5,8 @@
 // in for its lock/unlock lifecycle, mapped store arrays and tag/trash helpers;
 // cfg.store names which per-module store backs it.
 
+import { parseTags, addTags, removeTagFrom, popTag } from './tag-chips';
+
 // Boot a specific per-module store: wait for the vault, then lazily load it.
 export async function bootStore(store, moduleName) {
     while (! store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
@@ -30,7 +32,22 @@ export function zkModule(cfg) {
         query: '',
         activeTag: '',
         error: '',
+        // Tags are edited as removable badge chips. `tagsValue` stays the source of
+        // truth (a comma-joined string) so every module's existing load
+        // (`tags.join(', ')`) and save (`tagsValue.split(',')`) is unchanged — the chip
+        // UI just reads/writes it. `tagDraft` is the in-progress text.
         tagsValue: '',
+        tagDraft: '',
+
+        // The committed chips derived from tagsValue (reactive on tagsValue).
+        get tagList() { return parseTags(this.tagsValue); },
+        // Commit the draft (splitting on comma too) into chips; skip duplicates.
+        commitTag() { this.tagsValue = addTags(this.tagsValue, this.tagDraft); this.tagDraft = ''; },
+        // Auto-commit when the user types/pastes a comma.
+        onTagInput() { if ((this.tagDraft || '').includes(',')) this.commitTag(); },
+        // Backspace on an empty draft removes the last chip.
+        tagBackspace() { if ((this.tagDraft || '') === '') this.tagsValue = popTag(this.tagsValue); },
+        removeTag(tag) { this.tagsValue = removeTagFrom(this.tagsValue, tag); },
 
         // The sealed store backing this component. Defaults to the per-module store;
         // cfg.instance lets a module use its OWN store (e.g. a sharded LLNotesStore).

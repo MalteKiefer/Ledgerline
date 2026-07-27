@@ -35,7 +35,7 @@ return [
     'due' => 'Due date & time',
     'list' => 'List',
     'tags' => 'Tags',
-    'tags_placeholder' => 'comma, separated, tags',
+    'tags_placeholder' => 'Add a tag…',
 
     'save' => 'Save',
     'cancel' => 'Cancel',
