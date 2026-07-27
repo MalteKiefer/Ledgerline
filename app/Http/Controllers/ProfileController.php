@@ -70,6 +70,36 @@ class ProfileController extends Controller
         return view('profile.encryption');
     }
 
+    /** Login security: two-factor authentication (TOTP) via Fortify. */
+    public function security(Request $request): View
+    {
+        $user = $this->requireUser($request);
+        $enabled = filled($user->two_factor_secret) && $user->two_factor_confirmed_at !== null;
+        $pending = filled($user->two_factor_secret) && $user->two_factor_confirmed_at === null;
+
+        $qr = null;
+        $recovery = [];
+        if ($pending || $enabled) {
+            try {
+                $qr = $user->twoFactorQrCodeSvg();
+            } catch (\Throwable) {
+                $qr = null;
+            }
+            $codes = $user->two_factor_recovery_codes;
+            if (is_string($codes)) {
+                $decoded = json_decode($codes, true);
+                $recovery = is_array($decoded) ? array_values(array_filter($decoded, 'is_string')) : [];
+            }
+        }
+
+        return view('profile.security', [
+            'enabled' => $enabled,
+            'pending' => $pending,
+            'qr' => $qr,
+            'recovery' => $recovery,
+        ]);
+    }
+
     /** Colour scheme + interface language. */
     public function appearance(Request $request): View
     {

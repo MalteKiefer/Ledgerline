@@ -171,7 +171,7 @@ return [
         Features::updatePasswords(),
         Features::twoFactorAuthentication([
             'confirm' => true,
-            'confirmPassword' => true,
+            'confirmPassword' => false,
         ]),
         // First-party WebAuthn login is out of scope for v1 (email+password+TOTP).
     ],

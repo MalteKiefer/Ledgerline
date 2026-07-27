@@ -85,6 +85,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/profile/devices', [ProfileController::class, 'devices'])->name('profile.devices');
     Route::get('/profile/sessions', [ProfileController::class, 'sessions'])->name('profile.sessions');
     Route::get('/profile/encryption', [ProfileController::class, 'encryption'])->name('profile.encryption');
+    Route::get('/profile/security', [ProfileController::class, 'security'])->name('profile.security');
     Route::get('/profile/appearance', [ProfileController::class, 'appearance'])->name('profile.appearance');
     Route::get('/profile/export', [ProfileController::class, 'exportPage'])->name('profile.export');
     Route::get('/profile/danger', [ProfileController::class, 'danger'])->name('profile.danger');
