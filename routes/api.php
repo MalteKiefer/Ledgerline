@@ -55,7 +55,7 @@ Route::prefix('v1')->group(function (): void {
     // still pass) so a token's declared scope is actually checked.
     Route::middleware(['auth:sanctum', 'abilities:device', UpdateTokenIp::class])->group(function (): void {
         Route::get('/me', [AuthController::class, 'me'])->name('api.me');
-        // Streams the signed-in user's avatar (Pocket-ID image, same-origin, non-secret);
+        // Streams the signed-in user's stored avatar (same-origin, non-secret);
         // 404 when none stored. `me.user.has_avatar` tells the app whether to fetch it.
         Route::get('/avatar', AvatarController::class)->middleware('throttle:120,1')->name('api.avatar');
         Route::post('/device/heartbeat', [AuthController::class, 'heartbeat'])->middleware('throttle:120,1')->name('api.device.heartbeat');
@@ -171,8 +171,6 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/account', [AccountController::class, 'destroy'])->name('api.account.destroy');
         Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('api.account.sessions.revoke');
 
-        // Profile avatar refresh from the IdP + persisted locale/theme preference.
-        Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->middleware('throttle:6,1')->name('api.profile.avatar.refresh');
         Route::post('/locale', [LocaleController::class, 'update'])->name('api.locale.update');
         Route::post('/theme', [ThemeController::class, 'update'])->name('api.theme.update');
         Route::post('/preferences', [PreferencesController::class, 'update'])->name('api.preferences.update');

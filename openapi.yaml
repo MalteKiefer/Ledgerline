@@ -100,7 +100,7 @@ tags:
   - name: Account
     description: GDPR data export, account deletion, and session revocation
   - name: Preferences
-    description: User preferences — avatar refresh, locale, and colour-scheme
+    description: User preferences — locale and colour-scheme
   - name: Groups
     description: >
       Admin group management (requires the admin role on top of the device token).
@@ -3993,32 +3993,6 @@ paths:
   # --------------------------------------------------------------------------
   # Preferences
   # --------------------------------------------------------------------------
-
-  /profile/avatar/refresh:
-    post:
-      tags: [Preferences]
-      operationId: profileAvatarRefresh
-      summary: Re-download the avatar from its source URL
-      description: >
-        Re-fetches the user's avatar from its stored source URL and
-        updates the server-side copy. Returns whether the refresh succeeded.
-        Throttle: 6 req/min.
-      responses:
-        "200":
-          description: Refresh attempted.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [refreshed]
-                properties:
-                  refreshed:
-                    type: boolean
-                    description: True if the avatar was successfully re-downloaded.
-        "401":
-          description: Unauthenticated.
-        "429":
-          description: Rate limit exceeded.
 
   /locale:
     post:

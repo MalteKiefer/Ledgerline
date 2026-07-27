@@ -26,12 +26,6 @@
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ $user->email }}</p>
         @endif
         <p class="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500"><x-icon name="lock-closed" class="h-3.5 w-3.5" />{{ request()->getHost() }}</p>
-        @if ($user->avatar_url)
-            <form method="POST" action="{{ route('profile.avatar.refresh') }}" class="mt-3">
-                @csrf
-                <button type="submit" class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-accent transition hover:bg-accent/10"><x-icon name="arrow-path" class="h-3.5 w-3.5" />{{ __('pages.profile.refresh_avatar') }}</button>
-            </form>
-        @endif
     </div>
 
     {{-- Stats band --}}

@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 return [
-    'avatar_refreshed' => 'Аватар обновлён.',
-    'avatar_refresh_failed' => 'Не удалось обновить аватар.',
     'notifications_saved' => 'Настройки уведомлений сохранены.',
     'notify_test_sent' => 'Тестовое уведомление отправлено.',
     'notify_test_failed' => 'Тест не пройден: :error',
