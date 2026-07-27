@@ -20,6 +20,8 @@ use App\Http\Controllers\GalleryStoreController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\ModuleStoreController;
+use App\Http\Controllers\NoteBlobController;
+use App\Http\Controllers\NotesStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordBreachController;
 use App\Http\Controllers\PasswordIconController;
@@ -81,6 +83,14 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/files/upload/abort', [FileController::class, 'chunkAbort'])->middleware('throttle:600,1')->name('api.files.upload.abort');
         Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:600,1')->name('api.files.raw');
         Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.files.raw-batch');
+
+        // Notes sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
+        Route::get('/notes/store', [NotesStoreController::class, 'show'])->name('api.notes.store.show');
+        Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware('throttle:120,1')->name('api.notes.store.save');
+        Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('api.notes.upload');
+        Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:600,1')->name('api.notes.raw');
+        Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:600,1')->name('api.notes.raw-batch');
+        Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('api.notes.reconcile');
         Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('api.files.blob.destroy');
 
         // File / folder public share links: create, update metadata, revoke.

@@ -4320,3 +4320,135 @@ paths:
           description: Deleted.
         "403":
           description: Not an admin.
+
+  /notes/store:
+    get:
+      tags: [Store]
+      operationId: notesStoreShow
+      summary: Read the sealed sharded notes root
+      description: >
+        Sharded notes store (merge-safety spec §3b): the sealed root pointer table
+        (shard descriptors), mirroring /files/store. ETag/304 supported. The note
+        records live in the notes shard blobs (see /notes/raw).
+      responses:
+        "200":
+          description: Sealed root + version.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ciphertext: { type: string, nullable: true }
+                  version: { type: integer }
+        "304": { description: Not modified (ETag match). }
+    put:
+      tags: [Store]
+      operationId: notesStoreSave
+      summary: Write the sealed sharded notes root
+      description: >
+        Optimistic concurrency (409 on stale version) + shard-reference integrity
+        guard: send the full shard-ref list; the server rejects (422 missing_shard)
+        a root pointing at a shard blob with no ledger row. Throttle 120/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ciphertext, version]
+              properties:
+                ciphertext: { type: string }
+                version: { type: integer, minimum: 0 }
+                shards:
+                  type: array
+                  items: { type: string, format: uuid }
+                  description: The blob refs the new root points at (record shards).
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { version: { type: integer } }
+        "409": { description: Version conflict — re-read, rebase, retry. }
+        "422": { description: A referenced shard blob has no ledger row (missing_shard). }
+
+  /notes/upload:
+    post:
+      tags: [Store]
+      operationId: notesUpload
+      summary: Upload a notes shard blob
+      description: "Stores an opaque record-shard ciphertext blob at notes/{id}. Throttle 1200/min."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { id: { type: string, format: uuid } }
+
+  /notes/raw/{blob}:
+    get:
+      tags: [Store]
+      operationId: notesRaw
+      summary: Download a notes shard blob (owner-scoped)
+      parameters:
+        - name: blob
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Opaque ciphertext bytes. }
+        "404": { description: Not found or not owned by caller. }
+
+  /notes/raw-batch:
+    post:
+      tags: [Store]
+      operationId: notesRawBatch
+      summary: Batch-download notes shard blobs (framed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "200": { description: Framed concatenated ciphertext blobs. }
+
+  /notes/blobs/reconcile:
+    post:
+      tags: [Store]
+      operationId: notesReconcile
+      summary: Reconcile the notes shard live-set
+      description: >
+        The client sends the full set of blob refs its root still points at; the
+        server frees grace-expired shard blobs no longer referenced. Throttle 120/min.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blobs]
+              properties:
+                blobs:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "200": { description: Reconciled; returns updated usage. }

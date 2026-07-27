@@ -23,6 +23,8 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\ModuleStoreController;
+use App\Http\Controllers\NoteBlobController;
+use App\Http\Controllers\NotesStoreController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PaperlessController;
 use App\Http\Controllers\PasswordBreachController;
@@ -229,6 +231,14 @@ Route::middleware('auth')->group(function (): void {
     // history is manifest-side, so a version download is just a raw blob fetch.
     Route::get('/files/raw/{blob}', [FileController::class, 'raw'])->middleware('throttle:3000,1')->name('files.raw');
     Route::post('/files/raw-batch', [FileController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('files.raw-batch');
+
+    // Notes sharded store (merge-safety spec §3b): sealed root + record-shard blobs.
+    Route::get('/notes/store', [NotesStoreController::class, 'show'])->name('notes.store.show');
+    Route::put('/notes/store', [NotesStoreController::class, 'save'])->middleware('throttle:600,1')->name('notes.store.save');
+    Route::post('/notes/upload', [NoteBlobController::class, 'upload'])->middleware('throttle:1200,1')->name('notes.upload');
+    Route::get('/notes/raw/{blob}', [NoteBlobController::class, 'raw'])->middleware('throttle:3000,1')->name('notes.raw');
+    Route::post('/notes/raw-batch', [NoteBlobController::class, 'rawBatch'])->middleware('throttle:3000,1')->name('notes.raw-batch');
+    Route::post('/notes/blobs/reconcile', [NoteBlobController::class, 'reconcile'])->middleware('throttle:120,1')->name('notes.blobs.reconcile');
     // Generous limit: emptying a large trash frees hundreds of blobs at once, and
     // each delete is owner-scoped, idempotent and cheap (unlink + ledger row).
     Route::delete('/files/blob/{blob}', [FileController::class, 'deleteBlob'])->middleware('throttle:3000,1')->name('files.blob.destroy');
