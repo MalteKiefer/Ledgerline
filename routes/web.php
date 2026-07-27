@@ -103,7 +103,6 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/account/export', [AccountController::class, 'export'])->middleware('throttle:6,1')->name('account.export');
     Route::delete('/account/sessions/{id}', [AccountController::class, 'revokeSession'])->name('account.sessions.revoke');
     Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
-    Route::post('/profile/avatar/refresh', [AvatarController::class, 'refresh'])->middleware('throttle:6,1')->name('profile.avatar.refresh');
 
     // QR device pairing: the signed-in owner authorises a new mobile device by
     // approving the code it scanned from the profile page (see routes/api.php).

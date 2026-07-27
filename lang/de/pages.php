@@ -38,7 +38,6 @@ return [
         'avatar' => 'Avatar',
         'avatar_provided' => 'Von Pocket-ID bereitgestellt, im Objektspeicher abgelegt',
         'avatar_none' => 'Keiner',
-        'refresh_avatar' => 'Avatar aktualisieren',
         'health_title' => 'Gesundheit',
         'health_desc' => 'Gewicht, Blutdruck, Puls u. v. m. erfassen — Diagramme und ein arztfertiger Export, Ende-zu-Ende verschlüsselt.',
         'account_created' => 'Konto erstellt',

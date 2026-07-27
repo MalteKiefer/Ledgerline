@@ -130,7 +130,7 @@ class ApiExtraEndpointsTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // Preferences: locale + theme + avatar refresh
+    // Preferences: locale + theme
     // These controllers branch on expectsJson() and must return JSON (not
     // a 302 redirect) when reached via Bearer token.
     // ──────────────────────────────────────────────────────────────────────
@@ -163,23 +163,6 @@ class ApiExtraEndpointsTest extends TestCase
         );
 
         $response->assertOk()->assertJson(['ok' => true, 'theme' => 'dark']);
-        $this->assertSame(200, $response->status(), 'Must be 200, not a 302 redirect');
-    }
-
-    public function test_avatar_refresh_returns_json_with_refreshed_key(): void
-    {
-        $user = User::factory()->create();
-
-        // The AvatarFetcher will silently return false when no avatar_url is
-        // set — that is fine; we only care that the route is reachable and
-        // answers JSON (not a redirect).
-        $response = $this->postJson(
-            route('api.profile.avatar.refresh'),
-            [],
-            $this->bearer($user),
-        );
-
-        $response->assertOk()->assertJsonStructure(['refreshed']);
         $this->assertSame(200, $response->status(), 'Must be 200, not a 302 redirect');
     }
 
