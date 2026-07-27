@@ -5,6 +5,7 @@
     @php
         // Administration only — personal preferences moved to the profile hub.
         $admin = [
+            ['url' => route('settings.users'), 'title' => __('settings.users_section'), 'desc' => __('settings.users_desc'), 'icon' => 'user', 'tint' => '#7066f5'],
             ['url' => route('settings.files.limits'), 'title' => __('settings.files_limits_heading'), 'desc' => __('settings.files_limits_hint'), 'icon' => 'folder', 'tint' => '#3b9fd6'],
             ['url' => route('settings.company.edit'), 'title' => __('settings.company_section'), 'desc' => __('settings.company_desc'), 'icon' => 'identification', 'tint' => '#7066f5'],
             ['url' => route('settings.notifications.edit'), 'title' => __('settings.notifications_section'), 'desc' => __('settings.notifications_desc'), 'icon' => 'bell', 'tint' => '#d9a441'],

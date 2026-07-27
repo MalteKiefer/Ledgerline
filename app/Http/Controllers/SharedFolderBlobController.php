@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\FileBlob;
 use App\Models\SharedFolderBlob;
 use App\Models\SharedVault;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -129,9 +130,16 @@ class SharedFolderBlobController extends BlobStoreController
         return $this->usedBytes($ownerId);
     }
 
-    protected function quotaBytes(): int
+    protected function quotaBytes(?int $userId = null): int
     {
-        // Attributed to the owner's personal files quota.
+        // Attributed to the folder owner's personal files quota (per-user override
+        // on the owner, else the workspace default).
+        if ($userId !== null) {
+            $override = User::whereKey($userId)->value('files_quota_mb');
+            if (is_numeric($override) && (int) $override > 0) {
+                return (int) $override * 1024 * 1024;
+            }
+        }
         $quotaMb = config('files.quota_mb', 0);
 
         return (is_numeric($quotaMb) ? (int) $quotaMb : 0) * 1024 * 1024;

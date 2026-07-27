@@ -39,6 +39,7 @@ use App\Http\Controllers\Settings\SecurityController as SettingsSecurityControll
 use App\Http\Controllers\Settings\SecurityLogController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\SystemController;
+use App\Http\Controllers\Settings\UsersController as SettingsUsersController;
 use App\Http\Controllers\SharedFolderBlobController;
 use App\Http\Controllers\SharedVaultController;
 use App\Http\Controllers\SharedVaultMemberController;
@@ -141,6 +142,14 @@ Route::middleware('auth')->group(function (): void {
 
         // Security log: filterable audit trail + CSV/JSON export (admin only).
         Route::get('/settings/security-log', [SecurityLogController::class, 'index'])->name('settings.security-log');
+
+        // User management: list, create, edit role + per-user limits, reset, delete.
+        Route::get('/settings/users', [SettingsUsersController::class, 'index'])->name('settings.users');
+        Route::post('/settings/users', [SettingsUsersController::class, 'store'])->name('settings.users.store');
+        Route::put('/settings/users/{user}', [SettingsUsersController::class, 'update'])->name('settings.users.update');
+        Route::post('/settings/users/{user}/reset-password', [SettingsUsersController::class, 'resetPassword'])->middleware('throttle:10,1')->name('settings.users.reset');
+        Route::delete('/settings/users/{user}', [SettingsUsersController::class, 'destroy'])->name('settings.users.destroy');
+        Route::post('/settings/registration', [SettingsUsersController::class, 'registration'])->name('settings.registration');
 
         // Vault lock policy (trusted-device days + public-computer idle timeout).
         Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');

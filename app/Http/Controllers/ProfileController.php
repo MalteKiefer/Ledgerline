@@ -31,9 +31,9 @@ class ProfileController extends Controller
             'user' => $user,
             'sessionCount' => $this->sessionsFor($user)->count(),
             'deviceCount' => $user->tokens()->count(),
-            'deviceMax' => $this->deviceMax(),
+            'deviceMax' => $this->deviceMax($user),
             'storageUsed' => $this->storageUsedBytes($user),
-            'storageQuota' => $this->storageQuotaBytes(),
+            'storageQuota' => $this->storageQuotaBytes($user),
         ]);
     }
 
@@ -46,9 +46,7 @@ class ProfileController extends Controller
     /** Paired mobile/CLI devices (loaded + kept live client-side). */
     public function devices(Request $request): View
     {
-        $this->requireUser($request);
-
-        return view('profile.devices', ['deviceMax' => $this->deviceMax()]);
+        return view('profile.devices', ['deviceMax' => $this->deviceMax($this->requireUser($request))]);
     }
 
     /** Active web sessions + last sign-in. */
@@ -147,13 +145,14 @@ class ProfileController extends Controller
             ]);
     }
 
-    /** Admin-configured device cap wins over the config default (same as pairing). */
-    private function deviceMax(): int
+    /** Device cap: per-user override → workspace setting → config default (same as pairing). */
+    private function deviceMax(User $user): int
     {
         $configured = config('devices.max', 3);
 
-        return AppSettings::current()->max_connected_devices
-            ?: (is_numeric($configured) ? (int) $configured : 3);
+        return $user->max_connected_devices
+            ?: (AppSettings::current()->max_connected_devices
+                ?: (is_numeric($configured) ? (int) $configured : 3));
     }
 
     /**
@@ -168,10 +167,10 @@ class ProfileController extends Controller
     }
 
     /** Combined files+gallery quota in bytes, or 0 when either module is unlimited. */
-    private function storageQuotaBytes(): int
+    private function storageQuotaBytes(User $user): int
     {
-        $filesQuota = config('files.quota_mb', 0);
-        $galleryQuota = config('gallery.quota_mb', 0);
+        $filesQuota = $user->files_quota_mb ?: config('files.quota_mb', 0);
+        $galleryQuota = $user->gallery_quota_mb ?: config('gallery.quota_mb', 0);
         $filesQuotaMb = is_numeric($filesQuota) ? (int) $filesQuota : 0;
         $galleryQuotaMb = is_numeric($galleryQuota) ? (int) $galleryQuota : 0;
 
