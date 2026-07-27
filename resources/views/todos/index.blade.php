@@ -33,7 +33,7 @@
             </x-slot:actions>
         </x-page-heading>
 
-        <p x-show="error" x-cloak class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800" x-text="error"></p>
+        <x-alert variant="warning" x-show="error" x-cloak class="mt-4" x-text="error" />
 
         <div class="mt-6 flex flex-col gap-4 md:flex-row" style="min-height: calc(100vh - 18rem);">
             {{-- Sidebar --}}

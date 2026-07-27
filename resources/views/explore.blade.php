@@ -92,7 +92,7 @@
     {{-- Ready --}}
     <template x-if="state === 'ready'">
       <div class="mt-4">
-        <p x-show="error" x-text="error" x-cloak class="mb-3 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300"></p>
+        <x-alert variant="error" x-show="error" x-cloak class="mb-3" x-text="error" />
 
         <div class="grid gap-4 lg:grid-cols-[1fr_22rem]">
           {{-- Map --}}

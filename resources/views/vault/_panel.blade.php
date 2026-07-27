@@ -91,7 +91,7 @@
                         <input type="password" x-model="pass" placeholder="{{ __('vault.passphrase') }}" class="mt-4 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <input type="password" x-model="pass2" placeholder="{{ __('vault.passphrase_confirm') }}" class="mt-2 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-accent focus:ring-accent">
                         <p x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></p>
-                        <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">{{ __('vault.warning') }}</p>
+                        <x-alert variant="warning" class="mt-3 text-xs">{{ __('vault.warning') }}</x-alert>
                         <div class="mt-5 flex justify-end gap-3">
                             <x-button variant="secondary" @click="open = false">{{ __('common.cancel') }}</x-button>
                             <x-button variant="primary" @click="doSetup()" ::disabled="busy">{{ __('vault.create') }}</x-button>
