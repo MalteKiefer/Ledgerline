@@ -24,6 +24,7 @@ import notificationBell from './components/notification-bell';
 import dashboard from './components/dashboard';
 import explore from './components/explore';
 import pwStrength from './components/pw-strength';
+import tagSelect from './components/tag-select';
 
 // After a redeploy, Vite regenerates every chunk hash and the old chunks are
 // gone. A still-open tab holding the previous bundle then 404s when it lazily
@@ -213,6 +214,7 @@ Alpine.data('toastHub', toastHub);
 Alpine.data('cropModal', cropModal);
 Alpine.data('devicePairing', devicePairing);
 Alpine.data('pwStrength', pwStrength);
+Alpine.data('tagSelect', tagSelect);
 
 Alpine.data('paperlessSettings', paperlessSettings);
 Alpine.data('notificationBell', notificationBell);

@@ -90,6 +90,13 @@
                                 @unless ($u->email_verified_at)<span class="shrink-0 text-[11px] text-amber-600 dark:text-amber-400">{{ __('settings.users_unverified') }}</span>@endunless
                             </div>
                             <div class="truncate text-xs text-gray-500 dark:text-gray-400">{{ $u->email }}</div>
+                            @if ($u->memberGroups->isNotEmpty())
+                                <div class="mt-1 flex flex-wrap gap-1">
+                                    @foreach ($u->memberGroups as $g)
+                                        <span class="inline-flex items-center gap-1 rounded-md bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-medium text-teal-600 dark:text-teal-400"><x-icon name="user-group" class="h-2.5 w-2.5" />{{ $g->name }}</span>
+                                    @endforeach
+                                </div>
+                            @endif
                             <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
                                 <span class="inline-flex items-center gap-1"><x-icon name="circle-stack" class="h-3 w-3" />{{ $hb($use['used']) }}@if ($use['quota']) / {{ $hb($use['quota']) }}@else <span class="text-gray-400 dark:text-gray-500">· {{ __('account.storage_unlimited') }}</span>@endif</span>
                                 <span class="inline-flex items-center gap-1"><x-icon name="clock" class="h-3 w-3" />{{ $u->last_login_at ? $u->last_login_at->diffForHumans() : __('settings.users_never_logged_in') }}</span>

@@ -46,17 +46,17 @@
         class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1c1c1e] px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-accent focus:ring-accent">
 </div>
 @if (! ($groups ?? collect())->isEmpty())
-    @php $memberIds = $user ? $user->memberGroups->pluck('id')->all() : []; @endphp
+    @php
+        $memberIds = $user ? $user->memberGroups->pluck('id')->all() : [];
+        $groupOptions = $groups->map(fn ($g) => ['id' => $g->id, 'label' => $g->name, 'sub' => ''])->all();
+    @endphp
     <div class="sm:col-span-2">
         <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('settings.users_groups') }}</label>
-        <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-            @foreach ($groups as $g)
-                <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                    <input type="checkbox" name="groups[]" value="{{ $g->id }}" @checked(in_array($g->id, old('groups', $memberIds)))
-                        class="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
-                    {{ $g->name }}
-                </label>
-            @endforeach
-        </div>
+        @include('settings._tag_select', [
+            'fieldName' => 'groups',
+            'options' => $groupOptions,
+            'selected' => old('groups', $memberIds),
+            'placeholder' => __('settings.users_groups_add'),
+        ])
     </div>
 @endif

@@ -27,3 +27,16 @@
     </label>
     <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">{{ __('settings.groups_shareable_hint') }}</p>
 </div>
+@php
+    $memberIds = $g ? $g->members->pluck('id')->all() : [];
+    $userOptions = ($users ?? collect())->map(fn ($u) => ['id' => $u->id, 'label' => $u->name, 'sub' => $u->email])->all();
+@endphp
+<div class="sm:col-span-2">
+    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{{ __('settings.groups_members') }}</label>
+    @include('settings._tag_select', [
+        'fieldName' => 'members',
+        'options' => $userOptions,
+        'selected' => old('members', $memberIds),
+        'placeholder' => __('settings.groups_members_add'),
+    ])
+</div>
