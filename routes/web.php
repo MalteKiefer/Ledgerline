@@ -33,6 +33,7 @@ use App\Http\Controllers\Settings\BackupController as SettingsBackupController;
 use App\Http\Controllers\Settings\CompanyController as SettingsCompanyController;
 use App\Http\Controllers\Settings\ContactsController as SettingsContactsController;
 use App\Http\Controllers\Settings\FilesController as SettingsFilesController;
+use App\Http\Controllers\Settings\GroupsController as SettingsGroupsController;
 use App\Http\Controllers\Settings\NotificationsController as SettingsNotificationsController;
 use App\Http\Controllers\Settings\PaperlessController as SettingsPaperlessController;
 use App\Http\Controllers\Settings\SecurityController as SettingsSecurityController;
@@ -152,6 +153,12 @@ Route::middleware('auth')->group(function (): void {
         Route::get('/settings/users/{user}/avatar', [SettingsUsersController::class, 'avatar'])->name('settings.users.avatar');
         Route::delete('/settings/users/{user}', [SettingsUsersController::class, 'destroy'])->name('settings.users.destroy');
         Route::post('/settings/registration', [SettingsUsersController::class, 'registration'])->name('settings.registration');
+
+        // Group management: reusable limit templates + shareable flag.
+        Route::get('/settings/groups', [SettingsGroupsController::class, 'index'])->name('settings.groups');
+        Route::post('/settings/groups', [SettingsGroupsController::class, 'store'])->name('settings.groups.store');
+        Route::put('/settings/groups/{group}', [SettingsGroupsController::class, 'update'])->name('settings.groups.update');
+        Route::delete('/settings/groups/{group}', [SettingsGroupsController::class, 'destroy'])->name('settings.groups.destroy');
 
         // Vault lock policy (trusted-device days + public-computer idle timeout).
         Route::get('/settings/security', [SettingsSecurityController::class, 'edit'])->name('settings.security.edit');
