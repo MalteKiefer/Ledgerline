@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     FAST_TEMPLATES, activeFast, fastElapsedSeconds, fastTargetSeconds,
-    fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast,
+    fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast, normalizeFasts,
 } from '../shared/health-fasting.js';
 
 const T0 = Date.parse('2026-07-24T08:00:00Z');
@@ -74,5 +74,47 @@ describe('health-fasting', () => {
     it('fastTargetSeconds handles unset target', () => {
         expect(fastTargetSeconds({ targetHours: 16 })).toBe(57600);
         expect(fastTargetSeconds({})).toBe(0);
+    });
+
+    describe('normalizeFasts — single-active invariant after a merge race', () => {
+        it('leaves a single active fast untouched', () => {
+            const fasts = [{ id: 'a', start: '2026-07-24T08:00:00Z', end: null }];
+            expect(normalizeFasts(fasts)).toBe(false);
+            expect(activeFast(fasts).id).toBe('a');
+        });
+
+        it('voids the later of two concurrently-started active fasts, keeping the earliest', () => {
+            const fasts = [
+                { id: 'b', start: '2026-07-24T09:00:00Z', end: null }, // later start
+                { id: 'a', start: '2026-07-24T08:00:00Z', end: null }, // earlier start — kept
+            ];
+            expect(normalizeFasts(fasts)).toBe(true);
+            expect(fasts.filter((f) => ! f.end)).toHaveLength(1);
+            expect(activeFast(fasts).id).toBe('a');
+            // The duplicate is voided (zero-length), not deleted — no data loss.
+            expect(fasts.find((f) => f.id === 'b').end).toBe('2026-07-24T09:00:00Z');
+        });
+
+        it('is deterministic across clients (same input → same choice) via id tie-break', () => {
+            const mk = () => [
+                { id: 'y', start: '2026-07-24T08:00:00Z', end: null },
+                { id: 'x', start: '2026-07-24T08:00:00Z', end: null }, // same start, smaller id kept
+            ];
+            const one = mk(); normalizeFasts(one);
+            const two = mk().reverse(); normalizeFasts(two);
+            expect(activeFast(one).id).toBe('x');
+            expect(activeFast(two).id).toBe('x');
+        });
+
+        it('does not lose the completed history', () => {
+            const fasts = [
+                { id: 'done', start: '2026-07-23T08:00:00Z', end: '2026-07-23T20:00:00Z' },
+                { id: 'a', start: '2026-07-24T08:00:00Z', end: null },
+                { id: 'b', start: '2026-07-24T09:00:00Z', end: null },
+            ];
+            normalizeFasts(fasts);
+            expect(fasts).toHaveLength(3); // nothing deleted
+            expect(fasts.filter((f) => ! f.end)).toHaveLength(1);
+        });
     });
 });

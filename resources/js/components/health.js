@@ -9,7 +9,7 @@ import {
 import { loadUplot } from '../shared/uplot-loader';
 import { saveBlobAs, formatDate } from '../shared/dom';
 import {
-    FAST_TEMPLATES, activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast,
+    FAST_TEMPLATES, activeFast, fastProgress, formatDuration, formatDurationHMS, templateLabel, isValidFast, normalizeFasts,
 } from '../shared/health-fasting';
 import { healthUnits, setPrefs, prefs } from '../shared/prefs';
 import { postForm } from '../shared/api';
@@ -135,6 +135,9 @@ export default (labels = {}) => ({
         if (! data) return;
         if (! Array.isArray(data.healthFasts)) data.healthFasts = [];
         this.fasts = data.healthFasts;
+        // A concurrent start on two clients can leave two active fasts after the
+        // store rebase-merge — void the duplicates deterministically and persist.
+        if (normalizeFasts(this.fasts)) this._save();
         if (this.activeFast) this._startFastClock(); else this._stopFastClock();
     },
 
