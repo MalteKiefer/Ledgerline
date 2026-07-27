@@ -106,4 +106,6 @@ return [
     'import_done' => ':n Rechnungen importiert.',
     'import_load_failed' => 'PDF-Engine konnte nicht geladen werden.',
     'import_summary_label' => 'Rechnungsbetrag',
+    'zugferd' => 'ZUGFeRD-XML',
+    'zugferd_hint' => 'Strukturierte E-Rechnungs-XML herunterladen (ZUGFeRD / Factur-X, EN 16931).',
 ];

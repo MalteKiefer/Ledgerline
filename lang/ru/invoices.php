@@ -106,4 +106,6 @@ return [
     'import_done' => 'Импортировано счетов: :n.',
     'import_load_failed' => 'Не удалось загрузить движок PDF.',
     'import_summary_label' => 'Сумма счёта',
+    'zugferd' => 'ZUGFeRD XML',
+    'zugferd_hint' => 'Скачать структурированный XML электронного счёта (ZUGFeRD / Factur-X, EN 16931).',
 ];

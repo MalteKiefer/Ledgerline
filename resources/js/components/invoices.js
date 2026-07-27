@@ -4,6 +4,8 @@ import { nextSeq, duplicateNumbers as dupNumbers } from '../shared/invoice-numbe
 import { parseInvoiceFilename, parseInvoiceText, buildImportedInvoice } from '../shared/invoice-pdf-import';
 import { contactNameParts, contactDisplayName } from '../shared/contact-utils';
 import { jsonHeaders } from '../shared/api';
+import { saveBlobAs } from '../shared/dom';
+import { buildZugferdXml, zugferdFilename } from '../shared/zugferd';
 
 // One-time dual-read migration from the old single-blob module store (/store/invoices)
 // to the sharded store (LLInvoicesStore, spec §3b). Runs only while the sharded store is
@@ -194,6 +196,14 @@ export default (config = {}, labels = {}) => ({
         this.importReview.running = false;
         // Sort by issue date so the review reads chronologically.
         this.importReview.items.sort((a, b) => (a.issueDate || '').localeCompare(b.issueDate || ''));
+    },
+
+    // ZUGFeRD / Factur-X (EN 16931) XML export — built + downloaded client-side (ZK).
+    downloadZugferd(inv) {
+        const i = inv || this.current;
+        if (! i) return;
+        const xml = buildZugferdXml(i, this.company, this.computeTotals(i));
+        saveBlobAs(new Blob([xml], { type: 'application/xml' }), zugferdFilename(i));
     },
 
     get importSelectedCount() { return (this.importReview?.items || []).filter((i) => i.selected).length; },
