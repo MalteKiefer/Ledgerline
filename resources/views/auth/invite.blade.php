@@ -4,7 +4,7 @@
         <p class="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">{{ __('auth_ui.invite_subtitle', ['email' => $email]) }}</p>
 
         @if ($errors->any())
-            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
+            <x-alert variant="error" class="mt-4" role="alert">{{ $errors->first() }}</x-alert>
         @endif
 
         <form method="POST" action="{{ route('invite.store', ['invite' => $invite->id, 'token' => $token]) }}" class="mt-6 space-y-4">

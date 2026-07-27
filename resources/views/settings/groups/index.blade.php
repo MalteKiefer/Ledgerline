@@ -3,10 +3,10 @@
         @include('profile._header', ['title' => __('settings.groups_section'), 'subtitle' => __('settings.groups_desc')])
 
         @if (session('status'))
-            <div class="mt-4 rounded-md border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
+            <div class="mt-4 rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
         @endif
         @if ($errors->any())
-            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
+            <div class="mt-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
         @endif
 
         {{-- Create a group --}}
@@ -31,7 +31,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
                                 <span class="truncate">{{ $g->name }}</span>
-                                @if ($g->shareable)<span class="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent">{{ __('settings.groups_shareable') }}</span>@endif
+                                @if ($g->shareable)<x-badge variant="accent">{{ __('settings.groups_shareable') }}</x-badge>@endif
                             </div>
                             <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
                                 <span>{{ trans_choice('settings.groups_member_count', $g->members_count, ['count' => $g->members_count]) }}</span>

@@ -3,9 +3,9 @@
         <h1 class="text-center text-xl font-semibold text-gray-900 dark:text-gray-100">{{ __('auth_ui.register_title') }}</h1>
 
         @if ($errors->any())
-            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">
+            <x-alert variant="error" class="mt-4" role="alert">
                 {{ $errors->first() }}
-            </div>
+            </x-alert>
         @endif
 
         <form method="POST" action="{{ route('register.store') }}" class="mt-6 space-y-4">
