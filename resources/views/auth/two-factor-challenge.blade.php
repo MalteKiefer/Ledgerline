@@ -4,7 +4,7 @@
         <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400" x-show="! recovery">{{ __('auth_ui.twofa_intro') }}</p>
 
         @if ($errors->any())
-            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
+            <x-alert variant="error" class="mt-4" role="alert">{{ $errors->first() }}</x-alert>
         @endif
 
         <form method="POST" action="{{ route('two-factor.login.store') }}" class="mt-6 space-y-4">

@@ -4,7 +4,7 @@
         <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">{{ __('auth_ui.confirm_intro') }}</p>
 
         @error('password')
-            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $message }}</div>
+            <x-alert variant="error" class="mt-4" role="alert">{{ $message }}</x-alert>
         @enderror
 
         <form method="POST" action="{{ route('password.confirm.store') }}" class="mt-6 space-y-4">

@@ -12,14 +12,14 @@
         @include('profile._header', ['title' => __('settings.users_section'), 'subtitle' => __('settings.users_desc')])
 
         @if (session('status'))
-            <div class="mt-4 rounded-md border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
+            <div class="mt-4 rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ session('status') }}</div>
         @endif
         @if ($errors->any())
-            <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
+            <div class="mt-4 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $errors->first() }}</div>
         @endif
 
         @if (! $mailEnabled)
-            <div class="mt-4 rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">{{ __('settings.users_mail_off') }}</div>
+            <div class="mt-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">{{ __('settings.users_mail_off') }}</div>
         @endif
 
         @if (session('invite_url'))
@@ -84,7 +84,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
                                 <span class="truncate">{{ $u->name }}</span>
-                                <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium {{ $u->role === 'admin' ? 'bg-accent/15 text-accent' : 'bg-gray-500/15 text-gray-500 dark:text-gray-400' }}">{{ $u->role === 'admin' ? __('settings.users_role_admin') : __('settings.users_role_user') }}</span>
+                                <x-badge :variant="$u->role === 'admin' ? 'accent' : 'gray'">{{ $u->role === 'admin' ? __('settings.users_role_admin') : __('settings.users_role_user') }}</x-badge>
                                 @if ($u->two_factor_confirmed_at)<span class="shrink-0 text-[11px] text-green-600 dark:text-green-400">{{ __('settings.users_2fa') }}</span>@endif
                                 @unless ($u->email_verified_at)<span class="shrink-0 text-[11px] text-amber-600 dark:text-amber-400">{{ __('settings.users_unverified') }}</span>@endunless
                             </div>

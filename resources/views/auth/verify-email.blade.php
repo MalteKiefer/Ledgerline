@@ -4,7 +4,7 @@
         <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">{{ __('auth_ui.verify_intro') }}</p>
 
         @if (session('status') === 'verification-link-sent')
-            <div class="mt-4 rounded-md border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ __('auth_ui.verify_sent') }}</div>
+            <x-alert variant="success" class="mt-4" role="status">{{ __('auth_ui.verify_sent') }}</x-alert>
         @endif
 
         <form method="POST" action="{{ route('verification.send') }}" class="mt-6">

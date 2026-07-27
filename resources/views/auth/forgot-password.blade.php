@@ -3,17 +3,17 @@
         <h1 class="text-center text-xl font-semibold text-gray-900 dark:text-gray-100">{{ __('auth_ui.forgot_title') }}</h1>
 
         @if (! \App\Models\AppSettings::current()->mail_enabled)
-            <div class="mt-4 rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300" role="alert">
+            <div class="mt-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 text-xs text-amber-800 dark:text-amber-300" role="alert">
                 {{ __('auth_ui.mail_disabled') }}
             </div>
         @else
             <p class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">{{ __('auth_ui.forgot_intro') }}</p>
 
             @if (session('status'))
-                <div class="mt-4 rounded-md border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-sm text-green-700 dark:text-green-300" role="status">{{ __('auth_ui.reset_link_sent') }}</div>
+                <x-alert variant="success" class="mt-4" role="status">{{ __('auth_ui.reset_link_sent') }}</x-alert>
             @endif
             @error('email')
-                <div class="mt-4 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300" role="alert">{{ $message }}</div>
+                <x-alert variant="error" class="mt-4" role="alert">{{ $message }}</x-alert>
             @enderror
 
             <form method="POST" action="{{ route('password.email') }}" class="mt-6 space-y-4">

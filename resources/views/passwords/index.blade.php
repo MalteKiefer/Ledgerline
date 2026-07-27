@@ -223,7 +223,7 @@
               {{-- Trash view header: count + empty-trash --}}
               <div x-show="view === 'trash'" x-cloak class="mb-2 flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
                 <span class="text-xs text-gray-500 dark:text-gray-400"><span x-text="trashCount"></span> {{ __('passwords.trash') }}</span>
-                <button type="button" x-show="trashCount" @click="emptyTrash()" class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 dark:border-red-800 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"><x-icon name="trash" class="h-3.5 w-3.5" />{{ __('passwords.empty_trash') }}</button>
+                <button type="button" x-show="trashCount" @click="emptyTrash()" class="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-red-300 dark:border-red-800 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"><x-icon name="trash" class="h-3.5 w-3.5" />{{ __('passwords.empty_trash') }}</button>
               </div>
               {{-- Read-only notice for shared vaults --}}
               <div x-show="isSharedVault(filterFolder) && sharedVaultRole(filterFolder) === 'read'" x-cloak class="mb-2 flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
@@ -816,7 +816,7 @@
             <p class="mt-1 text-xs text-gray-400">{{ __('passwords.export_shared_note') }}</p>
 
             {{-- Plaintext section --}}
-            <div class="mt-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+            <div class="mt-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
               <p class="text-xs font-medium text-amber-800 dark:text-amber-300">{{ __('passwords.export_plaintext') }}</p>
               <p class="mt-1 text-xs leading-relaxed text-amber-700 dark:text-amber-400">{{ __('passwords.export_warning') }}</p>
               <label class="mt-2 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300">
@@ -860,7 +860,7 @@
               <h3 class="text-base font-semibold text-red-600 dark:text-red-400">{{ __('passwords.reset_title') }}</h3>
               <button type="button" @click="_closeReset()" class="rounded p-1 text-gray-400 hover:bg-accent/5"><x-icon name="x-mark" class="h-5 w-5" /></button>
             </div>
-            <div class="mt-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3">
+            <div class="mt-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3">
               <p class="text-xs leading-relaxed text-red-700 dark:text-red-300">{{ __('passwords.reset_warning') }}</p>
               <p class="mt-2 text-xs text-red-600/80 dark:text-red-400/80">{{ __('passwords.reset_shared_note') }}</p>
             </div>

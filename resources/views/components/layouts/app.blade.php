@@ -65,17 +65,11 @@
 
         <main class="mx-auto w-full max-w-[1700px] overflow-x-hidden px-4 py-8 sm:w-[92%] sm:px-6">
             @if (session('status'))
-                <div class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300"
-                    role="status">
-                    {{ session('status') }}
-                </div>
+                <x-alert variant="success" class="mb-6" role="status">{{ session('status') }}</x-alert>
             @endif
 
             @if (session('error'))
-                <div class="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-                    role="alert">
-                    {{ session('error') }}
-                </div>
+                <x-alert variant="error" class="mb-6" role="alert">{{ session('error') }}</x-alert>
             @endif
 
             {{ $slot }}

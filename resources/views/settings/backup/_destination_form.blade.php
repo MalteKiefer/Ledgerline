@@ -105,8 +105,8 @@
     </template>
 
     {{-- Inline test result (no navigation, so the entered form is preserved) --}}
-    <p x-show="testOk === true" x-cloak class="rounded-md border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-xs text-green-700 dark:text-green-300" x-text="testMsg"></p>
-    <div x-show="testOk === false" x-cloak class="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+    <p x-show="testOk === true" x-cloak class="rounded-xl border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 px-3 py-2 text-xs text-green-700 dark:text-green-300" x-text="testMsg"></p>
+    <div x-show="testOk === false" x-cloak class="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-xs text-red-700 dark:text-red-300">
         <p x-text="testMsg"></p>
         <pre x-show="testDetail" class="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] text-red-800 dark:text-red-300" x-text="testDetail"></pre>
     </div>

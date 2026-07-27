@@ -102,7 +102,7 @@
                     <span class="text-sm text-gray-700 dark:text-gray-300">{{ __('paperless.delete_after') }}</span>
                 </label>
 
-                <p x-show="s.error" x-cloak class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300" x-text="s.error"></p>
+                <p x-show="s.error" x-cloak class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300" x-text="s.error"></p>
             </div>
 
             <div class="flex items-center justify-end gap-3 border-t border-gray-100 px-5 py-3 dark:border-gray-800">

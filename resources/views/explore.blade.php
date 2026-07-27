@@ -86,13 +86,13 @@
     </template>
 
     <template x-if="state === 'error'">
-      <p class="mx-auto mt-16 max-w-md rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('explore.load_failed') }}</p>
+      <p class="mx-auto mt-16 max-w-md rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-6 text-center text-sm text-red-700 dark:text-red-300">{{ __('explore.load_failed') }}</p>
     </template>
 
     {{-- Ready --}}
     <template x-if="state === 'ready'">
       <div class="mt-4">
-        <p x-show="error" x-text="error" x-cloak class="mb-3 rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300"></p>
+        <p x-show="error" x-text="error" x-cloak class="mb-3 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300"></p>
 
         <div class="grid gap-4 lg:grid-cols-[1fr_22rem]">
           {{-- Map --}}
