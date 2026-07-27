@@ -607,10 +607,18 @@ paths:
                     properties:
                       files:
                         type: integer
-                        description: Total file blob bytes.
+                        description: Total file blob bytes used.
                       gallery:
                         type: integer
-                        description: Total gallery blob bytes.
+                        description: Total gallery blob bytes used.
+                      quota:
+                        type: integer
+                        nullable: true
+                        description: >
+                          Combined storage limit in bytes (effective files quota +
+                          gallery quota). Null = unlimited — returned whenever either
+                          dimension is unlimited (0), since the pool then has no finite
+                          cap. Lets a client render a used/limit ring against files+gallery.
                   wipe:
                     type: boolean
                     description: If true the client should erase local vault data and log out.

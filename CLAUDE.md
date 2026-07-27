@@ -6,7 +6,7 @@ nicht lesen. Single-tenant Server, aber code-seitig **voll Multi-User-isoliert**
 
 Module: **Dashboard, Galerie, Dateien, Notizen, Todos, Lesezeichen, Passwörter (inkl. `passkey`-Typ
 + eingebettete Passkeys in `login`-Items), Kontakte, Rechnungen, Health, Explore (Karte + GPS-Tracks), Backup, Paperless**.
-Version **v1.506.0** (live https://home.kiefer-networks.de, `/up`=200).
+Version **v1.506.1** (live https://home.kiefer-networks.de, `/up`=200).
 Zusätzlich: **Browser-Extension** (Chromium, MV3) für ZK-Passwort-Autofill + Bookmarks-CRUD
 + **WebAuthn-Authenticator** (Passkeys).
 
@@ -412,6 +412,7 @@ app.js **8085 → ~753 Z.** (nur noch Bootstrap, Stores confirm/nav/vault/paperl
 - Große Komponenten sind **nur im Browser testbar** (Krypto/Worker/Autofill) — headless nur build+test+lint; nach Deploy visuell prüfen.
 
 ## HISTORIE (Meilensteine — Detail im memory-Verzeichnis)
+- **v1.506.1** (2026-07-27): **`/api/v1/me` liefert `usage.quota`** — kombiniertes Speicher-Limit in Bytes (effektive Files- + Gallery-Quota), `null` = unbegrenzt (auch wenn NUR eine Dimension unbegrenzt ist, da der Pool dann keinen endlichen Cap hat) — damit native Clients einen genutzt/Limit-Ring rendern können. Additiv/abwärtskompatibel (`usage.files`/`usage.gallery` unverändert). Neue zentrale Effective-Limit-Helper am `User` (`effectiveFilesQuotaMb`/`effectiveGalleryQuotaMb`/`effectiveMaxDevices` — per-User-Override → Workspace → config; Single Source of Truth, Groups schließen hier später an). openapi `usage.quota` (nullable) ergänzt (api=openapi=96). Tests `MeUsageQuotaTest`. Kein ZK-/Krypto-Change (Quota ist non-secret Metadatum). Server-Change → Deploy.
 - **v1.506.0** (2026-07-27): **First-Party User Management** — Pocket-ID/OIDC vollständig durch Laravel Fortify ersetzt (E-Mail+Passwort, TOTP-2FA, Reset/Verify, eigene iOS-Views), voll Multi-User + Admin (`users.role`, nicht fillable), optionale Selbstregistrierung (`allow_registration`, default aus), per-User Quota/Device-Cap/Company-Invoicing, DB-SMTP-Mail-Bridge, `user:set-password`-Bootstrap. **Vault-ZK unverändert** (Login orthogonal zur Vault-Passphrase). Detail im Register + memory. Deploy: `migrate --force` + `user:set-password <owner> --admin`.
 - **v1.298 → ~1.480** (2026-07): kompletter Umbau plaintext → zero-knowledge (Vault-Kern, opaque store, ZK-Galerie, ML client-seitig, ZK-Kontakte/Invoices, Photon-Geocoding). **Entfernt:** Mail, Kalender/CalDAV, CardDAV.
 - **~1.485–1.499**: ZK-File/Folder-Sharing; Passwortmanager-Suite (Health/HIBP, Generator, Import, Multi-URL/Custom-Fields, Favicon); Browser-Extension (Autofill, TOTP, Karten, Capture, QR-2FA); CI baut Extension je Release; Tresore (share-ready) + Migration nach „Privat".
