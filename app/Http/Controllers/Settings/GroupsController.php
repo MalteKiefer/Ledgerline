@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\Group;
+use App\Models\User;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,13 +25,15 @@ class GroupsController extends Controller
     public function index(Request $request): View
     {
         return view('settings.groups.index', [
-            'groups' => Group::withCount('members')->orderBy('name')->get(),
+            'groups' => Group::withCount('members')->with('members:id,name,email')->orderBy('name')->get(),
+            'users' => User::orderBy('name')->get(['id', 'name', 'email']),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        Group::create($this->validated($request));
+        $group = Group::create($this->validated($request));
+        $group->members()->sync($this->memberIds($request));
 
         return $this->savedSettings('groups', 'settings.groups', 'settings.groups_saved');
     }
@@ -38,6 +41,7 @@ class GroupsController extends Controller
     public function update(Request $request, Group $group): RedirectResponse
     {
         $group->update($this->validated($request, $group->id));
+        $group->members()->sync($this->memberIds($request));
 
         return $this->savedSettings('groups', 'settings.groups', 'settings.groups_saved');
     }
@@ -64,6 +68,8 @@ class GroupsController extends Controller
             'gallery_quota_mb' => ['nullable', 'integer', 'min:0', 'max:100000000'],
             'max_connected_devices' => ['nullable', 'integer', 'min:1', 'max:50'],
             'shareable' => ['nullable', 'boolean'],
+            'members' => ['nullable', 'array'],
+            'members.*' => ['integer', 'exists:users,id'],
         ]);
 
         $limit = static fn (string $key): ?int => $request->integer($key) > 0 ? $request->integer($key) : null;
@@ -75,5 +81,23 @@ class GroupsController extends Controller
             'max_connected_devices' => $limit('max_connected_devices'),
             'shareable' => $request->boolean('shareable'),
         ];
+    }
+
+    /**
+     * The submitted member user ids (the full set; empty clears membership).
+     *
+     * @return list<int>
+     */
+    private function memberIds(Request $request): array
+    {
+        $ids = $request->input('members', []);
+        if (! is_array($ids)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0,
+            $ids,
+        ), static fn (int $v): bool => $v > 0));
     }
 }

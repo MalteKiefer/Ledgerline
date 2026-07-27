@@ -66,6 +66,26 @@ class GroupManagementTest extends TestCase
         $this->assertTrue($target->fresh()->memberGroups->contains($group->id));
     }
 
+    public function test_admin_can_assign_members_from_the_group_form(): void
+    {
+        $this->actingAs(User::factory()->admin()->create());
+        $group = Group::factory()->create();
+        $a = User::factory()->create();
+        $b = User::factory()->create();
+
+        $this->put(route('settings.groups.update', $group), [
+            'name' => $group->name, 'members' => [$a->id, $b->id],
+        ])->assertRedirect();
+
+        $ids = $group->fresh()->members->pluck('id')->all();
+        $this->assertContains($a->id, $ids);
+        $this->assertContains($b->id, $ids);
+
+        // Re-saving with a smaller set removes the dropped member.
+        $this->put(route('settings.groups.update', $group), ['name' => $group->name, 'members' => [$a->id]])->assertRedirect();
+        $this->assertSame([$a->id], $group->fresh()->members->pluck('id')->all());
+    }
+
     public function test_the_most_generous_group_limit_applies(): void
     {
         config(['files.quota_mb' => 100]);
