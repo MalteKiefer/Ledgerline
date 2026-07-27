@@ -178,7 +178,7 @@ return [
     'filter_type' => 'Nach Typ filtern',
     'delete_folder_confirm' => 'Diesen Tresor löschen? Die Einträge werden in einen anderen Tresor verschoben.',
     'tags' => 'Tags',
-    'tags_placeholder' => 'komma, getrennt',
+    'tags_placeholder' => 'Tag hinzufügen…',
     'custom_fields' => 'Eigene Felder',
     'custom_label' => 'Bezeichnung',
     'custom_value' => 'Wert',

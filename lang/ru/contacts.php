@@ -70,7 +70,7 @@ return [
     'anniv_alert_title' => 'Годовщина',
     'anniv_alert_body' => 'Сегодня годовщина у :name.',
     'categories' => 'Группы',
-    'categories_hint' => 'через запятую',
+    'categories_hint' => 'Добавить категорию…',
     'note' => 'Заметка',
 
     'type_home' => 'Домашний',

@@ -178,7 +178,7 @@ return [
     'filter_type' => 'Фильтр по типу',
     'delete_folder_confirm' => 'Удалить это хранилище? Его записи будут перемещены в другое хранилище.',
     'tags' => 'Теги',
-    'tags_placeholder' => 'через, запятую',
+    'tags_placeholder' => 'Добавить тег…',
     'custom_fields' => 'Пользовательские поля',
     'custom_label' => 'Метка',
     'custom_value' => 'Значение',

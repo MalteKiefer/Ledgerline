@@ -265,7 +265,7 @@
                         <input type="date" x-model="current.anniversary" @change="save()" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
                     </label>
                     <label class="text-xs text-gray-500 dark:text-gray-400">{{ __('contacts.categories') }}
-                        <input type="text" x-model="tagsValue" @change="save()" placeholder="{{ __('contacts.categories_hint') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                        <x-tag-field commit="save()" :placeholder="__('contacts.categories_hint')" />
                     </label>
                 </div>
                 <textarea x-model="current.note" @input.debounce.600ms="save()" placeholder="{{ __('contacts.note') }}" class="mt-3 w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm shadow-sm focus:border-accent focus:ring-accent" rows="3"></textarea>

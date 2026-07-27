@@ -505,8 +505,7 @@
             <div class="absolute inset-0 bg-gray-900/40" @click="tagsOpen = false"></div>
             <div class="relative w-full max-w-md rounded-2xl border border-black/[0.06] dark:border-white/10 bg-white dark:bg-[#1c1c1e] p-6 shadow-xl">
                 <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('files.edit_tags') }}</h3>
-                <input type="text" x-model="tagsValue" list="file-tags" placeholder="tag1, tag2"
-                    class="mt-4 block w-full rounded-md border-gray-300 dark:border-gray-700 text-sm shadow-sm focus:border-accent focus:ring-accent">
+                <x-tag-field list="file-tags" :placeholder="__('files.tags_placeholder')" class="mt-4" />
                 <datalist id="file-tags">
                     <template x-for="tag in allTags" :key="tag"><option :value="tag"></option></template>
                 </datalist>

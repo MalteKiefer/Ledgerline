@@ -381,7 +381,7 @@
                   {{-- Tags --}}
                   <div>
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400">{{ __('passwords.tags') }}</label>
-                    <input type="text" x-model="tagsValue" placeholder="{{ __('passwords.tags_placeholder') }}" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 text-sm focus:border-accent focus:ring-accent">
+                    <x-tag-field :placeholder="__('passwords.tags_placeholder')" />
                   </div>
                   {{-- Custom fields --}}
                   <div>

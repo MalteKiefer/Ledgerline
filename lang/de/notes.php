@@ -8,7 +8,7 @@ return [
     'pick_note' => 'Wähle eine Notiz oder erstelle eine neue.',
     'content' => 'Inhalt (Markdown)',
     'preview' => 'Vorschau',
-    'tags_placeholder' => 'komma, getrennte, tags',
+    'tags_placeholder' => 'Tag hinzufügen…',
     'delete_confirm' => 'Diese Notiz endgültig löschen?',
     'empty_trash_confirm' => 'Alle Notizen im Papierkorb endgültig löschen?',
     'untitled' => 'Ohne Titel',

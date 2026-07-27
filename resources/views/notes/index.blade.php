@@ -79,7 +79,7 @@
                         </template>
                         <x-icon-button name="trash" tone="gray" size="sm" x-show="view !== 'trash'" @click="trash(current)" title="{{ __('notes.to_trash') }}" class="hover:!text-red-600" />
                     </div>
-                    <input type="text" x-model="tagsValue" @change="save()" placeholder="{{ __('notes.tags_placeholder') }}" class="mt-2 w-full rounded-md border-gray-300 text-xs shadow-sm focus:border-accent focus:ring-accent">
+                    <x-tag-field commit="save()" :placeholder="__('notes.tags_placeholder')" />
                     <textarea x-model="current.content" @input="save(); schedulePreview()" placeholder="{{ __('notes.content') }}" class="mt-3 min-h-0 w-full flex-1 rounded-md border-gray-300 font-mono text-sm shadow-sm focus:border-accent focus:ring-accent"></textarea>
                 </div>
 

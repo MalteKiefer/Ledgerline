@@ -133,7 +133,7 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ __('todos.tags') }}</label>
-                        <input type="text" x-model="tagsValue" placeholder="{{ __('todos.tags_placeholder') }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                        <x-tag-field :placeholder="__('todos.tags_placeholder')" />
                     </div>
                     <label class="flex items-center gap-2">
                         <input type="checkbox" x-model="editing.marked" class="rounded border-gray-300 dark:border-gray-700 text-accent focus:ring-accent">
