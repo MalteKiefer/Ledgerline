@@ -91,6 +91,16 @@ window.LLNotesStore = makeShardedStore({
     collections: [],
 });
 
+// Passwords graduated to a sharded store too (spec §3b) — the extension mirrors it.
+// secrets = shard records; secretFolders = one collection blob (like files/folders).
+window.LLPasswordsStore = makeShardedStore({
+    prefix: '/passwords',
+    recordKey: 'secrets',
+    collections: [
+        { key: 'secretFolders', rootRef: 'foldersRef', rootKey: 'foldersKey', rootHash: 'foldersHash' },
+    ],
+});
+
 
 // Wait for the vault, then load the sealed gallery index once.
 // App-wide confirm modal store (replaces native window.confirm everywhere).

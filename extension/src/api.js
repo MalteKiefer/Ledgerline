@@ -52,6 +52,43 @@ export async function saveStore(base, token, module, ciphertext, version) {
     return call(base, '/store/' + encodeURIComponent(module), { method: 'PUT', token, body: { ciphertext, version } });
 }
 
+// ---- Sharded store (merge-safety spec §3b: passwords) ----
+
+/** The sealed sharded root ({ ciphertext, version }) for a prefix (e.g. 'passwords'). */
+export async function getShardedRoot(base, token, prefix) {
+    const res = await call(base, '/' + prefix + '/store', { token });
+    if (res.status === 401) throw new Error('unauthorized');
+    if (! res.ok) throw new Error('sharded root fetch failed');
+    return res.json();
+}
+
+/** Write the sealed sharded root with optimistic concurrency + the shard-ref list. */
+export async function saveShardedRoot(base, token, prefix, ciphertext, version, shards) {
+    return call(base, '/' + prefix + '/store', { method: 'PUT', token, body: { ciphertext, version, shards } });
+}
+
+/** Upload one opaque shard blob (raw bytes). Returns { id } (the blob uuid). */
+export async function uploadShardBlob(base, token, prefix, bytes) {
+    const form = new FormData();
+    form.append('file', new Blob([bytes], { type: 'application/octet-stream' }), 'shard.enc');
+    const res = await fetch(base.replace(/\/+$/, '') + '/api/v1/' + prefix + '/upload', {
+        method: 'POST',
+        headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+        body: form,
+    });
+    if (! res.ok) throw new Error('shard upload failed');
+    return res.json();
+}
+
+/** Download one shard blob's opaque ciphertext bytes → Uint8Array. */
+export async function rawShardBlob(base, token, prefix, ref) {
+    const res = await fetch(base.replace(/\/+$/, '') + '/api/v1/' + prefix + '/raw/' + encodeURIComponent(ref), {
+        headers: { Authorization: 'Bearer ' + token },
+    });
+    if (! res.ok) { const e = new Error('shard fetch failed'); e.status = res.status; throw e; }
+    return new Uint8Array(await res.arrayBuffer());
+}
+
 /** 2fa.directory hint map, proxied by the user's own server (SSRF-guarded,
  *  cached, method-filtered, http(s)-docs-only). Returns { domain: docUrl }.
  *  The extension never fetches 2fa.directory directly — only via this route. */
