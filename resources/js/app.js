@@ -83,6 +83,14 @@ window.LLFilesStore = makeShardedStore({
     ],
 });
 
+// Notes graduated to a sharded store (merge-safety spec §3b) — id-bucket shards so
+// concurrent edits to different notes never conflict. No collection blobs.
+window.LLNotesStore = makeShardedStore({
+    prefix: '/notes',
+    recordKey: 'notes',
+    collections: [],
+});
+
 
 // Wait for the vault, then load the sealed gallery index once.
 // App-wide confirm modal store (replaces native window.confirm everywhere).

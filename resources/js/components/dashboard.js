@@ -69,9 +69,11 @@ export default (config = {}, labels = {}) => ({
         while (! vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
         if (! vault.unlocked) { this.state = 'locked'; return; }
 
-        await Promise.all(['notes', 'todos', 'contacts', 'passwords', 'health', 'bookmarks', 'invoices']
+        await Promise.all(['todos', 'contacts', 'passwords', 'health', 'bookmarks', 'invoices']
             .map((m) => (window.LLModuleStore[m].loaded ? null : window.LLModuleStore[m].load())));
         if (! window.LLFilesStore.loaded) await window.LLFilesStore.load();
+        // Notes graduated to a sharded store (spec §3b) — read them from LLNotesStore.
+        if (! window.LLNotesStore.loaded) await window.LLNotesStore.load();
 
         this.state = 'ready';
         try { this.galleryReady = await bootGalleryStore(this.$store); } catch (_e) { this.galleryReady = false; }
@@ -88,7 +90,7 @@ export default (config = {}, labels = {}) => ({
     },
 
     // Per-module data getters (store v3 split — each module owns its sealed store).
-    get _notes() { return window.LLModuleStore.notes?.data ?? null; },
+    get _notes() { return window.LLNotesStore?.data ?? null; },
     get _todos() { return window.LLModuleStore.todos?.data ?? null; },
     get _contacts() { return window.LLModuleStore.contacts?.data ?? null; },
     get _passwords() { return window.LLModuleStore.passwords?.data ?? null; },

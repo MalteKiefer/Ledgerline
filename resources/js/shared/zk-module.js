@@ -32,17 +32,23 @@ export function zkModule(cfg) {
         error: '',
         tagsValue: '',
 
-        // The per-module sealed store backing this component.
-        _store() { return window.LLModuleStore[moduleName]; },
+        // The sealed store backing this component. Defaults to the per-module store;
+        // cfg.instance lets a module use its OWN store (e.g. a sharded LLNotesStore).
+        _store() { return cfg.instance ? cfg.instance() : window.LLModuleStore[moduleName]; },
 
         // Persist this module's manifest (debounced, sealed) after a mutation.
         _save() { this._store().touch(); },
 
-        // Point the mapped component properties at the (already-decrypted) module
-        // store arrays; false while the vault is still locked.
+        // Point the mapped component properties at the (already-decrypted) store
+        // arrays; false while the vault is still locked. cfg.afterLoad runs once the
+        // store is loaded (e.g. a one-time dual-read migration from an old monolith).
         async _bootAssign() {
-            if (! await bootStore(this.$store, moduleName)) { this.state = 'locked'; return false; }
-            const data = this._store().data;
+            const ms = this._store();
+            while (! this.$store.vault.ready) { await new Promise((r) => setTimeout(r, 20)); }
+            if (! this.$store.vault.unlocked) { this.state = 'locked'; return false; }
+            if (! ms.loaded) await ms.load();
+            if (cfg.afterLoad) await cfg.afterLoad(this, ms);
+            const data = ms.data;
             for (const [key, prop] of Object.entries(cfg.map)) this[prop] = data[key];
             this.state = 'ready';
             return true;

@@ -1,9 +1,32 @@
 // notes component. Extracted from app.js.
 import { zkModule } from '../shared/zk-module';
 import { loadMarkdown } from '../shared/markdown';
+import { jsonHeaders } from '../shared/api';
+
+// One-time dual-read migration from the old single-blob module store (/store/notes)
+// to the new sharded store (LLNotesStore). Runs only while the sharded store is empty;
+// after moving the notes it clears the old monolith so a later "delete all" can never
+// re-import them. Best-effort — a failure just leaves the notes in the old store.
+async function migrateFromMonolith(ms) {
+    if ((ms.data.notes?.length ?? 0) > 0) return; // already sharded
+    let d = null;
+    try {
+        d = await fetch('/store/notes', { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }).then((r) => r.json());
+    } catch (e) { return; }
+    if (! d || ! d.ciphertext) return;
+    let old = null;
+    try { old = window.Vault.openManifest(d.ciphertext); } catch (e) { return; }
+    if (! Array.isArray(old.notes) || old.notes.length === 0) return;
+    ms.data.notes.push(...old.notes);
+    await ms.flush(); // persist into the sharded store first
+    try {
+        const empty = window.Vault.sealManifest({ v: 3, notes: [] });
+        await fetch('/store/notes', { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify({ ciphertext: empty, version: d.version ?? 0 }) });
+    } catch (e) { /* the length guard still prevents re-import this session */ }
+}
 
 export default (labels = {}) => ({
-    ...zkModule({ store: 'notes', map: { notes: 'notes' }, onLock: (self) => { self.currentId = null; } }),
+    ...zkModule({ store: 'notes', instance: () => window.LLNotesStore, afterLoad: (self, ms) => migrateFromMonolith(ms), map: { notes: 'notes' }, onLock: (self) => { self.currentId = null; } }),
     notes: [],
     currentId: null,
     view: 'active', // active | trash
@@ -45,7 +68,7 @@ export default (labels = {}) => ({
     },
 
     newNote() {
-        const note = { id: window.LLModuleStore.notes.newId(), title: '', content: '', tags: [], pinned: false, trashed: false, updated: new Date().toISOString() };
+        const note = { id: window.LLNotesStore.newId(), title: '', content: '', tags: [], pinned: false, trashed: false, updated: new Date().toISOString() };
         this.notes.unshift(note);
         this._save();
         this.open(note);
