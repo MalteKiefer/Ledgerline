@@ -1,5 +1,14 @@
 <x-layouts.app :title="__('settings.users_section')">
-    <div class="mx-auto w-full max-w-3xl">
+    @php
+        $hb = function (int $b): string {
+            if ($b <= 0) return '0 B';
+            $u = ['B', 'KB', 'MB', 'GB', 'TB'];
+            $i = min((int) floor(log($b, 1024)), count($u) - 1);
+            return rtrim(rtrim(number_format($b / (1024 ** $i), 1), '0'), '.').' '.$u[$i];
+        };
+    @endphp
+    {{-- Mutually-exclusive panels: `open` is 'new', a user id, or null. Opening one closes any other. --}}
+    <div class="mx-auto w-full max-w-3xl" x-data="{ open: null }">
         @include('profile._header', ['title' => __('settings.users_section'), 'subtitle' => __('settings.users_desc')])
 
         @if (session('status'))
@@ -30,12 +39,12 @@
         </div>
 
         {{-- Create a user --}}
-        <div class="mt-5 ll-card" x-data="{ open: false }">
-            <button type="button" @click="open = ! open" class="flex w-full items-center justify-between">
+        <div class="mt-5 ll-card">
+            <button type="button" @click="open = (open === 'new' ? null : 'new')" class="flex w-full items-center justify-between">
                 <h2 class="text-base font-semibold text-gray-900 dark:text-gray-100">{{ __('settings.users_create') }}</h2>
-                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400 transition" ::class="open ? 'rotate-90' : ''" />
+                <x-icon name="chevron-right" class="h-4 w-4 text-gray-400 transition" ::class="open === 'new' ? 'rotate-90' : ''" />
             </button>
-            <form x-show="open" x-cloak method="POST" action="{{ route('settings.users.store') }}" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <form x-show="open === 'new'" x-cloak method="POST" action="{{ route('settings.users.store') }}" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 @csrf
                 @include('settings.users._fields', ['user' => null])
                 <div class="sm:col-span-2">
@@ -47,11 +56,16 @@
         {{-- User list --}}
         <div class="mt-5 space-y-3">
             @foreach ($users as $u)
-                <div class="ll-card" x-data="{ edit: false }">
+                @php $use = $usage[$u->id] ?? ['used' => 0, 'quota' => null]; @endphp
+                <div class="ll-card">
                     <div class="flex items-center gap-3">
-                        <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:{{ $u->role === 'admin' ? '#7066f5' : '#6b7280' }}">
-                            <x-icon name="user" class="h-4 w-4 text-white" />
-                        </span>
+                        @if ($u->avatar)
+                            <img src="{{ route('settings.users.avatar', $u) }}" alt="" class="h-9 w-9 shrink-0 rounded-xl object-cover">
+                        @else
+                            <span class="ll-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style="background:{{ $u->role === 'admin' ? '#7066f5' : '#6b7280' }}">
+                                <x-icon name="user" class="h-4 w-4 text-white" />
+                            </span>
+                        @endif
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-gray-100">
                                 <span class="truncate">{{ $u->name }}</span>
@@ -60,11 +74,15 @@
                                 @unless ($u->email_verified_at)<span class="shrink-0 text-[11px] text-amber-600 dark:text-amber-400">{{ __('settings.users_unverified') }}</span>@endunless
                             </div>
                             <div class="truncate text-xs text-gray-500 dark:text-gray-400">{{ $u->email }}</div>
+                            <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                                <span class="inline-flex items-center gap-1"><x-icon name="circle-stack" class="h-3 w-3" />{{ $hb($use['used']) }}@if ($use['quota']) / {{ $hb($use['quota']) }}@else <span class="text-gray-400 dark:text-gray-500">· {{ __('account.storage_unlimited') }}</span>@endif</span>
+                                <span class="inline-flex items-center gap-1"><x-icon name="clock" class="h-3 w-3" />{{ $u->last_login_at ? $u->last_login_at->diffForHumans() : __('settings.users_never_logged_in') }}</span>
+                            </div>
                         </div>
-                        <button type="button" @click="edit = ! edit" class="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-black/[0.06] hover:text-gray-700 dark:hover:bg-white/10"><x-icon name="pencil" class="h-4 w-4" /></button>
+                        <button type="button" @click="open = (open === {{ $u->id }} ? null : {{ $u->id }})" class="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-black/[0.06] hover:text-gray-700 dark:hover:bg-white/10"><x-icon name="pencil" class="h-4 w-4" /></button>
                     </div>
 
-                    <div x-show="edit" x-cloak class="mt-4 border-t border-black/[0.06] dark:border-white/10 pt-4">
+                    <div x-show="open === {{ $u->id }}" x-cloak class="mt-4 border-t border-black/[0.06] dark:border-white/10 pt-4">
                         <form method="POST" action="{{ route('settings.users.update', $u) }}" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             @csrf @method('PUT')
                             @include('settings.users._fields', ['user' => $u])
@@ -77,6 +95,13 @@
                                 @csrf
                                 <button type="submit" class="text-xs text-accent hover:underline">{{ __('settings.users_reset') }}</button>
                             </form>
+                            @if ($u->two_factor_confirmed_at)
+                                <form method="POST" action="{{ route('settings.users.reset2fa', $u) }}"
+                                      x-on:submit="if (! confirm(@js(__('settings.users_2fa_reset_confirm')))) $event.preventDefault()">
+                                    @csrf
+                                    <button type="submit" class="text-xs text-accent hover:underline">{{ __('settings.users_2fa_reset') }}</button>
+                                </form>
+                            @endif
                             <form method="POST" action="{{ route('settings.users.destroy', $u) }}"
                                   x-on:submit="if (! confirm(@js(__('settings.users_delete_confirm')))) $event.preventDefault()">
                                 @csrf @method('DELETE')

@@ -26,6 +26,15 @@ class LoginTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
+    public function test_login_stamps_last_login_at(): void
+    {
+        $user = User::factory()->create(['email' => 'me@example.com', 'password' => 'super-secret-123', 'last_login_at' => null]);
+
+        $this->post('/login', ['email' => 'me@example.com', 'password' => 'super-secret-123']);
+
+        $this->assertNotNull($user->fresh()->last_login_at);
+    }
+
     public function test_wrong_password_is_rejected(): void
     {
         User::factory()->create(['email' => 'me@example.com', 'password' => 'super-secret-123']);

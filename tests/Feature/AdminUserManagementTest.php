@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\AppSettings;
+use App\Models\FileBlob;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminUserManagementTest extends TestCase
@@ -75,6 +78,48 @@ class AdminUserManagementTest extends TestCase
     {
         $this->actingAs(User::factory()->admin()->create());
         $this->post(route('settings.registration'), ['allow_registration' => '1'])->assertRedirect();
-        $this->assertTrue(\App\Models\AppSettings::current()->allow_registration);
+        $this->assertTrue(AppSettings::current()->allow_registration);
+    }
+
+    public function test_admin_can_reset_a_users_two_factor(): void
+    {
+        $this->actingAs(User::factory()->admin()->create());
+        $target = User::factory()->create();
+        $target->forceFill([
+            'two_factor_secret' => encrypt('SECRET'),
+            'two_factor_recovery_codes' => encrypt(json_encode(['a', 'b'])),
+            'two_factor_confirmed_at' => now(),
+        ])->save();
+
+        $this->post(route('settings.users.reset2fa', $target))->assertRedirect();
+
+        $target->refresh();
+        $this->assertNull($target->two_factor_secret);
+        $this->assertNull($target->two_factor_recovery_codes);
+        $this->assertNull($target->two_factor_confirmed_at);
+    }
+
+    public function test_two_factor_reset_requires_admin(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $target = User::factory()->create();
+        $this->post(route('settings.users.reset2fa', $target))->assertForbidden();
+    }
+
+    public function test_the_index_lists_per_user_storage_usage(): void
+    {
+        $this->actingAs(User::factory()->admin()->create());
+        $target = User::factory()->create(['name' => 'Heavy User']);
+        FileBlob::create(['blob' => (string) Str::uuid(), 'user_id' => $target->id, 'size' => 3 * 1024 * 1024, 'created_at' => now()]);
+
+        $this->get(route('settings.users'))->assertOk()->assertSee('Heavy User');
+    }
+
+    public function test_the_avatar_route_is_admin_only(): void
+    {
+        $target = User::factory()->create();
+        $this->actingAs(User::factory()->create())->get(route('settings.users.avatar', $target))->assertForbidden();
+        // No avatar stored → admin gets 404 (not a 403).
+        $this->actingAs(User::factory()->admin()->create())->get(route('settings.users.avatar', $target))->assertNotFound();
     }
 }

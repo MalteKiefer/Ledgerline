@@ -8,7 +8,10 @@ use App\Actions\PurgeUserAccount;
 use App\Http\Controllers\Concerns\RedirectsToSettings;
 use App\Http\Controllers\Controller;
 use App\Models\AppSettings;
+use App\Models\FileBlob;
+use App\Models\GalleryBlob;
 use App\Models\User;
+use App\Support\BlobStore;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +19,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Admin user management (workspace-wide, gated by manage-global-settings): list,
@@ -29,8 +33,29 @@ class UsersController extends Controller
 
     public function index(Request $request): View
     {
+        $users = User::orderBy('id')->get();
+
+        // Per-user storage usage (files + gallery bytes), shown for every user
+        // regardless of whether they have a quota set. One grouped query each.
+        $filesBy = FileBlob::query()->groupBy('user_id')->selectRaw('user_id, SUM(size) AS bytes')->pluck('bytes', 'user_id');
+        $galleryBy = GalleryBlob::query()->groupBy('user_id')->selectRaw('user_id, SUM(size) AS bytes')->pluck('bytes', 'user_id');
+
+        $int = static fn (mixed $v): int => is_numeric($v) ? (int) $v : 0;
+        $usage = $users->mapWithKeys(function (User $u) use ($filesBy, $galleryBy, $int): array {
+            $files = $int($filesBy[$u->id] ?? 0);
+            $gallery = $int($galleryBy[$u->id] ?? 0);
+            $quotaMb = $u->effectiveFilesQuotaMb() + $u->effectiveGalleryQuotaMb();
+            $unlimited = $u->effectiveFilesQuotaMb() <= 0 || $u->effectiveGalleryQuotaMb() <= 0;
+
+            return [$u->id => [
+                'used' => $files + $gallery,
+                'quota' => $unlimited ? null : $quotaMb * 1024 * 1024,
+            ]];
+        });
+
         return view('settings.users.index', [
-            'users' => User::orderBy('id')->get(),
+            'users' => $users,
+            'usage' => $usage,
             'settings' => AppSettings::current(),
             'mailEnabled' => (bool) AppSettings::current()->mail_enabled,
         ]);
@@ -100,6 +125,32 @@ class UsersController extends Controller
         $purge->handle($user); // crypto-shred + owned data + vault
 
         return $this->savedSettings('users', 'settings.users', 'settings.users_deleted');
+    }
+
+    /** Clear a user's two-factor authentication (admin recovery when they lose their device). */
+    public function resetTwoFactor(Request $request, User $user): RedirectResponse
+    {
+        $user->forceFill([
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+        ])->save();
+
+        return $this->savedSettings('users', 'settings.users', 'settings.users_2fa_reset_done');
+    }
+
+    /** Stream a user's avatar for the admin list (admin-gated by the route group). */
+    public function avatar(Request $request, User $user): StreamedResponse
+    {
+        $path = $user->avatar;
+        $disk = BlobStore::disk();
+        abort_if(! is_string($path) || $path === '' || ! $disk->exists($path), 404);
+
+        return $disk->response($path, 'avatar', [
+            'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+        ], 'inline');
     }
 
     public function registration(Request $request): RedirectResponse

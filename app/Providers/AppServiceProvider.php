@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Models\AppSettings;
 use App\Models\User;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
@@ -60,6 +61,14 @@ class AppServiceProvider extends ServiceProvider
         // System settings page can show whether the cron is alive.
         Event::listen(ScheduledTaskFinished::class, fn (ScheduledTaskFinished $e) => self::recordCronRun($e->task, true));
         Event::listen(ScheduledTaskFailed::class, fn (ScheduledTaskFailed $e) => self::recordCronRun($e->task, false));
+
+        // Stamp the last successful login (shown in admin user management). Written
+        // quietly so it does not fire model events or bump updated_at.
+        Event::listen(Login::class, function (Login $e): void {
+            if ($e->user instanceof User) {
+                $e->user->forceFill(['last_login_at' => now()])->saveQuietly();
+            }
+        });
     }
 
     /** Cache key holding the last run for a scheduled command. */
