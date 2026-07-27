@@ -27,6 +27,35 @@ export function activeFast(fasts) {
     return fasts.find((f) => f && ! f.end) || null;
 }
 
+/**
+ * Enforce the single-active-fast invariant. A concurrent start on two clients can,
+ * after the store's rebase-merge, leave TWO records with end === null (both writers'
+ * records are preserved — no data loss — but only one may be active). Deterministically
+ * keep the earliest-started one active (tie-break by id so every client converges on
+ * the SAME choice) and close the rest at their own start (a zero-length fast that is
+ * voided, not deleted). Mutates the array in place; returns true if it changed.
+ *
+ * @param {Array<object>} fasts
+ * @returns {boolean} whether any record was voided
+ */
+export function normalizeFasts(fasts) {
+    if (! Array.isArray(fasts)) return false;
+    const active = fasts.filter((f) => f && ! f.end);
+    if (active.length <= 1) return false;
+    active.sort((a, b) => {
+        const ta = Date.parse(a.start) || 0;
+        const tb = Date.parse(b.start) || 0;
+        if (ta !== tb) return ta - tb;
+        return String(a.id) < String(b.id) ? -1 : 1;
+    });
+    let changed = false;
+    for (let i = 1; i < active.length; i++) {
+        active[i].end = active[i].start; // void the duplicate (zero-length), keep record
+        changed = true;
+    }
+    return changed;
+}
+
 /** Elapsed seconds of a fast (to its end, or to `nowMs` if still running). */
 export function fastElapsedSeconds(fast, nowMs = Date.now()) {
     if (! fast || ! fast.start) return 0;

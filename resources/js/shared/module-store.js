@@ -14,6 +14,27 @@ import { mergeManifest } from './manifest-merge';
 /** How many 409 rebase attempts before we give up and surface an error. */
 const MAX_CONFLICT_RETRIES = 5;
 
+function isPlainObj(v) {
+    return v !== null && typeof v === 'object' && ! Array.isArray(v);
+}
+
+/**
+ * Copy `src` onto `target` IN PLACE, preserving the object/array identities that
+ * components may have bound to (e.g. health binds this.fasts = data.healthFasts).
+ * A 409 rebase produces a fresh merged object; applying it in place keeps those
+ * bound references live instead of silently orphaning them.
+ */
+function applyInPlace(target, src) {
+    for (const k of Object.keys(target)) if (! (k in src)) delete target[k];
+    for (const k of Object.keys(src)) {
+        const s = src[k];
+        const t = target[k];
+        if (Array.isArray(s) && Array.isArray(t)) t.splice(0, t.length, ...s);
+        else if (isPlainObj(s) && isPlainObj(t)) applyInPlace(t, s);
+        else target[k] = s;
+    }
+}
+
 /**
  * @param {string} module  allowlisted module key (matches the server allowlist)
  * @param {() => object} blankFn  fresh empty shape for this module
@@ -93,8 +114,9 @@ export function makeStore(module, blankFn) {
                         conflicts++;
                         const server = await this._fetchManifest();
                         // Rebase our delta onto the winning manifest, then retry at
-                        // the winning version.
-                        this.data = mergeManifest(this._base ?? server.data, this.data, server.data);
+                        // the winning version. Apply in place so bound refs stay live.
+                        const merged = mergeManifest(this._base ?? server.data, this.data, server.data);
+                        applyInPlace(this.data, merged);
                         this.version = server.version;
                     } else if (res.status === 429) {
                         const ra = parseInt(res.headers.get('Retry-After') || '', 10);
