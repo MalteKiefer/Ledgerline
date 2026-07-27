@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\AccountController;
-use App\Http\Controllers\Auth\PocketIdController;
 use App\Http\Controllers\AvatarController;
 use App\Http\Controllers\ContactBlobController;
 use App\Http\Controllers\ContactNotifyController;
@@ -71,13 +70,8 @@ Route::prefix('s/{token}')->name('public.share.')->group(function (): void {
     Route::get('/blob/{ref}', [PublicShareController::class, 'blob'])->middleware('throttle:3000,1')->name('blob');
 });
 
-// Guest-only routes: the login page and the Pocket-ID OIDC handshake. The OIDC
-// endpoints are throttled to blunt handshake replay/hammering.
-Route::middleware('guest')->group(function (): void {
-    // GET /login + POST /login|/logout are owned by Fortify (see FortifyServiceProvider).
-    Route::get('/auth/redirect', [PocketIdController::class, 'redirect'])->middleware('throttle:30,1')->name('auth.redirect');
-    Route::get('/auth/callback', [PocketIdController::class, 'callback'])->middleware('throttle:30,1')->name('auth.callback');
-});
+// First-party auth (login, registration, password reset, email verification,
+// two-factor) is owned by Laravel Fortify — see FortifyServiceProvider.
 
 // Authenticated routes.
 Route::middleware('auth')->group(function (): void {
@@ -133,8 +127,8 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/settings/paperless/test', [SettingsPaperlessController::class, 'test'])->middleware('throttle:20,1')->name('settings.paperless.test');
     Route::post('/settings/paperless/sync', [SettingsPaperlessController::class, 'sync'])->middleware('throttle:20,1')->name('settings.paperless.sync');
 
-    // Non-personal, workspace-wide settings — restricted to the Pocket-ID admin
-    // group (config services.pocketid.admin_group; open to all when unset).
+    // Non-personal, workspace-wide settings — restricted to users with the admin
+    // role (see User::managesGlobalSettings / the manage-global-settings gate).
     Route::middleware('can:manage-global-settings')->group(function (): void {
         // Workspace-wide file limits (quota, max upload, orphan grace). The
         // per-user version-keep count stays on settings.files.edit (profile hub).

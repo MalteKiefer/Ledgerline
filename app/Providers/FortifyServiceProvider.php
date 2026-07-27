@@ -51,12 +51,16 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::registerView(fn () => self::registrationOpen() ? view('auth.register') : redirect()->route('login'));
 
         RateLimiter::for('login', function (Request $request): Limit {
-            $key = Str::transliterate(Str::lower((string) $request->input(Fortify::username())).'|'.$request->ip());
+            $email = $request->string(Fortify::username())->lower()->value();
 
-            return Limit::perMinute(5)->by($key);
+            return Limit::perMinute(5)->by(Str::transliterate($email.'|'.$request->ip()));
         });
 
-        RateLimiter::for('two-factor', fn (Request $request): Limit => Limit::perMinute(5)->by((string) $request->session()->get('login.id')));
+        RateLimiter::for('two-factor', function (Request $request): Limit {
+            $id = $request->session()->get('login.id');
+
+            return Limit::perMinute(5)->by(is_scalar($id) ? (string) $id : (string) $request->ip());
+        });
     }
 
     /** Whether self-service registration is currently enabled workspace-wide. */

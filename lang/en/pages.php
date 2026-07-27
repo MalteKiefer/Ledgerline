@@ -34,7 +34,7 @@ return [
         'email_verified' => 'Email verified',
         'verified_yes' => 'Yes, on :date',
         'verified_no' => 'No',
-        'pocketid_subject' => 'Pocket-ID subject',
+        'role' => 'Role',
         'avatar' => 'Avatar',
         'avatar_provided' => 'Provided by Pocket-ID, stored on your object storage',
         'avatar_none' => 'None',

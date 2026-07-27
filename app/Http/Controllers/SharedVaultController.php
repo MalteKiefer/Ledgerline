@@ -141,10 +141,7 @@ class SharedVaultController extends Controller
         $identifier = $request->string('identifier')->value();
 
         /** @var User|null $recipient */
-        $recipient = User::where(function ($q) use ($identifier): void {
-            $q->where('email', $identifier)
-                ->orWhere('oidc_sub', $identifier);
-        })
+        $recipient = User::where('email', $identifier)
             ->whereNotNull('x25519_public_key')
             // Store v3 (§6.3): a recipient must also have published ML-KEM material
             // so the sender can build the hybrid wrap; otherwise treat as no key.
